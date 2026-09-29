@@ -74,10 +74,3 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
-# Nix builds
-/result
-/result-*
-
-# Installation directory for container build artefacts
-/installdir
