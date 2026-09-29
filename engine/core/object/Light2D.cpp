@@ -6,7 +6,7 @@
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Light2D::Light2D(Scene* scene): Object(scene){
     addComponent<Light2DComponent>();

@@ -6,9 +6,9 @@
 
 #include "EntityHandle.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Joint2D: public EntityHandle{
+    class JASPERENGINE_API Joint2D: public EntityHandle{
     public:
         Joint2D(Scene* scene);
         Joint2D(Scene* scene, Entity entity);

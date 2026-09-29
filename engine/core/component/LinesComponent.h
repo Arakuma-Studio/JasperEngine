@@ -9,7 +9,7 @@
 #include "Engine.h"
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
     struct LineData{
         Vector3 pointA = Vector3(0,0,0);
@@ -30,7 +30,7 @@ namespace doriax{
         }
     };
 
-    struct DORIAX_API LinesComponent{
+    struct JASPERENGINE_API LinesComponent{
         bool loaded = false;
         bool loadCalled = false;
 

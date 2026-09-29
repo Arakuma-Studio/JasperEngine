@@ -6,7 +6,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/PhysicsSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Object::Object(Scene* scene): EntityHandle(scene){
     addComponent<Transform>();
@@ -251,7 +251,7 @@ void Object::updateTransform(){
     scene->getSystem<RenderSystem>()->updateTransform(transform, entity);
 }
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 Body2D Object::getBody2D(){
     scene->getSystem<PhysicsSystem>()->createBody2D(entity);
     return Body2D(scene, entity);
@@ -262,7 +262,7 @@ void Object::removeBody2D(){
 }
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 Body3D Object::getBody3D(){
     scene->getSystem<PhysicsSystem>()->createBody3D(entity);
     return Body3D(scene, entity);

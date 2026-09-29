@@ -4,7 +4,7 @@
 #include "Points.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Points::Points(Scene* scene): Object(scene){
     addComponent<PointsComponent>();

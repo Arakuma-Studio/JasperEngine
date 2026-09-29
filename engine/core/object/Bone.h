@@ -6,9 +6,9 @@
 
 #include "Object.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Bone: public Object{
+    class JASPERENGINE_API Bone: public Object{
     public:
         Bone(Scene* scene, Entity entity);
         virtual ~Bone();

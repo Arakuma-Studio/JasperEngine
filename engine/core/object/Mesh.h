@@ -8,9 +8,9 @@
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Mesh: public Object{
+    class JASPERENGINE_API Mesh: public Object{
     public:
         Mesh(Scene* scene);
         Mesh(Scene* scene, Entity entity);

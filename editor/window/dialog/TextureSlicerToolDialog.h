@@ -12,7 +12,7 @@
 #include "Engine.h"
 #include "texture/Texture.h"
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 class TextureSlicerToolDialog {
@@ -96,4 +96,4 @@ public:
 };
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

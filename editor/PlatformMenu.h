@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 enum class PlatformMenuItemType {
     Command,
@@ -56,4 +56,4 @@ struct PlatformMenuModel {
 
 using PlatformMenuCallback = std::function<void(const PlatformMenuCommand&)>;
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 
     class Scene;
     class Body2D;
@@ -38,7 +38,7 @@ namespace doriax {
         }
     };
 
-    class DORIAX_API Ray{
+    class JASPERENGINE_API Ray{
 
     private:
 
@@ -68,11 +68,11 @@ namespace doriax {
         RayReturn intersects(const AABB& box) const;
         RayReturn intersects(const OBB& obb) const;
         RayReturn intersects(const Sphere& sphere) const;
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         RayReturn intersects(const Body2D& body) const;
         RayReturn intersects(const Body2D& body, size_t shape) const;
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         RayReturn intersects(const Body3D& body) const;
         RayReturn intersects(const Body3D& body, size_t shape) const;
 #endif
@@ -84,7 +84,7 @@ namespace doriax {
         RayReturn intersects(Scene* scene, RayFilter raytest, const std::vector<Entity>& ignoreEntities) const;
         RayReturn intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, Entity ignoreEntity) const;
         RayReturn intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>& ignoreEntities) const;
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         RayReturn intersects(Scene* scene, uint8_t broadPhaseLayer3D) const; // only 3D bodies
         RayReturn intersects(Scene* scene, uint8_t broadPhaseLayer3D, uint16_t categoryBits, uint16_t maskBits) const; // only 3D bodies
         RayReturn intersects(Scene* scene, uint8_t broadPhaseLayer3D, Entity ignoreEntity) const; // only 3D bodies
@@ -96,7 +96,7 @@ namespace doriax {
     private:
 
         RayReturn intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities) const;
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         RayReturn intersects(Scene* scene, uint8_t broadPhaseLayer3D, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities) const;
 #endif
     };

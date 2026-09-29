@@ -5,7 +5,7 @@
 #include "Log.h"
 #include <cstdlib>
 
-using namespace doriax;
+using namespace jasperengine;
 
 InterleavedBuffer::InterleavedBuffer(): Buffer(){
     vectorBuffer.clear();

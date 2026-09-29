@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-namespace doriax{
+namespace jasperengine{
     class SokolSystem{
 
     public:

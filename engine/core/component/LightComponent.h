@@ -12,7 +12,7 @@
 #include "Engine.h"
 #include <cmath>
 
-namespace doriax{
+namespace jasperengine{
 
     enum class LightType{
         DIRECTIONAL,
@@ -30,7 +30,7 @@ namespace doriax{
         Vector2 nearFar = Vector2(0.0, 0.0);
     };
 
-    struct DORIAX_API LightComponent{
+    struct JASPERENGINE_API LightComponent{
         LightType type = LightType::DIRECTIONAL;
 
         Vector3 direction;

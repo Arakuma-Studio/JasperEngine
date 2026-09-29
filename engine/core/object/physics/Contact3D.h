@@ -10,9 +10,9 @@
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Contact3D{
+    class JASPERENGINE_API Contact3D{
     private:
         Scene* scene;
         const JPH::Body* body1;

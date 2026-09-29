@@ -1,20 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef DORIAX_ARRAY_H
-#define DORIAX_ARRAY_H
+#ifndef JASPERENGINE_ARRAY_H
+#define JASPERENGINE_ARRAY_H
 
 #include <cstddef>
 
-#ifdef DORIAX_EDITOR
+#ifdef JASPERENGINE_EDITOR
 #include <vector>
 #endif
 
-namespace doriax {
+namespace jasperengine {
 
 template <typename T, std::size_t Size>
 struct HybridArray {
-#ifdef DORIAX_EDITOR
+#ifdef JASPERENGINE_EDITOR
     std::vector<T> values = std::vector<T>(Size);
 
     std::size_t size() const {

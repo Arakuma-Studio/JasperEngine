@@ -3,7 +3,7 @@
 
 #include "ScaleAction.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ScaleAction::ScaleAction(Scene* scene): TimedAction(scene){
     addComponent<ScaleActionComponent>();

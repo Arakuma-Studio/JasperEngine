@@ -79,7 +79,7 @@
 #include <unordered_set>
 #include <memory>
 
-using namespace doriax;
+using namespace jasperengine;
 
 // Assets are stored relative to the assets root. A file outside it still previews from
 // its absolute path, but the drop is refused on delivery.
@@ -888,16 +888,16 @@ bool editor::Properties::isOpen() const{
 
 editor::RowPropertyType editor::Properties::scriptPropertyTypeToRowPropertyType(ScriptPropertyType scriptType){
     switch (scriptType) {
-        case doriax::ScriptPropertyType::Bool: return RowPropertyType::Bool;
-        case doriax::ScriptPropertyType::Int: return RowPropertyType::Int;
-        case doriax::ScriptPropertyType::Float: return RowPropertyType::Float;
-        case doriax::ScriptPropertyType::String: return RowPropertyType::String;
-        case doriax::ScriptPropertyType::Vector2: return RowPropertyType::Vector2;
-        case doriax::ScriptPropertyType::Vector3: return RowPropertyType::Vector3;
-        case doriax::ScriptPropertyType::Vector4: return RowPropertyType::Vector4;
-        case doriax::ScriptPropertyType::Color3: return RowPropertyType::Color3L;
-        case doriax::ScriptPropertyType::Color4: return RowPropertyType::Color4L;
-        case doriax::ScriptPropertyType::EntityReference: return RowPropertyType::ExternalEntity;
+        case jasperengine::ScriptPropertyType::Bool: return RowPropertyType::Bool;
+        case jasperengine::ScriptPropertyType::Int: return RowPropertyType::Int;
+        case jasperengine::ScriptPropertyType::Float: return RowPropertyType::Float;
+        case jasperengine::ScriptPropertyType::String: return RowPropertyType::String;
+        case jasperengine::ScriptPropertyType::Vector2: return RowPropertyType::Vector2;
+        case jasperengine::ScriptPropertyType::Vector3: return RowPropertyType::Vector3;
+        case jasperengine::ScriptPropertyType::Vector4: return RowPropertyType::Vector4;
+        case jasperengine::ScriptPropertyType::Color3: return RowPropertyType::Color3L;
+        case jasperengine::ScriptPropertyType::Color4: return RowPropertyType::Color4L;
+        case jasperengine::ScriptPropertyType::EntityReference: return RowPropertyType::ExternalEntity;
         default: return RowPropertyType::Custom;
     }
 }
@@ -1974,7 +1974,7 @@ bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& re
 
 void editor::Properties::updateShapePreview(const ShapeParameters& shapeParams){
     ImVec4 frameBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-    std::shared_ptr<doriax::MeshSystem> meshSys = shapePreviewRender.getScene()->getSystem<MeshSystem>();
+    std::shared_ptr<jasperengine::MeshSystem> meshSys = shapePreviewRender.getScene()->getSystem<MeshSystem>();
 
     MeshComponent meshComp;
 
@@ -5908,7 +5908,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
         // Create geometry button
         if (ImGui::Button("Apply", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
             for (Entity& entity : entities) {
-                std::shared_ptr<doriax::MeshSystem> meshSys = sceneProject->scene->getSystem<MeshSystem>();
+                std::shared_ptr<jasperengine::MeshSystem> meshSys = sceneProject->scene->getSystem<MeshSystem>();
                 MeshComponent meshComp = sceneProject->scene->getComponent<MeshComponent>(entity);
 
                 updateMeshShape(meshComp, meshSys.get(), shapeParams);
@@ -13566,7 +13566,7 @@ void editor::Properties::show(){
                 }
             }
 
-            LightState currentLightState = doriax::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
+            LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
                 ImGui::SeparatorText("Global Illumination");
 
@@ -13605,7 +13605,7 @@ void editor::Properties::show(){
 
                     drawScenePropertyRow<bool>(sceneProject, "mesh_lod_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
                         "Draw simplified versions of meshes when their detail no longer shows on screen. Off: every mesh draws at full detail and no levels are built.");
-                    if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
+                    if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "mesh_lod_threshold", "Threshold", ScenePropertyInputType::SliderFloat, -1.0f, 0.25f, 8.0f,
                             "Screen pixels of geometric error a simplified mesh may show. Lower keeps more detail.");
                     }
@@ -13633,7 +13633,7 @@ void editor::Properties::show(){
 
                     drawScenePropertyRow<bool>(sceneProject, "ssao_enabled", "Enabled", ScenePropertyInputType::Checkbox);
 
-                    if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "ssao_enabled")) {
+                    if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "ssao_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "ssao_radius", "Radius", ScenePropertyInputType::SliderFloat, -1.0f, 0.05f, 2.0f);
                         drawScenePropertyRow<float>(sceneProject, "ssao_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.1f, 4.0f);
                         drawScenePropertyRow<float>(sceneProject, "ssao_bias", "Bias", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 0.1f);
@@ -13651,7 +13651,7 @@ void editor::Properties::show(){
 
                     drawScenePropertyRow<bool>(sceneProject, "ssr_enabled", "Enabled", ScenePropertyInputType::Checkbox);
 
-                    if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "ssr_enabled")) {
+                    if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "ssr_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "ssr_max_distance", "Max Distance", ScenePropertyInputType::SliderFloat, -1.0f, 1.0f, 50.0f);
                         drawScenePropertyRow<float>(sceneProject, "ssr_thickness", "Thickness", ScenePropertyInputType::SliderFloat, -1.0f, 0.05f, 4.0f);
                         drawScenePropertyRow<float>(sceneProject, "ssr_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 2.0f);
@@ -13660,8 +13660,8 @@ void editor::Properties::show(){
                         // Debug View: visualize the SSR G-buffer channels (centralized in the composite)
                         {
                             const char* ssrDebugNames[] = { "Off", "Reflection", "Normal", "Roughness", "Metallic", "Albedo", "IBL Specular" };
-                            int debugMode = doriax::editor::Catalog::getSceneProperty<int>(sceneProject->scene, "ssr_debug_mode");
-                            int debugModeDefault = doriax::editor::Catalog::getScenePropertyDefault<int>("ssr_debug_mode");
+                            int debugMode = jasperengine::editor::Catalog::getSceneProperty<int>(sceneProject->scene, "ssr_debug_mode");
+                            int debugModeDefault = jasperengine::editor::Catalog::getScenePropertyDefault<int>("ssr_debug_mode");
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             ImGui::Text("Debug View");
@@ -13723,7 +13723,7 @@ void editor::Properties::show(){
                     "scenes stay at native resolution on top. Letterbox/crop still follows the\n"
                     "project canvas and scaling mode.");
 
-                if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled")) {
+                if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled")) {
                     drawScenePropertyRow<int>(sceneProject, "fixed_resolution_width", "Width", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 1.0f, 8192.0f);
                     drawScenePropertyRow<int>(sceneProject, "fixed_resolution_height", "Height", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 1.0f, 8192.0f);
                     drawScenePropertyRow<TextureFilter>(sceneProject, "fixed_resolution_filter", "Filter", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,

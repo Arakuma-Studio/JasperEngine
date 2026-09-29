@@ -6,9 +6,9 @@
 
 #include "math/Vector3.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API ColorActionComponent{
+    struct JASPERENGINE_API ColorActionComponent{
         Vector3 endColor;
         Vector3 startColor;
 

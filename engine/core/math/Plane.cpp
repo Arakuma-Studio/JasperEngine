@@ -6,7 +6,7 @@
 #include "Matrix3.h"
 #include "OBB.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Plane::Plane () {
     normal = Vector3::ZERO;

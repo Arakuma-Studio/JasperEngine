@@ -10,9 +10,9 @@
 #include <array>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API TextureData {
+    class JASPERENGINE_API TextureData {
     private:
 
         int width;

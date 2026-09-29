@@ -7,7 +7,7 @@
 #include "Export.h"
 
 
-namespace doriax{
+namespace jasperengine{
 
     enum class PrimitiveType{
         TRIANGLES,

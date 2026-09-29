@@ -10,7 +10,7 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LuaBinding::registerThreadClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS

@@ -8,7 +8,7 @@
 #include "object/Model.h"
 #include "object/Light.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class ModelRender{
     private:

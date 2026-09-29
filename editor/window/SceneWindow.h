@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <set>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     enum class ScenePropertyType {
         CHECKBOX,
@@ -113,7 +113,7 @@ namespace doriax::editor {
 
         template<typename T>
         void drawSceneProperty(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyType inputType, float minValue = 0.0f, float maxValue = 1.0f, float col2Size = -1.0f) {
-            T value = doriax::editor::Catalog::getSceneProperty<T>(sceneProject->scene, propertyName);
+            T value = jasperengine::editor::Catalog::getSceneProperty<T>(sceneProject->scene, propertyName);
             bool changed = false;
 
             Command* cmd = nullptr;

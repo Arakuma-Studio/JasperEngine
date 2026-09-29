@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // A scrollable, wrapped, colored text region whose content can be selected and
 // copied with the mouse (drag, double-click word, triple-click line), Ctrl+A,
@@ -65,4 +65,4 @@ private:
     static bool isWordChar(unsigned int cp);
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

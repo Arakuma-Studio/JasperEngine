@@ -7,7 +7,7 @@
 
 #include <cstring>
 
-using namespace doriax;
+using namespace jasperengine;
 
 ShaderData::ShaderData(){
 

@@ -10,7 +10,7 @@
 #include "nfd.hpp"
 #include "util/Util.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     enum FileDialogType {
         FILE_DIALOG_ALL = 0,

@@ -6,7 +6,7 @@
 #include "Log.h"
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::mutex& ResourceProgress::getProgressMutex(){
     static std::mutex* mutex = new std::mutex();

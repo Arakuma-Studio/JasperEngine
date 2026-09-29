@@ -5,7 +5,7 @@
 
 #include <cctype>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 std::string toString(ProviderId provider) {
     switch (provider) {
@@ -154,4 +154,4 @@ ApprovalMode approvalModeFromString(const std::string& value) {
     return ApprovalMode::PreviewThenApprove;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

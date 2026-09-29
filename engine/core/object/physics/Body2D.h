@@ -4,7 +4,7 @@
 #ifndef BODY2D_H
 #define BODY2D_H
 
-#ifndef DORIAX_PHYSICS_2D
+#ifndef JASPERENGINE_PHYSICS_2D
 #error "Body2D needs 2D Physics, enabled in Project Settings > Build"
 #endif
 
@@ -13,12 +13,12 @@
 #include "component/Body2DComponent.h"
 
 
-namespace doriax{
+namespace jasperengine{
 
     class Contact2D;
     class Object;
 
-    class DORIAX_API Body2D: public EntityHandle{
+    class JASPERENGINE_API Body2D: public EntityHandle{
     protected:
         void checkBody(const Body2DComponent& body) const;
 

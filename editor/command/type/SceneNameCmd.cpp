@@ -3,7 +3,7 @@
 
 #include "SceneNameCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::SceneNameCmd::SceneNameCmd(Project* project, uint32_t sceneId, std::string name){
     this->project = project;

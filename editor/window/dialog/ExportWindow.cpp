@@ -12,7 +12,7 @@
 #include "Out.h"
 #include "Theme.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
     // Desktop exports build for the current host, so only expose backends
@@ -1202,4 +1202,4 @@ void ExportWindow::drawProgress() {
     }
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

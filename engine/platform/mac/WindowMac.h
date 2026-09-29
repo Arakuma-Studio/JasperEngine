@@ -14,10 +14,10 @@
 #include <functional>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
     struct WindowMacConfig {
-        std::string title = "Doriax";
+        std::string title = "JasperEngine";
         int width = 960;
         int height = 540;
         bool resizable = true;

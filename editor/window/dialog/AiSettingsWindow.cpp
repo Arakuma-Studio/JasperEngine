@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
@@ -449,4 +449,4 @@ void AiSettingsWindow::drawSettings() {
     }
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

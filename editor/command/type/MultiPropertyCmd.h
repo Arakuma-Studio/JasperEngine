@@ -9,7 +9,7 @@
 #include <memory>
 #include <utility>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class MultiPropertyCmd : public Command {
     private:

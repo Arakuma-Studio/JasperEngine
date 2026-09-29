@@ -50,7 +50,7 @@
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 unsigned char editor::ResourcesWindow::textureByteAt(TextureData& data, size_t pixel, int channel, int bytesPerChannel) {
     if (bytesPerChannel == 2) {
@@ -2455,7 +2455,7 @@ void editor::ResourcesWindow::cleanupThumbnails() {
         }
     }
 
-    // 2. Walk .doriax/thumbs/ and remove any orphaned thumbnails
+    // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails
     fs::path thumbsDir = project->getThumbsDir();
     if (!fs::exists(thumbsDir)) return;
 

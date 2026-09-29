@@ -10,7 +10,7 @@
 #include "VulkanContext.h"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 SystemLinux::SystemLinux(LinuxInputRouter* router) : router(router) {
 }
@@ -101,8 +101,8 @@ void SystemLinux::setMousePosition(float x, float y) {
 // assets in the project directory instead, so the editor bakes absolute paths
 // in through these macros (see Generator::getPlatformCMakeConfig).
 std::string SystemLinux::getAssetPath() {
-#ifdef DORIAX_ASSET_PATH
-    return DORIAX_ASSET_PATH;
+#ifdef JASPERENGINE_ASSET_PATH
+    return JASPERENGINE_ASSET_PATH;
 #else
     return "assets";
 #endif
@@ -113,16 +113,16 @@ std::string SystemLinux::getUserDataPath() {
 }
 
 std::string SystemLinux::getLuaPath() {
-#ifdef DORIAX_LUA_PATH
-    return DORIAX_LUA_PATH;
+#ifdef JASPERENGINE_LUA_PATH
+    return JASPERENGINE_LUA_PATH;
 #else
     return "lua";
 #endif
 }
 
 std::string SystemLinux::getShaderPath() {
-#ifdef DORIAX_SHADER_PATH
-    return DORIAX_SHADER_PATH;
+#ifdef JASPERENGINE_SHADER_PATH
+    return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
 #endif

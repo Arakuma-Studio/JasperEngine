@@ -6,7 +6,7 @@
 #include "Configs.h"
 #include "PreviewEnvironment.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::MaterialRender::MaterialRender(){
     scene = new Scene(EntityPool::System);

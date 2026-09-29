@@ -8,12 +8,12 @@
 #include "Matrix4.h"
 #include "Sphere.h"
 
-namespace doriax{
+namespace jasperengine{
 
     class Plane;
     class OBB;
     
-    class DORIAX_API AABB{
+    class JASPERENGINE_API AABB{
 
     public:
 

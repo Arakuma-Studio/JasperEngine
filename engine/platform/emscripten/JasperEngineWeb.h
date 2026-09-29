@@ -1,16 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef DoriaxWeb_h
-#define DoriaxWeb_h
+#ifndef JasperEngineWeb_h
+#define JasperEngineWeb_h
 
 #include <emscripten/html5.h>
 
 #include "System.h"
 
-#define DORIAX_WEB_MAX_GAMEPADS 16
+#define JASPERENGINE_WEB_MAX_GAMEPADS 16
 
-class DoriaxWeb: public doriax::System{
+class JasperEngineWeb: public jasperengine::System{
 
 private:
 
@@ -36,7 +36,7 @@ private:
 
     static bool quitRequested;
 
-    static GamepadState gamepads[DORIAX_WEB_MAX_GAMEPADS];
+    static GamepadState gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
     static EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData);
     static EM_BOOL mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData);
@@ -54,16 +54,16 @@ private:
 
     static wchar_t toCodepoint(const std::string &u);
     static std::string toUTF8(wchar_t cp);
-    static int doriax_mouse_button(int button);
-    static int doriax_legacy_input(int code);
-    static int doriax_input(const char code[32]);
-    static int doriax_gamepad_button(int button);
+    static int jasperengine_mouse_button(int button);
+    static int jasperengine_legacy_input(int code);
+    static int jasperengine_input(const char code[32]);
+    static int jasperengine_gamepad_button(int button);
 
     static void pollGamepads();
 
 public:
 
-    DoriaxWeb();
+    JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
 
@@ -86,8 +86,8 @@ public:
     virtual void setWindowTitle(const std::string& title) override;
     virtual void quit() override;
 
-    virtual void setMouseCursor(doriax::CursorType type) override;
-    virtual void setMouseMode(doriax::MouseMode mode) override;
+    virtual void setMouseCursor(jasperengine::CursorType type) override;
+    virtual void setMouseMode(jasperengine::MouseMode mode) override;
 
     virtual std::string getUserDataPath() override;
 
@@ -108,4 +108,4 @@ public:
 };
 
 
-#endif /* DoriaxWeb_h */
+#endif /* JasperEngineWeb_h */

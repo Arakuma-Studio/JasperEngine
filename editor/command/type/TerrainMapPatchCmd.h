@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     // Stroke undo: restores one rect of a terrain map, so the history holds a patch instead of
     // a copy of the whole map. The file is still rewritten in full on every apply, since PNG

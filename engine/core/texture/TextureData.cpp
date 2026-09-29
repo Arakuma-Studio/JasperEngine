@@ -26,7 +26,7 @@
 #include "Log.h"
 #include "Texture.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 bool TextureData::hasSvgExtension(const char* filename) {
     if (!filename) {
@@ -447,7 +447,7 @@ bool TextureData::loadCubeMapFromSingleFile(const char* filename, std::array<Tex
     };
 
     try {
-        // Using DORIAX convention:
+        // Using JASPERENGINE convention:
         // Right (+X)
         extractFace(0, right[0], right[1]);
         // Left (-X)

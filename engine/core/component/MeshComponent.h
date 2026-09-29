@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
     // the load while it is flagged in Submesh::overrideFields.
@@ -56,7 +56,7 @@ namespace doriax{
                                    SubmeshOverride_FoliageTransmission
     };
 
-    struct DORIAX_API Submesh{
+    struct JASPERENGINE_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
 

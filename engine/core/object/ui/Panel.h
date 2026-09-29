@@ -8,8 +8,8 @@
 #include "Text.h"
 #include "Container.h"
 
-namespace doriax{
-    class DORIAX_API Panel: public Image{
+namespace jasperengine{
+    class JASPERENGINE_API Panel: public Image{
     private:
         void ensureHeader();
         bool hasHeaderImage() const;

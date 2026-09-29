@@ -22,7 +22,7 @@ static float getElapsedSeconds() {
     return std::chrono::duration<float>(now - startTime).count();
 }
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 static ImVec4 GetLogTypeColor(LogType type) {
     // Tune to taste

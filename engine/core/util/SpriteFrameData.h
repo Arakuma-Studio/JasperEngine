@@ -6,7 +6,7 @@
 
 #include "math/Rect.h"
 
-namespace doriax{
+namespace jasperengine{
 
     struct SpriteFrameData{
         std::string name;

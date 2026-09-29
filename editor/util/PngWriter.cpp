@@ -11,7 +11,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // Public DEFLATE (zlib) compressor from the stb_image_write implementation TU
 // (engine/libs/stb/stb_image_write.c), reused so we don't hand-roll a compressor.
@@ -147,4 +147,4 @@ bool writeGray16Png(const fs::path& path, int width, int height,
     return wrote == out.size();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -21,7 +21,7 @@
 
 #include "Input.h"
 
-namespace doriax {
+namespace jasperengine {
 
     // Indexed by scancode including the extended bit (0x100), so 0..0x1ff.
     inline const int* winScancodeTable() {

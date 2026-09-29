@@ -14,14 +14,14 @@
 #include "ComponentArray.h"
 #include "Log.h"
 
-namespace doriax {
+namespace jasperengine {
 
 	using ComponentId = unsigned char;
 
 
 	// Dense index per component type, so an array lookup is a vector subscript instead
 	// of hashing typeid().name() on every call.
-	class DORIAX_API ComponentTypeRegistry {
+	class JASPERENGINE_API ComponentTypeRegistry {
 	public:
 		static size_t indexOf(const char* mangledName);
 	};
@@ -34,7 +34,7 @@ namespace doriax {
 	}
 
 
-	class DORIAX_API ComponentManager {
+	class JASPERENGINE_API ComponentManager {
 	private:
 		struct ComponentEntry {
 			std::shared_ptr<ComponentArrayBase> array;

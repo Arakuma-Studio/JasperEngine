@@ -12,8 +12,8 @@
 #include <chrono>
 #include <thread>
 
-using namespace doriax;
-using namespace doriax::editor;
+using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 
@@ -36,8 +36,8 @@ void EditorFrame::init(Renderer& renderer, App& app, void (*platformNewFrame)())
 
 std::string EditorFrame::formatWindowTitle(const std::string& projectName){
     return projectName.empty()
-        ? "Empty project - Doriax Engine"
-        : projectName + " - Doriax Engine";
+        ? "Empty project - JasperEngine"
+        : projectName + " - JasperEngine";
 }
 
 bool EditorFrame::isIdle() const{

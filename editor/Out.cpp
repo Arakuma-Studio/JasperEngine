@@ -11,7 +11,7 @@
 #include <iostream>
 #include <mutex>
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 OutputWindow* Out::outputWindow = nullptr;
 
@@ -86,7 +86,7 @@ void Out::setLogFile(const std::filesystem::path& path) {
     }
 
     logFilePath = path;
-    logFileStream << "\n=== Doriax editor " << DORIAX_EDITOR_VERSION << " started at "
+    logFileStream << "\n=== JasperEngine Editor " << JASPERENGINE_EDITOR_VERSION << " started at "
                   << timestamp() << " ===" << std::endl;
 }
 

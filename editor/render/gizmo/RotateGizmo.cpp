@@ -7,7 +7,7 @@
 #include "util/Angle.h"
 #include "math/Sphere.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 const Vector3 editor::RotateGizmo::mainColor = Vector3(0.8, 0.8, 0.8);
 const Vector3 editor::RotateGizmo::xaxisColor = Vector3(0.7, 0.2, 0.2);

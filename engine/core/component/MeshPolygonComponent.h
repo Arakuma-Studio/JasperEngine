@@ -10,9 +10,9 @@
 
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API MeshPolygonComponent{
+    struct JASPERENGINE_API MeshPolygonComponent{
         unsigned int width = 0;
         unsigned int height = 0;
 

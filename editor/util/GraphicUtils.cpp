@@ -68,7 +68,7 @@
     #include <vulkan/vulkan.h>
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 Vector2 editor::GraphicUtils::getUILayoutCenter(Scene* scene, Entity entity, const UILayoutComponent& layout) {
     Vector2 center = Vector2(0, 0);

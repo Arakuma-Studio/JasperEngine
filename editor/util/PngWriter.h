@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <filesystem>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // Encodes and writes a 16-bit single-channel (grayscale) PNG. `pixels` holds
 // width*height 16-bit samples in native little-endian order (low byte first);
@@ -19,4 +19,4 @@ namespace doriax::editor {
 bool writeGray16Png(const std::filesystem::path& path, int width, int height,
                     const unsigned char* pixels, std::size_t pixelByteCount);
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

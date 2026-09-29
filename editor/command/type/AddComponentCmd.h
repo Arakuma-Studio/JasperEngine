@@ -7,7 +7,7 @@
 #include "Project.h"
 #include "Catalog.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class AddComponentCmd : public Command {
     private:
         Project* project;

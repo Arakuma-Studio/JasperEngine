@@ -9,9 +9,9 @@
 
 #include "Jolt/Physics/Body/Body.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API CollideShapeResult3D{
+    class JASPERENGINE_API CollideShapeResult3D{
     private:
         Scene* scene;
         const JPH::Body* body1;

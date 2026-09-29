@@ -9,7 +9,7 @@
 
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     struct InstanceData{
         Vector3 position = Vector3(0.0, 0.0, 0.0);
@@ -58,7 +58,7 @@ namespace doriax{
         }
     };
 
-    struct DORIAX_API InstancedMeshComponent{
+    struct JASPERENGINE_API InstancedMeshComponent{
         ExternalBuffer buffer;
 
         std::vector<InstanceData> instances;

@@ -9,7 +9,7 @@
 #include "ai/AiTypes.h"
 #include "yaml-cpp/yaml.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 struct PanelVisibilitySettings {
     bool structure = true;
@@ -36,7 +36,7 @@ struct PanelVisibilitySettings {
 };
 
 // Compiler paths and job count are machine-specific, so they live in the project's
-// own .doriax/user/build.yaml rather than in project.yaml, and travel with the
+// own .jasperengine/user/build.yaml rather than in project.yaml, and travel with the
 // project when it moves.
 struct LocalBuildSettings {
     std::string cCompiler;
@@ -192,4 +192,4 @@ public:
     static bool saveSettings();
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

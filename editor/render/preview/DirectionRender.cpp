@@ -5,7 +5,7 @@
 
 #include "Configs.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::DirectionRender::DirectionRender(){
     scene = new Scene(EntityPool::System);

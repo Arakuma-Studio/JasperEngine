@@ -8,16 +8,16 @@
 #include <math.h>
 #include <string>
 
-namespace doriax { class Vector3; }
-doriax::Vector3 operator * ( float f, const doriax::Vector3& v );
+namespace jasperengine { class Vector3; }
+jasperengine::Vector3 operator * ( float f, const jasperengine::Vector3& v );
 
 
-namespace doriax {
+namespace jasperengine {
 
     class Vector2;
     class Vector4;
 
-    class DORIAX_API Vector3
+    class JASPERENGINE_API Vector3
     {
     public:
         float x, y, z;

@@ -33,7 +33,7 @@
 
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 // thread_local cannot be a data member of a DLL-exported class (MSVC C2492).
 // Keep the TLS counter as file-local storage and expose it via a plain function.
@@ -42,7 +42,7 @@ static unsigned int& getAsyncThreadDepthStorage() {
     return asyncThreadDepth;
 }
 
-//-----Doriax user config-----
+//-----JasperEngine user config-----
 std::vector<Scene*> Engine::scenes;
 std::unordered_set<Scene*> Engine::oneTimeScenes;
 std::mutex Engine::sceneListMutex;
@@ -97,7 +97,7 @@ Semaphore Engine::drawSemaphore;
 Framebuffer* Engine::framebuffer = nullptr;
 Framebuffer Engine::compositeFramebuffer;
 
-//-----Doriax user events-----
+//-----JasperEngine user events-----
 FunctionSubscribe<void()> Engine::onViewLoaded;
 FunctionSubscribe<void()> Engine::onViewChanged;
 FunctionSubscribe<void()> Engine::onViewDestroyed;
@@ -569,7 +569,7 @@ GraphicBackend Engine::getGraphicBackend(){
     return GraphicBackend::WGPU;
 #elif defined(SOKOL_VULKAN)
     return GraphicBackend::VULKAN;
-#elif defined(DORIAX_APPLE) //Xcode template
+#elif defined(JASPERENGINE_APPLE) //Xcode template
     return GraphicBackend::METAL;
 #endif
 }

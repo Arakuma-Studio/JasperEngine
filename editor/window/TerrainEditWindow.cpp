@@ -46,8 +46,8 @@
 #include <utility>
 #include <vector>
 
-using namespace doriax;
-using namespace doriax::editor;
+using namespace jasperengine;
+using namespace jasperengine::editor;
 
 
 bool editor::TerrainEditWindow::loadTerrainTextureDataFromPath(Project* project, const std::string& path, TextureData& data){
@@ -480,7 +480,7 @@ static bool collectTerrainMapDiskReferences(const fs::path& projectPath, std::un
         const fs::directory_entry& entry = *it;
 
         if (entry.is_directory(ec)){
-            // Dot-directories hold caches and VCS data (.doriax export copies, .git);
+            // Dot-directories hold caches and VCS data (.jasperengine export copies, .git);
             // nothing in them defines a live reference.
             if (entry.path().filename().string().rfind(".", 0) == 0){
                 it.disable_recursion_pending();

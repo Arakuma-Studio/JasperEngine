@@ -4,13 +4,13 @@
 #include "LoadingWindow.h"
 #include "Backend.h"
 #include "Theme.h"
-#include "resources/icons/doriax-logo_png.h"
+#include "resources/icons/jasperengine-logo_png.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <algorithm>
 #include <vector>
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 LoadingWindow::LoadingWindow() {
 }
@@ -53,7 +53,7 @@ void LoadingWindow::show() {
 void LoadingWindow::drawProjectOverlay(const std::string& status) {
     if (!logoLoaded) {
         TextureData data;
-        data.loadTextureFromMemory(doriax_logo_png, doriax_logo_png_len);
+        data.loadTextureFromMemory(jasperengine_logo_png, jasperengine_logo_png_len);
         logo.setData("editor:loading:logo", data);
         logo.load();
         logoLoaded = true;

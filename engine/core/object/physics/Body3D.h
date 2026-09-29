@@ -4,7 +4,7 @@
 #ifndef BODY3D_H
 #define BODY3D_H
 
-#ifndef DORIAX_PHYSICS_3D
+#ifndef JASPERENGINE_PHYSICS_3D
 #error "Body3D needs 3D Physics, enabled in Project Settings > Build"
 #endif
 
@@ -16,11 +16,11 @@
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Body/BodyInterface.h"
 
-namespace doriax{
+namespace jasperengine{
 
     class Object;
 
-    class DORIAX_API Body3D: public EntityHandle{
+    class JASPERENGINE_API Body3D: public EntityHandle{
     protected:
         void checkBody(const Body3DComponent& body) const;
 

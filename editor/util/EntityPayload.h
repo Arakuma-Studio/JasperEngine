@@ -6,7 +6,7 @@
 #include <cstdint>
 #include "ecs/Entity.h"
 
-namespace doriax {
+namespace jasperengine {
 
     struct EntityPayload {
         Entity entity;

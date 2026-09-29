@@ -11,7 +11,7 @@
 #include "util/Base64.h"
 #include "util/Color.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LuaBinding::registerUtilClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS

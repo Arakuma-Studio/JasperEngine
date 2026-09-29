@@ -34,7 +34,7 @@
 #include "component/FogComponent.h"
 #include "component/TilemapComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LuaBinding::registerECSClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -169,7 +169,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("setGravity3D",
             luabridge::overload<Vector3>(&PhysicsSystem::setGravity3D),
             luabridge::overload<float, float, float>(&PhysicsSystem::setGravity3D))
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
         .addProperty("beginContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginContact2D = L; })
         .addProperty("endContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->endContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->endContact2D = L; })
@@ -179,7 +179,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("preSolve2D", [] (PhysicsSystem* self, lua_State* L) { return &self->preSolve2D; }, [] (PhysicsSystem* self, lua_State* L) { self->preSolve2D = L; })
         .addProperty("shouldCollide2D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide2D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide2D = L; })
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         .addProperty("lock3DBodies", &PhysicsSystem::isLock3DBodies, &PhysicsSystem::setLock3DBodies)
         // True inside a contact callback, where a body can be moved but not created
         .addProperty("steppingWorld3D", &PhysicsSystem::isSteppingWorld3D)
@@ -190,7 +190,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onContactRemoved3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onContactRemoved3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onContactRemoved3D = L; })
         .addProperty("shouldCollide3D", [] (PhysicsSystem* self, lua_State* L) { return &self->shouldCollide3D; }, [] (PhysicsSystem* self, lua_State* L) { self->shouldCollide3D = L; })
 #endif
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("createBody2D", &PhysicsSystem::createBody2D)
         .addFunction("removeBody2D", &PhysicsSystem::removeBody2D)
         .addFunction("loadBody2D", &PhysicsSystem::loadBody2D)
@@ -208,7 +208,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("loadMotorJoint2D", &PhysicsSystem::loadMotorJoint2D)
         .addFunction("destroyJoint2D", &PhysicsSystem::destroyJoint2D)
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("createBody3D", &PhysicsSystem::createBody3D)
         .addFunction("removeBody3D", &PhysicsSystem::removeBody3D)
         .addFunction("loadBody3D", &PhysicsSystem::loadBody3D)

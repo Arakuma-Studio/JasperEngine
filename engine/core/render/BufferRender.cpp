@@ -4,7 +4,7 @@
 #include "BufferRender.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 BufferRender::BufferRender(){ }
 

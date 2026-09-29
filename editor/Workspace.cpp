@@ -12,7 +12,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
@@ -67,7 +67,7 @@ void readSection(const char* what, const std::string& source, Fn&& read) {
 } // namespace
 
 fs::path Workspace::getUserDirectory(const fs::path& projectPath) {
-    return projectPath / ".doriax" / "user";
+    return projectPath / ".jasperengine" / "user";
 }
 
 fs::path Workspace::getWorkspaceFile(const fs::path& projectPath) {
@@ -322,4 +322,4 @@ bool Workspace::save(const Project* project) {
     return true;
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -11,7 +11,7 @@
 #include <cmath>
 #include <limits>
 
-using namespace doriax;
+using namespace jasperengine;
 
 const OBB OBB::ZERO(OBB::BOXTYPE_FINITE);
 

@@ -6,9 +6,9 @@
 
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API BoneComponent{
+    struct JASPERENGINE_API BoneComponent{
         Entity model = NULL_ENTITY;
 
         int index;

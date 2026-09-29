@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef DoriaxAndroid_H_
-#define DoriaxAndroid_H_
+#ifndef JasperEngineAndroid_H_
+#define JasperEngineAndroid_H_
 
 #include <stdio.h>
 #include <string>
 #include "System.h"
 
-class DoriaxAndroid: public doriax::System {
+class JasperEngineAndroid: public jasperengine::System {
 
 private:
 
@@ -16,7 +16,7 @@ private:
 
 public:
 
-    DoriaxAndroid();
+    JasperEngineAndroid();
 
     virtual int getScreenWidth() override;
     virtual int getScreenHeight() override;
@@ -50,10 +50,10 @@ public:
     virtual void removeKey(const char* key) override;
 
     virtual void initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent) override;
-    virtual void setMaxAdContentRating(doriax::AdMobRating rating) override;
+    virtual void setMaxAdContentRating(jasperengine::AdMobRating rating) override;
     virtual void loadInterstitialAd(const std::string& adUnitID) override;
     virtual bool isInterstitialAdLoaded() override;
     virtual void showInterstitialAd() override;
 };
 
-#endif /* DoriaxAndroid_H_ */
+#endif /* JasperEngineAndroid_H_ */

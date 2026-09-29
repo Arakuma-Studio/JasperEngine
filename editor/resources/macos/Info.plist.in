@@ -5,29 +5,29 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>@DORIAX_BUNDLE_NAME@</string>
+	<string>@JASPERENGINE_BUNDLE_NAME@</string>
 	<key>CFBundleIconFile</key>
-	<string>@DORIAX_BUNDLE_ICON_NAME@</string>
+	<string>@JASPERENGINE_BUNDLE_ICON_NAME@</string>
 	<key>CFBundleIdentifier</key>
-	<string>@DORIAX_BUNDLE_IDENTIFIER@</string>
+	<string>@JASPERENGINE_BUNDLE_IDENTIFIER@</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>@DORIAX_BUNDLE_NAME@</string>
+	<string>@JASPERENGINE_BUNDLE_NAME@</string>
 	<key>CFBundleDisplayName</key>
-	<string>@DORIAX_BUNDLE_NAME@</string>
+	<string>@JASPERENGINE_BUNDLE_NAME@</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>@DORIAX_BUNDLE_VERSION@</string>
+	<string>@JASPERENGINE_BUNDLE_VERSION@</string>
 	<key>CFBundleVersion</key>
-	<string>@DORIAX_BUNDLE_VERSION@</string>
+	<string>@JASPERENGINE_BUNDLE_VERSION@</string>
 	<key>CFBundleGetInfoString</key>
-	<string>@DORIAXEDITOR_VERSION@</string>
+	<string>@JASPERENGINE_EDITOR_VERSION@</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright (C) 2026 Eduardo Doria and contributors. MIT License.</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>@DORIAX_BUNDLE_MIN_OS@</string>
+	<string>@JASPERENGINE_BUNDLE_MIN_OS@</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>NSPrincipalClass</key>

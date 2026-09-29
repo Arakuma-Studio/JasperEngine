@@ -6,12 +6,12 @@
 #include "math/Vector2.h"
 #include "util/FunctionSubscribe.h"
 #include "util/StringUtils.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Body2D.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Manifold2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Body3D.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/CollideShapeResult3D.h"
@@ -23,7 +23,7 @@
 #include "LuaBridge.h"
 #include <stdexcept>
 
-using namespace doriax;
+using namespace jasperengine;
 
 LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm) {
     // get the function
@@ -82,7 +82,7 @@ void LuaFunctionBase::call(int args, int results) {
         std::string error = LuaBinding::getLuaStackErrorString(m_vm, -1);
         lua_pop(m_vm, 1);
 
-        #ifdef DORIAX_CRASH_GUARD
+        #ifdef JASPERENGINE_CRASH_GUARD
         auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
         if (crashHandler) {
             crashHandler("Lua Script Error", error);
@@ -142,7 +142,7 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 void LuaFunctionBase::push_value(lua_State *vm, Body2D o){
     if (!luabridge::push<Body2D>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
@@ -159,7 +159,7 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 }
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 void LuaFunctionBase::push_value(lua_State *vm, Body3D o){
     if (!luabridge::push<Body3D>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);

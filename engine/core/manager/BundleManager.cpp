@@ -9,7 +9,7 @@
 #include <exception>
 #include <unordered_set>
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::vector<BundleManager::BundleEntry> BundleManager::entries;
 std::vector<BundleManager::BundleInstance> BundleManager::instances;

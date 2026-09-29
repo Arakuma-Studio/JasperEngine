@@ -5,7 +5,7 @@
 
 #include "registry/EntityRegistry.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class ScopedDefaultEntityPool {
     public:

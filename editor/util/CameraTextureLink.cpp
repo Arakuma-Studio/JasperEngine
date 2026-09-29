@@ -6,7 +6,7 @@
 #include "Catalog.h"
 #include "component/CameraComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     const std::string ID_PREFIX = "camera|";

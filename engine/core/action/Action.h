@@ -7,8 +7,8 @@
 #include "object/EntityHandle.h"
 #include "object/Object.h"
 
-namespace doriax{
-    class DORIAX_API Action: public EntityHandle{
+namespace jasperengine{
+    class JASPERENGINE_API Action: public EntityHandle{
     public:
         Action(Scene* scene);
         Action(Scene* scene, Entity entity);

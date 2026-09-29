@@ -10,20 +10,20 @@
 #include <math.h>
 #include <string>
 
-namespace doriax { class Vector2; }
-doriax::Vector2 operator * ( const float fScalar, const doriax::Vector2& rkVector );
-doriax::Vector2 operator / ( const float fScalar, const doriax::Vector2& rkVector );
-doriax::Vector2 operator + (const doriax::Vector2& lhs, const float rhs);
-doriax::Vector2 operator + (const float lhs, const doriax::Vector2& rhs);
-doriax::Vector2 operator - (const doriax::Vector2& lhs, const float rhs);
-doriax::Vector2 operator - (const float lhs, const doriax::Vector2& rhs);
+namespace jasperengine { class Vector2; }
+jasperengine::Vector2 operator * ( const float fScalar, const jasperengine::Vector2& rkVector );
+jasperengine::Vector2 operator / ( const float fScalar, const jasperengine::Vector2& rkVector );
+jasperengine::Vector2 operator + (const jasperengine::Vector2& lhs, const float rhs);
+jasperengine::Vector2 operator + (const float lhs, const jasperengine::Vector2& rhs);
+jasperengine::Vector2 operator - (const jasperengine::Vector2& lhs, const float rhs);
+jasperengine::Vector2 operator - (const float lhs, const jasperengine::Vector2& rhs);
 
-namespace doriax {
+namespace jasperengine {
 
     class Vector3;
     class Vector4;
 
-    class DORIAX_API Vector2
+    class JASPERENGINE_API Vector2
     {
     public:
         float x, y;

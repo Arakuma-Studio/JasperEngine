@@ -18,7 +18,7 @@
 #include <assert.h>
 #include <math.h>
 
-#include "DoriaxAndroid.h"
+#include "JasperEngineAndroid.h"
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
@@ -33,7 +33,7 @@ namespace {
 constexpr int32_t ANDROID_KEYCODE_F13 = 326;
 constexpr int32_t ANDROID_KEYCODE_F24 = 337;
 
-constexpr int getDoriaxKey(int32_t key, int32_t scanCode) {
+constexpr int getJasperEngineKey(int32_t key, int32_t scanCode) {
     if (key == AKEYCODE_SPACE)
         return D_KEY_SPACE;
     if (key == AKEYCODE_APOSTROPHE)
@@ -159,7 +159,7 @@ constexpr int getDoriaxKey(int32_t key, int32_t scanCode) {
     return D_KEY_UNKNOWN;
 }
 
-constexpr int getDoriaxModifiers(int32_t mods) {
+constexpr int getJasperEngineModifiers(int32_t mods) {
     int modifiers = 0;
     if (mods & AMETA_CTRL_ON) modifiers |= D_MODIFIER_CONTROL;
     if (mods & AMETA_SHIFT_ON) modifiers |= D_MODIFIER_SHIFT;
@@ -171,7 +171,7 @@ constexpr int getDoriaxModifiers(int32_t mods) {
     return modifiers;
 }
 
-constexpr int getDoriaxGamepadButton(int32_t key) {
+constexpr int getJasperEngineGamepadButton(int32_t key) {
     if (key == AKEYCODE_BUTTON_A)
         return D_GAMEPAD_BUTTON_A;
     if (key == AKEYCODE_BUTTON_B)
@@ -206,34 +206,34 @@ constexpr int getDoriaxGamepadButton(int32_t key) {
     return -1;
 }
 
-static_assert(getDoriaxKey(AKEYCODE_0, 0) == D_KEY_0, "Android digit key mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_9, 0) == D_KEY_9, "Android digit key range is broken");
-static_assert(getDoriaxKey(AKEYCODE_A, 0) == D_KEY_A, "Android letter key mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_Z, 0) == D_KEY_Z, "Android letter key range is broken");
-static_assert(getDoriaxKey(AKEYCODE_F1, 0) == D_KEY_F1, "Android function key mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_F12, 0) == D_KEY_F12, "Android function key range is broken");
-static_assert(getDoriaxKey(ANDROID_KEYCODE_F13, 0) == D_KEY_F13, "Android F13 key mapping is broken");
-static_assert(getDoriaxKey(ANDROID_KEYCODE_F24, 0) == D_KEY_F24, "Android F24 key mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_UNKNOWN, KEY_F13) == D_KEY_F13, "Android F13 scan-code mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_UNKNOWN, KEY_F24) == D_KEY_F24, "Android F24 scan-code mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_NUMPAD_0, 0) == D_KEY_KP_0, "Android numpad mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_NUMPAD_9, 0) == D_KEY_KP_9, "Android numpad key range is broken");
-static_assert(getDoriaxKey(AKEYCODE_NUMPAD_COMMA, 0) == D_KEY_KP_DECIMAL, "Android localized decimal mapping is broken");
-static_assert(getDoriaxKey(AKEYCODE_BACK, 0) == D_KEY_UNKNOWN, "Android Back must not masquerade as a keyboard key");
-static_assert(getDoriaxKey(AKEYCODE_UNKNOWN, 0) == D_KEY_UNKNOWN, "Unknown Android keys must stay unknown");
-static_assert(getDoriaxModifiers(0) == 0, "Empty Android modifiers must stay empty");
-static_assert(getDoriaxModifiers(AMETA_CTRL_ON | AMETA_SHIFT_ON | AMETA_ALT_ON | AMETA_META_ON |
+static_assert(getJasperEngineKey(AKEYCODE_0, 0) == D_KEY_0, "Android digit key mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_9, 0) == D_KEY_9, "Android digit key range is broken");
+static_assert(getJasperEngineKey(AKEYCODE_A, 0) == D_KEY_A, "Android letter key mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_Z, 0) == D_KEY_Z, "Android letter key range is broken");
+static_assert(getJasperEngineKey(AKEYCODE_F1, 0) == D_KEY_F1, "Android function key mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_F12, 0) == D_KEY_F12, "Android function key range is broken");
+static_assert(getJasperEngineKey(ANDROID_KEYCODE_F13, 0) == D_KEY_F13, "Android F13 key mapping is broken");
+static_assert(getJasperEngineKey(ANDROID_KEYCODE_F24, 0) == D_KEY_F24, "Android F24 key mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_UNKNOWN, KEY_F13) == D_KEY_F13, "Android F13 scan-code mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_UNKNOWN, KEY_F24) == D_KEY_F24, "Android F24 scan-code mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_0, 0) == D_KEY_KP_0, "Android numpad mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_9, 0) == D_KEY_KP_9, "Android numpad key range is broken");
+static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_COMMA, 0) == D_KEY_KP_DECIMAL, "Android localized decimal mapping is broken");
+static_assert(getJasperEngineKey(AKEYCODE_BACK, 0) == D_KEY_UNKNOWN, "Android Back must not masquerade as a keyboard key");
+static_assert(getJasperEngineKey(AKEYCODE_UNKNOWN, 0) == D_KEY_UNKNOWN, "Unknown Android keys must stay unknown");
+static_assert(getJasperEngineModifiers(0) == 0, "Empty Android modifiers must stay empty");
+static_assert(getJasperEngineModifiers(AMETA_CTRL_ON | AMETA_SHIFT_ON | AMETA_ALT_ON | AMETA_META_ON |
                                 AMETA_CAPS_LOCK_ON | AMETA_NUM_LOCK_ON) ==
               (D_MODIFIER_CONTROL | D_MODIFIER_SHIFT | D_MODIFIER_ALT | D_MODIFIER_SUPER |
                D_MODIFIER_CAPS_LOCK | D_MODIFIER_NUM_LOCK),
               "Android modifier mapping is broken");
-static_assert(getDoriaxGamepadButton(AKEYCODE_BUTTON_A) == D_GAMEPAD_BUTTON_A,
+static_assert(getJasperEngineGamepadButton(AKEYCODE_BUTTON_A) == D_GAMEPAD_BUTTON_A,
               "Android gamepad face-button mapping is broken");
-static_assert(getDoriaxGamepadButton(AKEYCODE_BUTTON_THUMBR) == D_GAMEPAD_BUTTON_RIGHT_THUMB,
+static_assert(getJasperEngineGamepadButton(AKEYCODE_BUTTON_THUMBR) == D_GAMEPAD_BUTTON_RIGHT_THUMB,
               "Android gamepad thumb-button mapping is broken");
-static_assert(getDoriaxGamepadButton(AKEYCODE_DPAD_LEFT) == D_GAMEPAD_BUTTON_DPAD_LEFT,
+static_assert(getJasperEngineGamepadButton(AKEYCODE_DPAD_LEFT) == D_GAMEPAD_BUTTON_DPAD_LEFT,
               "Android gamepad D-pad mapping is broken");
-static_assert(getDoriaxGamepadButton(AKEYCODE_UNKNOWN) == -1,
+static_assert(getJasperEngineGamepadButton(AKEYCODE_UNKNOWN) == -1,
               "Unknown Android gamepad buttons must stay unknown");
 
 } // namespace
@@ -257,25 +257,25 @@ static void _handle_cmd_proxy(struct android_app *app, int32_t cmd) {
 static void _log_opengl_error(GLenum err) {
     switch (err) {
         case GL_NO_ERROR:
-            doriax::Log::error("*** OpenGL error: GL_NO_ERROR");
+            jasperengine::Log::error("*** OpenGL error: GL_NO_ERROR");
             break;
         case GL_INVALID_ENUM:
-            doriax::Log::error("*** OpenGL error: GL_INVALID_ENUM");
+            jasperengine::Log::error("*** OpenGL error: GL_INVALID_ENUM");
             break;
         case GL_INVALID_VALUE:
-            doriax::Log::error("*** OpenGL error: GL_INVALID_VALUE");
+            jasperengine::Log::error("*** OpenGL error: GL_INVALID_VALUE");
             break;
         case GL_INVALID_OPERATION:
-            doriax::Log::error("*** OpenGL error: GL_INVALID_OPERATION");
+            jasperengine::Log::error("*** OpenGL error: GL_INVALID_OPERATION");
             break;
         case GL_INVALID_FRAMEBUFFER_OPERATION:
-            doriax::Log::error("*** OpenGL error: GL_INVALID_FRAMEBUFFER_OPERATION");
+            jasperengine::Log::error("*** OpenGL error: GL_INVALID_FRAMEBUFFER_OPERATION");
             break;
         case GL_OUT_OF_MEMORY:
-            doriax::Log::error("*** OpenGL error: GL_OUT_OF_MEMORY");
+            jasperengine::Log::error("*** OpenGL error: GL_OUT_OF_MEMORY");
             break;
         default:
-            doriax::Log::error("*** OpenGL error: error %d", err);
+            jasperengine::Log::error("*** OpenGL error: error %d", err);
             break;
     }
 }
@@ -335,11 +335,11 @@ NativeEngine::NativeEngine(struct android_app *app) {
 
     setupJNI();
 
-    doriax::Engine::systemInit(0, nullptr, new DoriaxAndroid());
+    jasperengine::Engine::systemInit(0, nullptr, new JasperEngineAndroid());
 }
 
 NativeEngine::~NativeEngine() {
-    doriax::Engine::systemShutdown();
+    jasperengine::Engine::systemShutdown();
 
     SwappyGL_destroy();
 
@@ -372,7 +372,7 @@ JniData& NativeEngine::getJniData(){
 JNIEnv* NativeEngine::getJniEnv() {
     if (!mJniEnv) {
         if (0 != mApp->activity->vm->AttachCurrentThread(&mJniEnv, NULL)) {
-            doriax::Log::error("*** FATAL ERROR: Failed to attach thread to JNI.");
+            jasperengine::Log::error("*** FATAL ERROR: Failed to attach thread to JNI.");
         }
         assert(mJniEnv != NULL);
     }
@@ -427,7 +427,7 @@ AAssetManager* NativeEngine::getAssetManager(){
 
 bool NativeEngine::initGLObjects() {
     if (!mHasGLObjects) {
-        doriax::Engine::systemViewLoaded();
+        jasperengine::Engine::systemViewLoaded();
         mHasGLObjects = true;
     }
     return true;
@@ -435,7 +435,7 @@ bool NativeEngine::initGLObjects() {
 
 void NativeEngine::killGLObjects() {
     if (mHasGLObjects) {
-        doriax::Engine::systemViewDestroyed();
+        jasperengine::Engine::systemViewDestroyed();
         mHasGLObjects = false;
     }
 }
@@ -480,7 +480,7 @@ void NativeEngine::gameLoop() {
 
                 while (textInputBuffer.length() > utf16Text.length()){
                     textInputBuffer.pop_back();
-                    doriax::Engine::systemCharInput('\b');
+                    jasperengine::Engine::systemCharInput('\b');
                 }
 
                 int pos = 0;
@@ -489,10 +489,10 @@ void NativeEngine::gameLoop() {
                 }
 
                 for (int i = pos; i < textInputBuffer.length(); i++){
-                    doriax::Engine::systemCharInput('\b');
+                    jasperengine::Engine::systemCharInput('\b');
                 }
                 for (int i = pos; i < utf16Text.length(); i++){
-                    doriax::Engine::systemCharInput(utf16Text[i]);
+                    jasperengine::Engine::systemCharInput(utf16Text[i]);
                 }
                 textInputBuffer = utf16Text;
 
@@ -512,8 +512,8 @@ void NativeEngine::setupJNI(){
     mJniData.gameActivityObjRef = NativeEngine::getInstance()->getJavaGameActivity();
     mJniData.gameActivityClsRef = env->GetObjectClass(mJniData.gameActivityObjRef);
 
-    mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lorg/doriaxengine/doriax/UserSettings;");
-    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Lorg/doriaxengine/doriax/AdMobWrapper;");
+    mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lcom/jaspergameengine/jasperengine/UserSettings;");
+    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Lcom/jaspergameengine/jasperengine/AdMobWrapper;");
 
     mJniData.userSettingsObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getUserSettingsRef);
     mJniData.userSettingsClsRef = env->GetObjectClass(mJniData.userSettingsObjRef);
@@ -551,7 +551,7 @@ bool NativeEngine::initDisplay() {
 
     mEglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (EGL_FALSE == eglInitialize(mEglDisplay, 0, 0)) {
-        doriax::Log::error("NativeEngine: failed to init display, error %d", eglGetError());
+        jasperengine::Log::error("NativeEngine: failed to init display, error %d", eglGetError());
         return false;
     }
     return true;
@@ -595,14 +595,14 @@ bool NativeEngine::initSurface() {
     }
 
     if (!numConfigs) {
-        doriax::Log::error("Unable to retrieve EGL config");
+        jasperengine::Log::error("Unable to retrieve EGL config");
         return false;
     }
 
     // create EGL surface
     mEglSurface = eglCreateWindowSurface(mEglDisplay, mEglConfig, mApp->window, NULL);
     if (mEglSurface == EGL_NO_SURFACE) {
-        doriax::Log::error("Failed to create EGL surface, EGL error %d", eglGetError());
+        jasperengine::Log::error("Failed to create EGL surface, EGL error %d", eglGetError());
         return false;
     }
 
@@ -621,7 +621,7 @@ bool NativeEngine::initContext() {
 
     mEglContext = eglCreateContext(mEglDisplay, mEglConfig, NULL, attribList);
     if (mEglContext == EGL_NO_CONTEXT) {
-        doriax::Log::error("Failed to create EGL context, EGL error %d", eglGetError());
+        jasperengine::Log::error("Failed to create EGL context, EGL error %d", eglGetError());
         return false;
     }
 
@@ -663,23 +663,23 @@ bool NativeEngine::handleEglError(EGLint error) {
             // nothing to do
             return true;
         case EGL_CONTEXT_LOST:
-            doriax::Log::warn("NativeEngine: egl error: EGL_CONTEXT_LOST. Recreating context.");
+            jasperengine::Log::warn("NativeEngine: egl error: EGL_CONTEXT_LOST. Recreating context.");
             killContext();
             return true;
         case EGL_BAD_CONTEXT:
-            doriax::Log::warn("NativeEngine: egl error: EGL_BAD_CONTEXT. Recreating context.");
+            jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_CONTEXT. Recreating context.");
             killContext();
             return true;
         case EGL_BAD_DISPLAY:
-            doriax::Log::warn("NativeEngine: egl error: EGL_BAD_DISPLAY. Recreating display.");
+            jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_DISPLAY. Recreating display.");
             killDisplay();
             return true;
         case EGL_BAD_SURFACE:
-            doriax::Log::warn("NativeEngine: egl error: EGL_BAD_SURFACE. Recreating display.");
+            jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_SURFACE. Recreating display.");
             killSurface();
             return true;
         default:
-            doriax::Log::warn("NativeEngine: unknown egl error: %d", error);
+            jasperengine::Log::warn("NativeEngine: unknown egl error: %d", error);
             return false;
     }
 }
@@ -690,26 +690,26 @@ bool NativeEngine::prepareToRender() {
 
         // create display if needed
         if (!initDisplay()) {
-            doriax::Log::error("NativeEngine: failed to create display.");
+            jasperengine::Log::error("NativeEngine: failed to create display.");
             return false;
         }
 
         // create surface if needed
         if (!initSurface()) {
-            doriax::Log::error("NativeEngine: failed to create surface.");
+            jasperengine::Log::error("NativeEngine: failed to create surface.");
             return false;
         }
 
         // create context if needed
         if (!initContext()) {
-            doriax::Log::error("NativeEngine: failed to create context.");
+            jasperengine::Log::error("NativeEngine: failed to create context.");
             return false;
         }
 
         // bind them
         if (EGL_FALSE == eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext)) {
             const EGLint error = eglGetError();
-            doriax::Log::error("NativeEngine: eglMakeCurrent failed, EGL error %d", error);
+            jasperengine::Log::error("NativeEngine: eglMakeCurrent failed, EGL error %d", error);
             handleEglError(error);
             // Every handle may still be set, which would skip this binding next frame.
             killSurface();
@@ -719,12 +719,12 @@ bool NativeEngine::prepareToRender() {
     }
     if (!mHasGLObjects) {
         if (!initGLObjects()) {
-            doriax::Log::error("NativeEngine: unable to initialize OpenGL objects.");
+            jasperengine::Log::error("NativeEngine: unable to initialize OpenGL objects.");
             return false;
         }
     }
 
-    doriax::Engine::systemViewChanged();
+    jasperengine::Engine::systemViewChanged();
 
     // ready to render
     return true;
@@ -734,7 +734,7 @@ void NativeEngine::doFrame() {
     // prepare to render (create context, surfaces, etc, if needed)
     if (!prepareToRender()) {
         // not ready
-        doriax::Log::error("NativeEngine: preparation to render failed.");
+        jasperengine::Log::error("NativeEngine: preparation to render failed.");
         return;
     }
 
@@ -748,7 +748,7 @@ void NativeEngine::doFrame() {
         mSurfWidth = width;
         mSurfHeight = height;
 
-        doriax::Engine::systemViewChanged();
+        jasperengine::Engine::systemViewChanged();
 
         glViewport(0, 0, mSurfWidth, mSurfHeight);
     }
@@ -758,12 +758,12 @@ void NativeEngine::doFrame() {
         // if this is the first frame
     }
 
-    doriax::Engine::systemDraw();
+    jasperengine::Engine::systemDraw();
 
     // swap buffers
     if (!SwappyGL_swap(mEglDisplay, mEglSurface)) {        // failed to swap buffers...
         const EGLint error = eglGetError();
-        doriax::Log::error("NativeEngine: SwappyGL_swap failed, EGL error %d", error);
+        jasperengine::Log::error("NativeEngine: SwappyGL_swap failed, EGL error %d", error);
         handleEglError(error);
         return;
     }
@@ -776,7 +776,7 @@ void NativeEngine::doFrame() {
             _log_opengl_error(e);
             ++errorsPrinted;
             if (errorsPrinted >= MAX_GL_ERRORS) {
-                doriax::Log::error("*** NativeEngine: TOO MANY OPENGL ERRORS. NO LONGER PRINTING.");
+                jasperengine::Log::error("*** NativeEngine: TOO MANY OPENGL ERRORS. NO LONGER PRINTING.");
             }
         }
     }
@@ -808,7 +808,7 @@ int NativeEngine::getGamepadSlot(int32_t deviceId){
             // doesn't emit spurious trigger axis moves from 0 to -1
             mGamepads[i].axes[D_GAMEPAD_AXIS_LEFT_TRIGGER] = -1.0f;
             mGamepads[i].axes[D_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.0f;
-            doriax::Engine::systemGamepadConnect(i, "Gamepad");
+            jasperengine::Engine::systemGamepadConnect(i, "Gamepad");
             return i;
         }
     }
@@ -829,7 +829,7 @@ void NativeEngine::handleGamepadMotion(GameActivityMotionEvent* motionEvent){
     auto forwardAxis = [&](int axis, float value){
         if (fabsf(value - pad.axes[axis]) > 0.001f){
             pad.axes[axis] = value;
-            doriax::Engine::systemGamepadAxisMove(slot, axis, value);
+            jasperengine::Engine::systemGamepadAxisMove(slot, axis, value);
         }
     };
 
@@ -858,13 +858,13 @@ void NativeEngine::handleGamepadMotion(GameActivityMotionEvent* motionEvent){
         if (current == prev)
             return;
         if (prev < 0)
-            doriax::Engine::systemGamepadButtonUp(slot, negButton);
+            jasperengine::Engine::systemGamepadButtonUp(slot, negButton);
         if (prev > 0)
-            doriax::Engine::systemGamepadButtonUp(slot, posButton);
+            jasperengine::Engine::systemGamepadButtonUp(slot, posButton);
         if (current < 0)
-            doriax::Engine::systemGamepadButtonDown(slot, negButton);
+            jasperengine::Engine::systemGamepadButtonDown(slot, negButton);
         if (current > 0)
-            doriax::Engine::systemGamepadButtonDown(slot, posButton);
+            jasperengine::Engine::systemGamepadButtonDown(slot, posButton);
         prev = current;
     };
 
@@ -882,14 +882,14 @@ void NativeEngine::handleGameActivityInput(){
             GameActivityKeyEvent* keyEvent = &inputBuffer->keyEvents[i];
 
             if ((keyEvent->source & AINPUT_SOURCE_GAMEPAD) == AINPUT_SOURCE_GAMEPAD) {
-                int gamepadButton = getDoriaxGamepadButton(keyEvent->keyCode);
+                int gamepadButton = getJasperEngineGamepadButton(keyEvent->keyCode);
                 if (gamepadButton >= 0) {
                     int slot = getGamepadSlot(keyEvent->deviceId);
                     if (slot >= 0) {
                         if (keyEvent->action == AKEY_EVENT_ACTION_DOWN && keyEvent->repeatCount == 0) {
-                            doriax::Engine::systemGamepadButtonDown(slot, gamepadButton);
+                            jasperengine::Engine::systemGamepadButtonDown(slot, gamepadButton);
                         } else if (keyEvent->action == AKEY_EVENT_ACTION_UP) {
-                            doriax::Engine::systemGamepadButtonUp(slot, gamepadButton);
+                            jasperengine::Engine::systemGamepadButtonUp(slot, gamepadButton);
                         }
                     }
                     continue;
@@ -897,32 +897,32 @@ void NativeEngine::handleGameActivityInput(){
             }
 
             // metaState works with capslock, numlock and others
-            int keyCode = getDoriaxKey(keyEvent->keyCode, keyEvent->scanCode);
-            int modifiers = getDoriaxModifiers(keyEvent->metaState);
+            int keyCode = getJasperEngineKey(keyEvent->keyCode, keyEvent->scanCode);
+            int modifiers = getJasperEngineModifiers(keyEvent->metaState);
             bool repeat = (keyEvent->repeatCount > 0)?true:false;
 
             if (keyEvent->action == AKEY_EVENT_ACTION_DOWN) {
                 if (keyEvent->keyCode == AKEYCODE_TAB)
-                    doriax::Engine::systemCharInput('\t');
+                    jasperengine::Engine::systemCharInput('\t');
                 if (keyEvent->keyCode == AKEYCODE_DEL)
-                    doriax::Engine::systemCharInput('\b');
+                    jasperengine::Engine::systemCharInput('\b');
                 if (keyEvent->keyCode == AKEYCODE_ENTER)
-                    doriax::Engine::systemCharInput('\r');
+                    jasperengine::Engine::systemCharInput('\r');
                 if (keyEvent->keyCode == AKEYCODE_ESCAPE)
-                    doriax::Engine::systemCharInput('\x1b');
+                    jasperengine::Engine::systemCharInput('\x1b');
                 // some IMEs deliver the soft-keyboard backspace as BACK instead of DEL.
                 // Only take it when the event really came from the software keyboard,
                 // otherwise the system back button/gesture would erase a character.
                 if (keyEvent->keyCode == AKEYCODE_BACK && (keyEvent->flags & AKEY_EVENT_FLAG_SOFT_KEYBOARD))
-                    doriax::Engine::systemCharInput('\b');
+                    jasperengine::Engine::systemCharInput('\b');
 
                 // volume, back, camera and other device keys have no engine
                 // equivalent; don't spam listeners with D_KEY_UNKNOWN
                 if (keyCode != D_KEY_UNKNOWN)
-                    doriax::Engine::systemKeyDown(keyCode, repeat, modifiers);
+                    jasperengine::Engine::systemKeyDown(keyCode, repeat, modifiers);
             } else if (keyEvent->action == AKEY_EVENT_ACTION_UP) {
                 if (keyCode != D_KEY_UNKNOWN)
-                    doriax::Engine::systemKeyUp(keyCode, repeat, modifiers);
+                    jasperengine::Engine::systemKeyUp(keyCode, repeat, modifiers);
             }
 
         }
@@ -949,10 +949,10 @@ void NativeEngine::handleGameActivityInput(){
                         int motionPointerId = motionEvent->pointers[p].id;
                         float motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[p]);
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[p]);
-                        doriax::Engine::systemTouchMove(motionPointerId, motionX, motionY);
+                        jasperengine::Engine::systemTouchMove(motionPointerId, motionX, motionY);
                     }
                 } else if (actionMasked == AMOTION_EVENT_ACTION_CANCEL) {
-                    doriax::Engine::systemTouchCancel();
+                    jasperengine::Engine::systemTouchCancel();
                 } else {
                     int ptrIndex = (action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
                     if (ptrIndex >= 0 && ptrIndex < (int)motionEvent->pointerCount) {
@@ -961,9 +961,9 @@ void NativeEngine::handleGameActivityInput(){
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[ptrIndex]);
 
                         if (actionMasked == AMOTION_EVENT_ACTION_DOWN || actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
-                            doriax::Engine::systemTouchStart(motionPointerId, motionX, motionY);
+                            jasperengine::Engine::systemTouchStart(motionPointerId, motionX, motionY);
                         } else if (actionMasked == AMOTION_EVENT_ACTION_UP || actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
-                            doriax::Engine::systemTouchEnd(motionPointerId, motionX, motionY);
+                            jasperengine::Engine::systemTouchEnd(motionPointerId, motionX, motionY);
                         }
                     }
                 }
@@ -1011,10 +1011,10 @@ void NativeEngine::handleCommand(int32_t cmd) {
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
             break;
         case APP_CMD_PAUSE:
-            doriax::Engine::systemPause();
+            jasperengine::Engine::systemPause();
             break;
         case APP_CMD_RESUME:
-            doriax::Engine::systemResume();
+            jasperengine::Engine::systemResume();
             break;
         case APP_CMD_STOP:
             mIsVisible = false;

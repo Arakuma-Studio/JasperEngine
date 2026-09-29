@@ -3517,8 +3517,8 @@ _SOKOL_PRIVATE sapp_desc _sapp_desc_defaults(const sapp_desc* desc) {
     SOKOL_ASSERT((desc->allocator.alloc_fn && desc->allocator.free_fn) || (!desc->allocator.alloc_fn && !desc->allocator.free_fn));
     sapp_desc res = *desc;
     res.sample_count = _sapp_def(res.sample_count, 1);
-    #if (defined(_SAPP_WIN32) || defined(_SAPP_LINUX)) && defined(DORIAX_VSYNC_ENABLED) && !DORIAX_VSYNC_ENABLED
-        // Doriax desktop projects may explicitly opt out of VSync. sokol_app's
+    #if (defined(_SAPP_WIN32) || defined(_SAPP_LINUX)) && defined(JASPERENGINE_VSYNC_ENABLED) && !JASPERENGINE_VSYNC_ENABLED
+        // JasperEngine desktop projects may explicitly opt out of VSync. sokol_app's
         // zero-initialized descriptor normally maps 0 to the default interval 1,
         // so preserve 0 here for desktop D3D11/OpenGL/Vulkan presentation paths.
         res.swap_interval = 0;

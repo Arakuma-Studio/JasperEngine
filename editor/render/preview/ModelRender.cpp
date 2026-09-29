@@ -5,7 +5,7 @@
 
 #include "Configs.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ModelRender::ModelRender(){
     scene = nullptr;

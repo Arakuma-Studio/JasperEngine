@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-namespace doriax{
-    class DORIAX_API StringUtils{
+namespace jasperengine{
+    class JASPERENGINE_API StringUtils{
     public:
         static std::string toUTF8(wchar_t codepoint);
 

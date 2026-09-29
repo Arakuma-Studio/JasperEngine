@@ -7,7 +7,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 bool PathUtils::isSafeRelativePath(const fs::path& path) {
     if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory()) {
@@ -67,4 +67,4 @@ fs::path PathUtils::uniqueChildPath(const fs::path& directory,
     return directory / (stem + "-copy" + extension);
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

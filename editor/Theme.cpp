@@ -13,25 +13,25 @@ float g_appliedDpiScale = 0.0f;
 
 }
 
-ImVec4 doriax::editor::Theme::Colors::ButtonActivated;
-ImVec4 doriax::editor::Theme::Colors::IconButtonHovered;
-ImVec4 doriax::editor::Theme::Colors::IconButtonActive;
-ImVec4 doriax::editor::Theme::Colors::FileCardBackground;
-ImVec4 doriax::editor::Theme::Colors::FileCardBackgroundHovered;
-ImVec4 doriax::editor::Theme::Colors::SubtleText;
-ImVec4 doriax::editor::Theme::Colors::filenameLabel;
-ImVec4 doriax::editor::Theme::Colors::ExtEntityButton;
-ImVec4 doriax::editor::Theme::Colors::ExtEntityButtonHovered;
-ImVec4 doriax::editor::Theme::Colors::ExtEntityButtonActive;
-ImVec4 doriax::editor::Theme::Colors::NestedHeader;
-ImVec4 doriax::editor::Theme::Colors::NestedHeaderHovered;
-ImVec4 doriax::editor::Theme::Colors::NestedHeaderActive;
-ImVec4 doriax::editor::Theme::Colors::DisabledGreenText;
-ImVec4 doriax::editor::Theme::Colors::ChildSceneText;
-ImVec4 doriax::editor::Theme::Colors::SubSelectionText;
-ImVec4 doriax::editor::Theme::Colors::WarningText;
+ImVec4 jasperengine::editor::Theme::Colors::ButtonActivated;
+ImVec4 jasperengine::editor::Theme::Colors::IconButtonHovered;
+ImVec4 jasperengine::editor::Theme::Colors::IconButtonActive;
+ImVec4 jasperengine::editor::Theme::Colors::FileCardBackground;
+ImVec4 jasperengine::editor::Theme::Colors::FileCardBackgroundHovered;
+ImVec4 jasperengine::editor::Theme::Colors::SubtleText;
+ImVec4 jasperengine::editor::Theme::Colors::filenameLabel;
+ImVec4 jasperengine::editor::Theme::Colors::ExtEntityButton;
+ImVec4 jasperengine::editor::Theme::Colors::ExtEntityButtonHovered;
+ImVec4 jasperengine::editor::Theme::Colors::ExtEntityButtonActive;
+ImVec4 jasperengine::editor::Theme::Colors::NestedHeader;
+ImVec4 jasperengine::editor::Theme::Colors::NestedHeaderHovered;
+ImVec4 jasperengine::editor::Theme::Colors::NestedHeaderActive;
+ImVec4 jasperengine::editor::Theme::Colors::DisabledGreenText;
+ImVec4 jasperengine::editor::Theme::Colors::ChildSceneText;
+ImVec4 jasperengine::editor::Theme::Colors::SubSelectionText;
+ImVec4 jasperengine::editor::Theme::Colors::WarningText;
 
-void doriax::editor::Theme::apply() {
+void jasperengine::editor::Theme::apply() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
@@ -167,7 +167,7 @@ void doriax::editor::Theme::apply() {
     g_appliedDpiScale = 0.0f;
 }
 
-void doriax::editor::Theme::applyDpiScale(float dpiScale) {
+void jasperengine::editor::Theme::applyDpiScale(float dpiScale) {
     if (!g_hasBaseStyle) {
         return;
     }
@@ -188,7 +188,7 @@ void doriax::editor::Theme::applyDpiScale(float dpiScale) {
     g_appliedDpiScale = dpiScale;
 }
 
-float doriax::editor::Theme::dpiScale() {
+float jasperengine::editor::Theme::dpiScale() {
     ImGuiContext* ctx = ImGui::GetCurrentContext();
     if (ctx && ctx->CurrentWindow && ctx->CurrentWindow->Viewport && ctx->CurrentWindow->Viewport->DpiScale > 0.0f) {
         return ctx->CurrentWindow->Viewport->DpiScale;
@@ -196,11 +196,11 @@ float doriax::editor::Theme::dpiScale() {
     return (g_appliedDpiScale > 0.0f) ? g_appliedDpiScale : 1.0f;
 }
 
-float doriax::editor::Theme::dpi(float value) {
+float jasperengine::editor::Theme::dpi(float value) {
     return value * dpiScale();
 }
 
-ImVec2 doriax::editor::Theme::dpi(const ImVec2& value) {
+ImVec2 jasperengine::editor::Theme::dpi(const ImVec2& value) {
     const float scale = dpiScale();
     return ImVec2(value.x * scale, value.y * scale);
 }

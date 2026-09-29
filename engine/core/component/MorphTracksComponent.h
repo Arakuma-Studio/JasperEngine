@@ -6,9 +6,9 @@
 
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API MorphTracksComponent{
+    struct JASPERENGINE_API MorphTracksComponent{
         std::vector<std::vector<float>> values;
         // Per-key Hermite tangents (GLTF CUBICSPLINE); empty on linear tracks.
         // Cubic interpolation runs only while both stay sized to values — any

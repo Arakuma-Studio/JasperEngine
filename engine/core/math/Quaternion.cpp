@@ -13,7 +13,7 @@
 #include <float.h>
 #include "Log.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 const Quaternion Quaternion::IDENTITY( 1, 0, 0, 0 );
 

@@ -6,14 +6,14 @@
 
 #include "ecs/Entity.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ProgressbarType{
         VERTICAL,
         HORIZONTAL
     };
 
-    struct DORIAX_API ProgressbarComponent{
+    struct JASPERENGINE_API ProgressbarComponent{
         Entity fill = NULL_ENTITY;
         ProgressbarType type = ProgressbarType::HORIZONTAL;
 

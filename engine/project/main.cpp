@@ -1,14 +1,14 @@
-#include "Doriax.h"
-using namespace doriax;
+#include "JasperEngine.h"
+using namespace jasperengine;
 
 #include "Image.h"
 
 Scene scene;
 Image image(&scene);
 
-DORIAX_INIT void init(){
+JASPERENGINE_INIT void init(){
     image.setAnchorPreset(AnchorPreset::CENTER);
-    image.setTexture("doriax.png");
+    image.setTexture("jasperengine.png");
 
     Engine::setScalingMode(Scaling::FITWIDTH);
     Engine::setCanvasSize(1000,480);

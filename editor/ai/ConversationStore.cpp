@@ -12,7 +12,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -254,4 +254,4 @@ void ConversationStore::remove(const std::string& id) {
     fs::remove(conversationsDir() / (id + ".meta"), ec);
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

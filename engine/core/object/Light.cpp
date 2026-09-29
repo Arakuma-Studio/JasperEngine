@@ -8,7 +8,7 @@
 #include "subsystem/RenderSystem.h"
 #include <math.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Light::Light(Scene* scene): Object(scene){
     addComponent<LightComponent>();

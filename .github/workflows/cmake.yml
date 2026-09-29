@@ -20,9 +20,9 @@ concurrency:
 
 env:
   BUILD_TYPE: Release
-  TARGET: doriax-editor
+  TARGET: jasperengine-editor
   SIGNPATH_ORGANIZATION_ID: 71ade14e-ea98-448b-b32f-954d41e71ef9
-  SIGNPATH_PROJECT_SLUG: doriax
+  SIGNPATH_PROJECT_SLUG: jasperengine
 
 jobs:
   build:
@@ -46,7 +46,7 @@ jobs:
         - {
             name: "Windows Latest MSVC",
             os: windows-latest,
-            artifact: "doriax_windows",
+            artifact: "jasperengine_windows",
             cc: "cl",
             cxx: "cl",
             generators: "Visual Studio 18 2026"
@@ -54,7 +54,7 @@ jobs:
         - {
             name: "Windows Latest MinGW (UCRT64)",
             os: windows-latest,
-            artifact: "doriax_windows_mingw",
+            artifact: "jasperengine_windows_mingw",
             cc: "gcc",
             cxx: "g++",
             generators: "Ninja",
@@ -66,7 +66,7 @@ jobs:
             name: "Ubuntu Latest GCC",
             os: ubuntu-latest,
             container: "ubuntu:22.04",
-            artifact: "doriax_linux",
+            artifact: "jasperengine_linux",
             cc: "gcc",
             cxx: "g++",
             generators: "Ninja"
@@ -74,7 +74,7 @@ jobs:
         - {
             name: "macOS Latest Clang",
             os: macos-latest,
-            artifact: "doriax_macos",
+            artifact: "jasperengine_macos",
             cc: "clang",
             cxx: "clang++",
             generators: "Ninja"
@@ -103,7 +103,7 @@ jobs:
           echo github.event_name: ${{ github.event_name }}
 
       - name: Set up MSYS2 UCRT64
-        if: matrix.config.artifact == 'doriax_windows_mingw'
+        if: matrix.config.artifact == 'jasperengine_windows_mingw'
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -167,7 +167,7 @@ jobs:
           # can resolve v0.6-N-gHASH the same way as a local clone.
           git fetch --tags --quiet || true
           VERSION="$(git describe --tags --always --dirty)"
-          echo "DORIAX_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "JASPERENGINE_VERSION=$VERSION" >> $GITHUB_ENV
           
       - name: Configure
         env:
@@ -179,7 +179,7 @@ jobs:
           cmake \
             -S . \
             -B build \
-            -DDORIAXEDITOR_VERSION:STRING="$DORIAX_VERSION" \
+            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
             -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
             -G "${{ matrix.config.generators }}" \
             -DCMAKE_INSTALL_PREFIX:PATH=instdir \
@@ -205,7 +205,7 @@ jobs:
         run: ls -laR
 
       - name: Check the GCC runtime was packaged
-        if: matrix.config.artifact == 'doriax_windows_mingw'
+        if: matrix.config.artifact == 'jasperengine_windows_mingw'
         shell: bash
         run: |
           for dll in libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll; do
@@ -261,11 +261,11 @@ jobs:
           # already resolve relative to the binary, so nothing moves.
           rm -rf AppDir && mkdir AppDir
           cp -a instdir AppDir/usr
-          cp editor/resources/linux/doriax-editor.desktop AppDir/
-          cp editor/resources/icons/linux/doriax-editor-512.png AppDir/doriax-editor.png
+          cp editor/resources/linux/jasperengine-editor.desktop AppDir/
+          cp editor/resources/icons/linux/jasperengine-editor-512.png AppDir/jasperengine-editor.png
 
-          # 22.04's libstdc++ is newer than older targets carry, and DORIAX_SHARED
-          # rules out -static-libstdc++: the editor and libdoriax.so would each get
+          # 22.04's libstdc++ is newer than older targets carry, and JASPERENGINE_SHARED
+          # rules out -static-libstdc++: the editor and libjasperengine.so would each get
           # their own runtime.
           mkdir -p AppDir/usr/lib
           for lib in libstdc++.so.6 libgcc_s.so.1; do
@@ -274,7 +274,7 @@ jobs:
 
           # glibc cannot ride along the way libstdc++ can, so AppRun turns anything
           # older than these binaries were linked against away with a message.
-          GLIBC_FLOOR="$(objdump -T AppDir/usr/bin/doriax-editor AppDir/usr/bin/libdoriax.so \
+          GLIBC_FLOOR="$(objdump -T AppDir/usr/bin/jasperengine-editor AppDir/usr/bin/libjasperengine.so \
             AppDir/usr/lib/libstdc++.so.6 AppDir/usr/lib/libgcc_s.so.1 \
             | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)"
           echo "glibc floor: $GLIBC_FLOOR"
@@ -293,7 +293,7 @@ jobs:
           # Only take over where the host's runtime is older: doing it everywhere would
           # hand the host's Mesa an older libstdc++ than it was built against. Ask the
           # loader where that copy is rather than guess at distro layouts.
-          host_lib="$(LD_TRACE_LOADED_OBJECTS=1 "$HERE/usr/bin/doriax-editor" 2>/dev/null \
+          host_lib="$(LD_TRACE_LOADED_OBJECTS=1 "$HERE/usr/bin/jasperengine-editor" 2>/dev/null \
             | sed -n 's/.*libstdc++\.so\.6 => \([^ ]*\).*/\1/p')"
           bundled="$(glibcxx_minor "$HERE/usr/lib/libstdc++.so.6")"
           host="$(glibcxx_minor "$host_lib")"
@@ -305,7 +305,7 @@ jobs:
           glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $NF}')"
           if [ -n "$glibc" ] && [ "$glibc" != "@GLIBC_FLOOR@" ] \
             && [ "$(printf '%s\n%s\n' "$glibc" "@GLIBC_FLOOR@" | sort -V | head -1)" = "$glibc" ]; then
-            msg="Doriax needs glibc @GLIBC_FLOOR@ or newer, and this system has $glibc.
+            msg="JasperEngine needs glibc @GLIBC_FLOOR@ or newer, and this system has $glibc.
           Ubuntu 22.04 and Debian 12 are the oldest releases it runs on; older ones
           need a build from source."
             printf '%s\n' "$msg" >&2
@@ -319,7 +319,7 @@ jobs:
             exit 1
           fi
 
-          exec "$HERE/usr/bin/doriax-editor" "$@"
+          exec "$HERE/usr/bin/jasperengine-editor" "$@"
           APPRUN
           sed -i "s/@GLIBC_FLOOR@/$GLIBC_FLOOR/g" AppDir/AppRun
           chmod +x AppDir/AppRun
@@ -336,13 +336,13 @@ jobs:
           # -u writes a .zsync so AppImageUpdate and Gear Lever can delta-update
           # from the release assets.
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir \
-            -u "gh-releases-zsync|doriaxengine|doriax|latest|Doriax-*-x86_64.AppImage.zsync" \
-            "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage"
+            -u "gh-releases-zsync|JasperRaccoon|JasperEngine|latest|JasperEngine-*-x86_64.AppImage.zsync" \
+            "dist/JasperEngine-${JASPERENGINE_VERSION}-linux-x86_64.AppImage"
 
           # appimagetool writes the .zsync in the working directory, not beside the
           # AppImage, and -u embeds update info even if zsyncmake never ran.
-          mv "Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage.zsync" dist/
-          test -s "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage.zsync"
+          mv "JasperEngine-${JASPERENGINE_VERSION}-linux-x86_64.AppImage.zsync" dist/
+          test -s "dist/JasperEngine-${JASPERENGINE_VERSION}-linux-x86_64.AppImage.zsync"
 
           ls -la dist
 
@@ -373,11 +373,11 @@ jobs:
           codesign --verify --strict --verbose=2 "$APP" || echo "::warning::strict verify failed"
 
           set -e
-          # Same loose tree the zip had before the bundle: doriax-editor,
-          # libdoriax.dylib, engine/. Actions wraps this as doriax_macos.zip.
+          # Same loose tree the zip had before the bundle: jasperengine-editor,
+          # libjasperengine.dylib, engine/. Actions wraps this as jasperengine_macos.zip.
           BIN="$APP/Contents/MacOS"
           mkdir -p dist/macos-zip
-          cp "$BIN/$(basename "$APP" .app)" dist/macos-zip/doriax-editor
+          cp "$BIN/$(basename "$APP" .app)" dist/macos-zip/jasperengine-editor
           for dylib in "$BIN"/*.dylib; do
             [ -e "$dylib" ] && cp "$dylib" dist/macos-zip/
           done
@@ -390,17 +390,17 @@ jobs:
             find "$APP" | head -40
             exit 1
           fi
-          chmod +x dist/macos-zip/doriax-editor
+          chmod +x dist/macos-zip/jasperengine-editor
           for dylib in dist/macos-zip/*.dylib; do
             [ -e "$dylib" ] && codesign --force --sign - --timestamp=none "$dylib"
           done
-          codesign --force --sign - --timestamp=none dist/macos-zip/doriax-editor
+          codesign --force --sign - --timestamp=none dist/macos-zip/jasperengine-editor
 
           # Artifact zips lose the executable bit, so ship a dmg too.
           mkdir dmg-stage
           cp -R "$APP" dmg-stage/
           ln -s /Applications dmg-stage/Applications
-          hdiutil create -volname "Doriax" -srcfolder dmg-stage -ov -format UDZO dist/Doriax.dmg
+          hdiutil create -volname "JasperEngine" -srcfolder dmg-stage -ov -format UDZO dist/JasperEngine.dmg
           rm -rf dmg-stage
           ls -la dist dist/macos-zip instdir/bin
 
@@ -474,19 +474,19 @@ jobs:
 
           # The artifacts came through an Actions zip, which dropped the
           # executable bit the release archives ship with.
-          chmod +x artifacts/doriax_linux/doriax-editor
-          chmod +x artifacts/doriax_macos/doriax-editor
+          chmod +x artifacts/jasperengine_linux/jasperengine-editor
+          chmod +x artifacts/jasperengine_macos/jasperengine-editor
 
           # A tree of binaries still needs an archive.
-          (cd artifacts/doriax_windows && zip -qr "$GITHUB_WORKSPACE/release/Doriax-${VERSION}-windows-x64.zip" .)
-          (cd artifacts/doriax_linux && zip -qr "$GITHUB_WORKSPACE/release/Doriax-${VERSION}-linux-x86_64.zip" .)
-          (cd artifacts/doriax_macos && zip -qr "$GITHUB_WORKSPACE/release/Doriax-${VERSION}-macos-universal.zip" .)
+          (cd artifacts/jasperengine_windows && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-windows-x64.zip" .)
+          (cd artifacts/jasperengine_linux && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-linux-x86_64.zip" .)
+          (cd artifacts/jasperengine_macos && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-macos-universal.zip" .)
 
           # The .zsync names the AppImage it belongs to, so the pair keeps the
           # filenames it was built with.
-          cp artifacts/doriax_linux_appimage/* release/
-          cp artifacts/doriax_linux_zsync/* release/
-          cp artifacts/doriax_macos_dmg/Doriax.dmg "release/Doriax-${VERSION}-macos-universal.dmg"
+          cp artifacts/jasperengine_linux_appimage/* release/
+          cp artifacts/jasperengine_linux_zsync/* release/
+          cp artifacts/jasperengine_macos_dmg/JasperEngine.dmg "release/JasperEngine-${VERSION}-macos-universal.dmg"
           ls -la release
           # --clobber so re-running the workflow on a release replaces the assets.
           gh release upload "$VERSION" release/* --clobber --repo "$GITHUB_REPOSITORY"

@@ -8,7 +8,7 @@
 #include "util/ShapeParameters.h"
 #include "yaml-cpp/yaml.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class MeshChangeCmd: public Command{
 

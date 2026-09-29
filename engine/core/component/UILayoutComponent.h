@@ -10,7 +10,7 @@
 #include "math/Matrix4.h"
 #include "math/Vector2.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class AnchorPreset{
         NONE,
@@ -32,7 +32,7 @@ namespace doriax{
         FULL_LAYOUT
     };
 
-    struct DORIAX_API UILayoutComponent{
+    struct JASPERENGINE_API UILayoutComponent{
         // UI part
         unsigned int width = 0;
         unsigned int height = 0;

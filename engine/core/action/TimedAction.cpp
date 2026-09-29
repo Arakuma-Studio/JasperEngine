@@ -3,7 +3,7 @@
 
 #include "TimedAction.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 TimedAction::TimedAction(Scene* scene): Action(scene){
     addComponent<TimedActionComponent>();

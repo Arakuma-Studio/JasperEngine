@@ -7,7 +7,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -101,9 +101,9 @@ namespace {
     bool createInstance() {
         VkApplicationInfo application{};
         application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        application.pApplicationName = "Doriax";
+        application.pApplicationName = "JasperEngine";
         application.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        application.pEngineName = "Doriax";
+        application.pEngineName = "JasperEngine";
         application.engineVersion = VK_MAKE_VERSION(1, 0, 0);
         application.apiVersion = VK_API_VERSION_1_3;
 

@@ -5,7 +5,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Shape::Shape(Scene* scene): Mesh(scene){
 }

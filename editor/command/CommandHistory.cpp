@@ -4,7 +4,7 @@
 #include "CommandHistory.h"
 #include <stdio.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
 

@@ -10,7 +10,7 @@
 #include "imgui.h"
 #include "Catalog.h"
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 struct ComponentEntry {
@@ -58,4 +58,4 @@ public:
 };
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

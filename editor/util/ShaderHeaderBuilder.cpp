@@ -8,7 +8,7 @@
 #include <cctype>
 #include <unordered_set>
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 namespace {
     // Shader names carry variant codes that may contain characters which are not

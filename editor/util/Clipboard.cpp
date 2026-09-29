@@ -8,7 +8,7 @@
 #include <cctype>
 #include <filesystem>
 
-#ifdef DORIAX_HAS_X11_CLIPBOARD
+#ifdef JASPERENGINE_HAS_X11_CLIPBOARD
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 
@@ -37,7 +37,7 @@ int stbi_write_png_to_func(stbi_write_func* func, void* context, int w, int h,
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 #ifdef __APPLE__
 // Implemented in ClipboardMac.mm (Objective-C++, NSPasteboard).
@@ -140,7 +140,7 @@ std::vector<std::string> clipboardTextToFilePaths(const char* clipboardText) {
     return parseFileUriList(clipboardText);
 }
 
-#ifdef DORIAX_HAS_X11_CLIPBOARD
+#ifdef JASPERENGINE_HAS_X11_CLIPBOARD
 namespace {
 
 constexpr auto kClipboardTimeout = std::chrono::milliseconds(500);
@@ -205,7 +205,7 @@ bool readProperty(Display* display, Window window, Atom property, bool remove,
 // cost one round trip instead of one full conversion timeout per mime type.
 bool fetchTargets(Display* display, Window window, Atom clipboard, std::vector<Atom>& out) {
     const Atom targetsAtom = XInternAtom(display, "TARGETS", False);
-    const Atom property = XInternAtom(display, "DORIAX_CLIPBOARD_TARGETS", False);
+    const Atom property = XInternAtom(display, "JASPERENGINE_CLIPBOARD_TARGETS", False);
     XDeleteProperty(display, window, property);
     XConvertSelection(display, clipboard, targetsAtom, property, window, CurrentTime);
     XFlush(display);
@@ -243,7 +243,7 @@ bool fetchTargets(Display* display, Window window, Atom clipboard, std::vector<A
 bool requestTarget(Display* display, Window window, Atom clipboard, const char* mimeType,
                    std::vector<unsigned char>& out) {
     const Atom target = XInternAtom(display, mimeType, False);
-    const Atom property = XInternAtom(display, "DORIAX_CLIPBOARD_IMAGE", False);
+    const Atom property = XInternAtom(display, "JASPERENGINE_CLIPBOARD_IMAGE", False);
     const Atom incr = XInternAtom(display, "INCR", False);
     XDeleteProperty(display, window, property);
     XConvertSelection(display, clipboard, target, property, window, CurrentTime);
@@ -334,7 +334,7 @@ ClipboardContent readClipboardContentX11() {
 }
 
 } // namespace
-#endif // DORIAX_HAS_X11_CLIPBOARD
+#endif // JASPERENGINE_HAS_X11_CLIPBOARD
 
 #ifdef _WIN32
 namespace {
@@ -474,7 +474,7 @@ ClipboardContent readClipboardContentWin32() {
 #endif // _WIN32
 
 ClipboardContent readClipboardContent() {
-#if defined(DORIAX_HAS_X11_CLIPBOARD)
+#if defined(JASPERENGINE_HAS_X11_CLIPBOARD)
     return readClipboardContentX11();
 #elif defined(_WIN32)
     return readClipboardContentWin32();
@@ -492,4 +492,4 @@ ClipboardContent readClipboardContent() {
 #endif
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

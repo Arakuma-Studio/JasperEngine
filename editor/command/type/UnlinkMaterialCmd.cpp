@@ -3,7 +3,7 @@
 
 #include "UnlinkMaterialCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::UnlinkMaterialCmd::UnlinkMaterialCmd(Project* project, uint32_t sceneId, ComponentType componentType,
                                               std::string propertyName, unsigned int submeshIndex,

@@ -7,7 +7,7 @@
 #include <functional>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class CodeEditor;
     class ImageViewerWindow;

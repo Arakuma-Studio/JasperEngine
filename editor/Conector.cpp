@@ -19,7 +19,7 @@
 #include <dlfcn.h>
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::Conector::Conector(){
     libHandle = nullptr;
@@ -113,7 +113,7 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
     stagingDirs.push_back(buildPath / "hotreload");
     fs::path tempBase = fs::temp_directory_path(ec);
     if (!ec && !tempBase.empty()) {
-        stagingDirs.push_back(tempBase / "doriax_hotreload");
+        stagingDirs.push_back(tempBase / "jasperengine_hotreload");
     }
 
     fs::path copyPath;

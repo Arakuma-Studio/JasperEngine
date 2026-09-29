@@ -3,7 +3,7 @@
 
 #include "Mirror.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Mirror::Mirror(Scene* scene): Shape(scene){
     addComponent<MirrorComponent>();

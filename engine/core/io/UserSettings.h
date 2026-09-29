@@ -8,8 +8,8 @@
 #include <string>
 #include "io/Data.h"
 
-namespace doriax {
-    class DORIAX_API UserSettings {
+namespace jasperengine {
+    class JASPERENGINE_API UserSettings {
     public:
 
         static bool getBoolForKey(const char *key);

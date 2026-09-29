@@ -5,7 +5,7 @@
 
 #include "util/Util.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy){
     this->project = project;

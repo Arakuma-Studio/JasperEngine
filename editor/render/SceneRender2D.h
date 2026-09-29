@@ -5,11 +5,11 @@
 
 #include "SceneRender.h"
 
-#include "Doriax.h"
+#include "JasperEngine.h"
 #include "UILayer.h"
 #include "command/Command.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class SceneRender2D: public SceneRender{
     private:

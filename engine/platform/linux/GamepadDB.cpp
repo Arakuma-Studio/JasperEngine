@@ -8,8 +8,8 @@
 #include <cstdlib>
 #include <cstring>
 
-using namespace doriax;
-using namespace doriax::editor;
+using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 
@@ -133,11 +133,11 @@ bool parseMapping(const char* entry, GamepadMapping& mapping){
 
 }
 
-bool doriax::editor::findGamepadMapping(const std::string& guid, GamepadMapping& mapping){
+bool jasperengine::editor::findGamepadMapping(const std::string& guid, GamepadMapping& mapping){
     if (guid.size() != GUID_LENGTH) return false;
 
-    for (size_t i = 0; i < DORIAX_GAMEPAD_MAPPINGS_COUNT; i++){
-        const char* entry = DORIAX_GAMEPAD_MAPPINGS[i];
+    for (size_t i = 0; i < JASPERENGINE_GAMEPAD_MAPPINGS_COUNT; i++){
+        const char* entry = JASPERENGINE_GAMEPAD_MAPPINGS[i];
         if (std::strncmp(entry, guid.c_str(), GUID_LENGTH) != 0) continue;
         if (entry[GUID_LENGTH] != ',') continue;
         if (parseMapping(entry, mapping)) return true;

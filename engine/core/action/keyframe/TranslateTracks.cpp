@@ -6,7 +6,7 @@
 #include "component/KeyframeTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 TranslateTracks::TranslateTracks(Scene* scene): Action(scene){
     addComponent<KeyframeTracksComponent>();

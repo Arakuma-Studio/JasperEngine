@@ -36,7 +36,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     struct TerrainNode{
         //-----u_vs_terrainNodeParams
@@ -134,7 +134,7 @@ namespace doriax{
         bool castShadows = true; // off spares grass-scale scatter the shadow cascades
     };
 
-    struct DORIAX_API TerrainComponent{
+    struct JASPERENGINE_API TerrainComponent{
         // per-view CDLOD node selection (see TerrainView). Extra RTT cameras beyond
         // MAX_TERRAIN_VIEWS fall back to the main camera's selection (view 0).
         TerrainView views[MAX_TERRAIN_VIEWS];

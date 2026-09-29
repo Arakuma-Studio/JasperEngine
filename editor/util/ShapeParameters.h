@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace doriax::editor{
+namespace jasperengine::editor{
     
     struct ShapeParameters{
         int geometryType = 0;

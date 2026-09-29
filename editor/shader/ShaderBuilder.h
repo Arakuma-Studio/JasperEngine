@@ -23,7 +23,7 @@ namespace shadercompiler {
     struct args_t;
 }
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class ShaderBuilder {
     private:

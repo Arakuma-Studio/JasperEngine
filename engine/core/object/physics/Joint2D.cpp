@@ -7,7 +7,7 @@
 #include "subsystem/PhysicsSystem.h"
 #include "component/Joint2DComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Joint2D::Joint2D(Scene* scene): EntityHandle(scene){
     addComponent<Joint2DComponent>();

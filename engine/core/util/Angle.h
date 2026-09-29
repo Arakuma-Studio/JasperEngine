@@ -6,9 +6,9 @@
 
 #include "Export.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Angle {
+    class JASPERENGINE_API Angle {
     public:
         static float radToDefault(float radians);
         static float degToDefault(float degrees);

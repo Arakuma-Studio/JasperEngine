@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ImageViewerWindow::ImageViewerWindow(Project* project) : project(project) {
 }

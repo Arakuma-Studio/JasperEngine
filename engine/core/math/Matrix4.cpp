@@ -14,7 +14,7 @@
 #include "OBB.h"
 #include "Plane.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Matrix4::Matrix4(){
     identity();

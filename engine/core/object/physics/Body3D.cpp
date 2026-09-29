@@ -11,7 +11,7 @@
 #include <iostream>
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 JPH::EMotionType getBodyTypeToJolt(BodyType type){
     if (type == BodyType::STATIC){

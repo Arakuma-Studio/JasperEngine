@@ -11,7 +11,7 @@
 // XLookupKeysym and XLookupString are declared here, not in Xlib.h
 #include <X11/Xutil.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LinuxInputRouter::setMousePosition(double x, double y) {
     mousePosX = x;

@@ -12,13 +12,13 @@
 #include <functional>
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     typedef std::map<ShaderKey, std::shared_ptr<ShaderRender>> shaders_t;
 
     using ShaderBuilderFn = std::function<ShaderBuildResult(ShaderKey)>;
 
-    class DORIAX_API ShaderPool{
+    class JASPERENGINE_API ShaderPool{
     private:
         static shaders_t& getMap();
 

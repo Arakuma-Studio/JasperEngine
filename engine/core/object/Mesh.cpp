@@ -9,7 +9,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Mesh::Mesh(Scene* scene): Object(scene){
     addComponent<MeshComponent>();

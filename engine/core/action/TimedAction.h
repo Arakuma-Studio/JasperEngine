@@ -7,8 +7,8 @@
 #include "Action.h"
 #include "Ease.h"
 
-namespace doriax{
-    class DORIAX_API TimedAction: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API TimedAction: public Action{
 
     protected:
         void setAction(float duration, bool loop);

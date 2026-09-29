@@ -5,7 +5,7 @@
 
 #include "Stream.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ComponentToBundleSharedCmd::ComponentToBundleSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
     this->project = project;

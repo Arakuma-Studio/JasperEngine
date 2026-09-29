@@ -7,8 +7,8 @@
 #include "Render.h"
 #include "sokol/SokolFramebuffer.h"
 
-namespace doriax{
-    class DORIAX_API FramebufferRender{
+namespace jasperengine{
+    class JASPERENGINE_API FramebufferRender{
 
     public:
         //***Backend***

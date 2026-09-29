@@ -5,7 +5,7 @@
 
 #include "sokol/SokolCamera.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 CameraRender::CameraRender(){ }
 

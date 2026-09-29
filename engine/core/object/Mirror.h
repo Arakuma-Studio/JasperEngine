@@ -6,11 +6,11 @@
 
 #include "Shape.h"
 
-namespace doriax{
+namespace jasperengine{
 
     // Flat mesh that reflects the scene, see MirrorComponent. createWall matches
     // the default normal, so a mirror needs no rotation.
-    class DORIAX_API Mirror: public Shape{
+    class JASPERENGINE_API Mirror: public Shape{
     public:
         Mirror(Scene* scene);
         Mirror(Scene* scene, Entity entity);

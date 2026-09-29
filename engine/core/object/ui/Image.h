@@ -6,8 +6,8 @@
 
 #include "UILayout.h"
 
-namespace doriax{
-    class DORIAX_API Image: public UILayout{
+namespace jasperengine{
+    class JASPERENGINE_API Image: public UILayout{
     public:
         Image(Scene* scene);
         Image(Scene* scene, Entity entity);

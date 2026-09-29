@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     // PATH repair for an editor started by a desktop launcher (Finder,
     // Launchpad, a .desktop file). Such a process inherits the session daemon's

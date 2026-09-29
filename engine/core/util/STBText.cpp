@@ -14,7 +14,7 @@
 #include "hb.h"
 #include "SheenBidi/SheenBidi.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 STBText::STBText() {
     fontLoaded = false;

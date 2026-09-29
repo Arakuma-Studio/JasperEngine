@@ -12,12 +12,12 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // One developer's view of a project: open tabs and their order, each scene's viewport
 // camera and guides, and the terrain brush. None of it describes the game, so keeping
 // it in project.yaml means a diff every time anyone opens the editor and a conflict
-// every time two people do. It lives in .doriax/user/ instead, which is not committed.
+// every time two people do. It lives in .jasperengine/user/ instead, which is not committed.
 //
 // Projects written before that split still carry these keys in project.yaml;
 // adoptLegacyProjectState() takes over whatever the workspace does not already define.
@@ -29,7 +29,7 @@ public:
         bool hasDisplaySettings = false;
     };
 
-    // .doriax/user, created on demand
+    // .jasperengine/user, created on demand
     static std::filesystem::path getUserDirectory(const std::filesystem::path& projectPath);
 
     static bool save(const Project* project);
@@ -82,4 +82,4 @@ private:
     bool adoptedLegacy = false;
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

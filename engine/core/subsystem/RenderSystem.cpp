@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <cstring>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     constexpr int SPOT_MASK_TILE_SIZE = 256;
@@ -8653,19 +8653,19 @@ void RenderSystem::draw(){
             shaderCliArgs = " --shader \"<shader-spec>\"";
         }
 
-        const std::string shaderCommand = "doriax-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + shaderCliArgs;
+        const std::string shaderCommand = "jasperengine-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + shaderCliArgs;
 
         Log::verbose(
             "\n"
             "-------------------\n"
-            "Doriax is missing precompiled shaders in:\n"
+            "JasperEngine is missing precompiled shaders in:\n"
             "%s\n"
             "\n"
             "Missing shaders:\n"
             "%s\n"
             "\n"
             "Bundle precompiled shaders for graphic backend: %s\n"
-            "To generate them manually with Doriax Editor:\n"
+            "To generate them manually with JasperEngine Editor:\n"
             "\n"
             "> %s\n"
             "\n"

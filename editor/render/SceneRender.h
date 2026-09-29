@@ -3,14 +3,14 @@
 
 #pragma once
 
-#include "Doriax.h"
+#include "JasperEngine.h"
 
 #include "ToolsLayer.h"
 #include "UILayer.h"
 #include "RenderUtil.h"
 #include "command/Command.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     constexpr float DEFAULT_EDITOR_CAMERA_NEAR = 0.3f;
     constexpr float DEFAULT_EDITOR_CAMERA_FAR = 4000.0f;

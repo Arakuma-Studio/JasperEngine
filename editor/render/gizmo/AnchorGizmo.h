@@ -7,7 +7,7 @@
 #include "object/ui/Polygon.h"
 #include "math/Rect.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class AnchorGizmo: public Object{
     private:

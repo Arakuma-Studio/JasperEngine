@@ -8,9 +8,9 @@
 #include "component/CameraComponent.h"
 #include "math/Ray.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Camera: public Object{
+    class JASPERENGINE_API Camera: public Object{
 
     private:
         static constexpr float ELEVATION_DOT_LIMIT = 0.9998477f; // sin(89 degrees)

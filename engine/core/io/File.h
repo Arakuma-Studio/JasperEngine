@@ -12,9 +12,9 @@
 
 #include "FileData.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API File: public FileData {
+    class JASPERENGINE_API File: public FileData {
     protected:
         FILE *fileHandle;
 

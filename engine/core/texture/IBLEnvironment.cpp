@@ -12,7 +12,7 @@
 #include <cstring>
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 

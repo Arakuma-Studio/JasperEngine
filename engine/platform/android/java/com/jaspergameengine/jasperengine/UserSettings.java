@@ -1,4 +1,4 @@
-package org.doriaxengine.doriax;
+package com.jaspergameengine.jasperengine;
 
 import android.app.Activity;
 import android.content.Context;

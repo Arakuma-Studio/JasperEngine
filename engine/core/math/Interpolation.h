@@ -4,7 +4,7 @@
 #ifndef INTERPOLATION_H
 #define INTERPOLATION_H
 
-namespace doriax {
+namespace jasperengine {
 
     class Interpolation {
     public:

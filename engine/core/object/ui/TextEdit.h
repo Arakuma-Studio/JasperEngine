@@ -8,8 +8,8 @@
 #include "Text.h"
 #include "Polygon.h"
 
-namespace doriax{
-    class DORIAX_API TextEdit: public Image{
+namespace jasperengine{
+    class JASPERENGINE_API TextEdit: public Image{
     private:
         void ensureText();
         bool hasCursor() const;

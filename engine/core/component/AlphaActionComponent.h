@@ -4,9 +4,9 @@
 #ifndef ALPHAACTION_COMPONENT_H
 #define ALPHAACTION_COMPONENT_H
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API AlphaActionComponent{
+    struct JASPERENGINE_API AlphaActionComponent{
         float endAlpha;
         float startAlpha;
     };

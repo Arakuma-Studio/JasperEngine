@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 struct ValidationResult {
     bool ok = false;
@@ -25,4 +25,4 @@ public:
     static std::string describe(const std::string& name, const Json& arguments);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

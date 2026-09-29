@@ -6,7 +6,7 @@
 
 #include <math.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 float Color::GAMMA = 2.2;
 float Color::INV_GAMMA = 1.0 / GAMMA;

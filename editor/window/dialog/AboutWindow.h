@@ -6,7 +6,7 @@
 #include "texture/Texture.h"
 #include "imgui.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class AboutWindow {
     private:

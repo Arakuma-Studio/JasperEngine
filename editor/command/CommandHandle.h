@@ -6,7 +6,7 @@
 #include "CommandHistory.h"
 #include <map>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class CommandHandle{
 

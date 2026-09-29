@@ -4,7 +4,7 @@
 #include "Lines.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Lines::Lines(Scene* scene): Object(scene){
     addComponent<LinesComponent>();

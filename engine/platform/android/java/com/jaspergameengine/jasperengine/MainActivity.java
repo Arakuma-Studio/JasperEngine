@@ -1,4 +1,4 @@
-package org.doriaxengine.doriax;
+package com.jaspergameengine.jasperengine;
 
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
@@ -17,7 +17,7 @@ public class MainActivity extends GameActivity {
 
 	// Load our native library:
 	static {
-		System.loadLibrary("doriax-android");
+		System.loadLibrary("jasperengine-android");
 	}
 
 	private UserSettings userSettings;

@@ -7,7 +7,7 @@
 
 #include "Base64.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 const std::string Base64::base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"

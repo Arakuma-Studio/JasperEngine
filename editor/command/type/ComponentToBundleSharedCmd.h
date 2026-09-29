@@ -7,7 +7,7 @@
 #include "Project.h"
 #include "Catalog.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     struct ComponentToBundleSharedData {
         Entity entity;

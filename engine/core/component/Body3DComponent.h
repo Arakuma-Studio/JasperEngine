@@ -11,12 +11,12 @@
 #include "util/HybridArray.h"
 #include <cstdint>
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/Body.h"
 #endif
 
-namespace doriax{
+namespace jasperengine{
 
     enum class Shape3DType{
         SPHERE,
@@ -53,8 +53,8 @@ namespace doriax{
         Body3DAllowedDOF_All          = 0x3F
     };
 
-    struct DORIAX_API Shape3D{
-#ifdef DORIAX_PHYSICS_3D
+    struct JASPERENGINE_API Shape3D{
+#ifdef JASPERENGINE_PHYSICS_3D
         JPH::ShapeRefC shape = NULL;
 #endif
         Vector3 position = Vector3::ZERO;
@@ -85,7 +85,7 @@ namespace doriax{
     };
 
     struct Body3DComponent{
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         JPH::BodyID body;
 #endif
 

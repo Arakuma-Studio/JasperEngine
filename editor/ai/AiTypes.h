@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 using Json = nlohmann::json;
 
@@ -262,4 +262,4 @@ ChatRole chatRoleFromString(const std::string& value);
 std::string toString(ApprovalMode mode);
 ApprovalMode approvalModeFromString(const std::string& value);
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

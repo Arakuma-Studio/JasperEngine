@@ -7,9 +7,9 @@
 #include "Engine.h"
 #include "action/Ease.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API KeyframeTracksComponent{
+    struct JASPERENGINE_API KeyframeTracksComponent{
         std::vector<float> times;
         // Per-segment easing: easings[i] shapes the interpolation from key i to
         // key i+1. Empty or shorter than the segment count means linear there.

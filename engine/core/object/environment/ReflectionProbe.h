@@ -7,9 +7,9 @@
 #include "object/Object.h"
 #include "component/ReflectionProbeComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API ReflectionProbe: public Object{
+    class JASPERENGINE_API ReflectionProbe: public Object{
 
     private:
         // capture-affecting change: restart any in-flight six-face job so no

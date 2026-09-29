@@ -7,7 +7,7 @@
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Button::Button(Scene* scene): Image(scene){
     addComponent<ButtonComponent>();

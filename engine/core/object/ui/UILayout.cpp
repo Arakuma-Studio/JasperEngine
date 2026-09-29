@@ -5,7 +5,7 @@
 
 #include "util/Color.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 UILayout::UILayout(Scene* scene): Object(scene){
     addComponent<UILayoutComponent>();

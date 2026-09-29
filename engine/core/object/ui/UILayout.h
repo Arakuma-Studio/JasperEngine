@@ -6,8 +6,8 @@
 
 #include "Object.h"
 
-namespace doriax{
-    class DORIAX_API UILayout: public Object{
+namespace jasperengine{
+    class JASPERENGINE_API UILayout: public Object{
 
     public:
         UILayout(Scene* scene);

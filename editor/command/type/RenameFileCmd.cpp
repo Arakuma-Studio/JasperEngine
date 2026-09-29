@@ -5,7 +5,7 @@
 
 #include "util/Util.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::RenameFileCmd::RenameFileCmd(Project* project, std::string oldName, std::string newName, std::string directory){
     this->project = project;

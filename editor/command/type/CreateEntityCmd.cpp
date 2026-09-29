@@ -9,7 +9,7 @@
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToBundle){
     this->project = project;

@@ -10,11 +10,11 @@
 #include "ComponentManager.h"
 #include <set>
 
-namespace doriax{
+namespace jasperengine{
 
     class Scene;
 
-    class DORIAX_API SubSystem {
+    class JASPERENGINE_API SubSystem {
 
         protected:
         Signature signature;

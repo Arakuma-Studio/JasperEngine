@@ -6,9 +6,9 @@
 
 #include "Object.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Light: public Object{
+    class JASPERENGINE_API Light: public Object{
     public:
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);

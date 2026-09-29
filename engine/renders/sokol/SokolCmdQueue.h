@@ -20,7 +20,7 @@
 
 // ----------------------------------------------------------------------------------------------------
 
-namespace doriax {
+namespace jasperengine {
 
 	struct SokolRenderCommand
 	{

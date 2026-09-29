@@ -7,7 +7,7 @@
 #include "Log.h"
 #include <stdlib.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
 

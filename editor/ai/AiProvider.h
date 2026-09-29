@@ -7,7 +7,7 @@
 
 #include <memory>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class Provider {
 public:
@@ -20,4 +20,4 @@ public:
 
 std::unique_ptr<Provider> createProvider(ProviderId provider);
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

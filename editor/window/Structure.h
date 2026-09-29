@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     struct TreeNode {
         std::string icon;

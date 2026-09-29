@@ -3,7 +3,7 @@
 
 #include "Action.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Action::Action(Scene* scene): EntityHandle(scene){
     addComponent<ActionComponent>();

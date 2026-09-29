@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 // Direct3D 11 device and swapchain for the Win32 backend. Shaped like
-// VulkanContext so DoriaxWin drives every graphics backend the same way.
+// VulkanContext so JasperEngineWin drives every graphics backend the same way.
 
 #ifndef D3D11Context_h
 #define D3D11Context_h
 
 #include "System.h"
 
-namespace doriax {
+namespace jasperengine {
 
     struct D3D11ContextConfig {
         bool vsync = true;

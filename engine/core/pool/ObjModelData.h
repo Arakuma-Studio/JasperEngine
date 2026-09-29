@@ -7,7 +7,7 @@
 #include <vector>
 #include "tiny_obj_loader.h"
 
-namespace doriax{
+namespace jasperengine{
 
     struct ObjModelData {
         tinyobj::attrib_t attrib;

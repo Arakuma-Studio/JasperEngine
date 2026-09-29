@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7162F8E3259547DA0075B97D"
-               BuildableName = "Doriax.app"
-               BlueprintName = "Doriax macOS"
-               ReferencedContainer = "container:Doriax.xcodeproj">
+               BuildableName = "JasperEngine.app"
+               BlueprintName = "JasperEngine macOS"
+               ReferencedContainer = "container:JasperEngine.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7162F8E3259547DA0075B97D"
-            BuildableName = "Doriax.app"
-            BlueprintName = "Doriax macOS"
-            ReferencedContainer = "container:Doriax.xcodeproj">
+            BuildableName = "JasperEngine.app"
+            BlueprintName = "JasperEngine macOS"
+            ReferencedContainer = "container:JasperEngine.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7162F8E3259547DA0075B97D"
-            BuildableName = "Doriax.app"
-            BlueprintName = "Doriax macOS"
-            ReferencedContainer = "container:Doriax.xcodeproj">
+            BuildableName = "JasperEngine.app"
+            BlueprintName = "JasperEngine macOS"
+            ReferencedContainer = "container:JasperEngine.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

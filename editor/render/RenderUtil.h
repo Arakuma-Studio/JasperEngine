@@ -3,7 +3,7 @@
 
 #pragma once
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     enum class CursorSelected{
         POINTER,

@@ -10,7 +10,7 @@
 
 #include <windowsx.h> // GET_X_LPARAM / GET_Y_LPARAM
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 

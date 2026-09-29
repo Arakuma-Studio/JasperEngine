@@ -23,7 +23,7 @@
 
 namespace fs = std::filesystem;
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     #ifdef _WIN32
@@ -35,8 +35,8 @@ namespace {
 
         // The captured PATH is framed by markers: an interactive startup file is
         // free to print a banner or a greeting before it.
-        const std::string kPathBegin = "__DORIAX_PATH_BEGIN__";
-        const std::string kPathEnd = "__DORIAX_PATH_END__";
+        const std::string kPathBegin = "__JASPERENGINE_PATH_BEGIN__";
+        const std::string kPathEnd = "__JASPERENGINE_PATH_END__";
     #endif
 
     std::vector<std::string> splitPath(const std::string& value) {

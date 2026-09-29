@@ -18,7 +18,7 @@ namespace SoLoud{
     class Wav;
 }
 
-namespace doriax{
+namespace jasperengine{
 
     typedef std::map<std::string, std::shared_ptr<SoLoud::Wav>> sounds_t;
 
@@ -30,7 +30,7 @@ namespace doriax{
 
     };
 
-    class DORIAX_API SoundPool{
+    class JASPERENGINE_API SoundPool{
     private:
         static sounds_t& getMap();
 

@@ -7,8 +7,8 @@
 #include "Render.h"
 #include "sokol/SokolShader.h"
 
-namespace doriax{
-    class DORIAX_API ShaderRender{
+namespace jasperengine{
+    class JASPERENGINE_API ShaderRender{
 
     private:
         // render callback clean function

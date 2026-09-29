@@ -7,13 +7,13 @@
 #include <cmath>
 #include "Vector3.h"
 
-namespace doriax{
+namespace jasperengine{
 
     class Plane;
     class AABB;
     class OBB;
 
-    class DORIAX_API Sphere {
+    class JASPERENGINE_API Sphere {
     public:
         Vector3 center;
         float radius;

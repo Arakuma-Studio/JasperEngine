@@ -14,7 +14,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace doriax {
+namespace jasperengine {
 
     class Scene;
 
@@ -35,7 +35,7 @@ namespace doriax {
     //   local root = BundleManager.createBundle("enemies/EnemyShip", scene)
     //   BundleManager.destroyBundle(scene, root)
 
-    class DORIAX_API BundleManager {
+    class JASPERENGINE_API BundleManager {
     private:
         struct BundleEntry {
             uint32_t id;
@@ -108,6 +108,6 @@ namespace doriax {
         static void clearAll();
     };
 
-} // namespace doriax
+} // namespace jasperengine
 
 #endif // BUNDLEMANAGER_H

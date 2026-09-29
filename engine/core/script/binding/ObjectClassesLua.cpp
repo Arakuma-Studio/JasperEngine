@@ -38,20 +38,20 @@
 #include "TextEdit.h"
 #include "Container.h"
 #include "Sound.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "Body2D.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "Body3D.h"
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 
 void LuaBinding::registerObjectClasses(lua_State *L){
@@ -81,7 +81,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addVariable("SPOT", LightType::SPOT)
         .endNamespace();
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Shape2DType")
         .addVariable("POLYGON", Shape2DType::POLYGON)
@@ -92,7 +92,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endNamespace();
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Shape3DType")
         .addVariable("SPHERE", Shape3DType::SPHERE)
@@ -113,7 +113,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addVariable("DYNAMIC", BodyType::DYNAMIC)
         .endNamespace();
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Body3DMotionQuality")
         .addVariable("DISCRETE", Body3DMotionQuality::DISCRETE)
@@ -121,7 +121,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endNamespace();
 #endif
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Joint2DType")
         .addVariable("DISTANCE", Joint2DType::DISTANCE)
@@ -136,7 +136,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endNamespace();
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Joint3DType")
         .addVariable("FIXED", Joint3DType::FIXED)
@@ -241,11 +241,11 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("modelMatrix", &Object::getModelMatrix)
         .addProperty("normalMatrix", &Object::getNormalMatrix)
         .addFunction("updateTransform", &Object::updateTransform)
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("getBody2D", &Object::getBody2D)
         .addFunction("removeBody2D", &Object::removeBody2D)
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getBody3D", &Object::getBody3D)
         .addFunction("removeBody3D", &Object::removeBody3D)
 #endif
@@ -1130,7 +1130,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("getSoundComponent", &Sound::getComponent<SoundComponent>)
         .endClass();
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .deriveClass<Body2D, EntityHandle>("Body2D")
         .addConstructor <void (Scene*, Entity)> ()
@@ -1299,7 +1299,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
         .deriveClass<Body3D, EntityHandle>("Body3D")
         .addConstructor <void (Scene*, Entity)> ()

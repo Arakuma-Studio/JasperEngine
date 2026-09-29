@@ -7,9 +7,9 @@
 #include "math/Vector3.h"
 #include "texture/Texture.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    // AUTO preserves Doriax's historical texture-alpha detection for materials
+    // AUTO preserves JasperEngine's historical texture-alpha detection for materials
     // created in the editor. The other values map directly to glTF alphaMode.
     // The editor's generic enum property path stores enum values as int, matching
     // the engine's other editable enums.
@@ -20,7 +20,7 @@ namespace doriax{
         BLEND
     };
 
-    struct DORIAX_API Material{
+    struct JASPERENGINE_API Material{
         // --- start shader part
         Vector4 baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);  // linear color
         float metallicFactor = 1.0f;

@@ -1,4 +1,4 @@
-package org.doriaxengine.doriax;
+package com.jaspergameengine.jasperengine;
 
 import android.app.Activity;
 import android.content.Context;
@@ -216,7 +216,7 @@ public class AdMobWrapper {
                                                     // Make sure to set your reference to null so you don't
                                                     // show it a second time.
                                                     AdMobWrapper.this.interstitialAd = null;
-                                                    Log.e("Doriax", "The ad failed to show.");
+                                                    Log.e("JasperEngine", "The ad failed to show.");
                                                 }
 
                                                 @Override
@@ -229,7 +229,7 @@ public class AdMobWrapper {
                                 @Override
                                 public void onAdFailedToLoad(@NonNull LoadAdError loadAdError) {
                                     // Handle the error
-                                    Log.e("Doriax", loadAdError.getMessage());
+                                    Log.e("JasperEngine", loadAdError.getMessage());
                                     interstitialAd = null;
                                 }
                             });

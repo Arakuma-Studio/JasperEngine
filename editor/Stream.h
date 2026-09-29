@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class Workspace;
 
     class Stream {
@@ -220,7 +220,7 @@ namespace doriax::editor {
         // viewport toggles); project.yaml no longer carries it. See Workspace.h.
         static void decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace);
 
-        // Per-user state, written to .doriax/user/workspace.yaml. Kept here so the
+        // Per-user state, written to .jasperengine/user/workspace.yaml. Kept here so the
         // reader that still accepts them from an old project.yaml and the writer
         // that produces the workspace file share one schema.
         static YAML::Node encodeTerrainEditorSettings(const TerrainEditorSettings& settings);

@@ -8,7 +8,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "subsystem/MeshSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 MeshPolygon::MeshPolygon(Scene* scene): Mesh(scene){
     addComponent<MeshPolygonComponent>();

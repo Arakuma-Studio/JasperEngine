@@ -7,11 +7,11 @@
 #include "Engine.h"
 #include "ecs/Entity.h"
 #include "math/Vector2.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
 #endif
 
-namespace doriax{
+namespace jasperengine{
 
     enum class Joint2DType{
         DISTANCE,
@@ -25,8 +25,8 @@ namespace doriax{
         MOTOR
     };
 
-    struct DORIAX_API Joint2DComponent{
-#ifdef DORIAX_PHYSICS_2D
+    struct JASPERENGINE_API Joint2DComponent{
+#ifdef JASPERENGINE_PHYSICS_2D
         b2JointId joint = b2_nullJointId;
 #endif
         Joint2DType type = Joint2DType::DISTANCE;

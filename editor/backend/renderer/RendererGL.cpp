@@ -8,8 +8,8 @@
 
 #include "imgui_impl_opengl3.h"
 
-using namespace doriax;
-using namespace doriax::editor;
+using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 

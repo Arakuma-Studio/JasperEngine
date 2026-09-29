@@ -1,21 +1,21 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef DORIAX_EXPORT_H
-#define DORIAX_EXPORT_H
+#ifndef JASPERENGINE_EXPORT_H
+#define JASPERENGINE_EXPORT_H
 
 #if defined(_WIN32)
-    #ifdef DORIAX_SHARED
-        #ifdef DORIAX_EXPORTS
-            #define DORIAX_API __declspec(dllexport)
+    #ifdef JASPERENGINE_SHARED
+        #ifdef JASPERENGINE_EXPORTS
+            #define JASPERENGINE_API __declspec(dllexport)
         #else
-            #define DORIAX_API __declspec(dllimport)
+            #define JASPERENGINE_API __declspec(dllimport)
         #endif
     #else
-        #define DORIAX_API
+        #define JASPERENGINE_API
     #endif
 #else
-    #define DORIAX_API
+    #define JASPERENGINE_API
 #endif
 
-#endif // DORIAX_EXPORT_H
+#endif // JASPERENGINE_EXPORT_H

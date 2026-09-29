@@ -3,7 +3,7 @@
 
 #include "AnchorGizmo.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::AnchorGizmo::AnchorGizmo(Scene* scene): Object(scene){
     area = Rect(0.0f, 0.0f, 0.0f, 0.0f);

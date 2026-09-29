@@ -6,9 +6,9 @@
 
 #include "math/Quaternion.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API RotationActionComponent{
+    struct JASPERENGINE_API RotationActionComponent{
         Quaternion endRotation;
         Quaternion startRotation;
 

@@ -15,7 +15,7 @@
 #include <sys/types.h>
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -212,11 +212,11 @@ namespace {
     }
 
     void loadPackOnce() {
-#ifndef DORIAX_EDITOR
+#ifndef JASPERENGINE_EDITOR
         // Beside the executable on desktop, at the asset root inside an APK
         if (loadPack(PACK_FILENAME)) return;
 
-        // Used as given: absolute in a macOS bundle, or wherever DORIAX_ASSET_PATH points
+        // Used as given: absolute in a macOS bundle, or wherever JASPERENGINE_ASSET_PATH points
         const std::string assetRoot = System::instance().getAssetPath();
         if (!assetRoot.empty()) {
             loadPack(assetRoot + "/" + PACK_FILENAME);

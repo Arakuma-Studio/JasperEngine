@@ -6,9 +6,9 @@
 
 #include "math/Vector3.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API PositionActionComponent{
+    struct JASPERENGINE_API PositionActionComponent{
         Vector3 endPosition;
         Vector3 startPosition;
     };

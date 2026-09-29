@@ -519,7 +519,7 @@ def generate_header(symbols, output_path):
     lines.append('#include <vector>')
     lines.append('#include <unordered_set>')
     lines.append('')
-    lines.append('namespace doriax::editor {')
+    lines.append('namespace jasperengine::editor {')
     lines.append('')
 
     # ── Engine type names (for syntax highlighting in both Lua and C++) ──
@@ -580,7 +580,7 @@ def generate_header(symbols, output_path):
     lines.append('    return symbols;')
     lines.append('}')
     lines.append('')
-    lines.append('} // namespace doriax::editor')
+    lines.append('} // namespace jasperengine::editor')
     lines.append('')
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

@@ -6,8 +6,8 @@
 
 #include "Image.h"
 
-namespace doriax{
-    class DORIAX_API Progressbar: public Image{
+namespace jasperengine{
+    class JASPERENGINE_API Progressbar: public Image{
     private:
         void ensureFill();
 

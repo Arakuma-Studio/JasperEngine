@@ -73,7 +73,7 @@
 #include "resources/sky/Daylight_Box_Right_png.h"
 #include "resources/sky/Daylight_Box_Top_png.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry);
 
@@ -2049,7 +2049,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<Transform>()))            return objectClass("Object");
 
     // generic engine type for entities with no recognized component: valid as a
-    // C++ pointer type (doriax::EntityHandle*) and known to the Lua dispatcher
+    // C++ pointer type (jasperengine::EntityHandle*) and known to the Lua dispatcher
     return handleClass("EntityHandle");
 }
 

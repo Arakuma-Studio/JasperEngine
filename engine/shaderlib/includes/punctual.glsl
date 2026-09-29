@@ -79,7 +79,7 @@ float getSpotMaskAttenuation(Light light, vec3 pointToLight, int lightIndex)
         return 0.0;
     }
 
-    // Doriax texture coordinates already match the uploaded image orientation.
+    // JasperEngine texture coordinates already match the uploaded image orientation.
     vec2 localUV = maskPosition * 0.5 + 0.5;
     ivec2 atlasDimensionsI = textureSize(
         sampler2D(u_spotMaskAtlas, u_spotMaskAtlas_smp),

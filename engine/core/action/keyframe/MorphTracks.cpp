@@ -6,7 +6,7 @@
 #include "component/KeyframeTracksComponent.h"
 #include "component/MorphTracksComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 MorphTracks::MorphTracks(Scene* scene): Action(scene){
     addComponent<KeyframeTracksComponent>();

@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 void SceneSaveDialog::open(const fs::path& projectPath, const fs::path& initialDirectory, const std::string& defaultName,
@@ -277,4 +277,4 @@ void SceneSaveDialog::displayDirectoryTree(const fs::path& rootPath, const fs::p
 }
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

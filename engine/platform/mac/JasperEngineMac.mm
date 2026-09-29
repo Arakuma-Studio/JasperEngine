@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxMac.h"
+#include "JasperEngineMac.h"
 
 #import <Cocoa/Cocoa.h>
 
@@ -21,26 +21,26 @@
 
 #include "Engine.h"
 
-#import "DoriaxGameController.h"
+#import "JasperEngineGameController.h"
 
-#ifndef DORIAX_VSYNC_ENABLED
-#define DORIAX_VSYNC_ENABLED 1
+#ifndef JASPERENGINE_VSYNC_ENABLED
+#define JASPERENGINE_VSYNC_ENABLED 1
 #endif
 
 // 0 = windowed, 1 = maximized (zoomed), 2 = fullscreen
-#ifndef DORIAX_WINDOW_MODE
-#define DORIAX_WINDOW_MODE 0
+#ifndef JASPERENGINE_WINDOW_MODE
+#define JASPERENGINE_WINDOW_MODE 0
 #endif
 
-#ifndef DORIAX_WINDOW_RESIZABLE
-#define DORIAX_WINDOW_RESIZABLE 1
+#ifndef JASPERENGINE_WINDOW_RESIZABLE
+#define JASPERENGINE_WINDOW_RESIZABLE 1
 #endif
 
-#ifndef DORIAX_WINDOW_TITLE
-#define DORIAX_WINDOW_TITLE "Doriax"
+#ifndef JASPERENGINE_WINDOW_TITLE
+#define JASPERENGINE_WINDOW_TITLE "JasperEngine"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 #if defined(SOKOL_METAL)
@@ -59,7 +59,7 @@ namespace {
         VulkanContextConfig config;
         config.surfaceExtension = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
         config.createSurface = createWindowSurface;
-        config.vsync = DORIAX_VSYNC_ENABLED != 0;
+        config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
         return VulkanContext::create(config);
     }
 #else
@@ -68,23 +68,23 @@ namespace {
 }
 
 #if defined(SOKOL_METAL)
-@interface DoriaxMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, MTKViewDelegate>
+@interface JasperEngineMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, MTKViewDelegate>
 #else
-@interface DoriaxMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
+@interface JasperEngineMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 #endif
 @property (nonatomic, strong) NSTimer* frameTimer;
 @end
 
-@implementation DoriaxMacDelegate
+@implementation JasperEngineMacDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
 
     WindowMacConfig config;
-    config.title = DORIAX_WINDOW_TITLE;
+    config.title = JASPERENGINE_WINDOW_TITLE;
     config.width = DEFAULT_WINDOW_WIDTH;
     config.height = DEFAULT_WINDOW_HEIGHT;
-    config.resizable = DORIAX_WINDOW_RESIZABLE;
+    config.resizable = JASPERENGINE_WINDOW_RESIZABLE;
 
     WindowMac::create(config);
     WindowMac::setWindowDelegate((__bridge void*)self);
@@ -111,7 +111,7 @@ namespace {
     gameView.delegate = self;
 
     WindowMac::setContentView((__bridge void*)gameView);
-    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = DORIAX_VSYNC_ENABLED ? YES : NO;
+    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = JASPERENGINE_VSYNC_ENABLED ? YES : NO;
 #elif defined(SOKOL_VULKAN)
     gameView = [[MacViewVulkan alloc] initWithFrame:viewFrame];
     WindowMac::setContentView((__bridge void*)gameView);
@@ -134,16 +134,16 @@ namespace {
 
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
-    [gameView setSwapInterval:DORIAX_VSYNC_ENABLED ? 1 : 0];
+    [gameView setSwapInterval:JASPERENGINE_VSYNC_ENABLED ? 1 : 0];
 #endif
 
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
 
-    [DoriaxGameController start];
+    [JasperEngineGameController start];
 
     WindowMac::show(true);
-    WindowMac::applyInitialWindowMode(DORIAX_WINDOW_MODE == 1, DORIAX_WINDOW_MODE == 2);
+    WindowMac::applyInitialWindowMode(JASPERENGINE_WINDOW_MODE == 1, JASPERENGINE_WINDOW_MODE == 2);
 
     // A timer-driven loop keeps the run loop live, so Cocoa still delivers
     // input and window events between frames. VSync paces the actual rate.
@@ -222,14 +222,14 @@ namespace {
 
 @end
 
-int DoriaxMac::init(int argc, char **argv) {
+int JasperEngineMac::init(int argc, char **argv) {
     @autoreleasepool {
         Engine::systemInit(argc, argv, new SystemMac());
 
         WindowMac::setupApplication();
-        WindowMac::installMinimalMenuBar(DORIAX_WINDOW_TITLE);
+        WindowMac::installMinimalMenuBar(JASPERENGINE_WINDOW_TITLE);
 
-        DoriaxMacDelegate* delegate = [[DoriaxMacDelegate alloc] init];
+        JasperEngineMacDelegate* delegate = [[JasperEngineMacDelegate alloc] init];
         [NSApp setDelegate:delegate];
         [NSApp run];
     }

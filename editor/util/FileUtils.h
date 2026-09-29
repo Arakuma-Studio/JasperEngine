@@ -23,7 +23,7 @@
     #include <sys/sysctl.h>
 #endif
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class FileUtils {
 public:
@@ -91,7 +91,7 @@ public:
         return normalizedPath.parent_path();
     }
 
-    // Inside Doriax.app the SDK sits in Contents/Resources: codesign treats
+    // Inside JasperEngine.app the SDK sits in Contents/Resources: codesign treats
     // everything in Contents/MacOS as code and rejects plain files there.
     static std::filesystem::path getEngineDir() {
         namespace fs = std::filesystem;
@@ -180,4 +180,4 @@ public:
     }
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

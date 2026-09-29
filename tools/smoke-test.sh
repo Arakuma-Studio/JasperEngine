@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EDITOR=build/linux/editor-install/bin/doriax-editor
+EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
 [[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }

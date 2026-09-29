@@ -9,9 +9,9 @@
 #include "math/Matrix4.h"
 #include "ecs/Entity.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API Transform{
+    struct JASPERENGINE_API Transform{
         Vector3 position;
         Quaternion rotation;
         Vector3 scale = Vector3(1.0, 1.0, 1.0);

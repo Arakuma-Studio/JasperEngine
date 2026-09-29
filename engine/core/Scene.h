@@ -15,7 +15,7 @@
 #include <vector>
 
 
-namespace doriax{
+namespace jasperengine{
 
     class Camera;
 
@@ -27,7 +27,7 @@ namespace doriax{
         DISABLED
     };
 
-    class DORIAX_API Scene : public EntityRegistry {
+    class JASPERENGINE_API Scene : public EntityRegistry {
     private:
 
         Entity camera;

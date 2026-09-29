@@ -11,8 +11,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EDITOR_TARGET=doriax-editor
-ENGINE_TARGET=doriax-project
+EDITOR_TARGET=jasperengine-editor
+ENGINE_TARGET=jasperengine-project
 
 usage() {
     sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'

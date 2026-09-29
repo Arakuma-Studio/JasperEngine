@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <string>
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::DeleteFileCmd::DeleteFileCmd(Project* project, std::vector<fs::path> filePaths, fs::path rootPath){
     this->project = project;

@@ -8,7 +8,7 @@
 
 #include <string>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     struct EditorFrameState{
         bool& redrawRequested;

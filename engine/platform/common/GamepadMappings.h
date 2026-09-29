@@ -3,14 +3,14 @@
 // Community gamepad mappings from SDL_GameControllerDB
 // (https://github.com/mdqinc/SDL_GameControllerDB), desktop platforms only.
 // Generated on 2026-07-12. Apply after glfwInit() with:
-//     for (size_t i = 0; i < DORIAX_GAMEPAD_MAPPINGS_COUNT; i++)
-//         glfwUpdateGamepadMappings(DORIAX_GAMEPAD_MAPPINGS[i]);
+//     for (size_t i = 0; i < JASPERENGINE_GAMEPAD_MAPPINGS_COUNT; i++)
+//         glfwUpdateGamepadMappings(JASPERENGINE_GAMEPAD_MAPPINGS[i]);
 
 #pragma once
 
 #include <stddef.h>
 
-static const char* const DORIAX_GAMEPAD_MAPPINGS[] = {
+static const char* const JASPERENGINE_GAMEPAD_MAPPINGS[] = {
     "03000000300f00000a01000000000000,3 In 1 Conversion Box,a:b2,b:b1,back:b9,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,leftshoulder:b6,leftstick:b10,lefttrigger:b4,leftx:a0,lefty:a1,rightshoulder:b7,rightstick:b11,righttrigger:b5,rightx:a3,righty:a2,start:b8,x:b3,y:b0,platform:Windows,",
     "03000000fa190000918d000000000000,3 In 1 Conversion Box,a:b2,b:b1,back:b9,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,leftshoulder:b6,leftstick:b10,lefttrigger:b4,leftx:a0,lefty:a1,rightshoulder:b7,rightstick:b11,righttrigger:b5,rightx:a3,righty:a2,start:b8,x:b3,y:b0,platform:Windows,",
     "03000000fa2d00000100000000000000,3dRudder Foot Motion Controller,leftx:a0,lefty:a1,rightx:a5,righty:a2,platform:Windows,",
@@ -1917,4 +1917,4 @@ static const char* const DORIAX_GAMEPAD_MAPPINGS[] = {
     "03000000790000002201000011010000,ZhiXu GuliKit D,a:b0,b:b1,back:b8,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,leftshoulder:b4,leftstick:b10,lefttrigger:b6,leftx:a0,lefty:a1,rightshoulder:b5,rightstick:b11,righttrigger:b7,rightx:a2,righty:a3,start:b9,x:b2,y:b3,platform:Linux,",
 };
 
-static const size_t DORIAX_GAMEPAD_MAPPINGS_COUNT = sizeof(DORIAX_GAMEPAD_MAPPINGS) / sizeof(DORIAX_GAMEPAD_MAPPINGS[0]);
+static const size_t JASPERENGINE_GAMEPAD_MAPPINGS_COUNT = sizeof(JASPERENGINE_GAMEPAD_MAPPINGS) / sizeof(JASPERENGINE_GAMEPAD_MAPPINGS[0]);

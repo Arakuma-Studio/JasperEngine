@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 b2BodyType getBodyTypeToB2(BodyType type){
     if (type == BodyType::STATIC){

@@ -6,7 +6,7 @@
 #include "Scene.h"
 #include "texture/Texture.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     // A texture can use a camera framebuffer as source (render to texture).
     // The link is kept in the texture id as "camera|<entity>" so it survives

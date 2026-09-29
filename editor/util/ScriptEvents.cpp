@@ -12,7 +12,7 @@
 #include <optional>
 #include <unordered_set>
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 namespace {
 
@@ -641,7 +641,7 @@ bool findClass(const Document& doc, const std::string& name, CppClass& cls) {
     for (const Word& word : doc.words) {
         if ((word.text != "class" && word.text != "struct") || wordBefore(m, word.start) == "enum") continue;
 
-        // The name is the last word before the bases or the body: "class DORIAX_API Foo final"
+        // The name is the last word before the bases or the body: "class JASPERENGINE_API Foo final"
         std::string last;
         size_t pos = skipSpaces(m, word.start + word.text.size());
         while (pos < m.size() && isIdentStart(m[pos])) {
@@ -843,7 +843,7 @@ std::vector<Registration> cppRegistrations(const CppScript& script) {
                 registration.event = findEvent(S::Engine, args[0], false);
                 registration.method = args[0];
             } else if (word.text == "REGISTER_COMPONENT_EVENT" && args.size() == 3) {
-                // doriax::ButtonComponent -> ButtonComponent
+                // jasperengine::ButtonComponent -> ButtonComponent
                 const std::string component = args[0].substr(args[0].rfind(':') + 1);
                 for (const ScriptEventSourceInfo& source : sourceList()) {
                     if (component == source.component) registration.event = findEvent(source.source, args[1], false);
@@ -866,10 +866,10 @@ std::vector<Registration> cppRegistrations(const CppScript& script) {
     return registrations;
 }
 
-bool usesDoriaxNamespace(const Document& doc) {
+bool usesJasperEngineNamespace(const Document& doc) {
     const std::vector<Word>& words = doc.words;
     for (size_t i = 0; i + 2 < words.size(); i++) {
-        if (words[i].text == "using" && words[i + 1].text == "namespace" && words[i + 2].text == "doriax" &&
+        if (words[i].text == "using" && words[i + 1].text == "namespace" && words[i + 2].text == "jasperengine" &&
             doc.masked[skipSpaces(doc.masked, words[i + 2].start + 6)] == ';') {
             return true;
         }
@@ -909,7 +909,7 @@ std::string cppSignature(const ScriptEvent& event, const std::string& name, bool
     for (const ScriptEventParam& param : event.params) {
         if (!params.empty()) params += ", ";
         // Engine types are the capitalized ones
-        if (qualify && std::isupper(static_cast<unsigned char>(param.type[0]))) params += "doriax::";
+        if (qualify && std::isupper(static_cast<unsigned char>(param.type[0]))) params += "jasperengine::";
         params += std::string(param.type) + " " + param.name;
     }
     return std::string(event.returnsBool ? "bool " : "void ") + name + "(" + params + ")";
@@ -918,7 +918,7 @@ std::string cppSignature(const ScriptEvent& event, const std::string& name, bool
 std::string cppRegistration(const ScriptEvent& event, const std::string& method, bool qualify, bool unregister) {
     const ScriptEventSourceInfo& source = sourceInfo(event.source);
     const std::string macro = (unregister ? "UN" : "") + std::string(source.registerMacro);
-    const std::string ns = qualify ? "doriax::" : "";
+    const std::string ns = qualify ? "jasperengine::" : "";
 
     if (isEngineSource(event.source)) {
         return macro + "(" + event.name + ");";
@@ -1002,7 +1002,7 @@ TextEdit definitionInsertion(const CppScript& script, const ScriptEvent& event, 
     TextEdit edit;
     edit.document = doc.index;
     edit.offset = lineEnd(*doc.text, lastClose);
-    edit.text = "\n\n" + cppSignature(event, script.className + "::" + method, !usesDoriaxNamespace(doc)) + " {\n" +
+    edit.text = "\n\n" + cppSignature(event, script.className + "::" + method, !usesJasperEngineNamespace(doc)) + " {\n" +
                 handlerBody(event, "", false);
     return edit;
 }
@@ -1290,19 +1290,19 @@ ScriptEventChange ScriptEvents::addCpp(const std::vector<std::string>& documents
 
     const Document& constructorDoc = script.docs[script.constructor.document];
     edits.push_back(bodyInsertion(constructorDoc, script.constructor.open, script.constructor.close, "REGISTER_",
-                                  cppRegistration(event, method, !usesDoriaxNamespace(constructorDoc), false)));
+                                  cppRegistration(event, method, !usesJasperEngineNamespace(constructorDoc), false)));
 
     if (script.destructor.open != npos) {
         const Document& destructorDoc = script.docs[script.destructor.document];
         edits.push_back(bodyInsertion(destructorDoc, script.destructor.open, script.destructor.close, "UNREGISTER_",
-                                      cppRegistration(event, method, !usesDoriaxNamespace(destructorDoc), true)));
+                                      cppRegistration(event, method, !usesJasperEngineNamespace(destructorDoc), true)));
     }
 
     // An existing method named like the handler is reused
     CppFunction declaration;
     const bool declared = findInClassFunction(classDoc, script.cls, method, false, declaration);
     const bool defined = declaration.open != npos || findDefinition(script, method).open != npos;
-    const std::string signature = cppSignature(event, method, !usesDoriaxNamespace(classDoc));
+    const std::string signature = cppSignature(event, method, !usesJasperEngineNamespace(classDoc));
 
     if (script.constructor.inClass) {
         // Header only script, the handler goes in the class like the constructor

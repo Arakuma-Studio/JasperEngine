@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
@@ -179,4 +179,4 @@ bool InputTextContextMenu::drawForLastItem(char* buffer, size_t bufferSize,
     return changed;
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

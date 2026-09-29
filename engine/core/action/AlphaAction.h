@@ -6,8 +6,8 @@
 
 #include "TimedAction.h"
 
-namespace doriax{
-    class DORIAX_API AlphaAction: public TimedAction{
+namespace jasperengine{
+    class JASPERENGINE_API AlphaAction: public TimedAction{
 
     public:
         AlphaAction(Scene* scene);

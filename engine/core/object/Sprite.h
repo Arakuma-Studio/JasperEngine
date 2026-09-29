@@ -11,8 +11,8 @@
 #include "Mesh.h"
 #include "Occluder2D.h"
 
-namespace doriax{
-    class DORIAX_API Sprite: public Mesh{
+namespace jasperengine{
+    class JASPERENGINE_API Sprite: public Mesh{
 
     private:
         SpriteAnimation* animation;

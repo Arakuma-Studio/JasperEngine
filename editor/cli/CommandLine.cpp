@@ -4,7 +4,7 @@
 #include "CommandLine.h"
 
 #include "AppSettings.h"
-#include "Doriax.h"
+#include "JasperEngine.h"
 #include "EditorHost.h"
 #include "Exporter.h"
 #include "Out.h"
@@ -31,14 +31,14 @@
     #include <cstdio>
 #endif
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
-using ::doriax::Engine;
-using ::doriax::ShaderBackend;
-using ::doriax::ShaderBuildResult;
-using ::doriax::ShaderKey;
-using ::doriax::ShaderPool;
-using ::doriax::ShaderType;
+using ::jasperengine::Engine;
+using ::jasperengine::ShaderBackend;
+using ::jasperengine::ShaderBuildResult;
+using ::jasperengine::ShaderKey;
+using ::jasperengine::ShaderPool;
+using ::jasperengine::ShaderType;
 
 namespace fs = std::filesystem;
 
@@ -248,12 +248,12 @@ static bool parseBackendList(const std::string& value, std::set<ShaderBackend>& 
 
 static std::string getCommandName(const char* executableName) {
     if (!executableName || !*executableName) {
-        return "doriax-editor";
+        return "jasperengine-editor";
     }
 
     const fs::path executablePath(executableName);
     const std::string filename = executablePath.filename().string();
-    return filename.empty() ? std::string("doriax-editor") : filename;
+    return filename.empty() ? std::string("jasperengine-editor") : filename;
 }
 
 static void printMainUsage(const std::string& commandName) {

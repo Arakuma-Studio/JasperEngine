@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Matrix3::Matrix3() {
     identity();

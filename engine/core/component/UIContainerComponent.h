@@ -9,7 +9,7 @@
 #include "math/Rect.h"
 #include "ecs/Entity.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ContainerType{
         VERTICAL,
@@ -24,7 +24,7 @@ namespace doriax{
         bool expand = true;
     };
 
-    struct DORIAX_API UIContainerComponent{
+    struct JASPERENGINE_API UIContainerComponent{
         ContainerType type = ContainerType::VERTICAL;
         bool useAllWrapSpace = false;
 

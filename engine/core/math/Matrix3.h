@@ -6,9 +6,9 @@
 
 #include "math/Vector3.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Matrix3 {
+    class JASPERENGINE_API Matrix3 {
 
     private:
 

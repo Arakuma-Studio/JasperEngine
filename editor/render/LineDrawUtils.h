@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "Doriax.h"
+#include "JasperEngine.h"
 #include <cmath>
 #include <tuple>
 
-namespace doriax::editor::LineDrawUtils{
+namespace jasperengine::editor::LineDrawUtils{
 
     inline void addCircle2D(Lines* lines, const Vector3& center, float radius, const Vector4& color, int segments = 20){
         if (radius <= 0.0f) return;

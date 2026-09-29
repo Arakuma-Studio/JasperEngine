@@ -1,9 +1,9 @@
 #include "Log.h"
-#define SOKOL_LOG(s) { SOKOL_ASSERT(s); doriax::Log::error(s); }
+#define SOKOL_LOG(s) { SOKOL_ASSERT(s); jasperengine::Log::error(s); }
 
 #define SOKOL_IMPL
 
-#if defined(DORIAX_ANDROID)
+#if defined(JASPERENGINE_ANDROID)
 #define SOKOL_EXTERNAL_GL_LOADER
 #include <GLES3/gl31.h>
 #endif

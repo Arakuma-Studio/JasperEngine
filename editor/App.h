@@ -40,7 +40,7 @@
 #include <queue>
 #include <thread>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     enum class AlertType {
         Info,

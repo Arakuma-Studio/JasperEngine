@@ -10,7 +10,7 @@
 #include "object/Light.h"
 #include "object/environment/SkyBox.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class MaterialRender{
     private:

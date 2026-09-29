@@ -12,9 +12,9 @@
 #include "math/AABB.h"
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API UIComponent{
+    struct JASPERENGINE_API UIComponent{
         // Render part
         bool loaded = false;
         bool loadCalled = false;

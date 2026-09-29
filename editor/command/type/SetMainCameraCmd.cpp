@@ -3,7 +3,7 @@
 
 #include "SetMainCameraCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::SetMainCameraCmd::SetMainCameraCmd(Project* project, uint32_t sceneId, Entity newMainCamera){
     this->project = project;

@@ -18,7 +18,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     struct EditorInstance {
         std::unique_ptr<CustomTextEditor> editor;

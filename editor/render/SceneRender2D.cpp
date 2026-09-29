@@ -10,7 +10,7 @@
 #include <cmath>
 
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned int height, bool isUI): SceneRender(scene, true, false, 40, 2){
     this->isUI = isUI;

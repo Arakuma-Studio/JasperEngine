@@ -8,8 +8,8 @@
 #include "Text.h"
 #include "Container.h"
 
-namespace doriax{
-    class DORIAX_API Scrollbar: public Image{
+namespace jasperengine{
+    class JASPERENGINE_API Scrollbar: public Image{
     private:
         void ensureBar();
 

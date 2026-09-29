@@ -6,7 +6,7 @@
 #include "util/UIUtils.h"
 #include <cctype>
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 ComponentAddDialog::ComponentAddDialog() {
@@ -282,4 +282,4 @@ void ComponentAddDialog::show() {
 }
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

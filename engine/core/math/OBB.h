@@ -9,13 +9,13 @@
 #include "AABB.h"
 #include "Quaternion.h"
 
-namespace doriax {
+namespace jasperengine {
 
     class Plane;
     class Sphere;
     class Ray;
 
-    class DORIAX_API OBB {
+    class JASPERENGINE_API OBB {
     public:
         enum BoxType {
             BOXTYPE_NULL,

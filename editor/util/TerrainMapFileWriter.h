@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // Background writer for terrain map files. Brush strokes only touch the in-memory
 // map (and the GPU copy); the PNG encode + disk write of the full map — slow enough

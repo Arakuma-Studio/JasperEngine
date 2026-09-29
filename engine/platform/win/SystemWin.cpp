@@ -12,7 +12,7 @@
 #include "D3D11Context.h"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 SystemWin::SystemWin(WinInputRouter* router) : router(router) {
 }
@@ -111,8 +111,8 @@ void SystemWin::setMousePosition(float x, float y) {
 // assets in the project directory instead, so the editor bakes absolute paths
 // in through these macros (see Generator::getPlatformCMakeConfig).
 std::string SystemWin::getAssetPath() {
-#ifdef DORIAX_ASSET_PATH
-    return DORIAX_ASSET_PATH;
+#ifdef JASPERENGINE_ASSET_PATH
+    return JASPERENGINE_ASSET_PATH;
 #else
     return "assets";
 #endif
@@ -123,16 +123,16 @@ std::string SystemWin::getUserDataPath() {
 }
 
 std::string SystemWin::getLuaPath() {
-#ifdef DORIAX_LUA_PATH
-    return DORIAX_LUA_PATH;
+#ifdef JASPERENGINE_LUA_PATH
+    return JASPERENGINE_LUA_PATH;
 #else
     return "lua";
 #endif
 }
 
 std::string SystemWin::getShaderPath() {
-#ifdef DORIAX_SHADER_PATH
-    return DORIAX_SHADER_PATH;
+#ifdef JASPERENGINE_SHADER_PATH
+    return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
 #endif

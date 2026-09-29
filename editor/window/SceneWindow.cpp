@@ -32,7 +32,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 

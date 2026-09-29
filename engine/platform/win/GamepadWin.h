@@ -15,7 +15,7 @@
 
 #include <array>
 
-namespace doriax {
+namespace jasperengine {
 
     // XInput polling shared by the editor backend and the exported game, so a
     // controller behaves the same in Play mode and in the shipped build.

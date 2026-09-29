@@ -4,7 +4,7 @@
 #include "UserSettings.h"
 #include "System.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 bool UserSettings::getBoolForKey(const char *key){
     return getBoolForKey(key, false);

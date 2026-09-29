@@ -12,9 +12,9 @@ namespace SoLoud{
 	class Soloud;
 }
 
-namespace doriax{
+namespace jasperengine{
 
-	class DORIAX_API AudioSystem : public SubSystem {
+	class JASPERENGINE_API AudioSystem : public SubSystem {
 
     private:
 		static bool inited;

@@ -10,8 +10,8 @@
 
 namespace tinygltf {class Model;}
 
-namespace doriax{
-    class DORIAX_API Model: public Mesh{
+namespace jasperengine{
+    class JASPERENGINE_API Model: public Mesh{
     public:
         Model(Scene* scene);
         Model(Scene* scene, Entity entity);

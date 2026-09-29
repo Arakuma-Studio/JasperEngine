@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxLinux.h"
+#include "JasperEngineLinux.h"
 
 #include "GamepadLinux.h"
 #include "LinuxInputRouter.h"
@@ -23,28 +23,28 @@
 #include <cstdio>
 #include <cstring>
 
-#ifndef DORIAX_VSYNC_ENABLED
-#define DORIAX_VSYNC_ENABLED 1
+#ifndef JASPERENGINE_VSYNC_ENABLED
+#define JASPERENGINE_VSYNC_ENABLED 1
 #endif
 
 // 0 = windowed, 1 = maximized, 2 = fullscreen
-#ifndef DORIAX_WINDOW_MODE
-#define DORIAX_WINDOW_MODE 0
+#ifndef JASPERENGINE_WINDOW_MODE
+#define JASPERENGINE_WINDOW_MODE 0
 #endif
 
-#ifndef DORIAX_WINDOW_RESIZABLE
-#define DORIAX_WINDOW_RESIZABLE 1
+#ifndef JASPERENGINE_WINDOW_RESIZABLE
+#define JASPERENGINE_WINDOW_RESIZABLE 1
 #endif
 
-#ifndef DORIAX_WINDOW_TITLE
-#define DORIAX_WINDOW_TITLE "Doriax"
+#ifndef JASPERENGINE_WINDOW_TITLE
+#define JASPERENGINE_WINDOW_TITLE "JasperEngine"
 #endif
 
-#ifndef DORIAX_APP_ID
-#define DORIAX_APP_ID "Doriax"
+#ifndef JASPERENGINE_APP_ID
+#define JASPERENGINE_APP_ID "JasperEngine"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -179,7 +179,7 @@ bool createContext() {
         swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
         if (swapIntervalEXT)
             swapIntervalEXT(display, WindowLinux::handle(),
-                            DORIAX_VSYNC_ENABLED ? 1 : 0);
+                            JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
     }
     return true;
 }
@@ -216,7 +216,7 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = DORIAX_VSYNC_ENABLED != 0;
+    config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
     return VulkanContext::create(config);
 }
 
@@ -270,18 +270,18 @@ void processEvents() {
 
 }
 
-int DoriaxLinux::init(int argc, char **argv) {
+int JasperEngineLinux::init(int argc, char **argv) {
     Engine::systemInit(argc, argv, new SystemLinux(&inputRouter));
 
     if (!WindowLinux::openDisplay())
         return -1;
 
     WindowLinuxConfig config;
-    config.title = DORIAX_WINDOW_TITLE;
-    config.appId = DORIAX_APP_ID;
+    config.title = JASPERENGINE_WINDOW_TITLE;
+    config.appId = JASPERENGINE_APP_ID;
     config.width = DEFAULT_WINDOW_WIDTH;
     config.height = DEFAULT_WINDOW_HEIGHT;
-    config.resizable = DORIAX_WINDOW_RESIZABLE;
+    config.resizable = JASPERENGINE_WINDOW_RESIZABLE;
 
 #if defined(SOKOL_VULKAN)
     // A Vulkan surface presents to any drawable, so the window keeps the
@@ -327,9 +327,9 @@ int DoriaxLinux::init(int argc, char **argv) {
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
 
-    if (DORIAX_WINDOW_MODE == 1)
+    if (JASPERENGINE_WINDOW_MODE == 1)
         WindowLinux::maximize();
-    else if (DORIAX_WINDOW_MODE == 2)
+    else if (JASPERENGINE_WINDOW_MODE == 2)
         WindowLinux::requestFullscreen();
 
     while (!shouldClose) {

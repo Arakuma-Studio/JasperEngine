@@ -9,8 +9,8 @@
 
 namespace {
 
-    using namespace doriax;
-    using namespace doriax::editor;
+    using namespace jasperengine;
+    using namespace jasperengine::editor;
 
     using FastDefGetter = void* (*)();
     using FastRefGetter = void* (*)(void*);
@@ -959,7 +959,7 @@ namespace {
         return PropertyData();
     }
 
-    doriax::editor::PropertyData getBody3DPropertyFast(doriax::Body3DComponent* comp, const std::string& propertyName) {
+    jasperengine::editor::PropertyData getBody3DPropertyFast(jasperengine::Body3DComponent* comp, const std::string& propertyName) {
         Body3DComponent& defaultBody3D = getDefaultComponent<Body3DComponent>();
 
         if (!comp) {
@@ -3137,7 +3137,7 @@ namespace {
 
 }
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::Catalog::Catalog(){
 }
@@ -3277,7 +3277,7 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
 }
 
 ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, ComponentType compType) {
-    using namespace doriax;
+    using namespace jasperengine;
     switch (compType) {
         case ComponentType::Transform:
             return registry->getComponentId<Transform>();
@@ -3521,16 +3521,16 @@ Signature editor::Catalog::componentMaskToSignature(const EntityRegistry* regist
 
 editor::PropertyType editor::Catalog::scriptPropertyTypeToPropertyType(ScriptPropertyType scriptType) {
     switch (scriptType) {
-        case doriax::ScriptPropertyType::Bool: return editor::PropertyType::Bool;
-        case doriax::ScriptPropertyType::Int: return editor::PropertyType::Int;
-        case doriax::ScriptPropertyType::Float: return editor::PropertyType::Float;
-        case doriax::ScriptPropertyType::String: return editor::PropertyType::String;
-        case doriax::ScriptPropertyType::Vector2: return editor::PropertyType::Vector2;
-        case doriax::ScriptPropertyType::Vector3: return editor::PropertyType::Vector3;
-        case doriax::ScriptPropertyType::Vector4: return editor::PropertyType::Vector4;
-        case doriax::ScriptPropertyType::Color3: return editor::PropertyType::Vector3;
-        case doriax::ScriptPropertyType::Color4: return editor::PropertyType::Vector4;
-        case doriax::ScriptPropertyType::EntityReference: return PropertyType::EntityReference;
+        case jasperengine::ScriptPropertyType::Bool: return editor::PropertyType::Bool;
+        case jasperengine::ScriptPropertyType::Int: return editor::PropertyType::Int;
+        case jasperengine::ScriptPropertyType::Float: return editor::PropertyType::Float;
+        case jasperengine::ScriptPropertyType::String: return editor::PropertyType::String;
+        case jasperengine::ScriptPropertyType::Vector2: return editor::PropertyType::Vector2;
+        case jasperengine::ScriptPropertyType::Vector3: return editor::PropertyType::Vector3;
+        case jasperengine::ScriptPropertyType::Vector4: return editor::PropertyType::Vector4;
+        case jasperengine::ScriptPropertyType::Color3: return editor::PropertyType::Vector3;
+        case jasperengine::ScriptPropertyType::Color4: return editor::PropertyType::Vector4;
+        case jasperengine::ScriptPropertyType::EntityReference: return PropertyType::EntityReference;
         default: return editor::PropertyType::Custom;
     }
 }

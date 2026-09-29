@@ -15,9 +15,9 @@
 #include <memory>
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ThreadPoolManager {
+    class JASPERENGINE_API ThreadPoolManager {
     private:
         static std::unique_ptr<ThreadPoolManager> instance;
         static std::mutex instanceMutex;

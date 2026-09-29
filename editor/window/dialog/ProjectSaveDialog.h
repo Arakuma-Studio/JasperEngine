@@ -9,7 +9,7 @@
 #include <functional>
 #include "imgui.h"
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
     namespace fs = std::filesystem;
@@ -37,4 +37,4 @@ namespace editor {
     };
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

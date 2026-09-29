@@ -5,7 +5,7 @@
 
 #import <AppKit/AppKit.h>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // Declared in Clipboard.cpp; composed into readClipboardContent() on __APPLE__.
 
@@ -60,4 +60,4 @@ std::vector<std::string> readClipboardFilePathsMac() {
     return paths;
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

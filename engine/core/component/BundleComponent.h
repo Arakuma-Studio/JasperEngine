@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
     struct BundleComponent {
         std::string name;

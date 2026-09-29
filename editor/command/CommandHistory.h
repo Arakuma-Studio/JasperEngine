@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <functional>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class CommandHistory{
 

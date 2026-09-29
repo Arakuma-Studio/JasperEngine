@@ -9,13 +9,13 @@
 #include <array>
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
     // Generates image based lighting (IBL) environment maps on CPU from a
     // LDR cubemap, following the maps used by glTF-Sample-Renderer:
     //  - lambertian (irradiance) cubemap, cosine convolved and divided by PI
     //  - GGX prefiltered cubemap, roughness mapped to mip levels
-    class DORIAX_API IBLEnvironment{
+    class JASPERENGINE_API IBLEnvironment{
     public:
         static const int SPECULAR_BASE_SIZE = 128;
         static const int SPECULAR_MIPS = 8;     // 128,64,32,16,8,4,2,1 (shader ENV_GGX_LODS = SPECULAR_MIPS - 1)

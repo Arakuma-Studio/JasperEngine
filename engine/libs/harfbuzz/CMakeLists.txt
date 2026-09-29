@@ -33,7 +33,7 @@ target_compile_definitions(
     HB_NO_BUFFER_VERIFY
 )
 
-# Keep every hb_* symbol internal. They would otherwise be exported by libdoriax and
+# Keep every hb_* symbol internal. They would otherwise be exported by libjasperengine and
 # interpose on the system HarfBuzz that GTK/Pango loads through the file dialog, which
 # then calls this differently configured build and crashes.
 if(NOT MSVC)

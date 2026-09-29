@@ -8,7 +8,7 @@
 #include <cmath>
 #include <math.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 float Angle::radToDefault(float radians){
     if (Engine::isUseDegrees()){

@@ -41,7 +41,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-using namespace doriax;
+using namespace jasperengine;
 
 static bool hasScripts(Scene* scene, Entity entity) {
     ScriptComponent* scriptComponent = scene->findComponent<ScriptComponent>(entity);

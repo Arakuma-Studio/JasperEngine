@@ -11,7 +11,7 @@
 #include "render/ShaderRender.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 SokolShader::SokolShader(){
     shader.id = SG_INVALID_ID;

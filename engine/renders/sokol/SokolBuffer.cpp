@@ -6,7 +6,7 @@
 #include "SokolCmdQueue.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 SokolBuffer::SokolBuffer(){
     buffer.id = SG_INVALID_ID;

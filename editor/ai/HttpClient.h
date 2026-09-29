@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <string>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class HttpClient {
 public:
@@ -25,4 +25,4 @@ public:
     static std::string urlEncode(const std::string& value);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

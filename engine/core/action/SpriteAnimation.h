@@ -6,8 +6,8 @@
 
 #include "Action.h"
 
-namespace doriax{
-    class DORIAX_API SpriteAnimation: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API SpriteAnimation: public Action{
 
     public:
         SpriteAnimation(Scene* scene);

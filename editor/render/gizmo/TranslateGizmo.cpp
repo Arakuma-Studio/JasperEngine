@@ -4,7 +4,7 @@
 #include "TranslateGizmo.h"
 #include <cfloat>
 
-using namespace doriax;
+using namespace jasperengine;
 
 const Vector3 editor::TranslateGizmo::centerColor = Vector3(0.8, 0.8, 0.8);
 const Vector3 editor::TranslateGizmo::xaxisColor = Vector3(0.7, 0.2, 0.2);

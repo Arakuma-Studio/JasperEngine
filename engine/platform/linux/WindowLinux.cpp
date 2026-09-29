@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <cstring>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 

@@ -7,8 +7,8 @@
 #include "action/Action.h"
 #include "action/Ease.h"
 
-namespace doriax{
-    class DORIAX_API TranslateTracks: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API TranslateTracks: public Action{
 
     public:
         TranslateTracks(Scene* scene);

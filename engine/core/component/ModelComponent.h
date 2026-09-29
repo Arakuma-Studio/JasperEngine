@@ -13,7 +13,7 @@
 
 namespace tinygltf {class Model;}
 
-namespace doriax{
+namespace jasperengine{
 
     struct ObjModelData;
 
@@ -23,7 +23,7 @@ namespace doriax{
         std::vector<Matrix4> inverseBindMatrices;
     };
 
-    struct DORIAX_API ModelComponent{
+    struct JASPERENGINE_API ModelComponent{
         std::shared_ptr<tinygltf::Model> gltfModel;
         std::shared_ptr<ObjModelData> objModel;
 

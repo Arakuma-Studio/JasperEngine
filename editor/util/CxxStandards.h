@@ -6,9 +6,9 @@
 #include <iterator>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
-    // Mirrored by DORIAX_CXX_STANDARDS in engine/CMakeLists.txt, first entry is the default
+    // Mirrored by JASPERENGINE_CXX_STANDARDS in engine/CMakeLists.txt, first entry is the default
     inline constexpr int cxxStandards[] = {17, 20, 23};
 
     inline bool isSupportedCxxStandard(int standard) {

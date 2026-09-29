@@ -9,7 +9,7 @@
 #include "subsystem/UISystem.h"
 #include "util/StringUtils.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 TextEdit::TextEdit(Scene* scene): Image(scene){
     addComponent<TextEditComponent>();
@@ -68,8 +68,8 @@ Text TextEdit::getTextObject() const{
 }
 
 // Fully qualify Polygon: UISystem.h pulls in wingdi.h on Windows, whose GDI Polygon()
-// function clashes with doriax::Polygon when used as an unqualified return type here.
-doriax::Polygon TextEdit::getCursorObject() const{
+// function clashes with jasperengine::Polygon when used as an unqualified return type here.
+jasperengine::Polygon TextEdit::getCursorObject() const{
     const TextEditComponent& tecomp = getComponent<TextEditComponent>();
     if (!hasCursor()){
         return Polygon(scene, NULL_ENTITY);
@@ -78,7 +78,7 @@ doriax::Polygon TextEdit::getCursorObject() const{
     return Polygon(scene, tecomp.cursor);
 }
 
-doriax::Polygon TextEdit::getSelectionObject() const{
+jasperengine::Polygon TextEdit::getSelectionObject() const{
     const TextEditComponent& tecomp = getComponent<TextEditComponent>();
     if (!hasSelection()){
         return Polygon(scene, NULL_ENTITY);

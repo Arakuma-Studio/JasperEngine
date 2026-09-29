@@ -9,9 +9,9 @@
 
 #include "sokol/SokolObject.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ObjectRender{
+    class JASPERENGINE_API ObjectRender{
 
     public:
 

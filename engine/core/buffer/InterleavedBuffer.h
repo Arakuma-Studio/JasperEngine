@@ -13,9 +13,9 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API InterleavedBuffer: public Buffer{
+    class JASPERENGINE_API InterleavedBuffer: public Buffer{
 
     private:
         std::vector<unsigned char> vectorBuffer;

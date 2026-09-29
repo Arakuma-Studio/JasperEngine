@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Container::Container(Scene* scene): UILayout(scene){
     addComponent<UIContainerComponent>();

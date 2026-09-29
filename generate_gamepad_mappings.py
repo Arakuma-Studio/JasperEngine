@@ -4,7 +4,7 @@
 GLFW's built-in gamepad database is frozen at release time, so controllers
 released (or added to the community database) after that report as plain
 joysticks and glfwGetGamepadState() fails for them. The generated header
-embeds the community database so Doriax can apply it with
+embeds the community database so JasperEngine can apply it with
 glfwUpdateGamepadMappings() right after glfwInit().
 
 Usage:
@@ -61,19 +61,19 @@ def main() -> int:
         f.write("// Community gamepad mappings from SDL_GameControllerDB\n")
         f.write("// (https://github.com/mdqinc/SDL_GameControllerDB), desktop platforms only.\n")
         f.write("// Generated on %s. Apply after glfwInit() with:\n" % date.today().isoformat())
-        f.write("//     for (size_t i = 0; i < DORIAX_GAMEPAD_MAPPINGS_COUNT; i++)\n")
-        f.write("//         glfwUpdateGamepadMappings(DORIAX_GAMEPAD_MAPPINGS[i]);\n")
+        f.write("//     for (size_t i = 0; i < JASPERENGINE_GAMEPAD_MAPPINGS_COUNT; i++)\n")
+        f.write("//         glfwUpdateGamepadMappings(JASPERENGINE_GAMEPAD_MAPPINGS[i]);\n")
         f.write("\n")
         f.write("#pragma once\n")
         f.write("\n")
         f.write("#include <stddef.h>\n")
         f.write("\n")
-        f.write("static const char* const DORIAX_GAMEPAD_MAPPINGS[] = {\n")
+        f.write("static const char* const JASPERENGINE_GAMEPAD_MAPPINGS[] = {\n")
         for m in mappings:
             f.write('    "%s",\n' % escape_c(m))
         f.write("};\n")
         f.write("\n")
-        f.write("static const size_t DORIAX_GAMEPAD_MAPPINGS_COUNT = sizeof(DORIAX_GAMEPAD_MAPPINGS) / sizeof(DORIAX_GAMEPAD_MAPPINGS[0]);\n")
+        f.write("static const size_t JASPERENGINE_GAMEPAD_MAPPINGS_COUNT = sizeof(JASPERENGINE_GAMEPAD_MAPPINGS) / sizeof(JASPERENGINE_GAMEPAD_MAPPINGS[0]);\n")
 
     print("Wrote %d mappings to %s" % (len(mappings), header_path))
     return 0

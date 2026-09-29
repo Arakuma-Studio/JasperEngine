@@ -7,14 +7,14 @@
 #include "util/FunctionSubscribe.h"
 #include "ecs/Entity.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ScrollbarType{
         VERTICAL,
         HORIZONTAL
     };
 
-    struct DORIAX_API ScrollbarComponent{
+    struct JASPERENGINE_API ScrollbarComponent{
         Entity bar = NULL_ENTITY;
         ScrollbarType type = ScrollbarType::VERTICAL;
 

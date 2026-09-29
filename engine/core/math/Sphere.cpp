@@ -10,7 +10,7 @@
 #include "AABB.h"
 #include "OBB.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 
 Sphere::Sphere() : center(Vector3(0, 0, 0)), radius(1.0f){ 

@@ -13,7 +13,7 @@
 #include <string.h>
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Data::Data(): dataPtr(NULL), dataLength(0), offset(0), dataOwned(false) {
 

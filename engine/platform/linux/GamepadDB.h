@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     // Raw device control that drives one gamepad button or axis
     struct GamepadInput{

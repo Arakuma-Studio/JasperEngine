@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
     namespace fs = std::filesystem;

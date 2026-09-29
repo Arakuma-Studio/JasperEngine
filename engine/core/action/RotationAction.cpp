@@ -3,7 +3,7 @@
 
 #include "RotationAction.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 RotationAction::RotationAction(Scene* scene): TimedAction(scene){
     addComponent<RotationActionComponent>();

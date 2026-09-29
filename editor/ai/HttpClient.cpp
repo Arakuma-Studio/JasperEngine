@@ -21,7 +21,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -108,7 +108,7 @@ HttpResponse performRequest(const HttpRequest& request,
                             const std::atomic<bool>* cancel) {
     HttpResponse response;
 
-    Handle session(WinHttpOpen(L"DoriaxEditorAI/1.0",
+    Handle session(WinHttpOpen(L"JasperEngineEditorAI/1.0",
                                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) {
@@ -301,7 +301,7 @@ HttpResponse performRequest(const HttpRequest& request,
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, request.timeoutSeconds);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DoriaxEditorAI/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "JasperEngineEditorAI/1.0");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCallback);
@@ -424,4 +424,4 @@ std::string HttpClient::urlEncode(const std::string& value) {
     return encoded.str();
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

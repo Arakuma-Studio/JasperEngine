@@ -15,7 +15,7 @@
 #include <map>
 
 
-namespace doriax{
+namespace jasperengine{
 
     struct UniformStageSlot{
         sg_shader_stage stage;

@@ -10,7 +10,7 @@
 #include "SokolShader.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){

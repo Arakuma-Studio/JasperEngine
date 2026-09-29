@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ParticleEmitterShape{
         Box = 0,
@@ -231,7 +231,7 @@ namespace doriax{
         float time = 0;
     };
 
-    struct DORIAX_API ParticlesComponent{
+    struct JASPERENGINE_API ParticlesComponent{
         std::vector<ParticleData> particles;
 
         unsigned int maxParticles = 100;

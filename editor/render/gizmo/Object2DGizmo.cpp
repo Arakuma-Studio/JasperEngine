@@ -3,7 +3,7 @@
 
 #include "Object2DGizmo.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 const float editor::Object2DGizmo::rectSize = 0.20;
 const float editor::Object2DGizmo::sizeOffset = 0.1;

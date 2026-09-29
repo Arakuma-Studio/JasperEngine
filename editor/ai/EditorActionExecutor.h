@@ -7,12 +7,12 @@
 
 #include <atomic>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 class Project;
 class ResourcesWindow;
 }
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class HttpClient;
 
@@ -131,4 +131,4 @@ private:
     ActionResult redoEditor(const Json& arguments);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

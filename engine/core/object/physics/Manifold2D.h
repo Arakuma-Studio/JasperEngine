@@ -7,9 +7,9 @@
 #include "Scene.h"
 #include "box2d/box2d.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Manifold2D{
+    class JASPERENGINE_API Manifold2D{
         private:
             Scene* scene;
             const b2Manifold* manifold;

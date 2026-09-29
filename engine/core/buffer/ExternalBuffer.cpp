@@ -3,7 +3,7 @@
 
 #include "ExternalBuffer.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ExternalBuffer::ExternalBuffer(): Buffer(){
     name = "";

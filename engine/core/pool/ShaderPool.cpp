@@ -27,12 +27,12 @@
 #ifdef SOKOL_VULKAN
 #include "spirv10.h"
 #endif
-// Metal shader cache. SOKOL_METAL covers cmake Metal builds. DORIAX_APPLE is
+// Metal shader cache. SOKOL_METAL covers cmake Metal builds. JASPERENGINE_APPLE is
 // also needed: the Xcode engine targets define it without SOKOL_METAL (that
 // flag is only on the sokol gfx unit), and Engine::getGraphicBackend() treats
-// DORIAX_APPLE as Metal. Exclude SOKOL_GLCORE so an Apple+OpenGL build does
+// JASPERENGINE_APPLE as Metal. Exclude SOKOL_GLCORE so an Apple+OpenGL build does
 // not pull in both headers and redefine getBase64Shader.
-#if defined(SOKOL_METAL) || (defined(DORIAX_APPLE) && !defined(SOKOL_GLCORE))
+#if defined(SOKOL_METAL) || (defined(JASPERENGINE_APPLE) && !defined(SOKOL_GLCORE))
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #include "msl21ios.h"
@@ -41,7 +41,7 @@
 #endif
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 ShaderBuilderFn ShaderPool::shaderBuilderFn = nullptr;
 

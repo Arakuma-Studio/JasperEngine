@@ -6,7 +6,7 @@
 
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ActionState{
         Running,
@@ -14,7 +14,7 @@ namespace doriax{
         Stopped
     };
 
-    struct DORIAX_API ActionComponent{
+    struct JASPERENGINE_API ActionComponent{
         ActionState state = ActionState::Stopped;
         float timecount = 0;
 

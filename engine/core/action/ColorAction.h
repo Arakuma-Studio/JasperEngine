@@ -6,8 +6,8 @@
 
 #include "TimedAction.h"
 
-namespace doriax{
-    class DORIAX_API ColorAction: public TimedAction{
+namespace jasperengine{
+    class JASPERENGINE_API ColorAction: public TimedAction{
 
     public:
         ColorAction(Scene* scene);

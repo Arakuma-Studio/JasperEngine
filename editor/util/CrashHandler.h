@@ -5,7 +5,7 @@
 
 #include <filesystem>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     // Appends the uncaught exception or signal that kills the editor, plus a backtrace, to
     // the log file. Without it the window just disappears and the user has nothing to send.

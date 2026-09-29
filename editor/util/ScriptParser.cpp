@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -157,15 +157,15 @@ ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string&
         return ScriptPropertyType::String;
     }
 
-    if (bareType == "Vector2" || bareType == "doriax::Vector2") {
+    if (bareType == "Vector2" || bareType == "jasperengine::Vector2") {
         return ScriptPropertyType::Vector2;
     }
 
-    if (bareType == "Vector3" || bareType == "doriax::Vector3") {
+    if (bareType == "Vector3" || bareType == "jasperengine::Vector3") {
         return ScriptPropertyType::Vector3;
     }
 
-    if (bareType == "Vector4" || bareType == "doriax::Vector4") {
+    if (bareType == "Vector4" || bareType == "jasperengine::Vector4") {
         return ScriptPropertyType::Vector4;
     }
 
@@ -205,7 +205,7 @@ std::optional<ScriptPropertyType> editor::ScriptParser::parseExplicitType(const 
         bareCppType.erase(std::remove(bareCppType.begin(), bareCppType.end(), '*'), bareCppType.end());
 
         // Check if it's Vector4 or Vector3
-        if (bareCppType == "Vector4" || bareCppType == "doriax::Vector4") {
+        if (bareCppType == "Vector4" || bareCppType == "jasperengine::Vector4") {
             return ScriptPropertyType::Color4;
         } else {
             // Default to Color3 for Vector3 or any other type
@@ -301,7 +301,7 @@ std::optional<bool> editor::ScriptParser::inheritsScriptBaseFromString(const std
     const std::optional<std::string> baseClause = findClassBaseClause(content, className);
     if (!baseClause) return std::nullopt;
 
-    static const std::regex scriptBasePattern(R"(\b(?:doriax::)?ScriptBase\b)");
+    static const std::regex scriptBasePattern(R"(\b(?:jasperengine::)?ScriptBase\b)");
     return std::regex_search(*baseClause, scriptBasePattern);
 }
 
@@ -494,8 +494,8 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::Vector2: {
                     Vector2 val = Vector2(); // default value
                     if (!defaultValueStr.empty()) {
-                        // Parse Vector2(x, y) or doriax::Vector2(x, y)
-                        std::regex vecRegex("(?:doriax::)?Vector2\\(([^,]+),([^)]+)\\)");
+                        // Parse Vector2(x, y) or jasperengine::Vector2(x, y)
+                        std::regex vecRegex("(?:jasperengine::)?Vector2\\(([^,]+),([^)]+)\\)");
                         std::smatch vecMatch;
                         if (std::regex_search(defaultValueStr, vecMatch, vecRegex)) {
                             val = Vector2(vectorComponent(vecMatch[1].str()),
@@ -511,8 +511,8 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::Color3: {
                     Vector3 val = Vector3(); // default value
                     if (!defaultValueStr.empty()) {
-                        // Parse Vector3(x, y, z) or doriax::Vector3(x, y, z)
-                        std::regex vecRegex("(?:doriax::)?Vector3\\(([^,]+),([^,]+),([^)]+)\\)");
+                        // Parse Vector3(x, y, z) or jasperengine::Vector3(x, y, z)
+                        std::regex vecRegex("(?:jasperengine::)?Vector3\\(([^,]+),([^,]+),([^)]+)\\)");
                         std::smatch vecMatch;
                         if (std::regex_search(defaultValueStr, vecMatch, vecRegex)) {
                             val = Vector3(vectorComponent(vecMatch[1].str()),
@@ -529,8 +529,8 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::Color4: {
                     Vector4 val = Vector4(); // default value
                     if (!defaultValueStr.empty()) {
-                        // Parse Vector4(x, y, z, w) or doriax::Vector4(x, y, z, w)
-                        std::regex vecRegex("(?:doriax::)?Vector4\\(([^,]+),([^,]+),([^,]+),([^)]+)\\)");
+                        // Parse Vector4(x, y, z, w) or jasperengine::Vector4(x, y, z, w)
+                        std::regex vecRegex("(?:jasperengine::)?Vector4\\(([^,]+),([^,]+),([^,]+),([^)]+)\\)");
                         std::smatch vecMatch;
                         if (std::regex_search(defaultValueStr, vecMatch, vecRegex)) {
                             val = Vector4(vectorComponent(vecMatch[1].str()),

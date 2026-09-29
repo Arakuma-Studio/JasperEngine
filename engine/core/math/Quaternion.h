@@ -7,10 +7,10 @@
 #include "Vector3.h"
 #include "Matrix4.h"
 
-namespace doriax { class Quaternion; }
-doriax::Quaternion operator * (float fScalar, const doriax::Quaternion& rkQ);
+namespace jasperengine { class Quaternion; }
+jasperengine::Quaternion operator * (float fScalar, const jasperengine::Quaternion& rkQ);
 
-namespace doriax {
+namespace jasperengine {
 
     enum class RotationOrder{
         XYZ,
@@ -21,7 +21,7 @@ namespace doriax {
         ZYX
     };
 
-    class DORIAX_API Quaternion {
+    class JASPERENGINE_API Quaternion {
     public:
 
         float w, x, y, z;

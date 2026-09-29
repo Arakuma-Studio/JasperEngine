@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef doriax_h
-#define doriax_h
+#ifndef jasperengine_h
+#define jasperengine_h
 
 #include "Engine.h"
 //#include "Export.h"
@@ -129,13 +129,13 @@
 #include "object/Object.h"
 #include "object/Occluder2D.h"
 #include "object/Points.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Body2D.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Joint2D.h"
 #include "object/physics/Manifold2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Body3D.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
@@ -215,4 +215,4 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
-#endif /* doriax_h */
+#endif /* jasperengine_h */

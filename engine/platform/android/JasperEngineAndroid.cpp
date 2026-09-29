@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxAndroid.h"
+#include "JasperEngineAndroid.h"
 
 #include <errno.h>
 #include <android/log.h>
@@ -26,39 +26,39 @@ static int android_close(void* cookie) {
     return 0;
 }
 
-DoriaxAndroid::DoriaxAndroid(){
-    logtag = "Doriax";
+JasperEngineAndroid::JasperEngineAndroid(){
+    logtag = "JasperEngine";
 }
 
-int DoriaxAndroid::getScreenWidth(){
+int JasperEngineAndroid::getScreenWidth(){
     return NativeEngine::getInstance()->getSurfWidth();
 }
 
-int DoriaxAndroid::getScreenHeight(){
+int JasperEngineAndroid::getScreenHeight(){
     return NativeEngine::getInstance()->getSurfHeight();
 }
 
-bool DoriaxAndroid::isTouchDevice(){
+bool JasperEngineAndroid::isTouchDevice(){
     return true;
 }
 
-void DoriaxAndroid::showVirtualKeyboard(std::wstring text){
+void JasperEngineAndroid::showVirtualKeyboard(std::wstring text){
     NativeEngine::getInstance()->showSoftInput(text);
 }
 
-void DoriaxAndroid::hideVirtualKeyboard(){
+void JasperEngineAndroid::hideVirtualKeyboard(){
     NativeEngine::getInstance()->hideSoftInput();
 }
 
-void DoriaxAndroid::quit(){
+void JasperEngineAndroid::quit(){
     GameActivity_finish(NativeEngine::getInstance()->getActivity());
 }
 
-std::string DoriaxAndroid::getUserDataPath() {
+std::string JasperEngineAndroid::getUserDataPath() {
     return NativeEngine::getInstance()->getInternalDataPath();
 }
 
-FILE* DoriaxAndroid::platformFopen(const char* fname, const char* mode) {
+FILE* JasperEngineAndroid::platformFopen(const char* fname, const char* mode) {
     std::string path = fname;
 
     //Return regular fopen if writable path is in path
@@ -76,7 +76,7 @@ FILE* DoriaxAndroid::platformFopen(const char* fname, const char* mode) {
     return funopen(asset, android_read, android_write, android_seek, android_close);
 }
 
-void DoriaxAndroid::platformLog(const int type, const char *fmt, va_list args){
+void JasperEngineAndroid::platformLog(const int type, const char *fmt, va_list args){
     int priority = ANDROID_LOG_VERBOSE;
 
     if (type == D_LOG_VERBOSE){
@@ -92,7 +92,7 @@ void DoriaxAndroid::platformLog(const int type, const char *fmt, va_list args){
     __android_log_vprint(priority, logtag, fmt, args);
 }
 
-bool DoriaxAndroid::getBoolForKey(const char *key, bool defaultValue){
+bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -102,7 +102,7 @@ bool DoriaxAndroid::getBoolForKey(const char *key, bool defaultValue){
     return value;
 }
 
-int DoriaxAndroid::getIntegerForKey(const char *key, int defaultValue){
+int JasperEngineAndroid::getIntegerForKey(const char *key, int defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -112,7 +112,7 @@ int DoriaxAndroid::getIntegerForKey(const char *key, int defaultValue){
     return value;
 }
 
-long DoriaxAndroid::getLongForKey(const char *key, long defaultValue){
+long JasperEngineAndroid::getLongForKey(const char *key, long defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -122,7 +122,7 @@ long DoriaxAndroid::getLongForKey(const char *key, long defaultValue){
     return value;
 }
 
-float DoriaxAndroid::getFloatForKey(const char *key, float defaultValue){
+float JasperEngineAndroid::getFloatForKey(const char *key, float defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -132,7 +132,7 @@ float DoriaxAndroid::getFloatForKey(const char *key, float defaultValue){
     return value;
 }
 
-double DoriaxAndroid::getDoubleForKey(const char *key, double defaultValue){
+double JasperEngineAndroid::getDoubleForKey(const char *key, double defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -142,7 +142,7 @@ double DoriaxAndroid::getDoubleForKey(const char *key, double defaultValue){
     return value;
 }
 
-std::string DoriaxAndroid::getStringForKey(const char *key, const std::string& defaultValue){
+std::string JasperEngineAndroid::getStringForKey(const char *key, const std::string& defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -156,7 +156,7 @@ std::string DoriaxAndroid::getStringForKey(const char *key, const std::string& d
     return value;
 }
 
-void DoriaxAndroid::setBoolForKey(const char *key, bool value){
+void JasperEngineAndroid::setBoolForKey(const char *key, bool value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -165,7 +165,7 @@ void DoriaxAndroid::setBoolForKey(const char *key, bool value){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::setIntegerForKey(const char *key, int value){
+void JasperEngineAndroid::setIntegerForKey(const char *key, int value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -174,7 +174,7 @@ void DoriaxAndroid::setIntegerForKey(const char *key, int value){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::setLongForKey(const char *key, long value){
+void JasperEngineAndroid::setLongForKey(const char *key, long value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -183,7 +183,7 @@ void DoriaxAndroid::setLongForKey(const char *key, long value){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::setFloatForKey(const char *key, float value){
+void JasperEngineAndroid::setFloatForKey(const char *key, float value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -192,7 +192,7 @@ void DoriaxAndroid::setFloatForKey(const char *key, float value){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::setDoubleForKey(const char *key, double value){
+void JasperEngineAndroid::setDoubleForKey(const char *key, double value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -201,7 +201,7 @@ void DoriaxAndroid::setDoubleForKey(const char *key, double value){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::setStringForKey(const char* key, const std::string& value){
+void JasperEngineAndroid::setStringForKey(const char* key, const std::string& value){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -212,7 +212,7 @@ void DoriaxAndroid::setStringForKey(const char* key, const std::string& value){
     env->DeleteLocalRef(strValue);
 }
 
-void DoriaxAndroid::removeKey(const char* key){
+void JasperEngineAndroid::removeKey(const char* key){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -221,22 +221,22 @@ void DoriaxAndroid::removeKey(const char* key){
     env->DeleteLocalRef(strKey);
 }
 
-void DoriaxAndroid::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
+void JasperEngineAndroid::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.initializeAdMob, tagForChildDirectedTreatment, tagForUnderAgeOfConsent);
 }
 
-void DoriaxAndroid::setMaxAdContentRating(doriax::AdMobRating rating){
+void JasperEngineAndroid::setMaxAdContentRating(jasperengine::AdMobRating rating){
     int irating = 0;
-    if (rating == doriax::AdMobRating::General){
+    if (rating == jasperengine::AdMobRating::General){
         irating = 1;
-    }else if (rating == doriax::AdMobRating::ParentalGuidance){
+    }else if (rating == jasperengine::AdMobRating::ParentalGuidance){
         irating = 2;
-    }else if (rating == doriax::AdMobRating::Teen){
+    }else if (rating == jasperengine::AdMobRating::Teen){
         irating = 3;
-    }else if (rating == doriax::AdMobRating::MatureAudience){
+    }else if (rating == jasperengine::AdMobRating::MatureAudience){
         irating = 4;
     }
 
@@ -246,7 +246,7 @@ void DoriaxAndroid::setMaxAdContentRating(doriax::AdMobRating rating){
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.setMaxAdContentRating, irating);
 }
 
-void DoriaxAndroid::loadInterstitialAd(const std::string& adUnitID){
+void JasperEngineAndroid::loadInterstitialAd(const std::string& adUnitID){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -255,7 +255,7 @@ void DoriaxAndroid::loadInterstitialAd(const std::string& adUnitID){
     env->DeleteLocalRef(strAdUnitID);
 }
 
-bool DoriaxAndroid::isInterstitialAdLoaded(){
+bool JasperEngineAndroid::isInterstitialAdLoaded(){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 
@@ -263,7 +263,7 @@ bool DoriaxAndroid::isInterstitialAdLoaded(){
     return value;
 }
 
-void DoriaxAndroid::showInterstitialAd(){
+void JasperEngineAndroid::showInterstitialAd(){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
 

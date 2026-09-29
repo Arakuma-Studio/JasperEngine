@@ -3,7 +3,7 @@
 
 #include "SetChildSceneStartActiveCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::SetChildSceneStartActiveCmd::SetChildSceneStartActiveCmd(Project* project, uint32_t sceneId, uint32_t childSceneId, bool startActive) {
     this->project = project;

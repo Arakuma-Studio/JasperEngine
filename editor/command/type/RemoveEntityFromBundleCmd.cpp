@@ -3,7 +3,7 @@
 
 #include "RemoveEntityFromBundleCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::RemoveEntityFromBundleCmd::RemoveEntityFromBundleCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent){
     this->project = project;

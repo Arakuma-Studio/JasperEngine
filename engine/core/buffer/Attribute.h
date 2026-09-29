@@ -9,9 +9,9 @@
 #include "render/Render.h"
 #include "Export.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Attribute {
+    class JASPERENGINE_API Attribute {
 
         friend class Buffer;
 

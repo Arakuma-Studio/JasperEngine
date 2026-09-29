@@ -1,6 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
-// doriax::System over WindowMac. It keeps no state of its own, so the editor
+// jasperengine::System over WindowMac. It keeps no state of its own, so the editor
 // driving WindowMac directly and a game going through here stay in agreement.
 
 #ifndef SystemMac_h
@@ -8,7 +8,7 @@
 
 #include "System.h"
 
-namespace doriax {
+namespace jasperengine {
 
     class SystemMac: public System {
     public:

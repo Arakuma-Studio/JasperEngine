@@ -6,9 +6,9 @@
 
 #include "math/Vector3.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API ScaleActionComponent{
+    struct JASPERENGINE_API ScaleActionComponent{
         Vector3 endScale = Vector3::UNIT_SCALE;
         Vector3 startScale = Vector3::UNIT_SCALE;
     };

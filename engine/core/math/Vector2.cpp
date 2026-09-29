@@ -8,7 +8,7 @@
 
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 const Vector2 Vector2::ZERO( 0, 0);
 
@@ -133,7 +133,7 @@ Vector2 Vector2::operator - () const{
 
 
 Vector2 operator * ( const float fScalar, const Vector2& rkVector ){
-    return doriax::Vector2(
+    return jasperengine::Vector2(
                    fScalar * rkVector.x,
                    fScalar * rkVector.y);
 }

@@ -9,7 +9,7 @@
 
 typedef struct lua_State lua_State;
 
-namespace doriax{
+namespace jasperengine{
 
     class Body2D;
     class Manifold2D;

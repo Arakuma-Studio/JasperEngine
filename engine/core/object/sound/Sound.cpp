@@ -10,7 +10,7 @@
 #include <stdexcept>
 
 
-using namespace doriax;
+using namespace jasperengine;
 
 Sound::Sound(Scene* scene): EntityHandle(scene){
     addComponent<SoundComponent>();

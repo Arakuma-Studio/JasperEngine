@@ -6,7 +6,7 @@
 #include "component/KeyframeTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ScaleTracks::ScaleTracks(Scene* scene): Action(scene){
     addComponent<KeyframeTracksComponent>();

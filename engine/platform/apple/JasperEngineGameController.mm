@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#import "DoriaxGameController.h"
+#import "JasperEngineGameController.h"
 
 #import <GameController/GameController.h>
 
@@ -11,16 +11,16 @@
 #include "Engine.h"
 #include "Input.h"
 
-#define DORIAX_MAX_GAMEPADS 8
+#define JASPERENGINE_MAX_GAMEPADS 8
 
-@implementation DoriaxGameController
+@implementation JasperEngineGameController
 
 // _slots[i] holds the GCController in slot i, or NSNull for a free slot. Slots
 // stay stable across disconnects so a controller keeps its gamepad index.
 static NSMutableArray* _slots = nil;
-static bool  _buttonState[DORIAX_MAX_GAMEPADS][D_GAMEPAD_BUTTON_LAST + 1];
-static float _axisState[DORIAX_MAX_GAMEPADS][D_GAMEPAD_AXIS_LAST + 1];
-static bool  _swapFaceButtons[DORIAX_MAX_GAMEPADS];
+static bool  _buttonState[JASPERENGINE_MAX_GAMEPADS][D_GAMEPAD_BUTTON_LAST + 1];
+static float _axisState[JASPERENGINE_MAX_GAMEPADS][D_GAMEPAD_AXIS_LAST + 1];
+static bool  _swapFaceButtons[JASPERENGINE_MAX_GAMEPADS];
 static bool  _started = false;
 
 // GameController reports Nintendo pads by the labels printed on them (A on the
@@ -38,8 +38,8 @@ static bool hasNintendoFaceLayout(GCController* controller) {
         return;
     _started = true;
 
-    _slots = [NSMutableArray arrayWithCapacity:DORIAX_MAX_GAMEPADS];
-    for (int i = 0; i < DORIAX_MAX_GAMEPADS; i++)
+    _slots = [NSMutableArray arrayWithCapacity:JASPERENGINE_MAX_GAMEPADS];
+    for (int i = 0; i < JASPERENGINE_MAX_GAMEPADS; i++)
         [_slots addObject:[NSNull null]];
 
     NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
@@ -57,7 +57,7 @@ static bool hasNintendoFaceLayout(GCController* controller) {
 }
 
 + (int)slotForController:(GCController*)controller {
-    for (int i = 0; i < DORIAX_MAX_GAMEPADS; i++) {
+    for (int i = 0; i < JASPERENGINE_MAX_GAMEPADS; i++) {
         if (_slots[i] == controller)
             return i;
     }
@@ -72,7 +72,7 @@ static bool hasNintendoFaceLayout(GCController* controller) {
         return;
 
     int slot = -1;
-    for (int i = 0; i < DORIAX_MAX_GAMEPADS; i++) {
+    for (int i = 0; i < JASPERENGINE_MAX_GAMEPADS; i++) {
         if (_slots[i] == [NSNull null]) {
             slot = i;
             break;
@@ -93,12 +93,12 @@ static bool hasNintendoFaceLayout(GCController* controller) {
     _axisState[slot][D_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.0f;
 
     NSString* name = controller.vendorName ?: @"Gamepad";
-    doriax::Engine::systemGamepadConnect(slot, [name UTF8String]);
+    jasperengine::Engine::systemGamepadConnect(slot, [name UTF8String]);
 
     int capturedSlot = slot;
     controller.extendedGamepad.valueChangedHandler =
         ^(GCExtendedGamepad* gamepad, GCControllerElement*) {
-            [DoriaxGameController handleState:gamepad slot:capturedSlot];
+            [JasperEngineGameController handleState:gamepad slot:capturedSlot];
         };
 
     // Emit the initial state so scripts see buttons already held on connect.
@@ -114,23 +114,23 @@ static bool hasNintendoFaceLayout(GCController* controller) {
     if (slot == -1)
         return;
     _slots[slot] = [NSNull null];
-    doriax::Engine::systemGamepadDisconnect(slot);
+    jasperengine::Engine::systemGamepadDisconnect(slot);
 }
 
 static void processButton(int slot, int button, bool pressed) {
     if (pressed != _buttonState[slot][button]) {
         _buttonState[slot][button] = pressed;
         if (pressed)
-            doriax::Engine::systemGamepadButtonDown(slot, button);
+            jasperengine::Engine::systemGamepadButtonDown(slot, button);
         else
-            doriax::Engine::systemGamepadButtonUp(slot, button);
+            jasperengine::Engine::systemGamepadButtonUp(slot, button);
     }
 }
 
 static void processAxis(int slot, int axis, float value) {
     if (fabsf(value - _axisState[slot][axis]) > 0.001f) {
         _axisState[slot][axis] = value;
-        doriax::Engine::systemGamepadAxisMove(slot, axis, value);
+        jasperengine::Engine::systemGamepadAxisMove(slot, axis, value);
     }
 }
 

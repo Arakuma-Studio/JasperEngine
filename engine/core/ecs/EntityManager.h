@@ -12,14 +12,14 @@
 #include "Signature.h"
 #include "Log.h"
 
-namespace doriax{
+namespace jasperengine{
 
     struct EntityMetadata{
         std::string name;
         Signature signature;
     };
 
-    class DORIAX_API EntityManager {
+    class JASPERENGINE_API EntityManager {
     private:
         static constexpr Entity FIRST_SYSTEM_ENTITY = 1;
         static constexpr Entity LAST_SYSTEM_ENTITY  = 1000;

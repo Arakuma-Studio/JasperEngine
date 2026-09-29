@@ -4,7 +4,7 @@
 #include "AddEntityToBundleCmd.h"
 #include "util/ProjectUtils.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::AddEntityToBundleCmd::AddEntityToBundleCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent){
     this->project = project;

@@ -12,7 +12,7 @@ namespace SoLoud{
     class Wav;
 }
 
-namespace doriax{
+namespace jasperengine{
 
     enum class SoundState{
         Playing,
@@ -27,7 +27,7 @@ namespace doriax{
         EXPONENTIAL_DISTANCE
     };
 
-    struct DORIAX_API SoundComponent{
+    struct JASPERENGINE_API SoundComponent{
         std::shared_ptr<SoLoud::Wav> sample = nullptr;
         unsigned int handle = 0; //Soloud handle
 

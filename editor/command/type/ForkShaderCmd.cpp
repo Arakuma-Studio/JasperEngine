@@ -8,7 +8,7 @@
 
 #include <filesystem>
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ForkShaderCmd::ForkShaderCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType cpType,
                                      ShaderType shaderType, const std::filesystem::path& targetDirRel,

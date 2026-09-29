@@ -8,7 +8,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Polygon::Polygon(Scene* scene): UILayout(scene){
     addComponent<UIComponent>();

@@ -6,7 +6,7 @@
 #include "SokolCmdQueue.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 SokolFramebuffer::SokolFramebuffer(){
     for (int a = 0; a < MAX_COLOR_ATTACHMENTS; a++){

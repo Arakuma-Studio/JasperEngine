@@ -9,8 +9,8 @@
 #include <cstring>
 #include <system_error>
 
-using namespace doriax;
-using namespace doriax::editor;
+using namespace jasperengine;
+using namespace jasperengine::editor;
 
 Texture* editor::TerrainMapUtils::findTexture(TerrainComponent& terrain, const TerrainMapRef& ref){
     if (ref.target == TerrainMapTarget::HeightMap){

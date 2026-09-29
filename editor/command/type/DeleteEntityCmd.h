@@ -13,7 +13,7 @@
 
 #include "yaml-cpp/yaml.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     struct DeleteEntityData{
         Entity entity = NULL_ENTITY;

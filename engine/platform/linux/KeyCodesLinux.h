@@ -16,7 +16,7 @@
 
 #include <cstring>
 
-namespace doriax {
+namespace jasperengine {
 
     inline int linuxKeyFromSym(KeySym key) {
         // Letters and digits share the ASCII range with the engine constants

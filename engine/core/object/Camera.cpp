@@ -7,7 +7,7 @@
 #include "Engine.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Camera::Camera(Scene* scene): Object(scene){
     addComponent<CameraComponent>();

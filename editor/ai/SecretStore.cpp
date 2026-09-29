@@ -13,7 +13,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -37,7 +37,7 @@ uint64_t fnv1a(const std::string& value) {
 // Seed bound to this machine/user (config dir path). Keys obfuscated with it are
 // not portable to another machine and are not stored in plaintext.
 uint64_t deviceSeed() {
-    return fnv1a("doriax.ai.keys.v1|" + AppSettings::getConfigDirectory().string());
+    return fnv1a("jasperengine.ai.keys.v1|" + AppSettings::getConfigDirectory().string());
 }
 
 // Symmetric: applying it twice returns the original bytes.
@@ -127,7 +127,7 @@ void saveLocked() {
     fs::permissions(path, fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
 
-    out << "# Doriax AI API keys - obfuscated and machine-bound. Do not edit or share.\n";
+    out << "# JasperEngine AI API keys - obfuscated and machine-bound. Do not edit or share.\n";
     for (const auto& entry : g_keys) {
         if (entry.second.empty()) continue;
         out << entry.first << " = " << toHex(obfuscate(entry.second)) << "\n";
@@ -189,4 +189,4 @@ std::vector<ProviderAccount> SecretStore::configuredAccounts(const Settings& set
     return result;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

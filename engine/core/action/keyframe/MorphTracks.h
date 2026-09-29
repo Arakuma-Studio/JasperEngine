@@ -7,8 +7,8 @@
 #include "action/Action.h"
 #include "action/Ease.h"
 
-namespace doriax{
-    class DORIAX_API MorphTracks: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API MorphTracks: public Action{
 
     public:
         MorphTracks(Scene* scene);

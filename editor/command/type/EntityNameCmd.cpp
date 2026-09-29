@@ -3,7 +3,7 @@
 
 #include "EntityNameCmd.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::EntityNameCmd::EntityNameCmd(Project* project, uint32_t sceneId, Entity entity, std::string name){
     this->project = project;

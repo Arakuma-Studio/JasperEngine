@@ -4,7 +4,7 @@
 #include "SkyBox.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 SkyBox::SkyBox(Scene* scene): EntityHandle(scene){
     addComponent<SkyComponent>();

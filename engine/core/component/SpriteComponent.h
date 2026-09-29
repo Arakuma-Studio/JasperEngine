@@ -8,7 +8,7 @@
 #include "util/HybridArray.h"
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class PivotPreset{
         CENTER,
@@ -22,7 +22,7 @@ namespace doriax{
         BOTTOM_RIGHT
     };
 
-    struct DORIAX_API SpriteComponent{
+    struct JASPERENGINE_API SpriteComponent{
         unsigned int width = 0;
         unsigned int height = 0;
 

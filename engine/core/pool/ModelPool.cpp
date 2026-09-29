@@ -8,7 +8,7 @@
 
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 models_t& ModelPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization

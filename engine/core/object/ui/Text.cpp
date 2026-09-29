@@ -9,7 +9,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Text::Text(Scene* scene): UILayout(scene){
     addComponent<UIComponent>();

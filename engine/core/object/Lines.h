@@ -6,9 +6,9 @@
 
 #include "Object.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Lines: public Object{
+    class JASPERENGINE_API Lines: public Object{
     public:
         Lines(Scene* scene);
         Lines(Scene* scene, Entity entity);

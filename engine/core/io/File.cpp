@@ -11,7 +11,7 @@
 
 #include "System.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 File::File(){
     fileHandle = NULL;

@@ -9,7 +9,7 @@
 
 #include <unordered_set>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class AnimationWindow{
     private:

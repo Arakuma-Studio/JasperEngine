@@ -10,9 +10,9 @@
 
 #include "ShaderData.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ShaderDataSerializer {
+    class JASPERENGINE_API ShaderDataSerializer {
     public:
         // Simple on-disk cache format for ShaderData.
         // - Stores stage GLSL/HLSL/MSL source and reflection data.

@@ -8,14 +8,14 @@
 #include "Engine.h"
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     enum class Occluder2DShape{
         AUTO_QUAD, // segments derived from the sibling mesh's local AABB (xy)
         POLYGON    // explicit local-space points
     };
 
-    struct DORIAX_API Occluder2DComponent{
+    struct JASPERENGINE_API Occluder2DComponent{
         Occluder2DShape shape = Occluder2DShape::AUTO_QUAD;
 
         std::vector<Vector2> points; // local-space vertices, used when shape == POLYGON

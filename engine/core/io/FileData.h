@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
     enum FileErrors{
         FILEDATA_OK       = 0,
@@ -20,7 +20,7 @@ namespace doriax {
         OUT_OF_MEMORY    = 3
     };
 
-    class DORIAX_API FileData {
+    class JASPERENGINE_API FileData {
 
     protected:
         static bool beginWith(const std::string& path, const std::string& prefix);

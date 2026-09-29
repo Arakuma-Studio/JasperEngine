@@ -28,7 +28,7 @@
 #include <map>
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     constexpr float BUILD_PROGRESS_START = 0.6f;
@@ -634,7 +634,7 @@ fs::path editor::Exporter::getAssetsSourceDir() const {
 
 std::string editor::Exporter::getAppName() const {
     if (project->getName().empty()) {
-        return "doriax-project";
+        return "jasperengine-project";
     }
     return Factory::toIdentifier(project->getName());
 }
@@ -802,7 +802,7 @@ bool editor::Exporter::configureBuild() {
     kitId += "\n" + config.targetDir.lexically_normal().generic_string();
 
     std::error_code ec;
-    const fs::path kitMarker = buildDir / ".doriax_export_kit";
+    const fs::path kitMarker = buildDir / ".jasperengine_export_kit";
     if (fs::exists(buildDir, ec)) {
         std::string prevKit;
         {
@@ -973,7 +973,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
         } else if (fs::exists(buildDir / (getAppName() + ".app"), ec)
                    || fs::exists(buildDir / config.buildType / (getAppName() + ".app"), ec)) {
             // A stale Xcode-configured cache can slip past the generator guard.
-            setError("The build produced an app bundle, which Desktop export does not support. Delete the project's .doriax/export/desktop folder and export again with the default toolchain.");
+            setError("The build produced an app bundle, which Desktop export does not support. Delete the project's .jasperengine/export/desktop folder and export again with the default toolchain.");
             return false;
         } else {
             setError("Built executable not found at: " + exePath.string() + " or " + configExePath.string());
@@ -1495,8 +1495,8 @@ bool editor::Exporter::copyGenerated() {
         // Remove the entry point (the exported build compiles the engine's own
         // platform main.cpp, which already defines main()). Generator brackets
         // it with markers because the block is preprocessor-conditional.
-        const std::string entryBegin = "// DORIAX_ENTRY_POINT_BEGIN\n";
-        const std::string entryEnd = "// DORIAX_ENTRY_POINT_END\n";
+        const std::string entryBegin = "// JASPERENGINE_ENTRY_POINT_BEGIN\n";
+        const std::string entryEnd = "// JASPERENGINE_ENTRY_POINT_END\n";
         size_t pos = content.find(entryBegin);
         if (pos != std::string::npos) {
             size_t endPos = content.find(entryEnd, pos);
@@ -1542,7 +1542,7 @@ bool editor::Exporter::copyGenerated() {
         }
 
         std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-        const std::string editorOnlyComment = "// Doriax API headers for this project are provided by .doriax/engine-api; see generated CMakeLists.txt for local and upstream source references.\n";
+        const std::string editorOnlyComment = "// JasperEngine API headers for this project are provided by .jasperengine/engine-api; see generated CMakeLists.txt for local and upstream source references.\n";
         const std::string exportComment = "// This file binds scene script metadata to compiled C++ and Lua scripts for the current build configuration.\n";
         size_t commentPos = content.find(editorOnlyComment);
         if (commentPos != std::string::npos) {
@@ -1953,7 +1953,7 @@ bool editor::Exporter::copyEngine() {
     }
 
     if (sdkRoot.empty()) {
-        setError("Doriax SDK root not found near executable");
+        setError("JasperEngine SDK root not found near executable");
         return false;
     }
 
@@ -1981,9 +1981,9 @@ bool editor::Exporter::copyEngine() {
     if (!copyDir("renders", true)) return false;
     if (!copyDir("workspaces", true)) return false;
     if (config.mode == ExportMode::SourceCode) {
-        fs::copy_file(sdkRoot / "doriax.py", config.targetDir / "doriax.py", fs::copy_options::overwrite_existing, ec);
+        fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
         if (ec) {
-            setError("Failed to copy doriax.py: " + ec.message());
+            setError("Failed to copy jasperengine.py: " + ec.message());
             return false;
         }
         if (!writeAndroidProjectSettings()) return false;
@@ -2039,7 +2039,7 @@ bool editor::Exporter::copyEngine() {
     cmakeIfs.close();
     normalizeNewlines(cmakeContent);
 
-    const std::string defaultAppName = "set(APP_NAME doriax-project)";
+    const std::string defaultAppName = "set(APP_NAME jasperengine-project)";
     const std::string patchedAppName = "set(APP_NAME " + appName + ")";
     const size_t appNamePos = cmakeContent.find(defaultAppName);
     if (appNamePos == std::string::npos) {
@@ -2049,7 +2049,7 @@ bool editor::Exporter::copyEngine() {
     cmakeContent.replace(appNamePos, defaultAppName.size(), patchedAppName);
 
     // Generate the embedded window/executable icon before the settings marker
-    // so DORIAX_WINDOW_ICON is only switched on when the files exist. A bad
+    // so JASPERENGINE_WINDOW_ICON is only switched on when the files exist. A bad
     // icon degrades to an iconless export (warned), never a failed one.
     bool iconGenerated = false;
     if (!project->getWindowIcon().empty()) {
@@ -2065,7 +2065,7 @@ bool editor::Exporter::copyEngine() {
         return false;
     }
 
-    const std::string projectSettingsMarker = "# @DORIAX_PROJECT_SETTINGS@";
+    const std::string projectSettingsMarker = "# @JASPERENGINE_PROJECT_SETTINGS@";
     const size_t projectSettingsPos = cmakeContent.find(projectSettingsMarker);
     if (projectSettingsPos != std::string::npos) {
         const WindowSettings window = project->getWindowSettings();
@@ -2088,19 +2088,19 @@ bool editor::Exporter::copyEngine() {
         // First line reuses the marker's existing indentation; subsequent lines
         // match the surrounding standalone setup block (4 spaces).
         const std::string indent = "\n    ";
-        std::string projectSettings = std::string("set(DORIAX_VSYNC_ENABLED ")
+        std::string projectSettings = std::string("set(JASPERENGINE_VSYNC_ENABLED ")
             + (project->isVSyncEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + "set(DORIAX_WINDOW_WIDTH " + std::to_string(window.width) + ")";
-        projectSettings += indent + "set(DORIAX_WINDOW_HEIGHT " + std::to_string(window.height) + ")";
-        projectSettings += indent + "set(DORIAX_WINDOW_MODE " + std::to_string(static_cast<int>(window.mode)) + ")";
-        projectSettings += indent + std::string("set(DORIAX_WINDOW_RESIZABLE ") + (window.resizable ? "ON" : "OFF") + ")";
-        projectSettings += indent + "set(DORIAX_WINDOW_TITLE \"" + cmakeTitle + "\")";
+        projectSettings += indent + "set(JASPERENGINE_WINDOW_WIDTH " + std::to_string(window.width) + ")";
+        projectSettings += indent + "set(JASPERENGINE_WINDOW_HEIGHT " + std::to_string(window.height) + ")";
+        projectSettings += indent + "set(JASPERENGINE_WINDOW_MODE " + std::to_string(static_cast<int>(window.mode)) + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_WINDOW_RESIZABLE ") + (window.resizable ? "ON" : "OFF") + ")";
+        projectSettings += indent + "set(JASPERENGINE_WINDOW_TITLE \"" + cmakeTitle + "\")";
         if (iconGenerated) {
-            projectSettings += indent + "set(DORIAX_WINDOW_ICON ON)";
+            projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
-        projectSettings += indent + "set(DORIAX_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
-        projectSettings += indent + std::string("set(DORIAX_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
-        projectSettings += indent + std::string("set(DORIAX_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
+        projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2108,7 +2108,7 @@ bool editor::Exporter::copyEngine() {
 
     // Script roots reach the export as include directories; their sources come in
     // through the recursive glob once copyCppScripts() has copied them.
-    const std::string scriptDirsMarker = "# @DORIAX_SCRIPT_DIRS@";
+    const std::string scriptDirsMarker = "# @JASPERENGINE_SCRIPT_DIRS@";
     const size_t scriptDirsPos = cmakeContent.find(scriptDirsMarker);
     if (scriptDirsPos != std::string::npos) {
         cmakeContent.replace(scriptDirsPos, scriptDirsMarker.size(), buildScriptDirIncludes());
@@ -2118,7 +2118,7 @@ bool editor::Exporter::copyEngine() {
     // fixed-capacity arrays to the larger of what the project actually uses and the
     // engine defaults in core/Engine.h (big models grow past the defaults). Missing
     // marker is non-fatal: the build simply falls back to those defaults.
-    const std::string maxValuesMarker = "# @DORIAX_SCENE_MAX_VALUES@";
+    const std::string maxValuesMarker = "# @JASPERENGINE_SCENE_MAX_VALUES@";
     const size_t maxValuesPos = cmakeContent.find(maxValuesMarker);
     if (maxValuesPos != std::string::npos) {
         cmakeContent.replace(maxValuesPos, maxValuesMarker.size(), buildSceneMaxValuesDefinitions());
@@ -2173,11 +2173,11 @@ if(WEB)
     file(READ "${APP_FILE}" html)
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/shell.html")
         file(READ "${CMAKE_CURRENT_LIST_DIR}/shell.html" shell)
-        string(FIND "${shell}" "{{DORIAX_DEFAULT_HTML}}" marker)
+        string(FIND "${shell}" "{{JASPERENGINE_DEFAULT_HTML}}" marker)
         if(marker EQUAL -1)
-            message(FATAL_ERROR "Custom web HTML shell must contain {{DORIAX_DEFAULT_HTML}}")
+            message(FATAL_ERROR "Custom web HTML shell must contain {{JASPERENGINE_DEFAULT_HTML}}")
         endif()
-        string(REPLACE "{{DORIAX_DEFAULT_HTML}}" "${html}" html "${shell}")
+        string(REPLACE "{{JASPERENGINE_DEFAULT_HTML}}" "${html}" html "${shell}")
     endif()
     string(FIND "${html}" "<title>" first)
     string(FIND "${html}" "</title>" last)
@@ -2201,12 +2201,12 @@ if(WEB)
         # Keep nodes alive: the SDK's status/print callbacks reference them.
         string(APPEND extra "<style>#emscripten_logo, .emscripten_logo, #status, #progress, #spinner, .spinner, #controls, #output, body > a[href='http://emscripten.org'], body > a[href='https://emscripten.org'] { display: none !important; } .emscripten_border { border: 0 !important; } body > hr { display: none; }</style>\n")
     endif()
-    string(REPLACE "{{DORIAX_TITLE}}" "${title}" html "${html}")
-    string(FIND "${html}" "{{DORIAX_HEAD_INCLUDE}}" marker)
+    string(REPLACE "{{JASPERENGINE_TITLE}}" "${title}" html "${html}")
+    string(FIND "${html}" "{{JASPERENGINE_HEAD_INCLUDE}}" marker)
     if(marker EQUAL -1)
         string(REPLACE "</head>" "${extra}</head>" html "${html}")
     else()
-        string(REPLACE "{{DORIAX_HEAD_INCLUDE}}" "${extra}" html "${html}")
+        string(REPLACE "{{JASPERENGINE_HEAD_INCLUDE}}" "${extra}" html "${html}")
     endif()
     file(WRITE "${output}/${app}.export.html" "${html}")
 else()
@@ -2227,7 +2227,7 @@ endif()
     FileUtils::writeIfChanged(settingsDir / "apply.cmake", script);
     cmakeContent += R"cmake(
 if(TARGET ${APP_NAME} AND (EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
-    add_custom_target(doriax-export-settings ALL
+    add_custom_target(jasperengine-export-settings ALL
         COMMAND "${CMAKE_COMMAND}" "-DAPP_FILE=$<TARGET_FILE:${APP_NAME}>" "-DWEB=${EMSCRIPTEN}"
             -P "${PROJECT_ROOT}/export-settings/apply.cmake"
         DEPENDS ${APP_NAME}
@@ -2235,13 +2235,13 @@ if(TARGET ${APP_NAME} AND (EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
 endif()
 )cmake";
     // CMake and the hand-maintained Xcode project must use the same IDs.
-    replaceAll(cmakeContent, "set(APP_BUNDLE_IDENTIFIER \"org.doriax.doriaxengine\")",
+    replaceAll(cmakeContent, "set(APP_BUNDLE_IDENTIFIER \"com.jaspergameengine.jasperengine\")",
         "if(CMAKE_SYSTEM_NAME STREQUAL \"iOS\")\nset(APP_BUNDLE_IDENTIFIER "
         + literal(project->getApplicationIdentifier(project->getIOSProjectSettings().bundleIdentifier))
         + ")\nelse()\nset(APP_BUNDLE_IDENTIFIER "
         + literal(project->getApplicationIdentifier(project->getMacOSProjectSettings().bundleIdentifier)) + ")\nendif()");
-    replaceAll(cmakeContent, "MACOSX_BUNDLE_INFO_PLIST \"${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist\"",
-        "MACOSX_BUNDLE_INFO_PLIST \"${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist\"\n"
+    replaceAll(cmakeContent, "MACOSX_BUNDLE_INFO_PLIST \"${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist\"",
+        "MACOSX_BUNDLE_INFO_PLIST \"${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist\"\n"
         "                XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}");
     return true;
 }
@@ -2351,7 +2351,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const fs::path stylesPath = androidAppDir / "src" / "main" / "res" / "values" / "styles.xml";
     const fs::path drawableDir = androidAppDir / "src" / "main" / "res" / "drawable";
     const fs::path adaptiveIconDir = androidAppDir / "src" / "main" / "res" / "mipmap-anydpi-v26";
-    const fs::path mainActivityPath = config.targetDir / "platform" / "android" / "java" / "org" / "doriaxengine" / "doriax" / "MainActivity.java";
+    const fs::path mainActivityPath = config.targetDir / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
 
     const std::string appName = project->getApplicationName(android.applicationName);
 
@@ -2459,7 +2459,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         manifest += "            android:screenOrientation=\"" + orientation + "\"\n";
     }
     manifest += "            android:exported=\"true\">\n";
-    manifest += "            <meta-data android:name=\"android.app.lib_name\" android:value=\"doriax-android\" />\n";
+    manifest += "            <meta-data android:name=\"android.app.lib_name\" android:value=\"jasperengine-android\" />\n";
     manifest += "            <intent-filter>\n";
     manifest += "                <action android:name=\"android.intent.action.MAIN\" />\n";
     manifest += "                <category android:name=\"android.intent.category.LAUNCHER\" />\n";
@@ -2589,7 +2589,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
 
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
     // Keep signing/build settings consistent with the generated Info.plist.
-    const fs::path projectFile = xcodeDir / "Doriax.xcodeproj" / "project.pbxproj";
+    const fs::path projectFile = xcodeDir / "JasperEngine.xcodeproj" / "project.pbxproj";
     std::string xcodeProject;
     if (!readText(projectFile, xcodeProject)) return false;
 
@@ -2706,14 +2706,14 @@ bool editor::Exporter::writeAppleProjectSettings() {
 
     std::vector<std::string> excludedPhysicsSources;
     if (!project->isPhysics2DEnabled()) {
-        removeProjectLinesContaining("DORIAX_PHYSICS_2D,");
+        removeProjectLinesContaining("JASPERENGINE_PHYSICS_2D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
             "Body2D.cpp", "Contact2D.cpp", "Joint2D.cpp", "Manifold2D.cpp"
         });
         if (!unlinkBackend("box2d")) return false;
     }
     if (!project->isPhysics3DEnabled()) {
-        removeProjectLinesContaining("DORIAX_PHYSICS_3D,");
+        removeProjectLinesContaining("JASPERENGINE_PHYSICS_3D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
             "Body3D.cpp", "CollideShapeResult3D.cpp", "Contact3D.cpp", "Joint3D.cpp"
         });
@@ -2948,12 +2948,12 @@ bool editor::Exporter::writeAppIcon() {
     // --- app_icon.h: RGBA images the window backends set at startup ---
     const std::vector<int> runtimeSizes = filterSizes({16, 32, 64, 128});
     std::string header;
-    header += "// Generated by the Doriax editor export from the project icon. Do not edit.\n";
-    header += "#ifndef DORIAX_APP_ICON_H\n#define DORIAX_APP_ICON_H\n\n";
-    header += "typedef struct DoriaxAppIconImage { int width; int height; const unsigned char* pixels; } DoriaxAppIconImage;\n\n";
+    header += "// Generated by the JasperEngine Editor export from the project icon. Do not edit.\n";
+    header += "#ifndef JASPERENGINE_APP_ICON_H\n#define JASPERENGINE_APP_ICON_H\n\n";
+    header += "typedef struct JasperEngineAppIconImage { int width; int height; const unsigned char* pixels; } JasperEngineAppIconImage;\n\n";
     for (int size : runtimeSizes) {
         std::vector<unsigned char> pixels = makeSize(size);
-        header += "static const unsigned char doriax_app_icon_" + std::to_string(size) + "[] = {";
+        header += "static const unsigned char jasperengine_app_icon_" + std::to_string(size) + "[] = {";
         char buf[8];
         for (size_t i = 0; i < pixels.size(); i++) {
             if (i % 32 == 0) header += "\n";
@@ -2962,14 +2962,14 @@ bool editor::Exporter::writeAppIcon() {
         }
         header += "\n};\n\n";
     }
-    header += "static const DoriaxAppIconImage DORIAX_APP_ICON_IMAGES[] = {\n";
+    header += "static const JasperEngineAppIconImage JASPERENGINE_APP_ICON_IMAGES[] = {\n";
     for (int size : runtimeSizes) {
         std::string s = std::to_string(size);
-        header += "    {" + s + ", " + s + ", doriax_app_icon_" + s + "},\n";
+        header += "    {" + s + ", " + s + ", jasperengine_app_icon_" + s + "},\n";
     }
     header += "};\n\n";
-    header += "#define DORIAX_APP_ICON_COUNT " + std::to_string(runtimeSizes.size()) + "\n\n";
-    header += "#endif // DORIAX_APP_ICON_H\n";
+    header += "#define JASPERENGINE_APP_ICON_COUNT " + std::to_string(runtimeSizes.size()) + "\n\n";
+    header += "#endif // JASPERENGINE_APP_ICON_H\n";
 
     // --- app_icon.ico: PNG-compressed entries, embedded into the Windows exe ---
     const std::vector<int> icoSizes = filterSizes({16, 32, 48, 256});
@@ -3216,7 +3216,7 @@ std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint32_t pro
     return name;
 }
 
-std::string editor::Exporter::getCMakeGraphicBackend(::doriax::ShaderBackend backend) {
+std::string editor::Exporter::getCMakeGraphicBackend(::jasperengine::ShaderBackend backend) {
     switch (backend) {
         case ShaderBackend::GLES3:      return "gles3";
         case ShaderBackend::D3D11:      return "d3d11";

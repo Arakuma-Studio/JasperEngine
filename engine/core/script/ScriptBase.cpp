@@ -3,7 +3,7 @@
 
 #include "ScriptBase.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ScriptBase::ScriptBase(Scene* scene, Entity entity)
     : scene(scene), entity(entity) {

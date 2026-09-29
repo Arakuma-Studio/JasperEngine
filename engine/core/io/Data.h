@@ -14,9 +14,9 @@
 #include "FileData.h"
 #include "File.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Data: public FileData {
+    class JASPERENGINE_API Data: public FileData {
 
     protected:
         unsigned char *dataPtr;

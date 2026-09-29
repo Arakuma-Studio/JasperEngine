@@ -7,11 +7,11 @@
 #include "Engine.h"
 #include "math/Vector2.h"
 #include "util/HybridArray.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
 #endif
 
-namespace doriax{
+namespace jasperengine{
 
     enum class Shape2DType{
         POLYGON,
@@ -21,8 +21,8 @@ namespace doriax{
         CHAIN // chain is a different type in Box2D 3.x
     };
 
-    struct DORIAX_API Shape2D{
-#ifdef DORIAX_PHYSICS_2D
+    struct JASPERENGINE_API Shape2D{
+#ifdef JASPERENGINE_PHYSICS_2D
         b2ShapeId shape = b2_nullShapeId;
         b2ChainId chain = b2_nullChainId;
 #endif
@@ -57,7 +57,7 @@ namespace doriax{
     };
 
     struct Body2DComponent{
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         b2BodyId body = b2_nullBodyId;
 #endif
 

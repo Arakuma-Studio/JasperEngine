@@ -12,9 +12,9 @@
 #include <string>
 #include <memory>
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Texture{
+    class JASPERENGINE_API Texture{
         private:
             static bool hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces);
             static std::string buildCubeTextureId(const std::string paths[6]);

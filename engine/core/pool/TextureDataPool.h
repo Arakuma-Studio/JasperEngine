@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <atomic>
 
-namespace doriax{
+namespace jasperengine{
 
     typedef std::map< std::string, std::shared_ptr<std::array<TextureData,6>> > texturesdata_t;
 
@@ -34,7 +34,7 @@ namespace doriax{
         }
     };
 
-    class DORIAX_API TextureDataPool{
+    class JASPERENGINE_API TextureDataPool{
     private:
         static texturesdata_t& getMap();
 

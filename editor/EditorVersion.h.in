@@ -1,4 +1,4 @@
 // Configured by CMake into the build directory, edit this file and not the copy
 #pragma once
 
-#define DORIAX_EDITOR_VERSION "@DORIAXEDITOR_VERSION@"
+#define JASPERENGINE_EDITOR_VERSION "@JASPERENGINE_EDITOR_VERSION@"

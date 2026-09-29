@@ -9,7 +9,7 @@
 #include <string>
 #include <memory>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class Out {
     private:
         static OutputWindow* outputWindow;

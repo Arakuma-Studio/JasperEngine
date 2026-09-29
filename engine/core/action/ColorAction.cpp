@@ -4,7 +4,7 @@
 #include "ColorAction.h"
 #include "util/Color.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ColorAction::ColorAction(Scene* scene): TimedAction(scene){
     addComponent<ColorActionComponent>();

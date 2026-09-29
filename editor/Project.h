@@ -28,7 +28,7 @@
 #include <atomic>
 #include <mutex>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     struct LocalBuildSettings;
 
@@ -491,7 +491,7 @@ namespace doriax::editor{
         std::vector<std::filesystem::path> findProjectFiles(const std::function<bool(const std::string&)>& matches) const;
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
-        // The standalone build reads shaders from the editor cache (DORIAX_SHADER_PATH)
+        // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
         // and cannot compile, so a variant the editor never draws with is missing there.
         void buildStandaloneShaderCache();
 
@@ -662,7 +662,7 @@ namespace doriax::editor{
         void loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode);
         bool saveProject(bool userCalled = false, std::function<void()> callback = nullptr);
         bool saveProjectFile();
-        // Per-user editor state (.doriax/user/workspace.yaml), never project.yaml
+        // Per-user editor state (.jasperengine/user/workspace.yaml), never project.yaml
         bool saveWorkspaceFile();
 
         bool loadProject(const std::filesystem::path path, bool updateLastOpened = true);

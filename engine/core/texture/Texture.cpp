@@ -5,7 +5,7 @@
 
 #include "render/SystemRender.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Texture::Texture(){
     this->render = NULL;

@@ -8,14 +8,14 @@
 #include "math/Matrix3.h"
 #include "math/Vector4.h"
 
-namespace doriax {
+namespace jasperengine {
 
     class Quaternion;
     class AABB;
     class OBB;
     class Plane;
 
-    class DORIAX_API Matrix4{
+    class JASPERENGINE_API Matrix4{
 
     private:
 

@@ -13,7 +13,7 @@
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
 // thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
 // (re-check when sokol_gfx is updated)
-#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+#if defined(JASPERENGINE_EDITOR) && defined(SOKOL_VULKAN)
 #include <vulkan/vulkan.h>
 
 namespace {
@@ -38,10 +38,10 @@ VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
 }
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 const void* SokolTexture::getVulkanView(sg_view view) {
-#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+#if defined(JASPERENGINE_EDITOR) && defined(SOKOL_VULKAN)
     const _sg_view_t* resource = _sg_lookup_view(view.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img_view) : nullptr;
 #else
@@ -51,7 +51,7 @@ const void* SokolTexture::getVulkanView(sg_view view) {
 }
 
 const void* SokolTexture::getVulkanImage(sg_image image) {
-#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+#if defined(JASPERENGINE_EDITOR) && defined(SOKOL_VULKAN)
     const _sg_image_t* resource = _sg_lookup_image(image.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img) : nullptr;
 #else

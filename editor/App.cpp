@@ -53,7 +53,7 @@
   #include <shlobj.h>
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -447,7 +447,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::KeyboardShortcuts, "Keyboard Shortcuts"),
         menuCommand(AppMenuCommand::ReportIssue, "Report an Issue..."),
         menuSeparator(),
-        menuCommand(AppMenuCommand::About, "About Doriax")
+        menuCommand(AppMenuCommand::About, "About JasperEngine")
     }));
     return menu;
 }
@@ -459,7 +459,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     switch (action) {
         case AppMenuCommand::NewProject: {
             if (project.isAnyScenePlaying()) return;
-            std::string projectName = "MyDoriaxProject";
+            std::string projectName = "MyJasperEngineProject";
             auto startFreshProject = [this, projectName]() {
                 requestProjectChange([this, projectName]() {
                     if (project.createTempProject(projectName, true)) aiChatWindow->startNewChat();
@@ -669,7 +669,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
             const char* url = action == AppMenuCommand::Documentation
-                ? "https://docs.doriax.org/" : "https://github.com/doriaxengine/doriax/issues";
+                ? "https://github.com/JasperRaccoon/JasperEngine" : "https://github.com/JasperRaccoon/JasperEngine/issues";
             auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
             if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url)) {
                 registerAlert("Open in Browser", std::string("Could not open your browser. Visit:\n") + url);
@@ -1896,8 +1896,8 @@ void editor::App::engineInit(int argc, char** argv) {
         }
     };
 
-    ShaderPool::setShaderBuilder([this](doriax::ShaderKey shaderKey) -> doriax::ShaderBuildResult {
-        static doriax::editor::ShaderBuilder builder;  // Make static to reuse
+    ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
+        static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
     });
 
@@ -1950,10 +1950,10 @@ void editor::App::loadStartupProject() {
         if (project.loadProject(lastProjectPath)) {
             Out::info("Loaded last opened project: \"%s\"", lastProjectPath.string().c_str());
         } else {
-            project.createTempProject("MyDoriaxProject");
+            project.createTempProject("MyJasperEngineProject");
         }
     } else {
-        project.createTempProject("MyDoriaxProject");
+        project.createTempProject("MyJasperEngineProject");
     }
 
     projectLoading = false;
@@ -2710,7 +2710,7 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      transmission adds foliageTransmission to u_fs_pbrParams.
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v29";
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v29";
 }
 
 void editor::App::pushTabNotificationStyle(){

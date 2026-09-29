@@ -4,7 +4,7 @@
 #include "Tilemap.h"
 #include "subsystem/MeshSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Tilemap::Tilemap(Scene* scene): Mesh(scene){
     addComponent<TilemapComponent>();

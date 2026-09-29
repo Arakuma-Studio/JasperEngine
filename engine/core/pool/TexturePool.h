@@ -11,11 +11,11 @@
 #include <array>
 #include <set>
 
-namespace doriax{
+namespace jasperengine{
 
     typedef std::map< std::string, std::shared_ptr<TextureRender> > textures_t;
 
-    class DORIAX_API TexturePool{
+    class JASPERENGINE_API TexturePool{
     private:
         static textures_t& getMap();
         static std::set<std::string>& getInvalidated();

@@ -5,7 +5,7 @@
 
 #include "Stream.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::MeshChangeCmd::MeshChangeCmd(Project* project, uint32_t sceneId, Entity entity, MeshComponent mesh){
     this->project = project;

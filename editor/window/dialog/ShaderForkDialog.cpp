@@ -10,7 +10,7 @@
 
 #include <cstring>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 int ShaderForkDialog::shaderNameCharFilter(ImGuiInputTextCallbackData* data) {
     ImWchar c = data->EventChar;
@@ -217,4 +217,4 @@ void ShaderForkDialog::show() {
     ImGui::EndPopup();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

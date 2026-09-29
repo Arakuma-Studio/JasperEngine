@@ -10,7 +10,7 @@
 
 #include <array>
 
-namespace doriax{
+namespace jasperengine{
 
     class STBText;
 
@@ -18,7 +18,7 @@ namespace doriax{
     //for what it misses. Empty slots are skipped, the built-in fonts close the chain
     typedef std::array<std::string, MAX_TEXT_FONTS> FontArray;
 
-    struct DORIAX_API TextComponent{
+    struct JASPERENGINE_API TextComponent{
         bool loaded = false;
 
         FontArray font;

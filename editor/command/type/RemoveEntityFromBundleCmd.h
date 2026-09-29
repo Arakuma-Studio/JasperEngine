@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <string>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class RemoveEntityFromBundleCmd: public Command{
 

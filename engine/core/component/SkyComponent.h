@@ -9,9 +9,9 @@
 #include "shader/ShaderUniforms.h"
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API SkyComponent{
+    struct JASPERENGINE_API SkyComponent{
         bool loaded = false;
         bool loadCalled = false;
 

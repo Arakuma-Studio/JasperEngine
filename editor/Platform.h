@@ -7,7 +7,7 @@
 #include "Project.h"
 #include <cstdarg>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class Platform : public System{
     private:

@@ -7,9 +7,9 @@
 #include "buffer/Buffer.h"
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API IndexBuffer: public Buffer {
+    class JASPERENGINE_API IndexBuffer: public Buffer {
 
     private:
         std::vector<unsigned char> vectorBuffer;

@@ -28,7 +28,7 @@
 //#include <thread>
 //#include <chrono>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -516,7 +516,7 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
         return ShaderBuildResult(shaderDataCache[shaderKey], ResourceLoadState::Finished);
     }
 
-    // Try disk cache (<cache>/doriax/shaders/<version>/<basename>.sdat). Forked shaders
+    // Try disk cache (<cache>/jasperengine/shaders/<version>/<basename>.sdat). Forked shaders
     // are cached too (the run-build / standalone runtime loads shaders from this same
     // dir and cannot compile). A persisted source signature covers both entry points and
     // their exact resolved include graph. The validation key is the storage key

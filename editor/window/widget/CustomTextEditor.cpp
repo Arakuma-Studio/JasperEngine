@@ -23,7 +23,7 @@
 #include <Windows.h>
 #endif
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
@@ -388,9 +388,9 @@ void CustomTextEditor::addEngineAPISuggestions() {
     // "CppMethod" is unbound in Lua: suggesting it there yields a nil call at runtime.
     const bool isLua = (language == SyntaxLanguage::Lua);
 
-    // In C++ the engine's top-level classes and enums are reached through "doriax::"
+    // In C++ the engine's top-level classes and enums are reached through "jasperengine::"
     if (!isLua) {
-        suggestions->AddSymbol("doriax", SuggestionKind::Module, "namespace doriax");
+        suggestions->AddSymbol("jasperengine", SuggestionKind::Module, "namespace jasperengine");
     }
 
     for (const auto& sym : apiSymbols) {
@@ -402,7 +402,7 @@ void CustomTextEditor::addEngineAPISuggestions() {
         if (it != kindMap.end()) sk = it->second;
         const bool topLevel = !sym.parent || !sym.parent[0];
         suggestions->AddSymbol(sym.name, sk, sym.detail, sym.parent ? sym.parent : "", "",
-                               (topLevel && !isLua) ? "doriax" : "");
+                               (topLevel && !isLua) ? "jasperengine" : "");
 
         if (sk == SuggestionKind::Class && sym.detail) {
             suggestions->SetClassParent(sym.name, baseClassFromDetail(sym.detail));
@@ -2144,7 +2144,7 @@ std::string CustomTextEditor::findEnclosingType(int lineIndex) const {
         }
 
         // "void BoxScript::onUpdate() {" — the qualifier right before the name is the
-        // class, while "doriax::Vector3 helper()" only names a return type
+        // class, while "jasperengine::Vector3 helper()" only names a return type
         size_t paren = line.find('(');
         if (paren != std::string::npos) {
             size_t nameStart = paren;
@@ -2163,7 +2163,7 @@ std::string CustomTextEditor::findEnclosingType(int lineIndex) const {
             if (last != std::string::npos && code[last] == '{') return "";
         }
 
-        // "class BoxScript final : public doriax::Mesh {" — the last word before the base list
+        // "class BoxScript final : public jasperengine::Mesh {" — the last word before the base list
         if (line.rfind("class ", 0) == 0 || line.rfind("struct ", 0) == 0) {
             std::string head = line.substr(0, line.find_first_of(":{"));
             std::string name = wordEndingAt(head, static_cast<int>(head.size()) - 1);
@@ -4171,4 +4171,4 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
     ImGui::PopFont();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

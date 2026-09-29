@@ -32,9 +32,9 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/MorphTracksComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-	class DORIAX_API ActionSystem : public SubSystem {
+	class JASPERENGINE_API ActionSystem : public SubSystem {
 
     private:
 

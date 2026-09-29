@@ -5,7 +5,7 @@
 #include "editor/Out.h"
 #include "Stream.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::CreateEntityBundleCmd::CreateEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& bundleNode){
     this->project = project;

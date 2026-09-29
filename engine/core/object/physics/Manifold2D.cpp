@@ -5,7 +5,7 @@
 
 #include "PhysicsSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Manifold2D::Manifold2D(Scene* scene, const b2Manifold* manifold){
     this->scene = scene;

@@ -5,7 +5,7 @@
 
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ObjectRender::ObjectRender(){ }
 

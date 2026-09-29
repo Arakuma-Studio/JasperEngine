@@ -14,7 +14,7 @@
 #include <functional>
 
 // IMPORTANT: Include platform headers at global scope (not inside any namespace)
-// to avoid injecting standard names inside doriax::std, which breaks builds.
+// to avoid injecting standard names inside jasperengine::std, which breaks builds.
 #if defined(_WIN32) && defined(_MSC_VER)
     #ifndef NOMINMAX
     #define NOMINMAX
@@ -28,7 +28,7 @@
     #include <setjmp.h>
 #endif
 
-namespace doriax {
+namespace jasperengine {
 
     struct CrashInfo {
         int code;                // signal number or Windows exception code
@@ -221,4 +221,4 @@ namespace doriax {
     }
 #endif
 
-} // namespace doriax
+} // namespace jasperengine

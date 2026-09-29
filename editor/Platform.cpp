@@ -6,7 +6,7 @@
 #include "Backend.h"
 #include "EditorHost.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 int editor::Platform::width = 0;
 int editor::Platform::height = 0;

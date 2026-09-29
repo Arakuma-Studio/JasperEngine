@@ -7,7 +7,7 @@
 #include "Log.h"
 #include "OBB.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 const AABB AABB::ZERO(0, 0, 0, 0, 0, 0);
 

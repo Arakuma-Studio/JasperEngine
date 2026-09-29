@@ -8,7 +8,7 @@
 #include "box2d/box2d.h"
 #include "subsystem/PhysicsSystem.h"
 
-namespace doriax{
+namespace jasperengine{
 
     struct Box2DWorldRayCastOutput{
         b2BodyId bodyId;

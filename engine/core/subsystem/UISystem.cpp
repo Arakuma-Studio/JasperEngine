@@ -15,7 +15,7 @@
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
 static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;

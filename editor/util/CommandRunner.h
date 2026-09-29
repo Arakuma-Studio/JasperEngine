@@ -15,7 +15,7 @@
 #include <sys/types.h>  // pid_t
 #endif
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
 

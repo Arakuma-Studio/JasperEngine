@@ -6,9 +6,9 @@
 
 #include "EntityHandle.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Joint3D: public EntityHandle{
+    class JASPERENGINE_API Joint3D: public EntityHandle{
     public:
         Joint3D(Scene* scene);
         Joint3D(Scene* scene, Entity entity);

@@ -6,7 +6,7 @@
 #include "component/KeyframeTracksComponent.h"
 #include "component/RotateTracksComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 RotateTracks::RotateTracks(Scene* scene): Action(scene){
     addComponent<KeyframeTracksComponent>();

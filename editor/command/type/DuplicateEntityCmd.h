@@ -11,7 +11,7 @@
 
 #include "yaml-cpp/yaml.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class DuplicateEntityCmd: public Command{
 

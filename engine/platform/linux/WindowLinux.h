@@ -18,13 +18,13 @@
 #include <functional>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
     struct WindowLinuxConfig {
-        std::string title = "Doriax";
+        std::string title = "JasperEngine";
         // WM_CLASS. Desktop environments match it against an installed
         // <app_id>.desktop entry, which is where the window icon comes from.
-        std::string appId = "Doriax";
+        std::string appId = "JasperEngine";
         int width = 960;
         int height = 540;
         bool resizable = true;

@@ -6,7 +6,7 @@
 #include "io/File.h"
 #include "io/FileData.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 tinyxml2::XMLElement* XMLUtils::getNodeForKey(const char* XMLFilePath, const char* rootName, const char* key, tinyxml2::XMLElement** rootNode, tinyxml2::XMLDocument* doc){
     tinyxml2::XMLElement* curNode = NULL;

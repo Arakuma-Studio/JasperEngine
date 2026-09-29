@@ -4,9 +4,9 @@
 #ifndef IMAGE_COMPONENT_H
 #define IMAGE_COMPONENT_H
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API ImageComponent{
+    struct JASPERENGINE_API ImageComponent{
         //Nine patch rect
         unsigned int patchMarginLeft = 0;
         unsigned int patchMarginRight = 0;

@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class Project;
 

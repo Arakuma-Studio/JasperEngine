@@ -6,8 +6,8 @@
 
 #include "object/EntityHandle.h"
 
-namespace doriax{
-    class DORIAX_API SkyBox: public EntityHandle{
+namespace jasperengine{
+    class JASPERENGINE_API SkyBox: public EntityHandle{
 
     public:
         SkyBox(Scene* scene);

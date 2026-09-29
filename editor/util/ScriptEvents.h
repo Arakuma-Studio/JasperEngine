@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     enum class ScriptEventSource {
         Engine,
@@ -23,7 +23,7 @@ namespace doriax::editor {
     };
 
     struct ScriptEventParam {
-        const char* type; // engine types without the doriax namespace
+        const char* type; // engine types without the jasperengine namespace
         const char* name;
     };
 

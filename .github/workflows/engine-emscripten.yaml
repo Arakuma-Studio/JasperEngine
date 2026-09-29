@@ -4,7 +4,7 @@ on: push
 
 env:
   BUILD_TYPE: Debug
-  TARGET: doriax-project
+  TARGET: jasperengine-project
 
 jobs:
   build:

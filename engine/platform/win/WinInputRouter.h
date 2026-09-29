@@ -14,7 +14,7 @@
 
 #include "Input.h"
 
-namespace doriax {
+namespace jasperengine {
 
     // Win32 input-message translation. The editor and a game cannot share a
     // WNDPROC -- the editor's hands messages to ImGui and keeps a virtual

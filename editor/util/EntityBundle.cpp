@@ -3,7 +3,7 @@
 
 #include "EntityBundle.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 uint32_t EntityBundle::getInstanceId(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
@@ -205,4 +205,4 @@ bool EntityBundle::hasComponentOverride(uint32_t sceneId, Entity entity, Compone
 	return false;
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

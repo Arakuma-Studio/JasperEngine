@@ -8,32 +8,32 @@
 #include <algorithm>
 #include <cstdlib>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
 std::filesystem::path userConfigDirectory() {
 #if defined(_WIN32)
     if (const char* appData = std::getenv("APPDATA"); appData && *appData) {
-        return std::filesystem::path(appData) / "Doriax";
+        return std::filesystem::path(appData) / "JasperEngine";
     }
 #elif defined(__APPLE__)
     if (const char* home = std::getenv("HOME"); home && *home) {
-        return std::filesystem::path(home) / "Library" / "Application Support" / "Doriax";
+        return std::filesystem::path(home) / "Library" / "Application Support" / "JasperEngine";
     }
 #else
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-        return std::filesystem::path(xdg) / "doriax";
+        return std::filesystem::path(xdg) / "jasperengine";
     }
     if (const char* home = std::getenv("HOME"); home && *home) {
-        return std::filesystem::path(home) / ".config" / "doriax";
+        return std::filesystem::path(home) / ".config" / "jasperengine";
     }
 #endif
     return std::filesystem::current_path();
 }
 
 bool isWritableDirectory(const std::filesystem::path& dir) {
-    const std::filesystem::path probe = dir / ".doriax_write_test";
+    const std::filesystem::path probe = dir / ".jasperengine_write_test";
     std::error_code ec;
     {
         std::ofstream f(probe);
@@ -643,9 +643,9 @@ void AppSettings::setAiSettings(const ai::Settings& settings) {
     saveSettings();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
 
@@ -656,7 +656,7 @@ std::filesystem::path localSettingsFile(const std::filesystem::path& projectFile
     const std::filesystem::path projectDir = projectFile.has_filename() && projectFile.filename() == "project.yaml"
         ? projectFile.parent_path()
         : projectFile;
-    return projectDir / ".doriax" / "user" / "build.yaml";
+    return projectDir / ".jasperengine" / "user" / "build.yaml";
 }
 
 std::string legacyProjectKey(const std::filesystem::path& projectFile) {
@@ -692,7 +692,7 @@ bool storeLocalSettings(const std::filesystem::path& projectFile, const YAML::No
         Out::error("Failed to open local build settings for writing: %s", file.string().c_str());
         return false;
     }
-    fout << "# Build configuration for this machine only. Version control ignores .doriax/.\n";
+    fout << "# Build configuration for this machine only. Version control ignores .jasperengine/.\n";
     fout << YAML::Dump(node) << "\n";
     fout.close();
     if (!fout) {
@@ -798,4 +798,4 @@ bool AppSettings::setBuildSettings(const std::filesystem::path& projectFile, con
     return storeLocalSettings(projectFile, local);
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

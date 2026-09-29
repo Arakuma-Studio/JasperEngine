@@ -7,7 +7,7 @@
 #include "render/Render.h"
 #include "sokol_gfx.h"
 
-namespace doriax{
+namespace jasperengine{
     class SokolBuffer{
 
     private:

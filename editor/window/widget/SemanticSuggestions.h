@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     enum class SuggestionKind {
         Keyword,
@@ -40,7 +40,7 @@ namespace doriax::editor {
         std::string documentation;   // Full documentation
         std::string parentType;      // The class/type this belongs to (if any)
         std::string typeInfo;        // Declared type (for variables/fields)
-        std::string namespaceName;   // Namespace a top-level symbol is reached through ("doriax::")
+        std::string namespaceName;   // Namespace a top-level symbol is reached through ("jasperengine::")
         SuggestionKind kind;         // Target kind
         int score = 0;               // Resulting score
     };
@@ -95,7 +95,7 @@ namespace doriax::editor {
         // True if name is a registered Class or Enum symbol (for static access like Engine.foo / Scaling.NATIVE)
         bool IsKnownClassOrEnum(const std::string& name) const;
 
-        // True if some symbol lives in this namespace (for scope access like doriax::Vector3)
+        // True if some symbol lives in this namespace (for scope access like jasperengine::Vector3)
         bool IsKnownNamespace(const std::string& name) const;
 
         // Signature help: find parameter signatures for a function/method
@@ -146,4 +146,4 @@ namespace doriax::editor {
                           const std::string& query);
     };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

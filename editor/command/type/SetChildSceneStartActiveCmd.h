@@ -6,7 +6,7 @@
 #include "command/Command.h"
 #include "Project.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class SetChildSceneStartActiveCmd : public Command {
     private:
         Project* project;

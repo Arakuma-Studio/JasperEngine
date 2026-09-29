@@ -12,7 +12,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -197,7 +197,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "search_engine_api",
-            "Search authoritative Doriax engine API symbols generated from Lua bindings and C++ headers. Use this before writing scripts or engine API code.",
+            "Search authoritative JasperEngine API symbols generated from Lua bindings and C++ headers. Use this before writing scripts or engine API code.",
             objectSchema({
                 {"query", stringSchema("API symbol, class, method, property, or behavior to search for, e.g. Mesh setColor")},
                 {"parent", stringSchema("Optional class/enum parent filter, e.g. Mesh")},
@@ -716,7 +716,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_script_file",
-            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use Doriax table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the body's real mass, not from a guessed magnitude: 3D mass is shape volume * density (default density 1000 kg/m3), while 2D mass is shape area * density (default density 1), so never carry the 3D default over to a 2D body. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh entities, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
+            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use JasperEngine table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the body's real mass, not from a guessed magnitude: 3D mass is shape volume * density (default density 1000 kg/m3), while 2D mass is shape area * density (default density 1), so never carry the 3D default over to a 2D body. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh entities, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
             objectSchema({
                 {"path", stringSchema("Existing safe project-relative script path. Allowed extensions: .lua, .cpp, .h, .hpp")},
                 {"content", stringSchema("Complete replacement file contents")},
@@ -757,7 +757,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_project_build_file",
-            "Write ProjectBuild.cmake at the project root: the optional CMake hook carrying extra include directories, libraries, and compile definitions. The generated CMakeLists.txt is rewritten on every build, so it is never the place for custom build settings and the user must never be asked to edit it. Attach settings to ${DORIAX_TARGET} instead of a literal target name (it differs between the editor and exported builds) and use ${DORIAX_SCRIPTS_DIR} as the root of script paths. This replaces the whole file, so read the current one with read_resource_file first and keep the settings it already has.",
+            "Write ProjectBuild.cmake at the project root: the optional CMake hook carrying extra include directories, libraries, and compile definitions. The generated CMakeLists.txt is rewritten on every build, so it is never the place for custom build settings and the user must never be asked to edit it. Attach settings to ${JASPERENGINE_TARGET} instead of a literal target name (it differs between the editor and exported builds) and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths. This replaces the whole file, so read the current one with read_resource_file first and keep the settings it already has.",
             objectSchema({
                 {"content", stringSchema("Complete replacement contents of ProjectBuild.cmake")},
                 {"reason", stringSchema("Short reason shown in the approval preview")}
@@ -1188,7 +1188,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "search_engine_source",
-            "Grep the authoritative Doriax engine source (the real C++ headers and Lua binding files under the editor's engine/ tree) for exact ground-truth signatures, overloads, enum values, macros, and key codes. Prefer this over guessing: search_engine_api is a curated index that uses Lua-style names and omits C++ overloads, so verify real signatures here before writing engine API code. Note key codes are Input.KEY_* in Lua but D_KEY_* macros in C++.",
+            "Grep the authoritative JasperEngine source (the real C++ headers and Lua binding files under the editor's engine/ tree) for exact ground-truth signatures, overloads, enum values, macros, and key codes. Prefer this over guessing: search_engine_api is a curated index that uses Lua-style names and omits C++ overloads, so verify real signatures here before writing engine API code. Note key codes are Input.KEY_* in Lua but D_KEY_* macros in C++.",
             objectSchema({
                 {"query", stringSchema("Case-insensitive text to find in the engine source, e.g. 'Quaternion(', 'D_KEY_', 'isKeyPressed', 'setPosition'")},
                 {"path_filter", stringSchema("Optional substring the file path must contain, e.g. 'Input.h', 'math/', 'binding'")},
@@ -1198,7 +1198,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "read_engine_source",
-            "Read a file from the authoritative Doriax engine source tree. Paths are relative to the engine/ root, e.g. core/math/Quaternion.h, core/Input.h, core/object/Object.h, or core/script/binding/CoreClassesLua.cpp. Use after search_engine_source to see full signatures and enums in context.",
+            "Read a file from the authoritative JasperEngine source tree. Paths are relative to the engine/ root, e.g. core/math/Quaternion.h, core/Input.h, core/object/Object.h, or core/script/binding/CoreClassesLua.cpp. Use after search_engine_source to see full signatures and enums in context.",
             objectSchema({
                 {"path", stringSchema("Engine-source-relative file path, e.g. core/math/Quaternion.h")},
                 {"start_line", integerSchema("Optional 1-based first line to return")},
@@ -2050,4 +2050,4 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     return name;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

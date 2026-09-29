@@ -15,7 +15,7 @@
 #include <functional>
 #include <unordered_set>
 
-using namespace doriax;
+using namespace jasperengine;
 
 float ActionSystem::getParticleInverseScale(float value){
     if (value == 0.0f)

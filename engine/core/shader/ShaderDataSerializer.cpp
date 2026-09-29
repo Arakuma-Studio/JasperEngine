@@ -12,7 +12,7 @@
 #include <limits>
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 
 constexpr uint32_t SDAT_MAGIC = 0x54414453; // 'S''D''A''T' little-endian
 // Serialization format version of the .sdat blob. Bump only when the on-disk
@@ -777,4 +777,4 @@ bool ShaderDataSerializer::readFromBytes(const std::vector<unsigned char>& bytes
     return ShaderDataSerializerHelper::readShaderData(in, "<memory>", expectedShaderKey, outShaderData, err);
 }
 
-} // namespace doriax
+} // namespace jasperengine

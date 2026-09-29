@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class InputTextContextMenu {
 public:
@@ -26,4 +26,4 @@ public:
                                 const Options& options);
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

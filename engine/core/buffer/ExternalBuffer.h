@@ -7,9 +7,9 @@
 #include "buffer/Buffer.h"
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ExternalBuffer : public Buffer {
+    class JASPERENGINE_API ExternalBuffer : public Buffer {
 
     protected:
         std::string name;

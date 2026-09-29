@@ -11,11 +11,11 @@
 typedef struct lua_State lua_State;
 typedef int (*lua_CFunction) (lua_State *L);
 
-namespace doriax {
+namespace jasperengine {
 
     class Scene;
 
-    class DORIAX_API LuaBinding {
+    class JASPERENGINE_API LuaBinding {
         
         friend class Engine;
         

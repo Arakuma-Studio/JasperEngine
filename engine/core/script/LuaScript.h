@@ -6,7 +6,7 @@
 
 #include "Object.h"
 
-namespace doriax {
+namespace jasperengine {
     class LuaScript {
     public:
         static void setObject(const std::string& global, Object* object);

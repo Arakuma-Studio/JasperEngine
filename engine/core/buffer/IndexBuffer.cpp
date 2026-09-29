@@ -5,7 +5,7 @@
 #include "Log.h"
 #include "render/ObjectRender.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 IndexBuffer::IndexBuffer(): Buffer(){
     createIndexAttribute();

@@ -6,7 +6,7 @@
 #include "component/ImageComponent.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Progressbar::Progressbar(Scene* scene): Image(scene){
     addComponent<ProgressbarComponent>();

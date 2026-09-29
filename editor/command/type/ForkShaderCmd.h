@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     // Forks a built-in shader and points a component's customShader (customDepthShader
     // for a DEPTH fork, or a scene's default shader property) at the new fork as a single

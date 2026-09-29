@@ -5,7 +5,7 @@
 #include "System.h"
 #include <stdarg.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 void Log::print(const char *fmt, ...) {
     va_list arg_ptr;

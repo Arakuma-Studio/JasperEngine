@@ -11,7 +11,7 @@
 #include <chrono>
 #include <vector>
 
-namespace doriax {
+namespace jasperengine {
 
     enum class ResourceType {
         Shader,
@@ -37,7 +37,7 @@ namespace doriax {
         bool hasActiveBuilds = false;
     };
 
-    class DORIAX_API ResourceProgress {
+    class JASPERENGINE_API ResourceProgress {
     private:
         typedef std::unordered_map<uint64_t, ResourceBuildInfo> resource_builds_t;
 

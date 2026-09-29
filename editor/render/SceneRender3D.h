@@ -5,7 +5,7 @@
 
 #include "SceneRender.h"
 
-#include "Doriax.h"
+#include "JasperEngine.h"
 #include "gizmo/ViewportGizmo.h"
 
 #include <cstddef>
@@ -14,7 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     struct LightObjects{
         Sprite* icon = nullptr;

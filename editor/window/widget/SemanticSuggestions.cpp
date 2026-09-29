@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 SemanticSuggestions::SemanticSuggestions()
     : minPrefixLength(1)
@@ -210,7 +210,7 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
             // Members of an unknown type are never shown (word fallback handled above)
             if (!restrictToType) continue;
             if (!context.targetNamespace.empty()) {
-                // "doriax::" reaches the namespace's own classes, enums and functions
+                // "jasperengine::" reaches the namespace's own classes, enums and functions
                 if (!symbol.parentType.empty() || symbol.namespaceName != context.targetNamespace) continue;
             } else {
                 // Only members of the target type or its ancestors
@@ -512,4 +512,4 @@ const char* SemanticSuggestions::GetKindName(SuggestionKind kind) {
     }
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

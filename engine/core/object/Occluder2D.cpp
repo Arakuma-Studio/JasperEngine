@@ -3,7 +3,7 @@
 
 #include "Occluder2D.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Occluder2D::Occluder2D(Scene* scene): Object(scene){
     addComponent<Occluder2DComponent>();

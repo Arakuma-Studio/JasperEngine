@@ -10,7 +10,7 @@
 #include "soloud_thread.h"
 #include "soloud_wav.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 bool AudioSystem::inited = false;
 

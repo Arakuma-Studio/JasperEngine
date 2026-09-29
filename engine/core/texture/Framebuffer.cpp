@@ -6,7 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Framebuffer::Framebuffer(){
     this->width = 512;

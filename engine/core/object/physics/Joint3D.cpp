@@ -7,7 +7,7 @@
 #include "subsystem/PhysicsSystem.h"
 #include "component/Joint3DComponent.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Joint3D::Joint3D(Scene* scene): EntityHandle(scene){
     addComponent<Joint3DComponent>();

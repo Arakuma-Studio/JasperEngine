@@ -6,8 +6,8 @@
 
 #include "UILayout.h"
 
-namespace doriax{
-    class DORIAX_API Polygon: public UILayout{
+namespace jasperengine{
+    class JASPERENGINE_API Polygon: public UILayout{
 
     public:
         Polygon(Scene* scene);

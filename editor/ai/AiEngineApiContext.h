@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class AiEngineApiContext {
 public:
@@ -16,4 +16,4 @@ public:
                        int maxResults);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

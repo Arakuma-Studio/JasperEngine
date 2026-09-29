@@ -8,8 +8,8 @@
 #include "math/Rect.h"
 #include "sokol/SokolCamera.h"
 
-namespace doriax{
-    class DORIAX_API CameraRender{
+namespace jasperengine{
+    class JASPERENGINE_API CameraRender{
     public:
         //***Backend***
         SokolCamera backend;

@@ -9,7 +9,7 @@
 #include <functional>
 #include <vector>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     // Erosion over a normalized height buffer. The brush passes its own weight through
     // "falloff", which is what keeps the effect inside the stamp.

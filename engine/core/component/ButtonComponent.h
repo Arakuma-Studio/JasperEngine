@@ -7,9 +7,9 @@
 #include "util/FunctionSubscribe.h"
 #include "texture/Texture.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API ButtonComponent{
+    struct JASPERENGINE_API ButtonComponent{
         Entity label = NULL_ENTITY;
 
         Texture textureNormal;

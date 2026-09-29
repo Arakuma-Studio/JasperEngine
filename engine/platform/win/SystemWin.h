@@ -1,6 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
-// doriax::System over WindowWin. It keeps no state of its own, so the editor
+// jasperengine::System over WindowWin. It keeps no state of its own, so the editor
 // driving WindowWin directly and a game going through here stay in agreement.
 
 #ifndef SystemWin_h
@@ -8,7 +8,7 @@
 
 #include "System.h"
 
-namespace doriax {
+namespace jasperengine {
 
     class WinInputRouter;
 

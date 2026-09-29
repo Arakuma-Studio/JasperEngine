@@ -8,9 +8,9 @@
 #include "Object.h"
 #include "component/SoundComponent.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Sound: public EntityHandle{
+    class JASPERENGINE_API Sound: public EntityHandle{
     public:
         Sound(Scene* scene);
         Sound(Scene* scene, bool is3D);

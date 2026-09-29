@@ -7,8 +7,8 @@
 #include "action/Action.h"
 #include "action/Ease.h"
 
-namespace doriax{
-    class DORIAX_API RotateTracks: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API RotateTracks: public Action{
 
     public:
         RotateTracks(Scene* scene);

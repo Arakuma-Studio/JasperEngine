@@ -10,7 +10,7 @@
 #include <cmath>
 #include <functional>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 void SelectableTextView::rebuild(const std::vector<Paragraph>& paragraphs, float wrapWidth) {
     buf.clear();
@@ -597,4 +597,4 @@ void SelectableTextView::draw(const char* id, const ImVec2& size,
     ImGui::EndChild();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -53,7 +53,7 @@
 - (void)reshape {
     [super reshape];
     [[self openGLContext] update];
-    doriax::WindowMac::refreshDrawableSize();
+    jasperengine::WindowMac::refreshDrawableSize();
 }
 
 - (BOOL)acceptsFirstResponder { return YES; }

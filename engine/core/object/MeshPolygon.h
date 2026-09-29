@@ -6,8 +6,8 @@
 
 #include "Mesh.h"
 
-namespace doriax{
-    class DORIAX_API MeshPolygon: public Mesh{
+namespace jasperengine{
+    class JASPERENGINE_API MeshPolygon: public Mesh{
 
     public:
         MeshPolygon(Scene* scene);

@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 struct ModelInfo {
     std::string id;
@@ -71,4 +71,4 @@ private:
     HttpClient httpClient;
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

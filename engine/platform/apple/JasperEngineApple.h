@@ -1,24 +1,24 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef DoriaxApple_h
-#define DoriaxApple_h
+#ifndef JasperEngineApple_h
+#define JasperEngineApple_h
 
 #include "System.h"
 
-class DoriaxApple: public doriax::System{
+class JasperEngineApple: public jasperengine::System{
 
 public:
 
-    DoriaxApple();
+    JasperEngineApple();
 
-    virtual ~DoriaxApple();
+    virtual ~JasperEngineApple();
 
     virtual sg_environment getSokolEnvironment() override;
     virtual sg_swapchain getSokolSwapchain() override;
 
-    virtual void setMouseCursor(doriax::CursorType type) override;
-    virtual void setMouseMode(doriax::MouseMode mode) override;
+    virtual void setMouseCursor(jasperengine::CursorType type) override;
+    virtual void setMouseMode(jasperengine::MouseMode mode) override;
 
     virtual int getScreenWidth() override;
     virtual int getScreenHeight() override;
@@ -42,7 +42,7 @@ public:
     virtual long getLongForKey(const char *key, long defaultValue) override;
     virtual float getFloatForKey(const char *key, float defaultValue) override;
     virtual double getDoubleForKey(const char *key, double defaultValue) override;
-    virtual doriax::Data getDataForKey(const char* key, const doriax::Data& defaultValue) override;
+    virtual jasperengine::Data getDataForKey(const char* key, const jasperengine::Data& defaultValue) override;
     virtual std::string getStringForKey(const char *key, const std::string& defaultValue) override;
 
     virtual void setBoolForKey(const char *key, bool value) override;
@@ -50,17 +50,17 @@ public:
     virtual void setLongForKey(const char *key, long value) override;
     virtual void setFloatForKey(const char *key, float value) override;
     virtual void setDoubleForKey(const char *key, double value) override;
-    virtual void setDataForKey(const char* key, doriax::Data& value) override;
+    virtual void setDataForKey(const char* key, jasperengine::Data& value) override;
     virtual void setStringForKey(const char* key, const std::string& value) override;
 
     virtual void removeKey(const char *key) override;
 
     virtual void initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent) override;
-    virtual void setMaxAdContentRating(doriax::AdMobRating rating) override;
+    virtual void setMaxAdContentRating(jasperengine::AdMobRating rating) override;
     virtual void loadInterstitialAd(const std::string& adUnitID) override;
     virtual bool isInterstitialAdLoaded() override;
     virtual void showInterstitialAd() override;
 };
 
 
-#endif /* DoriaxApple_h */
+#endif /* JasperEngineApple_h */

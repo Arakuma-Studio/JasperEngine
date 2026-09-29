@@ -11,7 +11,7 @@
 
 #include "render/RenderUtil.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class RotateGizmo: public Object{
     private:

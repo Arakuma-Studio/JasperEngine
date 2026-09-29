@@ -12,7 +12,7 @@
 #include "SceneSettings.h"
 #include "util/Color.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
     enum UpdateFlags : uint64_t {
         UpdateFlags_None                = 0,
         UpdateFlags_Transform           = 1 << 0,

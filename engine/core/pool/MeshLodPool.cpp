@@ -13,7 +13,7 @@
 #include <cstring>
 #include <mutex>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace{
     // share of the source triangles each level keeps

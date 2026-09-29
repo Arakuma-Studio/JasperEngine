@@ -15,7 +15,7 @@
 
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::vector<SceneManager::SceneEntry> SceneManager::entries;
 uint32_t SceneManager::currentId = 0;

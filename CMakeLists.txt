@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
-project(doriax-editor)
+project(jasperengine-editor)
 
 # Same as CI (.github/workflows/cmake.yml): git describe --tags --always --dirty.
-# CI passes DORIAXEDITOR_VERSION explicitly; local builds ask git here.
-if(NOT DORIAXEDITOR_VERSION)
+# CI passes JASPERENGINE_EDITOR_VERSION explicitly; local builds ask git here.
+if(NOT JASPERENGINE_EDITOR_VERSION)
     find_package(Git QUIET)
     if(GIT_FOUND)
         execute_process(
             COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            OUTPUT_VARIABLE DORIAXEDITOR_VERSION
+            OUTPUT_VARIABLE JASPERENGINE_EDITOR_VERSION
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
         )
@@ -17,27 +17,27 @@ if(NOT DORIAXEDITOR_VERSION)
 endif()
 
 # Git allows characters that would break the generated C++ and .rc string literals
-string(REGEX REPLACE "[^A-Za-z0-9._+-]" "" DORIAXEDITOR_VERSION "${DORIAXEDITOR_VERSION}")
+string(REGEX REPLACE "[^A-Za-z0-9._+-]" "" JASPERENGINE_EDITOR_VERSION "${JASPERENGINE_EDITOR_VERSION}")
 
-if(NOT DORIAXEDITOR_VERSION)
-    set(DORIAXEDITOR_VERSION "unknown")
+if(NOT JASPERENGINE_EDITOR_VERSION)
+    set(JASPERENGINE_EDITOR_VERSION "unknown")
 endif()
 
 # Windows VERSIONINFO wants four integers, which only a vX.Y[.Z] tag can give.
-set(DORIAX_VERSION_NUMERIC "0,0,0,0")
-if(DORIAXEDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
-    set(DORIAX_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0")
-elseif(DORIAXEDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)$")
-    set(DORIAX_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},0,0")
+set(JASPERENGINE_VERSION_NUMERIC "0,0,0,0")
+if(JASPERENGINE_EDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    set(JASPERENGINE_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0")
+elseif(JASPERENGINE_EDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)$")
+    set(JASPERENGINE_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},0,0")
 endif()
 
-message(STATUS "Doriax version is ${DORIAXEDITOR_VERSION}")
+message(STATUS "JasperEngine version is ${JASPERENGINE_EDITOR_VERSION}")
 
 if(APPLE)
     enable_language(OBJCXX)
 endif()
 
-set(DORIAX_SHARED ON)
+set(JASPERENGINE_SHARED ON)
 
 set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
 
@@ -91,7 +91,7 @@ if(WIN32)
  
     if(MSVC)
         set(PLATFORM_PROPERTIES_FLAGS LINK_FLAGS "/ENTRY:mainCRTStartup")
-        if(DORIAX_SHARED)
+        if(JASPERENGINE_SHARED)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
         else()
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -99,15 +99,15 @@ if(WIN32)
     elseif(MINGW)
         # Same call as the CRT above: a shared engine means one GCC runtime for
         # the editor, the DLL and the plugins, shipped beside the binaries.
-        get_filename_component(DORIAX_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
-        find_file(DORIAX_MINGW_STDCXX libstdc++-6.dll PATHS ${DORIAX_MINGW_BIN} NO_DEFAULT_PATH)
-        find_file(DORIAX_MINGW_PTHREAD libwinpthread-1.dll PATHS ${DORIAX_MINGW_BIN} NO_DEFAULT_PATH)
+        get_filename_component(JASPERENGINE_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        find_file(JASPERENGINE_MINGW_STDCXX libstdc++-6.dll PATHS ${JASPERENGINE_MINGW_BIN} NO_DEFAULT_PATH)
+        find_file(JASPERENGINE_MINGW_PTHREAD libwinpthread-1.dll PATHS ${JASPERENGINE_MINGW_BIN} NO_DEFAULT_PATH)
         # The unwind DLL is named after the toolchain's exception model
-        find_file(DORIAX_MINGW_GCC NAMES libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libgcc_s_sjlj-1.dll
-                  PATHS ${DORIAX_MINGW_BIN} NO_DEFAULT_PATH)
+        find_file(JASPERENGINE_MINGW_GCC NAMES libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libgcc_s_sjlj-1.dll
+                  PATHS ${JASPERENGINE_MINGW_BIN} NO_DEFAULT_PATH)
 
-        if(DORIAX_MINGW_STDCXX AND DORIAX_MINGW_PTHREAD AND DORIAX_MINGW_GCC)
-            set(DORIAX_MINGW_RUNTIME ${DORIAX_MINGW_STDCXX} ${DORIAX_MINGW_PTHREAD} ${DORIAX_MINGW_GCC})
+        if(JASPERENGINE_MINGW_STDCXX AND JASPERENGINE_MINGW_PTHREAD AND JASPERENGINE_MINGW_GCC)
+            set(JASPERENGINE_MINGW_RUNTIME ${JASPERENGINE_MINGW_STDCXX} ${JASPERENGINE_MINGW_PTHREAD} ${JASPERENGINE_MINGW_GCC})
         else()
             message(WARNING "Incomplete GCC runtime next to ${CMAKE_CXX_COMPILER}: the editor will only start from a shell that has it on PATH.")
         endif()
@@ -120,7 +120,7 @@ endif()
 
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
-set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+set(JASPERENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
 # Warnings from vendored code are not ours to fix and only hide our own
 if(MSVC)
@@ -132,32 +132,32 @@ endif()
 # Icon and version resource for one binary. Each target needs its own so
 # OriginalFilename matches the file on disk. SignPath wants metadata on every
 # signed binary, so the DLL gets one too: pass an empty icon_name for it.
-function(doriax_add_windows_resource out_var target_name icon_name original_filename description)
-    set(DORIAX_ORIGINAL_FILENAME ${original_filename})
-    set(DORIAX_FILE_DESCRIPTION ${description})
-    set(DORIAX_INTERNAL_NAME ${target_name})
+function(jasperengine_add_windows_resource out_var target_name icon_name original_filename description)
+    set(JASPERENGINE_ORIGINAL_FILENAME ${original_filename})
+    set(JASPERENGINE_FILE_DESCRIPTION ${description})
+    set(JASPERENGINE_INTERNAL_NAME ${target_name})
 
     if(icon_name)
-        set(DORIAX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/${icon_name}")
-        set(DORIAX_ICON_RESOURCE "GLFW_ICON ICON \"${DORIAX_ICON_FILE}\"")
+        set(JASPERENGINE_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/${icon_name}")
+        set(JASPERENGINE_ICON_RESOURCE "GLFW_ICON ICON \"${JASPERENGINE_ICON_FILE}\"")
     else()
-        set(DORIAX_ICON_RESOURCE "")
+        set(JASPERENGINE_ICON_RESOURCE "")
     endif()
 
     if(original_filename MATCHES "\\.dll$")
-        set(DORIAX_FILE_TYPE "0x2L     // VFT_DLL")
+        set(JASPERENGINE_FILE_TYPE "0x2L     // VFT_DLL")
     else()
-        set(DORIAX_FILE_TYPE "0x1L     // VFT_APP")
+        set(JASPERENGINE_FILE_TYPE "0x1L     // VFT_APP")
     endif()
 
     set(generated_rc "${CMAKE_CURRENT_BINARY_DIR}/resources/${target_name}.rc")
     configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.rc.in"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/jasperengine-editor.rc.in"
         ${generated_rc}
         @ONLY
     )
     if(icon_name)
-        set_property(SOURCE ${generated_rc} APPEND PROPERTY OBJECT_DEPENDS ${DORIAX_ICON_FILE})
+        set_property(SOURCE ${generated_rc} APPEND PROPERTY OBJECT_DEPENDS ${JASPERENGINE_ICON_FILE})
     endif()
 
     add_library(${target_name}-resource OBJECT ${generated_rc})
@@ -168,23 +168,23 @@ function(doriax_add_windows_resource out_var target_name icon_name original_file
 endfunction()
 
 if(WIN32)
-    include(${DORIAX_ROOT}/platform/win/WindowsManifest.cmake)
+    include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
 endif()
 
-set(DORIAX_EDITOR_ICON_OBJECTS)
+set(JASPERENGINE_EDITOR_ICON_OBJECTS)
 if(WIN32)
-    doriax_add_windows_resource(
-        DORIAX_EDITOR_ICON_OBJECTS
-        doriax-editor
-        "doriax-editor.ico"
-        "doriax-editor.exe"
-        "Doriax Engine Editor"
+    jasperengine_add_windows_resource(
+        JASPERENGINE_EDITOR_ICON_OBJECTS
+        jasperengine-editor
+        "jasperengine-editor.ico"
+        "jasperengine-editor.exe"
+        "JasperEngine Editor"
     )
 endif()
 
 # Linux has no .rc or .icns equivalent, so the icon reaches the desktop as theme
 # files (installed at the end of this file) plus the _NET_WM_ICON pixels below.
-set(DORIAX_LINUX_ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/linux")
+set(JASPERENGINE_LINUX_ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/linux")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(wm_icon_header "// Generated from editor/resources/icons/linux. Do not edit.\n")
@@ -194,22 +194,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Sizes a window manager or dock actually draws, up to a HiDPI dock's 256.
     # 512 is left out: on the wire it alone would outweigh the whole set.
     foreach(icon_size IN ITEMS 16 32 48 64 128 256)
-        set(icon_png "${DORIAX_LINUX_ICON_DIR}/doriax-editor-${icon_size}.png")
+        set(icon_png "${JASPERENGINE_LINUX_ICON_DIR}/jasperengine-editor-${icon_size}.png")
         file(READ "${icon_png}" icon_hex HEX)
         string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," icon_bytes "${icon_hex}")
-        string(APPEND wm_icon_header "static const unsigned char doriax_wm_icon_${icon_size}[] = {${icon_bytes}};\n\n")
-        string(APPEND wm_icon_entries "    { doriax_wm_icon_${icon_size}, sizeof(doriax_wm_icon_${icon_size}) },\n")
+        string(APPEND wm_icon_header "static const unsigned char jasperengine_wm_icon_${icon_size}[] = {${icon_bytes}};\n\n")
+        string(APPEND wm_icon_entries "    { jasperengine_wm_icon_${icon_size}, sizeof(jasperengine_wm_icon_${icon_size}) },\n")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${icon_png}")
     endforeach()
 
-    string(APPEND wm_icon_header "struct DoriaxWmIconPng { const unsigned char* data; unsigned int size; };\n\n")
-    string(APPEND wm_icon_header "static const DoriaxWmIconPng doriax_wm_icon_pngs[] = {\n${wm_icon_entries}};\n")
+    string(APPEND wm_icon_header "struct JasperEngineWmIconPng { const unsigned char* data; unsigned int size; };\n\n")
+    string(APPEND wm_icon_header "static const JasperEngineWmIconPng jasperengine_wm_icon_pngs[] = {\n${wm_icon_entries}};\n")
 
     # Staged through a .in because configure_file only rewrites on a real change.
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h.in" "${wm_icon_header}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/resources/jasperengine_wm_icon.h.in" "${wm_icon_header}")
     configure_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/resources/jasperengine_wm_icon.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/resources/jasperengine_wm_icon.h"
         COPYONLY
     )
     include_directories("${CMAKE_CURRENT_BINARY_DIR}/resources")
@@ -238,8 +238,8 @@ if(API_BACKEND STREQUAL "linux")
 
     list(APPEND BACKEND_SOURCES
         ${EDITOR_DIR}/backend/BackendLinux.cpp
-        ${DORIAX_ROOT}/platform/linux/WindowLinux.cpp
-        ${DORIAX_ROOT}/platform/linux/GamepadDB.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
     )
     list(APPEND BACKEND_LIBS X11::X11 X11::Xrandr)
 
@@ -257,8 +257,8 @@ elseif(API_BACKEND STREQUAL "win")
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
         ${EDITOR_DIR}/backend/BackendWin.cpp
-        ${DORIAX_ROOT}/platform/win/WindowWin.cpp
-        ${DORIAX_ROOT}/platform/win/GamepadWin.cpp
+        ${JASPERENGINE_ROOT}/platform/win/WindowWin.cpp
+        ${JASPERENGINE_ROOT}/platform/win/GamepadWin.cpp
     )
 
     list(APPEND BACKEND_LIBS
@@ -283,8 +283,8 @@ elseif(API_BACKEND STREQUAL "mac")
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
-        ${DORIAX_ROOT}/platform/mac/WindowMac.mm
-        ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
+        ${JASPERENGINE_ROOT}/platform/mac/WindowMac.mm
+        ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
     )
 
     list(APPEND BACKEND_LIBS
@@ -300,9 +300,9 @@ elseif(API_BACKEND STREQUAL "mac")
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
         ${IMGUI_DIR}/backends/imgui_impl_metal.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
-        ${DORIAX_ROOT}/platform/mac/WindowMac.mm
+        ${JASPERENGINE_ROOT}/platform/mac/WindowMac.mm
         ${EDITOR_DIR}/util/GraphicUtils.cpp
-        ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
+        ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
         PROPERTIES
         COMPILE_FLAGS "-fobjc-arc"
     )
@@ -326,8 +326,8 @@ endif()
 
 set(SHADERCOMPILER_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/shadercompiler)
 
-add_definitions("-DDORIAX_EDITOR")
-add_definitions("-DDORIAX_CRASH_GUARD")
+add_definitions("-DJASPERENGINE_EDITOR")
+add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
 #add_definitions("-DNO_CPP_INIT")
@@ -339,7 +339,7 @@ else()
     add_definitions("-DSOKOL_GLCORE")
 endif()
 if(NATIVE_MENU)
-    add_definitions("-DDORIAX_NATIVE_MENU")
+    add_definitions("-DJASPERENGINE_NATIVE_MENU")
 endif()
 add_definitions("-DWITH_MINIAUDIO") # For SoLoud
 set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK") # For NFD
@@ -390,73 +390,73 @@ add_custom_command(
 
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/sokol)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/json)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/lua)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/luabridge3)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/box2d/include)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/joltphysics)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/stb)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/harfbuzz)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/sheenbidi/Headers)
-include_directories (SYSTEM ${DORIAX_ROOT}/libs/soloud/include)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/joltphysics)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/stb)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/harfbuzz)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sheenbidi/Headers)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/soloud/include)
 
-include_directories (${DORIAX_ROOT}/core)
-include_directories (${DORIAX_ROOT}/core/action)
-include_directories (${DORIAX_ROOT}/core/buffer)
-include_directories (${DORIAX_ROOT}/core/component)
-include_directories (${DORIAX_ROOT}/core/ecs)
-include_directories (${DORIAX_ROOT}/core/io)
-include_directories (${DORIAX_ROOT}/core/manager)
-include_directories (${DORIAX_ROOT}/core/math)
-include_directories (${DORIAX_ROOT}/core/object)
-include_directories (${DORIAX_ROOT}/core/object/sound)
-include_directories (${DORIAX_ROOT}/core/object/ui)
-include_directories (${DORIAX_ROOT}/core/object/environment)
-include_directories (${DORIAX_ROOT}/core/object/physics)
-include_directories (${DORIAX_ROOT}/core/pool)
-include_directories (${DORIAX_ROOT}/core/registry)
-include_directories (${DORIAX_ROOT}/core/render)
-include_directories (${DORIAX_ROOT}/core/script)
-include_directories (${DORIAX_ROOT}/core/shader)
-include_directories (${DORIAX_ROOT}/core/subsystem)
-include_directories (${DORIAX_ROOT}/core/texture)
-include_directories (${DORIAX_ROOT}/core/util)
+include_directories (${JASPERENGINE_ROOT}/core)
+include_directories (${JASPERENGINE_ROOT}/core/action)
+include_directories (${JASPERENGINE_ROOT}/core/buffer)
+include_directories (${JASPERENGINE_ROOT}/core/component)
+include_directories (${JASPERENGINE_ROOT}/core/ecs)
+include_directories (${JASPERENGINE_ROOT}/core/io)
+include_directories (${JASPERENGINE_ROOT}/core/manager)
+include_directories (${JASPERENGINE_ROOT}/core/math)
+include_directories (${JASPERENGINE_ROOT}/core/object)
+include_directories (${JASPERENGINE_ROOT}/core/object/sound)
+include_directories (${JASPERENGINE_ROOT}/core/object/ui)
+include_directories (${JASPERENGINE_ROOT}/core/object/environment)
+include_directories (${JASPERENGINE_ROOT}/core/object/physics)
+include_directories (${JASPERENGINE_ROOT}/core/pool)
+include_directories (${JASPERENGINE_ROOT}/core/registry)
+include_directories (${JASPERENGINE_ROOT}/core/render)
+include_directories (${JASPERENGINE_ROOT}/core/script)
+include_directories (${JASPERENGINE_ROOT}/core/shader)
+include_directories (${JASPERENGINE_ROOT}/core/subsystem)
+include_directories (${JASPERENGINE_ROOT}/core/texture)
+include_directories (${JASPERENGINE_ROOT}/core/util)
 # GamepadMappings.h, shared by GamepadDB (editor) and GamepadLinux (games)
-include_directories (${DORIAX_ROOT}/platform/common)
+include_directories (${JASPERENGINE_ROOT}/platform/common)
 # renderer/Renderer.h, which EditorFrame.h includes from one directory up
 include_directories (${EDITOR_DIR}/backend)
 if(API_BACKEND STREQUAL "linux")
-    include_directories (${DORIAX_ROOT}/platform/linux) # WindowLinux.h, GamepadDB.h
+    include_directories (${JASPERENGINE_ROOT}/platform/linux) # WindowLinux.h, GamepadDB.h
 elseif(API_BACKEND STREQUAL "win")
-    include_directories (${DORIAX_ROOT}/platform/win) # GamepadWin.h for BackendWin
+    include_directories (${JASPERENGINE_ROOT}/platform/win) # GamepadWin.h for BackendWin
 elseif(API_BACKEND STREQUAL "mac")
-    # WindowMac.h for BackendMac, DoriaxGameController.h from the shared Apple path
-    include_directories (${DORIAX_ROOT}/platform/mac)
-    include_directories (${DORIAX_ROOT}/platform/apple)
+    # WindowMac.h for BackendMac, JasperEngineGameController.h from the shared Apple path
+    include_directories (${JASPERENGINE_ROOT}/platform/mac)
+    include_directories (${JASPERENGINE_ROOT}/platform/apple)
 endif()
-include_directories (${DORIAX_ROOT}/renders)
+include_directories (${JASPERENGINE_ROOT}/renders)
 
 include_directories (${SHADERCOMPILER_ROOT}/src)
 
-add_subdirectory(${DORIAX_ROOT})
+add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
-if(WIN32 AND DORIAX_SHARED)
-    doriax_add_windows_resource(
-        DORIAX_LIB_ICON_OBJECTS
-        doriax
+if(WIN32 AND JASPERENGINE_SHARED)
+    jasperengine_add_windows_resource(
+        JASPERENGINE_LIB_ICON_OBJECTS
+        jasperengine
         ""
-        "${CMAKE_SHARED_LIBRARY_PREFIX}doriax${CMAKE_SHARED_LIBRARY_SUFFIX}"
-        "Doriax Engine Runtime"
+        "${CMAKE_SHARED_LIBRARY_PREFIX}jasperengine${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        "JasperEngine Runtime"
     )
-    target_sources(doriax PRIVATE ${DORIAX_LIB_ICON_OBJECTS})
+    target_sources(jasperengine PRIVATE ${JASPERENGINE_LIB_ICON_OBJECTS})
 endif()
 
 # The engine compiles sokol's Vulkan backend, so it needs the headers and the
 # loader itself. Only the standalone engine build sets this up on its own.
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
-    target_link_libraries(doriax PUBLIC Vulkan::Vulkan)
+    target_link_libraries(jasperengine PUBLIC Vulkan::Vulkan)
 endif()
 
 add_subdirectory(${SHADERCOMPILER_ROOT} EXCLUDE_FROM_ALL)
@@ -504,7 +504,7 @@ include_directories (${EDITOR_DIR})
 add_custom_target(generate_shaders DEPENDS ${SHADERS_HEADER})
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER})
 
-set(DORIAX_EDITOR_SOURCES
+set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
     ${EDITOR_DIR}/App.cpp
@@ -641,14 +641,14 @@ set(DORIAX_EDITOR_SOURCES
 
 if(APPLE)
     # NSPasteboard image/file-URL reading for the AI chat attachment paste.
-    list(APPEND DORIAX_EDITOR_SOURCES ${EDITOR_DIR}/util/ClipboardMac.mm)
+    list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/ClipboardMac.mm)
 endif()
 
 if(WIN32)
-    list(APPEND DORIAX_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
+    list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
 endif()
 
-function(configure_doriax_editor_target target_name)
+function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_shaders generate_api_suggestions)
 
     target_include_directories(${target_name} SYSTEM PRIVATE
@@ -669,7 +669,7 @@ function(configure_doriax_editor_target target_name)
         ${BACKEND_LIBS}
         ${OPENGL_LIBRARIES}
         Threads::Threads
-        doriax
+        jasperengine
         shadercompiler
         nfd
         yaml-cpp
@@ -688,7 +688,7 @@ function(configure_doriax_editor_target target_name)
     endif()
 
     if(X11_FOUND)
-        target_compile_definitions(${target_name} PRIVATE DORIAX_HAS_X11_CLIPBOARD)
+        target_compile_definitions(${target_name} PRIVATE JASPERENGINE_HAS_X11_CLIPBOARD)
         target_link_libraries(${target_name} PRIVATE X11::X11)
     endif()
 
@@ -701,9 +701,9 @@ function(configure_doriax_editor_target target_name)
 
         PROPERTIES
 
-        CXX_STANDARD ${DORIAX_CXX_STANDARD}
+        CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         CXX_STANDARD_REQUIRED ON
-        OBJCXX_STANDARD ${DORIAX_CXX_STANDARD}
+        OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         OBJCXX_STANDARD_REQUIRED ON
     )
 
@@ -721,66 +721,66 @@ function(configure_doriax_editor_target target_name)
 endfunction()
 
 add_executable(
-    doriax-editor
+    jasperengine-editor
 
     ${PLATFORM_EXEC_FLAGS}
 
-    ${DORIAX_EDITOR_SOURCES}
-    ${DORIAX_EDITOR_ICON_OBJECTS}
+    ${JASPERENGINE_EDITOR_SOURCES}
+    ${JASPERENGINE_EDITOR_ICON_OBJECTS}
 )
 
-configure_doriax_editor_target(doriax-editor)
+configure_jasperengine_editor_target(jasperengine-editor)
 
 if(WIN32)
-    doriax_add_windows_manifest(doriax-editor)
+    jasperengine_add_windows_manifest(jasperengine-editor)
 endif()
 
 if(PLATFORM_PROPERTIES_FLAGS)
-    set_target_properties(doriax-editor PROPERTIES ${PLATFORM_PROPERTIES_FLAGS})
+    set_target_properties(jasperengine-editor PROPERTIES ${PLATFORM_PROPERTIES_FLAGS})
 endif()
 
 # The dylib goes in Contents/MacOS, where @loader_path already finds it.
 if(APPLE)
-    set(DORIAX_BUNDLE_NAME "Doriax")
-    set(DORIAX_BUNDLE_IDENTIFIER "org.doriax.editor")
-    set(DORIAX_BUNDLE_ICON_NAME "doriax.icns")
+    set(JASPERENGINE_BUNDLE_NAME "JasperEngine")
+    set(JASPERENGINE_BUNDLE_IDENTIFIER "com.jaspergameengine.editor")
+    set(JASPERENGINE_BUNDLE_ICON_NAME "jasperengine.icns")
 
     # CFBundleShortVersionString takes digits and dots only.
-    string(REPLACE "," "." DORIAX_BUNDLE_VERSION "${DORIAX_VERSION_NUMERIC}")
-    string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*$" "\\1" DORIAX_BUNDLE_VERSION "${DORIAX_BUNDLE_VERSION}")
+    string(REPLACE "," "." JASPERENGINE_BUNDLE_VERSION "${JASPERENGINE_VERSION_NUMERIC}")
+    string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*$" "\\1" JASPERENGINE_BUNDLE_VERSION "${JASPERENGINE_BUNDLE_VERSION}")
 
     # engine/CMakeLists.txt sets this in its own scope, which does not reach here.
-    set(DORIAX_BUNDLE_MIN_OS "${CMAKE_OSX_DEPLOYMENT_TARGET}")
-    if(NOT DORIAX_BUNDLE_MIN_OS)
-        set(DORIAX_BUNDLE_MIN_OS "12.0")
+    set(JASPERENGINE_BUNDLE_MIN_OS "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    if(NOT JASPERENGINE_BUNDLE_MIN_OS)
+        set(JASPERENGINE_BUNDLE_MIN_OS "12.0")
     endif()
 
-    set(DORIAX_ICON_PNG "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.png")
-    set(DORIAX_ICONSET "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax.iconset")
-    set(DORIAX_ICNS "${CMAKE_CURRENT_BINARY_DIR}/resources/${DORIAX_BUNDLE_ICON_NAME}")
+    set(JASPERENGINE_ICON_PNG "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/jasperengine-editor.png")
+    set(JASPERENGINE_ICONSET "${CMAKE_CURRENT_BINARY_DIR}/resources/jasperengine.iconset")
+    set(JASPERENGINE_ICNS "${CMAKE_CURRENT_BINARY_DIR}/resources/${JASPERENGINE_BUNDLE_ICON_NAME}")
 
     add_custom_command(
-        OUTPUT ${DORIAX_ICNS}
-        COMMAND ${CMAKE_COMMAND} -E rm -rf ${DORIAX_ICONSET}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${DORIAX_ICONSET}
-        COMMAND sips -z 16 16     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_16x16.png
-        COMMAND sips -z 32 32     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_16x16@2x.png
-        COMMAND sips -z 32 32     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_32x32.png
-        COMMAND sips -z 64 64     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_32x32@2x.png
-        COMMAND sips -z 128 128   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_128x128.png
-        COMMAND sips -z 256 256   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_128x128@2x.png
-        COMMAND sips -z 256 256   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_256x256.png
-        COMMAND sips -z 512 512   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_256x256@2x.png
-        COMMAND sips -z 512 512   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_512x512.png
-        COMMAND sips -z 1024 1024 ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_512x512@2x.png
-        COMMAND iconutil -c icns ${DORIAX_ICONSET} -o ${DORIAX_ICNS}
-        DEPENDS ${DORIAX_ICON_PNG}
-        COMMENT "Generating ${DORIAX_BUNDLE_ICON_NAME}"
+        OUTPUT ${JASPERENGINE_ICNS}
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${JASPERENGINE_ICONSET}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${JASPERENGINE_ICONSET}
+        COMMAND sips -z 16 16     ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_16x16.png
+        COMMAND sips -z 32 32     ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_16x16@2x.png
+        COMMAND sips -z 32 32     ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_32x32.png
+        COMMAND sips -z 64 64     ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_32x32@2x.png
+        COMMAND sips -z 128 128   ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_128x128.png
+        COMMAND sips -z 256 256   ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_128x128@2x.png
+        COMMAND sips -z 256 256   ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_256x256.png
+        COMMAND sips -z 512 512   ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_256x256@2x.png
+        COMMAND sips -z 512 512   ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_512x512.png
+        COMMAND sips -z 1024 1024 ${JASPERENGINE_ICON_PNG} --out ${JASPERENGINE_ICONSET}/icon_512x512@2x.png
+        COMMAND iconutil -c icns ${JASPERENGINE_ICONSET} -o ${JASPERENGINE_ICNS}
+        DEPENDS ${JASPERENGINE_ICON_PNG}
+        COMMENT "Generating ${JASPERENGINE_BUNDLE_ICON_NAME}"
         VERBATIM
     )
 
-    target_sources(doriax-editor PRIVATE ${DORIAX_ICNS})
-    set_source_files_properties(${DORIAX_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(jasperengine-editor PRIVATE ${JASPERENGINE_ICNS})
+    set_source_files_properties(${JASPERENGINE_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/macos/Info.plist.in"
@@ -788,15 +788,15 @@ if(APPLE)
         @ONLY
     )
 
-    set_target_properties(doriax-editor PROPERTIES
-        OUTPUT_NAME "${DORIAX_BUNDLE_NAME}"
+    set_target_properties(jasperengine-editor PROPERTIES
+        OUTPUT_NAME "${JASPERENGINE_BUNDLE_NAME}"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/resources/Info.plist"
     )
 
-    if(DORIAX_SHARED)
-        add_custom_command(TARGET doriax-editor POST_BUILD
+    if(JASPERENGINE_SHARED)
+        add_custom_command(TARGET jasperengine-editor POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:doriax> $<TARGET_FILE_DIR:doriax-editor>
+                $<TARGET_FILE:jasperengine> $<TARGET_FILE_DIR:jasperengine-editor>
             COMMENT "Copying the engine runtime into the bundle"
         )
     endif()
@@ -805,76 +805,76 @@ endif()
 # In the bundle this has to be Resources, not MacOS: codesign treats everything in
 # Contents/MacOS as code. FileUtils::getEngineDir() looks in both places.
 if(APPLE)
-    set(DORIAX_EDITOR_ENGINE_DIR $<TARGET_BUNDLE_CONTENT_DIR:doriax-editor>/Resources/engine)
+    set(JASPERENGINE_EDITOR_ENGINE_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/engine)
     # Build trees from before the move still hold a copy in MacOS, which codesign rejects.
-    set(DORIAX_CLEAN_STALE_ENGINE COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:doriax-editor>/engine)
+    set(JASPERENGINE_CLEAN_STALE_ENGINE COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:jasperengine-editor>/engine)
 else()
-    set(DORIAX_EDITOR_ENGINE_DIR $<TARGET_FILE_DIR:doriax-editor>/engine)
-    set(DORIAX_CLEAN_STALE_ENGINE)
+    set(JASPERENGINE_EDITOR_ENGINE_DIR $<TARGET_FILE_DIR:jasperengine-editor>/engine)
+    set(JASPERENGINE_CLEAN_STALE_ENGINE)
 endif()
 
-add_custom_target(copy_doriax_editor_engine
-    ${DORIAX_CLEAN_STALE_ENGINE}
+add_custom_target(copy_jasperengine_editor_engine
+    ${JASPERENGINE_CLEAN_STALE_ENGINE}
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/engine
-        ${DORIAX_EDITOR_ENGINE_DIR}
+        ${JASPERENGINE_EDITOR_ENGINE_DIR}
     COMMENT "Copying engine next to the editor"
 )
 
-add_dependencies(doriax-editor copy_doriax_editor_engine)
+add_dependencies(jasperengine-editor copy_jasperengine_editor_engine)
 
-set(DORIAX_EDITOR_INSTALL_TARGETS doriax-editor)
+set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs
 # when launched from cmd.exe/PowerShell. Provide a console-subsystem twin for
 # automation while keeping Unix-like platforms on a single editor binary.
 #
 # EXCLUDE_FROM_ALL keeps it out of the default ("all") build, so local and IDE
-# builds only produce doriax-editor. Release builds compile it explicitly by
-# name (`cmake --build --target doriax-editor-cmd`, see
+# builds only produce jasperengine-editor. Release builds compile it explicitly by
+# name (`cmake --build --target jasperengine-editor-cmd`, see
 # .github/workflows/cmake.yml); the install rule below still installs it because
 # CI builds it before installing.
 if(WIN32)
     # Its own icon because both executables install to the same folder
-    doriax_add_windows_resource(
-        DORIAX_EDITOR_CMD_ICON_OBJECTS
-        doriax-editor-cmd
-        "doriax-editor-cmd.ico"
-        "doriax-editor-cmd.exe"
-        "Doriax Engine Editor (command line)"
+    jasperengine_add_windows_resource(
+        JASPERENGINE_EDITOR_CMD_ICON_OBJECTS
+        jasperengine-editor-cmd
+        "jasperengine-editor-cmd.ico"
+        "jasperengine-editor-cmd.exe"
+        "JasperEngine Editor (command line)"
     )
 
     add_executable(
-        doriax-editor-cmd
+        jasperengine-editor-cmd
 
         EXCLUDE_FROM_ALL
 
-        ${DORIAX_EDITOR_SOURCES}
-        ${DORIAX_EDITOR_CMD_ICON_OBJECTS}
+        ${JASPERENGINE_EDITOR_SOURCES}
+        ${JASPERENGINE_EDITOR_CMD_ICON_OBJECTS}
     )
 
-    configure_doriax_editor_target(doriax-editor-cmd)
-    doriax_add_windows_manifest(doriax-editor-cmd)
-    add_dependencies(doriax-editor-cmd copy_doriax_editor_engine)
-    list(APPEND DORIAX_EDITOR_INSTALL_TARGETS doriax-editor-cmd)
+    configure_jasperengine_editor_target(jasperengine-editor-cmd)
+    jasperengine_add_windows_manifest(jasperengine-editor-cmd)
+    add_dependencies(jasperengine-editor-cmd copy_jasperengine_editor_engine)
+    list(APPEND JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor-cmd)
 endif()
 
 # The bundle already holds the dylib and engine/.
 if(APPLE)
-    install(TARGETS doriax-editor
+    install(TARGETS jasperengine-editor
             CONFIGURATIONS Release MinSizeRel
             BUNDLE DESTINATION bin
     )
 else()
-    install(TARGETS ${DORIAX_EDITOR_INSTALL_TARGETS} doriax
+    install(TARGETS ${JASPERENGINE_EDITOR_INSTALL_TARGETS} jasperengine
             CONFIGURATIONS Release MinSizeRel
             RUNTIME DESTINATION bin
             LIBRARY DESTINATION bin
             ARCHIVE DESTINATION bin
     )
 
-    if(DORIAX_MINGW_RUNTIME)
-        install(FILES ${DORIAX_MINGW_RUNTIME}
+    if(JASPERENGINE_MINGW_RUNTIME)
+        install(FILES ${JASPERENGINE_MINGW_RUNTIME}
                 CONFIGURATIONS Release MinSizeRel
                 DESTINATION bin
         )
@@ -887,22 +887,22 @@ else()
 endif()
 
 # Desktop integration: a launcher entry plus the themed icons the launcher,
-# taskbar and alt-tab switcher look up by the "doriax-editor" icon name.
+# taskbar and alt-tab switcher look up by the "jasperengine-editor" icon name.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/doriax-editor.desktop
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/jasperengine-editor.desktop
             DESTINATION share/applications
             CONFIGURATIONS Release MinSizeRel
     )
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/org.doriax.editor.metainfo.xml
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/com.jaspergameengine.editor.metainfo.xml
             DESTINATION share/metainfo
             CONFIGURATIONS Release MinSizeRel
     )
 
     foreach(icon_size IN ITEMS 16 32 48 64 128 256 512)
-        install(FILES ${DORIAX_LINUX_ICON_DIR}/doriax-editor-${icon_size}.png
+        install(FILES ${JASPERENGINE_LINUX_ICON_DIR}/jasperengine-editor-${icon_size}.png
                 DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
-                RENAME doriax-editor.png
+                RENAME jasperengine-editor.png
                 CONFIGURATIONS Release MinSizeRel
         )
     endforeach()

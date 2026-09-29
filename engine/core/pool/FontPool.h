@@ -10,11 +10,11 @@
 #include <string>
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     typedef std::map< std::string, std::shared_ptr<STBText> > fonts_t;
 
-    class DORIAX_API FontPool{
+    class JASPERENGINE_API FontPool{
     private:
         static fonts_t& getMap();
 

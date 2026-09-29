@@ -5,7 +5,7 @@
 
 #include "box2d/box2d.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Contact2D::Contact2D(Scene* scene, b2ContactData contact){
     this->scene = scene;

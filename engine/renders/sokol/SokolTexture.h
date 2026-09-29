@@ -8,7 +8,7 @@
 #include "sokol_gfx.h"
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
     class SokolTexture{
 
     private:

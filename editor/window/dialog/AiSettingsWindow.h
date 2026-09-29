@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace ai { class AiService; }
 
@@ -64,4 +64,4 @@ public:
     bool isOpen() const { return m_isOpen; }
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

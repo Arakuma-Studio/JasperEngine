@@ -16,7 +16,7 @@
 #include "subsystem/PhysicsSystem.h"
 #include "util/Color.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Scene::Scene() : EntityRegistry() {
     init();

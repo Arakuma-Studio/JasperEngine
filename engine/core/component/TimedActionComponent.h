@@ -6,9 +6,9 @@
 
 #include "action/Ease.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API TimedActionComponent{
+    struct JASPERENGINE_API TimedActionComponent{
         float time = 0;
         float value = 0;
         

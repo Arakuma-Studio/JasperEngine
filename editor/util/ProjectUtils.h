@@ -22,7 +22,7 @@
 
 #include "command/Command.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class ProjectUtils {
 public:
@@ -78,8 +78,8 @@ public:
     // header "<name>.h" and has a (Scene*, Entity) constructor.
     struct EntityClassInfo {
         std::string name;           // e.g. "Terrain", declared in "Terrain.h"
-        bool derivesObject = false; // has doriax::Object API (getPosition, setPosition, ...)
-        bool derivesMesh = false;   // has doriax::Mesh API (setColor, ...), implies derivesObject
+        bool derivesObject = false; // has jasperengine::Object API (getPosition, setPosition, ...)
+        bool derivesMesh = false;   // has jasperengine::Mesh API (setColor, ...), implies derivesObject
     };
     static EntityClassInfo getEntityClassInfo(Scene* scene, Entity entity);
 
@@ -155,4 +155,4 @@ public:
     static Command* buildDuplicateTileCmd(Project* project, uint32_t sceneId, Entity entity, unsigned int tileIndex);
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

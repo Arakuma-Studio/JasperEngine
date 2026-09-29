@@ -10,7 +10,7 @@
 
 #include "render/RenderUtil.h"
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class ScaleGizmo: public Object{
     private:

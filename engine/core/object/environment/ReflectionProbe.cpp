@@ -3,7 +3,7 @@
 
 #include "ReflectionProbe.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ReflectionProbe::ReflectionProbe(Scene* scene): Object(scene){
     addComponent<ReflectionProbeComponent>();

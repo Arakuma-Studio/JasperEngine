@@ -10,7 +10,7 @@
 #include <initializer_list>
 #include <string_view>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -216,4 +216,4 @@ std::chrono::milliseconds rateLimitRetryDelay(
     return retryDelay;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

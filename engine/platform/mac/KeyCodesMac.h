@@ -11,7 +11,7 @@
 
 #include "Input.h"
 
-namespace doriax {
+namespace jasperengine {
 
     inline const short* macKeycodeTable() {
         static short keys[256];

@@ -23,9 +23,9 @@
 #include "component/Transform.h"
 #include "component/CameraComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API UISystem : public SubSystem {
+    class JASPERENGINE_API UISystem : public SubSystem {
 
     private:
 

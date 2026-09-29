@@ -12,7 +12,7 @@
 #include <memory>
 #include <chrono>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     // Forward declarations
     class SemanticSuggestions;
@@ -413,4 +413,4 @@ namespace doriax::editor {
         void updateSearchResults();
     };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

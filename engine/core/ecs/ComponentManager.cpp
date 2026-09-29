@@ -7,7 +7,7 @@
 #include <string>
 #include <unordered_map>
 
-using namespace doriax;
+using namespace jasperengine;
 
 // One registry inside the library, so every module caches the same index for a type.
 // Keyed by mangled name, not type_index: identity is then plain string equality.

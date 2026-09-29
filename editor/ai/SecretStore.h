@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 // Per-account API key store. Keys are persisted to a 0600 file in the user
 // config directory, lightly obfuscated with a machine-derived keystream so they
@@ -31,4 +31,4 @@ public:
     static std::vector<ProviderAccount> configuredAccounts(const Settings& settings);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

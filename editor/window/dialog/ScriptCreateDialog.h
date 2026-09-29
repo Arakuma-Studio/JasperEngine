@@ -11,7 +11,7 @@
 #include "Entity.h"
 #include "Scene.h"
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 namespace fs = std::filesystem;
@@ -87,4 +87,4 @@ public:
 };
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

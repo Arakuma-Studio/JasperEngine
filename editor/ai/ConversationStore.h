@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor { class Project; }
+namespace jasperengine::editor { class Project; }
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 struct ConversationMeta {
     std::string id;
@@ -39,4 +39,4 @@ private:
     std::filesystem::path conversationsDir() const;
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

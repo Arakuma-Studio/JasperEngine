@@ -15,7 +15,7 @@
 #define DEFAULT_PERSPECTIVE_NEAR    0.2
 #define DEFAULT_PERSPECTIVE_FAR     200
 
-namespace doriax{
+namespace jasperengine{
 
     enum class CameraType{
         CAMERA_UI,
@@ -32,7 +32,7 @@ namespace doriax{
         FRUSTUM_PLANE_BOTTOM = 5
     };
 
-    struct DORIAX_API CameraComponent{
+    struct JASPERENGINE_API CameraComponent{
 
         CameraType type = CameraType::CAMERA_UI;
         

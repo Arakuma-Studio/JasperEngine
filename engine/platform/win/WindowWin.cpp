@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 // Not in MinGW or pre-1703 SDK headers, and the entry point taking them is
 // resolved by name anyway.
@@ -109,7 +109,7 @@ namespace {
 
 }
 
-std::wstring doriax::winUtf8ToWide(const std::string& text) {
+std::wstring jasperengine::winUtf8ToWide(const std::string& text) {
     if (text.empty()) return {};
     int count = MultiByteToWideChar(
         CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),

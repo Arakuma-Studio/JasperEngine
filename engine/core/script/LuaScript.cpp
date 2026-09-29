@@ -9,7 +9,7 @@
 
 #include "LuaBinding.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LuaScript::setObject(const std::string& global, Object* object){
     lua_State *L = LuaBinding::getLuaState();

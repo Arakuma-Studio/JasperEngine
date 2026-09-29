@@ -8,7 +8,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class GraphicUtils {
     public:
         static bool saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY = false, std::function<void()> onComplete = nullptr);

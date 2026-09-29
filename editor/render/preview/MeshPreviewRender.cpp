@@ -6,7 +6,7 @@
 #include "Configs.h"
 #include "Stream.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::MeshPreviewRender::MeshPreviewRender(){
     scene = new Scene(EntityPool::System);

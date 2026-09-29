@@ -23,7 +23,7 @@ extern unsigned int bulb_icon_png_len;
 #include <cmath>
 #include <cfloat>
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);

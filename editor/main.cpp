@@ -7,7 +7,7 @@
 
 #include <cstring>
 
-using namespace doriax;
+using namespace jasperengine;
 
 int main(int argc, char* argv[]) {
     // A desktop launcher starts the editor without the user's shell environment,

@@ -6,7 +6,7 @@
 
 #include "util/Color.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class FogType{
         LINEAR,
@@ -14,7 +14,7 @@ namespace doriax{
 		EXPONENTIALSQUARED
     };
 
-    struct DORIAX_API FogComponent{
+    struct JASPERENGINE_API FogComponent{
         FogType type = FogType::LINEAR;
 		Vector3 color = Color::sRGBToLinear(Vector3(0.8f, 0.8f, 0.8f)); // linear color
 		float density = 0.01f; // for exponential fog

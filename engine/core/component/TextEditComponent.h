@@ -6,9 +6,9 @@
 
 #include "util/FunctionSubscribe.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API TextEditComponent{
+    struct JASPERENGINE_API TextEditComponent{
         Entity text = NULL_ENTITY;
         Entity selection = NULL_ENTITY;
         Entity cursor = NULL_ENTITY;

@@ -22,14 +22,14 @@
 #include <functional>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
     // UTF-8 to UTF-16 for the wide Win32 entry points. Falls back to the active
     // code page when the text is not valid UTF-8.
     std::wstring winUtf8ToWide(const std::string& text);
 
     struct WindowWinConfig {
-        std::string title = "Doriax";
+        std::string title = "JasperEngine";
         int width = 960;
         int height = 540;
         bool resizable = true;
@@ -37,7 +37,7 @@ namespace doriax {
 
         // The caller's message handler, and the class it is registered under.
         WNDPROC windowProc = nullptr;
-        const wchar_t* className = L"DoriaxWindow";
+        const wchar_t* className = L"JasperEngineWindow";
         // OpenGL keeps a device context per window, which needs CS_OWNDC;
         // a Vulkan surface does not.
         UINT classStyle = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;

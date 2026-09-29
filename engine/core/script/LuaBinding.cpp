@@ -41,11 +41,11 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/TextEdit.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Body2D.h"
 #include "object/physics/Joint2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Body3D.h"
 #include "object/physics/Joint3D.h"
 #endif
@@ -77,7 +77,7 @@
 #include <vector>
 #include <memory>
 
-using namespace doriax;
+using namespace jasperengine;
 
 
 
@@ -540,7 +540,7 @@ std::string LuaBinding::normalizePtrTypeName(std::string value) {
 }
 
 template <typename T>
-bool LuaBinding::pushEntityHandleTyped(lua_State* L, doriax::Scene* scene, doriax::Entity entity) {
+bool LuaBinding::pushEntityHandleTyped(lua_State* L, jasperengine::Scene* scene, jasperengine::Entity entity) {
     T handle(scene, entity);
     if (!luabridge::push<T>(L, handle)) {
         lua_pushnil(L);
@@ -549,7 +549,7 @@ bool LuaBinding::pushEntityHandleTyped(lua_State* L, doriax::Scene* scene, doria
     return true;
 }
 
-bool LuaBinding::pushEntityHandleByType(lua_State* L, doriax::Scene* scene, doriax::Entity entity, const std::string& ptrTypeName) {
+bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene, jasperengine::Entity entity, const std::string& ptrTypeName) {
     const std::string key = normalizePtrTypeName(ptrTypeName);
 
     #define DISPATCH_TYPE(Type, KeyName) \
@@ -585,11 +585,11 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, doriax::Scene* scene, dori
     DISPATCH_TYPE(Progressbar, "progressbar");
     DISPATCH_TYPE(TextEdit, "textedit");
     DISPATCH_TYPE(Bone, "bone");
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     DISPATCH_TYPE(Body2D, "body2d");
     DISPATCH_TYPE(Joint2D, "joint2d");
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     DISPATCH_TYPE(Body3D, "body3d");
     DISPATCH_TYPE(Joint3D, "joint3d");
 #endif

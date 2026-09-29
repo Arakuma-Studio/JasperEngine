@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 // Symlinks are skipped so browsing cannot leave the tree it started in.
 static bool isBrowsableDir(const std::filesystem::directory_entry& entry) {

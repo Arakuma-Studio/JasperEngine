@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -50,7 +50,7 @@ struct ScoredSymbol {
 
 std::unordered_map<std::string, std::string> buildInheritanceMap() {
     std::unordered_map<std::string, std::string> inheritance;
-    for (const auto& symbol : doriax::editor::getEngineAPISymbols()) {
+    for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
         const std::string kind = symbol.kind ? symbol.kind : "";
         if (kind != "Class") continue;
 
@@ -81,7 +81,7 @@ bool isSameOrBaseClass(const std::string& candidateBase,
 // Lua-readable member names per bound class, e.g. Object::getPosition -> Object.position.
 std::unordered_map<std::string, std::vector<std::string>> buildLuaMemberMap() {
     std::unordered_map<std::string, std::vector<std::string>> members;
-    for (const auto& symbol : doriax::editor::getEngineAPISymbols()) {
+    for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
         const std::string kind = symbol.kind ? symbol.kind : "";
         if (kind != "Property" && kind != "Constant" && kind != "Event") continue;
         const std::string parent = lower(symbol.parent ? symbol.parent : "");
@@ -156,8 +156,8 @@ std::string luaCallHint(const std::string& detail, const std::string& parent) {
 // Script-authoring macros live in engine headers (ScriptProperty.h, FunctionSubscribe.h),
 // not in the LuaBridge bindings, so the generated suggestions never include them. Curate
 // them here so search_engine_api can surface the exact macro and signature for C++ scripts.
-const std::vector<doriax::editor::EngineAPISymbol>& getScriptMacroSymbols() {
-    static const std::vector<doriax::editor::EngineAPISymbol> macros = {
+const std::vector<jasperengine::editor::EngineAPISymbol>& getScriptMacroSymbols() {
+    static const std::vector<jasperengine::editor::EngineAPISymbol> macros = {
         {"DPROPERTY", "Macro",
          "DPROPERTY(\"Display Name\") on the line above a public member exposes it as an editor property; "
          "DPROPERTY(\"Display Name\", Type) also forces the editor type. Types: Bool, Int, Float, String, "
@@ -217,8 +217,8 @@ const std::vector<doriax::editor::EngineAPISymbol>& getScriptMacroSymbols() {
 // conventions, not LuaBridge class members, so the generated suggestions never include
 // them. Curate them here so search_engine_api surfaces them for Lua scripts. These are
 // the Lua analog of the C++ script macros above.
-const std::vector<doriax::editor::EngineAPISymbol>& getLuaGlobalSymbols() {
-    static const std::vector<doriax::editor::EngineAPISymbol> globals = {
+const std::vector<jasperengine::editor::EngineAPISymbol>& getLuaGlobalSymbols() {
+    static const std::vector<jasperengine::editor::EngineAPISymbol> globals = {
         {"RegisterEngineEvent", "LuaGlobal",
          "Lua global script helper. In :init() call RegisterEngineEvent(self, \"onUpdate\") to subscribe to a "
          "global Engine event, and define a matching function Name:onUpdate(...) end. Engine events: onUpdate, "
@@ -327,7 +327,7 @@ Json AiEngineApiContext::search(const std::string& query,
         });
     };
 
-    for (const auto& symbol : doriax::editor::getEngineAPISymbols()) {
+    for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
         consider(symbol.name, symbol.kind, symbol.detail, symbol.parent);
     }
     for (const auto& macro : getScriptMacroSymbols()) {
@@ -381,4 +381,4 @@ Json AiEngineApiContext::search(const std::string& query,
     };
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

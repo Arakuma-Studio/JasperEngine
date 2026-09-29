@@ -10,7 +10,7 @@
 #include "thread/ResourceProgress.h"
 #include "texture/Material.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace luabridge
 {

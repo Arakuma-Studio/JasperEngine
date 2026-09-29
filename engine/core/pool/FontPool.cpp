@@ -8,7 +8,7 @@
 
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 fonts_t& FontPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization

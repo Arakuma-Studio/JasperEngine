@@ -64,11 +64,11 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/BundleComponent.h"
 
-namespace doriax {
+namespace jasperengine {
 
     enum class EntityPool { User, System };
 
-    class DORIAX_API EntityRegistry {
+    class JASPERENGINE_API EntityRegistry {
     private:
         EntityManager entityManager;
         ComponentManager componentManager;
@@ -218,6 +218,6 @@ namespace doriax {
         }
     };
 
-} // namespace doriax
+} // namespace jasperengine
 
 #endif // ENTITYREGISTRY_H

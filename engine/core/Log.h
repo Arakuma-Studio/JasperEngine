@@ -6,9 +6,9 @@
 
 #include "Export.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Log {
+    class JASPERENGINE_API Log {
     public:
         static void print(const char* text, ...);
 

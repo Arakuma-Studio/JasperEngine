@@ -6,7 +6,7 @@
 
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
     struct ActionFrame{
         float startTime = 0;
@@ -15,7 +15,7 @@ namespace doriax{
         uint32_t track = 0; // Used for editor timeline organization
     };
 
-    struct DORIAX_API AnimationComponent{
+    struct JASPERENGINE_API AnimationComponent{
         std::vector<ActionFrame> actions;
         bool ownedActions = false;
         bool loop = false;

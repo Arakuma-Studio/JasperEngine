@@ -27,7 +27,7 @@
 #include <set>
 #include <stdexcept>
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     // The customShaderId in a key is a session-local registry index, so a fork is

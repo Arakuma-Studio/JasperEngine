@@ -4,7 +4,7 @@
 #include "TextureRender.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 TextureRender::TextureRender(){
  }

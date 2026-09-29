@@ -7,14 +7,14 @@
 #include "ScriptProperty.h"
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     enum class ScriptType {
         CPP,
         LUA,
     };
 
-    struct DORIAX_API ScriptEntry {
+    struct JASPERENGINE_API ScriptEntry {
         ScriptType type = ScriptType::CPP;
         std::string path;        // .cpp or .lua (for Lua: script file path)
         std::string headerPath;  // for C++; empty for Lua
@@ -25,7 +25,7 @@ namespace doriax{
         void* instance = nullptr; // C++ instance OR Lua handle
     };
 
-    struct DORIAX_API ScriptComponent {
+    struct JASPERENGINE_API ScriptComponent {
         std::vector<ScriptEntry> scripts;
     };
 

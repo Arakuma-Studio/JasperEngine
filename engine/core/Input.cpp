@@ -4,7 +4,7 @@
 
 #include "Input.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::map<int,bool> Input::keyPressed;
 std::map<int,bool> Input::mousePressed;

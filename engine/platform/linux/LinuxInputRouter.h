@@ -8,7 +8,7 @@
 
 #include "Input.h"
 
-namespace doriax {
+namespace jasperengine {
 
     // X11 input-event translation. The editor and a game cannot share an event
     // loop -- the editor is its own ImGui platform backend, with viewports, IME,

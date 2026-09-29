@@ -7,7 +7,7 @@
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Contact3D::Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body2, const JPH::ContactManifold* contactManifold, JPH::ContactSettings* contactSettings){
     this->scene = scene;

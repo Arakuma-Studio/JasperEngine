@@ -13,7 +13,7 @@
 #include <cctype>
 #include <cstring>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
 static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
@@ -1021,7 +1021,7 @@ void ProjectSettingsWindow::drawSettings() {
 std::string ProjectSettingsWindow::inheritedApplicationName() const {
     if (m_applicationNameBuffer[0]) return m_applicationNameBuffer;
     if (m_projectNameBuffer[0]) return m_projectNameBuffer;
-    return "Doriax";
+    return "JasperEngine";
 }
 
 std::string ProjectSettingsWindow::inheritedApplicationIdentifier() const {
@@ -1127,7 +1127,7 @@ void ProjectSettingsWindow::drawGeneralSettings() {
 
             beginSettingsRow("Name");
             ImGui::SetNextItemWidth(-helpMarkerWidth());
-            std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "Doriax";
+            std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
             ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
             endSettingsRow("Name every platform shows to the player. Empty means project name.");
 
@@ -1193,7 +1193,7 @@ void ProjectSettingsWindow::drawWindowSettings() {
         if (beginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
             snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
         }
-        std::string titleHint = m_project->getName().empty() ? "Doriax" : m_project->getName();
+        std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
         ImGui::SetNextItemWidth(-1);
         ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
 
@@ -1354,7 +1354,7 @@ void ProjectSettingsWindow::drawWebSettings() {
 
     drawProjectFilePathSetting(m_project, "Favicon", "Browser tab icon for web export.", "##WebFaviconPath",
         "Browse##webfavicon", "Clear##webfavicon", m_webFavicon);
-    drawProjectFilePathSetting(m_project, "Custom HTML Shell", "Optional web HTML wrapper. The file must contain {{DORIAX_DEFAULT_HTML}} marker.", "##WebHtmlShellPath",
+    drawProjectFilePathSetting(m_project, "Custom HTML Shell", "Optional web HTML wrapper. The file must contain {{JASPERENGINE_DEFAULT_HTML}} marker.", "##WebHtmlShellPath",
         "Browse##webhtmlshell", "Clear##webhtmlshell", m_webCustomHtmlShell, FILE_DIALOG_ALL);
 
     beginSettingsRow("Head Include");
@@ -1733,4 +1733,4 @@ bool ProjectSettingsWindow::applySettings() {
     return m_project->saveProjectFile();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class PathUtils {
 public:
@@ -17,4 +17,4 @@ public:
                                                  const std::string& extension);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
 

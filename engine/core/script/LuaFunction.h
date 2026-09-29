@@ -11,7 +11,7 @@
 
 typedef struct lua_State lua_State;
 
-namespace doriax{
+namespace jasperengine{
 
     // the function wrapper class
     template <typename Ret>

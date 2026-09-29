@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <set>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -410,4 +410,4 @@ std::string ModelCatalog::humanizeModelId(const std::string& id) {
     return out.empty() ? id : out;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

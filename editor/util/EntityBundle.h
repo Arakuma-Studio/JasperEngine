@@ -12,7 +12,7 @@
 #include "Scene.h"     // Entity, EntityRegistry, NULL_ENTITY
 #include "Catalog.h"   // ComponentType
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class EntityBundle {
 public:
@@ -58,5 +58,5 @@ public:
 
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor
 

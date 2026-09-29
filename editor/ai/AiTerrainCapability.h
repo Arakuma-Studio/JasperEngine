@@ -10,11 +10,11 @@
 #include <filesystem>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 class Project;
 }
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 struct TerrainHeightmapRequest {
     int resolution = 512;
@@ -60,4 +60,4 @@ public:
                                                 const TerrainBlendmapRequest& request);
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

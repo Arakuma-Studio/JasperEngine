@@ -11,14 +11,14 @@
 
 namespace tinygltf { class Model; }
 
-namespace doriax{
+namespace jasperengine{
 
     struct ObjModelData;
 
     typedef std::map< std::string, std::shared_ptr<tinygltf::Model> > models_t;
     typedef std::map< std::string, std::shared_ptr<ObjModelData> > obj_models_t;
 
-    class DORIAX_API ModelPool{
+    class JASPERENGINE_API ModelPool{
     private:
         static models_t& getMap();
         static obj_models_t& getObjMap();

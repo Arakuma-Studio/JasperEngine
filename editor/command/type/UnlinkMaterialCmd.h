@@ -10,7 +10,7 @@
 #include <map>
 #include <functional>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class UnlinkMaterialCmd: public Command{
 

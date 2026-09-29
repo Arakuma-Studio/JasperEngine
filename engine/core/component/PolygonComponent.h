@@ -6,14 +6,14 @@
 
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
     struct PolygonPoint{
         Vector3 position;
         Vector4 color;
     };
 
-    struct DORIAX_API PolygonComponent{
+    struct JASPERENGINE_API PolygonComponent{
         std::vector<PolygonPoint> points;
 
         bool needUpdatePolygon = true;

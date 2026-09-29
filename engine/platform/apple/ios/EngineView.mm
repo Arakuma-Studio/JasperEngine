@@ -41,12 +41,12 @@ static UITouch* touches[MAX_TOUCHES];
         if ((codepoint & 0xFF00) == 0xF700)
             continue;
 
-        doriax::Engine::systemCharInput(codepoint);
+        jasperengine::Engine::systemCharInput(codepoint);
     }
 }
 
 - (void)deleteBackward {
-    doriax::Engine::systemCharInput('\b');
+    jasperengine::Engine::systemCharInput('\b');
 }
 
 - (BOOL)hasText {
@@ -97,7 +97,7 @@ static UITouch* touches[MAX_TOUCHES];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch];
-        doriax::Engine::systemTouchStart(identifier, point.x, point.y);
+        jasperengine::Engine::systemTouchStart(identifier, point.x, point.y);
     }
 }
 
@@ -106,7 +106,7 @@ static UITouch* touches[MAX_TOUCHES];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch];
-        doriax::Engine::systemTouchMove(identifier, point.x, point.y);
+        jasperengine::Engine::systemTouchMove(identifier, point.x, point.y);
     }
 }
 
@@ -115,7 +115,7 @@ static UITouch* touches[MAX_TOUCHES];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:true];
-        doriax::Engine::systemTouchEnd(identifier, point.x, point.y);
+        jasperengine::Engine::systemTouchEnd(identifier, point.x, point.y);
     }
 }
 
@@ -137,10 +137,10 @@ static UITouch* touches[MAX_TOUCHES];
 
     // Release native IDs before callbacks, preserving IDs for fingers still held.
     if (!anyHeld) {
-        doriax::Engine::systemTouchCancel();
+        jasperengine::Engine::systemTouchCancel();
     } else {
         for (int i = 0; i < cancelledCount; i++)
-            doriax::Engine::systemTouchCancel(cancelledIds[i]);
+            jasperengine::Engine::systemTouchCancel(cancelledIds[i]);
     }
 }
 

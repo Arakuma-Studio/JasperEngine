@@ -7,9 +7,9 @@
 #include "Mesh.h"
 #include "component/TerrainComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Terrain: public Mesh{
+    class JASPERENGINE_API Terrain: public Mesh{
 
     public:
         Terrain(Scene* scene);

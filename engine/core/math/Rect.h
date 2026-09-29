@@ -9,9 +9,9 @@
 #include "Vector4.h"
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Rect{
+    class JASPERENGINE_API Rect{
     private:
         
         float x, y, width, height;

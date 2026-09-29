@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     // Value noise on an integer lattice, shared by the noise brush and the AI generators.
     class TerrainNoise{

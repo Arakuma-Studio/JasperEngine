@@ -23,7 +23,7 @@
     extern char **environ;
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     constexpr std::chrono::milliseconds kReadSleepMs{10};

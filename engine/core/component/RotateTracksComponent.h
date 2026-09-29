@@ -6,9 +6,9 @@
 
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API RotateTracksComponent{
+    struct JASPERENGINE_API RotateTracksComponent{
         std::vector<Quaternion> values;
         // Per-key Hermite tangents (GLTF CUBICSPLINE); empty on linear tracks.
         // Cubic interpolation runs only while both stay sized to values — any

@@ -12,7 +12,7 @@
 #include "VulkanContext.h"
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     // Finder gives a bare executable the home folder as working directory, so
@@ -141,8 +141,8 @@ std::string SystemMac::getAssetPath() {
     std::string bundlePath;
     if (bundleResourcePath(@"assets", bundlePath)) return bundlePath;
 
-#ifdef DORIAX_ASSET_PATH
-    return DORIAX_ASSET_PATH;
+#ifdef JASPERENGINE_ASSET_PATH
+    return JASPERENGINE_ASSET_PATH;
 #else
     return "assets";
 #endif
@@ -156,8 +156,8 @@ std::string SystemMac::getLuaPath() {
     std::string bundlePath;
     if (bundleResourcePath(@"lua", bundlePath)) return bundlePath;
 
-#ifdef DORIAX_LUA_PATH
-    return DORIAX_LUA_PATH;
+#ifdef JASPERENGINE_LUA_PATH
+    return JASPERENGINE_LUA_PATH;
 #else
     return "lua";
 #endif
@@ -167,8 +167,8 @@ std::string SystemMac::getShaderPath() {
     std::string bundlePath;
     if (bundleResourcePath(@"shaders", bundlePath)) return bundlePath;
 
-#ifdef DORIAX_SHADER_PATH
-    return DORIAX_SHADER_PATH;
+#ifdef JASPERENGINE_SHADER_PATH
+    return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
 #endif

@@ -11,7 +11,7 @@
 #include <array>
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
     // Linux joystick (/dev/input/js*) polling for exported games. Device
     // layouts disagree on which axes are the right stick and which are the

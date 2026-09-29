@@ -18,7 +18,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     struct ScriptPropertyInfo {
         std::string name;
@@ -65,7 +65,7 @@ namespace doriax::editor {
         std::string unavailableReason;    // e.g. "requires Ninja on PATH"
     };
 
-    // Values must stay in sync with the DORIAX_WINDOW_MODE macro consumed by
+    // Values must stay in sync with the JASPERENGINE_WINDOW_MODE macro consumed by
     // the engine platform backends (0 = windowed, 1 = maximized, 2 = fullscreen).
     enum class WindowMode {
         WINDOWED = 0,
@@ -80,7 +80,7 @@ namespace doriax::editor {
         unsigned int width = 1280;
         unsigned int height = 720;
         bool resizable = true;
-        std::string title = "Doriax";
+        std::string title = "JasperEngine";
     };
 
     // SceneManager loading screen of generated builds and the editor's Play

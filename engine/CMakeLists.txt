@@ -1,34 +1,34 @@
 # Mirrored by cxxStandards in editor/util/CxxStandards.h. Covers the engine, the editor
 # and the exported game; Play plugins read the project setting (editor/Generator.cpp).
-set(DORIAX_CXX_STANDARDS 17 20 23)
-if(NOT DEFINED DORIAX_CXX_STANDARD)
-    set(DORIAX_CXX_STANDARD 17 CACHE STRING "C++ standard for the engine, editor and project")
-    set_property(CACHE DORIAX_CXX_STANDARD PROPERTY STRINGS ${DORIAX_CXX_STANDARDS})
+set(JASPERENGINE_CXX_STANDARDS 17 20 23)
+if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
+    set(JASPERENGINE_CXX_STANDARD 17 CACHE STRING "C++ standard for the engine, editor and project")
+    set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
 endif()
 
-option(DORIAX_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
-option(DORIAX_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
+option(JASPERENGINE_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
+option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
 # Only runs when this file is used as the top-level build
-# (i.e. building doriax-project outside the editor).
+# (i.e. building jasperengine-project outside the editor).
 # =============================================================
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.20)
 
     if(NOT DEFINED APP_NAME)
-        set(APP_NAME doriax-project)
+        set(APP_NAME jasperengine-project)
     endif()
 
     project(${APP_NAME})
 
-    set(DORIAX_SHARED OFF)
+    set(JASPERENGINE_SHARED OFF)
 
-    if(NOT DORIAX_ROOT)
-        set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+    if(NOT JASPERENGINE_ROOT)
+        set(JASPERENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
-    file(TO_CMAKE_PATH ${DORIAX_ROOT} DORIAX_ROOT)
+    file(TO_CMAKE_PATH ${JASPERENGINE_ROOT} JASPERENGINE_ROOT)
 
     #add_definitions(-DDISABLE_LUA_BINDINGS)
     #add_definitions(-DNO_LUA_INIT)
@@ -44,59 +44,59 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     # Project-wide runtime settings are injected here by the editor Exporter.
     # Standalone engine builds keep the defaults declared by each platform.
-    # @DORIAX_PROJECT_SETTINGS@
-    if(NOT DEFINED DORIAX_VSYNC_ENABLED)
-        set(DORIAX_VSYNC_ENABLED ON)
+    # @JASPERENGINE_PROJECT_SETTINGS@
+    if(NOT DEFINED JASPERENGINE_VSYNC_ENABLED)
+        set(JASPERENGINE_VSYNC_ENABLED ON)
     endif()
-    if(DORIAX_VSYNC_ENABLED)
-        set(DORIAX_VSYNC_ENABLED_VALUE 1)
+    if(JASPERENGINE_VSYNC_ENABLED)
+        set(JASPERENGINE_VSYNC_ENABLED_VALUE 1)
     else()
-        set(DORIAX_VSYNC_ENABLED_VALUE 0)
+        set(JASPERENGINE_VSYNC_ENABLED_VALUE 0)
     endif()
-    add_definitions("-DDORIAX_VSYNC_ENABLED=${DORIAX_VSYNC_ENABLED_VALUE}")
+    add_definitions("-DJASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
 
-    if(NOT DEFINED DORIAX_WINDOW_WIDTH)
-        set(DORIAX_WINDOW_WIDTH 960)
+    if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
+        set(JASPERENGINE_WINDOW_WIDTH 960)
     endif()
-    if(NOT DEFINED DORIAX_WINDOW_HEIGHT)
-        set(DORIAX_WINDOW_HEIGHT 540)
+    if(NOT DEFINED JASPERENGINE_WINDOW_HEIGHT)
+        set(JASPERENGINE_WINDOW_HEIGHT 540)
     endif()
     # 0 = windowed, 1 = maximized, 2 = fullscreen
-    if(NOT DEFINED DORIAX_WINDOW_MODE)
-        set(DORIAX_WINDOW_MODE 0)
+    if(NOT DEFINED JASPERENGINE_WINDOW_MODE)
+        set(JASPERENGINE_WINDOW_MODE 0)
     endif()
-    if(NOT DEFINED DORIAX_WINDOW_RESIZABLE)
-        set(DORIAX_WINDOW_RESIZABLE ON)
+    if(NOT DEFINED JASPERENGINE_WINDOW_RESIZABLE)
+        set(JASPERENGINE_WINDOW_RESIZABLE ON)
     endif()
-    if(NOT DEFINED DORIAX_WINDOW_TITLE)
-        set(DORIAX_WINDOW_TITLE "Doriax")
+    if(NOT DEFINED JASPERENGINE_WINDOW_TITLE)
+        set(JASPERENGINE_WINDOW_TITLE "JasperEngine")
     endif()
     # ON only when the editor export generated project/app_icon.h (+ .ico/.rc)
-    if(NOT DEFINED DORIAX_WINDOW_ICON)
-        set(DORIAX_WINDOW_ICON OFF)
+    if(NOT DEFINED JASPERENGINE_WINDOW_ICON)
+        set(JASPERENGINE_WINDOW_ICON OFF)
     endif()
-    if(DORIAX_WINDOW_RESIZABLE)
-        set(DORIAX_WINDOW_RESIZABLE_VALUE 1)
+    if(JASPERENGINE_WINDOW_RESIZABLE)
+        set(JASPERENGINE_WINDOW_RESIZABLE_VALUE 1)
     else()
-        set(DORIAX_WINDOW_RESIZABLE_VALUE 0)
+        set(JASPERENGINE_WINDOW_RESIZABLE_VALUE 0)
     endif()
-    add_definitions("-DDEFAULT_WINDOW_WIDTH=${DORIAX_WINDOW_WIDTH}")
-    add_definitions("-DDEFAULT_WINDOW_HEIGHT=${DORIAX_WINDOW_HEIGHT}")
-    add_definitions("-DDORIAX_WINDOW_MODE=${DORIAX_WINDOW_MODE}")
-    add_definitions("-DDORIAX_WINDOW_RESIZABLE=${DORIAX_WINDOW_RESIZABLE_VALUE}")
-    add_definitions("-DDORIAX_WINDOW_TITLE=\"${DORIAX_WINDOW_TITLE}\"")
+    add_definitions("-DDEFAULT_WINDOW_WIDTH=${JASPERENGINE_WINDOW_WIDTH}")
+    add_definitions("-DDEFAULT_WINDOW_HEIGHT=${JASPERENGINE_WINDOW_HEIGHT}")
+    add_definitions("-DJASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
+    add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
+    add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
-    add_definitions("-DDORIAX_APP_ID=\"${APP_NAME}\"")
-    if(DORIAX_WINDOW_ICON AND EXISTS "${PROJECT_ROOT}/app_icon.h")
-        add_definitions("-DDORIAX_WINDOW_ICON")
+    add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
+    if(JASPERENGINE_WINDOW_ICON AND EXISTS "${PROJECT_ROOT}/app_icon.h")
+        add_definitions("-DJASPERENGINE_WINDOW_ICON")
     endif()
 
     # Per-project HybridArray capacities (SceneMaxValues) are injected here by the
     # editor Exporter, replacing the marker below. When building manually (without
     # the editor), the marker is left untouched and the engine defaults declared in
     # core/Engine.h apply.
-    # @DORIAX_SCENE_MAX_VALUES@
+    # @JASPERENGINE_SCENE_MAX_VALUES@
 
     if(NOT GRAPHIC_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -139,7 +139,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             message(FATAL_ERROR "APP_BACKEND is not set")
         endif()
     endif()
-    if((NOT DORIAX_VSYNC_ENABLED) AND (CMAKE_SYSTEM_NAME STREQUAL "Darwin") AND
+    if((NOT JASPERENGINE_VSYNC_ENABLED) AND (CMAKE_SYSTEM_NAME STREQUAL "Darwin") AND
        (APP_BACKEND STREQUAL "apple"))
         message(WARNING "VSync off is not supported by the macOS Metal application backend; this build will remain synchronized")
     endif()
@@ -160,7 +160,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     # FindVulkan reads the VULKAN_SDK environment variable the SDK installer
     # sets. A macro, not a function, so Vulkan_FOUND lands in the caller.
-    macro(doriax_find_vulkan backendOption)
+    macro(jasperengine_find_vulkan backendOption)
         # sokol_gfx binds every resource through VK_EXT_descriptor_buffer, which
         # MoltenVK does not implement, so the build only fails at device selection
         if(APPLE)
@@ -170,12 +170,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         # An app started from the Dock inherits no shell environment, so on macOS
         # the SDK is also looked for where its installer unpacks it
         if(APPLE AND NOT DEFINED ENV{VULKAN_SDK})
-            file(GLOB doriaxVulkanSdkDirs "$ENV{HOME}/VulkanSDK/*/macOS")
-            if(doriaxVulkanSdkDirs)
-                list(SORT doriaxVulkanSdkDirs)
-                list(POP_BACK doriaxVulkanSdkDirs doriaxVulkanSdkNewest)
-                set(ENV{VULKAN_SDK} "${doriaxVulkanSdkNewest}")
-                message(STATUS "Using the Vulkan SDK at ${doriaxVulkanSdkNewest}")
+            file(GLOB jasperengineVulkanSdkDirs "$ENV{HOME}/VulkanSDK/*/macOS")
+            if(jasperengineVulkanSdkDirs)
+                list(SORT jasperengineVulkanSdkDirs)
+                list(POP_BACK jasperengineVulkanSdkDirs jasperengineVulkanSdkNewest)
+                set(ENV{VULKAN_SDK} "${jasperengineVulkanSdkNewest}")
+                message(STATUS "Using the Vulkan SDK at ${jasperengineVulkanSdkNewest}")
             endif()
         endif()
         find_package(Vulkan QUIET)
@@ -185,7 +185,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endmacro()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-        add_definitions("-DDORIAX_WEB")
+        add_definitions("-DJASPERENGINE_WEB")
 
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
@@ -196,7 +196,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_EXECUTABLE_SUFFIX ".html")
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/emscripten)
+        set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/emscripten)
 
         set(EM_PRELOAD_FILES)
         if(EXISTS "${PROJECT_ROOT}/assets")
@@ -207,7 +207,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
 
         list(APPEND PLATFORM_SOURCE
-            ${PLATFORM_ROOT}/DoriaxWeb.cpp
+            ${PLATFORM_ROOT}/JasperEngineWeb.cpp
             ${PLATFORM_ROOT}/main.cpp
         )
 
@@ -251,7 +251,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-        add_definitions("-DDORIAX_ANDROID")
+        add_definitions("-DJASPERENGINE_ANDROID")
 
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
@@ -263,7 +263,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         add_definitions("-DLUA_USE_C89")
         add_definitions("-DWITH_MINIAUDIO")
 
-        set(APP_NAME doriax-android)
+        set(APP_NAME jasperengine-android)
 
         if(ANDROID_ABI MATCHES "^arm(eabi)?(-v7a)?(64-v8a)?$")
             #add_compile_options("-march=armv8.2a+fp16")
@@ -273,10 +273,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             set(IS_ARM ON)
         endif()
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/android)
+        set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/android)
 
         list(APPEND PLATFORM_SOURCE
-            ${PLATFORM_ROOT}/DoriaxAndroid.cpp
+            ${PLATFORM_ROOT}/JasperEngineAndroid.cpp
             ${PLATFORM_ROOT}/AndroidMain.cpp
             ${PLATFORM_ROOT}/NativeEngine.cpp
         )
@@ -299,7 +299,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        add_definitions("-DDORIAX_WIN")
+        add_definitions("-DJASPERENGINE_WIN")
 
         # The native Win32 backend creates a WGL context, a Vulkan surface and
         # swapchain, or a D3D11 device and swapchain.
@@ -332,10 +332,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_PROPERTIES LINK_FLAGS "/ENTRY:mainCRTStartup")
         endif()
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/win)
+        set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/win)
 
         list(APPEND PLATFORM_SOURCE
-            ${PLATFORM_ROOT}/DoriaxWin.cpp
+            ${PLATFORM_ROOT}/JasperEngineWin.cpp
             ${PLATFORM_ROOT}/WindowWin.cpp
             ${PLATFORM_ROOT}/SystemWin.cpp
             ${PLATFORM_ROOT}/WinInputRouter.cpp
@@ -351,11 +351,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
             # Device and swapchain are shared with the other desktops
-            include_directories(${DORIAX_ROOT}/platform/common)
+            include_directories(${JASPERENGINE_ROOT}/platform/common)
             list(APPEND PLATFORM_SOURCE
-                ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+                ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp
             )
-            doriax_find_vulkan("GRAPHIC_BACKEND")
+            jasperengine_find_vulkan("GRAPHIC_BACKEND")
             list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
         elseif(GRAPHIC_BACKEND STREQUAL "d3d11")
             # d3d11 and dxgi ship with the Windows SDK, nothing to find
@@ -395,14 +395,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
         endif()
 
-        add_definitions("-DDORIAX_LINUX")
+        add_definitions("-DJASPERENGINE_LINUX")
 
         find_package(X11 REQUIRED)
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/linux)
+        set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/linux)
 
         list(APPEND PLATFORM_SOURCE
-            ${PLATFORM_ROOT}/DoriaxLinux.cpp
+            ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
@@ -412,7 +412,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
 
         # GamepadDB parses the community mapping database in common/
-        include_directories(${DORIAX_ROOT}/platform/common)
+        include_directories(${JASPERENGINE_ROOT}/platform/common)
 
         list(APPEND PLATFORM_LIBS
             X11::X11 dl m
@@ -422,9 +422,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             # The device and swapchain are the same on every desktop; only the
             # surface differs, so the backend passes that in.
             list(APPEND PLATFORM_SOURCE
-                ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+                ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp
             )
-            doriax_find_vulkan("GRAPHIC_BACKEND")
+            jasperengine_find_vulkan("GRAPHIC_BACKEND")
             list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
         else()
             list(APPEND PLATFORM_LIBS GL)
@@ -455,21 +455,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         # entry point in platform/apple needs, shared with iOS. Every other
         # generator builds a bare executable, on the backend in platform/mac.
         if(GRAPHIC_BACKEND STREQUAL "metal" AND CMAKE_GENERATOR STREQUAL "Xcode")
-            add_definitions("-DDORIAX_APPLE")
+            add_definitions("-DJASPERENGINE_APPLE")
 
-            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
+            set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/apple)
 
-            set(APP_BUNDLE_IDENTIFIER "org.doriax.doriaxengine")
+            set(APP_BUNDLE_IDENTIFIER "com.jaspergameengine.jasperengine")
             set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
 
             include_directories(/System/Library/Frameworks)
 
             # The drawable and the input translation come from platform/mac
-            include_directories(${DORIAX_ROOT}/platform/mac)
+            include_directories(${JASPERENGINE_ROOT}/platform/mac)
 
             list(APPEND PLATFORM_SOURCE
-                ${DORIAX_ROOT}/platform/mac/MacInputRouter.mm
-                ${DORIAX_ROOT}/platform/mac/MacViewMetal.mm
+                ${JASPERENGINE_ROOT}/platform/mac/MacInputRouter.mm
+                ${JASPERENGINE_ROOT}/platform/mac/MacViewMetal.mm
                 ${PLATFORM_ROOT}/macos/EngineView.h
                 ${PLATFORM_ROOT}/macos/EngineView.mm
                 ${PLATFORM_ROOT}/macos/main.m
@@ -479,10 +479,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/macos/ViewController.m
                 ${PLATFORM_ROOT}/Renderer.h
                 ${PLATFORM_ROOT}/Renderer.mm
-                ${PLATFORM_ROOT}/DoriaxApple.h
-                ${PLATFORM_ROOT}/DoriaxApple.mm
-                ${PLATFORM_ROOT}/DoriaxGameController.h
-                ${PLATFORM_ROOT}/DoriaxGameController.mm
+                ${PLATFORM_ROOT}/JasperEngineApple.h
+                ${PLATFORM_ROOT}/JasperEngineApple.mm
+                ${PLATFORM_ROOT}/JasperEngineGameController.h
+                ${PLATFORM_ROOT}/JasperEngineGameController.mm
             )
 
             list(APPEND PLATFORM_RESOURCES
@@ -490,7 +490,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             )
 
             list(APPEND PLATFORM_PROPERTIES
-                MACOSX_BUNDLE_INFO_PLIST "${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist"
+                MACOSX_BUNDLE_INFO_PLIST "${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist"
                 XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
             )
 
@@ -502,7 +502,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-framework GameController"
             )
         else()
-            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/mac)
+            set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/mac)
 
             if(EXISTS "${PROJECT_ROOT}/assets")
                 set(ASSETS_DEST_DIR ${CMAKE_BINARY_DIR}/assets)
@@ -512,16 +512,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
 
             # Gamepads come from the same GameController code iOS and the editor use
-            include_directories(${DORIAX_ROOT}/platform/apple)
+            include_directories(${JASPERENGINE_ROOT}/platform/apple)
 
             list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/DoriaxMac.h
-                ${PLATFORM_ROOT}/DoriaxMac.mm
+                ${PLATFORM_ROOT}/JasperEngineMac.h
+                ${PLATFORM_ROOT}/JasperEngineMac.mm
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
                 ${PLATFORM_ROOT}/main.mm
-                ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
+                ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
             )
 
             list(APPEND PLATFORM_LIBS
@@ -536,12 +536,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 list(APPEND PLATFORM_LIBS "-framework OpenGL")
             elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
                 # Device and swapchain are shared with the other desktops
-                include_directories(${DORIAX_ROOT}/platform/common)
+                include_directories(${JASPERENGINE_ROOT}/platform/common)
                 list(APPEND PLATFORM_SOURCE
                     ${PLATFORM_ROOT}/MacViewVulkan.mm
-                    ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+                    ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp
                 )
-                doriax_find_vulkan("GRAPHIC_BACKEND")
+                jasperengine_find_vulkan("GRAPHIC_BACKEND")
                 list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
             else()
                 list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewMetal.mm)
@@ -555,7 +555,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        add_definitions("-DDORIAX_APPLE")
+        add_definitions("-DJASPERENGINE_APPLE")
 
         if(GRAPHIC_BACKEND STREQUAL "metal")
             add_definitions("-DSOKOL_METAL")
@@ -563,9 +563,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         add_definitions("-DWITH_MINIAUDIO")
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
+        set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/apple)
 
-        set(APP_BUNDLE_IDENTIFIER "org.doriax.doriaxengine")
+        set(APP_BUNDLE_IDENTIFIER "com.jaspergameengine.jasperengine")
 
         include_directories(/System/Library/Frameworks)
 
@@ -581,10 +581,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/AdMobAdapter.m
             ${PLATFORM_ROOT}/Renderer.h
             ${PLATFORM_ROOT}/Renderer.mm
-            ${PLATFORM_ROOT}/DoriaxApple.h
-            ${PLATFORM_ROOT}/DoriaxApple.mm
-            ${PLATFORM_ROOT}/DoriaxGameController.h
-            ${PLATFORM_ROOT}/DoriaxGameController.mm
+            ${PLATFORM_ROOT}/JasperEngineApple.h
+            ${PLATFORM_ROOT}/JasperEngineApple.mm
+            ${PLATFORM_ROOT}/JasperEngineGameController.h
+            ${PLATFORM_ROOT}/JasperEngineGameController.mm
         )
 
         list(APPEND PLATFORM_RESOURCES
@@ -595,7 +595,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND PLATFORM_LIBS
             -ObjC
 
-            # GameController framework for gamepad input (DoriaxGameController.mm)
+            # GameController framework for gamepad input (JasperEngineGameController.mm)
             "-framework GameController"
 
             # To run on iOS simulator
@@ -625,7 +625,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         list(APPEND PLATFORM_PROPERTIES
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}
-            MACOSX_BUNDLE_INFO_PLIST "${DORIAX_ROOT}/workspaces/xcode/ios/Info.plist"
+            MACOSX_BUNDLE_INFO_PLIST "${JASPERENGINE_ROOT}/workspaces/xcode/ios/Info.plist"
             XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
         )
     endif()
@@ -637,23 +637,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif() # End standalone project setup
 
 # =============================================================
-# DORIAX LIBRARY BUILD
+# JASPERENGINE LIBRARY BUILD
 # Always runs (both standalone and when included by the editor).
 # =============================================================
 
-option(DORIAX_SHARED "Build doriax as a shared library" OFF)
+option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
 
-if(DORIAX_SHARED)
+if(JASPERENGINE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-    set(DORIAX_LIB_TYPE SHARED)
+    set(JASPERENGINE_LIB_TYPE SHARED)
 else()
-    set(DORIAX_LIB_TYPE STATIC)
+    set(JASPERENGINE_LIB_TYPE STATIC)
 endif()
 
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)
-        if(DORIAX_SHARED)
+        if(JASPERENGINE_SHARED)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
         else()
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -703,13 +703,13 @@ include_directories(SYSTEM libs/tinygltf)
 include_directories(SYSTEM libs/tinyxml2)
 
 # Built after the standalone block, so it sees the physics switches the Exporter injects there
-set(DORIAX_PHYSICS_LIBS "")
-if(DORIAX_PHYSICS_2D)
-    list(APPEND DORIAX_PHYSICS_LIBS box2d)
+set(JASPERENGINE_PHYSICS_LIBS "")
+if(JASPERENGINE_PHYSICS_2D)
+    list(APPEND JASPERENGINE_PHYSICS_LIBS box2d)
     include_directories(SYSTEM libs/box2d/include)
 endif()
-if(DORIAX_PHYSICS_3D)
-    list(APPEND DORIAX_PHYSICS_LIBS joltphysics)
+if(JASPERENGINE_PHYSICS_3D)
+    list(APPEND JASPERENGINE_PHYSICS_LIBS joltphysics)
     include_directories(SYSTEM libs/joltphysics)
 endif()
 
@@ -724,7 +724,7 @@ add_subdirectory(libs/soloud)
 add_subdirectory(libs/tinyobjloader)
 add_subdirectory(libs/tinygltf)
 add_subdirectory(libs/tinyxml2)
-foreach(lib IN LISTS DORIAX_PHYSICS_LIBS)
+foreach(lib IN LISTS JASPERENGINE_PHYSICS_LIBS)
     add_subdirectory(libs/${lib})
 endforeach()
 add_subdirectory(libs/harfbuzz)
@@ -740,7 +740,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer ${DORIAX_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -755,7 +755,7 @@ endif()
 
 #add_definitions("-DPROJECT_ROOT=\"${PROJECT_ROOT}\"")
 
-set(DORIAX_SRCS
+set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
@@ -883,8 +883,8 @@ set(DORIAX_SRCS
     core/util/XMLUtils.cpp
 )
 
-if(DORIAX_PHYSICS_2D)
-    list(APPEND DORIAX_SRCS
+if(JASPERENGINE_PHYSICS_2D)
+    list(APPEND JASPERENGINE_SRCS
         core/object/physics/Body2D.cpp
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
@@ -892,8 +892,8 @@ if(DORIAX_PHYSICS_2D)
     )
 endif()
 
-if(DORIAX_PHYSICS_3D)
-    list(APPEND DORIAX_SRCS
+if(JASPERENGINE_PHYSICS_3D)
+    list(APPEND JASPERENGINE_SRCS
         core/object/physics/Body3D.cpp
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
@@ -913,63 +913,63 @@ set(RENDER_SOKOL_SRC
 )
 
 add_library(
-    doriax
+    jasperengine
 
-    ${DORIAX_LIB_TYPE}
+    ${JASPERENGINE_LIB_TYPE}
 
     ${RENDER_SOKOL_SRC}
-    ${DORIAX_SRCS}
+    ${JASPERENGINE_SRCS}
 )
 
-target_compile_definitions(doriax
+target_compile_definitions(jasperengine
     PUBLIC
-        $<$<BOOL:${DORIAX_PHYSICS_2D}>:DORIAX_PHYSICS_2D>
-        $<$<BOOL:${DORIAX_PHYSICS_3D}>:DORIAX_PHYSICS_3D>
+        $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
+        $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(doriax PRIVATE Threads::Threads)
+target_link_libraries(jasperengine PRIVATE Threads::Threads)
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
-	target_compile_options(doriax PRIVATE -pthread)
+	target_compile_options(jasperengine PRIVATE -pthread)
 endif()
 
 target_link_libraries(
-    doriax
+    jasperengine
 
     PUBLIC
 
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer
-    ${DORIAX_PHYSICS_LIBS}
+    ${JASPERENGINE_PHYSICS_LIBS}
 )
 
 # Checked after the marker above, so the value the Exporter injects is validated too
-if(NOT DORIAX_CXX_STANDARD IN_LIST DORIAX_CXX_STANDARDS)
-    string(REPLACE ";" ", " DORIAX_CXX_STANDARDS_TEXT "${DORIAX_CXX_STANDARDS}")
-    message(FATAL_ERROR "DORIAX_CXX_STANDARD must be one of: ${DORIAX_CXX_STANDARDS_TEXT} (got '${DORIAX_CXX_STANDARD}')")
+if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
+    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
+    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
 endif()
-message(STATUS "C++ standard is set to ${DORIAX_CXX_STANDARD}")
+message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
 
 set_target_properties(
-    doriax
+    jasperengine
 
     PROPERTIES
 
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    CXX_STANDARD ${DORIAX_CXX_STANDARD}
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON
-    OBJCXX_STANDARD ${DORIAX_CXX_STANDARD}
+    OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     OBJCXX_STANDARD_REQUIRED ON
 )
 
-if(DORIAX_SHARED)
-    target_compile_definitions(doriax 
+if(JASPERENGINE_SHARED)
+    target_compile_definitions(jasperengine 
         PRIVATE 
-        DORIAX_EXPORTS
+        JASPERENGINE_EXPORTS
         PUBLIC
-        DORIAX_SHARED
+        JASPERENGINE_SHARED
     )
 endif()
 
@@ -1008,14 +1008,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(WIN32)
-        include(${DORIAX_ROOT}/platform/win/WindowsManifest.cmake)
-        doriax_add_windows_manifest(${APP_NAME})
+        include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
+        jasperengine_add_windows_manifest(${APP_NAME})
     endif()
 
     # Project script roots are injected here by the editor Exporter. They are
-    # scoped to this target: include_directories() would reach the doriax
+    # scoped to this target: include_directories() would reach the jasperengine
     # library too, ahead of core/, letting a project header shadow an engine one.
-    # @DORIAX_SCRIPT_DIRS@
+    # @JASPERENGINE_SCRIPT_DIRS@
 
     if(DEFINED ASSETS_DEST_DIR OR DEFINED LUA_DEST_DIR)
         install(TARGETS ${APP_NAME} RUNTIME DESTINATION bin)
@@ -1045,9 +1045,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         PROPERTIES
         ${PLATFORM_PROPERTIES}
         RESOURCE "${PLATFORM_RESOURCES}"
-        CXX_STANDARD ${DORIAX_CXX_STANDARD}
+        CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         CXX_STANDARD_REQUIRED ON
-        OBJCXX_STANDARD ${DORIAX_CXX_STANDARD}
+        OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
         OBJCXX_STANDARD_REQUIRED ON
     )
 
@@ -1067,15 +1067,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         PRIVATE
 
-        doriax
+        jasperengine
         Threads::Threads
         ${PLATFORM_LIBS}
     )
 
     # Optional user build file; the editor writes the same hook, with the same
     # variable names, into the project CMakeLists.txt it generates.
-    set(DORIAX_TARGET ${APP_NAME})
-    set(DORIAX_SCRIPTS_DIR ${PROJECT_ROOT}/scripts)
+    set(JASPERENGINE_TARGET ${APP_NAME})
+    set(JASPERENGINE_SCRIPTS_DIR ${PROJECT_ROOT}/scripts)
     include(${PROJECT_ROOT}/ProjectBuild.cmake OPTIONAL)
 
 endif() # End standalone executable build

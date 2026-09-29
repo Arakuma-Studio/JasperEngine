@@ -3,7 +3,7 @@
 
 #include "PositionAction.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 PositionAction::PositionAction(Scene* scene): TimedAction(scene){
     addComponent<PositionActionComponent>();

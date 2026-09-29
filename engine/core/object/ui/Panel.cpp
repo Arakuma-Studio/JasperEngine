@@ -9,7 +9,7 @@
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Panel::Panel(Scene* scene): Image(scene){
     addComponent<PanelComponent>();

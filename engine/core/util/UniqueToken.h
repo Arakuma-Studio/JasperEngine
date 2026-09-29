@@ -7,9 +7,9 @@
 #include "Export.h"
 #include <string>
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API UniqueToken {
+    class JASPERENGINE_API UniqueToken {
     private:
         static int id;
 

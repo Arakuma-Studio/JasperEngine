@@ -3,7 +3,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-using namespace doriax;
+using namespace jasperengine;
 
 Rect::Rect(){
     x = 0;

@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class BidiText {
     public:

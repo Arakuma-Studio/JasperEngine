@@ -14,7 +14,7 @@
 #include "Engine.h"
 #include <string>
 
-namespace doriax{
+namespace jasperengine{
 
     struct PointData{
         Vector3 position = Vector3(0.0, 0.0, 0.0);
@@ -33,7 +33,7 @@ namespace doriax{
         Rect textureRect;
     };
 
-    struct DORIAX_API PointsComponent{
+    struct JASPERENGINE_API PointsComponent{
         bool loaded = false;
         bool loadCalled = false;
 

@@ -6,7 +6,7 @@
 
 #include <bitset>
 
-namespace doriax {
+namespace jasperengine {
 
     // 64 should be max number of components types
     using Signature = std::bitset<64>;

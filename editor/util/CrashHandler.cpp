@@ -26,11 +26,11 @@
     #endif
     #if defined(__GLIBC__) || defined(__APPLE__)
         #include <execinfo.h>
-        #define DORIAX_HAS_EXECINFO 1
+        #define JASPERENGINE_HAS_EXECINFO 1
     #endif
 #endif
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
 
@@ -160,7 +160,7 @@ namespace {
         }
 
         if (symbols) SymCleanup(process);
-#elif defined(DORIAX_HAS_EXECINFO)
+#elif defined(JASPERENGINE_HAS_EXECINFO)
         void* frames[64];
         int count = backtrace(frames, 64);
         if (count <= 0) {
@@ -181,7 +181,7 @@ namespace {
         writeLine(file, "");
         writeLine(file, "========================================================");
         writeFormatted(file, "FATAL: %s\n", reason);
-        writeFormatted(file, "Doriax editor %s\n", DORIAX_EDITOR_VERSION);
+        writeFormatted(file, "JasperEngine Editor %s\n", JASPERENGINE_EDITOR_VERSION);
         if (exePath[0] != '\0') {
             writeFormatted(file, "binary: %s\n", exePath);
         }

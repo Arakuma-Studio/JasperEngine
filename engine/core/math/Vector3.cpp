@@ -8,7 +8,7 @@
 
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 const Vector3 Vector3::ZERO( 0, 0, 0 );
 const Vector3 Vector3::UNIT_X( 1, 0, 0 );

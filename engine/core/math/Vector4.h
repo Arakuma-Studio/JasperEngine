@@ -10,21 +10,21 @@
 #include <assert.h>
 #include <math.h>
 
-namespace doriax { class Vector4; }
-doriax::Vector4 operator * ( const float fScalar, const doriax::Vector4& rkVector );
-doriax::Vector4 operator / ( const float fScalar, const doriax::Vector4& rkVector );
-doriax::Vector4 operator + (const doriax::Vector4& lhs, const float rhs);
-doriax::Vector4 operator + (const float lhs, const doriax::Vector4& rhs);
-doriax::Vector4 operator - (const doriax::Vector4& lhs, float rhs);
-doriax::Vector4 operator - (const float lhs, const doriax::Vector4& rhs);
+namespace jasperengine { class Vector4; }
+jasperengine::Vector4 operator * ( const float fScalar, const jasperengine::Vector4& rkVector );
+jasperengine::Vector4 operator / ( const float fScalar, const jasperengine::Vector4& rkVector );
+jasperengine::Vector4 operator + (const jasperengine::Vector4& lhs, const float rhs);
+jasperengine::Vector4 operator + (const float lhs, const jasperengine::Vector4& rhs);
+jasperengine::Vector4 operator - (const jasperengine::Vector4& lhs, float rhs);
+jasperengine::Vector4 operator - (const float lhs, const jasperengine::Vector4& rhs);
 
 
-namespace doriax {
+namespace jasperengine {
 
     class Vector2;
     class Vector3;
 
-    class DORIAX_API Vector4
+    class JASPERENGINE_API Vector4
     {
     public:
         float x, y, z, w;

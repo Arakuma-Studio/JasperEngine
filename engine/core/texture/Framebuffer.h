@@ -6,9 +6,9 @@
 
 #include "render/FramebufferRender.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Framebuffer{
+    class JASPERENGINE_API Framebuffer{
 
         private:
             FramebufferRender render;

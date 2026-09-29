@@ -7,11 +7,11 @@
 #include "Vector3.h"
 #include "AABB.h"
 
-namespace doriax{
+namespace jasperengine{
 
     class OBB;
     
-    class DORIAX_API Plane{
+    class JASPERENGINE_API Plane{
 
     public:
 

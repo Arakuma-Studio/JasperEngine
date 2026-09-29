@@ -10,7 +10,7 @@
 
 #include "sokol_gfx.h"
 
-namespace doriax{
+namespace jasperengine{
     class SokolFramebuffer{
 
     public:

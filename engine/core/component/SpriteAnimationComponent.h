@@ -7,9 +7,9 @@
 #include "Engine.h"
 #include "util/HybridArray.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API SpriteAnimationComponent{
+    struct JASPERENGINE_API SpriteAnimationComponent{
         bool loop = true;
 
         unsigned int framesTimeSize = 0;

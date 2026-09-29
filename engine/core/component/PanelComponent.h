@@ -6,7 +6,7 @@
 
 #include "util/FunctionSubscribe.h"
 
-namespace doriax{
+namespace jasperengine{
 
     enum class PanelEdge{
         NONE,
@@ -17,7 +17,7 @@ namespace doriax{
         LEFT
     };
 
-    struct DORIAX_API PanelComponent{
+    struct JASPERENGINE_API PanelComponent{
         Entity headerimage = NULL_ENTITY;
         Entity headercontainer = NULL_ENTITY;
         Entity headertext = NULL_ENTITY;

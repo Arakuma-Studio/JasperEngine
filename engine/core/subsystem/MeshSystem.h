@@ -31,9 +31,9 @@ namespace tinygltf {
     class Model;
 }
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API MeshSystem : public SubSystem {
+    class JASPERENGINE_API MeshSystem : public SubSystem {
 
     private:
         struct AsyncModelLoadResult;

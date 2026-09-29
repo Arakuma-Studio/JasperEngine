@@ -8,7 +8,7 @@
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 void ProjectSaveDialog::open(const std::string& defaultName,
@@ -131,4 +131,4 @@ void ProjectSaveDialog::show() {
 }
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

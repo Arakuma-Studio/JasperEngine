@@ -7,9 +7,9 @@
 #include "math/Vector3.h"
 #include "Engine.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    struct DORIAX_API Light2DComponent{
+    struct JASPERENGINE_API Light2DComponent{
         Vector3 color = Vector3(1.0, 1.0, 1.0);
 
         float intensity = 1.0;

@@ -10,9 +10,9 @@
 
 #include "box2d/box2d.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Contact2D{
+    class JASPERENGINE_API Contact2D{
     private:
         Scene* scene;
         b2ContactData contact;

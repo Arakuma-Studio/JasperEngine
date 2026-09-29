@@ -12,7 +12,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class CreateEntityBundleCmd: public Command{
 

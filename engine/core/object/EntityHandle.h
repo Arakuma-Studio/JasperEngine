@@ -9,8 +9,8 @@
 #include <type_traits>
 #include <utility>
 
-namespace doriax{
-    class DORIAX_API EntityHandle{
+namespace jasperengine{
+    class JASPERENGINE_API EntityHandle{
 
     protected:
         Entity entity;

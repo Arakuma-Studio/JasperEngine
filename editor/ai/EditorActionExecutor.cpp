@@ -82,7 +82,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -1025,8 +1025,8 @@ std::string sanitizeIdentifier(const std::string& value, const std::string& fall
     return result;
 }
 
-std::string doriaxLuaScriptGuide(const std::string& className) {
-    return "Doriax Lua scripts are returned tables, not Dori.Script objects. "
+std::string jasperengineLuaScriptGuide(const std::string& className) {
+    return "JasperEngine Lua scripts are returned tables, not Dori.Script objects. "
            "Use: local " + className + " = { properties = {} }; "
            "function " + className + ":init() ... end; return " + className + ". "
            "Editor-exposed properties go in the properties array as { name = \"speed\", displayName = \"Speed\", type = \"float\", default = 5.0 } "
@@ -1049,31 +1049,31 @@ std::string doriaxLuaScriptGuide(const std::string& className) {
            "A camera orients by its target, not its rotation: useTarget defaults to true and both cam:setTarget(x, y, z) and the cam.target property re-enable it, so while it is on the view is lookAt(position, target, up) and setting the camera entity's rotation does nothing (call cam:disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). "
            "For a third-person/orbit camera, place it with spherical coordinates around the target: local p, y = math.rad(pitch), math.rad(yaw); local offset = Vector3(math.cos(p)*math.sin(y), math.sin(p), math.cos(p)*math.cos(y)); cam:setPosition(target + offset * distance); cam.target = target -- a positive pitch then puts the camera ABOVE the target. Never compute the position as target - forward*distance from a rotated forward vector; rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target. "
            "To print or log, use Log.print(\"text \" .. tostring(value)) (Log.warn/Log.error for severity), not bare print(). "
-           "Use ONLY APIs that actually exist in the Doriax engine source: search_engine_api is a quick index, and search_engine_source/read_engine_source read the real Lua bindings "
+           "Use ONLY APIs that actually exist in the JasperEngine source: search_engine_api is a quick index, and search_engine_source/read_engine_source read the real Lua bindings "
            "(e.g. core/script/binding/CoreClassesLua.cpp, ObjectClassesLua.cpp). Confirm exact names there before writing them; if a symbol is not in that source it does not exist, so never invent APIs or borrow them from other engines.";
 }
 
-std::string doriaxCppScriptGuide(bool cppSubclass, const std::string& parentClass) {
+std::string jasperengineCppScriptGuide(bool cppSubclass, const std::string& parentClass) {
     std::ostringstream guide;
-    guide << "Doriax C++ scripts compile against flat engine API headers copied to .doriax/engine-api. "
+    guide << "JasperEngine C++ scripts compile against flat engine API headers copied to .jasperengine/engine-api. "
           << "Use quoted includes such as \"Mesh.h\", \"ScriptBase.h\", \"Engine.h\", and \"ScriptProperty.h\". "
           << "Never use #include <core/...> or #include \"core/...\". "
-          << "A Doriax script class needs no class-declaration or reflection macro (no D_OBJECT/GDCLASS/GENERATED_BODY/Q_OBJECT): just inherit the base class and declare a (doriax::Scene*, doriax::Entity) constructor. Prefer editing the class skeleton create_script already generated rather than rewriting it from scratch. ";
+          << "A JasperEngine script class needs no class-declaration or reflection macro (no D_OBJECT/GDCLASS/GENERATED_BODY/Q_OBJECT): just inherit the base class and declare a (jasperengine::Scene*, jasperengine::Entity) constructor. Prefer editing the class skeleton create_script already generated rather than rewriting it from scratch. ";
     if (!cppSubclass) {
-        guide << "cpp_script_class inherits doriax::ScriptBase for general entity logic. "
+        guide << "cpp_script_class inherits jasperengine::ScriptBase for general entity logic. "
               << "Use REGISTER_ENGINE_EVENT(onUpdate) and void onUpdate() for variable-frame logic, or "
               << "REGISTER_ENGINE_EVENT(onFixedUpdate) and void onFixedUpdate() for physics-step logic; "
               << "pair the chosen event with the matching UNREGISTER_ENGINE_EVENT in the destructor. "
               << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as Object(getScene(), getEntity()) to control the entity.";
     } else {
-        guide << "cpp_subclass inherits doriax::" << parentClass
+        guide << "cpp_subclass inherits jasperengine::" << parentClass
               << " and calls engine methods (e.g. setColor) directly on this. "
               << "Register variable-frame callbacks with REGISTER_ENGINE_EVENT(onUpdate), or physics-step callbacks with REGISTER_ENGINE_EVENT(onFixedUpdate), and unregister the matching event in the destructor. "
               << "For mesh/cube color on a Mesh entity, prefer cpp_subclass extending Mesh (or Shape), not ScriptBase.";
     }
     guide << " Continuous Body2D/Body3D forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
           << "A dynamic body's mass comes from its shape and density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the shape density or shrink the shape rather than inflating the force (Body3D::setMass writes only the live body and is lost on reload). "
-          << "Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the Doriax engine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
+          << "Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the JasperEngine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
           << "Verified entity-control recipe: on an Object wrapper (Object obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). Object has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
           << "Angle arguments are in the engine's default unit, DEGREES unless Engine::setUseDegrees(false) was called: Quaternion(angle, axis), Quaternion::fromEulerAngles, Camera::rotateView and friends all run their angle through Angle::defaultToRad, so do not pass radians to them. Include \"Angle.h\" and convert with Angle::degToDefault/Angle::radToDefault; std::sin/std::cos always need radians, so feed them Angle::defaultToRad(angle). "
           << "Camera orientation comes from its target, not its rotation: CameraComponent.useTarget defaults to true and Camera::setTarget re-enables it, so while it is on the view matrix is lookAt(position, target, up) and calling setRotation() on the camera entity has no effect on the view (call cam.disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). For a third-person/orbit camera, place the camera with spherical coordinates around the target: float p = Angle::defaultToRad(pitch), y = Angle::defaultToRad(yaw); Vector3 offset(cosf(p)*sinf(y), sinf(p), cosf(p)*cosf(y)); cam.setPosition(target + offset*distance); cam.setTarget(target); -- a positive pitch then places the camera ABOVE the target, and the horizontal movement basis is forward = Vector3(-sinf(y), 0, -cosf(y)), right = Vector3(cosf(y), 0, -sinf(y)). Never derive the camera position as target - forward*distance from a rotated forward vector: rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target, forcing a bogus negative pitch to compensate. "
@@ -1085,7 +1085,7 @@ std::string doriaxCppScriptGuide(bool cppSubclass, const std::string& parentClas
     return guide.str();
 }
 
-std::string validateDoriaxLuaScriptContent(const std::string& content) {
+std::string validateJasperEngineLuaScriptContent(const std::string& content) {
     const std::string contentLower = lower(content);
 
     struct ForbiddenLuaPattern {
@@ -1093,32 +1093,32 @@ std::string validateDoriaxLuaScriptContent(const std::string& content) {
         const char* message;
     };
     static const ForbiddenLuaPattern patterns[] = {
-        {"dori.", "Doriax Lua scripts do not use a Dori namespace."},
-        {"script:new", "Doriax Lua scripts do not derive from Script:new(). Return a plain module table instead."},
-        {"on_start", "Doriax Lua scripts use init() for startup, not on_start()."},
-        {"on_scene_start", "Doriax Lua scripts use init() for startup, not on_scene_start()."},
+        {"dori.", "JasperEngine Lua scripts do not use a Dori namespace."},
+        {"script:new", "JasperEngine Lua scripts do not derive from Script:new(). Return a plain module table instead."},
+        {"on_start", "JasperEngine Lua scripts use init() for startup, not on_start()."},
+        {"on_scene_start", "JasperEngine Lua scripts use init() for startup, not on_scene_start()."},
         {"self.entity:", "self.entity is a numeric Entity id, not an object receiver. Wrap it with a runtime class such as Shape(self.scene, self.entity)."},
         {"self.entity.", "self.entity is a numeric Entity id, not an object. Pass it to runtime wrappers; do not access methods/properties on it."},
-        {"get_entity", "Doriax Lua scripts receive self.entity directly; there is no get_entity() helper."},
-        {"getentity", "Doriax Lua scripts receive self.entity directly; there is no getEntity() helper."},
-        {"get_component", "Doriax Lua scripts should use runtime wrappers returned by search_engine_api, not get_component()."},
-        {"getcomponent", "Doriax Lua scripts should use runtime wrappers returned by search_engine_api, not getComponent()."},
-        {"transform(self", "There is no Transform global in Doriax Lua; components are not constructed like Transform(self.scene, self.entity). To read or move an entity use local obj = Object(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
-        {"set_property", "Doriax Lua scripts should call runtime APIs, not editor-style set_property()."},
-        {"setproperty", "Doriax Lua scripts should call runtime APIs, not editor-style setProperty()."},
-        {"vector4.new", "Doriax Lua constructors use Vector4(...), not Vector4.new(...)."},
+        {"get_entity", "JasperEngine Lua scripts receive self.entity directly; there is no get_entity() helper."},
+        {"getentity", "JasperEngine Lua scripts receive self.entity directly; there is no getEntity() helper."},
+        {"get_component", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not get_component()."},
+        {"getcomponent", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not getComponent()."},
+        {"transform(self", "There is no Transform global in JasperEngine Lua; components are not constructed like Transform(self.scene, self.entity). To read or move an entity use local obj = Object(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
+        {"set_property", "JasperEngine Lua scripts should call runtime APIs, not editor-style set_property()."},
+        {"setproperty", "JasperEngine Lua scripts should call runtime APIs, not editor-style setProperty()."},
+        {"vector4.new", "JasperEngine Lua constructors use Vector4(...), not Vector4.new(...)."},
         {"engine.log", "Engine has no log method. To print, use Log.print(\"text \" .. tostring(value)) (Log.warn/Log.error for severity)."},
         {"engine:log", "Engine has no log method. To print, use Log.print(\"text \" .. tostring(value)) (Log.warn/Log.error for severity)."}
     };
 
     for (const auto& pattern : patterns) {
         if (contentLower.find(pattern.token) != std::string::npos) {
-            return std::string(pattern.message) + " Call search_engine_api and rewrite using the Doriax Lua table pattern.";
+            return std::string(pattern.message) + " Call search_engine_api and rewrite using the JasperEngine Lua table pattern.";
         }
     }
 
     if (contentLower.find("return ") == std::string::npos) {
-        return "Doriax Lua modules must return their script table.";
+        return "JasperEngine Lua modules must return their script table.";
     }
 
     if (luaCallbackContainsContinuousPhysicsMutation(content, "onupdate")) {
@@ -1131,7 +1131,7 @@ std::string validateDoriaxLuaScriptContent(const std::string& content) {
     return {};
 }
 
-std::string validateDoriaxCppScriptContent(const std::string& content) {
+std::string validateJasperEngineCppScriptContent(const std::string& content) {
     const std::string contentLower = lower(content);
     const std::string compactContent = compactCppForValidation(content);
 
@@ -1142,21 +1142,21 @@ std::string validateDoriaxCppScriptContent(const std::string& content) {
     static const ForbiddenCppPattern patterns[] = {
         {"<core/", "C++ scripts must use flat quoted headers such as \"Mesh.h\", not <core/...>."},
         {"\"core/", "C++ scripts must use flat quoted headers such as \"Mesh.h\", not \"core/...\"."},
-        {"get_component<", "Doriax C++ scripts do not use get_component. Use cpp_subclass and inherit the runtime class (e.g. Mesh) instead."},
-        {"oninit(", "Doriax C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onInit()."},
-        {"void oninit", "Doriax C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onInit()."},
-        {"on_start", "Doriax C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not on_start()."},
-        {"onstart(", "Doriax C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onStart()."},
-        {"d_object(", "Doriax C++ script classes use no class-declaration or reflection macro. Delete D_OBJECT; just inherit the base class (e.g. doriax::ScriptBase) and declare a (doriax::Scene*, doriax::Entity) constructor. DPROPERTY only marks editor properties."},
-        {"gdclass(", "Doriax is not Godot: there is no GDCLASS macro. Inherit the base class (e.g. doriax::ScriptBase) and declare a (doriax::Scene*, doriax::Entity) constructor; no class-registration macro exists."},
-        {"generated_body(", "Doriax is not Unreal: there is no GENERATED_BODY macro. Inherit the base class (e.g. doriax::ScriptBase) and declare a (doriax::Scene*, doriax::Entity) constructor; no class-registration macro exists."},
-        {"q_object", "Doriax script classes use no Q_OBJECT or any class-registration macro. Inherit the base class (e.g. doriax::ScriptBase) and declare a (doriax::Scene*, doriax::Entity) constructor."},
+        {"get_component<", "JasperEngine C++ scripts do not use get_component. Use cpp_subclass and inherit the runtime class (e.g. Mesh) instead."},
+        {"oninit(", "JasperEngine C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onInit()."},
+        {"void oninit", "JasperEngine C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onInit()."},
+        {"on_start", "JasperEngine C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not on_start()."},
+        {"onstart(", "JasperEngine C++ scripts use onUpdate() with REGISTER_ENGINE_EVENT, not onStart()."},
+        {"d_object(", "JasperEngine C++ script classes use no class-declaration or reflection macro. Delete D_OBJECT; just inherit the base class (e.g. jasperengine::ScriptBase) and declare a (jasperengine::Scene*, jasperengine::Entity) constructor. DPROPERTY only marks editor properties."},
+        {"gdclass(", "JasperEngine is not Godot: there is no GDCLASS macro. Inherit the base class (e.g. jasperengine::ScriptBase) and declare a (jasperengine::Scene*, jasperengine::Entity) constructor; no class-registration macro exists."},
+        {"generated_body(", "JasperEngine is not Unreal: there is no GENERATED_BODY macro. Inherit the base class (e.g. jasperengine::ScriptBase) and declare a (jasperengine::Scene*, jasperengine::Entity) constructor; no class-registration macro exists."},
+        {"q_object", "JasperEngine script classes use no Q_OBJECT or any class-registration macro. Inherit the base class (e.g. jasperengine::ScriptBase) and declare a (jasperengine::Scene*, jasperengine::Entity) constructor."},
         {"engine::log", "Engine has no log method. Include \"Log.h\" and use Log::print(\"value %f\", x) (Log::warn/Log::error for severity)."}
     };
 
     for (const auto& pattern : patterns) {
         if (contentLower.find(pattern.token) != std::string::npos) {
-            return std::string(pattern.message) + " Call search_engine_api and rewrite using the Doriax C++ script pattern.";
+            return std::string(pattern.message) + " Call search_engine_api and rewrite using the JasperEngine C++ script pattern.";
         }
     }
 
@@ -2183,7 +2183,7 @@ ActionResult EditorActionExecutor::searchResources(const Json& arguments) {
          it.increment(ec)) {
         const fs::path path = it->path();
         if (it->is_directory(ec)) {
-            if (path.filename() == ".doriax" || path.filename() == "build") {
+            if (path.filename() == ".jasperengine" || path.filename() == "build") {
                 it.disable_recursion_pending();
             }
             continue;
@@ -3176,7 +3176,7 @@ ActionResult EditorActionExecutor::deleteResource(const Json& arguments) {
     std::string error;
     fs::path rel;
     if (!safeRelativePath(project, arguments, "path", rel, error, true)) return failResult(error);
-    if (rel.empty() || rel == ".doriax" || rel.begin()->string() == ".doriax") {
+    if (rel.empty() || rel == ".jasperengine" || rel.begin()->string() == ".jasperengine") {
         return failResult("Refusing to delete internal project metadata.");
     }
 
@@ -3550,17 +3550,17 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         }
         h << "#include \"Engine.h\"\n";
         h << "#include \"ScriptProperty.h\"\n\n";
-        h << "class " << className << " : public doriax::" << parentClass << " {\n";
+        h << "class " << className << " : public jasperengine::" << parentClass << " {\n";
         h << "public:\n";
         h << "    DPROPERTY(\"Is Active\")\n";
         h << "    bool isActive = true;\n\n";
-        h << "    " << className << "(doriax::Scene* scene, doriax::Entity entity);\n";
+        h << "    " << className << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
         h << "    ~" << className << "();\n\n";
         h << "    void onUpdate();\n";
         h << "};\n";
 
         c << "#include \"" << headerFull.filename().string() << "\"\n\n";
-        c << "using namespace doriax;\n\n";
+        c << "using namespace jasperengine;\n\n";
         c << className << "::" << className << "(Scene* scene, Entity entity): " << parentClass << "(scene, entity) {\n";
         c << "    REGISTER_ENGINE_EVENT(onUpdate);\n";
         c << "}\n\n";
@@ -3588,7 +3588,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         {"type", arguments.value("type", "")}
     };
     if (type == ScriptType::LUA) {
-        data["lua_script_guide"] = doriaxLuaScriptGuide(className);
+        data["lua_script_guide"] = jasperengineLuaScriptGuide(className);
         data["lua_startup_method"] = "init";
         data["lua_runtime_context"] = Json{{"scene", "self.scene"}, {"entity", "self.entity"}};
         data["lua_cube_color_example"] =
@@ -3597,7 +3597,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         data["next_step"] =
             "If the user asked for behavior, call search_engine_api for required runtime wrappers/methods, then update_script_file with complete Lua contents.";
     } else {
-        data["cpp_script_guide"] = doriaxCppScriptGuide(cppSubclass, parentClass);
+        data["cpp_script_guide"] = jasperengineCppScriptGuide(cppSubclass, parentClass);
         data["cpp_startup_method"] =
             "Use onUpdate for variable-frame non-physics logic or onFixedUpdate for physics-step logic, "
             "with matching REGISTER_ENGINE_EVENT/UNREGISTER_ENGINE_EVENT calls";
@@ -3605,7 +3605,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
             data["recommended_type"] = "cpp_subclass";
             data["cpp_cube_color_example"] =
                 "#include \"" + className + ".h\"\n\n"
-                "using namespace doriax;\n\n"
+                "using namespace jasperengine;\n\n"
                 + className + "::" + className + "(Scene* scene, Entity entity): " + parentClass + "(scene, entity) {\n"
                 "    REGISTER_ENGINE_EVENT(onUpdate);\n"
                 "    setColor(1.0f, 0.0f, 0.0f, 1.0f);\n"
@@ -3782,12 +3782,12 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
         return failResult("Script content is too large for an AI edit.");
     }
     if (ext == ".lua") {
-        std::string validationError = validateDoriaxLuaScriptContent(content);
+        std::string validationError = validateJasperEngineLuaScriptContent(content);
         if (!validationError.empty()) {
             return failResult(validationError);
         }
     } else if (ext == ".cpp" || ext == ".h" || ext == ".hpp") {
-        std::string validationError = validateDoriaxCppScriptContent(content);
+        std::string validationError = validateJasperEngineCppScriptContent(content);
         if (!validationError.empty()) {
             return failResult(validationError);
         }
@@ -3883,7 +3883,7 @@ ActionResult EditorActionExecutor::createSourceFile(const Json& arguments) {
     if (content.size() > kMaxSourceBytes) {
         return failResult("Source content is too large for an AI edit.");
     }
-    std::string validationError = validateDoriaxCppScriptContent(content);
+    std::string validationError = validateJasperEngineCppScriptContent(content);
     if (!validationError.empty()) {
         return failResult(validationError);
     }
@@ -4019,9 +4019,9 @@ ActionResult EditorActionExecutor::updateProjectBuildFile(const Json& arguments)
     }
 
     // The target name differs between the editor and exported builds.
-    if (content.find("target_") != std::string::npos && content.find("${DORIAX_TARGET}") == std::string::npos) {
-        return failResult("ProjectBuild.cmake must attach target settings to ${DORIAX_TARGET}, and use "
-                          "${DORIAX_SCRIPTS_DIR} as the root of script paths.");
+    if (content.find("target_") != std::string::npos && content.find("${JASPERENGINE_TARGET}") == std::string::npos) {
+        return failResult("ProjectBuild.cmake must attach target settings to ${JASPERENGINE_TARGET}, and use "
+                          "${JASPERENGINE_SCRIPTS_DIR} as the root of script paths.");
     }
 
     const fs::path fullPath = project->getProjectPath() / "ProjectBuild.cmake";
@@ -4806,7 +4806,7 @@ ActionResult EditorActionExecutor::searchCuratedAssets(const Json& arguments, co
 
     if (provider == "polyhaven") {
         HttpResponse response = httpClient->get("https://api.polyhaven.com/assets?t=models",
-            {"Accept: application/json", "User-Agent: DoriaxEditorAI/1.0"}, cancel);
+            {"Accept: application/json", "User-Agent: JasperEngineEditorAI/1.0"}, cancel);
         if (!response.error.empty()) return failResult(response.error);
         if (response.status < 200 || response.status >= 300) {
             return failResult("Poly Haven returned HTTP " + std::to_string(response.status));
@@ -5712,4 +5712,4 @@ ActionResult EditorActionExecutor::redoEditor(const Json& arguments) {
     return okResult("Redid last scene command.", Json{{"scene_id", sceneId}});
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

@@ -58,7 +58,7 @@
 
 #include <vector>
 
-namespace doriax{
+namespace jasperengine{
 
 	class OnlyStaticBodyFilter : public JPH::BodyFilter{
 	private:

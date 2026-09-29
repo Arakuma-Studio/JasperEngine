@@ -7,7 +7,7 @@
 #include "Stream.h"
 #include "util/ProjectUtils.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ImportEntityBundleCmd::ImportEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent, bool needSaveScene){
     this->project = project;

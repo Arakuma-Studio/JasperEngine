@@ -11,13 +11,13 @@
 #include <utility>
 #include <cstdint>
 
-namespace doriax{
+namespace jasperengine{
 
     // values of a forked shader's custom uniform block, by member name
     // (a vector keeps the serialized order stable)
     typedef std::vector<std::pair<std::string, Vector4>> ShaderUniformValues;
 
-    class DORIAX_API ShaderUniforms{
+    class JASPERENGINE_API ShaderUniforms{
     public:
         // "time" and "resolution", written by the engine every frame
         static bool isReserved(const std::string& name);
@@ -33,7 +33,7 @@ namespace doriax{
 
     // a user-declared uniform block (u_vs_customParams, u_fs_customParams,
     // u_fs_postParams) resolved by name and packed as std140 bytes
-    struct DORIAX_API CustomUniformBlock{
+    struct JASPERENGINE_API CustomUniformBlock{
         int slot = -1; // -1 when the shader does not declare the block
         std::vector<ShaderUniform> members; // short names
         std::vector<uint8_t> data; // rounded up to the vec4 stride

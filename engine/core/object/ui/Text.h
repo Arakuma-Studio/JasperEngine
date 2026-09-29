@@ -6,10 +6,10 @@
 
 #include "UILayout.h"
 
-namespace doriax{
-    class DORIAX_API STBText;
+namespace jasperengine{
+    class JASPERENGINE_API STBText;
 
-    class DORIAX_API Text: public UILayout{
+    class JASPERENGINE_API Text: public UILayout{
 
     public:
         Text(Scene* scene);

@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxWin.h"
+#include "JasperEngineWin.h"
 
 int main(int argc, char* argv[]) {
-    return DoriaxWin::init(argc, argv);
+    return JasperEngineWin::init(argc, argv);
 }

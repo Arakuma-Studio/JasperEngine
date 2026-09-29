@@ -9,11 +9,11 @@
 
 #include <memory>
 
-namespace doriax{
+namespace jasperengine{
     class TextureRender;
 }
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     using GLProc = void (*)();
 

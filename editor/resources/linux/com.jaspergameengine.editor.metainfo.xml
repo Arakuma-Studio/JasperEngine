@@ -2,22 +2,22 @@
 <!-- (c) Eduardo Doria -->
 <!-- SPDX-License-Identifier: MIT -->
 <component type="desktop-application">
-  <id>org.doriax.editor</id>
-  <launchable type="desktop-id">doriax-editor.desktop</launchable>
+  <id>com.jaspergameengine.editor</id>
+  <launchable type="desktop-id">jasperengine-editor.desktop</launchable>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
 
-  <name>Doriax</name>
+  <name>JasperEngine</name>
   <summary>Build cross-platform 2D and 3D games</summary>
 
-  <developer id="org.doriax">
+  <developer id="org.jasperengine">
     <name>Eduardo Doria Lima</name>
   </developer>
 
   <description>
     <p>
-      Doriax is a free, open-source 2D/3D game engine with an integrated editor
+      JasperEngine is a free, open-source 2D/3D game engine with an integrated editor
       for building cross-platform games and interactive projects with Lua or C++.
     </p>
     <p>
@@ -39,23 +39,23 @@
     <keyword>editor</keyword>
   </keywords>
 
-  <url type="homepage">https://doriax.org</url>
-  <url type="help">https://docs.doriax.org</url>
-  <url type="bugtracker">https://github.com/doriaxengine/doriax/issues</url>
-  <url type="vcs-browser">https://github.com/doriaxengine/doriax</url>
+  <url type="homepage">https://github.com/JasperRaccoon/JasperEngine</url>
+  <url type="help">https://github.com/JasperRaccoon/JasperEngine</url>
+  <url type="bugtracker">https://github.com/JasperRaccoon/JasperEngine/issues</url>
+  <url type="vcs-browser">https://github.com/JasperRaccoon/JasperEngine</url>
 
   <screenshots>
     <screenshot type="default">
       <caption>Editing a 3D scene</caption>
-      <image>https://www.doriax.org/screenshots/editor-3d-scene.png</image>
+      <image>https://github.com/JasperRaccoon/JasperEngine</image>
     </screenshot>
     <screenshot>
       <caption>Editing a 2D sprite scene</caption>
-      <image>https://www.doriax.org/screenshots/editor-2d-sprite.png</image>
+      <image>https://github.com/JasperRaccoon/JasperEngine</image>
     </screenshot>
     <screenshot>
       <caption>Writing gameplay code in the built-in editor</caption>
-      <image>https://www.doriax.org/screenshots/editor-code.png</image>
+      <image>https://github.com/JasperRaccoon/JasperEngine</image>
     </screenshot>
   </screenshots>
 

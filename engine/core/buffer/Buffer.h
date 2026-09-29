@@ -15,9 +15,9 @@
 #include "render/BufferRender.h"
 
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Buffer {
+    class JASPERENGINE_API Buffer {
 
     protected:
         std::map<AttributeType, Attribute> attributes;

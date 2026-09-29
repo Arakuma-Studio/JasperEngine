@@ -21,7 +21,7 @@
 
 #include <functional>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
 
     class SceneWindow;
     class ForkShaderCmd;

@@ -7,7 +7,7 @@
 #include "Scene.h"
 #include "Catalog.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     template <typename T>
     struct ScenePropertyCmdValue {

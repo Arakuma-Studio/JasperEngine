@@ -4,7 +4,7 @@
 #include "Bone.h"
 
 
-using namespace doriax;
+using namespace jasperengine;
 
 Bone::Bone(Scene* scene, Entity entity): Object(scene, entity){
 }

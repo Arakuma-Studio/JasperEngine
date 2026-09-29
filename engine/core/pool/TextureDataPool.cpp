@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <vector>
 
-using namespace doriax;
+using namespace jasperengine;
 
 std::unordered_map<std::string, std::future<std::array<TextureData,6>>> TextureDataPool::pendingBuilds;
 std::mutex TextureDataPool::cacheMutex;

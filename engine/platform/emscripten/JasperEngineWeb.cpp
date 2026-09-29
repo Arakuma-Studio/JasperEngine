@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxWeb.h"
+#include "JasperEngineWeb.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,105 +22,105 @@
 #pragma clang diagnostic ignored "-Wmissing-braces"
 #endif
 
-std::string DoriaxWeb::canvas;
+std::string JasperEngineWeb::canvas;
 
-int DoriaxWeb::syncWaitTime;
-bool DoriaxWeb::enabledIDB;
+int JasperEngineWeb::syncWaitTime;
+bool JasperEngineWeb::enabledIDB;
 
-int DoriaxWeb::screenWidth;
-int DoriaxWeb::screenHeight;
+int JasperEngineWeb::screenWidth;
+int JasperEngineWeb::screenHeight;
 
-double DoriaxWeb::mousePosX;
-double DoriaxWeb::mousePosY;
+double JasperEngineWeb::mousePosX;
+double JasperEngineWeb::mousePosY;
 
-int DoriaxWeb::sampleCount = 0;
+int JasperEngineWeb::sampleCount = 0;
 
-bool DoriaxWeb::quitRequested = false;
+bool JasperEngineWeb::quitRequested = false;
 
-DoriaxWeb::GamepadState DoriaxWeb::gamepads[DORIAX_WEB_MAX_GAMEPADS];
+JasperEngineWeb::GamepadState JasperEngineWeb::gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
 extern "C" {
     EMSCRIPTEN_KEEPALIVE 
     int getScreenWidth() {
-        return doriax::System::instance().getScreenWidth();
+        return jasperengine::System::instance().getScreenWidth();
     }
 
     EMSCRIPTEN_KEEPALIVE 
     int getScreenHeight() {
-        return doriax::System::instance().getScreenHeight();
+        return jasperengine::System::instance().getScreenHeight();
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void changeCanvasSize(int nWidth, int nHeight){
-        DoriaxWeb::changeCanvasSize(nWidth, nHeight);
+        JasperEngineWeb::changeCanvasSize(nWidth, nHeight);
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void syncfs_enable_callback(const char* err) {
 	    if (!err || err[0]) {
-		    doriax::Log::error("Failed to enable IndexedDB: %s", err);
-            DoriaxWeb::setEnabledIDB(false);
+		    jasperengine::Log::error("Failed to enable IndexedDB: %s", err);
+            JasperEngineWeb::setEnabledIDB(false);
 	    }else{
-            DoriaxWeb::setEnabledIDB(true);
+            JasperEngineWeb::setEnabledIDB(true);
         }
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void syncfs_callback(const char* err) {
 	    if (!err || err[0]) {
-		    doriax::Log::error("Failed to save in iDB file system: %s", err);
+		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_started_callback() {
-        doriax::Engine::systemPause();
+        jasperengine::Engine::systemPause();
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_finished_callback() {
-        doriax::Engine::systemResume();
+        jasperengine::Engine::systemResume();
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_error_callback(const char* err) {
 	    if (!err || err[0]) {
-		    doriax::Log::error("Failed to load CrazyGames ad: %s", err);
+		    jasperengine::Log::error("Failed to load CrazyGames ad: %s", err);
 	    }
-        doriax::Engine::systemResume();
+        jasperengine::Engine::systemResume();
     }
 }
 
 
 
-DoriaxWeb::DoriaxWeb(){
+JasperEngineWeb::JasperEngineWeb(){
 
 }
 
-void DoriaxWeb::setEnabledIDB(bool enabledIDB){
-    DoriaxWeb::enabledIDB = enabledIDB;
+void JasperEngineWeb::setEnabledIDB(bool enabledIDB){
+    JasperEngineWeb::enabledIDB = enabledIDB;
 }
 
-int DoriaxWeb::getScreenWidth(){
+int JasperEngineWeb::getScreenWidth(){
     return screenWidth;
 }
 
-int DoriaxWeb::getScreenHeight(){
+int JasperEngineWeb::getScreenHeight(){
     return screenHeight;
 }
 
-int DoriaxWeb::getSampleCount(){
+int JasperEngineWeb::getSampleCount(){
     return sampleCount;
 }
 
-bool DoriaxWeb::isTouchDevice(){
+bool JasperEngineWeb::isTouchDevice(){
     // a finger is the primary pointer of phones and tablets, not of touch laptops
     return EM_ASM_INT({
         return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ? 1 : 0;
     });
 }
 
-int DoriaxWeb::init(int argc, char **argv){
+int JasperEngineWeb::init(int argc, char **argv){
 
     canvas = "#canvas";
 
@@ -165,7 +165,7 @@ int DoriaxWeb::init(int argc, char **argv){
 		});
 	);
 
-    doriax::Engine::systemInit(argc, argv, new DoriaxWeb());
+    jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb());
 
     sampleCount = (antiAlias) ? 4 : 1;
 
@@ -186,9 +186,9 @@ int DoriaxWeb::init(int argc, char **argv){
     
     emscripten_webgl_make_context_current(ctx);
 
-    DoriaxWeb::screenWidth = sWidth;
-    DoriaxWeb::screenHeight = sHeight;
-    doriax::Engine::systemViewLoaded();
+    JasperEngineWeb::screenWidth = sWidth;
+    JasperEngineWeb::screenHeight = sHeight;
+    jasperengine::Engine::systemViewLoaded();
     changeCanvasSize(sWidth, sHeight);
 
     emscripten_request_animation_frame_loop(renderLoop, 0);
@@ -196,7 +196,7 @@ int DoriaxWeb::init(int argc, char **argv){
     return 0;
 }
 
-void DoriaxWeb::unregisterCallbacks(){
+void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
@@ -214,22 +214,22 @@ void DoriaxWeb::unregisterCallbacks(){
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, NULL);
 }
 
-void DoriaxWeb::changeCanvasSize(int width, int height){
+void JasperEngineWeb::changeCanvasSize(int width, int height){
     emscripten_set_canvas_element_size(canvas.c_str(), width, height);
 
-    DoriaxWeb::screenWidth = width;
-    DoriaxWeb::screenHeight = height;
-    doriax::Engine::systemViewChanged();
+    JasperEngineWeb::screenWidth = width;
+    JasperEngineWeb::screenHeight = height;
+    jasperengine::Engine::systemViewChanged();
 }
 
-bool DoriaxWeb::isFullscreen(){
+bool JasperEngineWeb::isFullscreen(){
     EmscriptenFullscreenChangeEvent fsce;
     EMSCRIPTEN_RESULT ret = emscripten_get_fullscreen_status(&fsce);
 
     return fsce.isFullscreen;
 }
 
-void DoriaxWeb::requestFullscreen(){
+void JasperEngineWeb::requestFullscreen(){
     EmscriptenFullscreenStrategy strategy;
     strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
     strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_STDDEF;
@@ -240,40 +240,40 @@ void DoriaxWeb::requestFullscreen(){
     EMSCRIPTEN_RESULT ret = emscripten_request_fullscreen_strategy(canvas.c_str(), 1, &strategy);
 }
 
-void DoriaxWeb::exitFullscreen(){
+void JasperEngineWeb::exitFullscreen(){
     EMSCRIPTEN_RESULT ret = emscripten_exit_fullscreen();
 }
 
-void DoriaxWeb::setWindowTitle(const std::string& title){
+void JasperEngineWeb::setWindowTitle(const std::string& title){
     emscripten_set_window_title(title.c_str());
 }
 
-void DoriaxWeb::quit(){
+void JasperEngineWeb::quit(){
     quitRequested = true;
 }
 
-void DoriaxWeb::setMouseCursor(doriax::CursorType type){
+void JasperEngineWeb::setMouseCursor(jasperengine::CursorType type){
     std::string cursor;
 
-    if (type == doriax::CursorType::ARROW){
+    if (type == jasperengine::CursorType::ARROW){
         cursor = "default";
-    }else if (type == doriax::CursorType::IBEAM){
+    }else if (type == jasperengine::CursorType::IBEAM){
         cursor = "text";
-    }else if (type == doriax::CursorType::CROSSHAIR){
+    }else if (type == jasperengine::CursorType::CROSSHAIR){
         cursor = "crosshair";
-    }else if (type == doriax::CursorType::POINTING_HAND){
+    }else if (type == jasperengine::CursorType::POINTING_HAND){
         cursor = "pointer";
-    }else if (type == doriax::CursorType::RESIZE_EW){
+    }else if (type == jasperengine::CursorType::RESIZE_EW){
         cursor = "ew-resize";
-    }else if (type == doriax::CursorType::RESIZE_NS){
+    }else if (type == jasperengine::CursorType::RESIZE_NS){
         cursor = "ns-resize";
-    }else if (type == doriax::CursorType::RESIZE_NWSE){
+    }else if (type == jasperengine::CursorType::RESIZE_NWSE){
         cursor = "nwse-resize";
-    }else if (type == doriax::CursorType::RESIZE_NESW){
+    }else if (type == jasperengine::CursorType::RESIZE_NESW){
         cursor = "nesw-resize";
-    }else if (type == doriax::CursorType::RESIZE_ALL){
+    }else if (type == jasperengine::CursorType::RESIZE_ALL){
         cursor = "all-scroll";
-    }else if (type == doriax::CursorType::NOT_ALLOWED){
+    }else if (type == jasperengine::CursorType::NOT_ALLOWED){
         cursor = "not-allowed";
     }else{
         cursor = "auto";
@@ -283,8 +283,8 @@ void DoriaxWeb::setMouseCursor(doriax::CursorType type){
 
 }
 
-void DoriaxWeb::setMouseMode(doriax::MouseMode mode){
-    if (mode == doriax::MouseMode::CAPTURED){
+void JasperEngineWeb::setMouseMode(jasperengine::MouseMode mode){
+    if (mode == jasperengine::MouseMode::CAPTURED){
         emscripten_request_pointerlock(canvas.c_str(), 1);
         return;
     }
@@ -293,25 +293,25 @@ void DoriaxWeb::setMouseMode(doriax::MouseMode mode){
 
     // The browser can't confine the pointer without pointer lock, so CONFINED
     // behaves as NORMAL (visible cursor).
-    if (mode == doriax::MouseMode::HIDDEN){
+    if (mode == jasperengine::MouseMode::HIDDEN){
         EM_ASM({Module.canvas.style.cursor = UTF8ToString($0);}, "none");
     }else{
-        setMouseCursor(doriax::Engine::getMouseCursor());
+        setMouseCursor(jasperengine::Engine::getMouseCursor());
     }
 }
 
-std::string DoriaxWeb::getUserDataPath(){
+std::string JasperEngineWeb::getUserDataPath(){
     return "/datafs";
 }
 
-bool DoriaxWeb::syncFileSystem(){
+bool JasperEngineWeb::syncFileSystem(){
     if (enabledIDB)
         syncWaitTime = 500;
 
     return true;
 }
 
-void DoriaxWeb::syncFileSystemNow(){
+void JasperEngineWeb::syncFileSystemNow(){
     syncWaitTime = 0;
 
     EM_ASM(
@@ -321,13 +321,13 @@ void DoriaxWeb::syncFileSystemNow(){
     );
 }
 
-void DoriaxWeb::pollGamepads(){
+void JasperEngineWeb::pollGamepads(){
     if (emscripten_sample_gamepad_data() != EMSCRIPTEN_RESULT_SUCCESS)
         return;
 
     int numGamepads = emscripten_get_num_gamepads();
-    if (numGamepads > DORIAX_WEB_MAX_GAMEPADS)
-        numGamepads = DORIAX_WEB_MAX_GAMEPADS;
+    if (numGamepads > JASPERENGINE_WEB_MAX_GAMEPADS)
+        numGamepads = JASPERENGINE_WEB_MAX_GAMEPADS;
 
     for (int i = 0; i < numGamepads; i++){
         GamepadState& state = gamepads[i];
@@ -342,10 +342,10 @@ void DoriaxWeb::pollGamepads(){
             // spurious axis move from 0 to -1 on connect
             state.triggers[0] = -1.0f;
             state.triggers[1] = -1.0f;
-            doriax::Engine::systemGamepadConnect(i, ge.id);
+            jasperengine::Engine::systemGamepadConnect(i, ge.id);
         }else if (!connected && state.connected){
             state = GamepadState();
-            doriax::Engine::systemGamepadDisconnect(i);
+            jasperengine::Engine::systemGamepadDisconnect(i);
         }
 
         if (!connected)
@@ -363,7 +363,7 @@ void DoriaxWeb::pollGamepads(){
                 float value = (float)ge.analogButton[b] * 2.0f - 1.0f;
                 if (fabsf(value - state.triggers[trigger]) > 0.001f){
                     state.triggers[trigger] = value;
-                    doriax::Engine::systemGamepadAxisMove(i, axis, value);
+                    jasperengine::Engine::systemGamepadAxisMove(i, axis, value);
                 }
                 continue;
             }
@@ -371,12 +371,12 @@ void DoriaxWeb::pollGamepads(){
             bool pressed = ge.digitalButton[b];
             if (pressed != state.buttons[b]){
                 state.buttons[b] = pressed;
-                int button = (standard)? doriax_gamepad_button(b) : b;
+                int button = (standard)? jasperengine_gamepad_button(b) : b;
                 if (button >= 0){
                     if (pressed){
-                        doriax::Engine::systemGamepadButtonDown(i, button);
+                        jasperengine::Engine::systemGamepadButtonDown(i, button);
                     }else{
-                        doriax::Engine::systemGamepadButtonUp(i, button);
+                        jasperengine::Engine::systemGamepadButtonUp(i, button);
                     }
                 }
             }
@@ -388,19 +388,19 @@ void DoriaxWeb::pollGamepads(){
             float value = (float)ge.axis[a];
             if (fabsf(value - state.axes[a]) > 0.001f){
                 state.axes[a] = value;
-                doriax::Engine::systemGamepadAxisMove(i, a, value);
+                jasperengine::Engine::systemGamepadAxisMove(i, a, value);
             }
         }
     }
 }
 
-EM_BOOL DoriaxWeb::renderLoop(double time, void* userdata){
+EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
     if (quitRequested) {
         // input events would reach destroyed scenes and a closed Lua state
         unregisterCallbacks();
 
-        doriax::Engine::systemViewDestroyed();
-        doriax::Engine::systemShutdown();
+        jasperengine::Engine::systemViewDestroyed();
+        jasperengine::Engine::systemShutdown();
 
         // shutdown also writes files and this loop will not run again
         if (syncWaitTime > 0)
@@ -423,10 +423,10 @@ EM_BOOL DoriaxWeb::renderLoop(double time, void* userdata){
         }
     }
 
-    doriax::Engine::systemDraw();
+    jasperengine::Engine::systemDraw();
 
     if (syncWaitTime > 0) {
-		syncWaitTime -= (int)(doriax::Engine::getDeltatime()*1000);
+		syncWaitTime -= (int)(jasperengine::Engine::getDeltatime()*1000);
 
         if (syncWaitTime <= 0){
             syncFileSystemNow();
@@ -436,7 +436,7 @@ EM_BOOL DoriaxWeb::renderLoop(double time, void* userdata){
     return EM_TRUE;
 }
 
-EM_BOOL DoriaxWeb::resize_callback(int event_type, const EmscriptenUiEvent* ui_event, void* user_data){
+EM_BOOL JasperEngineWeb::resize_callback(int event_type, const EmscriptenUiEvent* ui_event, void* user_data){
     int w, h;
     emscripten_get_canvas_element_size(canvas.c_str(), &w, &h);
     changeCanvasSize(w, h);
@@ -444,18 +444,18 @@ EM_BOOL DoriaxWeb::resize_callback(int event_type, const EmscriptenUiEvent* ui_e
     return 0;
 }
 
-EM_BOOL DoriaxWeb::canvas_resize(int eventType, const void *reserved, void *userData){
+EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void *userData){
     int w, h;
     emscripten_get_canvas_element_size(canvas.c_str(), &w, &h);
 
-    DoriaxWeb::screenWidth = w;
-    DoriaxWeb::screenHeight = h;
-    doriax::Engine::systemViewChanged();
+    JasperEngineWeb::screenWidth = w;
+    JasperEngineWeb::screenHeight = h;
+    jasperengine::Engine::systemViewChanged();
 
     return 0;
 }
 
-wchar_t DoriaxWeb::toCodepoint(const std::string &u){
+wchar_t JasperEngineWeb::toCodepoint(const std::string &u){
     int l = u.length();
     if (l<1) return -1; unsigned char u0 = u[0]; if (u0>=0   && u0<=127) return u0;
     if (l<2) return -1; unsigned char u1 = u[1]; if (u0>=192 && u0<=223) return (u0-192)*64 + (u1-128);
@@ -465,7 +465,7 @@ wchar_t DoriaxWeb::toCodepoint(const std::string &u){
     return -1;
 }
 
-std::string DoriaxWeb::toUTF8(wchar_t cp) {
+std::string JasperEngineWeb::toUTF8(wchar_t cp) {
     char ch[5] = {0x00};
     if(cp <= 0x7F) { 
         ch[0] = cp; 
@@ -489,7 +489,7 @@ std::string DoriaxWeb::toUTF8(wchar_t cp) {
     return std::string(ch);
 }
 
-EM_BOOL DoriaxWeb::key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData){
+EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData){
     std::string keyStorage;
     const char* key = e->key;
     if ((!key) || (!(*key))) {
@@ -507,12 +507,12 @@ EM_BOOL DoriaxWeb::key_callback(int eventType, const EmscriptenKeyboardEvent *e,
     if (e->altKey)  modifiers |= D_MODIFIER_ALT;
     if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
 
-    int code = doriax_input(e->code);
+    int code = jasperengine_input(e->code);
     if (code==0){
-        code = doriax_legacy_input(e->which);
+        code = jasperengine_legacy_input(e->which);
     }
     if (code==0){
-        code = doriax_legacy_input(e->keyCode);
+        code = jasperengine_legacy_input(e->keyCode);
     }
 
     int skey=0;
@@ -522,14 +522,14 @@ EM_BOOL DoriaxWeb::key_callback(int eventType, const EmscriptenKeyboardEvent *e,
     if ((!strcmp(key,"Escape"))||(*key=='\x1b')) skey=8;
 
     if (eventType == EMSCRIPTEN_EVENT_KEYDOWN){
-        doriax::Engine::systemKeyDown(code, e->repeat, modifiers);
-        if (skey==1) doriax::Engine::systemCharInput('\t');
-        if (skey==2) doriax::Engine::systemCharInput('\b');
-        if (skey==4) doriax::Engine::systemCharInput('\r');
-        if (skey==8) doriax::Engine::systemCharInput('\x1b');
+        jasperengine::Engine::systemKeyDown(code, e->repeat, modifiers);
+        if (skey==1) jasperengine::Engine::systemCharInput('\t');
+        if (skey==2) jasperengine::Engine::systemCharInput('\b');
+        if (skey==4) jasperengine::Engine::systemCharInput('\r');
+        if (skey==8) jasperengine::Engine::systemCharInput('\x1b');
 
     }else if (eventType == EMSCRIPTEN_EVENT_KEYUP){
-        doriax::Engine::systemKeyUp(code, e->repeat, modifiers);
+        jasperengine::Engine::systemKeyUp(code, e->repeat, modifiers);
 
     }else if (eventType == EMSCRIPTEN_EVENT_KEYPRESS){
         wchar_t cp = toCodepoint(std::string(e->key));
@@ -537,17 +537,17 @@ EM_BOOL DoriaxWeb::key_callback(int eventType, const EmscriptenKeyboardEvent *e,
         if (cp == 0) cp = e->keyCode;
 
         if (skey == 0 && cp != 0){
-            doriax::Engine::systemCharInput(cp);
+            jasperengine::Engine::systemCharInput(cp);
         }
     }
 
     return 0;
 }
 
-EM_BOOL DoriaxWeb::mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
+EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEvent *e, void *userData) {
 
-    int width = DoriaxWeb::screenWidth;
-    int height = DoriaxWeb::screenHeight;
+    int width = JasperEngineWeb::screenWidth;
+    int height = JasperEngineWeb::screenHeight;
     EmscriptenPointerlockChangeEvent pointerLockStatus = {};
     emscripten_get_pointerlock_status(&pointerLockStatus);
     bool mouseLocked = pointerLockStatus.isActive;
@@ -571,24 +571,24 @@ EM_BOOL DoriaxWeb::mouse_callback(int eventType, const EmscriptenMouseEvent *e, 
     if (e->altKey) modifiers |= D_MODIFIER_ALT;
     if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
 
-    doriax::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
+    jasperengine::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && e->buttons != 0){
-        doriax::Engine::systemMouseDown(doriax_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        jasperengine::Engine::systemMouseDown(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEUP){
-        doriax::Engine::systemMouseUp(doriax_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        jasperengine::Engine::systemMouseUp(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEENTER){
-        doriax::Engine::systemMouseEnter();
+        jasperengine::Engine::systemMouseEnter();
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSELEAVE){
-        doriax::Engine::systemMouseLeave();
+        jasperengine::Engine::systemMouseLeave();
     }
 
     return 0;
 }
 
-EM_BOOL DoriaxWeb::wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData) {
+EM_BOOL JasperEngineWeb::wheel_callback(int eventType, const EmscriptenWheelEvent *e, void *userData) {
     float scale;
     switch (e->deltaMode) {
         case DOM_DELTA_PIXEL: scale = -0.04f; break;
@@ -603,12 +603,12 @@ EM_BOOL DoriaxWeb::wheel_callback(int eventType, const EmscriptenWheelEvent *e, 
     if (e->mouse.altKey) modifiers |= D_MODIFIER_ALT;
     if (e->mouse.metaKey) modifiers |= D_MODIFIER_SUPER;
 
-    doriax::Engine::systemMouseScroll(scale * (float)e->deltaX, scale * (float)e->deltaY, modifiers);
+    jasperengine::Engine::systemMouseScroll(scale * (float)e->deltaX, scale * (float)e->deltaY, modifiers);
 
   return 0;
 }
 
-EM_BOOL DoriaxWeb::touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data) {
+EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data) {
     bool retval = true;
 
     // Emscripten lists every finger. isChanged is the one this event is about.
@@ -619,21 +619,21 @@ EM_BOOL DoriaxWeb::touch_callback(int emsc_type, const EmscriptenTouchEvent* ems
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                doriax::Engine::systemTouchStart((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchStart((int)src->identifier, src->targetX, src->targetY);
             }
             break;
         case EMSCRIPTEN_EVENT_TOUCHMOVE:
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                doriax::Engine::systemTouchMove((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchMove((int)src->identifier, src->targetX, src->targetY);
             }
             break;
         case EMSCRIPTEN_EVENT_TOUCHEND:
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                doriax::Engine::systemTouchEnd((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchEnd((int)src->identifier, src->targetX, src->targetY);
             }
             break;
         case EMSCRIPTEN_EVENT_TOUCHCANCEL: {
@@ -646,12 +646,12 @@ EM_BOOL DoriaxWeb::touch_callback(int emsc_type, const EmscriptenTouchEvent* ems
             }
             if (!anyHeld) {
                 // Clear all touches before notifying listeners of each cancellation.
-                doriax::Engine::systemTouchCancel();
+                jasperengine::Engine::systemTouchCancel();
             } else {
                 for (int i = 0; i < emsc_event->numTouches; i++) {
                     const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                     if (src->isChanged)
-                        doriax::Engine::systemTouchCancel((int)src->identifier);
+                        jasperengine::Engine::systemTouchCancel((int)src->identifier);
                 }
             }
             break;
@@ -664,17 +664,17 @@ EM_BOOL DoriaxWeb::touch_callback(int emsc_type, const EmscriptenTouchEvent* ems
   return retval;
 }
 
-EM_BOOL DoriaxWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
+EM_BOOL JasperEngineWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
     switch (emsc_type) {
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     doriax::Engine::systemPause(); break;
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: doriax::Engine::systemResume(); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     jasperengine::Engine::systemPause(); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: jasperengine::Engine::systemResume(); break;
         default:                                    break;
     }
 
     return 0;
 }
 
-int DoriaxWeb::doriax_mouse_button(int button){
+int JasperEngineWeb::jasperengine_mouse_button(int button){
     if (button == 0) return D_MOUSE_BUTTON_1;
     if (button == 2) return D_MOUSE_BUTTON_2;
     if (button == 1) return D_MOUSE_BUTTON_3;
@@ -688,7 +688,7 @@ int DoriaxWeb::doriax_mouse_button(int button){
 }
 
 //W3C standard gamepad mapping (buttons 6 and 7 are handled as trigger axes)
-int DoriaxWeb::doriax_gamepad_button(int button){
+int JasperEngineWeb::jasperengine_gamepad_button(int button){
     if (button == 0) return D_GAMEPAD_BUTTON_A;
     if (button == 1) return D_GAMEPAD_BUTTON_B;
     if (button == 2) return D_GAMEPAD_BUTTON_X;
@@ -708,7 +708,7 @@ int DoriaxWeb::doriax_gamepad_button(int button){
     return -1;
 }
 
-int DoriaxWeb::doriax_input(const char code[32]){
+int JasperEngineWeb::jasperengine_input(const char code[32]){
     if (!strcmp(code,"Space")) return D_KEY_SPACE;
     if (!strcmp(code,"Quote")) return D_KEY_APOSTROPHE;  /* ' */
     if (!strcmp(code,"Comma")) return D_KEY_COMMA;  /* , */
@@ -820,7 +820,7 @@ int DoriaxWeb::doriax_input(const char code[32]){
     return 0;
 }
 
-int DoriaxWeb::doriax_legacy_input(int code){
+int JasperEngineWeb::jasperengine_legacy_input(int code){
     if (code==8) return D_KEY_DELETE;
     if (code==9) return D_KEY_TAB;
     if (code==13) return D_KEY_ENTER;
@@ -925,7 +925,7 @@ int DoriaxWeb::doriax_legacy_input(int code){
     return 0;
 }
 
-std::string DoriaxWeb::getStringForKey(const char *key, const std::string& defaultValue){
+std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
     char* value = (char*)EM_ASM_INT({
         var key = UTF8ToString($0);
         var val = localStorage.getItem(key);
@@ -947,7 +947,7 @@ std::string DoriaxWeb::getStringForKey(const char *key, const std::string& defau
     return defaultValue;
 }
 
-void DoriaxWeb::setStringForKey(const char* key, const std::string& value){
+void JasperEngineWeb::setStringForKey(const char* key, const std::string& value){
     EM_ASM_ARGS({
         var key = UTF8ToString($0);
         var value = UTF8ToString($1);
@@ -955,14 +955,14 @@ void DoriaxWeb::setStringForKey(const char* key, const std::string& value){
     }, key, value.c_str());
 }
 
-void DoriaxWeb::removeKey(const char *key){
+void JasperEngineWeb::removeKey(const char *key){
     EM_ASM_ARGS({
         var key = UTF8ToString($0);
         localStorage.removeItem(key);
     }, key);
 }
 
-void DoriaxWeb::initializeCrazyGamesSDK(){
+void JasperEngineWeb::initializeCrazyGamesSDK(){
     EM_ASM(
         function loadJS(FILE_URL, async = true) {
             let scriptEle = document.createElement("script");
@@ -987,7 +987,7 @@ void DoriaxWeb::initializeCrazyGamesSDK(){
     );
 }
 
-void DoriaxWeb::showCrazyGamesAd(const std::string& type){
+void JasperEngineWeb::showCrazyGamesAd(const std::string& type){
     EM_ASM({
         var adtype = UTF8ToString($0);
         const callbacks = ({
@@ -999,31 +999,31 @@ void DoriaxWeb::showCrazyGamesAd(const std::string& type){
     }, type.c_str());
 }
 
-void DoriaxWeb::happytimeCrazyGames(){
+void JasperEngineWeb::happytimeCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.happytime();
     );
 }
 
-void DoriaxWeb::gameplayStartCrazyGames(){
+void JasperEngineWeb::gameplayStartCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.gameplayStart();
     );
 }
 
-void DoriaxWeb::gameplayStopCrazyGames(){
+void JasperEngineWeb::gameplayStopCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.gameplayStop();
     );
 }
 
-void DoriaxWeb::loadingStartCrazyGames(){
+void JasperEngineWeb::loadingStartCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.sdkGameLoadingStart();
     );
 }
 
-void DoriaxWeb::loadingStopCrazyGames(){
+void JasperEngineWeb::loadingStopCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.sdkGameLoadingStop();
     );

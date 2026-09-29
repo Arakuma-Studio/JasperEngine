@@ -5,17 +5,17 @@
 #define OBJECT_H
 
 #include "EntityHandle.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "Body2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "Body3D.h"
 #endif
 #include "math/Ray.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Object: public EntityHandle{
+    class JASPERENGINE_API Object: public EntityHandle{
     public:
         Object(Scene* scene);
         Object(Scene* scene, Entity entity);
@@ -77,11 +77,11 @@ namespace doriax{
 
         void updateTransform();
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
         Body2D getBody2D();
         void removeBody2D();
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
         Body3D getBody3D();
         void removeBody3D();
 #endif

@@ -7,9 +7,9 @@
 #include "Scene.h"
 #include "Entity.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ScriptBase {
+    class JASPERENGINE_API ScriptBase {
     protected:
         Scene* scene;
         Entity entity;

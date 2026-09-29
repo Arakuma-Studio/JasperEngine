@@ -7,7 +7,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Terrain::Terrain(Scene* scene): Mesh(scene){
     addComponent<TerrainComponent>();

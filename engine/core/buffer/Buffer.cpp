@@ -6,7 +6,7 @@
 #include "Log.h"
 #include <string.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Buffer::Buffer(){
     attributes.clear();

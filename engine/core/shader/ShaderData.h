@@ -9,7 +9,7 @@
 #include <cstdint>
 #include "render/Render.h"
 
-namespace doriax {
+namespace jasperengine {
 
     struct ShaderAttr{
         std::string name;
@@ -94,7 +94,7 @@ namespace doriax {
         std::vector<ShaderTextureSamplerPair> textureSamplerPairs;
     };
 
-    class DORIAX_API ShaderData {
+    class JASPERENGINE_API ShaderData {
     public:
         ShaderLang lang;
         unsigned int version;

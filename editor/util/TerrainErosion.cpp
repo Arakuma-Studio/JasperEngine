@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 static constexpr int DROPLET_STEPS = 32;
 static constexpr float DROPLET_INERTIA = 0.05f;

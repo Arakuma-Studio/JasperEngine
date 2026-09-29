@@ -6,9 +6,9 @@
 
 #include "Object.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Occluder2D: public Object{
+    class JASPERENGINE_API Occluder2D: public Object{
     public:
         Occluder2D(Scene* scene);
         Occluder2D(Scene* scene, Entity entity);

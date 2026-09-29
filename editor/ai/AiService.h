@@ -13,7 +13,7 @@
 #include <optional>
 #include <thread>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 class EditorActionExecutor;
 
@@ -104,4 +104,4 @@ private:
     void repairUnansweredToolCallsLocked();
 };
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class ShaderForkDialog {
 private:
@@ -56,4 +56,4 @@ public:
     void close() { m_isOpen = false; }
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

@@ -45,17 +45,17 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
-using namespace doriax;
-using doriax::editor::PlatformMenuCallback;
-using doriax::editor::PlatformMenuCommand;
-using doriax::editor::PlatformMenuItem;
-using doriax::editor::PlatformMenuItemType;
-using doriax::editor::PlatformMenuModel;
+using namespace jasperengine;
+using jasperengine::editor::PlatformMenuCallback;
+using jasperengine::editor::PlatformMenuCommand;
+using jasperengine::editor::PlatformMenuItem;
+using jasperengine::editor::PlatformMenuItemType;
+using jasperengine::editor::PlatformMenuModel;
 
 namespace {
 
-constexpr wchar_t WINDOW_CLASS_NAME[] = L"DoriaxEditorNativeWindow";
-constexpr UINT WM_DORIAX_WAKE = WM_APP + 1;
+constexpr wchar_t WINDOW_CLASS_NAME[] = L"JasperEngineEditorNativeWindow";
+constexpr UINT WM_JASPERENGINE_WAKE = WM_APP + 1;
 constexpr UINT FIRST_MENU_COMMAND = 0x1000;
 constexpr UINT_PTR LIVE_RESIZE_TIMER_ID = 0xD04A;
 constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
@@ -150,7 +150,7 @@ std::string wideToUtf8(const wchar_t* text, int length) {
     return result;
 }
 
-#if defined(DORIAX_NATIVE_MENU)
+#if defined(JASPERENGINE_NATIVE_MENU)
 
 std::wstring menuLabel(const PlatformMenuItem& item) {
     std::string label;
@@ -356,7 +356,7 @@ void paintNativeLoading(HWND window, HDC deviceContext) {
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HGDIOBJ previousFont = font ? SelectObject(deviceContext, font) : nullptr;
-    DrawTextW(deviceContext, L"Loading Doriax Engine...", -1, &client,
+    DrawTextW(deviceContext, L"Loading JasperEngine...", -1, &client,
               DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     if (font) {
         SelectObject(deviceContext, previousFont);
@@ -388,7 +388,7 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 editor::Backend::getApp().exit();
                 backend->redrawRequested = true;
                 return 0;
-            case WM_DORIAX_WAKE:
+            case WM_JASPERENGINE_WAKE:
                 backend->redrawRequested = true;
                 return 0;
             case WM_SETFOCUS:
@@ -512,7 +512,7 @@ void updateFramePeriod() {
 
 bool initializeWindow(int width, int height, bool maximized) {
     WindowWinConfig config;
-    config.title = "Doriax Engine";
+    config.title = "JasperEngine";
     config.width = width;
     config.height = height;
     config.maximized = maximized;
@@ -912,7 +912,7 @@ int editor::Backend::init(int argc, char* argv[]) {
 
     app.setWakeCallback([]() {
         if (backend && backend->window)
-            PostMessageW(backend->window, WM_DORIAX_WAKE, 0, 0);
+            PostMessageW(backend->window, WM_JASPERENGINE_WAKE, 0, 0);
     });
 
     backend->liveResizeFrame = [&]() { renderFrame(true); };
@@ -1010,7 +1010,7 @@ void editor::Backend::setGameCursorInSceneRect(bool inSceneRect) {
 void editor::Backend::closeWindow() {
     if (!backend) return;
     backend->shouldClose = true;
-    if (backend->window) PostMessageW(backend->window, WM_DORIAX_WAKE, 0, 0);
+    if (backend->window) PostMessageW(backend->window, WM_JASPERENGINE_WAKE, 0, 0);
 }
 
 bool editor::Backend::isRunningOnWayland() {
@@ -1026,7 +1026,7 @@ ImVec2 editor::Backend::sceneRenderScale(ImVec2 framebufferScale, float dpiScale
 
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
-#if !defined(DORIAX_NATIVE_MENU)
+#if !defined(JASPERENGINE_NATIVE_MENU)
     // App draws the menu bar with ImGui
     (void)model;
     (void)callback;

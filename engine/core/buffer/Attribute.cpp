@@ -3,7 +3,7 @@
 
 #include "Attribute.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Attribute::Attribute(){
     setDataType(AttributeDataType::FLOAT);

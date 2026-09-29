@@ -7,7 +7,7 @@
 #include <string>
 #include "imgui.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     class UIUtils {
     public:
         // Draw a search input field with a magnifying glass icon button

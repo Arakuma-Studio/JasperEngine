@@ -7,8 +7,8 @@
 #include "Image.h"
 #include "Text.h"
 
-namespace doriax{
-    class DORIAX_API Button: public Image{
+namespace jasperengine{
+    class JASPERENGINE_API Button: public Image{
     private:
         void ensureLabel();
 

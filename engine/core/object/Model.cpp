@@ -16,7 +16,7 @@
 #include <sstream>
 #include <cfloat>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Model::Model(Scene* scene): Mesh(scene){
     addComponent<ModelComponent>();

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "DoriaxApple.h"
+#include "JasperEngineApple.h"
 
 #include "Engine.h"
 
@@ -39,14 +39,14 @@ static void setAppleCursorHidden(bool hidden){
 }
 #endif
 
-DoriaxApple::DoriaxApple(){
+JasperEngineApple::JasperEngineApple(){
 #if TARGET_OS_IPHONE
     if (!admob)
         admob = [[AdMobAdapter alloc]init];
 #endif
 }
 
-DoriaxApple::~DoriaxApple(){
+JasperEngineApple::~JasperEngineApple(){
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
     CGAssociateMouseAndMouseCursorPosition(true);
     appleMouseLocked = false;
@@ -57,7 +57,7 @@ DoriaxApple::~DoriaxApple(){
 #endif
 }
 
-sg_environment DoriaxApple::getSokolEnvironment(){
+sg_environment JasperEngineApple::getSokolEnvironment(){
     return (sg_environment) {
         .defaults = {
             .color_format = SG_PIXELFORMAT_BGRA8,
@@ -70,7 +70,7 @@ sg_environment DoriaxApple::getSokolEnvironment(){
     };
 }
 
-sg_swapchain DoriaxApple::getSokolSwapchain(){
+sg_swapchain JasperEngineApple::getSokolSwapchain(){
     return (sg_swapchain) {
         .width = (int)Renderer.screenSize.width,
         .height = (int)Renderer.screenSize.height,
@@ -95,28 +95,28 @@ sg_swapchain DoriaxApple::getSokolSwapchain(){
 @end
 #endif
 
-void DoriaxApple::setMouseCursor(doriax::CursorType type){
+void JasperEngineApple::setMouseCursor(jasperengine::CursorType type){
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
     NSCursor* cursor;
-    if (type == doriax::CursorType::ARROW){
+    if (type == jasperengine::CursorType::ARROW){
         cursor = [NSCursor arrowCursor];
-    }else if (type == doriax::CursorType::IBEAM){
+    }else if (type == jasperengine::CursorType::IBEAM){
         cursor = [NSCursor IBeamCursor];
-    }else if (type == doriax::CursorType::CROSSHAIR){
+    }else if (type == jasperengine::CursorType::CROSSHAIR){
         cursor = [NSCursor crosshairCursor];
-    }else if (type == doriax::CursorType::POINTING_HAND){
+    }else if (type == jasperengine::CursorType::POINTING_HAND){
         cursor = [NSCursor pointingHandCursor];
-    }else if (type == doriax::CursorType::RESIZE_EW){
+    }else if (type == jasperengine::CursorType::RESIZE_EW){
         cursor = [NSCursor respondsToSelector:@selector(_windowResizeEastWestCursor)] ? [NSCursor _windowResizeEastWestCursor] : [NSCursor resizeLeftRightCursor];
-    }else if (type == doriax::CursorType::RESIZE_NS){
+    }else if (type == jasperengine::CursorType::RESIZE_NS){
         cursor = [NSCursor respondsToSelector:@selector(_windowResizeNorthSouthCursor)] ? [NSCursor _windowResizeNorthSouthCursor] : [NSCursor resizeUpDownCursor];
-    }else if (type == doriax::CursorType::RESIZE_NWSE){
+    }else if (type == jasperengine::CursorType::RESIZE_NWSE){
         cursor = [NSCursor respondsToSelector:@selector(_windowResizeNorthWestSouthEastCursor)] ? [NSCursor _windowResizeNorthWestSouthEastCursor] : [NSCursor closedHandCursor];
-    }else if (type == doriax::CursorType::RESIZE_NESW){
+    }else if (type == jasperengine::CursorType::RESIZE_NESW){
         cursor = [NSCursor respondsToSelector:@selector(_windowResizeNorthEastSouthWestCursor)] ? [NSCursor _windowResizeNorthEastSouthWestCursor] : [NSCursor closedHandCursor];
-    }else if (type == doriax::CursorType::RESIZE_ALL){
+    }else if (type == jasperengine::CursorType::RESIZE_ALL){
         cursor = [NSCursor closedHandCursor];
-    }else if (type == doriax::CursorType::NOT_ALLOWED){
+    }else if (type == jasperengine::CursorType::NOT_ALLOWED){
         cursor = [NSCursor operationNotAllowedCursor];
     }
 
@@ -124,33 +124,33 @@ void DoriaxApple::setMouseCursor(doriax::CursorType type){
 #endif
 }
 
-void DoriaxApple::setMouseMode(doriax::MouseMode mode){
+void JasperEngineApple::setMouseMode(jasperengine::MouseMode mode){
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
     // macOS has no built-in cursor confinement, so CONFINED behaves as NORMAL.
-    const bool locked = (mode == doriax::MouseMode::CAPTURED);
+    const bool locked = (mode == jasperengine::MouseMode::CAPTURED);
     if (appleMouseLocked != locked){
         CGAssociateMouseAndMouseCursorPosition(!locked);
         appleMouseLocked = locked;
     }
 
-    const bool hidden = (mode == doriax::MouseMode::HIDDEN || mode == doriax::MouseMode::CAPTURED);
+    const bool hidden = (mode == jasperengine::MouseMode::HIDDEN || mode == jasperengine::MouseMode::CAPTURED);
     setAppleCursorHidden(hidden);
 #endif
 }
 
-int DoriaxApple::getScreenWidth(){
+int JasperEngineApple::getScreenWidth(){
     return Renderer.screenSize.width;
 }
 
-int DoriaxApple::getScreenHeight(){
+int JasperEngineApple::getScreenHeight(){
     return Renderer.screenSize.height;
 }
 
-int DoriaxApple::getSampleCount(){
+int JasperEngineApple::getSampleCount(){
     return (int)Renderer.view.sampleCount;
 }
 
-bool DoriaxApple::isTouchDevice(){
+bool JasperEngineApple::isTouchDevice(){
 #if TARGET_OS_IPHONE
     return true;
 #else
@@ -158,19 +158,19 @@ bool DoriaxApple::isTouchDevice(){
 #endif
 }
 
-void DoriaxApple::showVirtualKeyboard(std::wstring text){
+void JasperEngineApple::showVirtualKeyboard(std::wstring text){
 #if TARGET_OS_IPHONE
     [Renderer.view becomeFirstResponder];
 #endif
 }
 
-void DoriaxApple::hideVirtualKeyboard(){
+void JasperEngineApple::hideVirtualKeyboard(){
 #if TARGET_OS_IPHONE
     [Renderer.view resignFirstResponder];
 #endif
 }
 
-void DoriaxApple::quit(){
+void JasperEngineApple::quit(){
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
     // deferred to not close inside a script call
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -178,11 +178,11 @@ void DoriaxApple::quit(){
     });
 #else
     // iOS apps should not terminate themselves
-    doriax::System::quit();
+    jasperengine::System::quit();
 #endif
 }
 
-std::string DoriaxApple::getAssetPath(){
+std::string JasperEngineApple::getAssetPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"assets"];
 
     NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
@@ -191,8 +191,8 @@ std::string DoriaxApple::getAssetPath(){
         // No bundle resource: either a plain (non-.app) build, or a project run
         // from outside the editor, which leaves the assets in the project
         // directory and bakes its path in (see Generator::getPlatformCMakeConfig).
-#ifdef DORIAX_ASSET_PATH
-        return DORIAX_ASSET_PATH;
+#ifdef JASPERENGINE_ASSET_PATH
+        return JASPERENGINE_ASSET_PATH;
 #else
         return "assets";
 #endif
@@ -201,21 +201,21 @@ std::string DoriaxApple::getAssetPath(){
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
-std::string DoriaxApple::getUserDataPath(){
+std::string JasperEngineApple::getUserDataPath(){
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString *documentsDirectory = [paths objectAtIndex:0];
     
     return [documentsDirectory UTF8String];
 }
 
-std::string DoriaxApple::getLuaPath(){
+std::string JasperEngineApple::getLuaPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"lua"];
 
     NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
 
     if (!path){
-#ifdef DORIAX_LUA_PATH
-        return DORIAX_LUA_PATH;
+#ifdef JASPERENGINE_LUA_PATH
+        return JASPERENGINE_LUA_PATH;
 #else
         return "lua";
 #endif
@@ -224,14 +224,14 @@ std::string DoriaxApple::getLuaPath(){
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
-std::string DoriaxApple::getShaderPath(){
+std::string JasperEngineApple::getShaderPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"shaders"];
 
     NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
 
     if (!path){
-#ifdef DORIAX_SHADER_PATH
-        return DORIAX_SHADER_PATH;
+#ifdef JASPERENGINE_SHADER_PATH
+        return JASPERENGINE_SHADER_PATH;
 #else
         return System::getShaderPath();
 #endif
@@ -240,7 +240,7 @@ std::string DoriaxApple::getShaderPath(){
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
-bool DoriaxApple::getBoolForKey(const char *key, bool defaultValue){
+bool JasperEngineApple::getBoolForKey(const char *key, bool defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {
         return [value boolValue];
@@ -249,7 +249,7 @@ bool DoriaxApple::getBoolForKey(const char *key, bool defaultValue){
     return defaultValue;
 }
 
-int DoriaxApple::getIntegerForKey(const char *key, int defaultValue){
+int JasperEngineApple::getIntegerForKey(const char *key, int defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {
         return [value intValue];
@@ -258,7 +258,7 @@ int DoriaxApple::getIntegerForKey(const char *key, int defaultValue){
     return defaultValue;
 }
 
-long DoriaxApple::getLongForKey(const char *key, long defaultValue){
+long JasperEngineApple::getLongForKey(const char *key, long defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {
         return [value longValue];
@@ -267,7 +267,7 @@ long DoriaxApple::getLongForKey(const char *key, long defaultValue){
     return defaultValue;
 }
 
-float DoriaxApple::getFloatForKey(const char *key, float defaultValue){
+float JasperEngineApple::getFloatForKey(const char *key, float defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {
         return [value floatValue];
@@ -276,7 +276,7 @@ float DoriaxApple::getFloatForKey(const char *key, float defaultValue){
     return defaultValue;
 }
 
-double DoriaxApple::getDoubleForKey(const char *key, double defaultValue){
+double JasperEngineApple::getDoubleForKey(const char *key, double defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {
         return [value doubleValue];
@@ -285,16 +285,16 @@ double DoriaxApple::getDoubleForKey(const char *key, double defaultValue){
     return defaultValue;
 }
 
-doriax::Data DoriaxApple::getDataForKey(const char* key, const doriax::Data& defaultValue){
+jasperengine::Data JasperEngineApple::getDataForKey(const char* key, const jasperengine::Data& defaultValue){
     NSData *data = [[NSUserDefaults standardUserDefaults] dataForKey:[NSString stringWithUTF8String:key]];
     if (data){
-        return doriax::Data((unsigned char*)data.bytes, (unsigned int)data.length, true, true);
+        return jasperengine::Data((unsigned char*)data.bytes, (unsigned int)data.length, true, true);
     }
     
      return defaultValue;
 }
 
-std::string DoriaxApple::getStringForKey(const char *key, const std::string& defaultValue){
+std::string JasperEngineApple::getStringForKey(const char *key, const std::string& defaultValue){
     NSString *str = [[NSUserDefaults standardUserDefaults] stringForKey:[NSString stringWithUTF8String:key]];
     if (str){
         return [str UTF8String];
@@ -303,53 +303,53 @@ std::string DoriaxApple::getStringForKey(const char *key, const std::string& def
     return defaultValue;
 }
 
-void DoriaxApple::setBoolForKey(const char *key, bool value){
+void JasperEngineApple::setBoolForKey(const char *key, bool value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithBool:value] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setIntegerForKey(const char *key, int value){
+void JasperEngineApple::setIntegerForKey(const char *key, int value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithInt:value] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setLongForKey(const char *key, long value){
+void JasperEngineApple::setLongForKey(const char *key, long value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithLong:value] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setFloatForKey(const char *key, float value){
+void JasperEngineApple::setFloatForKey(const char *key, float value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithFloat:value] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setDoubleForKey(const char *key, double value){
+void JasperEngineApple::setDoubleForKey(const char *key, double value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:value] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setDataForKey(const char* key, doriax::Data& value){
+void JasperEngineApple::setDataForKey(const char* key, jasperengine::Data& value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSData dataWithBytes: value.getMemPtr() length: value.length()] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::setStringForKey(const char* key, const std::string& value){
+void JasperEngineApple::setStringForKey(const char* key, const std::string& value){
     [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:value.c_str()] forKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::removeKey(const char *key){
+void JasperEngineApple::removeKey(const char *key){
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:[NSString stringWithUTF8String:key]];
 }
 
-void DoriaxApple::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
+void JasperEngineApple::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
 #if TARGET_OS_IPHONE
     [admob initializeAdMob: tagForChildDirectedTreatment and:tagForUnderAgeOfConsent];
 #endif
 }
 
-void DoriaxApple::setMaxAdContentRating(doriax::AdMobRating rating){
+void JasperEngineApple::setMaxAdContentRating(jasperengine::AdMobRating rating){
     int irating = 0;
-    if (rating == doriax::AdMobRating::General){
+    if (rating == jasperengine::AdMobRating::General){
         irating = 1;
-    }else if (rating == doriax::AdMobRating::ParentalGuidance){
+    }else if (rating == jasperengine::AdMobRating::ParentalGuidance){
         irating = 2;
-    }else if (rating == doriax::AdMobRating::Teen){
+    }else if (rating == jasperengine::AdMobRating::Teen){
         irating = 3;
-    }else if (rating == doriax::AdMobRating::MatureAudience){
+    }else if (rating == jasperengine::AdMobRating::MatureAudience){
         irating = 4;
     }
 #if TARGET_OS_IPHONE
@@ -357,13 +357,13 @@ void DoriaxApple::setMaxAdContentRating(doriax::AdMobRating rating){
 #endif
 }
 
-void DoriaxApple::loadInterstitialAd(const std::string& adUnitID){
+void JasperEngineApple::loadInterstitialAd(const std::string& adUnitID){
 #if TARGET_OS_IPHONE
     [admob loadInterstitial:[NSString stringWithUTF8String:adUnitID.c_str()]];
 #endif
 }
 
-bool DoriaxApple::isInterstitialAdLoaded(){
+bool JasperEngineApple::isInterstitialAdLoaded(){
 #if TARGET_OS_IPHONE
     return [admob isInterstitialAdLoaded];
 #else
@@ -371,7 +371,7 @@ bool DoriaxApple::isInterstitialAdLoaded(){
 #endif
 }
 
-void DoriaxApple::showInterstitialAd(){
+void JasperEngineApple::showInterstitialAd(){
 #if TARGET_OS_IPHONE
     [admob showInterstitial];
 #endif

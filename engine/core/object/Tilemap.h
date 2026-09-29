@@ -6,9 +6,9 @@
 
 #include "Mesh.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Tilemap: public Mesh{
+    class JASPERENGINE_API Tilemap: public Mesh{
 
     public:
         Tilemap(Scene* scene);

@@ -15,12 +15,12 @@ jobs:
         config: 
         - {
             name: "iOS",
-            scheme: "Doriax iOS",
+            scheme: "JasperEngine iOS",
             sdk: iphonesimulator
           }
         - {
             name: "MacOS",
-            scheme: "Doriax macOS",
+            scheme: "JasperEngine macOS",
             sdk: macosx
           }
 
@@ -40,7 +40,7 @@ jobs:
           # with "CFLocale.h: Invalid argument" under parallel compiles.
           xcodebuild build \
             -sdk ${{ matrix.config.sdk }} \
-            -project Doriax.xcodeproj \
+            -project JasperEngine.xcodeproj \
             -configuration Debug \
             -scheme "${{ matrix.config.scheme }}" \
             -jobs 1

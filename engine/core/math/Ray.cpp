@@ -5,18 +5,18 @@
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Body2D.h"
 #include "util/Box2DAux.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Body3D.h"
 #include "util/JoltPhysicsAux.h"
 #endif
 #include <algorithm>
 #include <stdlib.h>
 
-using namespace doriax;
+using namespace jasperengine;
 
 
 const RayReturn Ray::NO_HIT( {false, -1, Vector3::ZERO, Vector3::ZERO, NULL_ENTITY, 0} );
@@ -322,7 +322,7 @@ RayReturn Ray::intersects(const Sphere& sphere) const{
     return NO_HIT;
 }
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 RayReturn Ray::intersects(const Body2D& body) const{
     Body2DComponent& bodycomp = body.getComponent<Body2DComponent>();
 
@@ -391,7 +391,7 @@ RayReturn Ray::intersects(const Body2D& body, size_t shape) const{
 }
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 RayReturn Ray::intersects(const Body3D& body) const{
     Body3DComponent& bodycomp = body.getComponent<Body3DComponent>();
     std::shared_ptr<PhysicsSystem> physicsSystem = body.getScene()->getSystem<PhysicsSystem>();
@@ -490,7 +490,7 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
         return closest;
     }
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     if (raytest == RayFilter::BODY_2D){
 
         b2WorldId world = scene->getSystem<PhysicsSystem>()->getWorld2D();
@@ -543,7 +543,7 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
     }
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     if (raytest == RayFilter::BODY_3D){
 
         std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
@@ -577,7 +577,7 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
     return NO_HIT;
 }
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 RayReturn Ray::intersects(Scene* scene, uint8_t broadPhaseLayer3D) const{
     return intersects(scene, broadPhaseLayer3D, (uint16_t)~0u, (uint16_t)~0u);
 }

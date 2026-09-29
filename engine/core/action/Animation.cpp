@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-using namespace doriax;
+using namespace jasperengine;
 
 Animation::Animation(Scene* scene): Action(scene){
     addComponent<AnimationComponent>();

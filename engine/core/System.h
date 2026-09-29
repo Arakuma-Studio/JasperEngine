@@ -16,7 +16,7 @@
 #include "io/Data.h"
 #include "sokol_gfx.h"
 
-namespace doriax {
+namespace jasperengine {
     class Engine;
 
     enum class AdMobRating{
@@ -49,7 +49,7 @@ namespace doriax {
         CONFINED  // visible, but cannot leave the window bounds
     };
 
-    class DORIAX_API System {
+    class JASPERENGINE_API System {
     private:
 
         friend class Engine;

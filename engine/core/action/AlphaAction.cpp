@@ -3,7 +3,7 @@
 
 #include "AlphaAction.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 AlphaAction::AlphaAction(Scene* scene): TimedAction(scene){
     addComponent<AlphaActionComponent>();

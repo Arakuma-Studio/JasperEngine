@@ -15,7 +15,7 @@
 #include <filesystem>
 #include <functional>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 namespace {
     namespace fs = std::filesystem;
@@ -457,4 +457,4 @@ bool EditorSettingsWindow::applySettings() {
     return AppSettings::saveSettings();
 }
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

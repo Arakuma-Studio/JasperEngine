@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 def projectSourceRoot = "../../../project"
-def doriaxRoot = "../../.."
+def jasperengineRoot = "../../.."
 
 def projectSourceRootAbs = file(projectSourceRoot).toString()
-def doriaxRootAbs = file(doriaxRoot).toString()
+def jasperengineRootAbs = file(jasperengineRoot).toString()
 
 // def platformVersion = 24    //openGLES 3.2 min api level
 // def platformVersion = 18    //openGLES 3 min api level
@@ -45,7 +45,7 @@ android {
     externalNativeBuild {
         cmake {
             //version '3.18.1'
-            path doriaxRootAbs+"/CMakeLists.txt"
+            path jasperengineRootAbs+"/CMakeLists.txt"
         }
     }
 
@@ -56,12 +56,12 @@ android {
 
     sourceSets {
         main {
-            java.srcDirs = [doriaxRootAbs+'/platform/android/java']
+            java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
             assets.srcDirs = [projectSourceRootAbs+'/assets',projectSourceRootAbs+'/lua']
         }
     }
 
-    namespace 'org.doriaxengine.doriax'
+    namespace 'com.jaspergameengine.jasperengine'
 }
 
 dependencies {

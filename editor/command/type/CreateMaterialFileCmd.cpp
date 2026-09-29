@@ -12,7 +12,7 @@
 #include <fstream>
 #include <system_error>
 
-using namespace doriax;
+using namespace jasperengine;
 
 fs::path editor::CreateMaterialFileCmd::findAvailableTargetFile(const fs::path& directory) {
     std::string baseName = "Material";

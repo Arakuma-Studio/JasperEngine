@@ -7,9 +7,9 @@
 #include "Render.h"
 #include "sokol/SokolTexture.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API TextureRender{
+    class JASPERENGINE_API TextureRender{
 
     public:
         //***Backend***

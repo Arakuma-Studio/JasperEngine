@@ -11,7 +11,7 @@
 
 #include "SokolCmdQueue.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 // ----------------------------------------------------------------------------------------------------
 

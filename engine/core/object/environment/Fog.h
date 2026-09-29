@@ -7,9 +7,9 @@
 #include "object/EntityHandle.h"
 #include "component/FogComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Fog: public EntityHandle {
+    class JASPERENGINE_API Fog: public EntityHandle {
 
     public:
         Fog(Scene* scene);

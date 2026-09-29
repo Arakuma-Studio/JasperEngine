@@ -6,7 +6,7 @@
 
 #define NULL_ENTITY 0
 
-namespace doriax{
+namespace jasperengine{
 
     using Entity = unsigned;
 

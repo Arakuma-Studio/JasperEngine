@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 class ResourcesWindow;
 
@@ -182,4 +182,4 @@ public:
     bool handleMentionHistoryKey(ImGuiKey key);
 };
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

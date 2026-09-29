@@ -7,8 +7,8 @@
 #include "Export.h"
 #include <stdint.h>
 
-namespace doriax{
-    class DORIAX_API SystemRender{
+namespace jasperengine{
+    class JASPERENGINE_API SystemRender{
     public:
         static void setup();
         static void commitQueue();

@@ -34,7 +34,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace doriax{
+namespace jasperengine{
 	typedef struct fs_lighting_t {
 	    Vector4 direction_range[MAX_LIGHTS];
 	    Vector4 color_intensity[MAX_LIGHTS];
@@ -158,7 +158,7 @@ namespace doriax{
 		Entity entity;
 	} check_load_t;
 
-	class DORIAX_API RenderSystem : public SubSystem {
+	class JASPERENGINE_API RenderSystem : public SubSystem {
 	private:
 		enum class TransparentRenderType{
 			MESH,

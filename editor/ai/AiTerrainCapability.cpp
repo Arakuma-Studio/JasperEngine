@@ -22,7 +22,7 @@
 
 namespace fs = std::filesystem;
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 namespace {
 
@@ -223,4 +223,4 @@ TerrainBlendmapResult AiTerrainCapability::createBlendmap(Project* project,
     return result;
 }
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

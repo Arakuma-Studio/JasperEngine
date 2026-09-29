@@ -15,12 +15,12 @@
 #include "BundleManager.h"
 #include "Input.h"
 #include "System.h"
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
 #include "Body2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #endif
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
 #include "Body3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
@@ -33,7 +33,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void LuaBinding::registerCoreClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -465,7 +465,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("add", (bool (FunctionSubscribe<float(float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<float(float)>::add)
         .endClass();
 
-#ifdef DORIAX_PHYSICS_2D
+#ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>>("FunctionSubscribe_V_B2ULB2UL")
         .addFunction("__call", &FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>::call)
@@ -495,7 +495,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 #endif
 
-#ifdef DORIAX_PHYSICS_3D
+#ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void(Body3D)>>("FunctionSubscribe_V_B3")
         .addFunction("__call", &FunctionSubscribe<void(Body3D)>::call)

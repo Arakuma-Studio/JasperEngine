@@ -8,7 +8,7 @@
 #include "shader/ShaderData.h"
 #include "sokol_gfx.h"
 
-namespace doriax{
+namespace jasperengine{
 
     // textures and storage buffers share the sg_bindings.views[] bindspace, but
     // shader reflection (ShaderData) keeps independent slot counters for each type,

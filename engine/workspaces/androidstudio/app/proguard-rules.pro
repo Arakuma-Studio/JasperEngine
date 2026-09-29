@@ -16,4 +16,4 @@
 #   public *;
 #}
 
--keep class org.doriaxengine.doriax.* {*;}
+-keep class com.jaspergameengine.jasperengine.* {*;}

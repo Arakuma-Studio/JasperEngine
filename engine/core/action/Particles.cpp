@@ -5,7 +5,7 @@
 
 #include "subsystem/ActionSystem.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 Particles::Particles(Scene* scene): Action(scene){
     addComponent<ParticlesComponent>();

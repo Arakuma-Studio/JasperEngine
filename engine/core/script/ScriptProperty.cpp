@@ -7,7 +7,7 @@
 #include "lua.hpp"
 #include "LuaBridge.h"
 
-namespace doriax {
+namespace jasperengine {
 
     void ScriptProperty::reportStaleValue() const {
         Log::warn("Script property '%s' had a value of another type, reset to default", name.c_str());

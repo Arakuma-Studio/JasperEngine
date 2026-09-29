@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
 struct ClipboardImage {
     std::string mimeType;
@@ -38,4 +38,4 @@ ClipboardContent readClipboardContent();
 // readClipboardContent() or as file:// URIs.
 std::vector<std::string> clipboardTextToFilePaths(const char* clipboardText);
 
-} // namespace doriax::editor
+} // namespace jasperengine::editor

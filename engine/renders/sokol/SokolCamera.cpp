@@ -9,7 +9,7 @@
 #include "sokol_gfx.h"
 #include <cmath>
 
-using namespace doriax;
+using namespace jasperengine;
 
 SokolCamera::SokolCamera(){
     pass = {0};

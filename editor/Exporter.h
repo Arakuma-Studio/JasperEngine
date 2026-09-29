@@ -17,7 +17,7 @@
 #include <mutex>
 #include <thread>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
 
@@ -49,7 +49,7 @@ namespace doriax::editor {
         std::set<ShaderKey> shaderAdditions;
         std::set<ShaderKey> shaderExclusions;
         // graphic backends the shaders are compiled for
-        std::set<::doriax::ShaderBackend> selectedBackends;
+        std::set<::jasperengine::ShaderBackend> selectedBackends;
         ShaderOutputFormat shaderOutputFormat = ShaderOutputFormat::Header;
         // Desktop: compiler kit from the editor settings ("" = CMake default toolchain)
         std::string cmakeCCompiler;
@@ -180,7 +180,7 @@ namespace doriax::editor {
         bool isRunning() const;
 
         static std::string getShaderDisplayName(ShaderType type, uint32_t properties, uint16_t customId = 0);
-        static std::string getCMakeGraphicBackend(::doriax::ShaderBackend backend);
+        static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
     };
 

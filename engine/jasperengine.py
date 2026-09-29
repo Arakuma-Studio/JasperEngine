@@ -106,12 +106,12 @@ def add_folder_reference(project, folder_path, target):
         f.write(project_data)
 
 def build():
-    parser = argparse.ArgumentParser(description="Configure and build a Doriax project with CMake.")
+    parser = argparse.ArgumentParser(description="Configure and build a JasperEngine project with CMake.")
     parser.add_argument("--platform", "-p", type=str.lower, default=host_platform(), choices=["web", "linux", "windows", "macos", "macos-xcode", "ios-xcode"], help="Platform build type (default: %(default)s)")
-    parser.add_argument("--doriax", "-e", default=os.path.dirname(os.path.abspath(__file__)), help="Doriax engine root path")
-    parser.add_argument("--project", "-s", help="Source root path of project files (default: <doriax>/project)")
+    parser.add_argument("--jasperengine", "-e", default=os.path.dirname(os.path.abspath(__file__)), help="JasperEngine root path")
+    parser.add_argument("--project", "-s", help="Source root path of project files (default: <jasperengine>/project)")
     parser.add_argument("--appname", "-a", help="Project target name (default: from CMakeLists.txt)")
-    parser.add_argument("--output", "-o", help="Output directory (default: <doriax>/build/<platform>)")
+    parser.add_argument("--output", "-o", help="Output directory (default: <jasperengine>/build/<platform>)")
     parser.add_argument("--build", "-b", action=argparse.BooleanOptionalAction, default=True, help="Build after configuring")
     parser.add_argument("--debug", "-d", action=argparse.BooleanOptionalAction, default=False, help="Build type Debug or Release")
     parser.add_argument("--graphic-backend", "-g", type=str.lower, choices=["glcore", "gles3", "metal", "d3d11", "vulkan"], help="Preferred graphic API")
@@ -126,9 +126,9 @@ def build():
     platform = args.platform
     build_type = "Debug" if args.debug else "Release"
 
-    doriax_root = os.path.abspath(args.doriax)
-    project_root = os.path.abspath(args.project or os.path.join(doriax_root, "project"))
-    build_dir = os.path.abspath(args.output or os.path.join(doriax_root, "build", platform))
+    jasperengine_root = os.path.abspath(args.jasperengine)
+    project_root = os.path.abspath(args.project or os.path.join(jasperengine_root, "project"))
+    build_dir = os.path.abspath(args.output or os.path.join(jasperengine_root, "build", platform))
 
     required_host = "macos" if platform in XCODE_PLATFORMS else platform
     if platform != "web" and required_host != host_platform():
@@ -141,7 +141,7 @@ def build():
 ####
     cmake_command = [
         "cmake",
-        "-S", doriax_root,
+        "-S", jasperengine_root,
         "-B", build_dir,
         "-DCMAKE_BUILD_TYPE=" + build_type,
         "-DPROJECT_ROOT=" + project_root,

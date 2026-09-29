@@ -5,7 +5,7 @@
 
 #include "Out.h"
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 void EditorHost::enqueueMainThreadTask(std::function<void()> task) {
     if (task) {
@@ -104,10 +104,10 @@ ImageViewerWindow* EditorHost::getImageViewerWindow() const {
 static EditorHost s_defaultHost;
 static EditorHost* s_activeHost = &s_defaultHost;
 
-void doriax::editor::setEditorHost(EditorHost* host) {
+void jasperengine::editor::setEditorHost(EditorHost* host) {
     s_activeHost = host ? host : &s_defaultHost;
 }
 
-EditorHost& doriax::editor::getEditorHost() {
+EditorHost& jasperengine::editor::getEditorHost() {
     return *s_activeHost;
 }

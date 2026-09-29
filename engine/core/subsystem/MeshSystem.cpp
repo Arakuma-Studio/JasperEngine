@@ -32,7 +32,7 @@
 #include "stb_image_resize2.h"
 #include "pool/ObjModelData.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
@@ -4787,8 +4787,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     mat->emissiveFactor[1],
                     mat->emissiveFactor[2]);
                 // leaf backlighting is authored as a glTF extra, there is no core material slot for it
-                if (mat->extras.IsObject() && mat->extras.Has("doriax_foliage_transmission")) {
-                    const auto& value = mat->extras.Get("doriax_foliage_transmission");
+                if (mat->extras.IsObject() && mat->extras.Has("jasperengine_foliage_transmission")) {
+                    const auto& value = mat->extras.Get("jasperengine_foliage_transmission");
                     if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
                         mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
                 }

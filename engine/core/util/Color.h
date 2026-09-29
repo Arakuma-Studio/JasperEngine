@@ -8,9 +8,9 @@
 #include "Vector3.h"
 #include "Vector4.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Color {
+    class JASPERENGINE_API Color {
     private:
         static float GAMMA;
         static float INV_GAMMA;

@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <initializer_list>
 
-namespace doriax {
+namespace jasperengine {
 
     class Scene;
 
@@ -41,7 +41,7 @@ namespace doriax {
     //   SceneManager.loadScene("Level1")
     //   SceneManager.addChildScene("Hud")
 
-    class DORIAX_API SceneManager {
+    class JASPERENGINE_API SceneManager {
     private:
         struct SceneEntry {
             uint32_t id;
@@ -232,6 +232,6 @@ namespace doriax {
         static void removeScenePtr(uint32_t id);
     };
 
-} // namespace doriax
+} // namespace jasperengine
 
 #endif // SCENEMANAGER_H

@@ -7,7 +7,7 @@
 
 #include <cstring>
 
-using namespace doriax;
+using namespace jasperengine;
 
 bool ShaderUniforms::isReserved(const std::string& name){
     return name == "time" || name == "resolution";

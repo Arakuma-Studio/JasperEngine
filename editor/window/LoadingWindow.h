@@ -7,7 +7,7 @@
 #include "texture/Texture.h"
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class LoadingWindow {
     private:

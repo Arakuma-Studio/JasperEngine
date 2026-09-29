@@ -8,7 +8,7 @@
 #include "Engine.h"
 #include "ShaderData.h"
 
-namespace doriax{
+namespace jasperengine{
 
     typedef uint64_t ShaderKey;
 

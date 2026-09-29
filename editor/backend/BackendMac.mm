@@ -5,7 +5,7 @@
 #include "Backend.h"
 #include "EditorHost.h"
 
-#include "DoriaxGameController.h"
+#include "JasperEngineGameController.h"
 #include "Engine.h"
 #include "WindowMac.h"
 
@@ -30,18 +30,18 @@
 #include <utility>
 #include <vector>
 
-using namespace doriax;
-using doriax::editor::PlatformMenuCallback;
-using doriax::editor::PlatformMenuCommand;
-using doriax::editor::PlatformMenuItem;
-using doriax::editor::PlatformMenuItemType;
-using doriax::editor::PlatformMenuRole;
-using doriax::editor::PlatformMenuModel;
+using namespace jasperengine;
+using jasperengine::editor::PlatformMenuCallback;
+using jasperengine::editor::PlatformMenuCommand;
+using jasperengine::editor::PlatformMenuItem;
+using jasperengine::editor::PlatformMenuItemType;
+using jasperengine::editor::PlatformMenuRole;
+using jasperengine::editor::PlatformMenuModel;
 
-@class DoriaxEditorApplicationDelegate;
-@class DoriaxEditorMenuTarget;
-@class DoriaxEditorMetalView;
-@class DoriaxEditorWindowDelegate;
+@class JasperEngineEditorApplicationDelegate;
+@class JasperEngineEditorMenuTarget;
+@class JasperEngineEditorMetalView;
+@class JasperEngineEditorWindowDelegate;
 
 namespace {
 
@@ -58,9 +58,9 @@ struct NativeMenu {
 struct MacBackendData {
     __strong NSWindow* window = nil;
     __strong MTKView* view = nil;
-    __strong DoriaxEditorApplicationDelegate* applicationDelegate = nil;
-    __strong DoriaxEditorWindowDelegate* windowDelegate = nil;
-    __strong DoriaxEditorMenuTarget* menuTarget = nil;
+    __strong JasperEngineEditorApplicationDelegate* applicationDelegate = nil;
+    __strong JasperEngineEditorWindowDelegate* windowDelegate = nil;
+    __strong JasperEngineEditorMenuTarget* menuTarget = nil;
     __strong id eventMonitor = nil;
 
     __strong id<MTLDevice> device = nil;
@@ -97,7 +97,7 @@ double monotonicSeconds() {
         Clock::now().time_since_epoch()).count();
 }
 
-#if defined(DORIAX_NATIVE_MENU)
+#if defined(JASPERENGINE_NATIVE_MENU)
 
 NSString* stringFromUtf8(const std::string& text) {
     NSString* result = [[NSString alloc]
@@ -346,7 +346,7 @@ NSString* functionKeyEquivalent(int number) {
     return [NSString stringWithCharacters:&key length:1];
 }
 
-#if defined(DORIAX_NATIVE_MENU)
+#if defined(JASPERENGINE_NATIVE_MENU)
 
 void applyShortcut(NSMenuItem* menuItem, const std::string& shortcut) {
     if (shortcut.empty()) return;
@@ -427,13 +427,13 @@ bool appendMenuItems(NSMenu* menu,
 #endif
 
 void appendApplicationMenu(NSMenu* mainMenu, const std::vector<PlatformMenuItem>& applicationItems = {}) {
-    NSString* applicationName = @"Doriax Engine";
+    NSString* applicationName = @"JasperEngine";
     NSMenuItem* root = [[NSMenuItem alloc]
         initWithTitle:applicationName action:nil keyEquivalent:@""];
     NSMenu* menu = [[NSMenu alloc] initWithTitle:applicationName];
     menu.autoenablesItems = NO;
 
-#if defined(DORIAX_NATIVE_MENU)
+#if defined(JASPERENGINE_NATIVE_MENU)
     if (!applicationItems.empty()) {
         appendMenuItems(menu, applicationItems, true);
         [menu addItem:NSMenuItem.separatorItem];
@@ -479,7 +479,7 @@ void appendApplicationMenu(NSMenu* mainMenu, const std::vector<PlatformMenuItem>
     [mainMenu addItem:root];
 }
 
-#if defined(DORIAX_NATIVE_MENU)
+#if defined(JASPERENGINE_NATIVE_MENU)
 
 bool rebuildNativeMenu(const PlatformMenuModel& model) {
     if (!backend || !backend->menuTarget) return false;
@@ -678,10 +678,10 @@ void waitForGpu() {
 
 } // namespace
 
-@interface DoriaxEditorApplicationDelegate : NSObject <NSApplicationDelegate>
+@interface JasperEngineEditorApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
 
-@implementation DoriaxEditorApplicationDelegate
+@implementation JasperEngineEditorApplicationDelegate
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
     (void)sender;
     if (backend) editor::Backend::getApp().exit();
@@ -704,10 +704,10 @@ void waitForGpu() {
 }
 @end
 
-@interface DoriaxEditorWindowDelegate : NSObject <NSWindowDelegate>
+@interface JasperEngineEditorWindowDelegate : NSObject <NSWindowDelegate>
 @end
 
-@implementation DoriaxEditorWindowDelegate
+@implementation JasperEngineEditorWindowDelegate
 - (BOOL)windowShouldClose:(NSWindow*)sender {
     (void)sender;
     if (backend) editor::Backend::getApp().exit();
@@ -747,12 +747,12 @@ void waitForGpu() {
 }
 @end
 
-@interface DoriaxEditorMenuTarget : NSObject
+@interface JasperEngineEditorMenuTarget : NSObject
 - (void)performEditorCommand:(id)sender;
 - (void)requestEditorQuit:(id)sender;
 @end
 
-@implementation DoriaxEditorMenuTarget
+@implementation JasperEngineEditorMenuTarget
 - (void)performEditorCommand:(id)sender {
     if (!backend || ![sender isKindOfClass:[NSMenuItem class]]) return;
     const NSInteger tag = [(NSMenuItem*)sender tag];
@@ -768,10 +768,10 @@ void waitForGpu() {
 }
 @end
 
-@interface DoriaxEditorMetalView : MTKView <NSDraggingDestination>
+@interface JasperEngineEditorMetalView : MTKView <NSDraggingDestination>
 @end
 
-@implementation DoriaxEditorMetalView
+@implementation JasperEngineEditorMetalView
 - (instancetype)initWithFrame:(NSRect)frameRect
                         device:(id<MTLDevice>)device {
     self = [super initWithFrame:frameRect device:device];
@@ -840,9 +840,9 @@ int editor::Backend::init(int argc, char* argv[]) {
 
         WindowMac::setupApplication();
         backend->applicationDelegate =
-            [[DoriaxEditorApplicationDelegate alloc] init];
-        backend->windowDelegate = [[DoriaxEditorWindowDelegate alloc] init];
-        backend->menuTarget = [[DoriaxEditorMenuTarget alloc] init];
+            [[JasperEngineEditorApplicationDelegate alloc] init];
+        backend->windowDelegate = [[JasperEngineEditorWindowDelegate alloc] init];
+        backend->menuTarget = [[JasperEngineEditorMenuTarget alloc] init];
         NSApp.delegate = backend->applicationDelegate;
 
         backend->device = MTLCreateSystemDefaultDevice();
@@ -855,7 +855,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         }
 
         WindowMacConfig windowConfig;
-        windowConfig.title = "Doriax Engine";
+        windowConfig.title = "JasperEngine";
         // Cocoa sizes windows in points, which are already scale independent.
         windowConfig.width = app.getInitialWindowWidth(1.0f);
         windowConfig.height = app.getInitialWindowHeight(1.0f);
@@ -863,7 +863,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         WindowMac::setWindowDelegate((__bridge void*)backend->windowDelegate);
         backend->window = (__bridge NSWindow*)WindowMac::nativeWindow();
 
-        backend->view = [[DoriaxEditorMetalView alloc]
+        backend->view = [[JasperEngineEditorMetalView alloc]
             initWithFrame:backend->window.contentView.bounds
                    device:backend->device];
         backend->view.autoresizingMask =
@@ -964,7 +964,7 @@ int editor::Backend::init(int argc, char* argv[]) {
             return -1;
         }
         backend->renderingReady = true;
-        [DoriaxGameController start];
+        [JasperEngineGameController start];
 
         [NSApp finishLaunching];
         WindowMac::show(false);
@@ -1169,7 +1169,7 @@ ImVec2 editor::Backend::sceneRenderScale(ImVec2 framebufferScale, float dpiScale
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
     if (!backend || !NSApp) return 0.0f;
-#if !defined(DORIAX_NATIVE_MENU)
+#if !defined(JASPERENGINE_NATIVE_MENU)
     // Keep the application menu, macOS needs it for Quit and Hide, and let App
     // draw the editor menus with ImGui.
     (void)model;
@@ -1229,8 +1229,8 @@ sg_swapchain editor::Backend::getSokolSwapchain() {
 
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
     title = projectName.empty()
-        ? "Empty project - Doriax Engine"
-        : projectName + " - Doriax Engine";
+        ? "Empty project - JasperEngine"
+        : projectName + " - JasperEngine";
     WindowMac::setTitle(title);
 }
 

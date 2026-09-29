@@ -3,7 +3,7 @@
 
 #include "EntityHandle.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 EntityHandle::EntityHandle(Scene* scene){
     this->scene = scene;

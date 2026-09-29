@@ -3,7 +3,7 @@
 
 #include "SpriteAnimation.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 SpriteAnimation::SpriteAnimation(Scene* scene): Action(scene){
     addComponent<SpriteAnimationComponent>();

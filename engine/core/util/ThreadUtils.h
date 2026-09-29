@@ -16,7 +16,7 @@
 
 // ----------------------------------------------------------------------------------------------------
 
-namespace doriax {
+namespace jasperengine {
 
 	class Semaphore {
 	public:

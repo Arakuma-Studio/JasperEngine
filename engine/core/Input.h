@@ -189,7 +189,7 @@
 #include <string>
 #include "math/Vector2.h"
 
-namespace doriax {
+namespace jasperengine {
 
     typedef struct Touch{
         int pointer;
@@ -203,7 +203,7 @@ namespace doriax {
         std::map<int,float> axisValue;
     } Gamepad;
 
-    class DORIAX_API Input {
+    class JASPERENGINE_API Input {
 
         friend class Engine;
 

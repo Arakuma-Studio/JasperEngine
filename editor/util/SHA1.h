@@ -9,7 +9,7 @@
 #include <cstring>
 #include <stdint.h>
 
-namespace doriax::editor{
+namespace jasperengine::editor{
     class SHA1{
 
     public:

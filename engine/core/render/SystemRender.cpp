@@ -6,7 +6,7 @@
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 void SystemRender::setup(){
     SokolSystem::setup();

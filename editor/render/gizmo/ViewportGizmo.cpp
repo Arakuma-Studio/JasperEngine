@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <limits>
 
-using namespace doriax;
+using namespace jasperengine;
 
 editor::ViewportGizmo::ViewportGizmo(){
     scene = new Scene(EntityPool::System);

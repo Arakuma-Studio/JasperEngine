@@ -17,9 +17,9 @@
 #include "Entity.h"
 #include "Log.h"
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API ComponentArrayBase{
+    class JASPERENGINE_API ComponentArrayBase{
     public:
         virtual ~ComponentArrayBase() = default;
         virtual void entityDestroyed(Entity entity) = 0;

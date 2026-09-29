@@ -11,7 +11,7 @@
 #include <cmath>
 #include <climits>
 
-namespace doriax {
+namespace jasperengine {
 namespace editor {
 
 void TextureSlicerToolDialog::open(const Texture& previewTexture,
@@ -437,4 +437,4 @@ void TextureSlicerToolDialog::show() {
 }
 
 } // namespace editor
-} // namespace doriax
+} // namespace jasperengine

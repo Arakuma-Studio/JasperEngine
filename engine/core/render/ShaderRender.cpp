@@ -6,7 +6,7 @@
 #include "SystemRender.h"
 #include "Engine.h"
 
-using namespace doriax;
+using namespace jasperengine;
 
 ShaderRender::ShaderRender(){ }
 

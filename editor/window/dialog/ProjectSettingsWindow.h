@@ -11,7 +11,7 @@
 #include <set>
 #include <unordered_map>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
 

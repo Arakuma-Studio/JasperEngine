@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <utility>
 
-using namespace doriax::editor;
+using namespace jasperengine::editor;
 
 namespace fs = std::filesystem;
 

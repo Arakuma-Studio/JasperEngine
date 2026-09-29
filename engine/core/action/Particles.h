@@ -7,9 +7,9 @@
 #include "Action.h"
 #include "component/ParticlesComponent.h"
 
-namespace doriax{
+namespace jasperengine{
 
-    class DORIAX_API Particles: public Action{
+    class JASPERENGINE_API Particles: public Action{
     public:
         Particles(Scene* scene);
         Particles(Scene* scene, Entity entity);

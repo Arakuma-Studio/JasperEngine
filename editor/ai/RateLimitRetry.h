@@ -8,7 +8,7 @@
 #include <chrono>
 #include <string>
 
-namespace doriax::editor::ai {
+namespace jasperengine::editor::ai {
 
 // True only for a temporary HTTP 429. Permanent billing/quota failures use
 // the same status but must be shown immediately instead of retried.
@@ -22,4 +22,4 @@ std::chrono::milliseconds rateLimitRetryDelay(
     const HttpResponse& response, const std::string& detail,
     const std::string& structuredRetryDelay = {});
 
-} // namespace doriax::editor::ai
+} // namespace jasperengine::editor::ai

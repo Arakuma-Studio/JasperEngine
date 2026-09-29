@@ -9,13 +9,13 @@
 #include <vector>
 #include <string>
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class ScriptParser {
     private:
-        static doriax::ScriptPropertyType inferTypeFromCppType(const std::string& cppType, std::string& ptrTypeName);
+        static jasperengine::ScriptPropertyType inferTypeFromCppType(const std::string& cppType, std::string& ptrTypeName);
         // nullopt falls back to the inferred C++ type
-        static std::optional<doriax::ScriptPropertyType> parseExplicitType(const std::string& typeStr, const std::string& cppType);
+        static std::optional<jasperengine::ScriptPropertyType> parseExplicitType(const std::string& typeStr, const std::string& cppType);
         static std::string removeComments(const std::string& content);
 
     public:
@@ -27,8 +27,8 @@ namespace doriax::editor {
         // Ambiguous headers do not produce a class name.
         static std::optional<std::string> findScriptClassName(const std::filesystem::path& scriptPath);
         static std::optional<std::string> findScriptClassNameFromString(const std::string& content);
-        static std::vector<doriax::ScriptProperty> parseScriptProperties(const std::filesystem::path& scriptPath);
-        static std::vector<doriax::ScriptProperty> parseScriptPropertiesFromString(const std::string& content, const std::string& sourceName = "memory");
+        static std::vector<jasperengine::ScriptProperty> parseScriptProperties(const std::filesystem::path& scriptPath);
+        static std::vector<jasperengine::ScriptProperty> parseScriptPropertiesFromString(const std::string& content, const std::string& sourceName = "memory");
     };
 
 }

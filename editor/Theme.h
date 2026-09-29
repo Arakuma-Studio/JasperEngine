@@ -5,7 +5,7 @@
 
 #include "imgui.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
 
     class Theme {
     public:

@@ -8,7 +8,7 @@
 #include <string>
 #include "imgui.h"
 
-namespace doriax::editor {
+namespace jasperengine::editor {
     enum class LogType {
         Info,
         Warning,

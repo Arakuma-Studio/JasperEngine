@@ -141,20 +141,20 @@
 #include <mutex>
 #include <unordered_set>
 
-#define DORIAX_INIT \
+#define JASPERENGINE_INIT \
     void init(); \
     namespace { \
         struct InitRegistrar { \
             InitRegistrar() { \
-                doriax::Engine::getOnInit().add("user_init", &init); \
+                jasperengine::Engine::getOnInit().add("user_init", &init); \
             } \
         }; \
-        static InitRegistrar _doriax_init_registrar; \
+        static InitRegistrar _jasperengine_init_registrar; \
     }
 
-namespace doriax {
+namespace jasperengine {
 
-    class DORIAX_API Scene;
+    class JASPERENGINE_API Scene;
     //class Rect;
 
     enum class Scaling{
@@ -205,7 +205,7 @@ namespace doriax {
         Failed
     };
 
-    class DORIAX_API Engine {
+    class JASPERENGINE_API Engine {
     public:
         // draw calls, instances and triangles submitted by the last systemDraw
         struct FrameStats{
@@ -215,7 +215,7 @@ namespace doriax {
         };
 
     private:
-        //-----Doriax config-----
+        //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
         static std::unordered_set<Scene*> oneTimeScenes;
 
@@ -297,7 +297,7 @@ namespace doriax {
         //Engine();
         //virtual ~Engine();
         
-        //-----Doriax config-----
+        //-----JasperEngine config-----
         static void setScene(Scene* scene);
         static Scene* getScene();
         static void addSceneLayer(Scene* scene);
@@ -404,7 +404,7 @@ namespace doriax {
         static void clearComponentSubscriptions(Scene* scene);
         static void removeSubscriptionsByTag(const std::string& substring);
 
-        //-----Doriax API functions-----
+        //-----JasperEngine API functions-----
         static void systemInit(int argc, char* argv[], System* system);
         static void systemViewLoaded();
         static void systemViewChanged();
@@ -440,7 +440,7 @@ namespace doriax {
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
 
-        //-----Doriax user events-----
+        //-----JasperEngine user events-----
         // Safe accessor for the Init event
         static FunctionSubscribe<void()>& getOnInit();
 

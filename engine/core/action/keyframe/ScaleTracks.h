@@ -7,8 +7,8 @@
 #include "action/Action.h"
 #include "action/Ease.h"
 
-namespace doriax{
-    class DORIAX_API ScaleTracks: public Action{
+namespace jasperengine{
+    class JASPERENGINE_API ScaleTracks: public Action{
 
     public:
         ScaleTracks(Scene* scene);
