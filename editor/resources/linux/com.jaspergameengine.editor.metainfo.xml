@@ -11,8 +11,8 @@
   <name>JasperEngine</name>
   <summary>Build cross-platform 2D and 3D games</summary>
 
-  <developer id="org.jasperengine">
-    <name>Eduardo Doria Lima</name>
+  <developer id="com.jaspergameengine">
+    <name>JasperDev</name>
   </developer>
 
   <description>
@@ -44,20 +44,6 @@
   <url type="bugtracker">https://github.com/JasperRaccoon/JasperEngine/issues</url>
   <url type="vcs-browser">https://github.com/JasperRaccoon/JasperEngine</url>
 
-  <screenshots>
-    <screenshot type="default">
-      <caption>Editing a 3D scene</caption>
-      <image>https://github.com/JasperRaccoon/JasperEngine</image>
-    </screenshot>
-    <screenshot>
-      <caption>Editing a 2D sprite scene</caption>
-      <image>https://github.com/JasperRaccoon/JasperEngine</image>
-    </screenshot>
-    <screenshot>
-      <caption>Writing gameplay code in the built-in editor</caption>
-      <image>https://github.com/JasperRaccoon/JasperEngine</image>
-    </screenshot>
-  </screenshots>
 
   <content_rating type="oars-1.1"/>
 

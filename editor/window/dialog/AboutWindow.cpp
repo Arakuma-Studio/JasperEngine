@@ -71,7 +71,8 @@ void AboutWindow::drawAbout() {
     }
 
     centeredText("Version: " JASPERENGINE_EDITOR_VERSION);
-    centeredText("Developed by Eduardo Doria and contributors");
+    centeredText("Developed by JasperDev");
+    centeredText("Based on Doriax by Eduardo Doria and contributors");
 
     ImGui::Separator();
 

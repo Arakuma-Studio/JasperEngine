@@ -35,6 +35,7 @@ RULES = [
     # Bundle and package identifiers.
     (r"org\.doriax\.doriaxengine", "com.jaspergameengine.jasperengine"),
     (r"org\.doriax\.editor", "com.jaspergameengine.editor"),
+    (r"org\.doriax(?![\w.])", "com.jaspergameengine"),
     (r"org\.doriaxengine\.doriax", "com.jaspergameengine.jasperengine"),
     (r"org/doriaxengine/doriax", "com/jaspergameengine/jasperengine"),
     (r'"org"(\s*/\s*)"doriaxengine"(\s*/\s*)"doriax"', r'"com"\1"jaspergameengine"\2"jasperengine"'),
