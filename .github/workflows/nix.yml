@@ -1,0 +1,92 @@
+name: Nix and Containers
+
+# The build environments under misc/ are not exercised by any other workflow,
+# so their dependency lists drift out of sync with cmake.yml unnoticed.
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'misc/**'
+      - '.github/workflows/nix.yml'
+  pull_request:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'misc/**'
+      - '.github/workflows/nix.yml'
+  schedule:
+    # Monday 04:00 UTC: catches nixpkgs and base image drift between changes.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flake:
+    name: Flake outputs and dev shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Read by the nix client, so /etc/nix/nix.conf needs no editing.
+      NIX_CONFIG: "experimental-features = nix-command flakes"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Nix
+        # The upstream installer rather than a third-party action: nothing here
+        # is worth pinning to someone else's release cadence.
+        run: |
+          curl -fsSL https://nixos.org/nix/install | sh -s -- --daemon --yes
+          echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
+
+      - name: Evaluate every flake output
+        run: nix flake check --no-build
+
+      # `nix develop` falls back to packages.default when devShells is missing,
+      # and that derivation carries cmake too, so entering a shell proves
+      # nothing on its own. The attribute has to be evaluated by name.
+      - name: Prove the devShells output exists
+        run: nix eval .#devShells.x86_64-linux.default.drvPath
+
+      - name: Enter the dev shell
+        run: nix develop -c cmake --version
+
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      # Builds the images only: dnf and apt resolving the lists is the part
+      # that rots. Compiling the engine here would add nothing cmake.yml
+      # does not already cover.
+      - name: Build the Fedora and Ubuntu images
+        run: docker compose -f misc/containers/compose.yaml build fedora ubuntu
+
+  build:
+    name: Full nix build
+    # A clean, uncached build of the whole engine, so not on every push.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NIX_CONFIG: "experimental-features = nix-command flakes"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Nix
+        run: |
+          curl -fsSL https://nixos.org/nix/install | sh -s -- --daemon --yes
+          echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
+
+      - name: Build the package
+        run: nix build --print-build-logs

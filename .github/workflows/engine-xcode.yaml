@@ -1,0 +1,46 @@
+name: Engine iOS/macOS
+
+on: [push, pull_request]
+
+jobs:
+  build:
+
+    name: Build for ${{ matrix.config.name }}
+    runs-on: macOS-latest
+    # -jobs 1 below makes this slow, so the ceiling is generous but finite.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        config: 
+        - {
+            name: "iOS",
+            scheme: "Doriax iOS",
+            sdk: iphonesimulator
+          }
+        - {
+            name: "MacOS",
+            scheme: "Doriax macOS",
+            sdk: macosx
+          }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Xcode version
+        run: /usr/bin/xcodebuild -version
+             
+      - name: Create assets dir if not exist
+        run: mkdir -p project/assets
+             
+      - name: Build with Xcode
+        run: |
+          cd engine/workspaces/xcode/
+          # TODO: remove -jobs 1 once macos-latest / Xcode 26.x stops flaking
+          # with "CFLocale.h: Invalid argument" under parallel compiles.
+          xcodebuild build \
+            -sdk ${{ matrix.config.sdk }} \
+            -project Doriax.xcodeproj \
+            -configuration Debug \
+            -scheme "${{ matrix.config.scheme }}" \
+            -jobs 1
