@@ -98,7 +98,7 @@ android)
     # directory is only used for the copied APK.
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
-        ./gradlew --no-daemon assembleDebug
+        CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
         cp app/build/outputs/apk/debug/*.apk /src/$OUT/
     "
     ls -l "$ROOT/$OUT"/*.apk

@@ -1,10 +1,17 @@
-name: Editor Desktop
+name: CI
 
+# Every push builds the Linux-runner targets (Linux, Web, Android), which fit in
+# the free tier. Windows and macOS runners bill at 2x and 10x, so they only run
+# on demand: the "Run workflow" button, pull requests into main, v* tags, and
+# published releases.
 on:
   push:
-    branches:
-      # '**' and not '*': a single star stops at '/', so fix/x never builds.
-      - '**'
+    # '**' and not '*': a single star stops at '/', so fix/x never builds.
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
   release:
     types: [published]
 
@@ -12,77 +19,31 @@ permissions:
   contents: read
   actions: read
 
-# One run per branch: a push while the matrix is still going supersedes it.
-# Releases are never cancelled, so a re-run cannot race the asset upload.
+# One run per ref: a push while jobs are still going supersedes them. Releases
+# are never cancelled, so a re-run cannot race the asset upload.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'release' }}
 
 env:
-  BUILD_TYPE: Release
-  TARGET: jasperengine-editor
-  SIGNPATH_ORGANIZATION_ID: 71ade14e-ea98-448b-b32f-954d41e71ef9
-  SIGNPATH_PROJECT_SLUG: jasperengine
+  EDITOR_TARGET: jasperengine-editor
+  ENGINE_TARGET: jasperengine-project
+  LAUNCHERS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 jobs:
-  build:
-    name: Build for ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
-    timeout-minutes: 120
-    # Must resolve to null and not "" on the other entries: an empty container
-    # is still a container job, which Windows and macOS runners reject.
-    container: ${{ matrix.config.container || fromJSON('null') }}
-    defaults:
-      run:
-        shell: ${{ matrix.config.shell || 'bash' }}
-    env:
-      # Do not sign yet
-      #SIGN_WINDOWS: ${{ matrix.config.cc == 'cl' && secrets.SIGNPATH_API_TOKEN != '' && (github.event_name == 'release' || github.ref == 'refs/heads/test-signing') }}
-      SIGN_WINDOWS: false
-    strategy:
-      fail-fast: false
-      matrix:
-        config: 
-        - {
-            name: "Windows Latest MSVC",
-            os: windows-latest,
-            artifact: "jasperengine_windows",
-            cc: "cl",
-            cxx: "cl",
-            generators: "Visual Studio 18 2026"
-          }
-        - {
-            name: "Windows Latest MinGW (UCRT64)",
-            os: windows-latest,
-            artifact: "jasperengine_windows_mingw",
-            cc: "gcc",
-            cxx: "g++",
-            generators: "Ninja",
-            shell: "msys2 {0}"
-          }
-        # The container pins the glibc floor to 22.04 instead of the runner
-        # image's. Moving it also moves the distros AppRun's refusal names.
-        - {
-            name: "Ubuntu Latest GCC",
-            os: ubuntu-latest,
-            container: "ubuntu:22.04",
-            artifact: "jasperengine_linux",
-            cc: "gcc",
-            cxx: "g++",
-            generators: "Ninja"
-          }
-        - {
-            name: "macOS Latest Clang",
-            os: macos-latest,
-            artifact: "jasperengine_macos",
-            cc: "clang",
-            cxx: "clang++",
-            generators: "Ninja"
-          }
-
+  # ---------------------------------------------------------------- Linux ---
+  # Skipped on pull_request: the branch's push run already built the same
+  # commit, and its checks show on the pull request.
+  linux:
+    name: Linux (editor + engine)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # The container pins the glibc floor to 22.04 instead of the runner
+    # image's. Moving it also moves the distros AppRun's refusal names.
+    container: ubuntu:22.04
+    timeout-minutes: 90
     steps:
       - name: Prepare container
-        if: matrix.config.container
         run: |
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
@@ -92,51 +53,14 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          submodules: true
-          # Full history so git describe can resolve v0.6-N-gHASH like local builds.
+          # Full history so git describe can resolve vX.Y-N-gHASH like local builds.
           fetch-depth: 0
 
-      - name: Print env
-        shell: bash
+      - name: Install dependencies
         run: |
-          echo github.event.action: ${{ github.event.action }}
-          echo github.event_name: ${{ github.event_name }}
-
-      - name: Set up MSYS2 UCRT64
-        if: matrix.config.artifact == 'jasperengine_windows_mingw'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          # The toolchain README.md documents for a source build
-          install: >-
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-python
-
-      - name: Install dependencies on Windows
-        if: matrix.config.cc == 'cl'
-        run: |
-          choco install ninja cmake
-          ninja --version
-          cmake --version
-
-      - name: Install Vulkan SDK on Windows
-        if: startsWith(matrix.config.os, 'windows')
-        uses: jakoch/install-vulkan-sdk-action@v1.0.0
-        with:
-          vulkan_version: 1.3.296.0
-          install_runtime: false
-          cache: true
-
-      - name: Install dependencies on Ubuntu
-        if: startsWith(matrix.config.os, 'ubuntu')
-        run: |
-          apt-get update
           # file is not a build dependency: appimagetool shells out to it.
           apt-get install -y --no-install-recommends \
-            build-essential ninja-build pkg-config python3 wget gpg file \
+            build-essential ninja-build pkg-config python3 wget gpg file ccache \
             libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
             libgl1-mesa-dev libvulkan-dev \
             libwayland-dev wayland-protocols extra-cmake-modules \
@@ -148,111 +72,30 @@ jobs:
             > /etc/apt/sources.list.d/kitware.list
           apt-get update
           apt-get install -y --no-install-recommends cmake
-          ninja --version
           cmake --version
-          gcc --version
 
-      - name: Install dependencies on macOS
-        if: startsWith(matrix.config.os, 'macos')
-        run: |
-          # cmake is already installed
-          brew install ninja
-          ninja --version
-          cmake --version
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: linux
+          max-size: 2G
 
       - name: Set version
-        shell: bash
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+
+      - name: Build editor
         run: |
-          # Same command as CMakeLists.txt. fetch-depth: 0 + tags so describe
-          # can resolve v0.6-N-gHASH the same way as a local clone.
-          git fetch --tags --quiet || true
-          VERSION="$(git describe --tags --always --dirty)"
-          echo "JASPERENGINE_VERSION=$VERSION" >> $GITHUB_ENV
-          
-      - name: Configure
-        env:
-          CC: ${{ matrix.config.cc }}
-          CXX: ${{ matrix.config.cxx }}
-        run: |
-          mkdir build
-          mkdir instdir
-          cmake \
-            -S . \
-            -B build \
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
-            -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
-            -G "${{ matrix.config.generators }}" \
-            -DCMAKE_INSTALL_PREFIX:PATH=instdir \
-            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+            -DCMAKE_INSTALL_PREFIX:PATH=instdir $LAUNCHERS
+          cmake --build build --target "$EDITOR_TARGET"
+          cmake --install build --strip
 
-      - name: Build
-        env:
-          CC: ${{ matrix.config.cc }}
-          CXX: ${{ matrix.config.cxx }}
+      - name: Build engine sample project
         run: |
-          targets=("${{ env.TARGET }}")
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            targets+=("${{ env.TARGET }}-cmd")
-          fi
-          cmake --build build --config ${{env.BUILD_TYPE}} --target "${targets[@]}"
+          cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Debug $LAUNCHERS
+          cmake --build build-engine --target "$ENGINE_TARGET"
 
-      - name: Install Strip
-        run: cmake --install build --config ${{env.BUILD_TYPE}} --strip
-        
-      - name: List directories
-        shell: bash
-        working-directory: instdir
-        run: ls -laR
-
-      - name: Check the GCC runtime was packaged
-        if: matrix.config.artifact == 'jasperengine_windows_mingw'
-        shell: bash
-        run: |
-          for dll in libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll; do
-            test -f "instdir/bin/$dll" || { echo "missing instdir/bin/$dll"; exit 1; }
-          done
-
-      - name: Collect Windows binaries for signing
-        if: env.SIGN_WINDOWS == 'true'
-        shell: bash
-        run: |
-          mkdir to-sign
-          find instdir/bin -maxdepth 1 -type f \( -name '*.exe' -o -name '*.dll' \) -exec cp {} to-sign/ \;
-          ls -la to-sign
-
-      - name: Upload unsigned binaries
-        id: upload-unsigned
-        if: env.SIGN_WINDOWS == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.config.artifact }}_unsigned
-          path: ./to-sign/*
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Sign binaries with SignPath
-        if: env.SIGN_WINDOWS == 'true'
-        uses: SignPath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ github.event_name == 'release' && 'release-signing' || 'test-signing' }}
-          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: signed
-          wait-for-completion-timeout-in-seconds: 1800
-
-      - name: Put signed binaries back
-        if: env.SIGN_WINDOWS == 'true'
-        shell: bash
-        run: |
-          cp signed/* instdir/bin/
-          ls -la instdir/bin
-
-      - name: Package the Linux build
-        if: startsWith(matrix.config.os, 'ubuntu')
-        shell: bash
+      - name: Package AppImage
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -264,9 +107,9 @@ jobs:
           cp editor/resources/linux/jasperengine-editor.desktop AppDir/
           cp editor/resources/icons/linux/jasperengine-editor-512.png AppDir/jasperengine-editor.png
 
-          # 22.04's libstdc++ is newer than older targets carry, and JASPERENGINE_SHARED
-          # rules out -static-libstdc++: the editor and libjasperengine.so would each get
-          # their own runtime.
+          # 22.04's libstdc++ is newer than older targets carry, and
+          # JASPERENGINE_SHARED rules out -static-libstdc++: the editor and
+          # libjasperengine.so would each get their own runtime.
           mkdir -p AppDir/usr/lib
           for lib in libstdc++.so.6 libgcc_s.so.1; do
             cp -L "$(gcc -print-file-name="$lib")" "AppDir/usr/lib/$lib"
@@ -343,12 +186,188 @@ jobs:
           # AppImage, and -u embeds update info even if zsyncmake never ran.
           mv "JasperEngine-${JASPERENGINE_VERSION}-linux-x86_64.AppImage.zsync" dist/
           test -s "dist/JasperEngine-${JASPERENGINE_VERSION}-linux-x86_64.AppImage.zsync"
-
           ls -la dist
 
-      - name: Package the macOS app
-        if: startsWith(matrix.config.os, 'macos')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jasperengine_linux
+          path: ./instdir/bin/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jasperengine_linux_appimage
+          path: ./dist/*.AppImage
+          if-no-files-found: error
+
+      # Only AppImageUpdate and Gear Lever read this, and only off a release, so
+      # it travels separately instead of in the download.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jasperengine_linux_zsync
+          path: ./dist/*.zsync
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ Web ---
+  web:
+    name: Web (Emscripten)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 6.0.10
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: web
+          max-size: 1G
+
+      - name: Build engine sample project
+        run: |
+          emcmake cmake -S engine -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug $LAUNCHERS
+          cmake --build build --target "$ENGINE_TARGET"
+
+  # -------------------------------------------------------------- Android ---
+  android:
+    name: Android
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android
+          max-size: 2G
+
+      - name: Build with Gradle
+        working-directory: engine/workspaces/androidstudio
+        # build.gradle forwards this to the native CMake build.
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jasperengine_android_apk
+          path: engine/workspaces/androidstudio/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # -------------------------------------------------------------- Windows ---
+  windows:
+    name: Windows MSVC (editor + engine GL/Vulkan)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
         shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: jakoch/install-vulkan-sdk-action@v1.0.0
+        with:
+          vulkan_version: 1.3.296.0
+          install_runtime: false
+          cache: true
+
+      # Ninja instead of the Visual Studio generator so ccache can wrap cl.exe.
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: windows
+          max-size: 2G
+          variant: ccache
+
+      - name: Set version
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+
+      - name: Build editor
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl \
+            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
+            -DCMAKE_INSTALL_PREFIX:PATH=instdir $LAUNCHERS
+          cmake --build build --target "$EDITOR_TARGET" "$EDITOR_TARGET-cmd"
+          cmake --install build --strip
+
+      # Release, not Debug: MSVC debug builds write PDBs, which ccache cannot cache.
+      - name: Build engine sample project (OpenGL)
+        run: |
+          cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl $LAUNCHERS
+          cmake --build build-engine-gl --target "$ENGINE_TARGET"
+
+      - name: Build engine sample project (Vulkan)
+        run: |
+          cmake -S engine -B build-engine-vk -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DGRAPHIC_BACKEND=vulkan $LAUNCHERS
+          cmake --build build-engine-vk --target "$ENGINE_TARGET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jasperengine_windows
+          path: ./instdir/bin/*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- macOS ---
+  # One job for everything Apple: the editor, the CMake engine build, and the
+  # Xcode project for macOS and iOS. macOS minutes bill at 10x, so sharing the
+  # checkout and toolchain setup across them is worth the longer job.
+  macos:
+    name: macOS + iOS (editor, engine, Xcode)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: brew install ninja
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: macos
+          max-size: 2G
+
+      - name: Set version
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+
+      - name: Build editor
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DJASPERENGINE_EDITOR_VERSION:STRING="$JASPERENGINE_VERSION" \
+            -DCMAKE_INSTALL_PREFIX:PATH=instdir \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" $LAUNCHERS
+          cmake --build build --target "$EDITOR_TARGET"
+          cmake --install build --strip
+
+      - name: Package the macOS app
         run: |
           set -uo pipefail
 
@@ -373,8 +392,7 @@ jobs:
           codesign --verify --strict --verbose=2 "$APP" || echo "::warning::strict verify failed"
 
           set -e
-          # Same loose tree the zip had before the bundle: jasperengine-editor,
-          # libjasperengine.dylib, engine/. Actions wraps this as jasperengine_macos.zip.
+          # Loose tree for the zip: jasperengine-editor, libjasperengine.dylib, engine/.
           BIN="$APP/Contents/MacOS"
           mkdir -p dist/macos-zip
           cp "$BIN/$(basename "$APP" .app)" dist/macos-zip/jasperengine-editor
@@ -402,65 +420,51 @@ jobs:
           ln -s /Applications dmg-stage/Applications
           hdiutil create -volname "JasperEngine" -srcfolder dmg-stage -ov -format UDZO dist/JasperEngine.dmg
           rm -rf dmg-stage
-          ls -la dist dist/macos-zip instdir/bin
+          ls -la dist dist/macos-zip
 
-      - name: Upload
-        if: ${{ !startsWith(matrix.config.os, 'macos') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.config.artifact }}
-          path: ./instdir/bin/*
-          if-no-files-found: error
+      - name: Build engine sample project
+        run: |
+          cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Debug $LAUNCHERS
+          cmake --build build-engine --target "$ENGINE_TARGET"
 
-      - name: Upload macOS zip
-        if: startsWith(matrix.config.os, 'macos')
-        uses: actions/upload-artifact@v4
+      - name: Build Xcode project (macOS, iOS simulator)
+        working-directory: engine/workspaces/xcode
+        run: |
+          /usr/bin/xcodebuild -version
+          mkdir -p ../../../project/assets
+          # -jobs 1: macos-latest / Xcode 26.x flakes with "CFLocale.h: Invalid
+          # argument" under parallel compiles.
+          for target in "macosx:JasperEngine macOS" "iphonesimulator:JasperEngine iOS"; do
+            xcodebuild build -sdk "${target%%:*}" -project JasperEngine.xcodeproj \
+              -configuration Debug -scheme "${target#*:}" -jobs 1
+          done
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.config.artifact }}
+          name: jasperengine_macos
           path: ./dist/macos-zip/*
           if-no-files-found: error
 
       # Separate artifacts so a download is one package, not both of them.
-      - name: Upload macOS dmg
-        if: startsWith(matrix.config.os, 'macos')
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.config.artifact }}_dmg
+          name: jasperengine_macos_dmg
           path: ./dist/*.dmg
           if-no-files-found: error
 
-      - name: Upload Linux AppImage
-        if: startsWith(matrix.config.os, 'ubuntu')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.config.artifact }}_appimage
-          path: ./dist/*.AppImage
-          if-no-files-found: error
-
-      # Only AppImageUpdate and Gear Lever read this, and only off a release, so
-      # it travels separately instead of in the download.
-      - name: Upload Linux zsync
-        if: startsWith(matrix.config.os, 'ubuntu')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.config.artifact }}_zsync
-          path: ./dist/*.zsync
-          if-no-files-found: error
-
+  # -------------------------------------------------------------- Release ---
   # Artifacts are only ever served as zips, so a published release is what gives
-  # a direct download. MinGW is left off: MSVC is the build a release ships, and
-  # while SIGN_WINDOWS is off neither of them is signed.
+  # a direct download.
   release:
     name: Attach binaries to the release
     if: github.event_name == 'release'
-    needs: build
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -477,7 +481,6 @@ jobs:
           chmod +x artifacts/jasperengine_linux/jasperengine-editor
           chmod +x artifacts/jasperengine_macos/jasperengine-editor
 
-          # A tree of binaries still needs an archive.
           (cd artifacts/jasperengine_windows && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-windows-x64.zip" .)
           (cd artifacts/jasperengine_linux && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-linux-x86_64.zip" .)
           (cd artifacts/jasperengine_macos && zip -qr "$GITHUB_WORKSPACE/release/JasperEngine-${VERSION}-macos-universal.zip" .)

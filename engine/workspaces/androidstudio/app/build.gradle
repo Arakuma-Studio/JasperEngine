@@ -28,6 +28,12 @@ android {
                 abiFilters "x86_64"
 
                 arguments "-DANDROID_STL=c++_shared", "-DPROJECT_ROOT="+projectSourceRootAbs
+
+                // CI and tools/build.sh set this to ccache.
+                def launcher = System.getenv("CMAKE_CXX_COMPILER_LAUNCHER")
+                if (launcher) {
+                    arguments "-DCMAKE_C_COMPILER_LAUNCHER="+launcher, "-DCMAKE_CXX_COMPILER_LAUNCHER="+launcher
+                }
             }
         }
     }
