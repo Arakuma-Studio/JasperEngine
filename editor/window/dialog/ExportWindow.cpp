@@ -483,6 +483,17 @@ void ExportWindow::setStartScene(uint32_t sceneId) {
 void ExportWindow::drawScenesInBuild(float height) {
     const ImGuiStyle& style = ImGui::GetStyle();
 
+    // Edit Scenes In Build can remove the start scene: fall back to the first saved one.
+    if (const SceneProject* start = m_project->getScene(m_startSceneId); !start || start->filepath.empty()) {
+        m_startSceneId = NULL_PROJECT_SCENE;
+        for (const auto& scene : m_project->getScenes()) {
+            if (!scene.filepath.empty()) {
+                m_startSceneId = scene.id;
+                break;
+            }
+        }
+    }
+
     // Unity order: the start scene is index 0, the rest follow in project order.
     std::vector<const SceneProject*> scenes;
     if (const SceneProject* start = m_project->getScene(m_startSceneId); start && !start->filepath.empty()) {
