@@ -433,9 +433,9 @@ void AiSettingsWindow::drawSettings() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    float windowWidth = ImGui::GetWindowSize().x;
-    float buttonsWidth = 250;
-    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+    // Unity-style button row: right-aligned, primary first
+    float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
     if (ImGui::Button("OK", ImVec2(120, 0))) {
         apply();
@@ -443,7 +443,8 @@ void AiSettingsWindow::drawSettings() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }

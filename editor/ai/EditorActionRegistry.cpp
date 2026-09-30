@@ -132,7 +132,7 @@ Json propertyValueFields(std::initializer_list<std::pair<const char*, Json>> ext
         {"vector4_value", vector4Schema("Vector4 or Color4 property value")},
         {"quat_value", quaternionSchema("Quaternion property value")},
         {"texture_path", stringSchema("Project-relative texture/resource path for Texture properties, inside the assets directory reported by get_project_summary as assets_dir. For .svg sources an optional '?svgScale=N' suffix sets the rasterization scale (e.g. 'ui/icon.svg?svgScale=2')")},
-        {"entity_value", integerSchema("Entity id for Entity or EntityReference properties")},
+        {"entity_value", integerSchema("GameObject (entity) id for Entity or EntityReference properties")},
         {"entity_scene_id", integerSchema("Scene id for EntityReference properties. Omit to use scene_id")}
     });
     for (const auto& item : extra) {
@@ -145,13 +145,13 @@ const std::vector<ToolDefinition>& cachedTools() {
     static const std::vector<ToolDefinition> definitions = {
         {
             "get_project_summary",
-            "Read a compact summary of the current project, selected scene, selected entities, resource roots, and cxx_standard (" + cxxStandardList() + ").",
+            "Read a compact summary of the current project, selected scene, selected GameObjects, asset (Project window) roots, and cxx_standard (" + cxxStandardList() + ").",
             objectSchema({}),
             true
         },
         {
             "search_resources",
-            "Search project files by name and optional file type. Omit query (or pass an empty one) to browse: it then lists project files, narrowed by type when given. This only reads project paths.",
+            "Search project files (the assets shown in the Project window) by name and optional file type. Omit query (or pass an empty one) to browse: it then lists project files, narrowed by type when given. This only reads project paths.",
             objectSchema({
                 {"query", stringSchema("Case-insensitive filename search text. Omit to list files instead of filtering")},
                 {"type", stringSchema("Optional type: model, image, material, scene, script, audio, font, any")},
@@ -161,7 +161,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "list_scene_entities",
-            "List entities in a scene by id/name/component summary.",
+            "List the GameObjects in a scene (what the Hierarchy window shows) by id/name/component summary.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")}
             }),
@@ -169,22 +169,22 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "inspect_entity",
-            "Read one entity's name, selection state, hierarchy data, components, and optionally all supported property values. For a mesh entity it also returns mesh_bounds: the measured local AABB (local_size/local_center) plus the accumulated world_scale and the resulting world_size. Use local_size to size anything expressed in mesh-local units, such as collision shapes.",
+            "Read one GameObject's name, selection state, Hierarchy data, components, and optionally all supported property values. For a mesh GameObject it also returns mesh_bounds: the measured local AABB (local_size/local_center) plus the accumulated world_scale and the resulting world_size. Use local_size to size anything expressed in mesh-local units, such as Colliders.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"include_properties", boolSchema("When true, include supported component property values")}
             }),
             true
         },
         {
             "inspect_component",
-            "Read supported property names, types, and current values for one entity component. For the Mesh component it also returns mesh_bounds with the measured local AABB and world size.",
+            "Read supported property names, types, and current values for one GameObject component (what the Inspector shows for it). For the Mesh component it also returns mesh_bounds with the measured local AABB and world size.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name, e.g. Transform, Mesh, Camera, TerrainComponent")}
             }, {"component"}),
             true
@@ -207,23 +207,23 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "create_entity",
-            "Create an undoable entity in the selected scene using an allowed editor entity type.",
+            "Create an undoable GameObject in the selected scene using an allowed editor GameObject type.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"name", stringSchema("Entity display name")},
-                {"type", stringSchema("Allowed type: empty, object, box, plane, wall, mirror, sphere, cylinder, capsule, torus, image, sprite, tilemap, text, button, scrollbar, progressbar, textedit, panel, polygon, container, point_light, directional_light, spot_light, light_2d, occluder_2d, joint2d, joint3d, body2d, body3d, sky, fog, camera, sound, sound_3d, animation, sprite_animation, position_action, rotation_action, scale_action, color_action, alpha_action, model, particles, points, lines, mesh_polygon, terrain, reflection_probe. light_2d = 2D radius-falloff light (Light2DComponent); occluder_2d = 2D shadow caster (Occluder2DComponent).")},
-                {"parent_id", integerSchema("Optional parent entity id for transform entities")},
+                {"name", stringSchema("GameObject display name")},
+                {"type", stringSchema("Allowed type: empty, object, box, plane, wall, mirror, sphere, cylinder, capsule, torus, image, sprite, tilemap, text, button, scrollbar, progressbar, textedit, panel, polygon, container, point_light, directional_light, spot_light, light_2d, occluder_2d, joint2d, joint3d, body2d, body3d, sky, fog, camera, sound, sound_3d, animation, sprite_animation, position_action, rotation_action, scale_action, color_action, alpha_action, model, particles, points, lines, mesh_polygon, terrain, reflection_probe. Unity names for these types: object = Create Empty (a GameObject with only a Transform), empty = a bare GameObject without a Transform (scene root only), box = Cube, textedit = Input Field, container = Layout Group, body2d = Rigidbody 2D, body3d = Rigidbody, sky = Skybox, sound/sound_3d = Audio Source (2D/3D), particles = Particle System, lines = Line Renderer, position_action/rotation_action/scale_action/color_action/alpha_action = Position/Rotation/Scale/Color/Alpha Tween. light_2d = 2D radius-falloff light (Light2DComponent); occluder_2d = Shadow Caster 2D (Occluder2DComponent).")},
+                {"parent_id", integerSchema("Optional parent GameObject id for GameObjects that have a Transform")},
                 {"position", vector3Schema("Optional local position")}
             }, {"name", "type"}),
             false
         },
         {
             "set_entity_transform",
-            "Set an entity transform through the undoable command system.",
+            "Set a GameObject's Transform through the undoable command system.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"position", vector3Schema("Optional local position")},
                 {"rotation", quaternionSchema("Optional local rotation quaternion")},
                 {"scale", vector3Schema("Optional local scale")}
@@ -232,75 +232,75 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "rename_entity",
-            "Rename an entity through the undoable command system.",
+            "Rename a GameObject through the undoable command system.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"new_name", stringSchema("New entity name")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"new_name", stringSchema("New GameObject name")}
             }, {"new_name"}),
             false
         },
         {
             "delete_entity",
-            "Delete an entity through the undoable command system.",
+            "Delete a GameObject through the undoable command system.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")}
             }),
             false
         },
         {
             "duplicate_entity",
-            "Duplicate one entity through the undoable command system.",
+            "Duplicate one GameObject through the undoable command system.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")}
             }),
             false
         },
         {
             "reparent_entity",
-            "Move a transform entity under a new parent or scene root through MoveEntityOrderCmd.",
+            "Move a GameObject that has a Transform under a new parent or the scene root in the Hierarchy, through MoveEntityOrderCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id to move")},
-                {"entity_name", stringSchema("Entity name to move, used only when entity_id is omitted")},
-                {"parent_id", integerSchema("New parent entity id. Use 0 or omit for scene root")},
-                {"parent_name", stringSchema("New parent entity name, used only when parent_id is omitted")}
+                {"entity_id", integerSchema("GameObject id to move")},
+                {"entity_name", stringSchema("GameObject name to move, used only when entity_id is omitted")},
+                {"parent_id", integerSchema("New parent GameObject id. Use 0 or omit for scene root")},
+                {"parent_name", stringSchema("New parent GameObject name, used only when parent_id is omitted")}
             }),
             false
         },
         {
             "move_entity_order",
-            "Move an entity relative to another entity in hierarchy order.",
+            "Move a GameObject relative to another GameObject in Hierarchy order.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id to move")},
-                {"entity_name", stringSchema("Entity name to move, used only when entity_id is omitted")},
-                {"target_id", integerSchema("Target entity id")},
-                {"target_name", stringSchema("Target entity name, used only when target_id is omitted")},
+                {"entity_id", integerSchema("GameObject id to move")},
+                {"entity_name", stringSchema("GameObject name to move, used only when entity_id is omitted")},
+                {"target_id", integerSchema("Target GameObject id")},
+                {"target_name", stringSchema("Target GameObject name, used only when target_id is omitted")},
                 {"insertion", stringSchema("before, after, child_first, or child_last")}
             }, {"insertion"}),
             false
         },
         {
             "select_entities",
-            "Replace the editor selection for a scene. Supports one entity, multiple entity_ids/entity_names, or clear.",
+            "Replace the editor selection for a scene. Supports one GameObject, multiple entity_ids/entity_names, or clear.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Single entity id to select")},
-                {"entity_name", stringSchema("Single entity name to select, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Single GameObject id to select")},
+                {"entity_name", stringSchema("Single GameObject name to select, used only when entity_id is omitted")},
                 {"entity_ids", {
                     {"type", "array"},
-                    {"description", "Multiple entity ids to select"},
+                    {"description", "Multiple GameObject ids to select"},
                     {"items", {{"type", "integer"}}}
                 }},
                 {"entity_names", {
                     {"type", "array"},
-                    {"description", "Multiple entity names to select"},
+                    {"description", "Multiple GameObject names to select"},
                     {"items", {{"type", "string"}}}
                 }},
                 {"clear", boolSchema("When true, clear selection")}
@@ -309,59 +309,59 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_component",
-            "Add a component to an entity through AddComponentCmd.",
+            "Add a component to a GameObject through AddComponentCmd (like Add Component in the Inspector).",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"component", stringSchema("Component name")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"component", stringSchema("Engine component name from list_component_types, e.g. Body2DComponent for a Rigidbody 2D or SoundComponent for an Audio Source")}
             }, {"component"}),
             false
         },
         {
             "remove_component",
-            "Remove a component from an entity through RemoveComponentCmd.",
+            "Remove a component from a GameObject through RemoveComponentCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name")}
             }, {"component"}),
             false
         },
         {
             "add_body3d_shape",
-            "Add a Body3DComponent to an existing 3D entity when needed, then append one collision shape to that SAME entity's body. Use this for a model/mesh that needs physics; do not create a separate body entity. Existing body shapes are preserved. Sizes default to the mesh's measured bounds, which is the reliable way to match the visible geometry; only pass explicit sizes for axes that must deliberately differ from the mesh. The result reports fitted_to_mesh so you can tell a measured shape from one left at its defaults. convex_hull is exact and cheap for boxy level geometry.",
+            "Add a Rigidbody (Body3DComponent) to an existing 3D GameObject when needed, then append one Collider (collision shape) to that SAME GameObject's Rigidbody. Use this for a model/mesh that needs physics or a Collider; do not create a separate Rigidbody GameObject. Existing Colliders are preserved. Sizes default to the mesh's measured bounds, which is the reliable way to match the visible geometry; only pass explicit sizes for axes that must deliberately differ from the mesh. The result reports fitted_to_mesh so you can tell a measured Collider from one left at its defaults. convex_hull is exact and cheap for boxy level geometry.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Model or mesh entity id that receives the Body3DComponent")},
-                {"entity_name", stringSchema("Model or mesh entity name, used only when entity_id is omitted")},
-                {"body_type", stringSchema("Optional body type: static, kinematic, or dynamic. A new body defaults to static when omitted")},
+                {"entity_id", integerSchema("Model or mesh GameObject id that receives the Body3DComponent")},
+                {"entity_name", stringSchema("Model or mesh GameObject name, used only when entity_id is omitted")},
+                {"body_type", stringSchema("Optional Rigidbody type: static, kinematic, or dynamic. A new Rigidbody defaults to static when omitted")},
                 {"motion_quality", stringSchema("Optional motion quality: discrete or linear_cast")},
-                {"shape_type", stringSchema("Collision shape: box, sphere, capsule, tapered_capsule, cylinder, convex_hull, or mesh. convex_hull and mesh take their geometry from the entity's mesh and ignore all size arguments; convex_hull is exact and cheap for boxy level geometry, mesh suits static concave geometry")},
-                {"fit_to_mesh", boolSchema("Size the shape from the entity mesh's local bounds and centre it on them. Defaults to true; any explicit size argument overrides the fitted value for that axis. Set false to keep the shape defaults")},
-                {"position", vector3Schema("Optional shape local position in entity-local units. Overrides the centre chosen by fit_to_mesh")},
-                {"rotation", quaternionSchema("Optional shape local rotation")},
-                {"width", numberSchema("Box width in mesh-local units, i.e. before the entity's transform scale, which the engine applies itself; defaults to 1")},
+                {"shape_type", stringSchema("Collider type: box, sphere, capsule, tapered_capsule, cylinder, convex_hull, or mesh (Mesh Collider). convex_hull and mesh take their geometry from the GameObject's mesh and ignore all size arguments; convex_hull is exact and cheap for boxy level geometry, mesh suits static concave geometry")},
+                {"fit_to_mesh", boolSchema("Size the Collider from the GameObject mesh's local bounds and centre it on them. Defaults to true; any explicit size argument overrides the fitted value for that axis. Set false to keep the Collider defaults")},
+                {"position", vector3Schema("Optional Collider local position (center) in GameObject-local units. Overrides the centre chosen by fit_to_mesh")},
+                {"rotation", quaternionSchema("Optional Collider local rotation")},
+                {"width", numberSchema("Box width in mesh-local units, i.e. before the GameObject's transform scale, which the engine applies itself; defaults to 1")},
                 {"height", numberSchema("Box height in mesh-local units; defaults to 1")},
                 {"depth", numberSchema("Box depth in mesh-local units; defaults to 1")},
                 {"radius", numberSchema("Sphere, capsule, or cylinder radius in mesh-local units; defaults to 1")},
                 {"half_height", numberSchema("Capsule or cylinder half-height in mesh-local units; defaults to 0.5. A capsule is 2*(half_height+radius) tall")},
                 {"top_radius", numberSchema("Tapered capsule top radius in mesh-local units; defaults to 0.5")},
                 {"bottom_radius", numberSchema("Tapered capsule bottom radius in mesh-local units; defaults to 0.5")},
-                {"density", numberSchema("Shape density in kg/m3 for dynamic bodies; defaults to 1000 (water). Mass is volume * density, so the default makes a radius-1 sphere weigh about 4189 kg and a 1x1x1 box 1000 kg. Pick a density that yields the mass the behaviour needs, so scripted forces stay plausible")}
+                {"density", numberSchema("Collider density in kg/m3 for dynamic Rigidbodies; defaults to 1000 (water). Mass is volume * density, so the default makes a radius-1 sphere weigh about 4189 kg and a 1x1x1 box 1000 kg. Pick a density that yields the mass the behaviour needs, so scripted forces stay plausible")}
             }, {"shape_type"}),
             false
         },
         {
             "add_body2d_shape",
-            "Add a Body2DComponent to an existing 2D entity when needed, then append one collision shape to that SAME entity's body. Use this for a sprite, tilemap, or 2D mesh that needs physics; do not create a separate body entity. Existing body shapes are preserved.",
+            "Add a Rigidbody 2D (Body2DComponent) to an existing 2D GameObject when needed, then append one Collider 2D (collision shape) to that SAME GameObject's Rigidbody 2D. Use this for a sprite, tilemap, or 2D mesh that needs physics or a Collider 2D; do not create a separate Rigidbody GameObject. Existing Colliders are preserved.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Sprite, tilemap, or 2D mesh entity id that receives the Body2DComponent")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"body_type", stringSchema("Optional body type: static, kinematic, or dynamic. A new body defaults to static when omitted")},
-                {"shape_type", stringSchema("Collision shape: box, circle, capsule, segment, polygon, or chain")},
+                {"entity_id", integerSchema("Sprite, tilemap, or 2D mesh GameObject id that receives the Body2DComponent")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"body_type", stringSchema("Optional Rigidbody 2D type: static, kinematic, or dynamic. A new Rigidbody 2D defaults to static when omitted")},
+                {"shape_type", stringSchema("Collider 2D type: box, circle, capsule, segment (Edge Collider 2D), polygon, or chain (open or looped Edge Collider 2D)")},
                 {"center", vector2Schema("Optional local center for a box or circle; defaults to 0,0")},
                 {"width", numberSchema("Box width; required for box")},
                 {"height", numberSchema("Box height; required for box")},
@@ -374,19 +374,19 @@ const std::vector<ToolDefinition>& cachedTools() {
                     {"items", vector2Schema("Point")}
                 }},
                 {"loop", boolSchema("Whether a chain closes back to its first point; defaults false. An open chain doesn't collide on its first and last edges")},
-                {"density", numberSchema("Shape density; defaults to 1, NOT the 1000 that 3D bodies default to. 2D mass is area * density, with sizes given in points and scaled to metres by pointsToMeterScale2D (64 by default), so a 100x100 box at the default density weighs about 2.4 kg")},
-                {"friction", numberSchema("Shape friction; defaults to 0.6")},
-                {"restitution", numberSchema("Shape restitution/bounce, 0-1; defaults to 0")}
+                {"density", numberSchema("Collider density; defaults to 1, NOT the 1000 that 3D Rigidbodies default to. 2D mass is area * density, with sizes given in points and scaled to metres by pointsToMeterScale2D (64 by default), so a 100x100 box at the default density weighs about 2.4 kg")},
+                {"friction", numberSchema("Collider friction; defaults to 0.6")},
+                {"restitution", numberSchema("Collider restitution/bounciness, 0-1; defaults to 0")}
             }, {"shape_type"}),
             false
         },
         {
             "set_component_property",
-            "Set one supported component property through PropertyCmd. Use the typed value field matching the property type.",
+            "Set one supported component property (an Inspector field) through PropertyCmd. Use the typed value field matching the property type.",
             objectSchemaFromProperties(propertyValueFields({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name")},
                 {"property", stringSchema("Property path from inspect_component, e.g. position or submeshes[0].material.baseColorTexture")}
             }), {"component", "property"}),
@@ -397,8 +397,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Set sampler settings and/or SVG scale of a Texture component property; only the provided fields change, the texture source is kept. Filters: nearest, linear, nearest_mipmap_nearest, nearest_mipmap_linear, linear_mipmap_nearest, linear_mipmap_linear (mag_filter accepts only nearest or linear). Wraps: repeat, mirrored_repeat, clamp_to_edge, clamp_to_border.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name")},
                 {"property", stringSchema("Texture property path from inspect_component, e.g. texture or submeshes[0].material.baseColorTexture")},
                 {"min_filter", stringSchema("Minification filter")},
@@ -411,7 +411,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_project_scene",
-            "Add an existing .scene file found in the project folder to the project scene list, closed. A .scene file that is not listed is not built, exported, opened, or usable as a child scene. Scenes made with create_scene are already listed; use delete_scene to take one off the list.",
+            "Add an existing .scene file found in the project folder to the project scene list (Scenes in Build), closed. A .scene file that is not listed is not built, included in a build, opened, or usable as a child scene. Scenes made with create_scene are already listed; use delete_scene to take one off the list.",
             objectSchema({
                 {"scene_path", stringSchema("Safe project-relative .scene path")}
             }, {"scene_path"}),
@@ -451,7 +451,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_start_scene",
-            "Set the project startup scene.",
+            "Set the project startup scene (the first scene in Scenes in Build).",
             objectSchema({
                 {"scene_id", integerSchema("Scene id to use as startup scene")}
             }, {"scene_id"}),
@@ -459,7 +459,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_scene_property",
-            "Set a supported scene-level property such as background_color, global_illumination_color, ssao_enabled, ssr_enabled, ambient_light_2d_color/ambient_light_2d_intensity (2D light ambient), shadows_quality (3D) and shadows_2d_quality (2D) as int_value 0=none/1=low/2=medium/3=high. Physics gravity in m/s^2: physics_gravity_2d (vector2_value, Box2D world) and physics_gravity_3d (vector3_value, Jolt world), default (0, -9.81). Fixed game resolution (main scene renders at that size and is upscaled to the view): fixed_resolution_enabled (bool_value), fixed_resolution_width/fixed_resolution_height (int_value, pixels), fixed_resolution_filter (int_value 0=nearest, 1=linear). Also sets a scene's default custom shader per type via default_mesh_shader/default_ui_shader/default_sky_shader/default_points_shader/default_lines_shader as string_value (project-relative fork base path, empty to reset to built-in) - used by every component of that type whose own customShader is empty (priority: component customShader > scene default > built-in). Use fork_shader with shader_type (no entity) to create the fork first.",
+            "Set a supported scene-level property such as background_color, global_illumination_color, ssao_enabled, ssr_enabled, ambient_light_2d_color/ambient_light_2d_intensity (2D light ambient), shadows_quality (3D) and shadows_2d_quality (2D) as int_value 0=none/1=low/2=medium/3=high. Physics gravity in m/s^2: physics_gravity_2d (vector2_value, Box2D world) and physics_gravity_3d (vector3_value, Jolt world), default (0, -9.81). Fixed game resolution (main scene renders at that size and is upscaled to the view): fixed_resolution_enabled (bool_value), fixed_resolution_width/fixed_resolution_height (int_value, pixels), fixed_resolution_filter (int_value 0=nearest, 1=linear). Also sets a scene's default custom shader per type via default_mesh_shader/default_ui_shader/default_sky_shader/default_points_shader/default_lines_shader as string_value (project-relative fork base path, empty to reset to built-in) - used by every component of that type whose own customShader is empty (priority: component customShader > scene default > built-in). Use fork_shader with shader_type (no GameObject) to create the fork first.",
             objectSchemaFromProperties(propertyValueFields({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"property", stringSchema("Scene property name")}
@@ -468,7 +468,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "control_play_mode",
-            "Start, pause, resume, or stop play mode for a scene.",
+            "Start (Play), pause, resume, or stop Play mode for a scene.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"action", stringSchema("start, pause, resume, or stop")}
@@ -515,11 +515,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "create_terrain_heightmap",
-            "Create or replace an undoable 16-bit heightmap for a terrain entity. Use mode 'middle' for the editor default flat midpoint map, 'flat' for a custom constant height, 'random_noise' for random heights, or 'fractal_noise' for smoother terrain.",
+            "Create or replace an undoable 16-bit heightmap for a terrain GameObject. Use mode 'middle' for the editor default flat midpoint map, 'flat' for a custom constant height, 'random_noise' for random heights, or 'fractal_noise' for smoother terrain.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Terrain entity id")},
-                {"entity_name", stringSchema("Terrain entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Terrain GameObject id")},
+                {"entity_name", stringSchema("Terrain GameObject name, used only when entity_id is omitted")},
                 {"resolution", integerSchema("Square heightmap resolution, 2-2048. Defaults to 512")},
                 {"mode", stringSchema("flat, middle, random_noise, or fractal_noise. Defaults to middle")},
                 {"seed", integerSchema("Optional deterministic seed for noise modes")},
@@ -536,14 +536,14 @@ const std::vector<ToolDefinition>& cachedTools() {
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"model_path", stringSchema("Project-relative model path inside the assets directory (get_project_summary reports it as assets_dir), e.g. assets/models/dog.glb")},
-                {"entity_name", stringSchema("Name for the created model entity")},
+                {"entity_name", stringSchema("Name for the created model GameObject")},
                 {"position", vector3Schema("Optional drop position")}
             }, {"model_path"}),
             false
         },
         {
             "create_folder",
-            "Create a folder inside the project through CreateDirCmd.",
+            "Create a folder inside the project (Project window) through CreateDirCmd.",
             objectSchema({
                 {"parent_path", stringSchema("Safe project-relative parent directory. Empty means project root")},
                 {"name", stringSchema("New folder name")}
@@ -552,7 +552,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "rename_resource",
-            "Rename or move one project resource through RenameFileCmd, updating project references where supported.",
+            "Rename or move one project asset (a file or folder in the Project window) through RenameFileCmd, updating project references where supported.",
             objectSchema({
                 {"path", stringSchema("Safe project-relative file or directory path")},
                 {"new_name", stringSchema("New file or directory name, not a full path")}
@@ -561,7 +561,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "delete_resource",
-            "Delete one project resource through DeleteFileCmd, moving it to the project trash where supported.",
+            "Delete one project asset (a file or folder in the Project window) through DeleteFileCmd, moving it to the project trash where supported.",
             objectSchema({
                 {"path", stringSchema("Safe project-relative file or directory path")}
             }, {"path"}),
@@ -581,8 +581,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Link a .material file to a mesh submesh through LinkMaterialCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Mesh entity id")},
-                {"entity_name", stringSchema("Mesh entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Mesh GameObject id")},
+                {"entity_name", stringSchema("Mesh GameObject name, used only when entity_id is omitted")},
                 {"material_path", stringSchema("Safe project-relative .material path")},
                 {"submesh_index", integerSchema("Submesh index. Defaults to 0")}
             }, {"material_path"}),
@@ -593,8 +593,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Unlink a mesh submesh from a shared material file through UnlinkMaterialCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Mesh entity id")},
-                {"entity_name", stringSchema("Mesh entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Mesh GameObject id")},
+                {"entity_name", stringSchema("Mesh GameObject name, used only when entity_id is omitted")},
                 {"submesh_index", integerSchema("Submesh index. Defaults to 0")}
             }),
             false
@@ -604,8 +604,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Create a .material file from a mesh submesh and link it back to that submesh.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Mesh entity id")},
-                {"entity_name", stringSchema("Mesh entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Mesh GameObject id")},
+                {"entity_name", stringSchema("Mesh GameObject name, used only when entity_id is omitted")},
                 {"submesh_index", integerSchema("Submesh index. Defaults to 0")},
                 {"target_dir", stringSchema("Safe project-relative directory for the material file")}
             }, {"target_dir"}),
@@ -616,8 +616,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Assign terrain height/blend maps and painted layer maps through undoable property commands. Every path must be inside the assets directory (get_project_summary reports it as assets_dir). A layer blends only its color until layer_pbr turns it into a PBR layer, which brings its own normal, roughness, metallic and occlusion.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Terrain entity id")},
-                {"entity_name", stringSchema("Terrain entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Terrain GameObject id")},
+                {"entity_name", stringSchema("Terrain GameObject name, used only when entity_id is omitted")},
                 {"heightmap_path", stringSchema("Optional project-relative heightmap texture path")},
                 {"blendmap_path", stringSchema("Optional project-relative blendmap texture path")},
                 {"detail_red_path", stringSchema("Optional project-relative color texture path for layer 1")},
@@ -639,8 +639,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Create an undoable RGB terrain blendmap texture with constant channel values.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Terrain entity id")},
-                {"entity_name", stringSchema("Terrain entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Terrain GameObject id")},
+                {"entity_name", stringSchema("Terrain GameObject name, used only when entity_id is omitted")},
                 {"resolution", integerSchema("Square blendmap resolution, 2-2048. Defaults to terrain heightmap setting")},
                 {"red", numberSchema("Red channel 0-1")},
                 {"green", numberSchema("Green channel 0-1")},
@@ -650,21 +650,21 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_terrain_collision",
-            "Add Body3DComponent to a terrain entity and configure a height-field shape when supported.",
+            "Add a Rigidbody (Body3DComponent) to a terrain GameObject and configure a height-field Collider (Terrain Collider) when supported.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Terrain entity id")},
-                {"entity_name", stringSchema("Terrain entity name, used only when entity_id is omitted")}
+                {"entity_id", integerSchema("Terrain GameObject id")},
+                {"entity_name", stringSchema("Terrain GameObject name, used only when entity_id is omitted")}
             }),
             false
         },
         {
             "create_script",
-            "Create a Lua or C++ script file from a minimal template, attach it to an entity, and update ScriptComponent. Lua scripts are returned tables with init(), self.scene, and self.entity. C++ scripts use flat headers (\"Mesh.h\", \"ScriptBase.h\"); for mesh/cube behavior prefer cpp_subclass extending Mesh and unregister engine events in destructors.",
+            "Create a Lua or C++ script file from a minimal template, attach it to a GameObject, and update ScriptComponent. Lua scripts are returned tables with init(), self.scene, and self.entity. C++ scripts use flat headers (\"Mesh.h\", \"ScriptBase.h\"); for mesh/cube behavior prefer cpp_subclass extending Mesh and unregister engine events in destructors.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"type", stringSchema("lua, cpp_subclass, or cpp_script_class")},
                 {"class_name", stringSchema("Class/module name")},
                 {"target_dir", stringSchema("Safe project-relative target directory. Defaults to scripts")}
@@ -673,11 +673,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "attach_script",
-            "Attach an existing Lua or C++ script to an entity ScriptComponent as a new entry. Use it only for a script the entity does not have yet; to rename or repoint a script it already has, use update_script_entry.",
+            "Attach an existing Lua or C++ script to a GameObject's ScriptComponent as a new entry. Use it only for a script the GameObject does not have yet; to rename or repoint a script it already has, use update_script_entry.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"type", stringSchema("lua or cpp")},
                 {"class_name", stringSchema("Class/module name")},
                 {"path", stringSchema("Safe project-relative .lua or .cpp path")},
@@ -687,11 +687,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_script_entry",
-            "Rename the class of a script an entity already has, or repoint it at other files. Use this after renaming a script file or its class; it edits the attachment in place instead of adding a second one. Entries come from inspect_component on ScriptComponent.",
+            "Rename the class of a script a GameObject already has, or repoint it at other files. Use this after renaming a script file or its class; it edits the attachment in place instead of adding a second one. Entries come from inspect_component on ScriptComponent.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"index", integerSchema("Script entry index")},
                 {"class_name", stringSchema("Current class name of the entry, used when index is omitted")},
                 {"path", stringSchema("Current source or header path of the entry, used when index and class_name are omitted")},
@@ -703,11 +703,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "remove_script_entry",
-            "Detach one script from an entity ScriptComponent. The script files are kept; delete them with delete_resource when they are no longer used.",
+            "Detach one script from a GameObject's ScriptComponent. The script files are kept; delete them with delete_resource when they are no longer used.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"index", integerSchema("Script entry index")},
                 {"class_name", stringSchema("Class name of the entry, used when index is omitted")},
                 {"path", stringSchema("Source or header path of the entry, used when index and class_name are omitted")}
@@ -716,7 +716,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_script_file",
-            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use JasperEngine table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the body's real mass, not from a guessed magnitude: 3D mass is shape volume * density (default density 1000 kg/m3), while 2D mass is shape area * density (default density 1), so never carry the 3D default over to a 2D body. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh entities, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
+            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use JasperEngine table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the Rigidbody's real mass, not from a guessed magnitude: 3D mass is Collider volume * density (default density 1000 kg/m3), while 2D mass is Collider area * density (default density 1), so never carry the 3D default over to a Rigidbody 2D. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh GameObjects, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
             objectSchema({
                 {"path", stringSchema("Existing safe project-relative script path. Allowed extensions: .lua, .cpp, .h, .hpp")},
                 {"content", stringSchema("Complete replacement file contents")},
@@ -726,7 +726,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "create_source_file",
-            "Create a NEW C++ source or header that belongs to no entity: a helper class, a shared utility, or any library code scripts include. It never touches a ScriptComponent, so use create_script instead when the class is a script an entity runs. A source only reaches the build when it lives under a project script directory (get_project_summary reports script_dirs) or when an attached script includes it; the result says which case applies. Change the file afterwards with update_script_file.",
+            "Create a NEW C++ source or header that belongs to no GameObject: a helper class, a shared utility, or any library code scripts include. It never touches a ScriptComponent, so use create_script instead when the class is a script a GameObject runs. A source only reaches the build when it lives under a project script directory (get_project_summary reports script_dirs) or when an attached script includes it; the result says which case applies. Change the file afterwards with update_script_file.",
             objectSchema({
                 {"path", stringSchema("New safe project-relative file path. Allowed extensions: .h, .hpp, .cpp")},
                 {"content", stringSchema("Complete file contents")},
@@ -748,7 +748,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_project_cxx_standard",
-            "Set the project's C++ language standard (" + cxxStandardList() + "). The next play or export builds with it, and an export compiles the engine with it too. Read the current value from get_project_summary (cxx_standard). Do not edit CMAKE_CXX_STANDARD in the generated CMakeLists.txt.",
+            "Set the project's C++ language standard (" + cxxStandardList() + "). The next Play or build builds with it, and a build (Build Settings) compiles the engine with it too. Read the current value from get_project_summary (cxx_standard). Do not edit CMAKE_CXX_STANDARD in the generated CMakeLists.txt.",
             objectSchema({
                 {"cxx_standard", {{"type", "integer"}, {"enum", cxxStandards},
                     {"description", "C++ standard year: " + cxxStandardList()}}}
@@ -757,7 +757,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_project_build_file",
-            "Write ProjectBuild.cmake at the project root: the optional CMake hook carrying extra include directories, libraries, and compile definitions. The generated CMakeLists.txt is rewritten on every build, so it is never the place for custom build settings and the user must never be asked to edit it. Attach settings to ${JASPERENGINE_TARGET} instead of a literal target name (it differs between the editor and exported builds) and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths. This replaces the whole file, so read the current one with read_resource_file first and keep the settings it already has.",
+            "Write ProjectBuild.cmake at the project root: the optional CMake hook carrying extra include directories, libraries, and compile definitions. The generated CMakeLists.txt is rewritten on every build, so it is never the place for custom build settings and the user must never be asked to edit it. Attach settings to ${JASPERENGINE_TARGET} instead of a literal target name (it differs between the editor and player builds) and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths. This replaces the whole file, so read the current one with read_resource_file first and keep the settings it already has.",
             objectSchema({
                 {"content", stringSchema("Complete replacement contents of ProjectBuild.cmake")},
                 {"reason", stringSchema("Short reason shown in the approval preview")}
@@ -766,82 +766,82 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "create_bundle_from_entity",
-            "Create a .bundle from an entity hierarchy through CreateEntityBundleCmd.",
+            "Create a Prefab (.bundle file) from a GameObject hierarchy through CreateEntityBundleCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Root entity id")},
-                {"entity_name", stringSchema("Root entity name, used only when entity_id is omitted")},
-                {"bundle_path", stringSchema("Safe project-relative .bundle output path")}
+                {"entity_id", integerSchema("Root GameObject id")},
+                {"entity_name", stringSchema("Root GameObject name, used only when entity_id is omitted")},
+                {"bundle_path", stringSchema("Safe project-relative .bundle output path for the Prefab")}
             }, {"bundle_path"}),
             false
         },
         {
             "import_bundle_instance",
-            "Import a .bundle file as a scene instance through ImportEntityBundleCmd.",
+            "Instantiate a Prefab (.bundle file) into the scene through ImportEntityBundleCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"bundle_path", stringSchema("Safe project-relative .bundle path")},
-                {"parent_id", integerSchema("Optional parent entity id")}
+                {"bundle_path", stringSchema("Safe project-relative .bundle (Prefab) path")},
+                {"parent_id", integerSchema("Optional parent GameObject id")}
             }, {"bundle_path"}),
             false
         },
         {
             "add_entity_to_bundle",
-            "Insert an entity into an existing bundle through AddEntityToBundleCmd.",
+            "Insert a GameObject into an existing Prefab instance through AddEntityToBundleCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"bundle_root_id", integerSchema("Bundle root/parent entity id")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"bundle_root_id", integerSchema("Prefab instance root/parent GameObject id")}
             }, {"bundle_root_id"}),
             false
         },
         {
             "remove_entity_from_bundle",
-            "Remove a bundle member entity from its bundle through RemoveEntityFromBundleCmd.",
+            "Remove a GameObject from the Prefab it belongs to through RemoveEntityFromBundleCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")}
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")}
             }),
             false
         },
         {
             "make_bundle_component_unique",
-            "Convert a shared bundle component into a local override through ComponentToBundleLocalCmd.",
+            "Convert a component shared with the Prefab into a local override on this instance through ComponentToBundleLocalCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name")}
             }, {"component"}),
             false
         },
         {
             "revert_bundle_component",
-            "Revert a local bundle component override back to the shared bundle through ComponentToBundleSharedCmd.",
+            "Revert a local component override back to the Prefab's shared component through ComponentToBundleSharedCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"component", stringSchema("Component name")}
             }, {"component"}),
             false
         },
         {
             "set_standalone_bundle",
-            "Add or remove a .bundle in the project standalone list. A bundle no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with BundleManager. Bundles a scene instantiates are always built and are not listed.",
+            "Add or remove a Prefab (.bundle) in the project standalone list. A Prefab no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with BundleManager. Prefabs a scene instantiates are always built and are not listed.",
             objectSchema({
-                {"bundle_path", stringSchema("Safe project-relative .bundle path")},
-                {"standalone", boolSchema("true to list the bundle, false to remove it. Default true")}
+                {"bundle_path", stringSchema("Safe project-relative .bundle (Prefab) path")},
+                {"standalone", boolSchema("true to list the Prefab, false to remove it. Default true")}
             }, {"bundle_path"}),
             false
         },
         {
             "export_project",
-            "Run the editor export pipeline for the selected graphic backends.",
+            "Build the project (the Build Settings build pipeline) for the selected graphic backends.",
             objectSchema({
-                {"target_dir", stringSchema("Output directory. Must be outside or separate from project source")},
+                {"target_dir", stringSchema("Build output directory. Must be outside or separate from project source")},
                 {"backends", stringSchema("Comma-separated graphic backends the shaders are compiled for: opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all")},
                 {"start_scene_id", integerSchema("Optional startup scene id override")}
             }, {"target_dir"}),
@@ -862,10 +862,10 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Fork a built-in shader into a project-relative directory as one undoable step. Give entity_id/entity_name to fork a single component's shader (points its customShader at the fork); with shader_type depth on a MeshComponent it forks the depth shader instead (points customDepthShader at the fork): shadow maps, plus SSAO/post-process depth while SSR is off (with SSR on they read the built-in G-buffer) - needed when the mesh fork displaces vertices or discards, so shadows follow. Omit entity_id/entity_name and give shader_type instead to fork a scene-wide default shader for that type (points the scene's default_<type>_shader at the fork, used by every component of that type without its own customShader - see set_scene_property). Creates <name>.vert and <name>.frag directly in that directory. With fork_includes the fork is placed in its own <directory>/<name>/ folder together with an includes/ copy of the engine .glsl files it uses, so those edits override the engine library only for this fork. This is the correct way to start a custom shader; do not set customShader or a scene default_*_shader to files that do not exist.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id. Omit both this and entity_name, and give shader_type, to fork a scene default instead")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent, SkyComponent). Omit to auto-detect the entity's renderable component. Ignored when forking a scene default")},
-                {"shader_type", stringSchema("mesh, ui, sky, points, or lines. Required when entity_id/entity_name are omitted, to fork a scene-wide default shader for that type; with an entity only depth is meaningful (fork a mesh's depth shader)")},
+                {"entity_id", integerSchema("GameObject id. Omit both this and entity_name, and give shader_type, to fork a scene default instead")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect the GameObject's renderable component. Ignored when forking a scene default")},
+                {"shader_type", stringSchema("mesh, ui, sky, points, or lines. Required when entity_id/entity_name are omitted, to fork a scene-wide default shader for that type; with a GameObject only depth is meaningful (fork a mesh's depth shader)")},
                 {"directory", stringSchema("Optional safe project-relative destination directory; defaults to shaders")},
                 {"fork_includes", boolSchema("Also copy the built-in transitive .glsl includes so they can be edited; this moves the fork into its own <name>/ directory")}
             }),
@@ -883,25 +883,25 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "inspect_shader_uniforms",
-            "List the custom uniforms of a forked shader: the members its u_vs_customParams / u_fs_customParams blocks declare (or u_fs_postParams for a post-process pass), each with its GLSL type, whether the engine writes it (time, resolution), and the stored value. Give entity_id/entity_name (component optional, auto-detected) for a Mesh/UI/Points/Lines/Sky component, or pass_index for a scene post-process pass. The engine reflects the compiled shader, so members appear once the fork has built; a fork that declares no block lists none. Use before set_shader_uniform to learn the member names.",
+            "List the custom uniforms of a forked shader: the members its u_vs_customParams / u_fs_customParams blocks declare (or u_fs_postParams for a post-process pass), each with its GLSL type, whether the engine writes it (time, resolution), and the stored value. Give entity_id/entity_name (component optional, auto-detected) for a Mesh/UI/Points/Lines (Line Renderer)/Sky (Skybox) component, or pass_index for a scene post-process pass. The engine reflects the compiled shader, so members appear once the fork has built; a fork that declares no block lists none. Use before set_shader_uniform to learn the member names.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id of a component with a custom shader")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent, SkyComponent). Omit to auto-detect")},
-                {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of an entity")}
+                {"entity_id", integerSchema("GameObject id of a component with a custom shader")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect")},
+                {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of a GameObject")}
             }),
             true
         },
         {
             "set_shader_uniform",
-            "Set or remove one custom uniform value of a forked shader, by member name, as one undoable step. Values live on the component (shaderUniforms) or on the post-process pass and are uploaded to the u_vs_customParams / u_fs_customParams block (u_fs_postParams for a pass) member of the same name; a value is kept as a Vector4, so give number_value for float/int members, vector2_value/vector3_value/vector4_value for vec2/vec3/vec4 (int members truncate). Give entity_id/entity_name (component optional) for a Mesh/UI/Points/Lines/Sky component, or pass_index for a scene post-process pass. time and resolution are written by the engine and cannot be set. Set remove=true to drop the value (the member reads zero again). Names the shader does not declare are stored but unused; use inspect_shader_uniforms to see the declared members.",
+            "Set or remove one custom uniform value of a forked shader, by member name, as one undoable step. Values live on the component (shaderUniforms) or on the post-process pass and are uploaded to the u_vs_customParams / u_fs_customParams block (u_fs_postParams for a pass) member of the same name; a value is kept as a Vector4, so give number_value for float/int members, vector2_value/vector3_value/vector4_value for vec2/vec3/vec4 (int members truncate). Give entity_id/entity_name (component optional) for a Mesh/UI/Points/Lines (Line Renderer)/Sky (Skybox) component, or pass_index for a scene post-process pass. time and resolution are written by the engine and cannot be set. Set remove=true to drop the value (the member reads zero again). Names the shader does not declare are stored but unused; use inspect_shader_uniforms to see the declared members.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id of a component with a custom shader")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent, SkyComponent). Omit to auto-detect")},
-                {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of an entity")},
+                {"entity_id", integerSchema("GameObject id of a component with a custom shader")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect")},
+                {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of a GameObject")},
                 {"name", stringSchema("Uniform member name as declared in the shader block, e.g. amplitude or tint")},
                 {"number_value", numberSchema("Value for a float or int member")},
                 {"vector2_value", vector2Schema("Value for a vec2 member")},
@@ -923,7 +923,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "download_curated_asset",
-            "Download a reviewed direct model URL into project assets, write attribution metadata, and optionally import it into the scene. Archives are rejected in v1 unless an extractor is added.",
+            "Download a reviewed direct model URL into the project's assets (Project window), write attribution metadata, and optionally import it into the scene. Archives are rejected in v1 unless an extractor is added.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"provider", stringSchema("Asset provider name")},
@@ -934,14 +934,14 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"source_url", stringSchema("Provider asset page URL")},
                 {"download_url", stringSchema("Direct HTTPS URL for a .glb, .gltf, or .obj file")},
                 {"slug", stringSchema("Filesystem-safe asset slug")},
-                {"entity_name", stringSchema("Optional imported entity name")},
+                {"entity_name", stringSchema("Optional imported GameObject name")},
                 {"position", vector3Schema("Optional import position")}
             }, {"provider", "asset_id", "title", "source_url", "download_url"}),
             false
         },
         {
             "read_resource_file",
-            "Read a text project resource such as scripts, materials, scenes, shaders, or config files.",
+            "Read a text project asset such as scripts, materials, scenes, shaders, or config files.",
             objectSchema({
                 {"path", stringSchema("Safe project-relative file path")}
             }, {"path"}),
@@ -949,7 +949,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "inspect_scene",
-            "Read scene metadata, child scenes, main camera, and supported scene properties.",
+            "Read scene metadata, child scenes, main camera, and supported scene settings.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")}
             }),
@@ -960,8 +960,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Set or clear the scene main camera through SetMainCameraCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Camera entity id")},
-                {"entity_name", stringSchema("Camera entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Camera GameObject id")},
+                {"entity_name", stringSchema("Camera GameObject name, used only when entity_id is omitted")},
                 {"clear", boolSchema("When true, clear the main camera")}
             }),
             false
@@ -985,11 +985,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "regenerate_mesh_geometry",
-            "Replace an entity's mesh with a generated primitive through MeshChangeCmd. Rejected for geometry rebuilt on load: a model file, sprite, tilemap, mesh polygon, or terrain. Every parameter not given falls back to its default rather than keeping the mesh's current value.",
+            "Replace a GameObject's mesh with a generated primitive through MeshChangeCmd. Rejected for geometry rebuilt on load: a model file, sprite, tilemap, mesh polygon, or terrain. Every parameter not given falls back to its default rather than keeping the mesh's current value.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Mesh entity id")},
-                {"entity_name", stringSchema("Mesh entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Mesh GameObject id")},
+                {"entity_name", stringSchema("Mesh GameObject name, used only when entity_id is omitted")},
                 {"geometry_type", stringSchema("plane, box, sphere, cylinder, capsule, torus, or wall")},
                 {"plane_width", numberSchema("Plane width")},
                 {"plane_depth", numberSchema("Plane depth")},
@@ -1056,11 +1056,11 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_component_properties",
-            "Set multiple supported component properties atomically through MultiPropertyCmd.",
+            "Set multiple supported component properties (Inspector fields) atomically through MultiPropertyCmd.",
             objectSchemaFromProperties(propertyValueFields({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"properties", {
                     {"type", "array"},
                     {"description", "Property changes. Each item needs component, property, and one typed value field."},
@@ -1077,8 +1077,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Add a tile instance to a TilemapComponent using a tile rect index.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Tilemap entity id")},
-                {"entity_name", stringSchema("Tilemap entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Tilemap GameObject id")},
+                {"entity_name", stringSchema("Tilemap GameObject name, used only when entity_id is omitted")},
                 {"rect_index", integerSchema("Tile rect index in tilesRect")},
                 {"position", vector2Schema("Optional tile position")},
                 {"width", numberSchema("Optional tile width override")},
@@ -1091,8 +1091,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Remove a tile from a TilemapComponent by tile index.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Tilemap entity id")},
-                {"entity_name", stringSchema("Tilemap entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Tilemap GameObject id")},
+                {"entity_name", stringSchema("Tilemap GameObject name, used only when entity_id is omitted")},
                 {"tile_index", integerSchema("Tile index to remove")}
             }, {"tile_index"}),
             false
@@ -1102,35 +1102,35 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Duplicate a tile in a TilemapComponent by tile index.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Tilemap entity id")},
-                {"entity_name", stringSchema("Tilemap entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("Tilemap GameObject id")},
+                {"entity_name", stringSchema("Tilemap GameObject name, used only when entity_id is omitted")},
                 {"tile_index", integerSchema("Tile index to duplicate")}
             }, {"tile_index"}),
             false
         },
         {
             "add_animation_action",
-            "Add an action frame to an AnimationComponent timeline.",
+            "Add a Tween (action) clip to an AnimationComponent timeline. The Tween is a GameObject with a Position/Rotation/Scale/Color/Alpha Tween component (PositionActionComponent etc.) or another action.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Animation entity id")},
-                {"entity_name", stringSchema("Animation entity name, used only when entity_id is omitted")},
-                {"start_time", numberSchema("Action start time")},
-                {"duration", numberSchema("Action duration. 0 or omitted = auto (the action's own duration)")},
+                {"entity_id", integerSchema("Animation GameObject id")},
+                {"entity_name", stringSchema("Animation GameObject name, used only when entity_id is omitted")},
+                {"start_time", numberSchema("Tween start time")},
+                {"duration", numberSchema("Tween duration. 0 or omitted = auto (the Tween's own duration)")},
                 {"track", integerSchema("Timeline track index")},
-                {"action_entity_id", integerSchema("Action entity id")},
-                {"action_entity_name", stringSchema("Action entity name, used only when action_entity_id is omitted")}
+                {"action_entity_id", integerSchema("Tween (action) GameObject id")},
+                {"action_entity_name", stringSchema("Tween (action) GameObject name, used only when action_entity_id is omitted")}
             }),
             false
         },
         {
             "remove_animation_action",
-            "Remove an action frame from an AnimationComponent by index.",
+            "Remove a Tween (action) clip from an AnimationComponent timeline by index.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Animation entity id")},
-                {"entity_name", stringSchema("Animation entity name, used only when entity_id is omitted")},
-                {"action_index", integerSchema("Action index to remove")}
+                {"entity_id", integerSchema("Animation GameObject id")},
+                {"entity_name", stringSchema("Animation GameObject name, used only when entity_id is omitted")},
+                {"action_index", integerSchema("Tween (action) index to remove")}
             }, {"action_index"}),
             false
         },
@@ -1139,8 +1139,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Set or append keyframe times on a KeyframeTracksComponent.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id with KeyframeTracksComponent")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id with KeyframeTracksComponent")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"times", {
                     {"type", "array"},
                     {"description", "Complete replacement keyframe time list"},
@@ -1156,8 +1156,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Set per-segment easing on a KeyframeTracksComponent. Segment i eases the interpolation from key i to key i+1; unset segments are LINEAR.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Entity id with KeyframeTracksComponent")},
-                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"entity_id", integerSchema("GameObject id with KeyframeTracksComponent")},
+                {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"segment", integerSchema("Segment index (key i to key i+1), used with ease")},
                 {"ease", stringSchema("Ease name (e.g. LINEAR, QUAD_IN_OUT, BOUNCE_OUT, ELASTIC_OUT)")},
                 {"easings", {
@@ -1208,9 +1208,9 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "read_output_log",
-            "Read the editor's recent output log: build/compiler messages, warnings, errors, and runtime script crashes. Use this to VERIFY a script after starting the scene with control_play_mode -- a C++ compile error appears here as a build failure ('C++ script build failed' plus compiler output), and a Lua or C++ runtime error appears as a 'Script crash in scene ...' entry. If you see errors, stop play, fix the script, and verify again.",
+            "Read the editor's recent Console log: build/compiler messages, warnings, errors, and runtime script crashes. Use this to VERIFY a script after entering Play mode with control_play_mode -- a C++ compile error appears here as a build failure ('C++ script build failed' plus compiler output), and a Lua or C++ runtime error appears as a 'Script crash in scene ...' entry. If you see errors, stop Play mode, fix the script, and verify again.",
             objectSchema({
-                {"max_lines", integerSchema("Maximum number of recent log entries to return, 1-600. Defaults to 150")},
+                {"max_lines", integerSchema("Maximum number of recent Console entries to return, 1-600. Defaults to 150")},
                 {"errors_only", boolSchema("When true, return only error/warning/build entries")}
             }),
             true
@@ -1719,21 +1719,21 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         const std::string query = stringArg(arguments, "query");
         const std::string type = stringArg(arguments, "type");
         if (!query.empty()) {
-            return "Search resources for \"" + query + "\"";
+            return "Search assets for \"" + query + "\"";
         }
         return (type.empty() || type == "any")
-            ? "List project resources"
-            : "List project " + type + " resources";
+            ? "List project assets"
+            : "List project " + type + " assets";
     }
     if (name == "list_scene_entities") {
         return arguments.contains("scene_id")
-            ? "List entities in scene " + std::to_string(arguments.value("scene_id", 0))
-            : "List entities in the selected scene";
+            ? "List GameObjects in scene " + std::to_string(arguments.value("scene_id", 0))
+            : "List GameObjects in the selected scene";
     }
     if (name == "inspect_entity") {
         return arguments.contains("entity_id")
-            ? "Inspect entity " + std::to_string(arguments.value("entity_id", 0))
-            : "Inspect entity \"" + arguments.value("entity_name", "") + "\"";
+            ? "Inspect GameObject " + std::to_string(arguments.value("entity_id", 0))
+            : "Inspect GameObject \"" + arguments.value("entity_name", "") + "\"";
     }
     if (name == "inspect_component") {
         return "Inspect " + arguments.value("component", "component") + " properties";
@@ -1751,38 +1751,38 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Read engine source " + arguments.value("path", "");
     }
     if (name == "read_output_log") {
-        return "Read editor output log";
+        return "Read Console log";
     }
     if (name == "create_entity") {
-        out << "Create " << arguments.value("type", "entity")
-            << " entity \"" << arguments.value("name", "Entity") << "\"";
+        out << "Create " << arguments.value("type", "empty")
+            << " GameObject \"" << arguments.value("name", "GameObject") << "\"";
         return out.str();
     }
     if (name == "set_entity_transform") {
         if (arguments.contains("entity_id")) {
-            out << "Set transform for entity " << arguments["entity_id"].get<uint64_t>();
+            out << "Set transform for GameObject " << arguments["entity_id"].get<uint64_t>();
         } else {
-            out << "Set transform for entity \"" << arguments.value("entity_name", "") << "\"";
+            out << "Set transform for GameObject \"" << arguments.value("entity_name", "") << "\"";
         }
         return out.str();
     }
     if (name == "rename_entity") {
-        return "Rename entity to \"" + arguments.value("new_name", "") + "\"";
+        return "Rename GameObject to \"" + arguments.value("new_name", "") + "\"";
     }
     if (name == "delete_entity") {
-        return "Delete entity";
+        return "Delete GameObject";
     }
     if (name == "duplicate_entity") {
-        return "Duplicate entity";
+        return "Duplicate GameObject";
     }
     if (name == "reparent_entity") {
-        return "Reparent entity";
+        return "Reparent GameObject";
     }
     if (name == "move_entity_order") {
-        return "Move entity " + arguments.value("insertion", "relative to target");
+        return "Move GameObject " + arguments.value("insertion", "relative to target");
     }
     if (name == "select_entities") {
-        return arguments.value("clear", false) ? "Clear entity selection" : "Select entity";
+        return arguments.value("clear", false) ? "Clear GameObject selection" : "Select GameObject";
     }
     if (name == "add_component") {
         return "Add " + arguments.value("component", "component");
@@ -1791,10 +1791,10 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Remove " + arguments.value("component", "component");
     }
     if (name == "add_body3d_shape") {
-        return "Add " + arguments.value("shape_type", "3D collision") + " shape to Body3D";
+        return "Add " + arguments.value("shape_type", "3D") + " Collider to Rigidbody";
     }
     if (name == "add_body2d_shape") {
-        return "Add " + arguments.value("shape_type", "2D collision") + " shape to Body2D";
+        return "Add " + arguments.value("shape_type", "2D") + " Collider 2D to Rigidbody 2D";
     }
     if (name == "set_component_property") {
         return "Set " + arguments.value("component", "component") + "." + arguments.value("property", "property");
@@ -1828,7 +1828,7 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         if (!action.empty()) {
             action[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(action[0])));
         }
-        return action + " play mode";
+        return action + " Play mode";
     }
     if (name == "add_child_scene") {
         return "Add child scene " + std::to_string(arguments.value("child_scene_id", 0));
@@ -1846,10 +1846,10 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Create folder \"" + arguments.value("name", "") + "\"";
     }
     if (name == "rename_resource") {
-        return "Rename resource " + arguments.value("path", "");
+        return "Rename asset " + arguments.value("path", "");
     }
     if (name == "delete_resource") {
-        return "Delete resource " + arguments.value("path", "");
+        return "Delete asset " + arguments.value("path", "");
     }
     if (name == "import_resource_file") {
         return "Import file " + arguments.value("source_path", "");
@@ -1914,35 +1914,35 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Update ProjectBuild.cmake";
     }
     if (name == "create_bundle_from_entity") {
-        return "Create bundle " + arguments.value("bundle_path", "");
+        return "Create Prefab " + arguments.value("bundle_path", "");
     }
     if (name == "import_bundle_instance") {
-        return "Import bundle " + arguments.value("bundle_path", "");
+        return "Instantiate Prefab " + arguments.value("bundle_path", "");
     }
     if (name == "add_entity_to_bundle") {
-        return "Add entity to bundle";
+        return "Add GameObject to Prefab";
     }
     if (name == "remove_entity_from_bundle") {
-        return "Remove entity from bundle";
+        return "Remove GameObject from Prefab";
     }
     if (name == "make_bundle_component_unique") {
-        return "Make bundle component unique";
+        return "Override Prefab component";
     }
     if (name == "revert_bundle_component") {
-        return "Revert bundle component";
+        return "Revert Prefab component override";
     }
     if (name == "set_standalone_bundle") {
-        return "Set standalone bundle " + arguments.value("bundle_path", "");
+        return "Set standalone Prefab " + arguments.value("bundle_path", "");
     }
     if (name == "export_project") {
-        return "Export project to " + arguments.value("target_dir", "");
+        return "Build project to " + arguments.value("target_dir", "");
     }
     if (name == "generate_shaders") {
         return "Generate shaders to " + arguments.value("target_dir", "");
     }
     if (name == "fork_shader") {
         if (arguments.contains("entity_id")) {
-            return "Fork shader for entity " + std::to_string(arguments.value("entity_id", 0));
+            return "Fork shader for GameObject " + std::to_string(arguments.value("entity_id", 0));
         }
         if (arguments.contains("entity_name")) {
             return "Fork shader for \"" + arguments.value("entity_name", "") + "\"";
@@ -1969,7 +1969,7 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         out << "Create " << arguments.value("mode", "middle")
             << " terrain heightmap";
         if (arguments.contains("entity_id")) {
-            out << " for entity " << arguments["entity_id"].get<uint64_t>();
+            out << " for GameObject " << arguments["entity_id"].get<uint64_t>();
         } else if (arguments.contains("entity_name")) {
             out << " for \"" << arguments.value("entity_name", "") << "\"";
         }
@@ -1986,7 +1986,7 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Download curated asset \"" + arguments.value("title", "Asset") + "\"";
     }
     if (name == "read_resource_file") {
-        return "Read resource " + arguments.value("path", "");
+        return "Read asset " + arguments.value("path", "");
     }
     if (name == "inspect_scene") {
         return arguments.contains("scene_id")
@@ -2030,10 +2030,10 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Duplicate tilemap tile " + std::to_string(arguments.value("tile_index", 0));
     }
     if (name == "add_animation_action") {
-        return "Add animation action";
+        return "Add Tween to animation";
     }
     if (name == "remove_animation_action") {
-        return "Remove animation action " + std::to_string(arguments.value("action_index", 0));
+        return "Remove animation Tween " + std::to_string(arguments.value("action_index", 0));
     }
     if (name == "set_keyframe_times") {
         return "Set keyframe times";

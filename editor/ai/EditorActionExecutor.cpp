@@ -638,7 +638,7 @@ bool parseVector2Array(const Json& value, HybridArray<Vector2, MAX_SHAPE_POINTS_
         return false;
     }
     if (value.size() > UINT8_MAX) {
-        error = "points exceeds the maximum number of 2D shape points.";
+        error = "points exceeds the maximum number of Collider 2D points.";
         return false;
     }
     for (size_t i = 0; i < value.size(); ++i) {
@@ -879,7 +879,7 @@ bool detectForkableComponent(EntityRegistry* registry, Entity entity, ComponentT
 bool resolveShaderComponent(SceneProject* sceneProject, const Json& args, Entity& entity,
                             ComponentType& component, ShaderType& shaderType, std::string& error) {
     entity = resolveEntity(sceneProject, args);
-    if (entity == NULL_ENTITY) { error = "Entity not found."; return false; }
+    if (entity == NULL_ENTITY) { error = "GameObject not found."; return false; }
 
     const std::string componentArg = args.value("component", "");
     if (!componentArg.empty()) {
@@ -889,11 +889,11 @@ bool resolveShaderComponent(SceneProject* sceneProject, const Json& args, Entity
             return false;
         }
         if (!hasComponent(sceneProject->scene, entity, component)) {
-            error = "Entity has no " + componentArg + ".";
+            error = "GameObject has no " + componentArg + ".";
             return false;
         }
     } else if (!detectForkableComponent(sceneProject->scene, entity, component, shaderType)) {
-        error = "Entity has no shader-capable component (Mesh/UI/Points/Lines/Sky).";
+        error = "GameObject has no shader-capable component (Mesh/UI/Points/Lines (Line Renderer)/Sky (Skybox)).";
         return false;
     }
     return true;
@@ -1031,22 +1031,22 @@ std::string jasperengineLuaScriptGuide(const std::string& className) {
            "function " + className + ":init() ... end; return " + className + ". "
            "Editor-exposed properties go in the properties array as { name = \"speed\", displayName = \"Speed\", type = \"float\", default = 5.0 } "
            "(type strings: bool, int, float, string, vector2, vector3, vector4, color3, color4, entity); at runtime read/write them as self.<name>, e.g. self.speed. "
-           "The engine injects self.scene and self.entity; self.entity is a numeric Entity id, not an object receiver. For an existing cube/shape, "
+           "The engine injects self.scene and self.entity; self.entity is the GameObject's numeric Entity id, not a wrapper you can call methods on. For an existing cube or other primitive mesh, "
            "use local shape = Shape(self.scene, self.entity); shape:setColor(1.0, 0.0, 0.0, 1.0). "
-           "There is no Transform (or other component) global in Lua: to read or move an entity, wrap it with local obj = Object(self.scene, self.entity) "
+           "There is no Transform (or other component) global in Lua: to read or move a GameObject, wrap it with local obj = Object(self.scene, self.entity) "
            "then use obj.position / obj:setPosition(...) and similar (check the Object binding via read_engine_source for exact members). "
            "For keyboard/mouse input use the Input class (Input.isKeyPressed(Input.KEY_LEFT), etc.). Scale continuous direct non-physics movement by Engine.deltatime, but never multiply physics forces or torques by delta time; "
            "gamepads use Input.isGamepadButtonPressed(gamepad, Input.GAMEPAD_BUTTON_A) and Input.getGamepadAxis(gamepad, Input.GAMEPAD_AXIS_LEFT_X); gamepad ids are sparse, so iterate connected pads by dense index with local id = Input.getGamepadId(i) for i in 0..Input.numGamepads()-1 rather than assuming ids are 0..n-1. "
-           "Choose the update callback by timing domain. Variable-frame UI, camera, animation, and direct non-physics movement use RegisterEngineEvent(self, \"onUpdate\") and " + className + ":onUpdate(). Continuously applied body forces or torques MUST use RegisterEngineEvent(self, \"onFixedUpdate\") and " + className + ":onFixedUpdate(), because each physics world accumulates force calls until its next fixed step, so putting them in onUpdate makes effective force depend on render FPS; velocity control and physics-driving input polling belong there too. "
-           "Inside onFixedUpdate a physics body must be moved through the body itself, never by writing the entity transform: the body is synced from the transform before the step and written back after it, so such a write is silently discarded. The bindings expose these as properties, not methods: body.position and body.rotation on Body3D, body.position and body.angle on Body2D. Entities with no body have no such restriction. "
-           "The force calls differ by body type and are not interchangeable: Body3D uses body:applyForce(force) for a centre force, body:applyForce(force, point), and body:applyTorque(torque), and has NO applyForceToCenter; Body2D uses body:applyForceToCenter(force, wake), body:applyForce(force, point, wake) with no single-argument form, and body:applyTorque(torque, wake). "
-           "A dynamic body's mass comes from its shape and density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration instead of guessing a magnitude, reading the mass as the Lua PROPERTY body.mass on Body3D (Body2D uses the method body:getMass() instead), and if the motion needs an implausible force, lower the shape density or shrink the shape rather than inflating the force. "
+           "Choose the update callback by timing domain. Variable-frame UI, camera, animation, and direct non-physics movement use RegisterEngineEvent(self, \"onUpdate\") and " + className + ":onUpdate(). Continuously applied Rigidbody forces or torques MUST use RegisterEngineEvent(self, \"onFixedUpdate\") and " + className + ":onFixedUpdate(), because each physics world accumulates force calls until its next fixed step, so putting them in onUpdate makes effective force depend on render FPS; velocity control and physics-driving input polling belong there too. "
+           "Inside onFixedUpdate a Rigidbody must be moved through the body itself, never by writing the GameObject's transform: the body is synced from the transform before the step and written back after it, so such a write is silently discarded. The bindings expose these as properties, not methods: body.position and body.rotation on Body3D, body.position and body.angle on Body2D. GameObjects with no Rigidbody have no such restriction. "
+           "The force calls differ by Rigidbody type and are not interchangeable: Body3D uses body:applyForce(force) for a centre force, body:applyForce(force, point), and body:applyTorque(torque), and has NO applyForceToCenter; Body2D uses body:applyForceToCenter(force, wake), body:applyForce(force, point, wake) with no single-argument form, and body:applyTorque(torque, wake). "
+           "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration instead of guessing a magnitude, reading the mass as the Lua PROPERTY body.mass on Body3D (Body2D uses the method body:getMass() instead), and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force. "
            "valid event names: onUpdate, onFixedUpdate, onDraw, onMouseDown, onMouseUp, onMouseMove, onKeyDown, onKeyUp, onTouchStart, onTouchMove, onTouchEnd, "
            "onGamepadConnect, onGamepadDisconnect, onGamepadButtonDown, onGamepadButtonUp, onGamepadAxisMove. "
            "For component/UI events use the global RegisterEvent(self, eventObject, \"method\"), getting the event object from a wrapper, e.g. local b = Button(self.scene, self.entity); RegisterEvent(self, b:getButtonComponent().onPress, \"onPress\"). "
            "Engine state uses Lua properties, e.g. local dt = Engine.deltatime (not getDeltatime). No manual unregister is needed; the engine cleans up events when the script is destroyed. "
            "Angles passed to engine APIs (Quaternion(angle, axis), rotateView, ...) are in the engine's default unit, DEGREES unless Engine.setUseDegrees(false) was called, so do not pass radians; math.sin/math.cos still need radians, so wrap with math.rad. "
-           "A camera orients by its target, not its rotation: useTarget defaults to true and both cam:setTarget(x, y, z) and the cam.target property re-enable it, so while it is on the view is lookAt(position, target, up) and setting the camera entity's rotation does nothing (call cam:disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). "
+           "A camera orients by its target, not its rotation: useTarget defaults to true and both cam:setTarget(x, y, z) and the cam.target property re-enable it, so while it is on the view is lookAt(position, target, up) and setting the camera GameObject's rotation does nothing (call cam:disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). "
            "For a third-person/orbit camera, place it with spherical coordinates around the target: local p, y = math.rad(pitch), math.rad(yaw); local offset = Vector3(math.cos(p)*math.sin(y), math.sin(p), math.cos(p)*math.cos(y)); cam:setPosition(target + offset * distance); cam.target = target -- a positive pitch then puts the camera ABOVE the target. Never compute the position as target - forward*distance from a rotated forward vector; rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target. "
            "To print or log, use Log.print(\"text \" .. tostring(value)) (Log.warn/Log.error for severity), not bare print(). "
            "Use ONLY APIs that actually exist in the JasperEngine source: search_engine_api is a quick index, and search_engine_source/read_engine_source read the real Lua bindings "
@@ -1060,28 +1060,28 @@ std::string jasperengineCppScriptGuide(bool cppSubclass, const std::string& pare
           << "Never use #include <core/...> or #include \"core/...\". "
           << "A JasperEngine script class needs no class-declaration or reflection macro (no D_OBJECT/GDCLASS/GENERATED_BODY/Q_OBJECT): just inherit the base class and declare a (jasperengine::Scene*, jasperengine::Entity) constructor. Prefer editing the class skeleton create_script already generated rather than rewriting it from scratch. ";
     if (!cppSubclass) {
-        guide << "cpp_script_class inherits jasperengine::ScriptBase for general entity logic. "
+        guide << "cpp_script_class inherits jasperengine::ScriptBase for general GameObject logic. "
               << "Use REGISTER_ENGINE_EVENT(onUpdate) and void onUpdate() for variable-frame logic, or "
               << "REGISTER_ENGINE_EVENT(onFixedUpdate) and void onFixedUpdate() for physics-step logic; "
               << "pair the chosen event with the matching UNREGISTER_ENGINE_EVENT in the destructor. "
-              << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as Object(getScene(), getEntity()) to control the entity.";
+              << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as Object(getScene(), getEntity()) to control the GameObject.";
     } else {
         guide << "cpp_subclass inherits jasperengine::" << parentClass
               << " and calls engine methods (e.g. setColor) directly on this. "
               << "Register variable-frame callbacks with REGISTER_ENGINE_EVENT(onUpdate), or physics-step callbacks with REGISTER_ENGINE_EVENT(onFixedUpdate), and unregister the matching event in the destructor. "
-              << "For mesh/cube color on a Mesh entity, prefer cpp_subclass extending Mesh (or Shape), not ScriptBase.";
+              << "For mesh/cube color on a Mesh GameObject, prefer cpp_subclass extending Mesh (or Shape), not ScriptBase.";
     }
-    guide << " Continuous Body2D/Body3D forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
-          << "A dynamic body's mass comes from its shape and density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the shape density or shrink the shape rather than inflating the force (Body3D::setMass writes only the live body and is lost on reload). "
+    guide << " Continuous Rigidbody (Body2D/Body3D) forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
+          << "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force (Body3D::setMass writes only the live body and is lost on reload). "
           << "Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the JasperEngine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
-          << "Verified entity-control recipe: on an Object wrapper (Object obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). Object has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
+          << "Verified GameObject-control recipe: on an Object wrapper (Object obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). Object has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
           << "Angle arguments are in the engine's default unit, DEGREES unless Engine::setUseDegrees(false) was called: Quaternion(angle, axis), Quaternion::fromEulerAngles, Camera::rotateView and friends all run their angle through Angle::defaultToRad, so do not pass radians to them. Include \"Angle.h\" and convert with Angle::degToDefault/Angle::radToDefault; std::sin/std::cos always need radians, so feed them Angle::defaultToRad(angle). "
-          << "Camera orientation comes from its target, not its rotation: CameraComponent.useTarget defaults to true and Camera::setTarget re-enables it, so while it is on the view matrix is lookAt(position, target, up) and calling setRotation() on the camera entity has no effect on the view (call cam.disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). For a third-person/orbit camera, place the camera with spherical coordinates around the target: float p = Angle::defaultToRad(pitch), y = Angle::defaultToRad(yaw); Vector3 offset(cosf(p)*sinf(y), sinf(p), cosf(p)*cosf(y)); cam.setPosition(target + offset*distance); cam.setTarget(target); -- a positive pitch then places the camera ABOVE the target, and the horizontal movement basis is forward = Vector3(-sinf(y), 0, -cosf(y)), right = Vector3(cosf(y), 0, -sinf(y)). Never derive the camera position as target - forward*distance from a rotated forward vector: rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target, forcing a bogus negative pitch to compensate. "
+          << "Camera orientation comes from its target, not its rotation: CameraComponent.useTarget defaults to true and Camera::setTarget re-enables it, so while it is on the view matrix is lookAt(position, target, up) and calling setRotation() on the camera GameObject has no effect on the view (call cam.disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). For a third-person/orbit camera, place the camera with spherical coordinates around the target: float p = Angle::defaultToRad(pitch), y = Angle::defaultToRad(yaw); Vector3 offset(cosf(p)*sinf(y), sinf(p), cosf(p)*cosf(y)); cam.setPosition(target + offset*distance); cam.setTarget(target); -- a positive pitch then places the camera ABOVE the target, and the horizontal movement basis is forward = Vector3(-sinf(y), 0, -cosf(y)), right = Vector3(cosf(y), 0, -sinf(y)). Never derive the camera position as target - forward*distance from a rotated forward vector: rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target, forcing a bogus negative pitch to compensate. "
           << "To print or log, include \"Log.h\" and call Log::print(\"pos %f %f %f\", p.x, p.y, p.z) (Log::warn/Log::error for severity); Engine has no log method, and do not use printf or std::cout. "
           << "For component/UI events (button press, click, scrollbar change, etc.) subscribe in the constructor with REGISTER_COMPONENT_EVENT(Component, event, method) or its shortcuts REGISTER_UI_EVENT/REGISTER_BUTTON_EVENT/REGISTER_SCROLLBAR_EVENT/REGISTER_PANEL_EVENT, and pair each with its UNREGISTER_* in the destructor; search_engine_api for the exact macro and the component's event names. "
           << "Use search_engine_api for a quick symbol overview, but confirm exact signatures against the real source (search_engine_source/read_engine_source) before writing engine API code. "
           << "DPROPERTY(\"Name\") exposes a public member as an editor property (optional; removing it clears stale editor properties); DPROPERTY(\"Name\", Type) forces the editor type such as Color3/Color4. "
-          << "After writing the .h and .cpp, verify the script actually works: start the scene with control_play_mode (action=start), then read_output_log to check for a C++ build failure (compiler errors) or a runtime 'Script crash'. If it is still building, read_output_log again. If there are errors, stop play, fix with update_script_file, and verify again -- repeat until the log is clean, then stop play, before telling the user the script is ready.";
+          << "After writing the .h and .cpp, verify the script actually works: enter Play mode with control_play_mode (action=start), then read_output_log to check the Console for a C++ build failure (compiler errors) or a runtime 'Script crash'. If it is still building, read_output_log again. If there are errors, exit Play mode, fix with update_script_file, and verify again -- repeat until the Console is clean, then exit Play mode, before telling the user the script is ready.";
     return guide.str();
 }
 
@@ -1097,13 +1097,13 @@ std::string validateJasperEngineLuaScriptContent(const std::string& content) {
         {"script:new", "JasperEngine Lua scripts do not derive from Script:new(). Return a plain module table instead."},
         {"on_start", "JasperEngine Lua scripts use init() for startup, not on_start()."},
         {"on_scene_start", "JasperEngine Lua scripts use init() for startup, not on_scene_start()."},
-        {"self.entity:", "self.entity is a numeric Entity id, not an object receiver. Wrap it with a runtime class such as Shape(self.scene, self.entity)."},
-        {"self.entity.", "self.entity is a numeric Entity id, not an object. Pass it to runtime wrappers; do not access methods/properties on it."},
+        {"self.entity:", "self.entity is the GameObject's numeric Entity id, not a wrapper you can call methods on. Wrap it with a runtime class such as Shape(self.scene, self.entity)."},
+        {"self.entity.", "self.entity is the GameObject's numeric Entity id, not a wrapper. Pass it to runtime wrappers; do not access methods/properties on it."},
         {"get_entity", "JasperEngine Lua scripts receive self.entity directly; there is no get_entity() helper."},
         {"getentity", "JasperEngine Lua scripts receive self.entity directly; there is no getEntity() helper."},
         {"get_component", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not get_component()."},
         {"getcomponent", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not getComponent()."},
-        {"transform(self", "There is no Transform global in JasperEngine Lua; components are not constructed like Transform(self.scene, self.entity). To read or move an entity use local obj = Object(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
+        {"transform(self", "There is no Transform global in JasperEngine Lua; components are not constructed like Transform(self.scene, self.entity). To read or move a GameObject use local obj = Object(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
         {"set_property", "JasperEngine Lua scripts should call runtime APIs, not editor-style set_property()."},
         {"setproperty", "JasperEngine Lua scripts should call runtime APIs, not editor-style setProperty()."},
         {"vector4.new", "JasperEngine Lua constructors use Vector4(...), not Vector4.new(...)."},
@@ -1122,7 +1122,7 @@ std::string validateJasperEngineLuaScriptContent(const std::string& content) {
     }
 
     if (luaCallbackContainsContinuousPhysicsMutation(content, "onupdate")) {
-        return "Continuous Body2D/Body3D forces and torques must run in onFixedUpdate, not onUpdate. "
+        return "Continuous Rigidbody (Body2D/Body3D) forces and torques must run in onFixedUpdate, not onUpdate. "
                "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
                "force depend on render FPS. RegisterEngineEvent(self, \"onFixedUpdate\"), move the physics code "
                "to the matching :onFixedUpdate() callback, and do not multiply force or torque by Engine.deltatime.";
@@ -1161,7 +1161,7 @@ std::string validateJasperEngineCppScriptContent(const std::string& content) {
     }
 
     if (cppCallbackContainsContinuousPhysicsMutation(compactContent, "onupdate")) {
-        return "Continuous Body2D/Body3D forces and torques must run in onFixedUpdate, not onUpdate. "
+        return "Continuous Rigidbody (Body2D/Body3D) forces and torques must run in onFixedUpdate, not onUpdate. "
                "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
                "force depend on render FPS. Register and implement onFixedUpdate, unregister the matching event "
                "in the destructor, and do not multiply force or torque by Engine::getDeltatime().";
@@ -2201,7 +2201,7 @@ ActionResult EditorActionExecutor::searchResources(const Json& arguments) {
 
     // The walk stops at maxResults, so a full page may be hiding more files.
     const bool truncated = static_cast<int>(matches.size()) >= maxResults;
-    std::string summary = "Found " + std::to_string(matches.size()) + " resource(s).";
+    std::string summary = "Found " + std::to_string(matches.size()) + " asset(s).";
     if (truncated) {
         summary += " Result limit reached; narrow the query/type or raise max_results for more.";
     }
@@ -2228,7 +2228,7 @@ ActionResult EditorActionExecutor::listSceneEntities(const Json& arguments) {
         });
     }
 
-    return okResult("Listed entities in scene " + sceneProject->name + ".",
+    return okResult("Listed GameObjects in scene " + sceneProject->name + ".",
                     Json{{"scene_id", sceneId}, {"scene_name", sceneProject->name}, {"entities", entities}});
 }
 
@@ -2241,7 +2241,7 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
 
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) {
-        return expectedMissResult("Entity not found.");
+        return expectedMissResult("GameObject not found.");
     }
 
     Json data = {
@@ -2285,7 +2285,7 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
         data["components"].push_back(comp);
     }
 
-    return okResult("Inspected entity.", data);
+    return okResult("Inspected GameObject.", data);
 }
 
 ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
@@ -2297,7 +2297,7 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
 
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) {
-        return expectedMissResult("Entity not found.");
+        return expectedMissResult("GameObject not found.");
     }
 
     ComponentType component;
@@ -2308,7 +2308,7 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
     auto properties = Catalog::findEntityProperties(sceneProject->scene, entity, component);
     if (properties.empty()) {
         return expectedMissResult(
-            "Component not found on entity or has no inspectable properties.");
+            "Component not found on GameObject or has no inspectable properties.");
     }
 
     Json props = Json::object();
@@ -2362,18 +2362,18 @@ ActionResult EditorActionExecutor::createEntity(const Json& arguments) {
 
     EntityCreationType type = EntityCreationType::EMPTY;
     if (!parseEntityType(arguments.value("type", "empty"), type)) {
-        return failResult("Unsupported entity type: " + arguments.value("type", ""));
+        return failResult("Unsupported GameObject type: " + arguments.value("type", ""));
     }
 
     Entity parent = NULL_ENTITY;
     if (arguments.contains("parent_id")) {
         parent = resolveEntityByKeys(sceneProject, arguments, "parent_id", "parent_name");
-        if (parent == NULL_ENTITY) return failResult("Parent entity not found.");
+        if (parent == NULL_ENTITY) return failResult("Parent GameObject not found.");
     }
 
     auto* cmd = parent != NULL_ENTITY
-        ? new CreateEntityCmd(project, sceneId, arguments.value("name", "Entity"), type, parent)
-        : new CreateEntityCmd(project, sceneId, arguments.value("name", "Entity"), type);
+        ? new CreateEntityCmd(project, sceneId, arguments.value("name", "GameObject"), type, parent)
+        : new CreateEntityCmd(project, sceneId, arguments.value("name", "GameObject"), type);
     if (arguments.contains("position")) {
         Vector3 position = Vector3::ZERO;
         if (parseVector3(arguments["position"], position)) {
@@ -2382,7 +2382,7 @@ ActionResult EditorActionExecutor::createEntity(const Json& arguments) {
     }
     CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
 
-    return okResult("Created entity through the command history.",
+    return okResult("Created GameObject through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", cmd->getEntity()}});
 }
 
@@ -2395,12 +2395,12 @@ ActionResult EditorActionExecutor::setEntityTransform(const Json& arguments) {
 
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) {
-        return failResult("Entity not found.");
+        return failResult("GameObject not found.");
     }
 
     Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
     if (!transform) {
-        return failResult("Entity has no Transform component.");
+        return failResult("GameObject has no Transform component.");
     }
 
     Vector3 position = transform->position;
@@ -2413,7 +2413,7 @@ ActionResult EditorActionExecutor::setEntityTransform(const Json& arguments) {
     CommandHandle::get(sceneId)->addCommandNoMerge(
         new ObjectTransformCmd(project, sceneId, entity, position, rotation, scale));
 
-    return okResult("Updated entity transform through the command history.");
+    return okResult("Updated GameObject transform through the command history.");
 }
 
 ActionResult EditorActionExecutor::renameEntity(const Json& arguments) {
@@ -2421,9 +2421,9 @@ ActionResult EditorActionExecutor::renameEntity(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     CommandHandle::get(sceneId)->addCommandNoMerge(new EntityNameCmd(project, sceneId, entity, arguments.value("new_name", "")));
-    return okResult("Renamed entity through the command history.");
+    return okResult("Renamed GameObject through the command history.");
 }
 
 ActionResult EditorActionExecutor::deleteEntity(const Json& arguments) {
@@ -2431,9 +2431,9 @@ ActionResult EditorActionExecutor::deleteEntity(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, entity));
-    return okResult("Deleted entity through the command history.");
+    return okResult("Deleted GameObject through the command history.");
 }
 
 ActionResult EditorActionExecutor::duplicateEntity(const Json& arguments) {
@@ -2441,12 +2441,12 @@ ActionResult EditorActionExecutor::duplicateEntity(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     auto* cmd = new DuplicateEntityCmd(project, sceneId, std::vector<Entity>{entity});
     CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
     Json created = Json::array();
     for (Entity createdEntity : cmd->getCreatedEntities()) created.push_back(createdEntity);
-    return okResult("Duplicated entity through the command history.", Json{{"created_entities", created}});
+    return okResult("Duplicated GameObject through the command history.", Json{{"created_entities", created}});
 }
 
 ActionResult EditorActionExecutor::reparentEntity(const Json& arguments) {
@@ -2454,17 +2454,17 @@ ActionResult EditorActionExecutor::reparentEntity(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     Entity parent = NULL_ENTITY;
     if (arguments.contains("parent_id") || arguments.contains("parent_name")) {
         parent = resolveEntityByKeys(sceneProject, arguments, "parent_id", "parent_name");
-        if (parent == NULL_ENTITY && arguments.value("parent_id", 0) != 0) return failResult("Parent entity not found.");
+        if (parent == NULL_ENTITY && arguments.value("parent_id", 0) != 0) return failResult("Parent GameObject not found.");
     }
 
     if (parent != NULL_ENTITY) {
         CommandHandle::get(sceneId)->addCommandNoMerge(new MoveEntityOrderCmd(project, sceneId, entity, parent, InsertionType::INTO));
-        return okResult("Reparented entity through the command history.");
+        return okResult("Reparented GameObject through the command history.");
     }
 
     Entity rootTarget = NULL_ENTITY;
@@ -2481,7 +2481,7 @@ ActionResult EditorActionExecutor::reparentEntity(const Json& arguments) {
         return failResult("Cannot move to scene root because there is no root-level target to order against.");
     }
     CommandHandle::get(sceneId)->addCommandNoMerge(new MoveEntityOrderCmd(project, sceneId, entity, rootTarget, InsertionType::BEFORE));
-    return okResult("Moved entity to scene root through the command history.");
+    return okResult("Moved GameObject to scene root through the command history.");
 }
 
 ActionResult EditorActionExecutor::moveEntityOrder(const Json& arguments) {
@@ -2490,7 +2490,7 @@ ActionResult EditorActionExecutor::moveEntityOrder(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
     Entity target = resolveEntityByKeys(sceneProject, arguments, "target_id", "target_name");
-    if (entity == NULL_ENTITY || target == NULL_ENTITY) return failResult("Entity or target not found.");
+    if (entity == NULL_ENTITY || target == NULL_ENTITY) return failResult("GameObject or target not found.");
 
     std::string insertion = lower(arguments.value("insertion", ""));
     InsertionType type = InsertionType::AFTER;
@@ -2500,7 +2500,7 @@ ActionResult EditorActionExecutor::moveEntityOrder(const Json& arguments) {
     else return failResult("Unsupported insertion. Use before, after, child_first, or child_last.");
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new MoveEntityOrderCmd(project, sceneId, entity, target, type));
-    return okResult("Moved entity order through the command history.");
+    return okResult("Moved GameObject order through the command history.");
 }
 
 ActionResult EditorActionExecutor::selectEntities(const Json& arguments) {
@@ -2518,7 +2518,7 @@ ActionResult EditorActionExecutor::selectEntities(const Json& arguments) {
             Json tmp = Json::object();
             tmp["entity_id"] = idNode;
             Entity entity = resolveEntity(sceneProject, tmp);
-            if (entity == NULL_ENTITY) return failResult("Entity not found in entity_ids.");
+            if (entity == NULL_ENTITY) return failResult("GameObject not found in entity_ids.");
             selected.push_back(entity);
         }
     } else if (arguments.contains("entity_names") && arguments["entity_names"].is_array()) {
@@ -2526,16 +2526,16 @@ ActionResult EditorActionExecutor::selectEntities(const Json& arguments) {
             Json tmp = Json::object();
             tmp["entity_name"] = nameNode;
             Entity entity = resolveEntity(sceneProject, tmp);
-            if (entity == NULL_ENTITY) return failResult("Entity not found in entity_names.");
+            if (entity == NULL_ENTITY) return failResult("GameObject not found in entity_names.");
             selected.push_back(entity);
         }
     } else {
         Entity entity = resolveEntity(sceneProject, arguments);
-        if (entity == NULL_ENTITY) return failResult("Entity not found.");
+        if (entity == NULL_ENTITY) return failResult("GameObject not found.");
         selected.push_back(entity);
     }
 
-    if (selected.empty()) return failResult("No entities to select.");
+    if (selected.empty()) return failResult("No GameObjects to select.");
     project->clearSelectedEntities(sceneId);
     for (Entity entity : selected) {
         project->addSelectedEntity(sceneId, entity);
@@ -2543,7 +2543,7 @@ ActionResult EditorActionExecutor::selectEntities(const Json& arguments) {
 
     Json ids = Json::array();
     for (Entity entity : selected) ids.push_back(entity);
-    return okResult("Updated entity selection.", Json{{"scene_id", sceneId}, {"entity_ids", ids}});
+    return okResult("Updated GameObject selection.", Json{{"scene_id", sceneId}, {"entity_ids", ids}});
 }
 
 ActionResult EditorActionExecutor::addComponent(const Json& arguments) {
@@ -2551,11 +2551,11 @@ ActionResult EditorActionExecutor::addComponent(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
     if (hasComponent(sceneProject->scene, entity, component)) {
-        return failResult("Entity already has component.");
+        return failResult("GameObject already has component.");
     }
     CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, entity, component));
     return okResult("Added component through the command history.");
@@ -2566,11 +2566,11 @@ ActionResult EditorActionExecutor::removeComponent(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
     if (!hasComponent(sceneProject->scene, entity, component)) {
-        return failResult("Entity does not have component.");
+        return failResult("GameObject does not have component.");
     }
     CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveComponentCmd(project, sceneId, entity, component));
     return okResult("Removed component through the command history.");
@@ -2582,7 +2582,7 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     Shape3D shape;
     if (!parseBodyShape3DType(arguments.value("shape_type", ""), shape.type)) {
@@ -2593,7 +2593,7 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
 
     if (isMeshDerivedShape3DType(shape.type)) {
         if (!meshComp) {
-            return failResult("convex_hull and mesh shapes derive their geometry from the entity's mesh.");
+            return failResult("convex_hull and mesh Colliders derive their geometry from the GameObject's mesh.");
         }
         shape.source = Shape3DSource::ENTITY_MESH;
         shape.sourceEntity = entity;
@@ -2611,7 +2611,7 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
         Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
         fitted = meshComp && transform && fitShapeToMeshBounds(meshComp->aabb, transform->worldScale, shape);
         if (!fitted && fitExplicit) {
-            return failResult("fit_to_mesh needs an entity mesh with measurable bounds.");
+            return failResult("fit_to_mesh needs a GameObject mesh with measurable bounds.");
         }
     }
 
@@ -2671,7 +2671,7 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
 
     // fitted_to_mesh is the one result the caller cannot infer from its own arguments
-    return okResult("Added a Body3D shape through the command history.",
+    return okResult("Added a Collider to the Rigidbody (Body3DComponent) through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity},
                          {"body_added", body == nullptr}, {"shape_index", shapeIndex},
                          {"shape_type", arguments.value("shape_type", "")},
@@ -2684,7 +2684,7 @@ ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     const std::string shapeName = lower(arguments.value("shape_type", ""));
     Shape2D shape;
@@ -2776,7 +2776,7 @@ ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
                                      "numShapes", shapeIndex + 1);
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
 
-    return okResult("Added a Body2D shape through the command history.",
+    return okResult("Added a Collider 2D to the Rigidbody 2D (Body2DComponent) through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity},
                          {"body_added", body == nullptr}, {"shape_index", shapeIndex},
                          {"shape_type", shapeName}});
@@ -2787,7 +2787,7 @@ ActionResult EditorActionExecutor::setComponentProperty(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
@@ -2810,7 +2810,7 @@ ActionResult EditorActionExecutor::setTextureSettings(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
@@ -2898,7 +2898,7 @@ ActionResult EditorActionExecutor::addProjectScene(const Json& arguments) {
     if (!safeRelativePath(project, arguments, "scene_path", sceneRel, error, true)) return failResult(error);
     if (!Util::isSceneFile(sceneRel.string())) return failResult("scene_path must point to a .scene file.");
     if (project->isAnyScenePlaying()) {
-        return failResult("Cannot change the project scenes while play mode is active.");
+        return failResult("Cannot change the project scenes (Scenes in Build) while in Play mode.");
     }
 
     const uint32_t existingSceneId = project->findSceneByPath(sceneRel);
@@ -3075,9 +3075,9 @@ ActionResult EditorActionExecutor::controlPlayMode(const Json& arguments) {
     else if (action == "pause") project->pause(sceneId);
     else if (action == "resume") project->resume(sceneId);
     else if (action == "stop") project->stop(sceneId);
-    else return failResult("Unsupported play mode action. Use start, pause, resume, or stop.");
+    else return failResult("Unsupported Play mode action. Use start, pause, resume, or stop.");
 
-    return okResult("Sent play mode command.", Json{{"scene_id", sceneId}, {"action", action}});
+    return okResult("Sent Play mode command.", Json{{"scene_id", sceneId}, {"action", action}});
 }
 
 ActionResult EditorActionExecutor::addChildScene(const Json& arguments) {
@@ -3169,7 +3169,7 @@ ActionResult EditorActionExecutor::renameResource(const Json& arguments) {
     project->getProjectCommandHistory()->addCommandNoMerge(
         new RenameFileCmd(project, rel.filename().string(), newName, full.parent_path().string()));
     if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
-    return okResult("Renamed resource through the project command history.");
+    return okResult("Renamed asset through the project command history.");
 }
 
 ActionResult EditorActionExecutor::deleteResource(const Json& arguments) {
@@ -3184,7 +3184,7 @@ ActionResult EditorActionExecutor::deleteResource(const Json& arguments) {
     project->getProjectCommandHistory()->addCommandNoMerge(
         new DeleteFileCmd(project, std::vector<fs::path>{full}, project->getProjectPath()));
     if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
-    return okResult("Deleted resource through the project command history.");
+    return okResult("Deleted asset through the project command history.");
 }
 
 ActionResult EditorActionExecutor::importResourceFile(const Json& arguments) {
@@ -3204,7 +3204,7 @@ ActionResult EditorActionExecutor::importResourceFile(const Json& arguments) {
     project->getProjectCommandHistory()->addCommandNoMerge(
         new CopyFileCmd(project, std::vector<std::string>{source.string()}, targetFull.string(), true));
     if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
-    return okResult("Imported resource file through the project command history.");
+    return okResult("Imported asset file through the project command history.");
 }
 
 ActionResult EditorActionExecutor::linkMaterial(const Json& arguments) {
@@ -3212,8 +3212,8 @@ ActionResult EditorActionExecutor::linkMaterial(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
-    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("Entity has no Mesh component.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
+    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("GameObject has no Mesh component.");
 
     std::string error;
     fs::path rel;
@@ -3244,8 +3244,8 @@ ActionResult EditorActionExecutor::unlinkMaterial(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
-    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("Entity has no Mesh component.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
+    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("GameObject has no Mesh component.");
 
     const unsigned int submeshIndex = static_cast<unsigned int>(std::max(0, arguments.value("submesh_index", 0)));
     const std::string propertyName = "submeshes[" + std::to_string(submeshIndex) + "].material";
@@ -3263,8 +3263,8 @@ ActionResult EditorActionExecutor::createMaterialFile(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
-    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("Entity has no Mesh component.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
+    if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) return failResult("GameObject has no Mesh component.");
 
     std::string error;
     fs::path targetRel;
@@ -3293,7 +3293,7 @@ ActionResult EditorActionExecutor::setTerrainTextures(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveTerrainEntity(project, sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Terrain entity not found.");
+    if (entity == NULL_ENTITY) return failResult("Terrain GameObject not found.");
 
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entity);
     std::vector<Texture> blendMaps = terrain.blendMaps;
@@ -3420,7 +3420,7 @@ ActionResult EditorActionExecutor::createTerrainBlendmap(const Json& arguments) 
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveTerrainEntity(project, sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Terrain entity not found.");
+    if (entity == NULL_ENTITY) return failResult("Terrain GameObject not found.");
 
     int resolution = arguments.value("resolution", project->getTerrainEditorSettings().blendMapResolution);
     resolution = std::max(2, std::min(2048, resolution));
@@ -3460,7 +3460,7 @@ ActionResult EditorActionExecutor::addTerrainCollision(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveTerrainEntity(project, sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Terrain entity not found.");
+    if (entity == NULL_ENTITY) return failResult("Terrain GameObject not found.");
 
     Body3DComponent* body = sceneProject->scene->findComponent<Body3DComponent>(entity);
     const size_t shapeIdx = body ? body->numShapes : 0;
@@ -3494,7 +3494,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     const std::string className = sanitizeIdentifier(arguments.value("class_name", "NewScript"), "NewScript");
     fs::path targetRel = arguments.value("target_dir", std::string("scripts"));
@@ -3630,7 +3630,7 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     std::string error;
     fs::path sourceRel;
@@ -3697,10 +3697,10 @@ ActionResult EditorActionExecutor::updateScriptEntry(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-    if (!component) return failResult("Entity has no ScriptComponent.");
+    if (!component) return failResult("GameObject has no ScriptComponent.");
 
     std::vector<ScriptEntry> scripts = component->scripts;
     size_t index = 0;
@@ -3745,10 +3745,10 @@ ActionResult EditorActionExecutor::removeScriptEntry(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-    if (!component) return failResult("Entity has no ScriptComponent.");
+    if (!component) return failResult("GameObject has no ScriptComponent.");
 
     std::vector<ScriptEntry> scripts = component->scripts;
     size_t index = 0;
@@ -3845,13 +3845,13 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
     Out::info("AI updated script file: %s", relString.c_str());
 
     const std::string verifyStep =
-        "Verify this change before telling the user it works: start the scene with "
-        "control_play_mode (action=start), then read_output_log to check for a C++ build "
+        "Verify this change before telling the user it works: enter Play mode with "
+        "control_play_mode (action=start), then read_output_log to check the Console for a C++ build "
         "failure or a runtime 'Script crash'. If it is still building, read_output_log again. "
-        "If there are errors, fix them with update_script_file and verify again; when the log "
-        "is clean, stop play with control_play_mode (action=stop).";
+        "If there are errors, fix them with update_script_file and verify again; when the Console "
+        "is clean, exit Play mode with control_play_mode (action=stop).";
 
-    return okResult("Updated script file. Now verify it by running the scene (see next_step).",
+    return okResult("Updated script file. Now verify it by entering Play mode (see next_step).",
                     Json{{"path", relString},
                          {"bytes", content.size()},
                          {"refreshed_script_components", refreshedComponents},
@@ -3917,8 +3917,8 @@ ActionResult EditorActionExecutor::createSourceFile(const Json& arguments) {
     } else {
         nextStep = inScriptDir
             ? "It compiles as its own translation unit. Verify it with control_play_mode (action=start) and "
-              "read_output_log, then stop play. Play only builds C++ when an enabled C++ script is attached to "
-              "an entity, so in a Lua-only project nothing is compiled until export."
+              "read_output_log, then exit Play mode. Play only builds C++ when an enabled C++ script is attached to "
+              "a GameObject, so in a Lua-only project nothing is compiled until a build from Build Settings."
             : "The editor build never compiles it there; it only reaches the build through an attached script "
               "that includes it. Add its root with set_project_script_dirs to compile it on its own.";
     }
@@ -3981,7 +3981,7 @@ ActionResult EditorActionExecutor::setProjectScriptDirs(const Json& arguments) {
 
     return okResult(scriptDirs.empty()
                         ? "Cleared the project script directories."
-                        : "Set the project script directories. The next play or export builds with them.",
+                        : "Set the project script directories. The next Play or build builds with them.",
                     Json{{"script_dirs", scriptDirs}});
 }
 
@@ -4004,7 +4004,7 @@ ActionResult EditorActionExecutor::setProjectCxxStandard(const Json& arguments) 
     }
 
     return okResult("Set the project C++ standard to C++" + std::to_string(project->getCxxStandard())
-                        + ". The next play or export builds with it.",
+                        + ". The next Play or build builds with it.",
                     Json{{"cxx_standard", project->getCxxStandard()}});
 }
 
@@ -4041,10 +4041,10 @@ ActionResult EditorActionExecutor::updateProjectBuildFile(const Json& arguments)
     Out::info("AI updated ProjectBuild.cmake");
 
     const std::string verifyStep =
-        "Verify it before telling the user it works: start the scene with control_play_mode (action=start), "
-        "then read_output_log for CMake or compiler errors; fix them here and verify again, then stop play. "
-        "Play only configures CMake when an enabled C++ script is attached to an entity, so a Lua-only project "
-        "first reads this file on export.";
+        "Verify it before telling the user it works: enter Play mode with control_play_mode (action=start), "
+        "then read_output_log for CMake or compiler errors in the Console; fix them here and verify again, then exit Play mode. "
+        "Play only configures CMake when an enabled C++ script is attached to a GameObject, so a Lua-only project "
+        "first reads this file on a build from Build Settings.";
 
     return okResult("Updated ProjectBuild.cmake (see next_step).",
                     Json{{"path", "ProjectBuild.cmake"},
@@ -4057,21 +4057,21 @@ ActionResult EditorActionExecutor::createBundleFromEntity(const Json& arguments)
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     std::string error;
     fs::path bundleRel;
     if (!safeRelativePath(project, arguments, "bundle_path", bundleRel, error, false)) return failResult(error);
     if (!Util::isBundleFile(bundleRel.string())) return failResult("bundle_path must end with .bundle.");
-    if (fs::exists(project->getProjectPath() / bundleRel)) return failResult("Bundle file already exists.");
+    if (fs::exists(project->getProjectPath() / bundleRel)) return failResult("Prefab (.bundle) file already exists.");
 
     YAML::Node node = Stream::encodeEntitySelection(std::vector<Entity>{entity}, sceneProject->scene, project, sceneProject);
-    if (!node || !node.IsMap()) return failResult("Failed to encode entity selection.");
+    if (!node || !node.IsMap()) return failResult("Failed to encode GameObject selection.");
     fs::create_directories((project->getProjectPath() / bundleRel).parent_path());
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new CreateEntityBundleCmd(project, sceneId, bundleRel, node));
     if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
-    return okResult("Created bundle from entity through the command history.");
+    return okResult("Created Prefab from GameObject through the command history.");
 }
 
 ActionResult EditorActionExecutor::importBundleInstance(const Json& arguments) {
@@ -4087,14 +4087,14 @@ ActionResult EditorActionExecutor::importBundleInstance(const Json& arguments) {
     Entity parent = NULL_ENTITY;
     if (arguments.contains("parent_id")) {
         parent = resolveEntityByKeys(sceneProject, arguments, "parent_id", "parent_name");
-        if (parent == NULL_ENTITY) return failResult("Parent entity not found.");
+        if (parent == NULL_ENTITY) return failResult("Parent GameObject not found.");
     }
 
     auto* cmd = new ImportEntityBundleCmd(project, sceneId, bundleRel, parent, true);
     CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
     Json imported = Json::array();
     for (Entity importedEntity : cmd->getImportedEntities()) imported.push_back(importedEntity);
-    return okResult("Imported bundle instance through the command history.", Json{{"imported_entities", imported}});
+    return okResult("Instantiated Prefab through the command history.", Json{{"imported_entities", imported}});
 }
 
 ActionResult EditorActionExecutor::addEntityToBundle(const Json& arguments) {
@@ -4102,12 +4102,12 @@ ActionResult EditorActionExecutor::addEntityToBundle(const Json& arguments) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     Entity bundleRoot = resolveEntityByKeys(sceneProject, arguments, "bundle_root_id", "bundle_root_name");
-    if (bundleRoot == NULL_ENTITY) return failResult("Bundle root entity not found.");
+    if (bundleRoot == NULL_ENTITY) return failResult("Prefab instance root GameObject not found.");
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, entity, bundleRoot));
-    return okResult("Added entity to bundle through the command history.");
+    return okResult("Added GameObject to Prefab through the command history.");
 }
 
 ActionResult EditorActionExecutor::removeEntityFromBundle(const Json& arguments) {
@@ -4115,13 +4115,13 @@ ActionResult EditorActionExecutor::removeEntityFromBundle(const Json& arguments)
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
-    if (!project->isEntityInBundle(sceneId, entity)) return failResult("Entity is not part of a bundle.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
+    if (!project->isEntityInBundle(sceneId, entity)) return failResult("GameObject is not part of a Prefab.");
 
     Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
     Entity parent = transform ? transform->parent : NULL_ENTITY;
     CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, entity, parent));
-    return okResult("Removed entity from bundle through the command history.");
+    return okResult("Removed GameObject from Prefab through the command history.");
 }
 
 ActionResult EditorActionExecutor::makeBundleComponentUnique(const Json& arguments) {
@@ -4129,12 +4129,12 @@ ActionResult EditorActionExecutor::makeBundleComponentUnique(const Json& argumen
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToBundleLocalCmd(project, sceneId, entity, component));
-    return okResult("Made bundle component unique through the command history.");
+    return okResult("Made Prefab component a local override through the command history.");
 }
 
 ActionResult EditorActionExecutor::revertBundleComponent(const Json& arguments) {
@@ -4142,12 +4142,12 @@ ActionResult EditorActionExecutor::revertBundleComponent(const Json& arguments) 
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToBundleSharedCmd(project, sceneId, entity, component));
-    return okResult("Reverted bundle component through the command history.");
+    return okResult("Reverted Prefab component override through the command history.");
 }
 
 ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
@@ -4163,7 +4163,7 @@ ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
 
     const EntityBundle* bundle = project->getEntityBundle(bundleRel);
     if (standalone && bundle && !bundle->instances.empty()) {
-        return failResult("Bundle is instantiated in a scene and is already built, it does not need to be standalone.");
+        return failResult("Prefab is instantiated in a scene and is already built, it does not need to be standalone.");
     }
 
     std::vector<fs::path> bundlePaths = project->getStandaloneBundles();
@@ -4171,7 +4171,7 @@ ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
     const bool listed = it != bundlePaths.end();
 
     if (standalone == listed) {
-        return okResult(listed ? "Bundle is already standalone." : "Bundle is not standalone.");
+        return okResult(listed ? "Prefab is already standalone." : "Prefab is not standalone.");
     }
 
     if (standalone) {
@@ -4182,12 +4182,12 @@ ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
 
     project->setStandaloneBundles(std::move(bundlePaths));
     project->saveProjectFile();
-    return okResult(standalone ? "Added the bundle to the standalone bundles." : "Removed the bundle from the standalone bundles.",
+    return okResult(standalone ? "Added the Prefab to the standalone Prefabs." : "Removed the Prefab from the standalone Prefabs.",
         Json{{"bundle_path", bundleRel.generic_string()}, {"standalone", standalone}});
 }
 
 ActionResult EditorActionExecutor::exportProject(const Json& arguments, const std::atomic<bool>* cancel) {
-    if (cancel && cancel->load()) return failResult("Export cancelled.");
+    if (cancel && cancel->load()) return failResult("Build cancelled.");
     ExportConfig config;
     config.targetDir = arguments.value("target_dir", "");
     // Stored references are relative to these roots, so they are not overridable
@@ -4203,9 +4203,9 @@ ActionResult EditorActionExecutor::exportProject(const Json& arguments, const st
     const bool success = exporter.exportProject(project, config);
     ExportProgress progress = exporter.getProgress();
     if (!success) {
-        return failResult(progress.errorMessage.empty() ? "Export failed." : progress.errorMessage);
+        return failResult(progress.errorMessage.empty() ? "Build failed." : progress.errorMessage);
     }
-    return okResult("Exported project.", Json{{"target_dir", config.targetDir.generic_string()}});
+    return okResult("Built project.", Json{{"target_dir", config.targetDir.generic_string()}});
 }
 
 ActionResult EditorActionExecutor::generateShaders(const Json& arguments, const std::atomic<bool>* cancel) {
@@ -4685,12 +4685,12 @@ ActionResult EditorActionExecutor::createTerrainHeightmap(const Json& arguments)
 
     Entity entity = resolveTerrainEntity(project, sceneProject, arguments);
     if (entity == NULL_ENTITY) {
-        return failResult("Terrain entity not found. Provide entity_id/entity_name or select a terrain.");
+        return failResult("Terrain GameObject not found. Provide entity_id/entity_name or select a terrain.");
     }
 
     TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(entity);
     if (!terrain) {
-        return failResult("Entity is not a terrain.");
+        return failResult("GameObject is not a terrain.");
     }
 
     int resolution = arguments.value("resolution", project->getTerrainEditorSettings().heightMapResolution);
@@ -4970,22 +4970,22 @@ ActionResult EditorActionExecutor::readResourceFile(const Json& arguments) {
     const fs::path fullPath = projectRoot / rel;
     if (!fs::exists(fullPath)) {
         return expectedMissResult(
-            "Resource file not found: " + rel.generic_string());
+            "Asset file not found: " + rel.generic_string());
     }
     std::ifstream in(fullPath, std::ios::binary);
     if (!in) {
         return failResult(
-            "Failed to open resource file: " + rel.generic_string());
+            "Failed to open asset file: " + rel.generic_string());
     }
 
     constexpr size_t kMaxBytes = 512 * 1024;
     std::string content;
     content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     if (content.size() > kMaxBytes) {
-        return warningResult("Resource file is too large to read (max 512 KB).");
+        return warningResult("Asset file is too large to read (max 512 KB).");
     }
 
-    return okResult("Read resource file.",
+    return okResult("Read asset file.",
                     Json{{"path", rel.lexically_normal().generic_string()},
                          {"bytes", content.size()},
                          {"content", content}});
@@ -5122,7 +5122,7 @@ ActionResult EditorActionExecutor::readOutputLog(const Json& arguments) {
         log = "... (older output truncated)\n" + log.substr(log.size() - kMaxBytes);
     }
 
-    return okResult("Recent editor output log.", Json{{"log", log}});
+    return okResult("Recent Console log.", Json{{"log", log}});
 }
 
 ActionResult EditorActionExecutor::setMainCamera(const Json& arguments) {
@@ -5135,9 +5135,9 @@ ActionResult EditorActionExecutor::setMainCamera(const Json& arguments) {
         cameraEntity = NULL_ENTITY;
     } else {
         cameraEntity = resolveEntity(sceneProject, arguments);
-        if (cameraEntity == NULL_ENTITY) return failResult("Camera entity not found.");
+        if (cameraEntity == NULL_ENTITY) return failResult("Camera GameObject not found.");
         if (!sceneProject->scene->findComponent<CameraComponent>(cameraEntity)) {
-            return failResult("Entity does not have a Camera component.");
+            return failResult("GameObject does not have a Camera component.");
         }
     }
 
@@ -5156,7 +5156,7 @@ ActionResult EditorActionExecutor::openScene(const Json& arguments) {
         return failResult("scene_path must point to a .scene file.");
     }
     if (project->isAnyScenePlaying()) {
-        return failResult("Cannot open a scene while play mode is active.");
+        return failResult("Cannot open a scene while in Play mode.");
     }
 
     const bool closePrevious = arguments.value("close_previous", false);
@@ -5182,9 +5182,9 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     if (!hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent)) {
-        return failResult("Entity has no Mesh component.");
+        return failResult("GameObject has no Mesh component.");
     }
 
     // Any mesh may be replaced by a primitive except one whose geometry is regenerated for it:
@@ -5192,10 +5192,10 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
     // which would throw the primitive away as soon as that component is next dirtied.
     Signature signature = sceneProject->scene->getSignature(entity);
     if (Stream::isModelBackedMesh(entity, sceneProject->scene, signature)) {
-        return failResult("Entity geometry comes from a model file and is rebuilt from that source on load.");
+        return failResult("GameObject geometry comes from a model file and is rebuilt from that source on load.");
     }
     if (Stream::isGeneratedMesh(sceneProject->scene, signature)) {
-        return failResult("Entity geometry is generated from its sprite, tilemap, mesh polygon, or terrain component and is rebuilt on load.");
+        return failResult("GameObject geometry is generated from its sprite, tilemap, mesh polygon, or terrain component and is rebuilt on load.");
     }
 
     MeshComponent meshComp = sceneProject->scene->getComponent<MeshComponent>(entity);
@@ -5228,13 +5228,13 @@ ActionResult EditorActionExecutor::deleteScene(const Json& arguments) {
         return failResult("Cannot delete the last scene in the project.");
     }
     if (project->isAnyScenePlaying()) {
-        return failResult("Cannot delete a scene while play mode is active.");
+        return failResult("Cannot delete a scene while in Play mode.");
     }
     if (sceneProject->filepath.empty()) {
         return failResult("Cannot delete an unsaved scene through AI because it cannot be restored on undo.");
     }
     if (project->hasSceneUnsavedChanges(sceneId)) {
-        return failResult("Save the scene and its dependent resources before deleting it through AI.");
+        return failResult("Save the scene and its dependent assets before deleting it through AI.");
     }
 
     const std::string sceneName = sceneProject->name;
@@ -5273,7 +5273,7 @@ ActionResult EditorActionExecutor::copyResource(const Json& arguments) {
     project->getProjectCommandHistory()->addCommandNoMerge(
         new CopyFileCmd(project, std::vector<std::string>{sourceFull.string()}, targetFull.string(), true));
     if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
-    return okResult("Copied resource through the project command history.",
+    return okResult("Copied asset through the project command history.",
                     Json{{"source_path", sourceRel.generic_string()},
                          {"target_dir", targetRel.generic_string()}});
 }
@@ -5318,7 +5318,7 @@ ActionResult EditorActionExecutor::setComponentProperties(const Json& arguments)
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
     if (!arguments.contains("properties") || !arguments["properties"].is_array() || arguments["properties"].empty()) {
         return failResult("properties must be a non-empty array.");
     }
@@ -5406,10 +5406,10 @@ ActionResult EditorActionExecutor::addTilemapTile(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     TilemapComponent* tilemap = sceneProject->scene->findComponent<TilemapComponent>(entity);
-    if (!tilemap) return failResult("Entity has no Tilemap component.");
+    if (!tilemap) return failResult("GameObject has no Tilemap component.");
 
     const int rectIndex = arguments.value("rect_index", 0);
     if (rectIndex < 0 || static_cast<unsigned int>(rectIndex) >= tilemap->numTilesRect) {
@@ -5457,7 +5457,7 @@ ActionResult EditorActionExecutor::removeTilemapTile(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     const unsigned int tileIndex = static_cast<unsigned int>(std::max(0, arguments.value("tile_index", 0)));
     Command* cmd = ProjectUtils::buildDeleteTileCmd(project, sceneId, entity, tileIndex);
@@ -5473,7 +5473,7 @@ ActionResult EditorActionExecutor::duplicateTilemapTile(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     const unsigned int tileIndex = static_cast<unsigned int>(std::max(0, arguments.value("tile_index", 0)));
     TilemapComponent* tilemap = sceneProject->scene->findComponent<TilemapComponent>(entity);
@@ -5492,10 +5492,10 @@ ActionResult EditorActionExecutor::addAnimationAction(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     AnimationComponent* anim = sceneProject->scene->findComponent<AnimationComponent>(entity);
-    if (!anim) return failResult("Entity has no Animation component.");
+    if (!anim) return failResult("GameObject has no Animation component.");
 
     ActionFrame frame;
     frame.startTime = arguments.value("start_time", 0.0f);
@@ -5511,7 +5511,7 @@ ActionResult EditorActionExecutor::addAnimationAction(const Json& arguments) {
 
     ActionSystem* actionSystem = sceneProject->scene->getSystem<ActionSystem>().get();
     if (frame.action != NULL_ENTITY && actionSystem->isAnimationReachable(frame.action, entity)) {
-        return failResult("This action would create an animation cycle (the animation would contain itself directly or through nested animations).");
+        return failResult("This Tween (action) would create an animation cycle (the animation would contain itself directly or through nested animations).");
     }
 
     std::vector<ActionFrame> actions = anim->actions;
@@ -5522,14 +5522,14 @@ ActionResult EditorActionExecutor::addAnimationAction(const Json& arguments) {
         const float startB = frame.startTime;
         const float endB = startB + actionSystem->getFrameDuration(frame);
         if (std::max(startA, startB) < std::min(endA, endB)) {
-            return failResult("New action overlaps an existing action on the same track.");
+            return failResult("New Tween (action) overlaps an existing one on the same track.");
         }
     }
     actions.push_back(frame);
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<std::vector<ActionFrame>>(
         project, sceneId, entity, ComponentType::AnimationComponent, "actions", actions));
-    return okResult("Added animation action through the command history.",
+    return okResult("Added Tween (action) to the animation through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity}, {"action_index", actions.size() - 1}});
 }
 
@@ -5539,10 +5539,10 @@ ActionResult EditorActionExecutor::removeAnimationAction(const Json& arguments) 
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     AnimationComponent* anim = sceneProject->scene->findComponent<AnimationComponent>(entity);
-    if (!anim) return failResult("Entity has no Animation component.");
+    if (!anim) return failResult("GameObject has no Animation component.");
 
     const size_t actionIndex = static_cast<size_t>(std::max(0, arguments.value("action_index", 0)));
     if (actionIndex >= anim->actions.size()) return failResult("action_index is out of range.");
@@ -5551,7 +5551,7 @@ ActionResult EditorActionExecutor::removeAnimationAction(const Json& arguments) 
     actions.erase(actions.begin() + static_cast<std::ptrdiff_t>(actionIndex));
     CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<std::vector<ActionFrame>>(
         project, sceneId, entity, ComponentType::AnimationComponent, "actions", actions));
-    return okResult("Removed animation action through the command history.",
+    return okResult("Removed Tween (action) from the animation through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity}, {"removed_action_index", actionIndex}});
 }
 
@@ -5561,10 +5561,10 @@ ActionResult EditorActionExecutor::setKeyframeTimes(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     KeyframeTracksComponent* keyframes = sceneProject->scene->findComponent<KeyframeTracksComponent>(entity);
-    if (!keyframes) return failResult("Entity has no KeyframeTracks component.");
+    if (!keyframes) return failResult("GameObject has no KeyframeTracks component.");
 
     std::vector<float> times;
     if (arguments.contains("times") && arguments["times"].is_array()) {
@@ -5624,10 +5624,10 @@ ActionResult EditorActionExecutor::setKeyframeEasing(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     KeyframeTracksComponent* keyframes = sceneProject->scene->findComponent<KeyframeTracksComponent>(entity);
-    if (!keyframes) return failResult("Entity has no KeyframeTracks component.");
+    if (!keyframes) return failResult("GameObject has no KeyframeTracks component.");
 
     size_t segments = keyframes->times.size() > 1 ? keyframes->times.size() - 1 : 0;
     if (segments == 0) return failResult("Track needs at least two keyframe times before easing can be set.");

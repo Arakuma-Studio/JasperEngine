@@ -148,7 +148,7 @@ std::string luaCallHint(const std::string& detail, const std::string& parent) {
     }
     if (parentLower == "shape" && detailLower.find(":setcolor()") == std::string::npos &&
         detailLower.find("shape") != std::string::npos && detailLower.find("constructor") != std::string::npos) {
-        return "Construct with Shape(self.scene, self.entity) for an existing entity.";
+        return "Construct with Shape(self.scene, self.entity) for an existing GameObject.";
     }
     return {};
 }
@@ -364,7 +364,7 @@ Json AiEngineApiContext::search(const std::string& query,
                   parent + "." + property + " instead.";
         }
         if (entry.value("kind", "") == "Property" && contains(entry.value("detail", ""), " (copy)")) {
-            entry["lua_note"] = "Returns a copy. Changing its fields does not update the object. "
+            entry["lua_note"] = "Returns a copy. Changing its fields does not update the instance it came from. "
                                 "Assign the modified value back to apply changes.";
         }
         results.push_back(std::move(entry));

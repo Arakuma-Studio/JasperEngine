@@ -1208,9 +1208,9 @@ void AiChatWindow::drawTranscript(float height) {
     if (messages.empty() && !busy) {
         ImGui::BeginChild("##AiEmpty", ImVec2(0, height), 0, ImGuiWindowFlags_NoNav);
         ImGui::Spacing();
-        ImGui::TextDisabled("Ask about your project, scene, or resources,");
+        ImGui::TextDisabled("Ask about your project, scene, or assets,");
         ImGui::TextDisabled("or request an editor action such as");
-        ImGui::TextDisabled("\"add a point light above the player\".");
+        ImGui::TextDisabled("\"add a Point Light above the Player GameObject\".");
         if (ai::SecretStore::configuredAccounts(service.getSettings()).empty()) {
             ImGui::Spacing();
             if (ImGui::Button(ICON_FA_KEY " Set API key")) {
@@ -1711,7 +1711,7 @@ const char* AiChatWindow::mentionKindLabel(MentionKind kind) {
         case MentionKind::Selection: return "Selection";
         case MentionKind::Project: return "Project";
         case MentionKind::Scene: return "Scene";
-        case MentionKind::Entity: return "Entity";
+        case MentionKind::Entity: return "GameObject";
         case MentionKind::OpenFile: return "Open file";
         case MentionKind::File: return "File";
     }
@@ -1752,7 +1752,7 @@ void AiChatWindow::collectMentionCandidates(std::vector<MentionItem>& out) const
         if (!selected.empty()) {
             std::string detail = selected.size() == 1
                 ? selectedScene->scene->getEntityName(selected.front())
-                : std::to_string(selected.size()) + " entities";
+                : std::to_string(selected.size()) + " GameObjects";
             addItem(MentionKind::Selection, "selection", "@selection", detail);
         }
     }
@@ -1769,10 +1769,10 @@ void AiChatWindow::collectMentionCandidates(std::vector<MentionItem>& out) const
         for (Entity entity : selectedScene->entities) {
             std::string name = selectedScene->scene->getEntityName(entity);
             if (name.empty()) {
-                name = "Entity " + std::to_string(static_cast<unsigned>(entity));
+                name = "GameObject " + std::to_string(static_cast<unsigned>(entity));
             }
             addItem(MentionKind::Entity, name, formatMentionInsert(name),
-                    "Entity #" + std::to_string(static_cast<unsigned>(entity)));
+                    "GameObject #" + std::to_string(static_cast<unsigned>(entity)));
         }
     }
 
@@ -2302,7 +2302,7 @@ void AiChatWindow::handlePromptDrop(float maxLineWidth) {
                     }
                     std::string name = sceneProject->scene->getEntityName(entity);
                     if (name.empty()) {
-                        name = "Entity " + std::to_string(static_cast<unsigned>(entity));
+                        name = "GameObject " + std::to_string(static_cast<unsigned>(entity));
                     }
                     mentions.push_back(std::move(name));
                 }
