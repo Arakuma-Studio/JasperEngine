@@ -8,6 +8,8 @@
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
+# SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism.
+# From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,6 +45,10 @@ esac
 IMAGE="jasperengine/${TARGET}-build"
 OUT="build/$TARGET"
 CACHE="build/.cache"
+# The main checkout, even when running from a git worktree.
+MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+JOBS_FLAG=""
+[[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
 
 # Rebuilding an unchanged image is a no-op thanks to the layer cache.
 docker build -q -t "$IMAGE" -f "$ROOT/docker/$TARGET.Dockerfile" "$ROOT/docker" >/dev/null
@@ -51,7 +57,7 @@ if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
     docker run --rm -v "$ROOT:/src" -w /src "$IMAGE" rm -rf "$OUT"
 fi
-mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$ROOT/$CACHE/ccache"
+mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
@@ -60,8 +66,10 @@ run() {
     docker run --rm "${TTY_FLAGS[@]}" \
         --user "$(id -u):$(id -g)" \
         -v "$ROOT:/src" -w /src \
+        -v "$MAIN/.git:$MAIN/.git:ro" \
+        -v "$MAIN/$CACHE/ccache:/ccache" \
         -e HOME="/src/$CACHE/home" \
-        -e CCACHE_DIR="/src/$CACHE/ccache" \
+        -e CCACHE_DIR=/ccache \
         -e GRADLE_USER_HOME="/src/$CACHE/gradle" \
         "$IMAGE" "$@"
 }
@@ -79,10 +87,11 @@ linux)
     run bash -euo pipefail -c "
         cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT \
             -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
-        cmake --build $OUT/editor --target $EDITOR_TARGET
+        cmake --build $OUT/editor --target $EDITOR_TARGET $JOBS_FLAG
         cmake --install $OUT/editor --strip
+        [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
-        cmake --build $OUT/engine --target $ENGINE_TARGET
+        cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG
         ccache --show-stats --verbose | grep -E 'Hits|Misses' || true
     "
     ;;
