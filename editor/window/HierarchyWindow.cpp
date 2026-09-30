@@ -27,6 +27,7 @@
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
+#include "command/type/UnpackPrefabCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityPayload.h"
@@ -743,12 +744,34 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         }
     }
 
-    if (node.isPrefab || node.isPrefabRoot) {
-        ImGui::Separator();
+    // Unity acts on the whole selection when the clicked row is part of it; a GameObject
+    // inside an instance stands for the outermost instance holding it
+    std::vector<Entity> targets = project->getSelectedEntities(sceneId);
+    if (targets.empty() || !project->isSelectedEntity(sceneId, node.id)) {
+        targets = {node.id};
+    }
+    const bool canUnpack = UnpackPrefabCmd::canUnpack(project, sceneId, targets);
+
+    if (node.isPrefab || node.isPrefabRoot || canUnpack) {
+        const bool itemsAbove = (!node.isPrefab && !node.isParentPrefab) ||
+            (node.isParentPrefab && !node.isPrefabRoot) || (node.isPrefabRoot && node.hasPrefabParent);
+        if (itemsAbove) {
+            ImGui::Separator();
+        }
         std::filesystem::path assetPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
         }
+        if (ImGui::MenuItem(ICON_FA_BOX_OPEN "  Unpack", nullptr, false, canUnpack)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, false));
+        }
+        ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack"
+            : "Turns the Prefab instance into regular GameObjects; nested Prefab instances stay");
+        if (ImGui::MenuItem(ICON_FA_BOXES_PACKING "  Unpack Completely", nullptr, false, canUnpack)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, true));
+        }
+        ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack"
+            : "Turns the Prefab instance and every Prefab instance inside it into regular GameObjects");
     }
 }
 

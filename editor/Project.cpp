@@ -7923,6 +7923,278 @@ void editor::Project::cleanupPrefabsForScene(uint32_t sceneId){
     }
 }
 
+namespace {
+
+// A scene's prefab instances indexed in one pass, so resolving many entities never
+// rescans every prefab and member
+struct ScenePrefabIndex {
+    struct Root {
+        const std::filesystem::path* path;         // key in Project::prefabAssets
+        const editor::Prefab::Instance* instance;
+    };
+    std::unordered_map<Entity, Root> roots;           // instance root -> its instance
+    std::unordered_map<Entity, Entity> memberRoots;   // member -> root of its instance
+};
+
+ScenePrefabIndex indexScenePrefabs(const std::map<std::filesystem::path, editor::Prefab>& prefabAssets, uint32_t sceneId) {
+    ScenePrefabIndex index;
+    for (const auto& [path, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
+            continue;
+        }
+        for (const editor::Prefab::Instance& instance : sceneIt->second) {
+            if (instance.rootEntity == NULL_ENTITY) {
+                continue;
+            }
+            index.roots[instance.rootEntity] = {&path, &instance};
+            for (const editor::Prefab::EntityMember& member : instance.members) {
+                index.memberRoots[member.localEntity] = instance.rootEntity;
+            }
+        }
+    }
+    return index;
+}
+
+Entity outermostPrefabRoot(const ScenePrefabIndex& index, Entity entity) {
+    Entity current = entity;
+    if (index.roots.find(current) == index.roots.end()) {
+        auto memberIt = index.memberRoots.find(current);
+        if (memberIt == index.memberRoots.end()) {
+            return NULL_ENTITY;
+        }
+        current = memberIt->second;
+    }
+    // A nested instance root is a member of the instance holding it; the bound stops
+    // a (never expected) membership cycle
+    for (size_t depth = 0; depth < index.roots.size(); depth++) {
+        auto memberIt = index.memberRoots.find(current);
+        if (memberIt == index.memberRoots.end()) {
+            break;
+        }
+        current = memberIt->second;
+    }
+    return current;
+}
+
+} // namespace
+
+std::vector<Entity> editor::Project::getOutermostPrefabRoots(uint32_t sceneId, const std::vector<Entity>& entities) const {
+    std::vector<Entity> result(entities.size(), NULL_ENTITY);
+    if (entities.empty()) {
+        return result;
+    }
+
+    const ScenePrefabIndex index = indexScenePrefabs(prefabAssets, sceneId);
+    if (index.roots.empty()) {
+        return result;
+    }
+    for (size_t i = 0; i < entities.size(); i++) {
+        result[i] = outermostPrefabRoot(index, entities[i]);
+    }
+    return result;
+}
+
+std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(uint32_t sceneId, const std::vector<Entity>& roots, bool completely) {
+    std::vector<PrefabUnpackRecord> records;
+
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return records;
+    }
+    Scene* scene = sceneProject->scene;
+
+    const ScenePrefabIndex index = indexScenePrefabs(prefabAssets, sceneId);
+
+    // Instances to unpack
+    std::vector<Entity> unpackRoots;
+    std::unordered_set<Entity> queued;
+    for (Entity root : roots) {
+        if (index.roots.count(root) && queued.insert(root).second) {
+            unpackRoots.push_back(root);
+        }
+    }
+
+    if (completely && !unpackRoots.empty()) {
+        // Every GameObject below the roots: one pass over the transforms, where a parent
+        // always comes before its children
+        std::unordered_set<Entity> below(unpackRoots.begin(), unpackRoots.end());
+        auto transforms = scene->getComponentArray<Transform>();
+        for (size_t i = 0; i < transforms->size(); i++) {
+            const Transform& transform = transforms->getComponentFromIndex(i);
+            if (transform.parent != NULL_ENTITY && below.count(transform.parent)) {
+                below.insert(transforms->getEntity(i));
+            }
+        }
+
+        // Nested instances below in the hierarchy, added ones included, then the members
+        // that are instance roots, the only way to reach those without a Transform
+        for (size_t i = 0; i < transforms->size(); i++) {
+            Entity entity = transforms->getEntity(i);
+            if (below.count(entity) && index.roots.count(entity) && queued.insert(entity).second) {
+                unpackRoots.push_back(entity);
+            }
+        }
+        for (size_t next = 0; next < unpackRoots.size(); next++) {
+            for (const Prefab::EntityMember& member : index.roots.at(unpackRoots[next]).instance->members) {
+                if (index.roots.count(member.localEntity) && queued.insert(member.localEntity).second) {
+                    unpackRoots.push_back(member.localEntity);
+                }
+            }
+        }
+    }
+
+    if (unpackRoots.empty()) {
+        return records;
+    }
+
+    // One pass over each prefab's instance list takes its instances out. A prefab's
+    // records stay together, in ascending list position, for repackPrefabInstances.
+    std::vector<const std::filesystem::path*> prefabPaths;
+    std::unordered_set<const std::filesystem::path*> seenPaths;
+    for (Entity root : unpackRoots) {
+        const std::filesystem::path* path = index.roots.at(root).path;
+        if (seenPaths.insert(path).second) {
+            prefabPaths.push_back(path);
+        }
+    }
+
+    records.reserve(unpackRoots.size());
+    for (const std::filesystem::path* path : prefabPaths) {
+        Prefab& prefab = prefabAssets.at(*path);
+        auto sceneIt = prefab.instances.find(sceneId);
+        std::vector<Prefab::Instance>& instances = sceneIt->second;
+        size_t kept = 0;
+        for (size_t i = 0; i < instances.size(); i++) {
+            if (queued.count(instances[i].rootEntity)) {
+                PrefabUnpackRecord record;
+                record.path = *path;
+                record.index = i;
+                record.instance = std::move(instances[i]);
+                records.push_back(std::move(record));
+            } else {
+                if (kept != i) {
+                    instances[kept] = std::move(instances[i]);
+                }
+                kept++;
+            }
+        }
+        instances.erase(instances.begin() + kept, instances.end());
+        if (instances.empty()) {
+            prefab.instances.erase(sceneIt);
+        }
+    }
+
+    // The members already hold the instance's current values, overrides applied, so
+    // dropping the link is all it takes; only the root carries prefab data of its own
+    for (PrefabUnpackRecord& record : records) {
+        const Entity root = record.instance.rootEntity;
+        if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(root)) {
+            record.hadComponent = true;
+            record.component = *component;
+            scene->removeComponent<PrefabComponent>(root);
+        }
+    }
+
+    updateScenePrefabs(sceneProject);
+    sceneProject->structureVersion++;
+    sceneProject->needUpdateRender = true;
+
+    return records;
+}
+
+void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<PrefabUnpackRecord> records) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || records.empty()) {
+        return;
+    }
+    Scene* scene = sceneProject->scene;
+
+    // A prefab's records come together in ascending list position, so each list is
+    // rebuilt with one merge that puts every instance back where it was
+    for (size_t begin = 0, end = 0; begin < records.size(); begin = end) {
+        end = begin + 1;
+        while (end < records.size() && records[end].path == records[begin].path) {
+            end++;
+        }
+        const std::filesystem::path& path = records[begin].path;
+
+        Prefab* prefab = getPrefab(path);
+        if (!prefab) {
+            // Scene cleanup drops an asset left without instances; its file keeps the
+            // registry entity IDs the members map to
+            try {
+                Prefab loaded;
+                loaded.registry = std::make_unique<EntityRegistry>();
+                YAML::Node node = YAML::LoadFile((getProjectPath() / path).string());
+                Stream::decodeEntitySelection(node, loaded.registry.get(), &loaded.registryEntities);
+                prefab = &prefabAssets.emplace(path, std::move(loaded)).first->second;
+            } catch (const std::exception& e) {
+                Out::error("Failed to load prefab %s to restore its instances: %s", path.string().c_str(), e.what());
+                continue;
+            }
+        }
+
+        std::vector<Prefab::Instance>& instances = prefab->instances[sceneId];
+        std::vector<Prefab::Instance> merged;
+        merged.reserve(instances.size() + (end - begin));
+        size_t existing = 0;
+
+        for (size_t r = begin; r < end; r++) {
+            PrefabUnpackRecord& record = records[r];
+            Prefab::Instance& instance = record.instance;
+            const Entity root = instance.rootEntity;
+
+            if (!scene->isEntityCreated(root)) {
+                Out::warning("Prefab instance root %u of %s is gone, its prefab link was not restored",
+                    root, path.string().c_str());
+                continue;
+            }
+
+            // Members the scene or the prefab lost since the unpack (only an edit made
+            // through another scene gets here) stay as plain GameObjects under the instance
+            auto lost = [&](const Prefab::EntityMember& member) {
+                return !scene->isEntityCreated(member.localEntity) ||
+                    !prefab->registry || !prefab->registry->isEntityCreated(member.registryEntity);
+            };
+            for (const Prefab::EntityMember& member : instance.members) {
+                if (lost(member)) {
+                    instance.overrides.erase(member.localEntity);
+                }
+            }
+            instance.members.erase(std::remove_if(instance.members.begin(), instance.members.end(), lost), instance.members.end());
+
+            prefab->nextInstanceId = std::max(prefab->nextInstanceId, instance.instanceId + 1);
+
+            while (merged.size() < record.index && existing < instances.size()) {
+                merged.push_back(std::move(instances[existing++]));
+            }
+            merged.push_back(std::move(instance));
+
+            if (record.hadComponent) {
+                if (PrefabComponent* component = scene->findComponent<PrefabComponent>(root)) {
+                    *component = record.component;
+                } else {
+                    scene->addComponent<PrefabComponent>(root, record.component);
+                }
+            }
+        }
+        while (existing < instances.size()) {
+            merged.push_back(std::move(instances[existing++]));
+        }
+
+        if (merged.empty()) {
+            prefab->instances.erase(sceneId);
+        } else {
+            instances = std::move(merged);
+        }
+    }
+
+    updateScenePrefabs(sceneProject);
+    sceneProject->structureVersion++;
+    sceneProject->needUpdateRender = true;
+}
+
 bool editor::Project::prefabPropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself){
     fs::path filepath = findPrefabPathFor(sceneId, entity);
 

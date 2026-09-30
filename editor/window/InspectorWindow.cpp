@@ -27,6 +27,7 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentToPrefabLocalCmd.h"
+#include "command/type/UnpackPrefabCmd.h"
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
@@ -1871,14 +1872,14 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
                 ImGui::SetItemTooltip("Discard this instance's values and follow the Prefab again");
 
             } else {
-                if (ImGui::MenuItem("Unpack Component")) {
+                if (ImGui::MenuItem("Override Prefab Component")) {
                     for (Entity& entity : entities){
                         cmd = new ComponentToPrefabLocalCmd(project, sceneProject->id, entity, cpType);
                         CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                     }
                     cmd->setNoMerge();
                 }
-                ImGui::SetItemTooltip("Keep this component's values on this instance instead of the Prefab");
+                ImGui::SetItemTooltip("Stop following the Prefab for this component: this instance keeps its own values until Revert Prefab Component");
             }
         }
 
@@ -1978,6 +1979,78 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::TextUnformatted("Layer");
     ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     drawLayerCombo(sceneProject, entities, readOnly, -1.0f);
+
+    // Row 3: Unity's Prefab bar, for the outermost instance holding each selected GameObject
+    const std::vector<Entity> prefabRoots = project->getOutermostPrefabRoots(sceneProject->id, entities);
+    if (std::none_of(prefabRoots.begin(), prefabRoots.end(), [](Entity root) { return root == NULL_ENTITY; })) {
+        std::string assetPath;
+        bool mixedAsset = false;
+        for (size_t i = 0; i < prefabRoots.size(); i++) {
+            const PrefabComponent* component = scene->findComponent<PrefabComponent>(prefabRoots[i]);
+            const std::string path = component ? component->path : std::string();
+            if (i == 0) {
+                assetPath = path;
+            } else if (path != assetPath) {
+                mixedAsset = true;
+            }
+        }
+        const bool oneInstance = prefabRoots.size() == 1 || std::all_of(prefabRoots.begin(), prefabRoots.end(),
+            [&prefabRoots](Entity root) { return root == prefabRoots[0]; });
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Prefab");
+        ImGui::SameLine(0.0f, gap);
+        const std::string assetName = mixedAsset ? std::string("-") : std::filesystem::path(assetPath).stem().string();
+        ImGui::TextColored(prefabTextColor, ICON_FA_CUBE " %s", assetName.c_str());
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            if (oneInstance) {
+                ImGui::SetTooltip("Prefab instance \"%s\" of %s", scene->getEntityName(prefabRoots[0]).c_str(), assetPath.c_str());
+            } else {
+                ImGui::SetTooltip("%s", mixedAsset ? "Instances of different Prefabs" : assetPath.c_str());
+            }
+        }
+
+        const char* selectLabel = "Select";
+        const char* unpackLabel = "Unpack " ICON_FA_CARET_DOWN;
+        const float buttonsWidth = ImGui::CalcTextSize(selectLabel).x + ImGui::CalcTextSize(unpackLabel).x +
+            style.FramePadding.x * 4.0f + style.ItemInnerSpacing.x;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
+
+        ImGui::BeginDisabled(mixedAsset || assetPath.empty());
+        if (ImGui::Button(selectLabel)) {
+            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+                projectWindow->revealAsset(project->getProjectPath() / assetPath);
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Select the Prefab asset in the Project window");
+
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        const bool playing = project->isAnyScenePlaying();
+        ImGui::BeginDisabled(readOnly || playing);
+        if (ImGui::Button(unpackLabel)) {
+            ImGui::OpenPopup("prefab_unpack_menu");
+        }
+        const ImVec2 unpackCorner(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y);
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", playing ? "Stop the scene to unpack" : "Turn the Prefab instance into regular GameObjects");
+
+        // Drops down from the button, right aligned
+        ImGui::SetNextWindowPos(unpackCorner, ImGuiCond_Appearing, ImVec2(1.0f, 0.0f));
+        if (ImGui::BeginPopup("prefab_unpack_menu")) {
+            if (ImGui::MenuItem(ICON_FA_BOX_OPEN "  Unpack")) {
+                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                    new UnpackPrefabCmd(project, sceneProject->id, entities, false));
+            }
+            ImGui::SetItemTooltip("Nested Prefab instances stay Prefab instances");
+            if (ImGui::MenuItem(ICON_FA_BOXES_PACKING "  Unpack Completely")) {
+                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                    new UnpackPrefabCmd(project, sceneProject->id, entities, true));
+            }
+            ImGui::SetItemTooltip("Nested Prefab instances are unpacked too");
+            ImGui::EndPopup();
+        }
+    }
 
     ImGui::PopID();
 }
