@@ -29,11 +29,11 @@ editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned 
     camera->slideUp(-50);
 
     scene->setDefaultEntityPool(EntityPool::System);
-    lines = new LineRenderer(scene);
-    gridLines = new LineRenderer(scene);
+    lines = overlay(new LineRenderer(scene));
+    gridLines = overlay(new LineRenderer(scene));
     gridLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     gridLines->setVisible(false);
-    tileLines = new LineRenderer(scene);
+    tileLines = overlay(new LineRenderer(scene));
     tileLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     tileLines->setVisible(false);
     scene->setDefaultEntityPool(EntityPool::User);
@@ -109,7 +109,7 @@ editor::SceneRender2D::~SceneRender2D(){
 bool editor::SceneRender2D::instanciateBodyLines(Entity entity){
     if (bodyLines.find(entity) == bodyLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyLines[entity] = new LineRenderer(scene);
+        bodyLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -120,7 +120,7 @@ bool editor::SceneRender2D::instanciateBodyLines(Entity entity){
 bool editor::SceneRender2D::instanciateJointLines(Entity entity){
     if (jointLines.find(entity) == jointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = new LineRenderer(scene);
+        jointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -131,7 +131,7 @@ bool editor::SceneRender2D::instanciateJointLines(Entity entity){
 bool editor::SceneRender2D::instanciateLight2DLines(Entity entity){
     if (light2DLines.find(entity) == light2DLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        light2DLines[entity] = new LineRenderer(scene);
+        light2DLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -142,7 +142,7 @@ bool editor::SceneRender2D::instanciateLight2DLines(Entity entity){
 bool editor::SceneRender2D::instanciateShadowCaster2DLines(Entity entity){
     if (shadowCaster2DLines.find(entity) == shadowCaster2DLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        shadowCaster2DLines[entity] = new LineRenderer(scene);
+        shadowCaster2DLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -153,7 +153,7 @@ bool editor::SceneRender2D::instanciateShadowCaster2DLines(Entity entity){
 bool editor::SceneRender2D::instanciateLinePointLines(Entity entity){
     if (linePointLines.find(entity) == linePointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = new LineRenderer(scene);
+        linePointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -164,7 +164,7 @@ bool editor::SceneRender2D::instanciateLinePointLines(Entity entity){
 bool editor::SceneRender2D::instanciatePolygonPointLines(Entity entity){
     if (polygonPointLines.find(entity) == polygonPointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = new LineRenderer(scene);
+        polygonPointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -301,7 +301,7 @@ void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Tr
 bool editor::SceneRender2D::instanciateTrackLines(Entity entity){
     if (trackLines.find(entity) == trackLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        trackLines[entity] = new LineRenderer(scene);
+        trackLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -921,7 +921,7 @@ void editor::SceneRender2D::updateSelLines(std::vector<OBB> obbs){
 void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     SceneRender::update(selEntities, entities, mainCamera, settings);
 
-    if (isPlaying || isPreviewCameraActive()){
+    if (isPreviewCameraActive()){
         return;
     }
 
@@ -958,7 +958,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
 
             if (containerLines.find(entity) == containerLines.end()){
                 ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-                containerLines[entity] = new LineRenderer(scene);
+                containerLines[entity] = overlay(new LineRenderer(scene));
             }
 
             LineRenderer* containerLinesObj = containerLines[entity];

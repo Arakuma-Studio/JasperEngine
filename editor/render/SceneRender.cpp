@@ -20,6 +20,7 @@ extern unsigned int bulb_icon_png_len;
 #include "util/GraphicUtils.h"
 #include "window/TerrainEditWindow.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cfloat>
 
@@ -45,11 +46,11 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
 
     this->zoom = 1.0f;
 
-    selLines = new LineRenderer(scene);
+    selLines = overlay(new LineRenderer(scene));
     selLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     selLines->setVisible(false);
 
-    terrainBrushLines = new LineRenderer(scene);
+    terrainBrushLines = overlay(new LineRenderer(scene));
     terrainBrushLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     terrainBrushLines->setVisible(false);
 
@@ -491,9 +492,9 @@ void editor::SceneRender::setPlayMode(bool isPlaying){
     if (isPlaying){
         // Play mode owns the scene camera (the game main camera), so drop any editor
         // camera preview. This keeps the invariant "playing => no preview" and avoids
-        // dropping the user back into preview view when the scene is stopped.
+        // dropping the user back into preview view when the scene is stopped. The
+        // gizmos stay: the Scene view keeps drawing them, the game never does.
         previewCameraEntity = NULL_ENTITY;
-        hideAllGizmos();
     }else{
         syncSceneCamera();
     }
@@ -506,6 +507,7 @@ void editor::SceneRender::activate(){
 
     Engine::setFramebuffer(&framebuffer);
     Engine::setScene(scene);
+    scene->getSystem<RenderSystem>()->setDrawEditorOverlays(true);
 
     Engine::removeAllSceneLayers(false);
 
@@ -517,12 +519,122 @@ void editor::SceneRender::activate(){
     Engine::addSceneLayer(uilayer.getScene());
 }
 
+void editor::SceneRender::activateGame(Framebuffer* target){
+    Engine::setFramebuffer(target);
+    Engine::setScene(scene);
+    // the game never shows the gizmos and icons living in its scene
+    scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+
+    Engine::removeAllSceneLayers(false);
+}
+
+void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height){
+    const Rect full(0, 0, (float)width, (float)height);
+
+    Scene* toolsScene = toolslayer.getScene();
+    toolsScene->getSystem<RenderSystem>()->updateCameraSizeForCanvas(toolsScene->getCamera(), (float)width, (float)height);
+    toolsScene->update(Engine::getDeltatime());
+    layers.push_back({toolsScene, toolsScene->getCamera(), full, false, false});
+
+    Scene* uiScene = uilayer.getScene();
+    uiScene->getSystem<RenderSystem>()->updateCameraSizeForCanvas(uiScene->getCamera(), (float)width, (float)height);
+    uiScene->update(Engine::getDeltatime());
+    layers.push_back({uiScene, uiScene->getCamera(), full, false, false});
+}
+
+void editor::SceneRender::drawOverlayTargets(){
+}
+
+void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers){
+    if (width <= 0 || height <= 0){
+        return;
+    }
+
+    if (!framebuffer.isCreated() || framebuffer.getWidth() != (unsigned int)width || framebuffer.getHeight() != (unsigned int)height){
+        framebuffer.destroy();
+        framebuffer.setWidth((unsigned int)width);
+        framebuffer.setHeight((unsigned int)height);
+        framebuffer.create();
+    }
+    if (viewWidth != width || viewHeight != height){
+        updateSize(width, height);
+    }
+
+    // Gizmos and icons placed after the scene's update: their transforms are settled
+    // here for this draw (the scene's next update takes them from there)
+    {
+        RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+        auto transforms = scene->getComponentArray<Transform>();
+        for (size_t i = 0; i < transforms->size(); i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
+            const Entity entity = transforms->getEntity(i);
+            if (!transform.needUpdate || !renderSystem->isEditorOverlay(entity)){
+                continue;
+            }
+            renderSystem->updateTransform(transform, entity);
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                mesh->worldAABB = transform.modelMatrix * (mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB);
+            }
+        }
+    }
+
+    const Rect full(0, 0, (float)width, (float)height);
+    const bool previewing = !isPlaying && isPreviewCameraActive();
+    const Entity viewCamera = previewing ? previewCameraEntity : camera->getEntity();
+
+    std::vector<Engine::ViewLayer> layers;
+    // the Scene view's own fog toggle holds while playing too; a previewed scene camera
+    // covers the view as the Engine's native canvas would size it
+    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height});
+
+    if (gameLayers){
+        // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
+        // canvas aspect as the editor frames a child scene over the scene
+        const float canvasWidth = (float)Engine::getCanvasWidth();
+        const float canvasHeight = (float)Engine::getCanvasHeight();
+        Rect gameRect = full;
+        if (canvasWidth > 0.0f && canvasHeight > 0.0f){
+            const float fit = std::min((float)width / canvasWidth, (float)height / canvasHeight);
+            const float rectWidth = std::floor(canvasWidth * fit);
+            const float rectHeight = std::floor(canvasHeight * fit);
+            gameRect = Rect(std::floor(((float)width - rectWidth) * 0.5f), std::floor(((float)height - rectHeight) * 0.5f), rectWidth, rectHeight);
+        }
+        for (Scene* gameLayer : layerScenes){
+            if (gameLayer && gameLayer != scene){
+                layers.push_back({gameLayer, gameLayer->getCamera(), gameRect, false, false});
+            }
+        }
+    }else{
+        // inline child scenes cover the view through their own cameras, as in activate()
+        for (Scene* childScene : layerScenes){
+            if (childScene && childScene != scene){
+                layers.push_back({childScene, childScene->getCamera(), full, false, false, false, (float)width, (float)height});
+            }
+        }
+    }
+
+    if (!previewing){
+        drawOverlayTargets();
+    }
+    addOverlayLayers(layers, width, height);
+
+    Engine::drawView(SCENE_VIEW_ID, &framebuffer, layers);
+}
+
 void editor::SceneRender::setChildSceneLayers(const std::vector<Scene*>& layers){
     childSceneLayers = layers;
 }
 
 void editor::SceneRender::updateSize(int width, int height){
+    viewWidth = width;
+    viewHeight = height;
 
+    // an auto-resize editor camera follows the Scene view, which is not the Engine's
+    // view while the game plays
+    scene->getSystem<RenderSystem>()->updateCameraSizeForCanvas(camera->getEntity(), (float)width, (float)height);
+
+    // the overlays anchor to the Scene view, not to the Engine canvas (the game's while playing)
+    uilayer.getScene()->getSystem<UISystem>()->setAnchorReferenceSize(width, height);
 }
 
 void editor::SceneRender::setOverlayScale(float scale){
@@ -564,6 +676,13 @@ void editor::SceneRender::updateRenderSystem(){
 void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     displaySettings = settings;
 
+    // while playing, what the running scene created is read-only: no gizmo moves it
+    if (isPlaying){
+        selEntities.erase(std::remove_if(selEntities.begin(), selEntities.end(), [&entities](Entity entity){
+            return std::find(entities.begin(), entities.end(), entity) == entities.end();
+        }), selEntities.end());
+    }
+
     // Editor-only viewport debug override: forces meshes to render without face
     // culling while editing, but reverts to the normal per-object culling during
     // play so the running game looks as it actually will. The setter only reloads
@@ -575,11 +694,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // at native resolution (gizmos and overlays would otherwise mismatch).
     scene->getSystem<RenderSystem>()->setDisableFixedResolution(!isPlaying);
 
-    if (isPlaying){
-        return;
+    if (!isPlaying){
+        syncSceneCamera();
     }
-
-    syncSceneCamera();
     if (isPreviewCameraActive()){
         hideAllGizmos();
         return;
@@ -826,7 +943,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 }
 
 void editor::SceneRender::mouseHoverEvent(float x, float y){
-    mouseRay = camera->screenToRay(x, y);
+    mouseRay = screenToRay(x, y);
     updateTerrainBrushCursor();
 }
 
@@ -1064,7 +1181,7 @@ Vector2 editor::SceneRender::lockObject2DAspectRatio(const Vector2& startSize, c
 }
 
 void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
-    mouseRay = camera->screenToRay(x, y);
+    mouseRay = screenToRay(x, y);
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
@@ -1800,6 +1917,13 @@ TextureRender& editor::SceneRender::getTexture(){
     return framebuffer.getRender().getColorTexture();
 }
 
+Ray editor::SceneRender::screenToRay(float x, float y){
+    // before the view is first sized, the Engine's view is the one it draws at
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    return screenToRayFromCamera(scene->getComponent<CameraComponent>(camera->getEntity()), x, y, width, height);
+}
+
 Camera* editor::SceneRender::getCamera(){
     return camera;
 }
@@ -1877,6 +2001,7 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
 
     Engine::setFramebuffer(target);
     Engine::setScene(scene);
+    scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
 
     // Only the game's own layers: no gizmo, overlay or view-gizmo scenes
     Engine::removeAllSceneLayers(false);
@@ -1959,7 +2084,7 @@ int editor::SceneRender::hitTestOccluderPoint(Entity entity, float x, float y){
 
     if (occluder.shape != ShadowCaster2DShape::POLYGON) return -1;
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
     RayReturn rr = ray.intersects(Plane(Vector3(0, 0, 1), transform.worldPosition));
     if (!rr) return -1;
 
@@ -2018,7 +2143,7 @@ int editor::SceneRender::hitTestLinePoint(Entity entity, float x, float y){
     LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
 
     // ray test against each endpoint's handle box (works in both ortho and
     // perspective views), keeping the nearest hit like instance picking
@@ -2103,7 +2228,7 @@ int editor::SceneRender::hitTestPolygonPoint(Entity entity, bool isMesh, float x
         count = scene->getComponent<PolygonComponent>(entity).points.size();
     }
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
 
     int bestIndex = -1;
     float bestDistance = FLT_MAX;
@@ -2172,7 +2297,7 @@ int editor::SceneRender::hitTestTrackPoint(Entity entity, float x, float y){
     TranslateTracksComponent* tracks = scene->findComponent<TranslateTracksComponent>(entity);
     if (!tracks) return -1;
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
     Matrix4 worldMatrix = getTrackPointsWorldMatrix(entity);
 
     int bestIndex = -1;
@@ -2208,7 +2333,7 @@ int editor::SceneRender::hitTestTile(Entity entity, float x, float y){
     TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
     Plane tilePlane(Vector3(0, 0, 1), transform.worldPosition);
     RayReturn rr = ray.intersects(tilePlane);
     if (!rr) return -1;
@@ -2303,7 +2428,7 @@ int editor::SceneRender::hitTestInstance(Entity entity, float x, float y){
 
     InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(entity);
 
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = screenToRay(x, y);
 
     // Only instances within maxInstances are actually rendered, so restrict picking to them.
     int renderedCount = (int)std::min<size_t>(instmesh.instances.size(), instmesh.maxInstances);

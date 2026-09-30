@@ -185,6 +185,8 @@ namespace jasperengine::editor{
         bool isDroppedExternalPaths;
 
         uint32_t lastActivatedScene;
+        // lastActivatedScene was activated for the running game (Game view target), not its Scene view
+        bool lastActivatedGame = false;
         uint32_t pendingResizeScene = NULL_PROJECT_SCENE;
 
         enum class LastFocusedWindow {
@@ -236,6 +238,9 @@ namespace jasperengine::editor{
         bool popSaveDialogQueueItem();
         // Edit-mode Game view: draws sceneProject through its game camera
         void renderGameViewPass(SceneProject& sceneProject);
+        void renderGameViewSecondary(SceneProject& sceneProject);
+        void renderRunningScene(SceneProject& sceneProject);
+        void renderSceneBesideGame(SceneProject& sceneProject);
 
         void closeWindow();
         void parseBenchmarkArgs(int argc, char** argv);

@@ -312,7 +312,6 @@ namespace jasperengine{
 			size_t capacity = 0; // bytes of the GPU buffer
 			bool needUpload = false;
 		};
-		InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 		bool instanceViewsDirty;
 
 		// error a view hides at a distance: threshold * (perUnit * distance + constant)
@@ -323,11 +322,238 @@ namespace jasperengine{
 			float threshold = 1;
 			bool enabled = false;
 		};
-		LodView mainLodView;
+
+		// where a pass keeps a UI element's clip rect: the RectTransform's own in draw()
+		struct PassScissor{
+			Rect* rect;
+			bool* active;
+		};
+
+		// how a culled instance list is ordered
+		enum class InstanceOrder{
+			NEAREST,       // nearest first (along a direction when given), grouped by detail level
+			KEEP,          // list order, full detail: the batch order is the layering
+			BACK_TO_FRONT  // ascending along a direction, full detail: blended batches
+		};
+
+		// one camera's color pass (see renderCameraPass)
+		struct CameraPass{
+			CameraComponent* camera = nullptr;
+			Transform* cameraTransform = nullptr;
+			// the view camera: culled instances, detail levels, SSAO, SSR, post-process, fixed resolution
+			bool isMain = false;
+			// draws into camera->framebuffer
+			bool renderToTexture = false;
+			// terrain node cut the pass draws (TERRAIN_PASS_VIEW: the secondary pass's own)
+			int terrainView = 0;
+		};
+
+#ifdef JASPERENGINE_EDITOR
+		static constexpr int TERRAIN_PASS_VIEW = -1;
+
+		struct PassScissorState{
+			Rect rect;
+			bool active = false;
+		};
+
+		// What a camera pass of a secondary view reads per object in place of the
+		// Transform, which keeps the frame's own camera. Indexed like the Transform array.
+		struct PassObjects{
+			// the Transform array the indices refer to, as it was when they were built
+			const Transform* base = nullptr;
+			size_t count = 0;
+			std::vector<Matrix4> mvp;
+			std::vector<float> distance;
+			// a real billboard turns to this pass's camera, so it and its children get
+			// their own model and normal matrices; -1 keeps the Transform's
+			std::vector<int> override;
+			std::vector<Matrix4> overrideModel;
+			std::vector<Matrix4> overrideNormal;
+			// UI clip rects in this pass's target
+			std::vector<PassScissorState> scissors;
+			// terrain node cut of this pass's camera, and the bytes its buffers hold
+			std::unordered_map<Entity, TerrainView> terrainViews;
+			std::unordered_map<Entity, size_t> terrainCapacity;
+			Matrix4 skyViewProjection;
+		};
+
+		// shadow cameras a view fits to its own camera (directional cascades, near/far)
+		struct LightCameraSet{
+			LightCamera cameras[6];
+			unsigned int numCascades = 1;
+		};
+
+		// instances a view culls from: its own list when they depend on the camera
+		// (billboards, distance fade), else the component's
+		struct ViewInstanceSource{
+			std::vector<InstanceRenderData> instances;
+			std::vector<InstanceBounds> bounds;
+			AABB worldAABB;
+			bool own = false;
+			Vector3 fadeEyeLocal;
+		};
+
+		// transparent points sorted for a view's camera
+		struct PointsView{
+			std::vector<PointRenderData> points;
+			ExternalBuffer buffer;
+			size_t capacity = 0; // bytes of the GPU buffer
+		};
+
+		// a mirror's reflection seen from a view's camera
+		struct MirrorView{
+			Framebuffer framebuffer;
+			CameraComponent camera;
+			Transform transform;
+			PassObjects objects;
+			Matrix4 viewProjection; // oblique, for the mirror surface's projective lookup
+			bool ready = false;
+
+			MirrorView();
+			~MirrorView();
+			MirrorView(const MirrorView&) = delete;
+			MirrorView& operator=(const MirrorView&) = delete;
+		};
+#endif
+
+		// Everything a frame draws that depends on the view it draws: the camera's
+		// derived data (culled instances, detail levels, lighting and shadow uniforms)
+		// and the targets sized to the view (SSAO, SSR, fixed resolution, post-process).
+		// draw() uses primaryView; the editor's secondary views keep their own, so a
+		// second view in the same frame reallocates nothing and disturbs nothing.
+		struct RenderView{
+			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
+			LodView lodView;
+
+			fs_lighting_t fs_lighting;
+			vs_shadows_t vs_shadows;
+			fs_shadows_t fs_shadows;
+			fs_point_shadows_t fs_point_shadows;
+
+			unsigned int ssaoWidth = 0;
+			unsigned int ssaoHeight = 0;
+			Framebuffer ssaoDepthFramebuffer; // color = packed depth, depth = z-test
+			Framebuffer ssaoFramebuffer;      // raw AO
+			Framebuffer ssaoBlurFramebuffer;  // blurred AO (sampled by meshes)
+			TextureRender* currentSSAOTexture = nullptr; // AO bound to meshes this camera (or empty white)
+
+			unsigned int ssrWidth = 0;
+			unsigned int ssrHeight = 0;
+			Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic
+			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
+			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
+			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
+
+			unsigned int fixedResWidth = 0;
+			unsigned int fixedResHeight = 0;
+			Framebuffer fixedResFramebuffer;   // offscreen scene color at the fixed size
+
+			unsigned int postProcessWidth = 0;
+			unsigned int postProcessHeight = 0;
+			Framebuffer postProcessFramebuffer[2]; // ping-pong targets
+
+#ifdef JASPERENGINE_EDITOR
+			bool secondary = false;
+			// where the view draws
+			Framebuffer* target = nullptr;
+			Rect viewRect;
+			// the scene under the others: clears the target and runs the post-process chain
+			bool baseLayer = true;
+			bool editorOverlays = false;
+			bool fixedResolution = false;
+			// draws as if the scene had no fog (the fog variant stays, its factor is 1)
+			bool disableFog = false;
+			// the view's copy of its camera, sized for the view: the scene's camera
+			// component is never touched (it may be drawn by the frame or another view)
+			CameraComponent camera;
+			// drawn through the camera draw() used this frame: culling, detail levels,
+			// terrain cut, shadow cascades and mirrors are the frame's own
+			bool sharesPrimaryCamera = false;
+
+			PassObjects objects;
+			std::vector<LightCameraSet> lightCameras; // by light index
+			// own shadow maps, used when the view's shadow cameras differ from the frame's
+			FramebufferRender shadowAtlas;
+			FramebufferRender shadowPointAtlas;
+			int shadowAtlasWidth = 0;
+			int shadowAtlasHeight = 0;
+			int shadowPointAtlasWidth = 0;
+			int shadowPointAtlasHeight = 0;
+			bool ownShadowAtlas = false;
+			bool ownShadowPointAtlas = false;
+			// layers whose meshes cast into this view's shadow maps: its camera's culling
+			// mask (a view with another mask cannot share the frame's maps)
+			uint32_t shadowCameraMask = LAYER_MASK_EVERYTHING;
+
+			std::unordered_map<Entity, std::array<InstanceViewRange, 1 + MAX_SHADOW_ATLAS_SLOTS>> instanceRanges;
+			std::unordered_map<Entity, ViewInstanceSource> instanceSources;
+			// what the instance views were last built from
+			bool instancesBuilt = false;
+			uint64_t instanceRevision = 0;
+			Matrix4 instanceViewProjection;
+			Vector3 instanceEye;
+			LodView instanceLodView;
+			uint64_t instanceShadowHash = 0;
+
+			std::unordered_map<Entity, PointsView> points;
+			std::unordered_map<Entity, std::unique_ptr<MirrorView>> mirrors;
+#endif
+
+#ifdef JASPERENGINE_EDITOR
+			// the camera copy borrows the scene camera's framebuffer, it owns none
+			RenderView(){
+				delete camera.framebuffer;
+				camera.framebuffer = nullptr;
+			}
+#else
+			RenderView() = default;
+#endif
+			RenderView(const RenderView&) = delete;
+			RenderView& operator=(const RenderView&) = delete;
+		};
+
+		RenderView primaryView;
+#ifdef JASPERENGINE_EDITOR
+		RenderView* activeView = &primaryView;
+		std::unordered_map<uint32_t, std::unique_ptr<RenderView>> secondaryViews;
+		// per-object data of the secondary camera pass being drawn, null in draw()
+		PassObjects* passObjects = nullptr;
+		// the mirror whose reflection a secondary view is drawing (it cannot show itself)
+		Entity passExcludedEntity = NULL_ENTITY;
+		// editor gizmos and icons living in this scene, by entity
+		std::vector<uint8_t> editorOverlayEntities;
+		// whether draw() shows them; each secondary view chooses its own
+		bool drawEditorOverlays = true;
+		// the pass being drawn shows them
+		bool passDrawsOverlays = true;
+		// pipelines the secondary views' cameras need
+		uint16_t viewPipelines = 0;
+		// draw() ran since the last update(): the frame's shared passes are done
+		bool frameDrawn = false;
+		// bumped each time the frame's instance views are rebuilt
+		uint64_t instanceRevision = 0;
+#endif
+
+		// the view being drawn: primaryView in draw(), a secondary view in drawView()
+		RenderView& rv(){
+#ifdef JASPERENGINE_EDITOR
+			return *activeView;
+#else
+			return primaryView;
+#endif
+		}
+		const RenderView& rv() const{
+#ifdef JASPERENGINE_EDITOR
+			return *activeView;
+#else
+			return primaryView;
+#endif
+		}
 
 		struct ShadowSlot{
 			int slot;
 			LightComponent* light;
+			int lightIndex;
 			int cameraIndex;
 		};
 
@@ -388,28 +614,20 @@ namespace jasperengine{
 
 		bool needUpdateShadowBindings;
 
-		fs_lighting_t fs_lighting;
 		// Light culling masks per light slot (Everything past the scene's lights). When one
 		// leaves out a layer, drawMesh lights that layer's meshes from fs_lightingMasked:
-		// fs_lighting with those lights at zero intensity.
+		// the view's fs_lighting with those lights at zero intensity. The masks belong to
+		// the lights, so every view shares them; the masked copy is scratch per draw.
 		uint32_t lightCullingMasks[MAX_LIGHTS];
 		bool hasLightCullingMasks;
 		fs_lighting_t fs_lightingMasked;
 		fs_lighting2d_t fs_lighting2d;
-		vs_shadows_t vs_shadows;
-		fs_shadows_t fs_shadows;
-		fs_point_shadows_t fs_point_shadows;
 		fs_fog_t fs_fog;
 
 		// SSAO: per-frame fullscreen passes for the main camera. The depth pre-pass
 		// renders camera-space packed depth, then the ssao + blur fullscreen passes
 		// produce an AO texture sampled by lit meshes (USE_SSAO).
 		bool ssaoLoaded;
-		unsigned int ssaoWidth;
-		unsigned int ssaoHeight;
-		Framebuffer ssaoDepthFramebuffer; // color = packed depth, depth = z-test
-		Framebuffer ssaoFramebuffer;      // raw AO
-		Framebuffer ssaoBlurFramebuffer;  // blurred AO (sampled by meshes)
 		CameraRender ssaoPassRender;      // drives the offscreen SSAO passes
 		ObjectRender ssaoRender;          // fullscreen ssao.frag draw
 		ObjectRender ssaoBlurRender;      // fullscreen ssao_blur.frag draw
@@ -420,7 +638,6 @@ namespace jasperengine{
 		fs_ssao_blur_t fs_ssao_blur;
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
-		TextureRender* currentSSAOTexture; // AO bound to meshes this camera (or empty white)
 
 		// engine-written custom uniforms: seconds since startup, sampled once per draw(),
 		// and the size of the target being drawn (shadow slot, SSAO depth or camera color)
@@ -432,12 +649,6 @@ namespace jasperengine{
 		// and samples that color, then the composite pass blends reflections into the
 		// real render target.
 		bool ssrLoaded;
-		unsigned int ssrWidth;
-		unsigned int ssrHeight;
-		Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic
-		Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
-		Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
-		Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
 		CameraRender gbufferPassRender;    // drives the MRT G-buffer geometry pass
 		CameraRender ssrPassRender;        // drives the offscreen ssr + composite passes
 		ObjectRender ssrRender;            // fullscreen ssr.frag draw
@@ -459,9 +670,6 @@ namespace jasperengine{
 		// fixedResFramebuffer and a fullscreen blit pass upscales it to the
 		// real destination (view rect).
 		bool blitLoaded;
-		unsigned int fixedResWidth;
-		unsigned int fixedResHeight;
-		Framebuffer fixedResFramebuffer;   // offscreen scene color at the fixed size
 		CameraRender fixedResPassRender;   // drives the upscale blit pass
 		ObjectRender blitRender;           // fullscreen blit.frag draw
 		std::shared_ptr<ShaderRender> blitShader;
@@ -486,9 +694,6 @@ namespace jasperengine{
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
 		bool postProcessNeedsDepth;            // a pass samples the depth texture
 		bool postProcessNeedsGBuffer;          // a pass samples the G-buffer (needs SSR)
-		unsigned int postProcessWidth;
-		unsigned int postProcessHeight;
-		Framebuffer postProcessFramebuffer[2]; // ping-pong targets
 		CameraRender postProcessPassRender;    // drives the offscreen post passes
 		std::vector<PostProcessRuntime> postProcessPasses;
 
@@ -576,6 +781,7 @@ namespace jasperengine{
 		bool updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh);
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
+		void uploadInstanceViews(RenderView& renderView);
 		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
 
 		// mesh LOD
@@ -599,21 +805,22 @@ namespace jasperengine{
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
 		void updateMeshLodErrors(MeshComponent& mesh);
+		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const;
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
 		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
-		LodView shadowLodView(const LightComponent& light, int cameraIndex, int slot) const;
+		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		std::vector<ShadowSlot> collectShadowSlots();
 
 		// instance views
 		void buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform);
-		void buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, bool keepOrder);
-		bool selectMeshDraw(MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw);
+		void buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order);
+		bool selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw);
 		void bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first);
-		void drawSubmeshGeometry(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
+		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
 
 		// terrain
-		bool terrainNodeLODSelect(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, int viewIndex);
-		AABB getTerrainNodeAABB(Transform& transform, TerrainNode& terrainNode);
+		bool terrainNodeLODSelect(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, TerrainView& view);
+		AABB getTerrainNodeAABB(const Transform& transform, TerrainNode& terrainNode);
 		bool isTerrainNodeInSphere(Vector3 position, float radius, const AABB& box);
 
 		// tilemap
@@ -621,13 +828,68 @@ namespace jasperengine{
 
 		float lerp(float a, float b, float fraction);
 
+		// draw() in parts: the work done once per frame, then the cameras
+		void drawFramePasses();
+		void renderShadowMaps(bool projective, bool point);
+		void render2DShadows();
+		void drawCameras(bool includeMain);
+		void renderCameraPass(const CameraPass& pass);
+
+		// what the pass being drawn reads: the Engine's framebuffer, view rect and main
+		// scene in draw(), the view's own in a secondary view
+		Framebuffer* targetFramebuffer() const;
+		Rect targetViewRect() const;
+		bool isBaseLayer() const;
+		const LightCamera& lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const;
+		unsigned int lightCascades(int lightIndex, const LightComponent& light) const;
+		const InstanceViewRange& instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
+		BufferRender* instanceBuffer(int instanceView);
+		Vector3 instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
+		bool isBatchVisible(Entity entity, const MeshComponent& mesh, const Transform& transform, const InstancedMeshComponent* instmesh, int instanceView, const float cameraFar, const Plane frustumPlanes[6]);
+		TerrainView& terrainViewData(Entity entity, TerrainComponent& terrain, int terrainView);
+		// the terrain cut of the view camera, which its depth, G-buffer and shadow passes draw
+		int mainTerrainView() const;
+		// model, normal and mvp matrices of an object, in one block (scratch when copied)
+		const Matrix4* objectMatrices(Transform& transform, Matrix4 (&scratch)[3]);
+		const Matrix4& objectMVP(Transform& transform) const;
+		const Matrix4& objectModel(Transform& transform) const;
+		float objectDistance(Transform& transform) const;
+		PassScissor passScissor(Transform& transform, RectTransformComponent& layout);
+		const Matrix4& passSkyViewProjection(const SkyboxComponent& sky) const;
+		FramebufferRender& shadowAtlasTarget();
+		FramebufferRender& shadowPointAtlasTarget();
+		// binds a secondary view's own shadow maps to a lit submesh (restore puts the
+		// frame's back); false when the view shares the frame's
+		bool bindViewShadowMaps(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool restore);
+		// 1/viewport size, SSAO debug and flip flags of fs_lighting for camera in the view being drawn
+		Vector4 lightingViewportInfo(const CameraComponent& camera) const;
+
+#ifdef JASPERENGINE_EDITOR
+		// index of transform in the secondary pass's objects, false outside them
+		bool passObjectIndex(const Transform& transform, size_t& index) const;
+		bool isObjectOverridden(const Transform& transform) const;
+		MirrorView* passMirror(Entity entity);
+		bool bindViewPointsOrder(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
+
+		RenderView& getSecondaryView(uint32_t viewId);
+		void destroyRenderView(RenderView& view);
+		void buildPassObjects(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
+		void selectPassTerrain(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
+		void prepareViewLights(RenderView& view, int numLights, CameraComponent& camera, Transform& cameraTransform);
+		bool ensureViewShadowAtlases(RenderView& view);
+		void buildViewInstances(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
+		void buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source);
+		void renderViewMirrors(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
+		void forgetEntityInViews(Entity entity, ComponentId componentId);
+#endif
+
 	protected:
 
 		void updateMeshBuffers(MeshComponent& mesh);
-		void updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex);
+		void updateTerrainNodesBuffer(TerrainView& view);
 		// instanceView -1 draws every instance from the component buffer; lodView null is full detail
 		bool drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0, int instanceView = -1, const LodView* lodView = nullptr);
-		bool drawMeshDepth(MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false, PipelineType pipelineType = PIP_DEPTH, int instanceView = -1, const LodView* lodView = nullptr);
+		bool drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false, PipelineType pipelineType = PIP_DEPTH, int instanceView = -1, const LodView* lodView = nullptr);
 		void destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets = false);
 
 		// SSAO
@@ -636,7 +898,8 @@ namespace jasperengine{
 		bool ensureSSAOFramebuffers(unsigned int width, unsigned int height);
 		// sharedDepth != null reuses an existing packed-depth texture (the SSR G-buffer),
 		// skipping the SSAO depth pre-pass; null runs the pre-pass
-		void renderSSAO(CameraComponent& camera, TextureRender* sharedDepth = nullptr);
+		// fixedResolution: the color pass it feeds renders at the scene's fixed size
+		void renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth = nullptr);
 
 		// SSR
 		void loadSSR();
@@ -671,7 +934,7 @@ namespace jasperengine{
 		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType);
 		void destroyUI(Entity entity, UIComponent& ui);
 
-		bool drawPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
 		float getPointsViewportHeight(const CameraComponent& camera) const;
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);
@@ -679,16 +942,18 @@ namespace jasperengine{
 		bool drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType);
 		void destroyLines(Entity entity, LineRendererComponent& lines);
 
-		bool drawSky(SkyboxComponent& sky, PipelineType pipType);
+		bool drawSky(SkyboxComponent& sky, PipelineType pipType, const Matrix4& viewProjection);
 		void destroySky(Entity entity, SkyboxComponent& sky);
 
 		void destroyLight(LightComponent& light);
 		void destroyCamera(CameraComponent& camera, bool entityDestroyed);
 		
 		void updateSkyViewProjection(SkyboxComponent& sky, CameraComponent& camera);
+		Matrix4 skyViewProjection(const SkyboxComponent& sky, const CameraComponent& camera) const;
 		void updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
+		void computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
-		void updateTerrain(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, int viewIndex);
+		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
 		void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 
@@ -737,6 +1002,9 @@ namespace jasperengine{
 
 		// camera
 		void updateCameraSize(Entity entity);
+		// sizes an auto-resize camera for a canvas of canvasWidth x canvasHeight, the
+		// Engine canvas in updateCameraSize(entity); a render-to-texture camera keeps its framebuffer's
+		void updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight);
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);
@@ -756,6 +1024,42 @@ namespace jasperengine{
 		void getLoadCount(size_t& loaded, size_t& total) const;
 		bool hasPendingMeshLods() const;
 	
+#ifdef JASPERENGINE_EDITOR
+		// Editor gizmos and icons that live in the scene they annotate. Only the passes
+		// of an editor view draw them: never the game, a camera image or a shadow map.
+		void setEditorOverlay(Entity entity, bool overlay);
+		bool isEditorOverlay(Entity entity) const;
+		// whether draw() is an editor view (the editor turns it off while the scene plays)
+		void setDrawEditorOverlays(bool draw);
+
+		// A secondary view: this scene drawn again after the frame's draw(), through
+		// another camera into another target. Nothing is updated and nothing done once
+		// per frame runs twice: the view reuses the frame's uploads, keeps its own
+		// camera-dependent state (object matrices, lighting, shadow cascades and maps,
+		// culled instances, detail levels, terrain cut, sorted points, mirrors) and its
+		// own targets sized to it, created on first use and resized only with the view.
+		struct ViewDesc{
+			Entity camera = NULL_ENTITY;
+			// where it draws; viewRect is the part of it the camera covers
+			Framebuffer* target = nullptr;
+			Rect viewRect;
+			// the scene under the others: clears the target and runs the post-process chain
+			bool baseLayer = true;
+			// draws this scene's editor gizmos and icons
+			bool editorOverlays = false;
+			// renders at the scene's fixed game resolution when it has one
+			bool fixedResolution = false;
+			// draws as if the scene had no fog
+			bool disableFog = false;
+			// canvas an auto-resize camera covers in this view (0: as the camera is)
+			float canvasWidth = 0.0f;
+			float canvasHeight = 0.0f;
+		};
+		void drawView(uint32_t viewId, const ViewDesc& desc);
+		// frees what a view created
+		void releaseView(uint32_t viewId);
+#endif
+
 		void load() override;
 		void draw() override;
 		void destroy() override;

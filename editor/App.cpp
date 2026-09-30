@@ -97,7 +97,7 @@ editor::App::App(){
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
     playInput = new PlayInput(&project);
-    sceneWindow = new SceneWindow(&project, playInput);
+    sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
     mainToolbar = new MainToolbar(&project);
     inspectorWindow->setSceneWindow(sceneWindow);
@@ -2037,10 +2037,9 @@ void editor::App::show(){
     inspectorWindow->show();
     aiChatWindow->show();
     codeEditor->show();
-    // Before the Scene views: they ask it whether it hosts the running game
     gameWindow->show();
     sceneWindow->show();
-    Backend::setGameCursorInSceneRect(sceneWindow->isGameCursorInView() || gameWindow->isGameCursorInView());
+    Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
     loadingWindow->show();
 
@@ -2373,9 +2372,26 @@ void editor::App::engineRender(){
 
         const bool isSelected = (sceneProject.id == selectedSceneId);
 
-        // A running scene shown in the Game view is drawn at the Game view's size;
-        // a stopped one gets an extra pass through its game camera for that view.
-        const bool gameHosted = gameWindow->hostsScene(sceneProject.id);
+        // The running game renders into the Game view's framebuffer, shown or not, and
+        // the Scene view is a second, draw-only view of the same frame
+        if (gameWindow->hostsScene(sceneProject.id)) {
+            if (sceneNeedsRender(sceneProject, isSelected)) {
+                renderRunningScene(sceneProject);
+            }
+            continue;
+        }
+
+        // Beside a running game the Engine's frame is the game's: another scene's view
+        // draws on its own, so the game still updates once per frame
+        if (project.getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
+            if (sceneProject.isVisible && sceneNeedsRender(sceneProject, isSelected)) {
+                renderSceneBesideGame(sceneProject);
+            }
+            continue;
+        }
+
+        // A stopped scene draws its Scene view; the Game view's preview through its game
+        // camera is a second view of that frame
         const bool gameViewPass = gameWindow->wantsEditPass(sceneProject.id);
 
         auto meshSystem = sceneProject.scene->getSystem<MeshSystem>();
@@ -2384,7 +2400,7 @@ void editor::App::engineRender(){
         // A tab hidden behind another has nothing to present, and drawing it makes
         // lastActivatedScene alternate between tabs. The selected one always draws,
         // unless the Game view is what shows it.
-        const bool hiddenTab = !sceneProject.isVisible && !gameHosted
+        const bool hiddenTab = !sceneProject.isVisible
             && (!isSelected || gameViewPass)
             && sceneProject.playState != ScenePlayState::PLAYING;
         const bool drawSceneView = !hiddenTab && !(hasPendingModelLoads && !sceneProject.needUpdateRender && !isSelected);
@@ -2394,13 +2410,16 @@ void editor::App::engineRender(){
         }
 
         const bool needsRender = sceneNeedsRender(sceneProject, isSelected);
+        const bool gameViewPassDue = gameViewPass && (needsRender || gameWindow->isEditPassDirty());
 
-        int width = gameHosted ? gameWindow->getWidth() : sceneWindow->getWidth(sceneProject.id);
-        int height = gameHosted ? gameWindow->getHeight() : sceneWindow->getHeight(sceneProject.id);
+        int width = sceneWindow->getWidth(sceneProject.id);
+        int height = sceneWindow->getHeight(sceneProject.id);
 
         // Not laid out yet (background tab): nothing to draw, and activating it here
         // would thrash lastActivatedScene. Stays dirty until SceneWindow gives it a size.
-        if (drawSceneView && needsRender && width != 0 && height != 0){
+        // A due Game view preview draws the scene too, since it is a view of that frame.
+        bool sceneViewDrawn = false;
+        if (drawSceneView && (needsRender || gameViewPassDue) && width != 0 && height != 0){
             SceneRender* sceneRender = sceneProject.sceneRender;
 
             bool sceneChanged = false;
@@ -2420,7 +2439,7 @@ void editor::App::engineRender(){
 
             // activate() reloads this scene and every layer, so it runs only on a scene
             // change. Anything else needing it calls resetLastActivatedScene().
-            if (lastActivatedScene != sceneProject.id){
+            if (lastActivatedScene != sceneProject.id || lastActivatedGame){
                 // Collected before activate(): it drops every engine layer, and a dropped
                 // layer no longer counts as running, so this would come back empty.
                 std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
@@ -2431,6 +2450,7 @@ void editor::App::engineRender(){
                 }
 
                 lastActivatedScene = sceneProject.id;
+                lastActivatedGame = false;
                 pendingResizeScene = sceneProject.id;
                 sceneChanged = true;
                 #ifdef _DEBUG
@@ -2492,10 +2512,16 @@ void editor::App::engineRender(){
             // Only a real draw counts as activity, or the loop never idles.
             renderedSceneThisFrame = true;
             sceneProject.needUpdateRender = false;
+            sceneViewDrawn = true;
         }
 
-        if (gameViewPass && (needsRender || gameWindow->isEditPassDirty())) {
-            renderGameViewPass(sceneProject);
+        if (gameViewPassDue) {
+            if (sceneViewDrawn) {
+                renderGameViewSecondary(sceneProject);
+            } else {
+                // no Scene view frame to share (its tab is hidden): the preview is the frame
+                renderGameViewPass(sceneProject);
+            }
         }
     }
 
@@ -2510,6 +2536,176 @@ void editor::App::engineRender(){
     renderedScenePrevFrame = renderedSceneThisFrame;
     if (benchmarkEnabled)
         tickBenchmark();
+}
+
+// The running game: drawn through the Engine at the Game view's size into its
+// framebuffer (whether the Game tab is shown or not), then, when the Scene view is
+// shown, the same frame again from the editor camera with the gizmos (Unity's Scene
+// view while playing). The game's systems update once, in the Engine's frame.
+void editor::App::renderRunningScene(SceneProject& sceneProject) {
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    Framebuffer* gameTarget = gameWindow->getFramebuffer();
+
+    const int gameWidth = gameWindow->getRenderWidth();
+    const int gameHeight = gameWindow->getRenderHeight();
+
+    const int sceneWidth = sceneWindow->getWidth(sceneProject.id);
+    const int sceneHeight = sceneWindow->getHeight(sceneProject.id);
+    const bool sceneViewShown = sceneProject.isVisible && sceneWidth > 0 && sceneHeight > 0;
+
+    // the runtime manages its own layers while it plays
+    sceneRender->setChildSceneLayers({});
+
+    bool viewChanged = false;
+    if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
+        // Collected before activateGame(): it drops every engine layer, and a dropped
+        // layer no longer counts as running, so this would come back empty.
+        std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
+        sceneRender->activateGame(gameTarget);
+
+        for (Scene* runtimeLayer : runtimeLayers) {
+            Engine::addSceneLayer(runtimeLayer);
+        }
+
+        lastActivatedScene = sceneProject.id;
+        lastActivatedGame = true;
+        viewChanged = true;
+    }
+
+    if (pendingResizeScene == sceneProject.id) {
+        viewChanged = true;
+        pendingResizeScene = NULL_PROJECT_SCENE;
+    }
+
+    const bool framebufferMismatch = !gameTarget->isCreated()
+        || gameTarget->getWidth() != static_cast<unsigned int>(gameWidth)
+        || gameTarget->getHeight() != static_cast<unsigned int>(gameHeight);
+
+    // the Engine's view is the game's: the Scene view never changes it
+    if (Platform::setSizes(gameWidth, gameHeight) || viewChanged || framebufferMismatch){
+        Engine::systemViewChanged();
+    }
+
+    // the Scene view's camera follows its size before the frame updates the scene
+    if (sceneViewShown){
+        sceneRender->setOverlayScale(sceneWindow->getOverlayScale(sceneProject.id));
+        if (sceneRender->getViewWidth() != sceneWidth || sceneRender->getViewHeight() != sceneHeight){
+            sceneRender->updateSize(sceneWidth, sceneHeight);
+        }
+    }
+
+    // to avoid delay when move objects with gizmo
+    sceneRender->updateRenderSystem();
+
+    // A paused game advances one frame here when Step was pressed
+    const bool steppingFrame = project.beginStepFrame(sceneProject.id);
+
+    Engine::systemDraw();
+
+    if (steppingFrame) {
+        project.endStepFrame(sceneProject.id);
+    }
+
+    // the gizmos follow the objects where this frame's update left them
+    if (sceneViewShown){
+        sceneRender->update(project.getSelectedEntities(sceneProject.id), project.getEntities(sceneProject.id), sceneProject.mainCamera, sceneProject.displaySettings);
+        sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+    }
+
+    projectWindow->processMaterialThumbnails();
+    projectWindow->processModelThumbnails();
+
+    renderedSceneThisFrame = true;
+    sceneProject.needUpdateRender = false;
+}
+
+// A stopped scene's Scene view while another scene plays: its systems update here (the
+// Engine's frame is the game's) and the view draws on its own, with its inline child
+// scenes and the editor overlays
+void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
+    const int width = sceneWindow->getWidth(sceneProject.id);
+    const int height = sceneWindow->getHeight(sceneProject.id);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    SceneRender* sceneRender = sceneProject.sceneRender;
+
+    std::vector<Scene*> childLayers;
+    for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
+        SceneProject* childScene = project.getScene(childSceneRef.id);
+        if (childScene && childScene->expandedInline && childScene->scene) {
+            childLayers.push_back(childScene->scene);
+            if (childScene->sceneRender) {
+                childScene->sceneRender->hideAllGizmos();
+            }
+            childScene->scene->update(Engine::getDeltatime());
+            childScene->needUpdateRender = false;
+        }
+    }
+    sceneRender->setChildSceneLayers(childLayers);
+
+    sceneRender->setOverlayScale(sceneWindow->getOverlayScale(sceneProject.id));
+    if (sceneRender->getViewWidth() != width || sceneRender->getViewHeight() != height) {
+        sceneRender->updateSize(width, height);
+    }
+    sceneRender->update(project.getSelectedEntities(sceneProject.id), project.getEntities(sceneProject.id), sceneProject.mainCamera, sceneProject.displaySettings);
+    sceneRender->updateRenderSystem();
+    sceneProject.scene->update(Engine::getDeltatime());
+
+    sceneRender->drawSceneView(width, height, childLayers, false);
+
+    renderedSceneThisFrame = true;
+    sceneProject.needUpdateRender = false;
+}
+
+// The Game view's edit-mode preview as a second view of the Scene view's frame: the
+// scene and the child scenes the game starts with, through their game cameras, framed
+// like the game frames the project canvas.
+void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
+    const int width = gameWindow->getWidth();
+    const int height = gameWindow->getHeight();
+    const Entity cameraEntity = project.getGameCamera(sceneProject.id);
+    if (width <= 0 || height <= 0 || cameraEntity == NULL_ENTITY) {
+        return;
+    }
+
+    Framebuffer* target = gameWindow->getFramebuffer();
+    if (!target->isCreated() || target->getWidth() != (unsigned int)width || target->getHeight() != (unsigned int)height) {
+        target->destroy();
+        target->setWidth((unsigned int)width);
+        target->setHeight((unsigned int)height);
+        target->create();
+    }
+
+    int canvasWidth = 0;
+    int canvasHeight = 0;
+    Rect viewRect;
+    Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
+                              canvasWidth, canvasHeight, viewRect);
+
+    std::vector<Engine::ViewLayer> layers;
+    layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+
+    for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
+        SceneProject* childScene = project.getScene(childSceneRef.id);
+        if (!childSceneRef.startActive || !childScene || !childScene->scene) continue;
+        const Entity childCamera = project.getGameCamera(childSceneRef.id);
+        if (childCamera == NULL_ENTITY) continue;
+
+        // an inline child was updated and drawn this frame as a layer of the Scene view
+        if (!childScene->expandedInline) {
+            childScene->scene->getSystem<MeshSystem>()->update(0);
+            childScene->scene->getSystem<UISystem>()->update(0);
+            childScene->scene->getSystem<RenderSystem>()->update(0);
+        }
+        layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
+    }
+
+    Engine::drawView(GAME_VIEW_ID, target, layers);
+
+    gameWindow->markEditPassRendered(sceneProject.id);
+    renderedSceneThisFrame = true;
 }
 
 void editor::App::renderGameViewPass(SceneProject& sceneProject) {
@@ -2543,7 +2739,7 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     }
     sceneRender->setChildSceneLayers(childLayers);
 
-    sceneRender->beginGameViewPass(cameraEntity, gameWindow->getEditFramebuffer());
+    sceneRender->beginGameViewPass(cameraEntity, gameWindow->getFramebuffer());
     // The next editor draw has to put its framebuffer, camera and layers back
     lastActivatedScene = NULL_PROJECT_SCENE;
 
@@ -2889,6 +3085,7 @@ void editor::App::handleExternalDragLeave() {
 
 void editor::App::resetLastActivatedScene(){
     lastActivatedScene = NULL_PROJECT_SCENE;
+    lastActivatedGame = false;
     pendingResizeScene = NULL_PROJECT_SCENE;
 }
 

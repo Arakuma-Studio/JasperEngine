@@ -151,6 +151,10 @@ namespace jasperengine::editor{
         Entity getActiveCameraEntity();
         void syncSceneCamera();
 
+        // size the Scene view draws at, in engine pixels
+        int viewWidth = 0;
+        int viewHeight = 0;
+
     protected:
         void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
         void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
@@ -159,6 +163,19 @@ namespace jasperengine::editor{
         void setupLight2DIcon(Light2DObjects& lo);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
+
+        // Marks an editor gizmo or icon created in the scene it annotates: only the
+        // Scene view draws it, never the game or a camera image
+        template<typename T>
+        T* overlay(T* object){
+            scene->getSystem<RenderSystem>()->setEditorOverlay(object->getEntity(), true);
+            return object;
+        }
+
+        // Editor-only scenes the Scene view draws over the scene and its layers
+        // (gizmos, overlays), and the views they render into before it
+        virtual void addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height);
+        virtual void drawOverlayTargets();
 
         Scene* scene;
         Camera* camera;
@@ -195,7 +212,18 @@ namespace jasperengine::editor{
 
         void setPlayMode(bool isPlaying);
 
+        // The Scene view draws through the Engine: this scene as its main scene, with the
+        // editor layers on top, into the Scene view's framebuffer
         virtual void activate();
+        // The game draws through the Engine into target (the Game view's): this scene
+        // as its main scene with none of the editor layers
+        void activateGame(Framebuffer* target);
+        // The Scene view as a draw-only view, while a game plays: this scene through the
+        // editor camera (or the camera it previews), the scenes layered over it and the
+        // editor gizmos and overlays. For the running scene, after the game's frame,
+        // layers are the game's layer scenes framed like the game frames its canvas;
+        // for a stopped scene beside it, they are its inline child scenes.
+        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
         float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
@@ -216,6 +244,10 @@ namespace jasperengine::editor{
 
         TextureRender& getTexture();
         Camera* getCamera();
+        // ray through (x, y) of the Scene view (engine pixels) from the editor camera
+        Ray screenToRay(float x, float y);
+        int getViewWidth() const { return viewWidth; }
+        int getViewHeight() const { return viewHeight; }
         bool setPreviewCamera(Entity entity);
         void clearPreviewCamera();
         Entity getPreviewCameraEntity() const;

@@ -104,6 +104,7 @@ namespace jasperengine::editor{
 
     protected:
         void hideAllGizmos() override;
+        void drawOverlayTargets() override;
 
     public:
         SceneRender3D(Scene* scene);

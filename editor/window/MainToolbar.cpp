@@ -223,13 +223,10 @@ void editor::MainToolbar::handleShortcuts(bool toolShortcuts) {
     }
 
     // Tools: not while typing, flying the 3D camera (RMB + WASDQE) or playing
-    // with the keyboard going to the game
+    // with the keyboard going to the game (the Scene view stays the editor's)
     if (!toolShortcuts || io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
     if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsAnyItemActive()) return;
-    if (project->isAnyScenePlaying()) {
-        App& app = Backend::getApp();
-        if (app.getGameWindow()->hasKeyboardFocus() || app.isSceneWindowFocused()) return;
-    }
+    if (project->isAnyScenePlaying() && Backend::getApp().getGameWindow()->hasKeyboardFocus()) return;
 
     if (ImGui::IsKeyPressed(ImGuiKey_Q, false)) setTool(Tool::Hand);
     if (ImGui::IsKeyPressed(ImGuiKey_W, false)) setTool(Tool::Move);
