@@ -7,6 +7,8 @@
 # The project is copied first. Writes build/shots/<name>.png and <name>.log.
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
+# CLICKS="X,Y key:ctrl+s sleep:2 shot:menu X,Y" runs before KEYS: X,Y clicks
+# there, key:K presses K, sleep:N waits, shot:S saves <name>-S.png.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +41,7 @@ docker run --rm \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \
     -e HOME="/src/$WORK/home" \
-    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" \
+    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" -e CLICKS="${CLICKS:-}" \
     "$IMAGE" bash -euo pipefail -c "
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99
@@ -50,6 +52,19 @@ docker run --rm \
         kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited early'; tail -30 ../$NAME.log; exit 1; }
         import -window root ../$NAME.png
         echo 'ok: build/shots/$NAME.png'
+        if [[ -n \"\$CLICKS\" || -n \"\$KEYS\" ]]; then
+            win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
+            [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
+        fi
+        for c in \$CLICKS; do
+            case \"\$c\" in
+                key:*) xdotool key \"\${c#key:}\" ;;
+                sleep:*) sleep \"\${c#sleep:}\" ;;
+                shot:*) import -window root ../$NAME-\${c#shot:}.png; echo \"ok: build/shots/$NAME-\${c#shot:}.png\" ;;
+                *) xdotool mousemove \${c%,*} \${c#*,}; sleep 0.2; xdotool click 1 ;;
+            esac
+            sleep 0.7
+        done
         if [[ -n \"\$KEYS\" ]]; then
             win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
             [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
