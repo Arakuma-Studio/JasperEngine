@@ -7,6 +7,9 @@
 # The project is copied first. Writes build/shots/<name>.png and <name>.log.
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
+# CLICKS="140,306 700,400" (x,y screen pixels, space separated) are left-clicked
+# after <seconds> and before KEYS; the first screenshot is then taken after them.
+# x,y,b uses mouse button b instead (3 = right click, 4/5 = wheel up/down).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +42,7 @@ docker run --rm \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \
     -e HOME="/src/$WORK/home" \
-    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" \
+    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" -e CLICKS="${CLICKS:-}" \
     "$IMAGE" bash -euo pipefail -c "
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99
@@ -48,6 +51,10 @@ docker run --rm \
         pid=\$!
         sleep $SECS
         kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited early'; tail -30 ../$NAME.log; exit 1; }
+        for c in \$CLICKS; do
+            IFS=, read -r cx cy cb <<< "\$c"
+            xdotool mousemove "\$cx" "\$cy" click "\${cb:-1}"; sleep 1
+        done
         import -window root ../$NAME.png
         echo 'ok: build/shots/$NAME.png'
         if [[ -n \"\$KEYS\" ]]; then
