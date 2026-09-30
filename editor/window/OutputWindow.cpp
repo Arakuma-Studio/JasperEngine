@@ -409,14 +409,16 @@ void OutputWindow::updatePlayState() {
     }
     wasPlaying = playing;
 
-    if (pendingErrorPause) {
+    // An error while play mode is still starting pauses as soon as it runs.
+    if (pendingErrorPause && (!playing || !errorPause)) {
         pendingErrorPause = false;
-        if (project && errorPause && project->isMainScenePlaying()) {
-            // pause() only acts on the play session's main scene
-            for (SceneProject& scene : project->getScenes()) {
-                if (scene.playState == ScenePlayState::PLAYING) {
-                    project->pause(scene.id);
-                }
+    }
+    if (pendingErrorPause && project->isMainScenePlaying()) {
+        pendingErrorPause = false;
+        // pause() only acts on the play session's main scene
+        for (SceneProject& scene : project->getScenes()) {
+            if (scene.playState == ScenePlayState::PLAYING) {
+                project->pause(scene.id);
             }
         }
     }
@@ -572,11 +574,18 @@ void OutputWindow::showList(float height) {
     int clickedRow = -1;
     int contextRow = -1;
 
+    // Rows touch, so the clipper's step is exactly rowHeight.
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, 0.0f));
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(rows.size()), rowHeight);
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
             const Row& row = rows[i];
+            if (row.logIndex >= logs.size()) {
+                // Logs trimmed mid-frame; the next rebuild drops this row.
+                ImGui::Dummy(ImVec2(width, rowHeight));
+                continue;
+            }
             const LogData& log = logs[row.logIndex];
             ImVec2 min = ImGui::GetCursorScreenPos();
             ImVec2 max(min.x + width, min.y + rowHeight);
@@ -620,13 +629,14 @@ void OutputWindow::showList(float height) {
         }
     }
     clipper.End();
+    ImGui::PopStyleVar();
 
-    if (clickedRow >= 0) {
+    if (clickedRow >= 0 && rows[clickedRow].logIndex < logs.size()) {
         selectedLogId = logs[rows[clickedRow].logIndex].id;
         hasSelection = true;
         autoScroll = false;
     }
-    if (contextRow >= 0) {
+    if (contextRow >= 0 && rows[contextRow].logIndex < logs.size()) {
         selectedLogId = logs[rows[contextRow].logIndex].id;
         hasSelection = true;
         ImGui::OpenPopup("##ConsoleRowMenu");
