@@ -248,7 +248,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     linesOffset = Vector2(0, 0);
     lastGridSpacing = 1.0f;
 
-    lines = new LineRenderer(scene);
+    lines = overlay(new LineRenderer(scene));
 
     lightObjects.clear();
     cameraObjects.clear();
@@ -388,8 +388,8 @@ void editor::SceneRender3D::createLines(){
 bool editor::SceneRender3D::instanciateLightObject(Entity entity){
     if (lightObjects.find(entity) == lightObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        lightObjects[entity].icon = new Sprite(scene);
-        lightObjects[entity].lines = new LineRenderer(scene);
+        lightObjects[entity].icon = overlay(new Sprite(scene));
+        lightObjects[entity].lines = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -400,8 +400,8 @@ bool editor::SceneRender3D::instanciateLightObject(Entity entity){
 bool editor::SceneRender3D::instanciateCameraObject(Entity entity){
     if (cameraObjects.find(entity) == cameraObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        cameraObjects[entity].icon = new Sprite(scene);
-        cameraObjects[entity].lines = new LineRenderer(scene);
+        cameraObjects[entity].icon = overlay(new Sprite(scene));
+        cameraObjects[entity].lines = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -412,7 +412,7 @@ bool editor::SceneRender3D::instanciateCameraObject(Entity entity){
 bool editor::SceneRender3D::instanciateSoundObject(Entity entity){
     if (soundObjects.find(entity) == soundObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        soundObjects[entity].icon = new Sprite(scene);
+        soundObjects[entity].icon = overlay(new Sprite(scene));
 
         return true;
     }
@@ -423,7 +423,7 @@ bool editor::SceneRender3D::instanciateSoundObject(Entity entity){
 bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
     if (bodyObjects.find(entity) == bodyObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyObjects[entity].lines = new LineRenderer(scene);
+        bodyObjects[entity].lines = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -434,7 +434,7 @@ bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
 bool editor::SceneRender3D::instanciateJointObject(Entity entity){
     if (jointLines.find(entity) == jointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = new LineRenderer(scene);
+        jointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -445,7 +445,7 @@ bool editor::SceneRender3D::instanciateJointObject(Entity entity){
 bool editor::SceneRender3D::instanciateLinePointLines(Entity entity){
     if (linePointLines.find(entity) == linePointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = new LineRenderer(scene);
+        linePointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -456,7 +456,7 @@ bool editor::SceneRender3D::instanciateLinePointLines(Entity entity){
 bool editor::SceneRender3D::instanciateReflectionProbeLines(Entity entity){
     if (reflectionProbeLines.find(entity) == reflectionProbeLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        reflectionProbeLines[entity] = new LineRenderer(scene);
+        reflectionProbeLines[entity] = overlay(new LineRenderer(scene));
         return true;
     }
     return false;
@@ -541,7 +541,7 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
 bool editor::SceneRender3D::instanciatePolygonPointLines(Entity entity){
     if (polygonPointLines.find(entity) == polygonPointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = new LineRenderer(scene);
+        polygonPointLines[entity] = overlay(new LineRenderer(scene));
 
         return true;
     }
@@ -1821,6 +1821,18 @@ void editor::SceneRender3D::activate(){
     }
 }
 
+// the orientation gizmo the overlay layer shows renders into its own framebuffer first
+void editor::SceneRender3D::drawOverlayTargets(){
+    Scene* gizmoScene = viewgizmo.getScene();
+    Framebuffer* gizmoTarget = viewgizmo.getFramebuffer();
+    gizmoScene->update(Engine::getDeltatime());
+    if (!gizmoTarget->isCreated()){
+        gizmoTarget->create();
+    }
+    Engine::drawView(SCENE_VIEW_ID, gizmoTarget, {{gizmoScene, gizmoScene->getCamera(),
+        Rect(0, 0, (float)gizmoTarget->getWidth(), (float)gizmoTarget->getHeight()), false, false}});
+}
+
 void editor::SceneRender3D::setOverlayScale(float scale){
     float previous = overlayScale;
     SceneRender::setOverlayScale(scale);
@@ -1898,7 +1910,7 @@ void editor::SceneRender3D::updateSelLines(std::vector<OBB> obbs){
 void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     SceneRender::update(selEntities, entities, mainCamera, settings);
 
-    if (isPlaying || isPreviewCameraActive()){
+    if (isPreviewCameraActive()){
         return;
     }
 

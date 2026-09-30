@@ -41,9 +41,8 @@ constexpr float VIEWPORT_GIZMO_SIZE = 100.0f;
 
 }
 
-editor::SceneWindow::SceneWindow(Project* project, PlayInput* playInput) {
+editor::SceneWindow::SceneWindow(Project* project) {
     this->project = project;
-    this->playInput = playInput;
     this->mouseLeftDraggedInside = false;
     this->windowFocused = false;
 }
@@ -79,18 +78,12 @@ bool editor::SceneWindow::isFocused() const {
     return windowFocused;
 }
 
-bool editor::SceneWindow::isGameCursorInView() const {
-    return gameCursorInView;
-}
-
 void editor::SceneWindow::resetProjectState() {
-    playInput->releaseAll();
     for (const auto& entry : lookActive) {
         // Only one look can be active, and endLook only rewrites keys that exist
         if (entry.second) { endLook(entry.first); break; }
     }
     windowFocused = false;
-    gameCursorInView = false;
     mouseLeftDown = false;
     mouseLeftDraggedInside = false;
     draggingMouse.clear();
@@ -110,7 +103,6 @@ void editor::SceneWindow::resetProjectState() {
 }
 
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
-    playInput->release(sceneId);
     if (lookActive[sceneId]) {
         endLook(sceneId);
     }
@@ -360,8 +352,7 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
 }
 
 Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {
-    Camera* camera = sceneProject->sceneRender->getCamera();
-    Ray ray = camera->screenToRay(x, y);
+    Ray ray = sceneProject->sceneRender->screenToRay(x, y);
 
     if (hitEntity != NULL_ENTITY) {
         AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({hitEntity});
@@ -383,7 +374,7 @@ Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, fl
         return hit.point;
     }
 
-    return camera->getTarget();
+    return sceneProject->sceneRender->getCamera()->getTarget();
 }
 
 void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject) {
@@ -655,7 +646,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 tempImage->setTexture(droppedAssetPath);
                                 tempImage->setAlpha(0.5f);
                             }
-                            Ray ray = sceneProject->sceneRender->getCamera()->screenToRay(x, y);
+                            Ray ray = sceneProject->sceneRender->screenToRay(x, y);
                             RayReturn rreturn = ray.intersects(Plane(Vector3(0, 0, 1), Vector3(0, 0, 0)));
                             if (rreturn) {
                                 tempImage->setPosition(rreturn.point);
@@ -761,7 +752,7 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
                         float y = io.MousePos.y - windowPos.y;
                         toEngineCanvas(sceneProject->id, x, y);
 
-                        Ray ray = sceneProject->sceneRender->getCamera()->screenToRay(x, y);
+                        Ray ray = sceneProject->sceneRender->screenToRay(x, y);
                         Plane tilePlane(Vector3(0, 0, 1), transform->worldPosition);
                         RayReturn rr = ray.intersects(tilePlane);
 
@@ -853,25 +844,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
     }
 
-    // The Game view owns the running game while it is shown; this view then only
-    // mirrors the game image, like a Scene view that cannot draw during play.
-    GameWindow* gameWindow = Backend::getApp().getGameWindow();
-    if (gameWindow && gameWindow->hostsScene(sceneProject->id)) {
-        return;
-    }
-
-    // When scene is playing, forward mouse and keyboard events to Engine
-    if (sceneProject->playState == ScenePlayState::PLAYING) {
-        const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
-        // Keeps the editor camera off while the game owns the mouse
-        if (playInput->forward(sceneProject->id, windowPos, canvasEngineScale(sceneProject->id), isMouseInWindow, focused)) {
-            return;
-        }
-    } else {
-        // Play stopped or paused with input still held
-        playInput->release(sceneProject->id);
-    }
-
+    // The game takes its input in the Game view. This view stays the editor's while
+    // it plays: selection, transform tools and the editor camera.
     if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->sceneRender->isPreviewCameraActive()) {
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             stopViewingCamera(sceneProject->id);
@@ -1704,9 +1678,9 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
     bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
 
     if (beginSection("Overlays")) {
-        drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints, notStopped);
-        drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones, notStopped);
-        drawSettingRow(ICON_FA_CUBES " Show all rigidbodies", sceneProject.displaySettings.showAllBodies, notStopped);
+        drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints);
+        drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones);
+        drawSettingRow(ICON_FA_CUBES " Show all rigidbodies", sceneProject.displaySettings.showAllBodies);
 
         drawSettingRow(ICON_FA_CAMERA " Hide camera view", sceneProject.displaySettings.hideCameraView);
         drawSettingRow(ICON_FA_LIGHTBULB " Hide light icons", sceneProject.displaySettings.hideLightIcons, sceneProject.sceneType != SceneType::SCENE_3D);
@@ -1727,7 +1701,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling, notStopped);
         }
-        drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog, notStopped);
+        drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
 
         ImGui::EndTable();
     }
@@ -1859,7 +1833,6 @@ void editor::SceneWindow::show() {
     closeSceneQueue.clear();
 
     windowFocused = false;
-    bool gameCursorInSceneRect = false;
 
     int openedScenesCount = 0;
     for (const auto& s : project->getScenes()) {
@@ -1877,7 +1850,8 @@ void editor::SceneWindow::show() {
         const bool isRuntimeActive = sceneProject.playState == ScenePlayState::PLAYING
             || sceneProject.playState == ScenePlayState::PAUSED;
         GameWindow* gameWindow = Backend::getApp().getGameWindow();
-        const bool gameHosted = gameWindow && gameWindow->hostsScene(sceneProject.id);
+        // the running game shows in the Game view; the dot marks a game nobody sees
+        const bool gameShown = gameWindow && gameWindow->hostsScene(sceneProject.id) && gameWindow->isVisible();
 
         if (hasNotification[sceneProject.id]) {
             App::pushTabNotificationStyle();
@@ -1889,7 +1863,7 @@ void editor::SceneWindow::show() {
 
         if (!isRuntimeActive) {
             hasNotification[sceneProject.id] = false;
-        } else if (sceneWindowVisible || gameHosted) {
+        } else if (sceneWindowVisible || gameShown) {
             hasNotification[sceneProject.id] = false;
         } else {
             hasNotification[sceneProject.id] = true;
@@ -2007,9 +1981,7 @@ void editor::SceneWindow::show() {
                 ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());
                 ImVec2 canvasAvail = ImGui::GetContentRegionAvail();
 
-                if (gameHosted) {
-                    drawHostedGameImage(previewTex);
-                } else if (isCameraPreview) {
+                if (isCameraPreview) {
                     // Fixed-aspect cameras (autoResize == false) render distorted into the
                     // full viewport; display them at their true aspect (letterbox/pillarbox)
                     // so the preview matches the framing they'll actually render. autoResize
@@ -2056,7 +2028,11 @@ void editor::SceneWindow::show() {
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
                 }
 
-                if (sceneProject.playState == ScenePlayState::STOPPED && !isCameraPreview){
+                const bool transitioning = sceneProject.playState == ScenePlayState::SAVING
+                    || sceneProject.playState == ScenePlayState::LOADING
+                    || sceneProject.playState == ScenePlayState::CANCELLING;
+
+                if (!transitioning && !isCameraPreview){
                     if (ImGui::IsWindowHovered()) {
                         CursorSelected cursorSelected = sceneProject.sceneRender->getCursorSelected();
                         if (cursorSelected == CursorSelected::HAND) {
@@ -2076,12 +2052,15 @@ void editor::SceneWindow::show() {
                         }
                     }
 
-                    handleResourceFileDragDrop(&sceneProject);
-                    handleTileRectDragDrop(&sceneProject);
+                    // dropped resources become authored entities, which a running scene cannot take
+                    if (sceneProject.playState == ScenePlayState::STOPPED){
+                        handleResourceFileDragDrop(&sceneProject);
+                        handleTileRectDragDrop(&sceneProject);
+                    }
                 }
 
                 // Viewport gizmo click-to-snap (3D scenes only)
-                if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.playState == ScenePlayState::STOPPED && !isCameraPreview) {
+                if (sceneProject.sceneType == SceneType::SCENE_3D && !transitioning && !isCameraPreview) {
                     if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                         ImVec2 windowPos = ImGui::GetWindowPos();
                         ImGuiIO& io = ImGui::GetIO();
@@ -2090,10 +2069,6 @@ void editor::SceneWindow::show() {
                         toEngineCanvas(sceneProject.id, canvasX, canvasY);
                         suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id), getHeight(sceneProject.id));
                     }
-                }
-
-                if (sceneProject.playState == ScenePlayState::PLAYING && !gameHosted && ImGui::IsWindowHovered()) {
-                    gameCursorInSceneRect = true;
                 }
 
                 sceneEventHandler(&sceneProject);
@@ -2110,33 +2085,6 @@ void editor::SceneWindow::show() {
         }
     }
 
-    gameCursorInView = gameCursorInSceneRect;
-}
-
-// The running game is drawn at the Game view's size, so fit it into this view.
-void editor::SceneWindow::drawHostedGameImage(ImTextureID texture) {
-    ImVec2 avail = ImGui::GetContentRegionAvail();
-    ImVec2 canvasMin = ImGui::GetCursorScreenPos();
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(canvasMin, ImVec2(canvasMin.x + avail.x, canvasMin.y + avail.y), IM_COL32(0, 0, 0, 255));
-
-    GameWindow* gameWindow = Backend::getApp().getGameWindow();
-    const float gameW = gameWindow ? (float)gameWindow->getWidth() : 0.0f;
-    const float gameH = gameWindow ? (float)gameWindow->getHeight() : 0.0f;
-    ImVec2 imageSize = avail;
-    if (gameW > 0.0f && gameH > 0.0f && avail.x > 0.0f && avail.y > 0.0f) {
-        const float fit = std::min(avail.x / gameW, avail.y / gameH);
-        imageSize = ImVec2(gameW * fit, gameH * fit);
-    }
-    ImGui::SetCursorScreenPos(ImVec2(canvasMin.x + (avail.x - imageSize.x) * 0.5f, canvasMin.y + (avail.y - imageSize.y) * 0.5f));
-    Widgets::image(texture, imageSize);
-
-    const char* note = "Running in the Game view";
-    const ImVec2 noteSize = ImGui::CalcTextSize(note);
-    const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
-    const ImVec2 noteMin(canvasMin.x + Theme::dpi(8.0f), canvasMin.y + Theme::dpi(8.0f));
-    drawList->AddRectFilled(noteMin, ImVec2(noteMin.x + noteSize.x + pad.x * 2.0f, noteMin.y + noteSize.y + pad.y * 2.0f), IM_COL32(0, 0, 0, 170), Theme::dpi(3.0f));
-    drawList->AddText(ImVec2(noteMin.x + pad.x, noteMin.y + pad.y), IM_COL32(220, 220, 220, 255), note);
 }
 
 ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {

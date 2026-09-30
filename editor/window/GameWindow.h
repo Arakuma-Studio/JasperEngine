@@ -10,10 +10,11 @@
 
 namespace jasperengine::editor {
 
-    // Unity-style Game view. While a scene plays it hosts the running game: the
-    // engine draws it at this view's size and the view forwards game input. When
-    // stopped it shows the selected scene through its game camera (a separate
-    // draw pass, see App::engineRender).
+    // Unity-style Game view. While a scene plays the game renders here: the engine
+    // draws it into this view's framebuffer at this view's size, even while the tab
+    // is hidden behind another, and the view forwards game input while it is hovered
+    // or focused. When stopped it shows the selected scene through its game camera
+    // (a secondary view of the Scene view's frame, see App::engineRender).
     class GameWindow {
     private:
         Project* project;
@@ -42,7 +43,8 @@ namespace jasperengine::editor {
         uint32_t editPassSceneId = NULL_PROJECT_SCENE;
         bool editPassDirty = true;
         bool editPassRendered = false;
-        Framebuffer editFramebuffer;
+        // what the view shows: the running game, or the edit-mode pass
+        Framebuffer framebuffer;
 
         void loadSettings();
         void saveSettings();
@@ -65,16 +67,23 @@ namespace jasperengine::editor {
 
         // Scene the view shows: the play session's main scene, else the selected one
         uint32_t getTargetSceneId() const;
-        // The running sceneId is drawn at this view's size and takes its input here
+        // sceneId is the running game: it renders into this view's framebuffer at
+        // getRenderWidth() x getRenderHeight(), whether the view is shown or not
         bool hostsScene(uint32_t sceneId) const;
         // sceneId is stopped and needs the edit-mode pass through its game camera
         bool wantsEditPass(uint32_t sceneId) const;
         bool isEditPassDirty() const;
         void markEditPassRendered(uint32_t sceneId);
-        Framebuffer* getEditFramebuffer();
+        Framebuffer* getFramebuffer();
 
+        // drawn in the last show()
+        bool isVisible() const;
+        // size of the game image as last laid out (0 before the view was ever shown)
         int getWidth() const;
         int getHeight() const;
+        // size the game renders at: the laid out one, or the project canvas before any
+        int getRenderWidth() const;
+        int getRenderHeight() const;
         bool isGameCursorInView() const;
         // The game image has keyboard focus (keys go to the game while playing)
         bool hasKeyboardFocus() const;

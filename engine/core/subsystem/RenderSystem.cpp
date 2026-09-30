@@ -101,9 +101,9 @@ namespace {
         return transform.worldPosition;
     }
 
-    void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh){
+    void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh, const Vector3& fadeEyeLocal){
         float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
-            instmesh.fadeEyeLocal.x, instmesh.fadeEyeLocal.y, instmesh.fadeEyeLocal.z, 0.0f};
+            fadeEyeLocal.x, fadeEyeLocal.y, fadeEyeLocal.z, 0.0f};
         render.applyUniformBlock(slot, sizeof(fade), &fade);
     }
 
@@ -249,32 +249,23 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     this->scene = scene;
 
     ssaoLoaded = false;
-    ssaoWidth = 0;
-    ssaoHeight = 0;
     ssaoSlotParams = -1;
     ssaoBlurSlotParams = -1;
-    currentSSAOTexture = NULL;
     frameTime = 0.0f;
     passResolution = Vector2(0.0f, 0.0f);
 
     ssrLoaded = false;
-    ssrWidth = 0;
-    ssrHeight = 0;
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
     swapchainRedirect = false;
 
     blitLoaded = false;
-    fixedResWidth = 0;
-    fixedResHeight = 0;
     blitSlotParams = -1;
 
     postProcessLoaded = false;
     postProcessNeedReload = false;
     postProcessNeedUpdateUniforms = false;
-    postProcessWidth = 0;
-    postProcessHeight = 0;
     postProcessNeedsDepth = false;
     postProcessNeedsGBuffer = false;
 
@@ -344,11 +335,19 @@ void RenderSystem::destroy(){
 
     emptyTexturesCreated = false;
 
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : secondaryViews){
+        destroyRenderView(*entry.second);
+    }
+    secondaryViews.clear();
+    activeView = &primaryView;
+#endif
+
     destroySSAO();
     destroySSR();
     destroyBlit();
     destroyPostProcess();
-    for (InstanceView& view : instanceViews){
+    for (InstanceView& view : rv().instanceViews){
         view.buffer.getRender()->destroyBuffer();
         view.data.clear();
         view.capacity = 0;
@@ -866,8 +865,27 @@ void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& ren
         spotMaskAtlasCreated ? &spotMaskAtlas : &emptyWhite);
 }
 
+// inverse viewport size, used by USE_SSAO to convert gl_FragCoord to a screen UV.
+// .z = SSAO debug flag (output raw AO); .w = rendering-flipped flag (the AO buffer
+// is in logical orientation, so flip Y on sample when the color pass is flipped).
+Vector4 RenderSystem::lightingViewportInfo(const CameraComponent& camera) const{
+    float vpW = targetViewRect().getWidth();
+    float vpH = targetViewRect().getHeight();
+    if (isFixedResolutionActive() && !camera.renderToTexture){
+        // the main color pass renders into the fixed-resolution target
+        vpW = (float)scene->getFixedResolutionWidth();
+        vpH = (float)scene->getFixedResolutionHeight();
+    }
+    return Vector4(
+        (vpW > 0.0f) ? 1.0f / vpW : 0.0f,
+        (vpH > 0.0f) ? 1.0f / vpH : 0.0f,
+        scene->isSSAODebug() ? 1.0f : 0.0f,
+        isRenderingFlipped(camera) ? 1.0f : 0.0f);
+}
+
 void RenderSystem::processLights(int numLights, CameraComponent& camera, Transform& cameraTransform){
     auto lights = scene->getComponentArray<LightComponent>();
+    RenderView& view = rv();
 
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
@@ -889,31 +907,32 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
             if (light.shadowMapIndex >= 0){
                 size_t numMaps = 1;
                 if (light.type == LightType::DIRECTIONAL){
-                    numMaps = light.numShadowCascades;
+                    numMaps = lightCascades(i, light);
                 }else if (light.type == LightType::POINT){
                     numMaps = SHADOW_CUBE_FACES;
                 }
 
                 for (int c = 0; c < (int)numMaps; c++){
+                    const LightCamera& shadowCamera = lightCamera(i, light, c);
                     if (light.type == LightType::POINT){
-                        fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
+                        view.fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
                             light.shadowBias,
                             (float)shadowPointAtlasSlotResolution,
-                            light.cameras[c].nearFar.x,
-                            light.cameras[c].nearFar.y);
+                            shadowCamera.nearFar.x,
+                            shadowCamera.nearFar.y);
                     }else{
-                        vs_shadows.lightViewProjectionMatrix[light.shadowMapIndex+c] = light.cameras[c].lightViewProjectionMatrix;
+                        view.vs_shadows.lightViewProjectionMatrix[light.shadowMapIndex+c] = shadowCamera.lightViewProjectionMatrix;
 
-                        float projScale = std::max(std::abs(light.cameras[c].lightProjectionMatrix[0][0]),
-                                                   std::abs(light.cameras[c].lightProjectionMatrix[1][1]));
+                        float projScale = std::max(std::abs(shadowCamera.lightProjectionMatrix[0][0]),
+                                                   std::abs(shadowCamera.lightProjectionMatrix[1][1]));
                         float texelSizeWorld = (projScale > 0.0f) ? 2.0f / (projScale * (float)shadowAtlasSlotResolution) : 0.0f;
-                        vs_shadows.shadowParams[light.shadowMapIndex+c] = Vector4(light.shadowNormalBias * texelSizeWorld, 0.0, 0.0, 0.0);
+                        view.vs_shadows.shadowParams[light.shadowMapIndex+c] = Vector4(light.shadowNormalBias * texelSizeWorld, 0.0, 0.0, 0.0);
 
-                        fs_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
+                        view.fs_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
                             light.shadowBias,
                             (float)shadowAtlasSlotResolution,
-                            light.cameras[c].nearFar.x,
-                            light.cameras[c].nearFar.y);
+                            shadowCamera.nearFar.x,
+                            shadowCamera.nearFar.y);
                     }
                 }
             }
@@ -923,13 +942,13 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
             // and reclaims a slot automatically once one frees up.
         }
 
-        fs_lighting.direction_range[i] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
+        view.fs_lighting.direction_range[i] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
         // a disabled light keeps its slot (the shader variant stays) but adds nothing
         const float intensity = isLightActive(entity, light) ? light.intensity : 0.0f;
-        fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
-        fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
-        fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, light.numShadowCascades);
-        fs_lighting.spotUp_maskAspect[i] = Vector4(
+        view.fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
+        view.fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
+        view.fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, lightCascades(i, light));
+        view.fs_lighting.spotUp_maskAspect[i] = Vector4(
             light.worldUp.x,
             light.worldUp.y,
             light.worldUp.z,
@@ -946,40 +965,26 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
         case ShadowQuality::HIGH:   pcfRadius = 3.0f; break;
     }
 
-    fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
-    fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, pcfRadius);
-    fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
+    view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
+    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, pcfRadius);
+    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
 
-    fs_lighting.envColor = Vector4(1.0, 1.0, 1.0, 0.0);
+    view.fs_lighting.envColor = Vector4(1.0, 1.0, 1.0, 0.0);
     if (hasIBL){
         auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
             SkyboxComponent& sky = skys->getComponentFromIndex(0);
             Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
-            fs_lighting.envColor = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
+            view.fs_lighting.envColor = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
         }
     }
 
-    // inverse viewport size, used by USE_SSAO to convert gl_FragCoord to a screen UV.
-    // .z = SSAO debug flag (output raw AO); .w = rendering-flipped flag (the AO buffer
-    // is in logical orientation, so flip Y on sample when the color pass is flipped).
-    float vpW = Engine::getViewRect().getWidth();
-    float vpH = Engine::getViewRect().getHeight();
-    if (isFixedResolutionActive() && !camera.renderToTexture){
-        // the main color pass renders into the fixed-resolution target
-        vpW = (float)scene->getFixedResolutionWidth();
-        vpH = (float)scene->getFixedResolutionHeight();
-    }
-    fs_lighting.viewportInfo = Vector4(
-        (vpW > 0.0f) ? 1.0f / vpW : 0.0f,
-        (vpH > 0.0f) ? 1.0f / vpH : 0.0f,
-        scene->isSSAODebug() ? 1.0f : 0.0f,
-        isRenderingFlipped(camera) ? 1.0f : 0.0f);
+    view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
 
     // Setting intensity of other lights to zero
     for (int i = numLights; i < MAX_LIGHTS; i++){
-        fs_lighting.color_intensity[i].w = 0.0;
-        fs_lighting.spotUp_maskAspect[i].w = 0.0;
+        view.fs_lighting.color_intensity[i].w = 0.0;
+        view.fs_lighting.spotUp_maskAspect[i].w = 0.0;
     }
 }
 
@@ -1538,10 +1543,10 @@ void RenderSystem::renderReflectionProbeCapture(){
     captureCamera.farClip = std::max(probe->farClip, captureCamera.nearClip + 0.001f);
     updateCamera(captureCamera, captureTransform);
 
-    Vector4 previousEye = fs_lighting.eyePos;
-    Vector4 previousCameraDir = fs_lighting.cameraDir;
-    fs_lighting.eyePos = Vector4(capturePosition.x, capturePosition.y, capturePosition.z, 0.0f);
-    fs_lighting.cameraDir = Vector4(captureCamera.worldDirection.x, captureCamera.worldDirection.y,
+    Vector4 previousEye = rv().fs_lighting.eyePos;
+    Vector4 previousCameraDir = rv().fs_lighting.cameraDir;
+    rv().fs_lighting.eyePos = Vector4(capturePosition.x, capturePosition.y, capturePosition.z, 0.0f);
+    rv().fs_lighting.cameraDir = Vector4(captureCamera.worldDirection.x, captureCamera.worldDirection.y,
                                     captureCamera.worldDirection.z, previousCameraDir.w);
 
     capturingReflectionProbe = true;
@@ -1554,7 +1559,7 @@ void RenderSystem::renderReflectionProbeCapture(){
         SkyboxComponent& sky = skys->getComponentFromIndex(0);
         if (sky.visible){
             updateSkyViewProjection(sky, captureCamera);
-            drawSky(sky, PIP_RTT_INVERT);
+            drawSky(sky, PIP_RTT_INVERT, sky.skyViewProjectionMatrix);
         }
     }
 
@@ -1575,13 +1580,13 @@ void RenderSystem::renderReflectionProbeCapture(){
         InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-        drawMesh(entity, *mesh, transform, captureCamera, captureTransform, PIP_RTT_INVERT, instanced, terrain, tilemap, 0);
+        drawMesh(entity, *mesh, transform, captureCamera, captureTransform, PIP_RTT_INVERT, instanced, terrain, tilemap, mainTerrainView());
     }
 
     runtime.capturePass.endRenderPass();
     capturingReflectionProbe = false;
-    fs_lighting.eyePos = previousEye;
-    fs_lighting.cameraDir = previousCameraDir;
+    rv().fs_lighting.eyePos = previousEye;
+    rv().fs_lighting.cameraDir = previousCameraDir;
 
     delete captureCamera.framebuffer;
     captureCamera.framebuffer = nullptr;
@@ -1601,13 +1606,13 @@ void RenderSystem::renderReflectionProbeCapture(){
 void RenderSystem::initShadowAtlasRects(){
     for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
         if (s >= shadowAtlasUsedSlots || shadowAtlasCols < 1 || shadowAtlasRows < 1){
-            fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            rv().fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
             continue;
         }
 
         int col = s % shadowAtlasCols;
         int row = s / shadowAtlasCols;
-        fs_shadows.atlasRect[s] = Vector4(
+        rv().fs_shadows.atlasRect[s] = Vector4(
             (float)col / (float)shadowAtlasCols,
             (float)row / (float)shadowAtlasRows,
             1.0f / (float)shadowAtlasCols,
@@ -1619,7 +1624,7 @@ void RenderSystem::initShadowPointAtlasRects(){
     for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
         int col = s % SHADOW_POINT_ATLAS_COLS;
         int row = s / SHADOW_POINT_ATLAS_COLS;
-        fs_point_shadows.atlasRect[s] = Vector4(
+        rv().fs_point_shadows.atlasRect[s] = Vector4(
             (float)col / (float)SHADOW_POINT_ATLAS_COLS,
             (float)row / (float)SHADOW_POINT_ATLAS_ROWS,
             1.0f / (float)SHADOW_POINT_ATLAS_COLS,
@@ -1934,6 +1939,34 @@ void RenderSystem::loadShadowTextures(ShaderData& shaderData, ObjectRender& rend
         render.addTexture(slotTex, ShaderStageType::FRAGMENT,
                           hasShadowPointAtlas ? &shadowPointAtlasFramebuffer.getColorTexture() : &emptyWhite);
     }
+}
+
+bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool restore){
+#ifdef JASPERENGINE_EDITOR
+    const RenderView& view = rv();
+    if (!view.secondary || (!view.ownShadowAtlas && !view.ownShadowPointAtlas) || !hasLights || !receiveLights)
+        return false;
+
+    if (view.ownShadowAtlas){
+        TextureRender* atlas = restore
+            ? (hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth)
+            : &rv().shadowAtlas.getDepthTexture();
+        render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWATLAS), ShaderStageType::FRAGMENT, atlas);
+    }
+    if (view.ownShadowPointAtlas){
+        TextureRender* atlas = restore
+            ? (hasShadowPointAtlas ? &shadowPointAtlasFramebuffer.getColorTexture() : &emptyWhite)
+            : &rv().shadowPointAtlas.getColorTexture();
+        render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS), ShaderStageType::FRAGMENT, atlas);
+    }
+    return true;
+#else
+    (void)shaderData;
+    (void)render;
+    (void)receiveLights;
+    (void)restore;
+    return false;
+#endif
 }
 
 void RenderSystem::loadShadow2DTexture(ShaderData& shaderData, ObjectRender& render, bool receiveShadows2D){
@@ -3547,9 +3580,9 @@ void RenderSystem::updateMeshLodErrors(MeshComponent& mesh){
     instanceViewsDirty = true;
 }
 
-// world units one pixel of the main view spans; a change rebuilds the instance views
-void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraTransform){
-    float viewHeight = Engine::getViewRect().getHeight();
+// world units one pixel of the view being drawn spans through camera
+RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const{
+    float viewHeight = targetViewRect().getHeight();
     if (isFixedResolutionActive())
         viewHeight = (float)scene->getFixedResolutionHeight();
     viewHeight = std::max(viewHeight, 1.0f);
@@ -3563,12 +3596,18 @@ void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraT
     }else{
         view.constant = std::abs(camera.topClip - camera.bottomClip) / viewHeight;
     }
+    return view;
+}
 
-    if (view.enabled != mainLodView.enabled || view.threshold != mainLodView.threshold ||
-        view.origin != mainLodView.origin || view.perUnit != mainLodView.perUnit || view.constant != mainLodView.constant){
+// a change rebuilds the instance views
+void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraTransform){
+    LodView view = computeLodView(camera, cameraTransform);
+
+    if (view.enabled != rv().lodView.enabled || view.threshold != rv().lodView.threshold ||
+        view.origin != rv().lodView.origin || view.perUnit != rv().lodView.perUnit || view.constant != rv().lodView.constant){
         instanceViewsDirty = true;
     }
-    mainLodView = view;
+    rv().lodView = view;
 }
 
 unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const{
@@ -3585,17 +3624,18 @@ unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodVie
     return level;
 }
 
-RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int cameraIndex, int slot) const{
+RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
     view.threshold = SHADOW_LOD_TEXELS;
 
-    const Matrix4& projection = light.cameras[cameraIndex].lightProjectionMatrix;
+    const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
+    const Matrix4& projection = shadowCamera.lightProjectionMatrix;
     float texel = 2.0f / (std::abs(projection[1][1]) * std::max(getShadowAtlasSlotRect(slot).getHeight(), 1.0f));
     if (light.type == LightType::DIRECTIONAL){
         view.constant = texel;
     }else{
-        view.origin = light.cameras[cameraIndex].lightViewMatrix.inverse() * Vector3(0, 0, 0);
+        view.origin = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
         view.perUnit = texel;
     }
     return view;
@@ -3614,11 +3654,11 @@ std::vector<RenderSystem::ShadowSlot> RenderSystem::collectShadowSlots(){
         if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
                 !isLightActive(lights->getEntity(l), light))
             continue;
-        int numShadowCameras = (light.type == LightType::DIRECTIONAL) ? (int)light.numShadowCascades : 1;
+        int numShadowCameras = (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(l, light) : 1;
         for (int c = 0; c < numShadowCameras; c++){
             int slot = light.shadowMapIndex + c;
             if (slot >= 0 && slot < shadowAtlasUsedSlots)
-                slots.push_back({slot, &light, c});
+                slots.push_back({slot, &light, l, c});
         }
     }
     return slots;
@@ -3632,7 +3672,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     instanceViewsDirty = false;
 
     std::vector<ShadowSlot> shadowSlots = collectShadowSlots();
-    for (InstanceView& view : instanceViews){
+    for (InstanceView& view : rv().instanceViews){
         view.data.clear();
     }
 
@@ -3649,32 +3689,39 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
         }
 
         // the main camera keeps the order where it is the layering: blended batches and 2D
-        bool keepOrder = mesh->transparent || !sortsByDistance(mainCamera);
+        InstanceOrder order = (mesh->transparent || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
-        buildInstanceView(0, instmesh, *mesh, *transform, mainCamera.farClip, mainCamera.frustumPlanes, mainLodView,
-            eye, eye, Vector3::ZERO, keepOrder);
+        const InstanceRenderData* instances = instmesh.renderInstances.data();
+        const InstanceBounds* bounds = instmesh.renderBounds.data();
+        const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
+        buildInstanceView(rv().instanceViews[0], instmesh.views[0], instances, bounds, count, instmesh, *mesh, *transform,
+            mainCamera.farClip, mainCamera.frustumPlanes, rv().lodView, eye, eye, Vector3::ZERO, order);
 
         for (const ShadowSlot& shadow : shadowSlots){
             if (!mesh->castShadows){
                 instmesh.views[1 + shadow.slot] = InstanceViewRange();
                 continue;
             }
-            const LightCamera& lightCamera = shadow.light->cameras[shadow.cameraIndex];
-            LodView lodView = shadowLodView(*shadow.light, shadow.cameraIndex, shadow.slot);
+            const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+            LodView lodView = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
             Vector3 direction = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
-            buildInstanceView(1 + shadow.slot, instmesh, *mesh, *transform, lightCamera.nearFar.y, lightCamera.frustumPlanes, lodView,
-                eye, lodView.origin, direction, false);
+            buildInstanceView(rv().instanceViews[1 + shadow.slot], instmesh.views[1 + shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+                shadowCamera.nearFar.y, shadowCamera.frustumPlanes, lodView, eye, lodView.origin, direction, InstanceOrder::NEAREST);
         }
     }
 
-    for (InstanceView& view : instanceViews){
+    for (InstanceView& view : rv().instanceViews){
         view.needUpload = !view.data.empty();
     }
+#ifdef JASPERENGINE_EDITOR
+    instanceRevision++;
+#endif
 }
 
-// instances inside the frustum and the cull distance from the eye, nearest first (along
-// direction when given), grouped by level
-void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, bool keepOrder){
+// instances inside the frustum and the cull distance from the eye, appended to view with
+// their range. NEAREST: nearest first (along direction when given), grouped by level;
+// KEEP: list order at full detail; BACK_TO_FRONT: ascending along direction, full detail
+void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order){
     struct Candidate{
         unsigned int index;
         unsigned int lod;
@@ -3683,17 +3730,14 @@ void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& inst
     static std::vector<Candidate> candidates;
     candidates.clear();
 
-    InstanceViewRange& range = instmesh.views[viewIndex];
     range = InstanceViewRange();
-    if (instmesh.renderBounds.size() < instmesh.numVisible)
-        return;
 
     const Vector3& worldScale = transform.worldScale;
     const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
     const bool limitDistance = std::isfinite(instmesh.cullDistance) && instmesh.cullDistance > 0.0f;
 
-    for (unsigned int i = 0; i < instmesh.numVisible; i++){
-        const InstanceBounds& bounds = instmesh.renderBounds[i];
+    for (unsigned int i = 0; i < count; i++){
+        const InstanceBounds& bounds = instanceBounds[i];
         const Vector3 center = transform.modelMatrix * bounds.center;
         const float radius = bounds.radius * entityScale;
         if (instmesh.cullInstances){
@@ -3707,10 +3751,12 @@ void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& inst
         candidate.index = i;
         candidate.lod = 0;
         candidate.key = (float)i;
-        if (!keepOrder){
+        if (order == InstanceOrder::NEAREST){
             float distance = (center - lodView.origin).length() - radius;
             candidate.lod = selectMeshLod(mesh, &lodView, distance, bounds.scale * entityScale);
             candidate.key = (direction == Vector3::ZERO) ? (center - origin).squaredLength() : center.dotProduct(direction);
+        }else if (order == InstanceOrder::BACK_TO_FRONT){
+            candidate.key = center.dotProduct(direction);
         }
         candidates.push_back(candidate);
     }
@@ -3719,18 +3765,17 @@ void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& inst
         return a.lod != b.lod ? a.lod < b.lod : a.key < b.key;
     });
 
-    InstanceView& view = instanceViews[viewIndex];
     range.offset = (unsigned int)view.data.size();
     for (const Candidate& candidate : candidates){
-        view.data.push_back(instmesh.renderInstances[candidate.index]);
+        view.data.push_back(instances[candidate.index]);
         range.lodCount[candidate.lod]++;
     }
 }
 
 // instances and detail level a pass draws a mesh with; false when there is nothing to draw
-bool RenderSystem::selectMeshDraw(MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
+bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
     if (instmesh){
-        const InstanceViewRange* range = (instanceView >= 0) ? &instmesh->views[instanceView] : nullptr;
+        const InstanceViewRange* range = (instanceView >= 0) ? &instanceRange(entity, *instmesh, instanceView) : nullptr;
         draw.instanceCount = range ? range->count() : instmesh->numVisible;
         draw.instanceFirst = range ? range->offset : 0;
         // unpainted foliage chunks make this common
@@ -3749,12 +3794,12 @@ bool RenderSystem::selectMeshDraw(MeshComponent& mesh, Transform& transform, Ins
 
 // the slice of a view buffer, or the whole component buffer, starting at instance first
 void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first){
-    BufferRender* buffer = (instanceView >= 0) ? instanceViews[instanceView].buffer.getRender() : instmesh.buffer.getRender();
+    BufferRender* buffer = (instanceView >= 0) ? instanceBuffer(instanceView) : instmesh.buffer.getRender();
     render.replaceVertexBuffer(instmesh.buffer.getRender(), buffer, (size_t)first * instmesh.buffer.getStride());
 }
 
 // a culled view draws each level bucket of its slice; anything else draws every instance at one level
-void RenderSystem::drawSubmeshGeometry(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount){
+void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount){
     Submesh& submesh = mesh.submeshes[submeshIndex];
     const MeshLodData* lodData = submesh.lodData.get();
     bool lodReady = lodData && lodData->numLevels > 1 && submesh.lodIndices.getRender()->isCreated();
@@ -3775,7 +3820,7 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, MeshComponent& mesh
     };
 
     if (instmesh && instanceView >= 0){
-        const InstanceViewRange& range = instmesh->views[instanceView];
+        const InstanceViewRange& range = instanceRange(entity, *instmesh, instanceView);
         unsigned int first = range.offset;
         for (unsigned int l = 0; l < MAX_MESH_LODS; l++){
             drawLevel(l, range.lodCount[l], first);
@@ -3836,7 +3881,12 @@ void RenderSystem::updateInstanceBuffers(){
         instmesh.needUpdateBuffer = false;
     }
 
-    for (InstanceView& view : instanceViews){
+    uploadInstanceViews(rv());
+}
+
+// the culled lists a view rebuilt, each into its own buffer
+void RenderSystem::uploadInstanceViews(RenderView& renderView){
+    for (InstanceView& view : renderView.instanceViews){
         if (!view.needUpload)
             continue;
         view.needUpload = false;
@@ -3860,15 +3910,15 @@ void RenderSystem::updateInstanceBuffers(){
 // draw the main camera's selection and take their instance count from the CPU-side
 // buffer, so without this they would draw this frame's node count out of the previous
 // frame's node data.
-void RenderSystem::updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex){
-    if (!terrain.views[viewIndex].needUpdateNodesBuffer)
+void RenderSystem::updateTerrainNodesBuffer(TerrainView& view){
+    if (!view.needUpdateNodesBuffer)
         return;
 
     for (int s = 0; s < 2; s++){
-        terrain.views[viewIndex].nodesbuffer[s].getRender()->updateBuffer(terrain.views[viewIndex].nodesbuffer[s].getSize(), terrain.views[viewIndex].nodesbuffer[s].getData());
+        view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
     }
 
-    terrain.views[viewIndex].needUpdateNodesBuffer = false;
+    view.needUpdateNodesBuffer = false;
 }
 
 bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
@@ -3878,13 +3928,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             return false;
         }
 
-        if (cullsBatch(mesh, instmesh) && !isInsideCamera(camera, mesh.worldAABB)) {
+        if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
             return false;
         }
 
         // Buffers already uploaded this frame by updateInstanceBuffers().
         MeshDraw draw;
-        if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
             return false;
         }
         unsigned int instanceCount = draw.instanceCount;
@@ -3892,9 +3942,15 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
 
+        TerrainView* terrainNodes = nullptr;
         if (terrain){
-            updateTerrainNodesBuffer(*terrain, terrainView);
+            terrainNodes = &terrainViewData(entity, *terrain, terrainView);
+            updateTerrainNodesBuffer(*terrainNodes);
         }
+
+        // model, normal and mvp matrices of this pass (one uniform block)
+        Matrix4 objectScratch[3];
+        const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
             // an indexed submesh without indices has nothing to draw (a tilemap rect
@@ -3912,9 +3968,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             ObjectRender& render = mesh.submeshes[i].render;
 
             if (terrain){
-                instanceCount = terrain->views[terrainView].nodesbuffer[i].getCount();
+                instanceCount = terrainNodes->nodesbuffer[i].getCount();
                 // swap in this view's node instance buffer (no-op for view 0)
-                render.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrain->views[terrainView].nodesbuffer[i].getRender());
+                render.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
             }
 
             bool needUpdateFramebuffer = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
@@ -3946,32 +4002,51 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (hasFog){
+#ifdef JASPERENGINE_EDITOR
+                // exponential fog of density 0: a factor of 1 everywhere, no fog
+                static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+#else
                 render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, &fs_fog);
+#endif
             }
 
+            // a secondary view's own reflection, bound for this draw only
+            bool viewMirrorBound = false;
             if (mesh.submeshes[i].slotFSMirror != -1){
-                render.applyUniformBlock(mesh.submeshes[i].slotFSMirror, sizeof(float) * 16, &mesh.mirrorViewProjection);
+                const Matrix4* mirrorViewProjection = &mesh.mirrorViewProjection;
+#ifdef JASPERENGINE_EDITOR
+                if (MirrorView* mirror = passMirror(entity)){
+                    mirrorViewProjection = &mirror->viewProjection;
+                    ShaderData& mirrorShaderData = mesh.submeshes[i].shader.get()->shaderData;
+                    render.addTexture(mirrorShaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, &mirror->framebuffer.getRender().getColorTexture());
+                    viewMirrorBound = true;
+                }
+#endif
+                render.applyUniformBlock(mesh.submeshes[i].slotFSMirror, sizeof(float) * 16, (void*)mirrorViewProjection);
             }
 
             // a submesh is lit (uses the lighting block + full PBR params) unless it
             // was compiled as MATERIAL_UNLIT (property bit 0)
             bool submeshLit = !(mesh.submeshes[i].shaderProperties & (1u << 0));
+            bool viewShadowMapsBound = false;
 
             if (submeshLit){
                 ShaderData& lightingShaderData = mesh.submeshes[i].shader.get()->shaderData;
                 loadSpotMaskTexture(lightingShaderData, render);
-                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &fs_lighting);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &rv().fs_lighting);
                 if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
-                    render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &vs_shadows);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &fs_shadows);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &fs_point_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &rv().vs_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &rv().fs_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &rv().fs_point_shadows);
+                    viewShadowMapsBound = bindViewShadowMaps(lightingShaderData, render, mesh.receiveLights, false);
                 }
                 // USE_SSAO (property bit 21): bind the screen-space AO texture for
                 // this view (blurred AO for the main camera, empty white otherwise)
                 if (mesh.submeshes[i].shaderProperties & (1u << 21)){
                     ShaderData& ssaoShaderData = mesh.submeshes[i].shader.get()->shaderData;
                     render.addTexture(ssaoShaderData.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT,
-                                      currentSSAOTexture ? currentSSAOTexture : &emptyWhite);
+                                      rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite);
                 }
             }
 
@@ -4008,7 +4083,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (mesh.submeshes[i].slotVSFade != -1 && instmesh){
-                applyInstanceFadeUniform(render, mesh.submeshes[i].slotVSFade, *instmesh);
+                applyInstanceFadeUniform(render, mesh.submeshes[i].slotVSFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
             }
 
             if (mesh.submeshes[i].slotFSTexCoordSets != -1){
@@ -4024,13 +4099,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (terrain){
                 // morph from this view's eye position (paired with its node selection)
-                terrain->eyePos = terrain->views[terrainView].nodesEyePos;
+                terrain->eyePos = terrainNodes->nodesEyePos;
                 render.applyUniformBlock(mesh.submeshes[i].slotVSTerrain, sizeof(float) * 8, &(terrain->eyePos));
                 applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain);
             }
 
             //model, normal and mvp matrix
-            render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, &transform.modelMatrix);
+            render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
 
             applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, passResolution);
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
@@ -4043,7 +4118,17 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                drawSubmeshGeometry(render, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+                drawSubmeshGeometry(render, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+            }
+
+            // the frame keeps its own bindings for the next draw()
+            if (viewShadowMapsBound){
+                bindViewShadowMaps(mesh.submeshes[i].shader.get()->shaderData, render, mesh.receiveLights, true);
+            }
+            if (viewMirrorBound){
+                ShaderData& mirrorShaderData = mesh.submeshes[i].shader.get()->shaderData;
+                TextureRender* baseColor = mesh.submeshes[i].material.baseColorTexture.getRender(&emptyWhite);
+                render.addTexture(mirrorShaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, baseColor ? baseColor : &emptyWhite);
             }
         }
     }
@@ -4051,7 +4136,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
     return true;
 }
 
-bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType, int instanceView, const LodView* lodView){
+bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType, int instanceView, const LodView* lodView){
     // shadow passes only draw casters; the SSAO depth pre-pass draws every opaque mesh
     if (mesh.loaded && !mesh.needReload && (mesh.castShadows || forSSAO)){
 
@@ -4059,12 +4144,12 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
             return false;
         }
 
-        if (cullsBatch(mesh, instmesh) && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
+        if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
             return false;
         }
 
         MeshDraw draw;
-        if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
             return false;
         }
         unsigned int instanceCount = draw.instanceCount;
@@ -4072,9 +4157,11 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
 
-        // the depth pass renders the main camera's selection (view 0)
+        // the depth pass renders the view camera's selection (view 0 in draw())
+        TerrainView* terrainNodes = nullptr;
         if (terrain){
-            updateTerrainNodesBuffer(*terrain, 0);
+            terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
+            updateTerrainNodesBuffer(*terrainNodes);
         }
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
@@ -4104,8 +4191,8 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
             }
 
             if (terrain){
-                instanceCount = terrain->views[0].nodesbuffer[i].getCount();
-                depthRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrain->views[0].nodesbuffer[i].getRender());
+                instanceCount = terrainNodes->nodesbuffer[i].getCount();
+                depthRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
             }
 
             //model, mvp matrix
@@ -4115,7 +4202,7 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
             applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, passResolution);
 
             if (mesh.submeshes[i].slotVSDepthFade != -1 && instmesh){
-                applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh);
+                applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
             }
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
@@ -4136,8 +4223,8 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
             }
 
             if (terrain){
-                // shadow depth renders the main camera's selection (view 0)
-                terrain->eyePos = terrain->views[0].nodesEyePos;
+                // shadow depth renders the view camera's selection
+                terrain->eyePos = terrainNodes->nodesEyePos;
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
@@ -4149,7 +4236,7 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
                     depthRender.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                drawSubmeshGeometry(depthRender, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+                drawSubmeshGeometry(depthRender, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
             }
         }
     }
@@ -4231,69 +4318,69 @@ void RenderSystem::destroySSAO(){
         ShaderPool::remove(ShaderType::SSAO_BLUR, 0);
     }
 
-    ssaoDepthFramebuffer.destroy();
-    ssaoFramebuffer.destroy();
-    ssaoBlurFramebuffer.destroy();
+    rv().ssaoDepthFramebuffer.destroy();
+    rv().ssaoFramebuffer.destroy();
+    rv().ssaoBlurFramebuffer.destroy();
 
-    ssaoWidth = 0;
-    ssaoHeight = 0;
+    rv().ssaoWidth = 0;
+    rv().ssaoHeight = 0;
     ssaoSlotParams = -1;
     ssaoBlurSlotParams = -1;
     ssaoLoaded = false;
-    currentSSAOTexture = NULL;
+    rv().currentSSAOTexture = NULL;
 }
 
 bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int height){
     if (width == 0 || height == 0)
         return false;
 
-    if (ssaoDepthFramebuffer.isCreated() && ssaoWidth == width && ssaoHeight == height)
+    if (rv().ssaoDepthFramebuffer.isCreated() && rv().ssaoWidth == width && rv().ssaoHeight == height)
         return true;
 
-    ssaoDepthFramebuffer.destroy();
-    ssaoFramebuffer.destroy();
-    ssaoBlurFramebuffer.destroy();
+    rv().ssaoDepthFramebuffer.destroy();
+    rv().ssaoFramebuffer.destroy();
+    rv().ssaoBlurFramebuffer.destroy();
 
     // depth pre-pass target: packed depth in color, sampled point-exact
-    ssaoDepthFramebuffer.setWidth(width);
-    ssaoDepthFramebuffer.setHeight(height);
-    ssaoDepthFramebuffer.setMinFilter(TextureFilter::NEAREST);
-    ssaoDepthFramebuffer.setMagFilter(TextureFilter::NEAREST);
-    ssaoDepthFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    ssaoDepthFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    ssaoDepthFramebuffer.create();
+    rv().ssaoDepthFramebuffer.setWidth(width);
+    rv().ssaoDepthFramebuffer.setHeight(height);
+    rv().ssaoDepthFramebuffer.setMinFilter(TextureFilter::NEAREST);
+    rv().ssaoDepthFramebuffer.setMagFilter(TextureFilter::NEAREST);
+    rv().ssaoDepthFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoDepthFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoDepthFramebuffer.create();
 
-    ssaoFramebuffer.setWidth(width);
-    ssaoFramebuffer.setHeight(height);
-    ssaoFramebuffer.setMinFilter(TextureFilter::NEAREST);
-    ssaoFramebuffer.setMagFilter(TextureFilter::NEAREST);
-    ssaoFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    ssaoFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    ssaoFramebuffer.create();
+    rv().ssaoFramebuffer.setWidth(width);
+    rv().ssaoFramebuffer.setHeight(height);
+    rv().ssaoFramebuffer.setMinFilter(TextureFilter::NEAREST);
+    rv().ssaoFramebuffer.setMagFilter(TextureFilter::NEAREST);
+    rv().ssaoFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoFramebuffer.create();
 
     // blurred AO is sampled bilinearly by the lit meshes
-    ssaoBlurFramebuffer.setWidth(width);
-    ssaoBlurFramebuffer.setHeight(height);
-    ssaoBlurFramebuffer.setMinFilter(TextureFilter::LINEAR);
-    ssaoBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
-    ssaoBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    ssaoBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    ssaoBlurFramebuffer.create();
+    rv().ssaoBlurFramebuffer.setWidth(width);
+    rv().ssaoBlurFramebuffer.setHeight(height);
+    rv().ssaoBlurFramebuffer.setMinFilter(TextureFilter::LINEAR);
+    rv().ssaoBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
+    rv().ssaoBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoBlurFramebuffer.create();
 
-    ssaoWidth = width;
-    ssaoHeight = height;
+    rv().ssaoWidth = width;
+    rv().ssaoHeight = height;
 
-    return ssaoDepthFramebuffer.isCreated() && ssaoFramebuffer.isCreated() && ssaoBlurFramebuffer.isCreated();
+    return rv().ssaoDepthFramebuffer.isCreated() && rv().ssaoFramebuffer.isCreated() && rv().ssaoBlurFramebuffer.isCreated();
 }
 
-void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDepth){
+void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth){
     loadSSAO();
     if (!ssaoLoaded)
         return;
 
-    unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
-    unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
-    if (isFixedResolutionActive() && !camera.renderToTexture){
+    unsigned int w = (unsigned int)targetViewRect().getWidth();
+    unsigned int h = (unsigned int)targetViewRect().getHeight();
+    if (fixedResolution){
         // the main color pass renders into the fixed-resolution target, so the
         // AO buffer must match it (meshes convert gl_FragCoord with these sizes)
         w = scene->getFixedResolutionWidth();
@@ -4312,10 +4399,10 @@ void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDept
     TextureRender* normalTexture; // G-buffer normal when shared, else an unused placeholder
     if (!depthTexture){
         renderDepthPrePass(camera);
-        depthTexture = &ssaoDepthFramebuffer.getRender().getColorTexture();
+        depthTexture = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
         normalTexture = depthTexture; // placeholder binding; not sampled (params.w = 0)
     }else{
-        normalTexture = &gbufferFramebuffer.getRender().getColorAttachmentTexture(1);
+        normalTexture = &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1);
     }
 
     // --- 2. ssao pass (kernel was filled once in loadSSAO) ---
@@ -4326,7 +4413,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDept
     fs_ssao.noiseScale = Vector4((float)w / 4.0f, (float)h / 4.0f, 1.0f / (float)w, 1.0f / (float)h);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-    ssaoPassRender.startRenderPass(&ssaoFramebuffer.getRender());
+    ssaoPassRender.startRenderPass(&rv().ssaoFramebuffer.getRender());
     if (ssaoRender.beginDraw(PIP_RTT)){
         ShaderData& sd = ssaoShader.get()->shaderData;
         ssaoRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, depthTexture);
@@ -4341,16 +4428,16 @@ void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDept
     fs_ssao_blur.texelSize = Vector4(1.0f / (float)w, 1.0f / (float)h, 0.0, 0.0);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-    ssaoPassRender.startRenderPass(&ssaoBlurFramebuffer.getRender());
+    ssaoPassRender.startRenderPass(&rv().ssaoBlurFramebuffer.getRender());
     if (ssaoBlurRender.beginDraw(PIP_RTT)){
         ShaderData& bd = ssaoBlurShader.get()->shaderData;
-        ssaoBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT, &ssaoFramebuffer.getRender().getColorTexture());
+        ssaoBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT, &rv().ssaoFramebuffer.getRender().getColorTexture());
         ssaoBlurRender.applyUniformBlock(ssaoBlurSlotParams, sizeof(fs_ssao_blur_t), &fs_ssao_blur);
         ssaoBlurRender.draw(0, 3, 1);
     }
     ssaoPassRender.endRenderPass();
 
-    currentSSAOTexture = &ssaoBlurFramebuffer.getRender().getColorTexture();
+    rv().currentSSAOTexture = &rv().ssaoBlurFramebuffer.getRender().getColorTexture();
 }
 
 void RenderSystem::renderDepthPrePass(CameraComponent& camera){
@@ -4360,8 +4447,8 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
     Matrix4 renderVP = camera.viewProjectionMatrix;
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
-    ssaoPassRender.startRenderPass(&ssaoDepthFramebuffer.getRender());
-    passResolution = Vector2((float)ssaoWidth, (float)ssaoHeight);
+    ssaoPassRender.startRenderPass(&rv().ssaoDepthFramebuffer.getRender());
+    passResolution = Vector2((float)rv().ssaoWidth, (float)rv().ssaoHeight);
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
@@ -4380,8 +4467,9 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-        vs_depth_t params = {transform.modelMatrix, renderVP, renderVP * transform.modelMatrix};
-        drawMeshDepth(mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, 0, &mainLodView);
+        const Matrix4& model = objectModel(transform);
+        vs_depth_t params = {model, renderVP, renderVP * model};
+        drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, 0, &rv().lodView);
     }
     ssaoPassRender.endRenderPass();
 }
@@ -4390,25 +4478,25 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     if (width == 0 || height == 0)
         return false;
 
-    if (gbufferFramebuffer.isCreated() && gbufferFramebuffer.getWidth() == width && gbufferFramebuffer.getHeight() == height)
+    if (rv().gbufferFramebuffer.isCreated() && rv().gbufferFramebuffer.getWidth() == width && rv().gbufferFramebuffer.getHeight() == height)
         return true;
 
-    gbufferFramebuffer.destroy();
+    rv().gbufferFramebuffer.destroy();
 
     // MRT: color[0] = packed depth (point-sampled like the depth pre-pass),
     //      color[1] = view-space normal (oct .rg) + roughness (.b) + metallic (.a),
     //      color[2] = linear base color (.rgb) + hasIBL flag (.a)
     ColorFormat formats[3] = { ColorFormat::RGBA, ColorFormat::RGBA, ColorFormat::RGBA };
-    gbufferFramebuffer.setColorAttachments(3, formats);
-    gbufferFramebuffer.setWidth(width);
-    gbufferFramebuffer.setHeight(height);
-    gbufferFramebuffer.setMinFilter(TextureFilter::NEAREST);
-    gbufferFramebuffer.setMagFilter(TextureFilter::NEAREST);
-    gbufferFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    gbufferFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    gbufferFramebuffer.create();
+    rv().gbufferFramebuffer.setColorAttachments(3, formats);
+    rv().gbufferFramebuffer.setWidth(width);
+    rv().gbufferFramebuffer.setHeight(height);
+    rv().gbufferFramebuffer.setMinFilter(TextureFilter::NEAREST);
+    rv().gbufferFramebuffer.setMagFilter(TextureFilter::NEAREST);
+    rv().gbufferFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().gbufferFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().gbufferFramebuffer.create();
 
-    return gbufferFramebuffer.isCreated();
+    return rv().gbufferFramebuffer.isCreated();
 }
 
 bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int instanceView, const LodView* lodView){
@@ -4419,21 +4507,23 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         return false;
     }
 
-    if (cullsBatch(mesh, instmesh) && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
+    if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
         return false;
     }
 
     MeshDraw draw;
-    if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+    if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
         return false;
     }
     unsigned int instanceCount = draw.instanceCount;
 
     updateMeshBuffers(mesh);
 
-    // the G-buffer pass renders the main camera's selection (view 0)
+    // the G-buffer pass renders the view camera's selection (view 0 in draw())
+    TerrainView* terrainNodes = nullptr;
     if (terrain){
-        updateTerrainNodesBuffer(*terrain, 0);
+        terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
+        updateTerrainNodesBuffer(*terrainNodes);
     }
 
     for (int i = 0; i < mesh.numSubmeshes; i++){
@@ -4491,11 +4581,11 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         }
 
         if (terrain){
-            terrain->eyePos = terrain->views[0].nodesEyePos;
+            terrain->eyePos = terrainNodes->nodesEyePos;
             gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
             applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain);
-            instanceCount = terrain->views[0].nodesbuffer[i].getCount();
-            gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrain->views[0].nodesbuffer[i].getRender());
+            instanceCount = terrainNodes->nodesbuffer[i].getCount();
+            gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
         }
 
         if (tilemap && !tilemapDrawRanges.empty()){
@@ -4506,7 +4596,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
                 gbufferRender.draw(range.offset, range.count, instanceCount);
             }
         }else{
-            drawSubmeshGeometry(gbufferRender, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+            drawSubmeshGeometry(gbufferRender, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
         }
     }
 
@@ -4522,7 +4612,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     Matrix4 viewMatrix = camera.viewMatrix;
 
     gbufferPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // color[0] background -> depth ~1.0
-    gbufferPassRender.startRenderPass(&gbufferFramebuffer.getRender());
+    gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
@@ -4548,11 +4638,12 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
             && probeParams.position_weight.w > 0.001f;
 
         // view-space normal matrix = transpose(inverse(view * model))
-        Matrix4 viewModel = viewMatrix * transform.modelMatrix;
+        const Matrix4& model = objectModel(transform);
+        Matrix4 viewModel = viewMatrix * model;
         Matrix4 normalMatrix = viewModel.inverse().transpose();
 
-        vs_gbuffer_t params = {transform.modelMatrix, renderVP, normalMatrix};
-        drawMeshGBuffer(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap, 0, &mainLodView);
+        vs_gbuffer_t params = {model, renderVP, normalMatrix};
+        drawMeshGBuffer(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap, 0, &rv().lodView);
     }
     gbufferPassRender.endRenderPass();
 }
@@ -4612,13 +4703,13 @@ void RenderSystem::destroySSR(){
         ShaderPool::remove(ShaderType::COMPOSITE, 0);
     }
 
-    gbufferFramebuffer.destroy();
-    sceneColorFramebuffer.destroy();
-    ssrFramebuffer.destroy();
-    ssrBlurFramebuffer.destroy();
+    rv().gbufferFramebuffer.destroy();
+    rv().sceneColorFramebuffer.destroy();
+    rv().ssrFramebuffer.destroy();
+    rv().ssrBlurFramebuffer.destroy();
 
-    ssrWidth = 0;
-    ssrHeight = 0;
+    rv().ssrWidth = 0;
+    rv().ssrHeight = 0;
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
@@ -4629,50 +4720,50 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     if (width == 0 || height == 0)
         return false;
 
-    if (sceneColorFramebuffer.isCreated() && ssrWidth == width && ssrHeight == height)
+    if (rv().sceneColorFramebuffer.isCreated() && rv().ssrWidth == width && rv().ssrHeight == height)
         return true;
 
-    sceneColorFramebuffer.destroy();
-    ssrFramebuffer.destroy();
-    ssrBlurFramebuffer.destroy();
+    rv().sceneColorFramebuffer.destroy();
+    rv().ssrFramebuffer.destroy();
+    rv().ssrBlurFramebuffer.destroy();
 
     // offscreen opaque scene color (sampled bilinearly by ssr.frag); has a depth
     // attachment so the redirected main color pass can depth-test normally.
-    sceneColorFramebuffer.setWidth(width);
-    sceneColorFramebuffer.setHeight(height);
-    sceneColorFramebuffer.setMinFilter(TextureFilter::LINEAR);
-    sceneColorFramebuffer.setMagFilter(TextureFilter::LINEAR);
-    sceneColorFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    sceneColorFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    sceneColorFramebuffer.create();
+    rv().sceneColorFramebuffer.setWidth(width);
+    rv().sceneColorFramebuffer.setHeight(height);
+    rv().sceneColorFramebuffer.setMinFilter(TextureFilter::LINEAR);
+    rv().sceneColorFramebuffer.setMagFilter(TextureFilter::LINEAR);
+    rv().sceneColorFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().sceneColorFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().sceneColorFramebuffer.create();
 
     // reflection color + mask
-    ssrFramebuffer.setWidth(width);
-    ssrFramebuffer.setHeight(height);
-    ssrFramebuffer.setMinFilter(TextureFilter::LINEAR);
-    ssrFramebuffer.setMagFilter(TextureFilter::LINEAR);
-    ssrFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    ssrFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    ssrFramebuffer.create();
+    rv().ssrFramebuffer.setWidth(width);
+    rv().ssrFramebuffer.setHeight(height);
+    rv().ssrFramebuffer.setMinFilter(TextureFilter::LINEAR);
+    rv().ssrFramebuffer.setMagFilter(TextureFilter::LINEAR);
+    rv().ssrFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssrFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssrFramebuffer.create();
 
     // glossy-blurred reflection (sampled by the composite when blur > 0)
-    ssrBlurFramebuffer.setWidth(width);
-    ssrBlurFramebuffer.setHeight(height);
-    ssrBlurFramebuffer.setMinFilter(TextureFilter::LINEAR);
-    ssrBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
-    ssrBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    ssrBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    ssrBlurFramebuffer.create();
+    rv().ssrBlurFramebuffer.setWidth(width);
+    rv().ssrBlurFramebuffer.setHeight(height);
+    rv().ssrBlurFramebuffer.setMinFilter(TextureFilter::LINEAR);
+    rv().ssrBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
+    rv().ssrBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssrBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssrBlurFramebuffer.create();
 
-    ssrWidth = width;
-    ssrHeight = height;
+    rv().ssrWidth = width;
+    rv().ssrHeight = height;
 
-    return sceneColorFramebuffer.isCreated() && ssrFramebuffer.isCreated() && ssrBlurFramebuffer.isCreated();
+    return rv().sceneColorFramebuffer.isCreated() && rv().ssrFramebuffer.isCreated() && rv().ssrBlurFramebuffer.isCreated();
 }
 
 void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destination){
-    unsigned int w = ssrWidth;
-    unsigned int h = ssrHeight;
+    unsigned int w = rv().ssrWidth;
+    unsigned int h = rv().ssrHeight;
     if (w == 0 || h == 0)
         return;
 
@@ -4690,12 +4781,12 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     fs_ssr.misc = Vector4(1.0f / (float)w, 1.0f / (float)h, flipGL, scene->getSSRBlur());
 
     ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
-    ssrPassRender.startRenderPass(&ssrFramebuffer.getRender());
+    ssrPassRender.startRenderPass(&rv().ssrFramebuffer.getRender());
     if (ssrRender.beginDraw(PIP_RTT)){
         ShaderData& sd = ssrShader.get()->shaderData;
-        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
-        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
-        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &sceneColorFramebuffer.getRender().getColorTexture());
+        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
+        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
+        ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &rv().sceneColorFramebuffer.getRender().getColorTexture());
         ssrRender.applyUniformBlock(ssrSlotParams, sizeof(fs_ssr_t), &fs_ssr);
         ssrRender.draw(0, 3, 1);
     }
@@ -4707,24 +4798,24 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     // radius (the shader scales its tap offsets by it), so there is no hard step.
     const float ssrBlurMaxRadius = 24.0f;
     float blurRadius = scene->getSSRBlur() * ssrBlurMaxRadius;
-    TextureRender* reflectionTexture = &ssrFramebuffer.getRender().getColorTexture();
+    TextureRender* reflectionTexture = &rv().ssrFramebuffer.getRender().getColorTexture();
     if (scene->getSSRBlur() > 0.001f && scene->getSSRDebugMode() == 0){
         // blurRadius is the MAX radius (full roughness); the blur shader scales it
         // per-pixel by the G-buffer roughness. w = flip (gbuffer is in depth space).
         fs_ssr_blur.params = Vector4(1.0f / (float)w, 1.0f / (float)h, blurRadius, flipGL);
 
         ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
-        ssrPassRender.startRenderPass(&ssrBlurFramebuffer.getRender());
+        ssrPassRender.startRenderPass(&rv().ssrBlurFramebuffer.getRender());
         if (ssrBlurRender.beginDraw(PIP_RTT)){
             ShaderData& bd = ssrBlurShader.get()->shaderData;
-            ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSRTEXTURE), ShaderStageType::FRAGMENT, &ssrFramebuffer.getRender().getColorTexture());
-            ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
+            ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSRTEXTURE), ShaderStageType::FRAGMENT, &rv().ssrFramebuffer.getRender().getColorTexture());
+            ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
             ssrBlurRender.applyUniformBlock(ssrBlurSlotParams, sizeof(fs_ssr_blur_t), &fs_ssr_blur);
             ssrBlurRender.draw(0, 3, 1);
         }
         ssrPassRender.endRenderPass();
 
-        reflectionTexture = &ssrBlurFramebuffer.getRender().getColorTexture();
+        reflectionTexture = &rv().ssrBlurFramebuffer.getRender().getColorTexture();
     }
 
     // --- 3. composite pass: energy-conserving SSR-over-IBL -> real destination ---
@@ -4762,16 +4853,16 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         compositePip = PIP_RTT;
     }else{
         ssrPassRender.startRenderPass();
-        ssrPassRender.applyViewport(Engine::getViewRect());
+        ssrPassRender.applyViewport(targetViewRect());
         compositePip = PIP_DEFAULT;
     }
     if (compositeRender.beginDraw(compositePip)){
         ShaderData& cd = compositeShader.get()->shaderData;
-        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &sceneColorFramebuffer.getRender().getColorTexture());
+        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &rv().sceneColorFramebuffer.getRender().getColorTexture());
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::SSRTEXTURE), ShaderStageType::FRAGMENT, reflectionTexture);
-        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
-        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
-        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERALBEDOTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(2));
+        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
+        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
+        compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERALBEDOTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(2));
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefilteredTexture);
         compositeRender.applyUniformBlock(compositeSlotParams, sizeof(fs_composite_t), &fs_composite);
         compositeRender.draw(0, 3, 1);
@@ -4808,10 +4899,10 @@ void RenderSystem::destroyBlit(){
         ShaderPool::remove(ShaderType::BLIT, 0);
     }
 
-    fixedResFramebuffer.destroy();
+    rv().fixedResFramebuffer.destroy();
 
-    fixedResWidth = 0;
-    fixedResHeight = 0;
+    rv().fixedResWidth = 0;
+    rv().fixedResHeight = 0;
     blitSlotParams = -1;
     blitLoaded = false;
 }
@@ -4820,26 +4911,26 @@ bool RenderSystem::ensureFixedResFramebuffer(unsigned int width, unsigned int he
     if (width == 0 || height == 0)
         return false;
 
-    if (fixedResFramebuffer.isCreated() && fixedResWidth == width && fixedResHeight == height
-            && fixedResFramebuffer.getMinFilter() == filter)
+    if (rv().fixedResFramebuffer.isCreated() && rv().fixedResWidth == width && rv().fixedResHeight == height
+            && rv().fixedResFramebuffer.getMinFilter() == filter)
         return true;
 
-    fixedResFramebuffer.destroy();
+    rv().fixedResFramebuffer.destroy();
 
     // offscreen scene color at the fixed game resolution; the min/mag filter is
     // what the upscale blit samples with (nearest = crisp pixels, linear = smooth)
-    fixedResFramebuffer.setWidth(width);
-    fixedResFramebuffer.setHeight(height);
-    fixedResFramebuffer.setMinFilter(filter);
-    fixedResFramebuffer.setMagFilter(filter);
-    fixedResFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    fixedResFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    fixedResFramebuffer.create();
+    rv().fixedResFramebuffer.setWidth(width);
+    rv().fixedResFramebuffer.setHeight(height);
+    rv().fixedResFramebuffer.setMinFilter(filter);
+    rv().fixedResFramebuffer.setMagFilter(filter);
+    rv().fixedResFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().fixedResFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().fixedResFramebuffer.create();
 
-    fixedResWidth = width;
-    fixedResHeight = height;
+    rv().fixedResWidth = width;
+    rv().fixedResHeight = height;
 
-    return fixedResFramebuffer.isCreated();
+    return rv().fixedResFramebuffer.isCreated();
 }
 
 void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
@@ -4849,12 +4940,12 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
 
     PipelineType blitPip;
     float flipGL = 0.0f;
-    if (Engine::getFramebuffer()){
-        if (!Engine::getFramebuffer()->isCreated()){
-            Engine::getFramebuffer()->create();
+    if (Framebuffer* target = targetFramebuffer()){
+        if (!target->isCreated()){
+            target->create();
         }
         // source and destination are both flipped on GL, so no un-flip needed
-        fixedResPassRender.startRenderPass(&Engine::getFramebuffer()->getRender());
+        fixedResPassRender.startRenderPass(&target->getRender());
         blitPip = PIP_RTT;
     }else{
         fixedResPassRender.startRenderPass();
@@ -4875,7 +4966,7 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
 }
 
 void RenderSystem::renderFixedResolutionBlit(){
-    renderBlit(&fixedResFramebuffer.getRender().getColorTexture(), Engine::getViewRect());
+    renderBlit(&rv().fixedResFramebuffer.getRender().getColorTexture(), targetViewRect());
 }
 
 void RenderSystem::needReloadPostProcess(){
@@ -4976,11 +5067,11 @@ void RenderSystem::destroyPostProcess(){
     }
     postProcessPasses.clear();
 
-    postProcessFramebuffer[0].destroy();
-    postProcessFramebuffer[1].destroy();
+    rv().postProcessFramebuffer[0].destroy();
+    rv().postProcessFramebuffer[1].destroy();
 
-    postProcessWidth = 0;
-    postProcessHeight = 0;
+    rv().postProcessWidth = 0;
+    rv().postProcessHeight = 0;
     postProcessNeedsDepth = false;
     postProcessNeedsGBuffer = false;
     postProcessNeedReload = false;
@@ -4992,25 +5083,25 @@ bool RenderSystem::ensurePostProcessFramebuffers(unsigned int width, unsigned in
     if (width == 0 || height == 0)
         return false;
 
-    if (postProcessFramebuffer[0].isCreated() && postProcessWidth == width && postProcessHeight == height)
+    if (rv().postProcessFramebuffer[0].isCreated() && rv().postProcessWidth == width && rv().postProcessHeight == height)
         return true;
 
     // the chain ping-pongs between the two; its last pass writes the real destination
     for (int i = 0; i < 2; i++){
-        postProcessFramebuffer[i].destroy();
-        postProcessFramebuffer[i].setWidth(width);
-        postProcessFramebuffer[i].setHeight(height);
-        postProcessFramebuffer[i].setMinFilter(TextureFilter::LINEAR);
-        postProcessFramebuffer[i].setMagFilter(TextureFilter::LINEAR);
-        postProcessFramebuffer[i].setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        postProcessFramebuffer[i].setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        postProcessFramebuffer[i].create();
+        rv().postProcessFramebuffer[i].destroy();
+        rv().postProcessFramebuffer[i].setWidth(width);
+        rv().postProcessFramebuffer[i].setHeight(height);
+        rv().postProcessFramebuffer[i].setMinFilter(TextureFilter::LINEAR);
+        rv().postProcessFramebuffer[i].setMagFilter(TextureFilter::LINEAR);
+        rv().postProcessFramebuffer[i].setWrapU(TextureWrap::CLAMP_TO_EDGE);
+        rv().postProcessFramebuffer[i].setWrapV(TextureWrap::CLAMP_TO_EDGE);
+        rv().postProcessFramebuffer[i].create();
     }
 
-    postProcessWidth = width;
-    postProcessHeight = height;
+    rv().postProcessWidth = width;
+    rv().postProcessHeight = height;
 
-    return postProcessFramebuffer[0].isCreated() && postProcessFramebuffer[1].isCreated();
+    return rv().postProcessFramebuffer[0].isCreated() && rv().postProcessFramebuffer[1].isCreated();
 }
 
 void RenderSystem::renderPostProcess(FramebufferRender* destination){
@@ -5018,20 +5109,20 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
     // normal/roughness only exists while SSR is on
     TextureRender* depthTexture = &emptyBlack;
     TextureRender* gbufferTexture = &emptyBlack;
-    if (postProcessNeedsGBuffer && gbufferFramebuffer.isCreated()){
-        gbufferTexture = &gbufferFramebuffer.getRender().getColorAttachmentTexture(1);
+    if (postProcessNeedsGBuffer && rv().gbufferFramebuffer.isCreated()){
+        gbufferTexture = &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1);
     }
     if (postProcessNeedsDepth){
-        if (gbufferFramebuffer.isCreated()){
-            depthTexture = &gbufferFramebuffer.getRender().getColorAttachmentTexture(0);
-        }else if (ssaoDepthFramebuffer.isCreated()){
-            depthTexture = &ssaoDepthFramebuffer.getRender().getColorTexture();
+        if (rv().gbufferFramebuffer.isCreated()){
+            depthTexture = &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0);
+        }else if (rv().ssaoDepthFramebuffer.isCreated()){
+            depthTexture = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
         }
     }
-    TextureRender* ssaoTexture = currentSSAOTexture ? currentSSAOTexture : &emptyWhite;
+    TextureRender* ssaoTexture = rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite;
 
     // the color pass (or the SSR composite) was redirected into buffer 0
-    TextureRender* input = &postProcessFramebuffer[0].getRender().getColorTexture();
+    TextureRender* input = &rv().postProcessFramebuffer[0].getRender().getColorTexture();
     int pingPong = 1;
 
     updatePostProcessUniforms();
@@ -5043,7 +5134,7 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
         if (writeDestination){
             postProcessPassRender.startRenderPass(destination);
         }else{
-            postProcessPassRender.startRenderPass(&postProcessFramebuffer[pingPong].getRender());
+            postProcessPassRender.startRenderPass(&rv().postProcessFramebuffer[pingPong].getRender());
         }
 
         if (pass.render.beginDraw(PIP_RTT)){
@@ -5051,20 +5142,20 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
             pass.render.addTexture(pass.slotDepth, ShaderStageType::FRAGMENT, depthTexture);
             pass.render.addTexture(pass.slotGBuffer, ShaderStageType::FRAGMENT, gbufferTexture);
             pass.render.addTexture(pass.slotSSAO, ShaderStageType::FRAGMENT, ssaoTexture);
-            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)postProcessWidth, (float)postProcessHeight));
+            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)rv().postProcessWidth, (float)rv().postProcessHeight));
             pass.render.draw(0, 3, 1);
         }
         postProcessPassRender.endRenderPass();
 
         if (!writeDestination){
-            input = &postProcessFramebuffer[pingPong].getRender().getColorTexture();
+            input = &rv().postProcessFramebuffer[pingPong].getRender().getColorTexture();
             pingPong = 1 - pingPong;
         }
     }
 
     // the swapchain is written by the blit pass, which handles the GL orientation flip
     if (!destination){
-        renderBlit(input, Engine::getViewRect());
+        renderBlit(input, targetViewRect());
     }
 }
 
@@ -5374,7 +5465,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             ui.needReload = true;
             return false;
         }
-        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, &transform.modelViewProjectionMatrix);
+        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         //Color
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
         applyCustomUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.needUpdateShaderUniforms, frameTime, passResolution);
@@ -5599,12 +5690,12 @@ float RenderSystem::getPointsViewportHeight(const CameraComponent& camera) const
         // the main color pass renders into the fixed-resolution target
         return (float)scene->getFixedResolutionHeight();
     }
-    if (Framebuffer* engineFb = Engine::getFramebuffer()){
-        if (engineFb->isCreated()){
-            return (float)engineFb->getHeight();
+    if (Framebuffer* target = targetFramebuffer()){
+        if (target->isCreated()){
+            return (float)target->getHeight();
         }
     }
-    float viewHeight = Engine::getViewRect().getHeight();
+    float viewHeight = targetViewRect().getHeight();
     if (viewHeight > 0.0f){
         return viewHeight;
     }
@@ -5638,7 +5729,7 @@ float RenderSystem::computePointsScale(const CameraComponent& camera, float view
     return viewportHeight / orthoHeight;
 }
 
-bool RenderSystem::drawPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
     if (points.loaded && points.numVisible > 0){
 
         if (points.needUpdateTexture || points.texture.isFramebufferOutdated()){
@@ -5666,11 +5757,19 @@ bool RenderSystem::drawPoints(PointsComponent& points, Transform& transform, Cam
             return false;
         }
         vs_points_params_t vsParams = {};
-        vsParams.mvpMatrix = transform.modelViewProjectionMatrix;
+        vsParams.mvpMatrix = objectMVP(transform);
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
         applyCustomUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.needUpdateShaderUniforms, frameTime, passResolution);
+#ifdef JASPERENGINE_EDITOR
+        const bool viewOrder = bindViewPointsOrder(entity, points, transform, camera, camTransform);
+#endif
         render.draw(0, points.numVisible, 1);
+#ifdef JASPERENGINE_EDITOR
+        if (viewOrder){
+            render.replaceVertexBuffer(points.buffer.getRender(), points.buffer.getRender());
+        }
+#endif
     }
 
     return true;
@@ -5724,7 +5823,7 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
             lines.needReload = true;
             return false;
         }
-        render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, &transform.modelViewProjectionMatrix);
+        render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         applyCustomUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.needUpdateShaderUniforms, frameTime, passResolution);
         render.draw(0, lines.lines.size() * 2, 1);
     }
@@ -5871,7 +5970,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     return true;
 }
 
-bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType){
+bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Matrix4& viewProjection){
     if (sky.loaded){
 
         if (sky.needUpdateTexture || sky.texture.isFramebufferOutdated()){
@@ -5890,7 +5989,7 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType){
             sky.needReload = true;
             return false;
         }
-        render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, &sky.skyViewProjectionMatrix);
+        render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
         applyCustomUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.needUpdateShaderUniforms, frameTime, passResolution);
         render.draw(0, 36, 1);
@@ -5987,11 +6086,13 @@ Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent
     if (localBottom < localTop)
         localBottom = localTop;
 
+    const Matrix4& mvp = objectMVP(transform);
+
     Vector4 corners[4] = {
-        transform.modelViewProjectionMatrix * Vector4(localLeft, localTop, 0.0f, 1.0f),
-        transform.modelViewProjectionMatrix * Vector4(localRight, localTop, 0.0f, 1.0f),
-        transform.modelViewProjectionMatrix * Vector4(localRight, localBottom, 0.0f, 1.0f),
-        transform.modelViewProjectionMatrix * Vector4(localLeft, localBottom, 0.0f, 1.0f)
+        mvp * Vector4(localLeft, localTop, 0.0f, 1.0f),
+        mvp * Vector4(localRight, localTop, 0.0f, 1.0f),
+        mvp * Vector4(localRight, localBottom, 0.0f, 1.0f),
+        mvp * Vector4(localLeft, localBottom, 0.0f, 1.0f)
     };
 
     // a corner behind the eye has no screen position and a negative w mirrors the rect,
@@ -6301,6 +6402,11 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
 }
 
 void RenderSystem::updateSkyViewProjection(SkyboxComponent& sky, CameraComponent& camera){
+    sky.skyViewProjectionMatrix = skyViewProjection(sky, camera);
+    sky.needUpdateSky = false;
+}
+
+Matrix4 RenderSystem::skyViewProjection(const SkyboxComponent& sky, const CameraComponent& camera) const{
     Matrix4 skyViewMatrix = camera.viewMatrix;
 
     skyViewMatrix.set(3,0,0);
@@ -6313,14 +6419,14 @@ void RenderSystem::updateSkyViewProjection(SkyboxComponent& sky, CameraComponent
 
     Matrix4 rotationMatrix = Quaternion(0, sky.rotation, 0).getRotationMatrix();
 
-    sky.skyViewProjectionMatrix = camera.projectionMatrix * skyViewMatrix * rotationMatrix;
+    Matrix4 viewProjection = camera.projectionMatrix * skyViewMatrix * rotationMatrix;
 
     if (isRenderingFlipped(camera)){
         static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
-        sky.skyViewProjectionMatrix = flipYMatrix * sky.skyViewProjectionMatrix;
+        viewProjection = flipYMatrix * viewProjection;
     }
 
-    sky.needUpdateSky = false;
+    return viewProjection;
 }
 
 void RenderSystem::updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform){
@@ -6361,27 +6467,27 @@ void RenderSystem::sortPoints(PointsComponent& points, Transform& transform, Cam
         points.needUpdateBuffer = true;
 }
 
-void RenderSystem::updateTerrain(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, int viewIndex){
+void RenderSystem::updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view){
     if (terrain.heightMapLoaded){
         for (int i = 0; i < terrain.numNodes; i++){
             terrain.nodes[i].visible = false;
         }
 
         for (int s = 0; s < 2; s++){
-            terrain.views[viewIndex].nodesbuffer[s].clear();
+            view.nodesbuffer[s].clear();
         }
 
         for (int i = 0; i < (terrain.rootGridSize*terrain.rootGridSize); i++){
-            terrainNodeLODSelect(terrain, transform, camera, cameraTransform, terrain.nodes[terrain.grid[i]], terrain.levels-1, viewIndex);
+            terrainNodeLODSelect(terrain, transform, camera, cameraTransform, terrain.nodes[terrain.grid[i]], terrain.levels-1, view);
         }
 
-        terrain.views[viewIndex].needUpdateNodesBuffer = true;
+        view.needUpdateNodesBuffer = true;
 
-        terrain.views[viewIndex].nodesEyePos = Vector3(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z);
+        view.nodesEyePos = Vector3(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z);
     }
 }
 
-AABB RenderSystem::getTerrainNodeAABB(Transform& transform, TerrainNode& terrainNode){
+AABB RenderSystem::getTerrainNodeAABB(const Transform& transform, TerrainNode& terrainNode){
     float halfSize = terrainNode.size / 2.0f;
     Vector3 localMin(terrainNode.position.x - halfSize, terrainNode.minHeight, terrainNode.position.y - halfSize);
     Vector3 localMax(terrainNode.position.x + halfSize, terrainNode.maxHeight, terrainNode.position.y + halfSize);
@@ -6418,7 +6524,7 @@ static void appendTerrainNode(InterleavedBuffer& buffer, const TerrainNode& node
     buffer.addFloat(AttributeType::TERRAINNODERESOLUTION, node.resolution);
 }
 
-bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, int viewIndex){
+bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, TerrainView& view){
     terrainNode.currentRange = terrain.ranges[lodLevel];
 
     AABB box = getTerrainNodeAABB(transform, terrainNode);
@@ -6437,7 +6543,7 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, Transform& tr
         //Full resolution
         terrainNode.resolution = terrain.resolution;
         terrainNode.visible = true;
-        appendTerrainNode(terrain.views[viewIndex].nodesbuffer[0], terrainNode);
+        appendTerrainNode(view.nodesbuffer[0], terrainNode);
 
         return true;
     } else {
@@ -6446,16 +6552,16 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, Transform& tr
             //Full resolution
             terrainNode.resolution = terrain.resolution;
             terrainNode.visible = true;
-            appendTerrainNode(terrain.views[viewIndex].nodesbuffer[0], terrainNode);
+            appendTerrainNode(view.nodesbuffer[0], terrainNode);
         } else {
             for (int i = 0; i < 4; i++) {
                 TerrainNode& child = terrain.nodes[terrainNode.childs[i]];
-                if (!terrainNodeLODSelect(terrain, transform, camera, cameraTransform, child, lodLevel-1, viewIndex)){
+                if (!terrainNodeLODSelect(terrain, transform, camera, cameraTransform, child, lodLevel-1, view)){
                     //Half resolution
                     child.resolution = terrain.resolution / 2;
                     child.currentRange = terrainNode.currentRange;
                     child.visible = true;
-                    appendTerrainNode(terrain.views[viewIndex].nodesbuffer[1], child);
+                    appendTerrainNode(view.nodesbuffer[1], child);
                 }
             }
         }
@@ -6496,15 +6602,19 @@ bool RenderSystem::selectTilemapChunks(TilemapComponent& tilemap, unsigned int s
 }
 
 void RenderSystem::updateCameraSize(Entity entity){
+    updateCameraSizeForCanvas(entity, (float)Engine::getCanvasWidth(), (float)Engine::getCanvasHeight());
+}
+
+void RenderSystem::updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight){
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<CameraComponent>())){
         CameraComponent& camera = scene->getComponent<CameraComponent>(entity);
-        
+
         Rect rect;
         if (camera.renderToTexture) {
             rect = Rect(0, 0, camera.framebuffer->getWidth(), camera.framebuffer->getHeight());
         }else{
-            rect = Rect(0, 0, Engine::getCanvasWidth(), Engine::getCanvasHeight());
+            rect = Rect(0, 0, canvasWidth, canvasHeight);
         }
 
         if (camera.autoResize){
@@ -6908,19 +7018,32 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
     light.worldUp = (transform.worldRotation * light.getLocalSpotProjectionUp()).normalized();
 
     if (hasShadows && (light.intensity > 0)){
-        
+        configureLightShadowNearFar(light, camera);
+
+        unsigned int numCascades = light.numShadowCascades;
+        computeLightCameras(light, transform, camera, cameraTransform, light.shadowCameraNearFar, light.cameras, numCascades);
+        if (numCascades != light.numShadowCascades){
+            light.numShadowCascades = numCascades;
+            Log::warn("Can not have multiple cascades shadows when using ortho scene camera. Reducing num shadow cascades to 1");
+        }
+    }
+}
+
+// Shadow cameras of light seen through camera: the directional cascades fitted to its
+// frustum, or the spot / point cameras. numCascades comes in as the light's and goes
+// out as what the camera allows (one cascade with an orthographic camera).
+void RenderSystem::computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades){
+    {
         Vector3 up = Vector3(0, 1, 0);
         if (light.worldDirection.crossProduct(up) == Vector3::ZERO){
             up = Vector3(0, 0, 1);
         }
 
-        configureLightShadowNearFar(light, camera);
-
         //TODO: perspective aspect based on shadow map size
         if (light.type == LightType::DIRECTIONAL){
 
             float shadowSplitLogFactor = 0.7f;
-            float shadowMaxDistance = light.shadowCameraNearFar.y;
+            float shadowMaxDistance = shadowCameraNearFar.y;
 
             Matrix4 projectionMatrix[MAX_SHADOWCASCADES];
             Matrix4 viewMatrix;
@@ -6930,8 +7053,8 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
             //TODO: light directional cascades is only considering main camera
             if (camera.type == CameraType::CAMERA_PERSPECTIVE) {
 
-                float zNear = light.shadowCameraNearFar.x;
-                float zFar = light.shadowCameraNearFar.y;
+                float zNear = shadowCameraNearFar.x;
+                float zFar = shadowCameraNearFar.y;
                 float planeFarOffset = (zFar - zNear) * 0.05f;
 
                 std::vector<float> splitFar;
@@ -6957,51 +7080,50 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
                 float fov = atanf(1.f / projection[1][1]) * 2.f;
                 float ratio = projection[1][1] / projection[0][0];
 
-                splitFar.resize(light.numShadowCascades);
-                splitNear.resize(light.numShadowCascades);
+                splitFar.resize(numCascades);
+                splitNear.resize(numCascades);
                 splitNear[0] = zNear;
-                splitFar[light.numShadowCascades - 1] = zFar;
+                splitFar[numCascades - 1] = zFar;
 
                 float j = 1.f;
-                for (auto i = 0u; i < light.numShadowCascades - 1; ++i, j += 1.f) {
+                for (auto i = 0u; i < numCascades - 1; ++i, j += 1.f) {
                     splitFar[i] = lerp(
-                        zNear + (j / (float)light.numShadowCascades) * (zFar - zNear),
-                        zNear * powf(zFar / zNear, j / (float)light.numShadowCascades),
+                        zNear + (j / (float)numCascades) * (zFar - zNear),
+                        zNear * powf(zFar / zNear, j / (float)numCascades),
                         shadowSplitLogFactor
                     );
                     splitNear[i + 1] = splitFar[i];
                 }
 
                 // Get frustum box and create light ortho
-                for (int ca = 0; ca < light.numShadowCascades; ca++) {
+                for (int ca = 0; ca < (int)numCascades; ca++) {
                     Matrix4 cascadeProjection = Matrix4::perspectiveMatrix(fov, ratio, splitNear[ca], splitFar[ca] + planeFarOffset);
                     Matrix4 sceneCameraInv = (cascadeProjection * camera.viewMatrix).inverse();
 
                     projectionMatrix[ca] = getDirLightProjection(viewMatrix, sceneCameraInv, shadowMaxDistance, light.worldDirection, cameraTransform.worldPosition);
 
-                    light.cameras[ca].lightViewMatrix = viewMatrix;
-                    light.cameras[ca].lightProjectionMatrix = projectionMatrix[ca];
-                    light.cameras[ca].lightViewProjectionMatrix = projectionMatrix[ca] * viewMatrix;
-                    light.cameras[ca].nearFar = Vector2(splitNear[ca], splitFar[ca]);
-                    updateCameraFrustumPlanes(light.cameras[ca].lightViewProjectionMatrix, light.cameras[ca].frustumPlanes);
+                    cameras[ca].lightViewMatrix = viewMatrix;
+                    cameras[ca].lightProjectionMatrix = projectionMatrix[ca];
+                    cameras[ca].lightViewProjectionMatrix = projectionMatrix[ca] * viewMatrix;
+                    cameras[ca].nearFar = Vector2(splitNear[ca], splitFar[ca]);
+                    updateCameraFrustumPlanes(cameras[ca].lightViewProjectionMatrix, cameras[ca].frustumPlanes);
                 }
 
             } else {
                 // Orthographic camera handling remains the same
-                if (light.numShadowCascades > 1){
-                    light.numShadowCascades = 1;
-                    Log::warn("Can not have multiple cascades shadows when using ortho scene camera. Reducing num shadow cascades to 1");
+                if (numCascades > 1){
+                    numCascades = 1;
                 }
 
                 Matrix4 sceneCameraInv = camera.viewProjectionMatrix.inverse();
 
                 projectionMatrix[0] = getDirLightProjection(viewMatrix, sceneCameraInv, shadowMaxDistance, light.worldDirection, cameraTransform.worldPosition);
 
-                light.cameras[0].lightViewMatrix = viewMatrix;
-                light.cameras[0].lightProjectionMatrix = projectionMatrix[0];
-                light.cameras[0].lightViewProjectionMatrix = projectionMatrix[0] * viewMatrix;
-                light.cameras[0].nearFar = Vector2(-shadowMaxDistance, shadowMaxDistance);
-                updateCameraFrustumPlanes(light.cameras[0].lightViewProjectionMatrix, light.cameras[0].frustumPlanes);
+                cameras[0].lightViewMatrix = viewMatrix;
+                cameras[0].lightProjectionMatrix = projectionMatrix[0];
+                cameras[0].lightViewProjectionMatrix = projectionMatrix[0] * viewMatrix;
+                cameras[0].nearFar = Vector2(-shadowMaxDistance, shadowMaxDistance);
+                updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
 
             }
 
@@ -7016,14 +7138,14 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
             projectionMatrix = Matrix4::perspectiveMatrix(
                 acos(light.outerConeCos) * 2,
                 projectionAspect,
-                light.shadowCameraNearFar.x,
-                light.shadowCameraNearFar.y);
+                shadowCameraNearFar.x,
+                shadowCameraNearFar.y);
 
-            light.cameras[0].lightViewMatrix = viewMatrix;
-            light.cameras[0].lightProjectionMatrix = projectionMatrix;
-            light.cameras[0].lightViewProjectionMatrix = projectionMatrix * viewMatrix;
-            light.cameras[0].nearFar = light.shadowCameraNearFar;
-            updateCameraFrustumPlanes(light.cameras[0].lightViewProjectionMatrix, light.cameras[0].frustumPlanes);
+            cameras[0].lightViewMatrix = viewMatrix;
+            cameras[0].lightProjectionMatrix = projectionMatrix;
+            cameras[0].lightViewProjectionMatrix = projectionMatrix * viewMatrix;
+            cameras[0].nearFar = shadowCameraNearFar;
+            updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
 
         }else if (light.type == LightType::POINT){
             Matrix4 projectionMatrix;
@@ -7036,23 +7158,21 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
             viewMatrix[4] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f, 0.f, 1.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
             viewMatrix[5] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f, 0.f,-1.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
 
-            projectionMatrix = Matrix4::perspectiveMatrix(Angle::degToRad(90), 1, light.shadowCameraNearFar.x, light.shadowCameraNearFar.y);
+            projectionMatrix = Matrix4::perspectiveMatrix(Angle::degToRad(90), 1, shadowCameraNearFar.x, shadowCameraNearFar.y);
 
             Vector2 calculedNearFar;
-            float nfsub = light.shadowCameraNearFar.y - light.shadowCameraNearFar.x;
-            calculedNearFar.x = (light.shadowCameraNearFar.y + light.shadowCameraNearFar.x) / nfsub * 0.5f + 0.5f;
-            calculedNearFar.y =-(light.shadowCameraNearFar.y * light.shadowCameraNearFar.x) / nfsub;
+            float nfsub = shadowCameraNearFar.y - shadowCameraNearFar.x;
+            calculedNearFar.x = (shadowCameraNearFar.y + shadowCameraNearFar.x) / nfsub * 0.5f + 0.5f;
+            calculedNearFar.y =-(shadowCameraNearFar.y * shadowCameraNearFar.x) / nfsub;
 
             for (int f = 0; f < 6; f++){
-                light.cameras[f].lightViewMatrix = viewMatrix[f];
-                light.cameras[f].lightProjectionMatrix = projectionMatrix;
-                light.cameras[f].lightViewProjectionMatrix = projectionMatrix * viewMatrix[f];
-                light.cameras[f].nearFar = calculedNearFar;
-                updateCameraFrustumPlanes(light.cameras[f].lightViewProjectionMatrix, light.cameras[f].frustumPlanes);
+                cameras[f].lightViewMatrix = viewMatrix[f];
+                cameras[f].lightProjectionMatrix = projectionMatrix;
+                cameras[f].lightViewProjectionMatrix = projectionMatrix * viewMatrix[f];
+                cameras[f].nearFar = calculedNearFar;
+                updateCameraFrustumPlanes(cameras[f].lightViewProjectionMatrix, cameras[f].frustumPlanes);
             }
         }
-        
-        
     }
 }
 
@@ -7176,6 +7296,13 @@ bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
     if (!scene->isEntityActiveInHierarchy(entity))
         return false;
 
+#ifdef JASPERENGINE_EDITOR
+    if (!passDrawsOverlays && isEditorOverlay(entity))
+        return false;
+    if (entity == passExcludedEntity)
+        return false;
+#endif
+
     return !isComponentDisabled<MeshComponent>(scene, entity, signature) &&
            !isComponentDisabled<SpriteComponent>(scene, entity, signature) &&
            !isComponentDisabled<ModelComponent>(scene, entity, signature) &&
@@ -7200,6 +7327,198 @@ bool RenderSystem::isLight2DActive(Entity entity, const Light2DComponent& light)
     return light.enabled && scene->isEntityActiveInHierarchy(entity);
 }
 
+Framebuffer* RenderSystem::targetFramebuffer() const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary)
+        return rv().target;
+#endif
+    return Engine::getFramebuffer();
+}
+
+Rect RenderSystem::targetViewRect() const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary)
+        return rv().viewRect;
+#endif
+    return Engine::getViewRect();
+}
+
+bool RenderSystem::isBaseLayer() const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary)
+        return rv().baseLayer;
+#endif
+    return Engine::getMainScene() == scene;
+}
+
+const LightCamera& RenderSystem::lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && !rv().sharesPrimaryCamera && lightIndex >= 0 && lightIndex < (int)rv().lightCameras.size())
+        return rv().lightCameras[lightIndex].cameras[cameraIndex];
+#endif
+    return light.cameras[cameraIndex];
+}
+
+unsigned int RenderSystem::lightCascades(int lightIndex, const LightComponent& light) const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && !rv().sharesPrimaryCamera && lightIndex >= 0 && lightIndex < (int)rv().lightCameras.size())
+        return rv().lightCameras[lightIndex].numCascades;
+#endif
+    return light.numShadowCascades;
+}
+
+const InstanceViewRange& RenderSystem::instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && !rv().sharesPrimaryCamera){
+        auto it = rv().instanceRanges.find(entity);
+        if (it != rv().instanceRanges.end())
+            return it->second[instanceView];
+        static const InstanceViewRange emptyRange;
+        return emptyRange;
+    }
+#endif
+    return instmesh.views[instanceView];
+}
+
+BufferRender* RenderSystem::instanceBuffer(int instanceView){
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().sharesPrimaryCamera)
+        return primaryView.instanceViews[instanceView].buffer.getRender();
+#endif
+    return rv().instanceViews[instanceView].buffer.getRender();
+}
+
+Vector3 RenderSystem::instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const{
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && !rv().sharesPrimaryCamera && instanceView >= 0){
+        auto it = rv().instanceSources.find(entity);
+        if (it != rv().instanceSources.end())
+            return it->second.fadeEyeLocal;
+    }
+#endif
+    return instmesh.fadeEyeLocal;
+}
+
+bool RenderSystem::isBatchVisible(Entity entity, const MeshComponent& mesh, const Transform& transform, const InstancedMeshComponent* instmesh, int instanceView, const float cameraFar, const Plane frustumPlanes[6]){
+    if (!cullsBatch(mesh, instmesh))
+        return true;
+#ifdef JASPERENGINE_EDITOR
+    if (passObjects){
+        // a billboard turned to this pass's camera left its frame bounds behind
+        if (isObjectOverridden(transform))
+            return true;
+        // instances rebuilt for this view have their own bounds
+        if (instmesh && instanceView >= 0 && rv().secondary && !rv().sharesPrimaryCamera){
+            auto it = rv().instanceSources.find(entity);
+            if (it != rv().instanceSources.end() && it->second.own)
+                return isInsideCamera(cameraFar, frustumPlanes, it->second.worldAABB);
+        }
+    }
+#endif
+    return isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB);
+}
+
+TerrainView& RenderSystem::terrainViewData(Entity entity, TerrainComponent& terrain, int terrainView){
+#ifdef JASPERENGINE_EDITOR
+    if (terrainView == TERRAIN_PASS_VIEW && passObjects){
+        auto it = passObjects->terrainViews.find(entity);
+        if (it != passObjects->terrainViews.end())
+            return it->second;
+        return terrain.views[0];
+    }
+#endif
+    return terrain.views[terrainView];
+}
+
+int RenderSystem::mainTerrainView() const{
+#ifdef JASPERENGINE_EDITOR
+    if (passObjects && !rv().sharesPrimaryCamera)
+        return TERRAIN_PASS_VIEW;
+#endif
+    return 0;
+}
+
+const Matrix4* RenderSystem::objectMatrices(Transform& transform, Matrix4 (&scratch)[3]){
+#ifdef JASPERENGINE_EDITOR
+    size_t index;
+    if (passObjects && passObjectIndex(transform, index)){
+        int overrideIndex = passObjects->override[index];
+        scratch[0] = (overrideIndex >= 0) ? passObjects->overrideModel[overrideIndex] : transform.modelMatrix;
+        scratch[1] = (overrideIndex >= 0) ? passObjects->overrideNormal[overrideIndex] : transform.normalMatrix;
+        scratch[2] = passObjects->mvp[index];
+        return scratch;
+    }
+#endif
+    (void)scratch;
+    return &transform.modelMatrix;
+}
+
+const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
+#ifdef JASPERENGINE_EDITOR
+    size_t index;
+    if (passObjects && passObjectIndex(transform, index))
+        return passObjects->mvp[index];
+#endif
+    return transform.modelViewProjectionMatrix;
+}
+
+const Matrix4& RenderSystem::objectModel(Transform& transform) const{
+#ifdef JASPERENGINE_EDITOR
+    size_t index;
+    if (passObjects && passObjectIndex(transform, index)){
+        int overrideIndex = passObjects->override[index];
+        if (overrideIndex >= 0)
+            return passObjects->overrideModel[overrideIndex];
+    }
+#endif
+    return transform.modelMatrix;
+}
+
+float RenderSystem::objectDistance(Transform& transform) const{
+#ifdef JASPERENGINE_EDITOR
+    size_t index;
+    if (passObjects && passObjectIndex(transform, index))
+        return passObjects->distance[index];
+#endif
+    return transform.distanceToCamera;
+}
+
+RenderSystem::PassScissor RenderSystem::passScissor(Transform& transform, RectTransformComponent& layout){
+#ifdef JASPERENGINE_EDITOR
+    size_t index;
+    if (passObjects && passObjectIndex(transform, index)){
+        PassScissorState& state = passObjects->scissors[index];
+        return {&state.rect, &state.active};
+    }
+#endif
+    (void)transform;
+    return {&layout.scissor, &layout.scissorActive};
+}
+
+const Matrix4& RenderSystem::passSkyViewProjection(const SkyboxComponent& sky) const{
+#ifdef JASPERENGINE_EDITOR
+    if (passObjects)
+        return passObjects->skyViewProjection;
+#endif
+    return sky.skyViewProjectionMatrix;
+}
+
+FramebufferRender& RenderSystem::shadowAtlasTarget(){
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().ownShadowAtlas)
+        return rv().shadowAtlas;
+#endif
+    return shadowAtlasFramebuffer;
+}
+
+FramebufferRender& RenderSystem::shadowPointAtlasTarget(){
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().ownShadowPointAtlas)
+        return rv().shadowPointAtlas;
+#endif
+    return shadowPointAtlasFramebuffer;
+}
+
 bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
     // Cubemap sampling follows one fixed convention on every API, and with the
     // classic capture table (renderReflectionProbeCapture) it expects GL-style
@@ -7211,16 +7530,19 @@ bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
     // OpenGL offscreen targets are bottom-up; rendering them with a Y-flipped
     // projection makes framebuffer textures top-left origin on every backend.
     // Must match the PIP_RTT pipeline selection (its winding is reversed on GL).
-    return (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect) && Engine::isOpenGL();
+    return (camera.renderToTexture || targetFramebuffer() || isFixedResolutionActive() || swapchainRedirect) && Engine::isOpenGL();
 }
 
 bool RenderSystem::isFixedResolutionActive() const{
+    if (!scene->isFixedResolutionEnabled() || scene->getFixedResolutionWidth() == 0 || scene->getFixedResolutionHeight() == 0)
+        return false;
+#ifdef JASPERENGINE_EDITOR
+    // a secondary view asks for it (a preview of the game), the editor's own views never do
+    if (rv().secondary)
+        return rv().fixedResolution && rv().baseLayer;
+#endif
     // main scene only: layer scenes keep rendering at native resolution on top
-    return !disableFixedResolution
-        && scene->isFixedResolutionEnabled()
-        && scene->getFixedResolutionWidth() > 0
-        && scene->getFixedResolutionHeight() > 0
-        && Engine::getMainScene() == scene;
+    return !disableFixedResolution && Engine::getMainScene() == scene;
 }
 
 void RenderSystem::updateSwapchainRedirect(){
@@ -7376,10 +7698,18 @@ uint16_t RenderSystem::getScenePipelines() const{
         pipelines |= PIP_RTT_INVERT;
     }
 
+#ifdef JASPERENGINE_EDITOR
+    pipelines |= viewPipelines;
+#endif
+
     return pipelines;
 }
 
 void RenderSystem::update(double dt){
+#ifdef JASPERENGINE_EDITOR
+    frameDrawn = false;
+#endif
+
     if (paused) {
         return;
     }
@@ -7915,7 +8245,7 @@ void RenderSystem::update(double dt){
             if (signature.test(scene->getComponentId<TerrainComponent>())){
                 TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
 
-                updateTerrain(terrain, transform, mainCamera, mainCameraTransform, 0);
+                updateTerrain(terrain, transform, mainCamera, mainCameraTransform, terrain.views[0]);
             }
             
             if (signature.test(scene->getComponentId<AudioSourceComponent>())){
@@ -7997,13 +8327,15 @@ void RenderSystem::update(double dt){
     }
 }
 
-void RenderSystem::draw(){
-    std::priority_queue<TransparentRenderData, std::vector<TransparentRenderData>, TransparentRenderComparison> transparentRenders;
-
-    auto transforms = scene->getComponentArray<Transform>();
-    auto cameras = scene->getComponentArray<CameraComponent>();
-
+// Work the frame does once, whatever views draw it: texture and buffer uploads, the
+// culled instance lists of the scene camera, the shadow maps of its lights, the 2D
+// shadow rows and the reflection probe face of the frame.
+void RenderSystem::drawFramePasses(){
     frameTime = (float)Engine::getSystemTime();
+
+#ifdef JASPERENGINE_EDITOR
+    passDrawsOverlays = false;
+#endif
 
     updateShadowBindings();
     updateAllTerrainRenderTextures();
@@ -8016,680 +8348,249 @@ void RenderSystem::draw(){
 
     // free the fixed-resolution target when the setting is turned off (the blit
     // pipeline itself is kept; it is cheap and may be re-enabled)
-    if (!isFixedResolutionActive() && fixedResFramebuffer.isCreated()){
-        fixedResFramebuffer.destroy();
-        fixedResWidth = 0;
-        fixedResHeight = 0;
+    if (!isFixedResolutionActive() && rv().fixedResFramebuffer.isCreated()){
+        rv().fixedResFramebuffer.destroy();
+        rv().fixedResWidth = 0;
+        rv().fixedResHeight = 0;
     }
 
-    //---------Depth shader----------
-    if (hasShadows){
-        auto lights = scene->getComponentArray<LightComponent>();
-        auto meshes = scene->getComponentArray<MeshComponent>();
-        int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
-
-        // a projective slot has its own culled instance view; point faces draw everything
-        auto drawShadowCasters = [&](LightComponent& light, int cameraIndex, PipelineType pipelineType, int instanceView){
-            const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, cameraIndex, instanceView - 1) : LodView();
-            const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
-            for (int i = 0; i < meshes->size(); i++){
-                MeshComponent& mesh = meshes->getComponentFromIndex(i);
-                Entity entity = meshes->getEntity(i);
-                Transform* transform = scene->findComponent<Transform>(entity);
-
-                if (!transform || !transform->visible || !isRenderActive(entity)){
-                    continue;
-                }
-
-                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-                vs_depth_t vsDepthParams;
-                if (transform->billboard && mesh.shadowsBillboard){
-                    Matrix4 modelViewMatrix = light.cameras[cameraIndex].lightViewMatrix * transform->modelMatrix;
-
-                    modelViewMatrix.set(0, 0, transform->worldScale.x);
-                    modelViewMatrix.set(0, 1, 0.0);
-                    modelViewMatrix.set(0, 2, 0.0);
-
-                    if (!transform->cylindricalBillboard) {
-                        modelViewMatrix.set(1, 0, 0.0);
-                        modelViewMatrix.set(1, 1, transform->worldScale.y);
-                        modelViewMatrix.set(1, 2, 0.0);
-                    }
-
-                    modelViewMatrix.set(2, 0, 0.0);
-                    modelViewMatrix.set(2, 1, 0.0);
-                    modelViewMatrix.set(2, 2, transform->worldScale.z);
-
-                    const Matrix4& projection = light.cameras[cameraIndex].lightProjectionMatrix;
-                    vsDepthParams = {modelViewMatrix, projection, projection * modelViewMatrix};
-                }else{
-                    const Matrix4& lightVP = light.cameras[cameraIndex].lightViewProjectionMatrix;
-                    vsDepthParams = {transform->modelMatrix, lightVP, lightVP * transform->modelMatrix};
-                }
-
-                drawMeshDepth(
-                    mesh,
-                    *transform,
-                    light.cameras[cameraIndex].nearFar.y,
-                    light.cameras[cameraIndex].frustumPlanes,
-                    vsDepthParams,
-                    instmesh,
-                    terrain,
-                    tilemap,
-                    false,
-                    pipelineType,
-                    instanceView,
-                    lodView);
-            }
-        };
-
-        // All projective slots share one pass: clear once, then viewport/scissor per slot.
-        bool projectivePassStarted = false;
-        for (int l = 0; l < shadowLightCount; l++){
-            LightComponent& light = lights->getComponentFromIndex(l);
-            if (light.type == LightType::POINT ||
-                light.intensity <= 0 || !light.shadows ||
-                light.shadowMapIndex < 0 || !hasShadowAtlas ||
-                !isLightActive(lights->getEntity(l), light)){
-                continue;
-            }
-
-            int numShadowCameras =
-                (light.type == LightType::DIRECTIONAL) ? (int)light.numShadowCascades : 1;
-            for (int c = 0; c < numShadowCameras; c++){
-                int slotIndex = light.shadowMapIndex +
-                    ((light.type == LightType::DIRECTIONAL) ? c : 0);
-                if (slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
-                    continue;
-                }
-
-                if (!projectivePassStarted){
-                    shadowAtlasPassRender.setClearDepth(1.0f);
-                    shadowAtlasPassRender.startRenderPass(&shadowAtlasFramebuffer);
-                    projectivePassStarted = true;
-                }
-
-                Rect slotRect = getShadowAtlasSlotRect(slotIndex);
-                shadowAtlasPassRender.applyViewport(slotRect);
-                shadowAtlasPassRender.applyScissor(slotRect);
-                passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-                drawShadowCasters(light, c, PIP_SHADOW_DEPTH, 1 + slotIndex);
-            }
-        }
-        if (projectivePassStarted){
-            shadowAtlasPassRender.endRenderPass();
-        }
-
-        // Point shadows keep the packed-color depth per-face pass (PIP_DEPTH).
-        bool pointAtlasSlotWritten = false;
-        for (int l = 0; l < shadowLightCount; l++){
-            LightComponent& light = lights->getComponentFromIndex(l);
-            if (light.type != LightType::POINT ||
-                light.intensity <= 0 || !light.shadows ||
-                light.shadowMapIndex < 0 || !hasShadowPointAtlas ||
-                !isLightActive(lights->getEntity(l), light)){
-                continue;
-            }
-
-            for (int c = 0; c < SHADOW_CUBE_FACES; c++){
-                int slotIndex = light.shadowMapIndex + c;
-                if (slotIndex < 0 || slotIndex >= MAX_POINT_SHADOW_ATLAS_SLOTS){
-                    continue;
-                }
-
-                if (!pointAtlasSlotWritten){
-                    shadowPointAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-                }else{
-                    shadowPointAtlasPassRender.setLoadActionLoad();
-                }
-
-                Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
-                shadowPointAtlasPassRender.startRenderPass(&shadowPointAtlasFramebuffer);
-                shadowPointAtlasPassRender.applyViewport(slotRect);
-                shadowPointAtlasPassRender.applyScissor(slotRect);
-                pointAtlasSlotWritten = true;
-
-                passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-                drawShadowCasters(light, c, PIP_DEPTH, -1);
-                shadowPointAtlasPassRender.endRenderPass();
-            }
-        }
-    }
-
-    //---------2D light shadow pass (1D polar rows)----------
-    if (hasShadows2D && hasShadow2DAtlas){
-        if (shadowCaster2DVertexCount > 0 && (!shadowCaster2DLoaded || shadowCaster2DVertexCount > shadowCaster2DBufferCapacity)){
-            unsigned int capacity = std::max(shadowCaster2DVertexCount * 2u, 256u);
-            loadShadowCaster2DPass(capacity);
-        }
-
-        bool drawSegments = shadowCaster2DLoaded && shadowCaster2DVertexCount > 0;
-
-        if (drawSegments && shadowCaster2DNeedUpdateBuffer){
-            // occluders are world-space and can move every frame: re-upload the merged
-            // segment buffer (built in update(), at most once per frame — sokol allows
-            // a single sg_update_buffer per buffer and frame)
-            shadowCaster2DBuffer.setData((unsigned char*)shadowCaster2DSegments.data(), shadowCaster2DSegments.size() * sizeof(float));
-            shadowCaster2DBuffer.getRender()->updateBuffer(shadowCaster2DBuffer.getSize(), shadowCaster2DBuffer.getData());
-            shadowCaster2DNeedUpdateBuffer = false;
-        }
-
-        // rows are rendered (or at least cleared) every frame even with zero
-        // segments: the rows are in light-relative polar space, so stale contents
-        // would make old shadows follow the light around
-        auto lights2d = scene->getComponentArray<Light2DComponent>();
-        bool atlasRowWritten = false;
-
-        for (int l = 0; l < numLights2D; l++){
-            Light2DComponent& light = lights2d->getComponentFromIndex(l);
-            if (!light.shadows || light.shadowMapIndex < 0 || light.intensity <= 0 ||
-                    !isLight2DActive(lights2d->getEntity(l), light)){
-                continue;
-            }
-            Entity entity = lights2d->getEntity(l);
-            Transform* lightTransform = scene->findComponent<Transform>(entity);
-            if (!lightTransform){
-                continue;
-            }
-
-            // first row of the frame clears the whole atlas to white (= far/unoccluded)
-            if (!atlasRowWritten){
-                shadow2DAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-            }else{
-                shadow2DAtlasPassRender.setLoadActionLoad();
-            }
-            Rect rowRect(0.0f, (float)light.shadowMapIndex, (float)shadow2DAtlasWidth, 1.0f);
-            shadow2DAtlasPassRender.startRenderPass(&shadow2DAtlasFramebuffer);
-            shadow2DAtlasPassRender.applyViewport(rowRect);
-            shadow2DAtlasPassRender.applyScissor(rowRect);
-            atlasRowWritten = true;
-
-            if (drawSegments && shadowCaster2DRender.beginDraw(PIP_DEPTH)){
-                vs_shadow2d_t shadow2dParams;
-                shadow2dParams.lightPos_range = Vector4(
-                    lightTransform->worldPosition.x, lightTransform->worldPosition.y,
-                    0.0f, std::max(light.range, 0.001f));
-
-                // three passes at NDC x offsets -2/0/+2 so segments crossing the
-                // theta = +-pi seam rasterize on both ends of the row
-                for (int k = -1; k <= 1; k++){
-                    shadow2dParams.offset = Vector4(2.0f * (float)k, 0.0f, 0.0f, 0.0f);
-                    shadowCaster2DRender.applyUniformBlock(shadow2DSlotParams, sizeof(vs_shadow2d_t), &shadow2dParams);
-                    shadowCaster2DRender.draw(0, shadowCaster2DVertexCount, 1);
-                }
-            }
-
-            shadow2DAtlasPassRender.endRenderPass();
-        }
-    }
+    renderShadowMaps(true, true);
+    render2DShadows();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
     renderReflectionProbeCapture();
+}
 
-    // assigns each rendering camera its own terrain CDLOD view slot this frame:
-    // main camera = 0 (selected in update(), also used by the shadow pass), each
-    // render-to-texture camera = 1..N-1; cameras past the cap reuse the main view
-    int terrainViewCounter = 0;
+// Depth passes of the shadow-casting lights into the projective and point atlases of
+// the view being drawn, through its shadow cameras.
+void RenderSystem::renderShadowMaps(bool projective, bool point){
+    if (!hasShadows)
+        return;
 
-    for (int i = 0; i < cameras->size(); i++){
-        Entity cameraEntity = cameras->getEntity(i);
-        CameraComponent& camera = cameras->getComponentFromIndex(i);
-        Transform* cameraTransformPtr = scene->findComponent<Transform>(cameraEntity);
-        if (!cameraTransformPtr)
-            continue;
-        Transform& cameraTransform = *cameraTransformPtr;
+#ifdef JASPERENGINE_EDITOR
+    // the scene's editor gizmos and icons never cast shadows
+    passDrawsOverlays = false;
+#endif
 
-        bool isMainCamera = (cameraEntity == scene->getCamera());
+    auto lights = scene->getComponentArray<LightComponent>();
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
 
-        if (!isMainCamera && !camera.renderToTexture){
-            continue; // camera is not used
-        }
+    // a projective slot has its own culled instance view; point faces draw everything
+    auto drawShadowCasters = [&](LightComponent& light, int lightIndex, int cameraIndex, PipelineType pipelineType, int instanceView){
+        const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
+        const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
+        const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
+        for (int i = 0; i < meshes->size(); i++){
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            Entity entity = meshes->getEntity(i);
+            Transform* transform = scene->findComponent<Transform>(entity);
 
-        // a disabled render-to-texture camera keeps its last image; the main camera always draws
-        if (!isMainCamera && (!camera.enabled || !scene->isEntityActiveInHierarchy(cameraEntity))){
-            continue;
-        }
-
-        int terrainView = 0;
-        if (!isMainCamera){
-            terrainViewCounter++;
-            terrainView = (terrainViewCounter < MAX_TERRAIN_VIEWS) ? terrainViewCounter : 0;
-        }
-
-        // Screen-space reflections (main camera only). The G-buffer geometry pass runs
-        // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
-        // effects). Further below the opaque color pass is redirected into an offscreen
-        // buffer, then renderSSR() marches the G-buffer and composites reflections to the
-        // real destination: a framebuffer (editor / render-to-texture / fixed resolution)
-        // or the swapchain in exported builds (see updateSwapchainRedirect).
-        // Fixed game resolution (main scene main camera only): the color pass is
-        // redirected into fixedResFramebuffer at the scene's fixed size, and
-        // renderFixedResolutionBlit() upscales it to the view rect afterwards.
-        bool useFixedRes = false;
-        if (isMainCamera && !camera.renderToTexture && isFixedResolutionActive()){
-            loadBlit();
-            if (blitLoaded && ensureFixedResFramebuffer(scene->getFixedResolutionWidth(),
-                    scene->getFixedResolutionHeight(), scene->getFixedResolutionFilter())){
-                useFixedRes = true;
-            }
-        }
-
-        bool useSSR = false;
-        FramebufferRender* ssrDestination = nullptr;
-        if (isMainCamera && scene->isSSREnabled() && (Engine::getFramebuffer() || camera.renderToTexture || useFixedRes || swapchainRedirect)){
-            loadSSR();
-            unsigned int sw = (unsigned int)Engine::getViewRect().getWidth();
-            unsigned int sh = (unsigned int)Engine::getViewRect().getHeight();
-            if (useFixedRes){
-                // effects run at the fixed resolution: SSR composites into the
-                // fixed-res target, which the blit then upscales
-                sw = fixedResWidth;
-                sh = fixedResHeight;
-            }
-            if (ssrLoaded && ensureSSRFramebuffers(sw, sh) && ensureGBufferFramebuffer(sw, sh)){
-                renderGBufferPass(camera);
-                useSSR = true;
-            }
-        }
-
-        // User post-process chain: like SSR it needs the scene color offscreen, so it
-        // follows the same destination-capture rule. Main scene only: its last pass
-        // writes every pixel, so a layer scene would erase the scene below it.
-        bool usePostProcess = false;
-        FramebufferRender* postDestination = nullptr;
-        if (isMainCamera && !scene->getPostProcessPasses().empty()
-                && (Engine::getMainScene() == scene || camera.renderToTexture)
-                && (Engine::getFramebuffer() || camera.renderToTexture || useFixedRes || swapchainRedirect)){
-            loadPostProcess();
-
-            // only a swapchain destination ends the chain with a blit
-            bool needsBlit = !(Engine::getFramebuffer() || camera.renderToTexture || useFixedRes);
-            if (needsBlit){
-                loadBlit();
-            }
-
-            unsigned int pw = useSSR ? ssrWidth : (unsigned int)Engine::getViewRect().getWidth();
-            unsigned int ph = useSSR ? ssrHeight : (unsigned int)Engine::getViewRect().getHeight();
-            if (useFixedRes){
-                pw = fixedResWidth;
-                ph = fixedResHeight;
-            }
-
-            if (postProcessLoaded && !postProcessPasses.empty() && (!needsBlit || blitLoaded)
-                    && ensurePostProcessFramebuffers(pw, ph)){
-                usePostProcess = true;
-
-                // a pass sampling depth needs the pre-pass when neither SSR nor SSAO ran
-                if (postProcessNeedsDepth && !useSSR && !scene->isSSAOEnabled()
-                        && ensureSSAOFramebuffers(pw, ph)){
-                    renderDepthPrePass(camera);
-                }
-            }
-        }
-
-        // Screen-space AO is produced once for the main camera before its color pass.
-        // When SSR is active its G-buffer already holds the camera depth (color[0]), so
-        // SSAO reuses it instead of running a second geometry pre-pass. Other cameras
-        // sample empty white (AO = 1) so their USE_SSAO meshes are unaffected.
-        currentSSAOTexture = &emptyWhite;
-        if (isMainCamera && scene->isSSAOEnabled()){
-            TextureRender* sharedDepth = useSSR ? &gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
-            renderSSAO(camera, sharedDepth);
-        }
-
-        // whether this camera's color pass targets an offscreen framebuffer
-        // (selects PIP_RTT pipelines and flipped rendering on GL)
-        bool offscreenTarget = camera.renderToTexture || Engine::getFramebuffer() || useFixedRes || useSSR || usePostProcess;
-        PipelineType colorPip = colorPipeline(camera, offscreenTarget);
-        bool distanceSort = sortsByDistance(camera);
-
-        if (Engine::getMainScene() == scene || camera.renderToTexture){
-            camera.render.setClearColor(scene->getBackgroundColor());
-        } else {
-            // When drawing a scene as an Engine layer, don't clear the color buffer.
-            // Otherwise a scene that was previously the main scene would keep clearing
-            // and hide the main scene when reused as a layer.
-            camera.render.setLoadActionLoad();
-        }
-
-        // the space the UI scissor lives in
-        Rect colorPassViewport;
-
-        if (useSSR || usePostProcess){
-            // capture the real destination for the composite / post-process chain, then
-            // redirect the scene into the offscreen color buffer
-            FramebufferRender* destination = nullptr;
-            if (camera.renderToTexture){
-                if (!camera.framebuffer->isCreated()){
-                    camera.framebuffer->create();
-                }
-                destination = &camera.framebuffer->getRender();
-            }else if (useFixedRes){
-                destination = &fixedResFramebuffer.getRender();
-            }else if (Engine::getFramebuffer()){
-                if (!Engine::getFramebuffer()->isCreated()){
-                    Engine::getFramebuffer()->create();
-                }
-                destination = &Engine::getFramebuffer()->getRender();
-            }
-
-            // the chain samples its input, so whatever runs before it writes the first
-            // ping-pong buffer and the chain writes the real destination
-            if (usePostProcess){
-                postDestination = destination;
-                ssrDestination = &postProcessFramebuffer[0].getRender();
-            }else{
-                ssrDestination = destination;
-            }
-
-            if (useSSR){
-                colorPassViewport = Rect(0, 0, (float)ssrWidth, (float)ssrHeight);
-                camera.render.startRenderPass(&sceneColorFramebuffer.getRender());
-                camera.render.applyViewport(colorPassViewport);
-            }else{
-                colorPassViewport = Rect(0, 0, (float)postProcessWidth, (float)postProcessHeight);
-                camera.render.startRenderPass(&postProcessFramebuffer[0].getRender());
-                camera.render.applyViewport(colorPassViewport);
-            }
-        }else if (useFixedRes){
-            // full offscreen target; letterbox/upscale happens in the blit pass
-            colorPassViewport = Rect(0, 0, (float)fixedResWidth, (float)fixedResHeight);
-            camera.render.startRenderPass(&fixedResFramebuffer.getRender());
-        }else if (!camera.renderToTexture){
-            if (Engine::getFramebuffer()){
-                if (!Engine::getFramebuffer()->isCreated()){
-                    Engine::getFramebuffer()->create();
-                }
-                camera.render.startRenderPass(&Engine::getFramebuffer()->getRender());
-            }else{
-                camera.render.startRenderPass();
-            }
-            colorPassViewport = Engine::getViewRect();
-            camera.render.applyViewport(colorPassViewport);
-        }else{
-            if (!camera.framebuffer->isCreated()){
-                camera.framebuffer->create();
-            }
-            colorPassViewport = Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
-            camera.render.startRenderPass(&camera.framebuffer->getRender());
-        }
-
-        passResolution = Vector2(colorPassViewport.getWidth(), colorPassViewport.getHeight());
-
-        //---------Draw opaque meshes and UI----------
-        bool hasActiveScissor = false;
-
-        // only the main camera has a culled instance view and detail levels
-        const int instanceView = isMainCamera ? 0 : -1;
-        const LodView* lodView = isMainCamera ? &mainLodView : nullptr;
-
-        const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
-
-        // a 3D pass draws opaque meshes nearest first so early depth rejects what nearer
-        // surfaces cover; a 2D pass keeps the transform order, which is its layering, and
-        // only lists them for the depth prepass
-        std::vector<OpaqueRenderData> opaqueRenders;
-        if (distanceSort || depthPrepass){
-            for (int i = 0; i < transforms->size(); i++){
-                Transform& transform = transforms->getComponentFromIndex(i);
-                Entity entity = transforms->getEntity(i);
-                Signature signature = scene->getSignature(entity);
-
-                if (!signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<CameraComponent>())){
-                    continue;
-                }
-
-                if (hasMultipleCameras || hasReflectionProbes){
-                    updateMVP(i, transform, camera, cameraTransform);
-                }
-
-                MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-                if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature)){
-                    continue;
-                }
-
-                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-                if (terrain && terrainView != 0){
-                    updateTerrain(*terrain, transform, camera, cameraTransform, terrainView);
-                }
-                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-                if (!mesh.transparent){
-                    const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
-                    opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance});
-                }else if (distanceSort){
-                    transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, transform.distanceToCamera});
-                }
-            }
-
-            if (distanceSort){
-                std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
-                    return a.distanceToCamera < b.distanceToCamera;
-                });
-            }
-        }
-
-        // the same draws, depth only, with the color pass's own MVP; a color fork
-        // without a depth fork is left out since its vertices may not match
-        if (depthPrepass){
-            const PipelineType prepassPip = offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS;
-            const bool sceneColorFork = !scene->getDefaultMeshShader().empty();
-            Matrix4 renderVP = camera.viewProjectionMatrix;
-            if (isRenderingFlipped(camera)){
-                renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
-            }
-            for (const OpaqueRenderData& opaque : opaqueRenders){
-                if ((sceneColorFork || !opaque.mesh->customShader.empty()) && opaque.mesh->customDepthShader.empty())
-                    continue;
-                vs_depth_t params = {opaque.transform->modelMatrix, renderVP, opaque.transform->modelViewProjectionMatrix};
-                drawMeshDepth(*opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
-            }
-        }
-
-        //---------Draw sky----------
-        auto skys = scene->getComponentArray<SkyboxComponent>();
-        if (skys->size() > 0){
-            SkyboxComponent& sky = skys->getComponentFromIndex(0);
-            Entity entity = skys->getEntity(0);
-            if (sky.visible){
-                if (hasMultipleCameras || hasReflectionProbes){
-                    updateSkyViewProjection(sky, camera);
-                }
-
-                drawSky(sky, colorPip);
-            }
-        }
-
-        if (distanceSort){
-            for (const OpaqueRenderData& opaque : opaqueRenders){
-                drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
-            }
-        }
-
-        for (int i = 0; i < transforms->size(); i++){
-            Transform& transform = transforms->getComponentFromIndex(i);
-            Entity entity = transforms->getEntity(i);
-            Signature signature = scene->getSignature(entity);
-
-            if (signature.test(scene->getComponentId<CameraComponent>())){
+            if (!transform || !transform->visible || !isRenderActive(entity)){
                 continue;
             }
 
-            if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
-                continue; // drawn above
+            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+            TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+            TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+            const Matrix4& model = objectModel(*transform);
+            vs_depth_t vsDepthParams;
+            if (transform->billboard && mesh.shadowsBillboard){
+                Matrix4 modelViewMatrix = shadowCamera.lightViewMatrix * model;
+
+                modelViewMatrix.set(0, 0, transform->worldScale.x);
+                modelViewMatrix.set(0, 1, 0.0);
+                modelViewMatrix.set(0, 2, 0.0);
+
+                if (!transform->cylindricalBillboard) {
+                    modelViewMatrix.set(1, 0, 0.0);
+                    modelViewMatrix.set(1, 1, transform->worldScale.y);
+                    modelViewMatrix.set(1, 2, 0.0);
+                }
+
+                modelViewMatrix.set(2, 0, 0.0);
+                modelViewMatrix.set(2, 1, 0.0);
+                modelViewMatrix.set(2, 2, transform->worldScale.z);
+
+                const Matrix4& projection = shadowCamera.lightProjectionMatrix;
+                vsDepthParams = {modelViewMatrix, projection, projection * modelViewMatrix};
+            }else{
+                const Matrix4& lightVP = shadowCamera.lightViewProjectionMatrix;
+                vsDepthParams = {model, lightVP, lightVP * model};
             }
 
-            if (hasMultipleCameras || hasReflectionProbes){
-                updateMVP(i, transform, camera, cameraTransform);
-            }
+            drawMeshDepth(
+                entity,
+                mesh,
+                *transform,
+                shadowCamera.nearFar.y,
+                shadowCamera.frustumPlanes,
+                vsDepthParams,
+                instmesh,
+                terrain,
+                tilemap,
+                false,
+                pipelineType,
+                instanceView,
+                lodView);
+        }
+    };
 
-            // inactive GameObjects and disabled renderers draw nothing; a UI element
-            // still sets its scissor below so its children are clipped the same way
-            const bool renderActive = isRenderActive(entity, signature);
-
-            // apply scissor on UI
-            if (signature.test(scene->getComponentId<RectTransformComponent>())){
-                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-
-                Rect parentScissor;
-                bool parentScissorActive = false;
-
-                if (transform.parent != NULL_ENTITY){
-                    Signature parentSignature = scene->getSignature(transform.parent);
-                    if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
-                        RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
-
-                        parentScissorActive = parentLayout.scissorActive;
-                        parentScissor = parentLayout.scissor;
-                    }
-                }
-
-                // recomputed every pass, so children never get a stale rect
-                layout.scissorActive = false;
-
-                bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
-                bool clippedAway = false;
-
-                if (inheritsScissor){
-                    layout.scissor = parentScissor;
-                    layout.scissorActive = true;
-
-                    if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
-                        // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
-                        // empty rect would leak a pixel: skip the draw instead
-                        clippedAway = true;
-                    }else{
-                        camera.render.applyScissor(parentScissor);
-
-                        hasActiveScissor = true;
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    ImageComponent& img = scene->getComponent<ImageComponent>(entity);
-
-                    layout.scissor = getScissorRect(layout, img, transform, colorPassViewport);
-                    // applied or not: a clipped away element still passes the empty rect down
-                    if (inheritsScissor){
-                        layout.scissor = intersectScissor(layout.scissor, parentScissor);
-                    }
-                    layout.scissorActive = true;
-                }
-
-                if (clippedAway)
-                    continue;
-            }
-
-            if (signature.test(scene->getComponentId<MeshComponent>())){
-                MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-
-                if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh)){
-
-                    // Per-camera transparent-instance sorting is intentionally NOT done
-                    // here: the instance buffer is shared across all cameras and sokol
-                    // only allows one sg_update_buffer per buffer per frame
-                    // (VALIDATE_UPDATEBUF_ONCE). Re-sorting per camera re-flags
-                    // needUpdateBuffer and uploads the buffer again, which panics the
-                    // validation layer when a render-to-texture camera is present. Every
-                    // camera reuses the main camera's ordering computed in update().
-                    InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-
-                    // Per-view CDLOD: the main camera's selection (view 0) is done in
-                    // update(); each render-to-texture camera (mirror/RTT) selects its
-                    // own node cut here into its own buffer, so the reflection shows
-                    // complete, correctly-tessellated terrain.
-                    TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-                    if (terrain && terrainView != 0){
-                        updateTerrain(*terrain, transform, camera, cameraTransform, terrainView);
-                    }
-
-                    // chunk bounds are view-independent, so every camera reuses the
-                    // ones refreshed in update()
-                    TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-                    drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
-                }
-
-            }else if (signature.test(scene->getComponentId<UIComponent>())){
-                UIComponent& ui = scene->getComponent<UIComponent>(entity);
-
-                bool isText = false;
-                if (signature.test(scene->getComponentId<TextComponent>())){
-                    isText = true;
-                }
-                if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
-                    drawUI(ui, transform, colorPip);
-
-            }else if (signature.test(scene->getComponentId<PointsComponent>())){
-                PointsComponent& points = scene->getComponent<PointsComponent>(entity);
-
-                // Per-camera sorting is intentionally NOT done here: the points buffer is
-                // shared across all cameras and sokol only allows one sg_update_buffer per
-                // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
-                // camera's ordering computed in update().
-                if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
-                    if (!points.transparent || !distanceSort){
-                        drawPoints(points, transform, camera, cameraTransform, colorPip);
-                    }else{
-                        transparentRenders.push({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, transform.distanceToCamera});
-                    }
-                }
-
-            }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
-                LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-
-                if (transform.visible && renderActive)
-                    drawLines(lines, transform, cameraTransform, colorPip);
-
-            }
-
-            if (hasActiveScissor){
-                // screen pixels would overflow an offscreen SSR / post-process attachment
-                camera.render.applyScissor(colorPassViewport);
-                hasActiveScissor = false;
-            }
+    // All projective slots share one pass: clear once, then viewport/scissor per slot.
+    FramebufferRender& projectiveAtlas = shadowAtlasTarget();
+    bool projectivePassStarted = false;
+    for (int l = 0; projective && l < shadowLightCount; l++){
+        LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type == LightType::POINT ||
+            light.intensity <= 0 || !light.shadows ||
+            light.shadowMapIndex < 0 || !hasShadowAtlas ||
+            !isLightActive(lights->getEntity(l), light)){
+            continue;
         }
 
-        //---------Draw transparent renderers----------
-        while (!transparentRenders.empty()){
-            TransparentRenderData renderData = transparentRenders.top();
-
-            if (renderData.type == TransparentRenderType::MESH){
-                drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
-            }else if (renderData.type == TransparentRenderType::POINTS){
-                drawPoints(*renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
+        int numShadowCameras =
+            (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(l, light) : 1;
+        for (int c = 0; c < numShadowCameras; c++){
+            int slotIndex = light.shadowMapIndex +
+                ((light.type == LightType::DIRECTIONAL) ? c : 0);
+            if (slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
+                continue;
             }
 
-            transparentRenders.pop();
+            if (!projectivePassStarted){
+                shadowAtlasPassRender.setClearDepth(1.0f);
+                shadowAtlasPassRender.startRenderPass(&projectiveAtlas);
+                projectivePassStarted = true;
+            }
+
+            Rect slotRect = getShadowAtlasSlotRect(slotIndex);
+            shadowAtlasPassRender.applyViewport(slotRect);
+            shadowAtlasPassRender.applyScissor(slotRect);
+            passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
+            drawShadowCasters(light, l, c, PIP_SHADOW_DEPTH, 1 + slotIndex);
         }
-
-        camera.render.endRenderPass();
-
-        // SSR: march the offscreen scene color and composite reflections into the
-        // real destination (the swapchain or the captured framebuffer).
-        if (useSSR){
-            renderSSR(camera, ssrDestination);
-        }
-
-        // buffer 0 now holds the scene color (or the SSR composite)
-        if (usePostProcess){
-            renderPostProcess(postDestination);
-        }
-
-        // Fixed game resolution: upscale the offscreen scene color to the view
-        // rect of the real destination. Layer scenes draw after this (load
-        // action), so overlaid UI scenes stay at native resolution.
-        if (useFixedRes){
-            renderFixedResolutionBlit();
-        }
-
     }
+    if (projectivePassStarted){
+        shadowAtlasPassRender.endRenderPass();
+    }
+
+    // Point shadows keep the packed-color depth per-face pass (PIP_DEPTH).
+    FramebufferRender& pointAtlas = shadowPointAtlasTarget();
+    bool pointAtlasSlotWritten = false;
+    for (int l = 0; point && l < shadowLightCount; l++){
+        LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type != LightType::POINT ||
+            light.intensity <= 0 || !light.shadows ||
+            light.shadowMapIndex < 0 || !hasShadowPointAtlas ||
+            !isLightActive(lights->getEntity(l), light)){
+            continue;
+        }
+
+        for (int c = 0; c < SHADOW_CUBE_FACES; c++){
+            int slotIndex = light.shadowMapIndex + c;
+            if (slotIndex < 0 || slotIndex >= MAX_POINT_SHADOW_ATLAS_SLOTS){
+                continue;
+            }
+
+            if (!pointAtlasSlotWritten){
+                shadowPointAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+            }else{
+                shadowPointAtlasPassRender.setLoadActionLoad();
+            }
+
+            Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
+            shadowPointAtlasPassRender.startRenderPass(&pointAtlas);
+            shadowPointAtlasPassRender.applyViewport(slotRect);
+            shadowPointAtlasPassRender.applyScissor(slotRect);
+            pointAtlasSlotWritten = true;
+
+            passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
+            drawShadowCasters(light, l, c, PIP_DEPTH, -1);
+            shadowPointAtlasPassRender.endRenderPass();
+        }
+    }
+}
+
+// 2D light shadow pass (1D polar rows): world space, so every view shares it
+void RenderSystem::render2DShadows(){
+    if (!hasShadows2D || !hasShadow2DAtlas)
+        return;
+
+    if (shadowCaster2DVertexCount > 0 && (!shadowCaster2DLoaded || shadowCaster2DVertexCount > shadowCaster2DBufferCapacity)){
+        unsigned int capacity = std::max(shadowCaster2DVertexCount * 2u, 256u);
+        loadShadowCaster2DPass(capacity);
+    }
+
+    bool drawSegments = shadowCaster2DLoaded && shadowCaster2DVertexCount > 0;
+
+    if (drawSegments && shadowCaster2DNeedUpdateBuffer){
+        // occluders are world-space and can move every frame: re-upload the merged
+        // segment buffer (built in update(), at most once per frame — sokol allows
+        // a single sg_update_buffer per buffer and frame)
+        shadowCaster2DBuffer.setData((unsigned char*)shadowCaster2DSegments.data(), shadowCaster2DSegments.size() * sizeof(float));
+        shadowCaster2DBuffer.getRender()->updateBuffer(shadowCaster2DBuffer.getSize(), shadowCaster2DBuffer.getData());
+        shadowCaster2DNeedUpdateBuffer = false;
+    }
+
+    // rows are rendered (or at least cleared) every frame even with zero
+    // segments: the rows are in light-relative polar space, so stale contents
+    // would make old shadows follow the light around
+    auto lights2d = scene->getComponentArray<Light2DComponent>();
+    bool atlasRowWritten = false;
+
+    for (int l = 0; l < numLights2D; l++){
+        Light2DComponent& light = lights2d->getComponentFromIndex(l);
+        if (!light.shadows || light.shadowMapIndex < 0 || light.intensity <= 0 ||
+                !isLight2DActive(lights2d->getEntity(l), light)){
+            continue;
+        }
+        Entity entity = lights2d->getEntity(l);
+        Transform* lightTransform = scene->findComponent<Transform>(entity);
+        if (!lightTransform){
+            continue;
+        }
+
+        // first row of the frame clears the whole atlas to white (= far/unoccluded)
+        if (!atlasRowWritten){
+            shadow2DAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+        }else{
+            shadow2DAtlasPassRender.setLoadActionLoad();
+        }
+        Rect rowRect(0.0f, (float)light.shadowMapIndex, (float)shadow2DAtlasWidth, 1.0f);
+        shadow2DAtlasPassRender.startRenderPass(&shadow2DAtlasFramebuffer);
+        shadow2DAtlasPassRender.applyViewport(rowRect);
+        shadow2DAtlasPassRender.applyScissor(rowRect);
+        atlasRowWritten = true;
+
+        if (drawSegments && shadowCaster2DRender.beginDraw(PIP_DEPTH)){
+            vs_shadow2d_t shadow2dParams;
+            shadow2dParams.lightPos_range = Vector4(
+                lightTransform->worldPosition.x, lightTransform->worldPosition.y,
+                0.0f, std::max(light.range, 0.001f));
+
+            // three passes at NDC x offsets -2/0/+2 so segments crossing the
+            // theta = +-pi seam rasterize on both ends of the row
+            for (int k = -1; k <= 1; k++){
+                shadow2dParams.offset = Vector4(2.0f * (float)k, 0.0f, 0.0f, 0.0f);
+                shadowCaster2DRender.applyUniformBlock(shadow2DSlotParams, sizeof(vs_shadow2d_t), &shadow2dParams);
+                shadowCaster2DRender.draw(0, shadowCaster2DVertexCount, 1);
+            }
+        }
+
+        shadow2DAtlasPassRender.endRenderPass();
+    }
+}
+
+void RenderSystem::draw(){
+    drawFramePasses();
+    drawCameras(true);
+
+#ifdef JASPERENGINE_EDITOR
+    frameDrawn = true;
+#endif
 
     //---------Missing some shaders----------
     if (ShaderPool::getMissingShaders().size() > 0){
@@ -8725,6 +8626,508 @@ void RenderSystem::draw(){
     }
 }
 
+// The frame's cameras: the scene camera and each enabled render-to-texture camera, in
+// component order. includeMain false leaves out the scene camera (a secondary view
+// draws its own camera instead).
+void RenderSystem::drawCameras(bool includeMain){
+    auto cameras = scene->getComponentArray<CameraComponent>();
+
+    // assigns each rendering camera its own terrain CDLOD view slot this frame:
+    // main camera = 0 (selected in update(), also used by the shadow pass), each
+    // render-to-texture camera = 1..N-1; cameras past the cap reuse the main view
+    int terrainViewCounter = 0;
+
+    for (int i = 0; i < cameras->size(); i++){
+        Entity cameraEntity = cameras->getEntity(i);
+        CameraComponent& camera = cameras->getComponentFromIndex(i);
+        Transform* cameraTransformPtr = scene->findComponent<Transform>(cameraEntity);
+        if (!cameraTransformPtr)
+            continue;
+
+        bool isMainCamera = (cameraEntity == scene->getCamera());
+
+        if (!isMainCamera && !camera.renderToTexture){
+            continue; // camera is not used
+        }
+
+        // a disabled render-to-texture camera keeps its last image; the main camera always draws
+        if (!isMainCamera && (!camera.enabled || !scene->isEntityActiveInHierarchy(cameraEntity))){
+            continue;
+        }
+
+        int terrainView = 0;
+        if (!isMainCamera){
+            terrainViewCounter++;
+            terrainView = (terrainViewCounter < MAX_TERRAIN_VIEWS) ? terrainViewCounter : 0;
+        }
+
+        if (isMainCamera && !includeMain){
+            continue;
+        }
+
+        CameraPass pass;
+        pass.camera = &camera;
+        pass.cameraTransform = cameraTransformPtr;
+        pass.isMain = isMainCamera;
+        pass.renderToTexture = camera.renderToTexture;
+        pass.terrainView = terrainView;
+        renderCameraPass(pass);
+    }
+}
+
+// One camera's color pass, with the effects its destination asks for: SSR, SSAO, the
+// post-process chain and the fixed resolution run for the view camera only.
+void RenderSystem::renderCameraPass(const CameraPass& pass){
+    std::priority_queue<TransparentRenderData, std::vector<TransparentRenderData>, TransparentRenderComparison> transparentRenders;
+
+    auto transforms = scene->getComponentArray<Transform>();
+
+    CameraComponent& camera = *pass.camera;
+    Transform& cameraTransform = *pass.cameraTransform;
+    const bool isMainCamera = pass.isMain;
+    const int terrainView = pass.terrainView;
+
+#ifdef JASPERENGINE_EDITOR
+    // a secondary pass reads its own per-object matrices; draw() rewrites the Transform
+    // ones per camera when the frame has several
+    const bool primaryPass = (passObjects == nullptr);
+    // editor gizmos and icons show in the editor's own view only, never in a camera image
+    passDrawsOverlays = isMainCamera && !pass.renderToTexture && (rv().secondary ? rv().editorOverlays : drawEditorOverlays);
+#else
+    const bool primaryPass = true;
+#endif
+    const bool perCameraMVP = primaryPass && (hasMultipleCameras || hasReflectionProbes);
+
+    // Screen-space reflections (main camera only). The G-buffer geometry pass runs
+    // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
+    // effects). Further below the opaque color pass is redirected into an offscreen
+    // buffer, then renderSSR() marches the G-buffer and composites reflections to the
+    // real destination: a framebuffer (editor / render-to-texture / fixed resolution)
+    // or the swapchain in exported builds (see updateSwapchainRedirect).
+    // Fixed game resolution (main scene main camera only): the color pass is
+    // redirected into fixedResFramebuffer at the scene's fixed size, and
+    // renderFixedResolutionBlit() upscales it to the view rect afterwards.
+    bool useFixedRes = false;
+    if (isMainCamera && !pass.renderToTexture && isFixedResolutionActive()){
+        loadBlit();
+        if (blitLoaded && ensureFixedResFramebuffer(scene->getFixedResolutionWidth(),
+                scene->getFixedResolutionHeight(), scene->getFixedResolutionFilter())){
+            useFixedRes = true;
+        }
+    }
+
+    Framebuffer* target = targetFramebuffer();
+    const Rect viewRect = targetViewRect();
+
+    bool useSSR = false;
+    FramebufferRender* ssrDestination = nullptr;
+    if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || swapchainRedirect)){
+        loadSSR();
+        unsigned int sw = (unsigned int)viewRect.getWidth();
+        unsigned int sh = (unsigned int)viewRect.getHeight();
+        if (useFixedRes){
+            // effects run at the fixed resolution: SSR composites into the
+            // fixed-res target, which the blit then upscales
+            sw = rv().fixedResWidth;
+            sh = rv().fixedResHeight;
+        }
+        if (ssrLoaded && ensureSSRFramebuffers(sw, sh) && ensureGBufferFramebuffer(sw, sh)){
+            renderGBufferPass(camera);
+            useSSR = true;
+        }
+    }
+
+    // User post-process chain: like SSR it needs the scene color offscreen, so it
+    // follows the same destination-capture rule. Main scene only: its last pass
+    // writes every pixel, so a layer scene would erase the scene below it.
+    bool usePostProcess = false;
+    FramebufferRender* postDestination = nullptr;
+    if (isMainCamera && !scene->getPostProcessPasses().empty()
+            && (isBaseLayer() || pass.renderToTexture)
+            && (target || pass.renderToTexture || useFixedRes || swapchainRedirect)){
+        loadPostProcess();
+
+        // only a swapchain destination ends the chain with a blit
+        bool needsBlit = !(target || pass.renderToTexture || useFixedRes);
+        if (needsBlit){
+            loadBlit();
+        }
+
+        unsigned int pw = useSSR ? rv().ssrWidth : (unsigned int)viewRect.getWidth();
+        unsigned int ph = useSSR ? rv().ssrHeight : (unsigned int)viewRect.getHeight();
+        if (useFixedRes){
+            pw = rv().fixedResWidth;
+            ph = rv().fixedResHeight;
+        }
+
+        if (postProcessLoaded && !postProcessPasses.empty() && (!needsBlit || blitLoaded)
+                && ensurePostProcessFramebuffers(pw, ph)){
+            usePostProcess = true;
+
+            // a pass sampling depth needs the pre-pass when neither SSR nor SSAO ran
+            if (postProcessNeedsDepth && !useSSR && !scene->isSSAOEnabled()
+                    && ensureSSAOFramebuffers(pw, ph)){
+                renderDepthPrePass(camera);
+            }
+        }
+    }
+
+    // Screen-space AO is produced once for the main camera before its color pass.
+    // When SSR is active its G-buffer already holds the camera depth (color[0]), so
+    // SSAO reuses it instead of running a second geometry pre-pass. Other cameras
+    // sample empty white (AO = 1) so their USE_SSAO meshes are unaffected.
+    rv().currentSSAOTexture = &emptyWhite;
+    if (isMainCamera && scene->isSSAOEnabled()){
+        TextureRender* sharedDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
+        renderSSAO(camera, useFixedRes, sharedDepth);
+    }
+
+    // whether this camera's color pass targets an offscreen framebuffer
+    // (selects PIP_RTT pipelines and flipped rendering on GL)
+    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useSSR || usePostProcess;
+    PipelineType colorPip = colorPipeline(camera, offscreenTarget);
+    bool distanceSort = sortsByDistance(camera);
+
+    if (isBaseLayer() || pass.renderToTexture){
+        camera.render.setClearColor(scene->getBackgroundColor());
+    } else {
+        // When drawing a scene as an Engine layer, don't clear the color buffer.
+        // Otherwise a scene that was previously the main scene would keep clearing
+        // and hide the main scene when reused as a layer.
+        camera.render.setLoadActionLoad();
+    }
+
+    // the space the UI scissor lives in
+    Rect colorPassViewport;
+
+    if (useSSR || usePostProcess){
+        // capture the real destination for the composite / post-process chain, then
+        // redirect the scene into the offscreen color buffer
+        FramebufferRender* destination = nullptr;
+        if (pass.renderToTexture){
+            if (!camera.framebuffer->isCreated()){
+                camera.framebuffer->create();
+            }
+            destination = &camera.framebuffer->getRender();
+        }else if (useFixedRes){
+            destination = &rv().fixedResFramebuffer.getRender();
+        }else if (target){
+            if (!target->isCreated()){
+                target->create();
+            }
+            destination = &target->getRender();
+        }
+
+        // the chain samples its input, so whatever runs before it writes the first
+        // ping-pong buffer and the chain writes the real destination
+        if (usePostProcess){
+            postDestination = destination;
+            ssrDestination = &rv().postProcessFramebuffer[0].getRender();
+        }else{
+            ssrDestination = destination;
+        }
+
+        if (useSSR){
+            colorPassViewport = Rect(0, 0, (float)rv().ssrWidth, (float)rv().ssrHeight);
+            camera.render.startRenderPass(&rv().sceneColorFramebuffer.getRender());
+            camera.render.applyViewport(colorPassViewport);
+        }else{
+            colorPassViewport = Rect(0, 0, (float)rv().postProcessWidth, (float)rv().postProcessHeight);
+            camera.render.startRenderPass(&rv().postProcessFramebuffer[0].getRender());
+            camera.render.applyViewport(colorPassViewport);
+        }
+    }else if (useFixedRes){
+        // full offscreen target; letterbox/upscale happens in the blit pass
+        colorPassViewport = Rect(0, 0, (float)rv().fixedResWidth, (float)rv().fixedResHeight);
+        camera.render.startRenderPass(&rv().fixedResFramebuffer.getRender());
+    }else if (!pass.renderToTexture){
+        if (target){
+            if (!target->isCreated()){
+                target->create();
+            }
+            camera.render.startRenderPass(&target->getRender());
+        }else{
+            camera.render.startRenderPass();
+        }
+        colorPassViewport = viewRect;
+        camera.render.applyViewport(colorPassViewport);
+    }else{
+        if (!camera.framebuffer->isCreated()){
+            camera.framebuffer->create();
+        }
+        colorPassViewport = Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
+        camera.render.startRenderPass(&camera.framebuffer->getRender());
+    }
+
+    passResolution = Vector2(colorPassViewport.getWidth(), colorPassViewport.getHeight());
+
+    //---------Draw opaque meshes and UI----------
+    bool hasActiveScissor = false;
+
+    // only the main camera has a culled instance view and detail levels
+    const int instanceView = isMainCamera ? 0 : -1;
+    const LodView* lodView = isMainCamera ? &rv().lodView : nullptr;
+
+    const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
+
+    // a 3D pass draws opaque meshes nearest first so early depth rejects what nearer
+    // surfaces cover; a 2D pass keeps the transform order, which is its layering, and
+    // only lists them for the depth prepass
+    std::vector<OpaqueRenderData> opaqueRenders;
+    if (distanceSort || depthPrepass){
+        for (int i = 0; i < transforms->size(); i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
+            Entity entity = transforms->getEntity(i);
+            Signature signature = scene->getSignature(entity);
+
+            if (!signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<CameraComponent>())){
+                continue;
+            }
+
+            if (perCameraMVP){
+                updateMVP(i, transform, camera, cameraTransform);
+            }
+
+            MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+            if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature)){
+                continue;
+            }
+
+            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+            TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+            if (terrain && primaryPass && terrainView != 0){
+                updateTerrain(*terrain, transform, camera, cameraTransform, terrain->views[terrainView]);
+            }
+            TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+            if (!mesh.transparent){
+                const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
+                opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance});
+            }else if (distanceSort){
+                transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform)});
+            }
+        }
+
+        if (distanceSort){
+            std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
+                return a.distanceToCamera < b.distanceToCamera;
+            });
+        }
+    }
+
+    // the same draws, depth only, with the color pass's own MVP; a color fork
+    // without a depth fork is left out since its vertices may not match
+    if (depthPrepass){
+        const PipelineType prepassPip = offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS;
+        const bool sceneColorFork = !scene->getDefaultMeshShader().empty();
+        Matrix4 renderVP = camera.viewProjectionMatrix;
+        if (isRenderingFlipped(camera)){
+            renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
+        }
+        for (const OpaqueRenderData& opaque : opaqueRenders){
+            if ((sceneColorFork || !opaque.mesh->customShader.empty()) && opaque.mesh->customDepthShader.empty())
+                continue;
+            vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
+            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
+        }
+    }
+
+    //---------Draw sky----------
+    auto skys = scene->getComponentArray<SkyboxComponent>();
+    if (skys->size() > 0){
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
+        if (sky.visible){
+            if (perCameraMVP){
+                updateSkyViewProjection(sky, camera);
+            }
+
+            drawSky(sky, colorPip, passSkyViewProjection(sky));
+        }
+    }
+
+    if (distanceSort){
+        for (const OpaqueRenderData& opaque : opaqueRenders){
+            drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
+        }
+    }
+
+    for (int i = 0; i < transforms->size(); i++){
+        Transform& transform = transforms->getComponentFromIndex(i);
+        Entity entity = transforms->getEntity(i);
+        Signature signature = scene->getSignature(entity);
+
+        if (signature.test(scene->getComponentId<CameraComponent>())){
+            continue;
+        }
+
+        if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
+            continue; // drawn above
+        }
+
+        if (perCameraMVP){
+            updateMVP(i, transform, camera, cameraTransform);
+        }
+
+        // inactive GameObjects and disabled renderers draw nothing; a UI element
+        // still sets its scissor below so its children are clipped the same way
+        const bool renderActive = isRenderActive(entity, signature);
+
+        // apply scissor on UI
+        if (signature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+            PassScissor scissor = passScissor(transform, layout);
+
+            Rect parentScissor;
+            bool parentScissorActive = false;
+
+            if (transform.parent != NULL_ENTITY){
+                Signature parentSignature = scene->getSignature(transform.parent);
+                if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
+                    RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
+                    Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
+                    PassScissor parent = passScissor(parentTransform, parentLayout);
+
+                    parentScissorActive = *parent.active;
+                    parentScissor = *parent.rect;
+                }
+            }
+
+            // recomputed every pass, so children never get a stale rect
+            *scissor.active = false;
+
+            bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
+            bool clippedAway = false;
+
+            if (inheritsScissor){
+                *scissor.rect = parentScissor;
+                *scissor.active = true;
+
+                if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
+                    // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
+                    // empty rect would leak a pixel: skip the draw instead
+                    clippedAway = true;
+                }else{
+                    camera.render.applyScissor(parentScissor);
+
+                    hasActiveScissor = true;
+                }
+            }
+
+            if (signature.test(scene->getComponentId<ImageComponent>())){
+                ImageComponent& img = scene->getComponent<ImageComponent>(entity);
+
+                *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
+                // applied or not: a clipped away element still passes the empty rect down
+                if (inheritsScissor){
+                    *scissor.rect = intersectScissor(*scissor.rect, parentScissor);
+                }
+                *scissor.active = true;
+            }
+
+            if (clippedAway)
+                continue;
+        }
+
+        if (signature.test(scene->getComponentId<MeshComponent>())){
+            MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+
+            if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh)){
+
+                // Per-camera transparent-instance sorting is intentionally NOT done
+                // here: the instance buffer is shared across all cameras and sokol
+                // only allows one sg_update_buffer per buffer per frame
+                // (VALIDATE_UPDATEBUF_ONCE). Re-sorting per camera re-flags
+                // needUpdateBuffer and uploads the buffer again, which panics the
+                // validation layer when a render-to-texture camera is present. Every
+                // camera reuses the main camera's ordering computed in update().
+                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+
+                // Per-view CDLOD: the main camera's selection (view 0) is done in
+                // update(); each render-to-texture camera (mirror/RTT) selects its
+                // own node cut here into its own buffer, so the reflection shows
+                // complete, correctly-tessellated terrain.
+                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+                if (terrain && primaryPass && terrainView != 0){
+                    updateTerrain(*terrain, transform, camera, cameraTransform, terrain->views[terrainView]);
+                }
+
+                // chunk bounds are view-independent, so every camera reuses the
+                // ones refreshed in update()
+                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+                drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
+            }
+
+        }else if (signature.test(scene->getComponentId<UIComponent>())){
+            UIComponent& ui = scene->getComponent<UIComponent>(entity);
+
+            if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
+                drawUI(ui, transform, colorPip);
+
+        }else if (signature.test(scene->getComponentId<PointsComponent>())){
+            PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+
+            // Per-camera sorting is intentionally NOT done here: the points buffer is
+            // shared across all cameras and sokol only allows one sg_update_buffer per
+            // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
+            // camera's ordering computed in update().
+            if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
+                if (!points.transparent || !distanceSort){
+                    drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
+                }else{
+                    transparentRenders.push({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform)});
+                }
+            }
+
+        }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+            LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
+
+            if (transform.visible && renderActive)
+                drawLines(lines, transform, cameraTransform, colorPip);
+
+        }
+
+        if (hasActiveScissor){
+            // screen pixels would overflow an offscreen SSR / post-process attachment
+            camera.render.applyScissor(colorPassViewport);
+            hasActiveScissor = false;
+        }
+    }
+
+    //---------Draw transparent renderers----------
+    while (!transparentRenders.empty()){
+        TransparentRenderData renderData = transparentRenders.top();
+
+        if (renderData.type == TransparentRenderType::MESH){
+            drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+        }else if (renderData.type == TransparentRenderType::POINTS){
+            drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
+        }
+
+        transparentRenders.pop();
+    }
+
+    camera.render.endRenderPass();
+
+    // SSR: march the offscreen scene color and composite reflections into the
+    // real destination (the swapchain or the captured framebuffer).
+    if (useSSR){
+        renderSSR(camera, ssrDestination);
+    }
+
+    // buffer 0 now holds the scene color (or the SSR composite)
+    if (usePostProcess){
+        renderPostProcess(postDestination);
+    }
+
+    // Fixed game resolution: upscale the offscreen scene color to the view
+    // rect of the real destination. Layer scenes draw after this (load
+    // action), so overlaid UI scenes stay at native resolution.
+    if (useFixedRes){
+        renderFixedResolutionBlit();
+    }
+}
+
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<LightComponent>()) {
         needReloadMeshes();
@@ -8741,6 +9144,10 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 }
 
 void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
+#ifdef JASPERENGINE_EDITOR
+    forgetEntityInViews(entity, componentId);
+#endif
+
     if (componentId == scene->getComponentId<LightComponent>()) {
         LightComponent& light = scene->getComponent<LightComponent>(entity);
         destroyLight(light);
@@ -8778,3 +9185,918 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         needReloadMeshes();
     }
 }
+
+#ifdef JASPERENGINE_EDITOR
+
+//-----Editor overlays and secondary views-----
+
+RenderSystem::MirrorView::MirrorView(){
+    // the reflection renders into the view's own framebuffer
+    delete camera.framebuffer;
+    camera.framebuffer = &framebuffer;
+    camera.type = CameraType::CAMERA_PERSPECTIVE;
+    camera.renderToTexture = true;
+    camera.autoResize = false;
+    camera.invertCulling = true;
+}
+
+RenderSystem::MirrorView::~MirrorView(){
+    camera.framebuffer = nullptr;
+    framebuffer.destroy();
+    for (auto& entry : objects.terrainViews){
+        for (int s = 0; s < 2; s++){
+            entry.second.nodesbuffer[s].getRender()->destroyBuffer();
+        }
+    }
+}
+
+void RenderSystem::setEditorOverlay(Entity entity, bool overlay){
+    if (entity == NULL_ENTITY)
+        return;
+    if (entity >= editorOverlayEntities.size()){
+        if (!overlay)
+            return;
+        editorOverlayEntities.resize((size_t)entity + 1, 0);
+    }
+    editorOverlayEntities[entity] = overlay ? 1 : 0;
+}
+
+bool RenderSystem::isEditorOverlay(Entity entity) const{
+    return entity < editorOverlayEntities.size() && editorOverlayEntities[entity];
+}
+
+void RenderSystem::setDrawEditorOverlays(bool draw){
+    drawEditorOverlays = draw;
+}
+
+bool RenderSystem::passObjectIndex(const Transform& transform, size_t& index) const{
+    if (!passObjects || !passObjects->base || &transform < passObjects->base)
+        return false;
+    index = (size_t)(&transform - passObjects->base);
+    return index < passObjects->count;
+}
+
+bool RenderSystem::isObjectOverridden(const Transform& transform) const{
+    size_t index;
+    return passObjectIndex(transform, index) && passObjects->override[index] >= 0;
+}
+
+RenderSystem::MirrorView* RenderSystem::passMirror(Entity entity){
+    // only the view camera's own pass shows the view's reflections
+    RenderView& view = rv();
+    if (!view.secondary || view.sharesPrimaryCamera || passObjects != &view.objects)
+        return nullptr;
+    auto it = view.mirrors.find(entity);
+    if (it == view.mirrors.end() || !it->second->ready)
+        return nullptr;
+    return it->second.get();
+}
+
+// Sorts a transparent points batch back to front for the view camera into the view's
+// own buffer and binds it for this draw; the component buffer keeps the frame's order.
+bool RenderSystem::bindViewPointsOrder(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& cameraTransform){
+    RenderView& view = rv();
+    if (!view.secondary || view.sharesPrimaryCamera || passObjects != &view.objects)
+        return false;
+    if (!points.transparent || !sortsByDistance(camera) || points.numVisible == 0 || points.renderPoints.size() < points.numVisible)
+        return false;
+
+    PointsView& pointsView = view.points[entity];
+    pointsView.points.assign(points.renderPoints.begin(), points.renderPoints.begin() + points.numVisible);
+
+    const Matrix4& model = objectModel(transform);
+    const Vector3 cameraDirection = (cameraTransform.worldPosition - camera.worldTarget).normalize();
+    std::sort(pointsView.points.begin(), pointsView.points.end(), [&](const PointRenderData& a, const PointRenderData& b){
+        return (model * a.position).dotProduct(cameraDirection) < (model * b.position).dotProduct(cameraDirection);
+    });
+
+    const size_t size = pointsView.points.size() * sizeof(PointRenderData);
+    BufferRender* render = pointsView.buffer.getRender();
+    // grows with headroom and never shrinks
+    if (render->isCreated() && pointsView.capacity < size)
+        render->destroyBuffer();
+    if (!render->isCreated()){
+        pointsView.capacity = size + size / 2;
+        render->createBuffer(pointsView.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
+    }
+    pointsView.buffer.setData((unsigned char*)pointsView.points.data(), size);
+    render->updateBuffer(size, pointsView.buffer.getData());
+
+    points.render.replaceVertexBuffer(points.buffer.getRender(), render);
+    return true;
+}
+
+RenderSystem::RenderView& RenderSystem::getSecondaryView(uint32_t viewId){
+    std::unique_ptr<RenderView>& view = secondaryViews[viewId];
+    if (!view){
+        view = std::make_unique<RenderView>();
+        view->secondary = true;
+    }
+    return *view;
+}
+
+void RenderSystem::destroyRenderView(RenderView& view){
+    view.ssaoDepthFramebuffer.destroy();
+    view.ssaoFramebuffer.destroy();
+    view.ssaoBlurFramebuffer.destroy();
+    view.ssaoWidth = 0;
+    view.ssaoHeight = 0;
+    view.currentSSAOTexture = nullptr;
+
+    view.gbufferFramebuffer.destroy();
+    view.sceneColorFramebuffer.destroy();
+    view.ssrFramebuffer.destroy();
+    view.ssrBlurFramebuffer.destroy();
+    view.ssrWidth = 0;
+    view.ssrHeight = 0;
+
+    view.fixedResFramebuffer.destroy();
+    view.fixedResWidth = 0;
+    view.fixedResHeight = 0;
+
+    view.postProcessFramebuffer[0].destroy();
+    view.postProcessFramebuffer[1].destroy();
+    view.postProcessWidth = 0;
+    view.postProcessHeight = 0;
+
+    for (InstanceView& instanceView : view.instanceViews){
+        instanceView.buffer.getRender()->destroyBuffer();
+        instanceView.data.clear();
+        instanceView.capacity = 0;
+        instanceView.needUpload = false;
+    }
+    view.instanceRanges.clear();
+    view.instanceSources.clear();
+    view.instancesBuilt = false;
+
+    view.shadowAtlas.destroyFramebuffer();
+    view.shadowPointAtlas.destroyFramebuffer();
+    view.shadowAtlasWidth = 0;
+    view.shadowAtlasHeight = 0;
+    view.shadowPointAtlasWidth = 0;
+    view.shadowPointAtlasHeight = 0;
+    view.ownShadowAtlas = false;
+    view.ownShadowPointAtlas = false;
+
+    for (auto& entry : view.points){
+        entry.second.buffer.getRender()->destroyBuffer();
+    }
+    view.points.clear();
+
+    auto destroyTerrainViews = [](PassObjects& objects){
+        for (auto& entry : objects.terrainViews){
+            for (int s = 0; s < 2; s++){
+                entry.second.nodesbuffer[s].getRender()->destroyBuffer();
+            }
+        }
+        objects.terrainViews.clear();
+        objects.terrainCapacity.clear();
+    };
+    destroyTerrainViews(view.objects);
+    view.mirrors.clear();
+}
+
+void RenderSystem::releaseView(uint32_t viewId){
+    auto it = secondaryViews.find(viewId);
+    if (it == secondaryViews.end())
+        return;
+    if (activeView == it->second.get())
+        activeView = &primaryView;
+    destroyRenderView(*it->second);
+    secondaryViews.erase(it);
+}
+
+// A removed component takes its per-view data along; a removed Transform ends the
+// entity's overlay mark, since destroyed entities reach every system that way.
+void RenderSystem::forgetEntityInViews(Entity entity, ComponentId componentId){
+    if (componentId == scene->getComponentId<Transform>()){
+        setEditorOverlay(entity, false);
+    }
+
+    const bool instances = componentId == scene->getComponentId<InstancedMeshComponent>() || componentId == scene->getComponentId<MeshComponent>();
+    const bool terrain = componentId == scene->getComponentId<TerrainComponent>() || componentId == scene->getComponentId<MeshComponent>();
+    const bool points = componentId == scene->getComponentId<PointsComponent>();
+    const bool mirror = componentId == scene->getComponentId<MirrorComponent>() || componentId == scene->getComponentId<MeshComponent>();
+    if (!instances && !terrain && !points && !mirror)
+        return;
+
+    auto forgetTerrain = [entity](PassObjects& objects){
+        auto it = objects.terrainViews.find(entity);
+        if (it != objects.terrainViews.end()){
+            for (int s = 0; s < 2; s++){
+                it->second.nodesbuffer[s].getRender()->destroyBuffer();
+            }
+            objects.terrainViews.erase(it);
+        }
+        objects.terrainCapacity.erase(entity);
+    };
+
+    for (auto& entry : secondaryViews){
+        RenderView& view = *entry.second;
+        if (instances){
+            view.instanceRanges.erase(entity);
+            view.instanceSources.erase(entity);
+            view.instancesBuilt = false;
+        }
+        if (terrain){
+            forgetTerrain(view.objects);
+            for (auto& mirrorEntry : view.mirrors){
+                forgetTerrain(mirrorEntry.second->objects);
+            }
+        }
+        if (points){
+            auto it = view.points.find(entity);
+            if (it != view.points.end()){
+                it->second.buffer.getRender()->destroyBuffer();
+                view.points.erase(it);
+            }
+        }
+        if (mirror){
+            view.mirrors.erase(entity);
+        }
+    }
+}
+
+// Model-view-projection, distance and billboard facing of every object for a camera
+// pass of a secondary view. A real billboard turns to this camera: it and its children
+// get their own model matrices, the frame's Transforms stay as they are.
+void RenderSystem::buildPassObjects(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform){
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t count = transforms->size();
+
+    objects.base = (count > 0) ? &transforms->getComponentFromIndex(0) : nullptr;
+    objects.count = count;
+    objects.mvp.resize(count);
+    objects.distance.resize(count);
+    objects.override.assign(count, -1);
+    objects.overrideModel.clear();
+    objects.overrideNormal.clear();
+    objects.scissors.assign(count, PassScissorState());
+
+    // world rotation of the overridden entries, which their children compose with
+    static std::vector<Quaternion> overrideRotation;
+    overrideRotation.clear();
+
+    const bool flipped = isRenderingFlipped(camera);
+    static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
+    const float EPSILON = 1e-6f;
+
+    for (size_t i = 0; i < count; i++){
+        Transform& transform = transforms->getComponentFromIndex(i);
+        Entity entity = transforms->getEntity(i);
+
+        // parents come first in the array, so an overridden parent is known here
+        int parentOverride = -1;
+        Transform* parent = nullptr;
+        if (transform.parent != NULL_ENTITY){
+            parent = scene->findComponent<Transform>(transform.parent);
+            if (parent && !objects.overrideModel.empty()){
+                size_t parentIndex;
+                if (passObjectIndex(*parent, parentIndex))
+                    parentOverride = objects.override[parentIndex];
+            }
+        }
+
+        const Matrix4* model = &transform.modelMatrix;
+
+        if (transform.billboard && !transform.fakeBillboard){
+            const Matrix4 parentModel = (parentOverride >= 0) ? objects.overrideModel[parentOverride] : (parent ? parent->modelMatrix : Matrix4());
+            const Quaternion parentRotation = (parentOverride >= 0) ? overrideRotation[parentOverride] : (parent ? parent->worldRotation : Quaternion());
+            RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
+
+            // where it stands before turning, as updateTransform placed it
+            Vector3 worldPosition = transform.worldPosition;
+            if (parentOverride >= 0){
+                Vector3 origin = transform.position;
+                if (layout && layout->pivot != Vector2(0, 0)){
+                    origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
+                }
+                worldPosition = parentModel * origin;
+            }
+
+            Vector3 camPos = cameraTransform.worldPosition;
+            if (transform.cylindricalBillboard)
+                camPos.y = worldPosition.y;
+
+            Vector3 toCamera = camPos - worldPosition;
+            if (toCamera.length() > EPSILON && toCamera.crossProduct(camera.worldUp).length() > EPSILON){
+                Matrix4 facing = Matrix4::lookAtMatrix(camPos, worldPosition, camera.worldUp).inverse();
+                if (facing.isValid()){
+                    Quaternion worldRotation;
+                    worldRotation.fromRotationMatrix(facing);
+                    worldRotation = worldRotation * transform.billboardRotation;
+                    Quaternion localRotation = parent ? (parentRotation.inverse() * worldRotation) : worldRotation;
+
+                    Vector3 origin = transform.position;
+                    if (layout && layout->pivot != Vector2(0, 0)){
+                        origin += getUIPivotShift(*layout, localRotation, transform.scale);
+                    }
+                    Matrix4 localMatrix = Matrix4::translateMatrix(origin) * localRotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale);
+
+                    objects.override[i] = (int)objects.overrideModel.size();
+                    objects.overrideModel.push_back(parent ? parentModel * localMatrix : localMatrix);
+                    objects.overrideNormal.push_back(objects.overrideModel.back().inverse().transpose());
+                    overrideRotation.push_back(parent ? parentRotation * localRotation : localRotation);
+                    model = &objects.overrideModel.back();
+                }
+            }
+        }
+
+        if (objects.override[i] < 0 && parentOverride >= 0){
+            // follows its turned parent
+            objects.override[i] = (int)objects.overrideModel.size();
+            objects.overrideModel.push_back(objects.overrideModel[parentOverride] * transform.localMatrix);
+            objects.overrideNormal.push_back(objects.overrideModel.back().inverse().transpose());
+            overrideRotation.push_back(overrideRotation[parentOverride] * transform.rotation);
+            model = &objects.overrideModel.back();
+        }
+
+        const Vector3 worldPosition = (objects.override[i] >= 0) ? (*model * Vector3(0, 0, 0)) : transform.worldPosition;
+
+        Matrix4 mvp;
+        if (transform.billboard && transform.fakeBillboard){
+            Matrix4 modelViewMatrix = camera.viewMatrix * (*model);
+
+            modelViewMatrix.set(0, 0, transform.worldScale.x);
+            modelViewMatrix.set(0, 1, 0.0);
+            modelViewMatrix.set(0, 2, 0.0);
+
+            if (!transform.cylindricalBillboard) {
+                modelViewMatrix.set(1, 0, 0.0);
+                modelViewMatrix.set(1, 1, transform.worldScale.y);
+                modelViewMatrix.set(1, 2, 0.0);
+            }
+
+            modelViewMatrix.set(2, 0, 0.0);
+            modelViewMatrix.set(2, 1, 0.0);
+            modelViewMatrix.set(2, 2, transform.worldScale.z);
+
+            mvp = camera.projectionMatrix * modelViewMatrix;
+        }else{
+            mvp = camera.viewProjectionMatrix * (*model);
+        }
+        if (flipped){
+            mvp = flipYMatrix * mvp;
+        }
+
+        objects.mvp[i] = mvp;
+        objects.distance[i] = (cameraTransform.worldPosition - worldPosition).length();
+    }
+
+    auto skys = scene->getComponentArray<SkyboxComponent>();
+    if (skys->size() > 0){
+        objects.skyViewProjection = skyViewProjection(skys->getComponentFromIndex(0), camera);
+    }
+}
+
+// The camera's own CDLOD cut of every terrain, into buffers the pass keeps
+void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform){
+    auto terrains = scene->getComponentArray<TerrainComponent>();
+    for (int i = 0; i < terrains->size(); i++){
+        TerrainComponent& terrain = terrains->getComponentFromIndex(i);
+        Entity entity = terrains->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!transform || !mesh || !mesh->loaded || !terrain.heightMapLoaded)
+            continue;
+
+        TerrainView& view = objects.terrainViews[entity];
+        size_t& capacity = objects.terrainCapacity[entity];
+
+        for (int s = 0; s < 2; s++){
+            InterleavedBuffer& buffer = view.nodesbuffer[s];
+            // the layout of the frame's node buffers (MeshSystem::createTerrain)
+            if (buffer.getAttributes().empty()){
+                buffer.addAttribute(AttributeType::TERRAINNODEPOSITION, 2, true);
+                buffer.addAttribute(AttributeType::TERRAINNODESIZE, 1, true);
+                buffer.addAttribute(AttributeType::TERRAINNODERANGE, 1, true);
+                buffer.addAttribute(AttributeType::TERRAINNODERESOLUTION, 1, true);
+                buffer.setRenderAttributes(true);
+                buffer.setInstanceBuffer(true);
+                buffer.setUsage(BufferUsage::STREAM);
+            }
+        }
+
+        // every node can be selected once at most, like the frame's own buffers
+        const size_t needed = std::max<size_t>(terrain.nodes.size(), 1) * view.nodesbuffer[0].getStride();
+        if (capacity < needed || !view.nodesbuffer[0].getRender()->isCreated()){
+            for (int s = 0; s < 2; s++){
+                InterleavedBuffer& buffer = view.nodesbuffer[s];
+                buffer.getRender()->destroyBuffer();
+                buffer.getRender()->createBuffer(needed, nullptr, buffer.getType(), buffer.getUsage());
+            }
+            capacity = needed;
+        }
+
+        updateTerrain(terrain, *transform, camera, cameraTransform, view);
+    }
+}
+
+// Shadow cameras fitted to the view camera and the lighting block that goes with them.
+// The frame's shadow maps are reused where every camera matches (they depend on the
+// camera only through directional cascades and automatic near/far).
+void RenderSystem::prepareViewLights(RenderView& view, int numLights, CameraComponent& camera, Transform& cameraTransform){
+    auto lights = scene->getComponentArray<LightComponent>();
+
+    view.lightCameras.resize((size_t)numLights);
+
+    // the frame's maps exist this frame only once its passes ran
+    bool projectiveShared = frameDrawn;
+    bool pointShared = frameDrawn;
+
+    for (int i = 0; i < numLights; i++){
+        LightComponent& light = lights->getComponentFromIndex(i);
+        Entity entity = lights->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        LightCameraSet& cameras = view.lightCameras[i];
+        cameras.numCascades = light.numShadowCascades;
+
+        if (!hasShadows || !light.shadows || light.intensity <= 0 || !transform)
+            continue;
+
+        Vector2 nearFar = light.shadowCameraNearFar;
+        if (light.automaticShadowCamera){
+            nearFar.x = camera.nearClip;
+            nearFar.y = (light.range == 0.0) ? camera.farClip : light.range;
+        }
+        computeLightCameras(light, *transform, camera, cameraTransform, nearFar, cameras.cameras, cameras.numCascades);
+
+        if (light.shadowMapIndex < 0 || !isLightActive(entity, light))
+            continue;
+
+        if (light.type == LightType::POINT){
+            for (int c = 0; c < SHADOW_CUBE_FACES && pointShared; c++){
+                if (cameras.cameras[c].lightViewProjectionMatrix != light.cameras[c].lightViewProjectionMatrix ||
+                        cameras.cameras[c].nearFar != light.cameras[c].nearFar)
+                    pointShared = false;
+            }
+        }else{
+            int numCameras = (light.type == LightType::DIRECTIONAL) ? (int)cameras.numCascades : 1;
+            if (light.type == LightType::DIRECTIONAL && cameras.numCascades != light.numShadowCascades)
+                projectiveShared = false;
+            for (int c = 0; c < numCameras && projectiveShared; c++){
+                if (cameras.cameras[c].lightViewProjectionMatrix != light.cameras[c].lightViewProjectionMatrix ||
+                        cameras.cameras[c].nearFar != light.cameras[c].nearFar)
+                    projectiveShared = false;
+            }
+        }
+    }
+
+    view.ownShadowAtlas = hasShadows && hasShadowAtlas && !projectiveShared;
+    view.ownShadowPointAtlas = hasShadows && hasShadowPointAtlas && !pointShared;
+
+    // the atlas layout and every light-independent value are the frame's
+    view.fs_lighting = primaryView.fs_lighting;
+    view.vs_shadows = primaryView.vs_shadows;
+    view.fs_shadows = primaryView.fs_shadows;
+    view.fs_point_shadows = primaryView.fs_point_shadows;
+    processLights(numLights, camera, cameraTransform);
+}
+
+// The view's shadow atlases have the frame's layout, so the slots and their uniforms line up
+bool RenderSystem::ensureViewShadowAtlases(RenderView& view){
+    bool ready = true;
+
+    if (view.ownShadowAtlas){
+        const int width = (int)shadowAtlasSlotResolution * shadowAtlasCols;
+        const int height = (int)shadowAtlasSlotResolution * shadowAtlasRows;
+        if (!view.shadowAtlas.isCreated() || view.shadowAtlasWidth != width || view.shadowAtlasHeight != height){
+            view.shadowAtlas.destroyFramebuffer();
+            view.shadowAtlasWidth = 0;
+            view.shadowAtlasHeight = 0;
+            if (width > 0 && height > 0 && view.shadowAtlas.createDepthOnlyFramebuffer(
+                    width, height,
+                    TextureFilter::LINEAR, TextureFilter::LINEAR,
+                    TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+                view.shadowAtlasWidth = width;
+                view.shadowAtlasHeight = height;
+            }else{
+                view.ownShadowAtlas = false;
+                ready = false;
+            }
+        }
+    }else if (view.shadowAtlas.isCreated() && !hasShadowAtlas){
+        view.shadowAtlas.destroyFramebuffer();
+        view.shadowAtlasWidth = 0;
+        view.shadowAtlasHeight = 0;
+    }
+
+    if (view.ownShadowPointAtlas){
+        const int width = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_COLS;
+        const int height = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_ROWS;
+        if (!view.shadowPointAtlas.isCreated() || view.shadowPointAtlasWidth != width || view.shadowPointAtlasHeight != height){
+            view.shadowPointAtlas.destroyFramebuffer();
+            view.shadowPointAtlasWidth = 0;
+            view.shadowPointAtlasHeight = 0;
+            if (width > 0 && height > 0 && view.shadowPointAtlas.createFramebuffer(
+                    TextureType::TEXTURE_2D, width, height,
+                    TextureFilter::NEAREST, TextureFilter::NEAREST,
+                    TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+                view.shadowPointAtlasWidth = width;
+                view.shadowPointAtlasHeight = height;
+            }else{
+                view.ownShadowPointAtlas = false;
+                ready = false;
+            }
+        }
+    }else if (view.shadowPointAtlas.isCreated() && !hasShadowPointAtlas){
+        view.shadowPointAtlas.destroyFramebuffer();
+        view.shadowPointAtlasWidth = 0;
+        view.shadowPointAtlasHeight = 0;
+    }
+
+    return ready;
+}
+
+// The instances of a batch as seen from camera, when they depend on it: billboards face
+// it and the distance fade keeps those in range of it (updateInstancedMesh's rules).
+void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source){
+    (void)cameraTransform;
+    source.instances.clear();
+    source.bounds.clear();
+
+    const bool hasBounds = !mesh.verticesAABB.isNull() && !mesh.verticesAABB.isInfinite();
+    const Vector3 localCenter = hasBounds ? mesh.verticesAABB.getCenter() : Vector3::ZERO;
+    const float localRadius = hasBounds ? mesh.verticesAABB.getHalfSize().length() : 0.0f;
+
+    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
+    const float cullRadiusSquared = cullRadius * cullRadius;
+
+    Quaternion billboardRotation;
+    if (instmesh.instancedBillboard){
+        billboardRotation.fromRotationMatrix(camera.viewMatrix.inverse());
+        billboardRotation = transform.worldRotation.inverse() * billboardRotation;
+    }
+
+    AABB localAABB;
+    localAABB.setNull();
+
+    const size_t instancesSize = std::min(instmesh.instances.size(), (size_t)instmesh.maxInstances);
+    source.instances.reserve(instancesSize);
+    source.bounds.reserve(instancesSize);
+    for (size_t i = 0; i < instancesSize; i++){
+        const InstanceData& instance = instmesh.instances[i];
+        if (!instance.visible)
+            continue;
+
+        // model-local XZ distance from the instance origin, as in mesh.vert
+        const float dx = instance.position.x - fadeEyeLocal.x;
+        const float dz = instance.position.z - fadeEyeLocal.z;
+        if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
+            continue;
+
+        Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
+        Matrix4 instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+
+        InstanceRenderData renderData{};
+        renderData.instanceMatrix = instanceMatrix;
+        renderData.color = instance.color;
+        renderData.textureRect = instance.textureRect;
+        source.instances.push_back(renderData);
+
+        InstanceBounds bounds;
+        bounds.scale = std::max(std::abs(instance.scale.x), std::max(std::abs(instance.scale.y), std::abs(instance.scale.z)));
+        bounds.center = instanceMatrix * localCenter;
+        bounds.radius = localRadius * bounds.scale;
+        source.bounds.push_back(bounds);
+
+        localAABB.merge(instanceMatrix * mesh.verticesAABB);
+    }
+
+    if (localAABB.isNull()){
+        source.worldAABB.setNull();
+    }else{
+        source.worldAABB = transform.modelMatrix * localAABB;
+    }
+}
+
+// The view camera's culled slice of every instanced batch and of its shadow slots, in
+// the view's own buffers. Rebuilt when the frame's lists, the view camera or its shadow
+// cameras changed, so a still view uploads nothing.
+void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera, Transform& cameraTransform){
+    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+    if (instmeshes->size() == 0){
+        view.instanceRanges.clear();
+        view.instanceSources.clear();
+        view.instancesBuilt = false;
+        return;
+    }
+
+    std::vector<ShadowSlot> shadowSlots = collectShadowSlots();
+
+    // what the lists depend on besides the batches themselves
+    uint64_t shadowHash = 1469598103934665603ULL;
+    for (const ShadowSlot& shadow : shadowSlots){
+        const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&shadowCamera.lightViewProjectionMatrix);
+        for (size_t b = 0; b < sizeof(Matrix4); b++){
+            shadowHash = (shadowHash ^ bytes[b]) * 1099511628211ULL;
+        }
+        shadowHash = (shadowHash ^ (uint64_t)(shadow.slot + 1)) * 1099511628211ULL;
+    }
+    const LodView& lodView = view.lodView;
+    const bool lodChanged = lodView.enabled != view.instanceLodView.enabled || lodView.threshold != view.instanceLodView.threshold ||
+        lodView.origin != view.instanceLodView.origin || lodView.perUnit != view.instanceLodView.perUnit || lodView.constant != view.instanceLodView.constant;
+
+    if (view.instancesBuilt && view.instanceRevision == instanceRevision && view.instanceShadowHash == shadowHash && !lodChanged &&
+            view.instanceViewProjection == camera.viewProjectionMatrix && view.instanceEye == cameraTransform.worldPosition){
+        return;
+    }
+    view.instancesBuilt = true;
+    view.instanceRevision = instanceRevision;
+    view.instanceShadowHash = shadowHash;
+    view.instanceLodView = lodView;
+    view.instanceViewProjection = camera.viewProjectionMatrix;
+    view.instanceEye = cameraTransform.worldPosition;
+
+    for (InstanceView& instanceView : view.instanceViews){
+        instanceView.data.clear();
+    }
+
+    const Vector3& eye = cameraTransform.worldPosition;
+    const Vector3 towardCamera = (cameraTransform.worldPosition - camera.worldTarget).normalize();
+
+    for (int i = 0; i < instmeshes->size(); i++){
+        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        Entity entity = instmeshes->getEntity(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        std::array<InstanceViewRange, 1 + MAX_SHADOW_ATLAS_SLOTS>& ranges = view.instanceRanges[entity];
+        ranges.fill(InstanceViewRange());
+        if (!mesh || !transform || !mesh->loaded){
+            view.instanceSources.erase(entity);
+            continue;
+        }
+
+        ViewInstanceSource& source = view.instanceSources[entity];
+        const Matrix4 inverseModel = transform->modelMatrix.inverse();
+        source.fadeEyeLocal = inverseModel.isValid() ? (inverseModel * eye) : eye;
+
+        const InstanceRenderData* instances;
+        const InstanceBounds* bounds;
+        unsigned int count;
+        source.own = instmesh.instancedBillboard || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        if (source.own){
+            buildInstanceList(instmesh, *mesh, *transform, camera, cameraTransform, source.fadeEyeLocal, source);
+            instances = source.instances.data();
+            bounds = source.bounds.data();
+            count = (unsigned int)source.instances.size();
+        }else{
+            source.instances.clear();
+            source.bounds.clear();
+            instances = instmesh.renderInstances.data();
+            bounds = instmesh.renderBounds.data();
+            count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
+        }
+
+        // blended batches go back to front from this camera, 2D keeps its layering
+        InstanceOrder order = InstanceOrder::NEAREST;
+        Vector3 direction = Vector3::ZERO;
+        if (!sortsByDistance(camera)){
+            order = InstanceOrder::KEEP;
+        }else if (mesh->transparent){
+            order = InstanceOrder::BACK_TO_FRONT;
+            direction = towardCamera;
+        }
+        buildInstanceView(view.instanceViews[0], ranges[0], instances, bounds, count, instmesh, *mesh, *transform,
+            camera.farClip, camera.frustumPlanes, view.lodView, eye, eye, direction, order);
+
+        for (const ShadowSlot& shadow : shadowSlots){
+            if (!mesh->castShadows)
+                continue;
+            const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+            LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
+            Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
+            buildInstanceView(view.instanceViews[1 + shadow.slot], ranges[1 + shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+                shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, eye, shadowLod.origin, lightDirection, InstanceOrder::NEAREST);
+        }
+    }
+
+    for (InstanceView& instanceView : view.instanceViews){
+        instanceView.needUpload = !instanceView.data.empty();
+    }
+    uploadInstanceViews(view);
+}
+
+// Each mirror's reflection as the view camera sees it (updateMirrors' reflection for
+// the view camera), rendered into the view's own framebuffer for the mirror surface.
+void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera, Transform& cameraTransform){
+    (void)cameraTransform;
+    auto mirrors = scene->getComponentArray<MirrorComponent>();
+    if (mirrors->size() == 0){
+        view.mirrors.clear();
+        return;
+    }
+
+    const Matrix4 mainView = camera.viewMatrix;
+    const Vector3 mainEye = mainView.inverse() * Vector3(0.0f, 0.0f, 0.0f);
+
+    PassObjects* viewObjects = passObjects;
+
+    for (int i = 0; i < mirrors->size(); i++){
+        Entity entity = mirrors->getEntity(i);
+        MirrorComponent& mirror = mirrors->getComponentFromIndex(i);
+        Transform* mirrorTransform = scene->findComponent<Transform>(entity);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mirrorTransform || !mesh || mesh->numSubmeshes == 0 || !mesh->loaded){
+            view.mirrors.erase(entity);
+            continue;
+        }
+        if (!mirrorTransform->visible || !isRenderActive(entity))
+            continue;
+
+        std::unique_ptr<MirrorView>& mirrorViewPtr = view.mirrors[entity];
+        if (!mirrorViewPtr)
+            mirrorViewPtr = std::make_unique<MirrorView>();
+        MirrorView& mirrorView = *mirrorViewPtr;
+
+        // the reflection is sampled across the view, so it follows the view's size
+        const unsigned int width = (unsigned int)std::max(1.0f, view.viewRect.getWidth());
+        const unsigned int height = (unsigned int)std::max(1.0f, view.viewRect.getHeight());
+        if (!mirrorView.framebuffer.isCreated() || mirrorView.framebuffer.getWidth() != width || mirrorView.framebuffer.getHeight() != height){
+            mirrorView.framebuffer.destroy();
+            mirrorView.framebuffer.setWidth(width);
+            mirrorView.framebuffer.setHeight(height);
+            mirrorView.framebuffer.create();
+            mirrorView.ready = false;
+        }
+        if (!mirrorView.framebuffer.isCreated())
+            continue;
+
+        CameraComponent& refCam = mirrorView.camera;
+        Transform& refCamTransform = mirrorView.transform;
+
+        Vector3 worldNormal = (mirrorTransform->worldRotation * mirror.normal).normalize();
+        Plane plane(worldNormal, mirrorTransform->worldPosition);
+
+        Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
+        refCam.customViewMatrix = mainView * reflectMat;
+        refCam.hasCustomViewMatrix = true;
+        refCamTransform.position = reflectMat * mainEye;
+        refCamTransform.worldPosition = refCamTransform.position;
+        refCam.invertCulling = true;
+        refCam.renderToTexture = true;
+
+        refCam.type = camera.type;
+        refCam.yfov = camera.yfov;
+        refCam.aspect = camera.aspect;
+        refCam.nearClip = camera.nearClip;
+        refCam.farClip = camera.farClip;
+        refCam.leftClip = camera.leftClip;
+        refCam.rightClip = camera.rightClip;
+        refCam.bottomClip = camera.bottomClip;
+        refCam.topClip = camera.topClip;
+
+        updateCamera(refCam, refCamTransform);
+
+        // oblique near plane on the mirror (see updateMirrors)
+        Vector4 worldClipPlane(worldNormal.x, worldNormal.y, worldNormal.z, plane.d);
+        Vector4 viewClipPlane = refCam.viewMatrix.inverse().transpose() * worldClipPlane;
+        Matrix4 obliqueProjection = refCam.projectionMatrix.obliqueNearClip(viewClipPlane);
+        refCam.viewProjectionMatrix = obliqueProjection * refCam.viewMatrix;
+        updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
+        mirrorView.viewProjection = refCam.viewProjectionMatrix;
+
+        passObjects = &mirrorView.objects;
+        buildPassObjects(mirrorView.objects, refCam, refCamTransform);
+        selectPassTerrain(mirrorView.objects, refCam, refCamTransform);
+        passExcludedEntity = entity;
+
+        CameraPass pass;
+        pass.camera = &refCam;
+        pass.cameraTransform = &refCamTransform;
+        pass.isMain = false;
+        pass.renderToTexture = true;
+        pass.terrainView = TERRAIN_PASS_VIEW;
+        renderCameraPass(pass);
+
+        passExcludedEntity = NULL_ENTITY;
+        passObjects = viewObjects;
+        mirrorView.ready = true;
+    }
+
+    // mirrors that went away
+    for (auto it = view.mirrors.begin(); it != view.mirrors.end();){
+        if (!scene->findComponent<MirrorComponent>(it->first)){
+            it = view.mirrors.erase(it);
+        }else{
+            ++it;
+        }
+    }
+}
+
+void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
+    if (!Engine::isViewLoaded() || !desc.target)
+        return;
+    if (desc.viewRect.getWidth() <= 0.0f || desc.viewRect.getHeight() <= 0.0f)
+        return;
+
+    CameraComponent* sceneCamera = scene->findComponent<CameraComponent>(desc.camera);
+    Transform* cameraTransformPtr = scene->findComponent<Transform>(desc.camera);
+    if (!sceneCamera || !cameraTransformPtr)
+        return;
+    Transform& cameraTransform = *cameraTransformPtr;
+
+    // pipelines are baked at load: a camera needing a new one reloads the objects on
+    // the next update, and until then they skip its pass
+    viewPipelines |= colorPipeline(*sceneCamera, true);
+
+    // a scene drawn only through views does the frame's shared work here: uploads,
+    // 2D shadows, probe faces and its render-to-texture cameras
+    if (!frameDrawn){
+        drawFramePasses();
+        drawCameras(false);
+        frameDrawn = true;
+    }
+
+    const bool frameFlipped = isRenderingFlipped(*sceneCamera);
+
+    RenderView& view = getSecondaryView(viewId);
+    view.target = desc.target;
+    view.viewRect = desc.viewRect;
+    view.baseLayer = desc.baseLayer;
+    view.editorOverlays = desc.editorOverlays;
+    view.fixedResolution = desc.fixedResolution;
+    view.disableFog = desc.disableFog;
+
+    activeView = &view;
+
+    // the view's fixed-resolution target goes with the setting, like the frame's
+    if (!isFixedResolutionActive() && view.fixedResFramebuffer.isCreated()){
+        view.fixedResFramebuffer.destroy();
+        view.fixedResWidth = 0;
+        view.fixedResHeight = 0;
+    }
+
+    // the view's own copy of the camera, sized for the view's canvas
+    view.camera = *sceneCamera;
+    CameraComponent& camera = view.camera;
+    if (desc.canvasWidth > 0.0f && desc.canvasHeight > 0.0f && camera.autoResize && !camera.renderToTexture){
+        camera.leftClip = 0.0f;
+        camera.bottomClip = 0.0f;
+        camera.rightClip = desc.canvasWidth;
+        camera.topClip = desc.canvasHeight;
+        camera.aspect = desc.canvasWidth / desc.canvasHeight;
+    }
+    updateCamera(camera, cameraTransform);
+
+    // through the frame's own camera, everything that depends only on the camera is the
+    // frame's: culled instances, terrain cut, shadow cascades and maps, mirrors
+    view.sharesPrimaryCamera = desc.camera == scene->getCamera() &&
+        camera.viewProjectionMatrix == sceneCamera->viewProjectionMatrix &&
+        frameFlipped == isRenderingFlipped(camera);
+
+    view.lodView = computeLodView(camera, cameraTransform);
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+
+    passObjects = &view.objects;
+    buildPassObjects(view.objects, camera, cameraTransform);
+
+    if (view.sharesPrimaryCamera){
+        view.fs_lighting = primaryView.fs_lighting;
+        view.vs_shadows = primaryView.vs_shadows;
+        view.fs_shadows = primaryView.fs_shadows;
+        view.fs_point_shadows = primaryView.fs_point_shadows;
+        view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+        view.ownShadowAtlas = false;
+        view.ownShadowPointAtlas = false;
+        if (!view.instanceRanges.empty() || !view.instanceSources.empty()){
+            view.instanceRanges.clear();
+            view.instanceSources.clear();
+            view.instancesBuilt = false;
+        }
+        view.mirrors.clear();
+    }else{
+        prepareViewLights(view, numLights, camera, cameraTransform);
+        ensureViewShadowAtlases(view);
+        buildViewInstances(view, camera, cameraTransform);
+        selectPassTerrain(view.objects, camera, cameraTransform);
+        if (view.ownShadowAtlas || view.ownShadowPointAtlas){
+            renderShadowMaps(view.ownShadowAtlas, view.ownShadowPointAtlas);
+        }
+        renderViewMirrors(view, camera, cameraTransform);
+    }
+
+    if (!view.target->isCreated()){
+        view.target->create();
+    }
+
+    CameraPass pass;
+    pass.camera = &camera;
+    pass.cameraTransform = &cameraTransform;
+    pass.isMain = true;
+    pass.renderToTexture = false;
+    pass.terrainView = view.sharesPrimaryCamera ? 0 : TERRAIN_PASS_VIEW;
+    renderCameraPass(pass);
+
+    passObjects = nullptr;
+    passExcludedEntity = NULL_ENTITY;
+    passDrawsOverlays = true;
+    activeView = &primaryView;
+}
+
+#endif

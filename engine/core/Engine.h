@@ -137,9 +137,11 @@
 #include "math/Rect.h"
 #include "util/ThreadUtils.h"
 #include "texture/Framebuffer.h"
+#include "ecs/Entity.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
+#include <vector>
 
 #define JASPERENGINE_INIT \
     void init(); \
@@ -321,6 +323,11 @@ namespace jasperengine {
         static int getPreferredCanvasHeight();
         
         static Rect getViewRect();
+
+        // The canvas size and view rect scalingMode gives a screen of screenWidth x
+        // screenHeight: systemViewChanged's rule, for a view other than the Engine's own
+        static void computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
+                                      int& canvasWidth, int& canvasHeight, Rect& viewRect);
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
@@ -403,6 +410,34 @@ namespace jasperengine {
         // goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
         static void removeSubscriptionsByTag(const std::string& substring);
+
+#ifdef JASPERENGINE_EDITOR
+        // One scene of a secondary view and the camera it is seen through
+        struct ViewLayer{
+            Scene* scene = nullptr;
+            Entity camera = 0;
+            // the part of the target the camera covers
+            Rect viewRect;
+            // draws the scene's editor gizmos and icons
+            bool editorOverlays = false;
+            // renders at the scene's fixed game resolution when it has one
+            bool fixedResolution = false;
+            // draws as if the scene had no fog
+            bool disableFog = false;
+            // canvas an auto-resize camera covers in this view (0: as the camera is);
+            // the camera component itself is left alone
+            float canvasWidth = 0.0f;
+            float canvasHeight = 0.0f;
+        };
+
+        // Draws a secondary view: the editor's Scene view while the game plays, or its
+        // Game view preview. Each layer's scene is drawn through its camera into target,
+        // the first one clearing it and the others on top. Draw-only, after this frame's
+        // systemDraw(): no scene updates, no view events, and the canvas, view rect and
+        // framebuffer of the game stay as they are. viewId keys what each scene caches
+        // for the view (see RenderSystem::drawView).
+        static void drawView(uint32_t viewId, Framebuffer* target, const std::vector<ViewLayer>& layers);
+#endif
 
         //-----JasperEngine API functions-----
         static void systemInit(int argc, char* argv[], System* system);

@@ -100,9 +100,6 @@ uint32_t editor::GameWindow::getTargetSceneId() const {
 }
 
 bool editor::GameWindow::hostsScene(uint32_t sceneId) const {
-    if (!visible || width <= 0 || height <= 0) {
-        return false;
-    }
     if (sceneId == NULL_PROJECT_SCENE || sceneId != project->getPlaySessionSceneId()) {
         return false;
     }
@@ -132,8 +129,12 @@ void editor::GameWindow::markEditPassRendered(uint32_t sceneId) {
     editPassDirty = false;
 }
 
-Framebuffer* editor::GameWindow::getEditFramebuffer() {
-    return &editFramebuffer;
+Framebuffer* editor::GameWindow::getFramebuffer() {
+    return &framebuffer;
+}
+
+bool editor::GameWindow::isVisible() const {
+    return visible;
 }
 
 int editor::GameWindow::getWidth() const {
@@ -142,6 +143,20 @@ int editor::GameWindow::getWidth() const {
 
 int editor::GameWindow::getHeight() const {
     return height;
+}
+
+int editor::GameWindow::getRenderWidth() const {
+    if (width > 0 && height > 0) {
+        return width;
+    }
+    return std::max(1, (int)project->getCanvasWidth());
+}
+
+int editor::GameWindow::getRenderHeight() const {
+    if (width > 0 && height > 0) {
+        return height;
+    }
+    return std::max(1, (int)project->getCanvasHeight());
 }
 
 bool editor::GameWindow::isGameCursorInView() const {
@@ -165,8 +180,8 @@ void editor::GameWindow::resetProjectState() {
     editPassSceneId = NULL_PROJECT_SCENE;
     editPassRendered = false;
     editPassDirty = true;
-    if (editFramebuffer.isCreated()) {
-        editFramebuffer.destroy();
+    if (framebuffer.isCreated()) {
+        framebuffer.destroy();
     }
 }
 
@@ -425,8 +440,8 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             && sceneId == project->getPlaySessionSceneId();
 
         if (running) {
-            // A paused game only redraws on demand: resizing or taking it over from
-            // a Scene view has to redraw it at this size
+            // A paused game only redraws on demand: resizing or coming back into view
+            // has to redraw it at this size
             if (resized || !hostedLastFrame) {
                 sceneProject->needUpdateRender = true;
             }
@@ -440,7 +455,9 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (!sceneProject || !sceneProject->scene || !sceneProject->sceneRender) {
             message = "No scene open";
         } else if (running) {
-            texture = Backend::getImGuiTexture(&sceneProject->sceneRender->getTexture());
+            if (framebuffer.isCreated()) {
+                texture = Backend::getImGuiTexture(&framebuffer.getRender().getColorTexture());
+            }
         } else if (sceneProject->playState == ScenePlayState::LOADING || sceneProject->playState == ScenePlayState::SAVING) {
             message = "Starting...";
         } else if (sceneProject->playState == ScenePlayState::CANCELLING) {
@@ -449,8 +466,8 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             message = "Starting...";
         } else if (project->getGameCamera(sceneId) == NULL_ENTITY) {
             message = "No cameras rendering";
-        } else if (editPassRendered && editPassSceneId == sceneId) {
-            texture = Backend::getImGuiTexture(&editFramebuffer.getRender().getColorTexture());
+        } else if (editPassRendered && editPassSceneId == sceneId && framebuffer.isCreated()) {
+            texture = Backend::getImGuiTexture(&framebuffer.getRender().getColorTexture());
         }
 
         if (texture != ImTextureID{}) {

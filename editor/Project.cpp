@@ -5217,32 +5217,6 @@ void editor::Project::saveLastSelectedScene(std::function<void(bool)> callback){
     saveScene(selectedScene, callback);
 }
 
-Ray editor::Project::screenToRayFromCamera(const CameraComponent& camera, float x, float y) const{
-    float normalized_x = ((2.0f * x) / Engine::getCanvasWidth()) - 1.0f;
-    float normalized_y = -(((2.0f * y) / Engine::getCanvasHeight()) - 1.0f);
-
-    Vector4 near_point_ndc = {normalized_x, normalized_y, -1.0f, 1.0f};
-    Vector4 far_point_ndc = {normalized_x, normalized_y, 1.0f, 1.0f};
-
-    Matrix4 inverseViewProjection = camera.viewProjectionMatrix.inverse();
-    Vector4 near_point_world = inverseViewProjection * near_point_ndc;
-    Vector4 far_point_world = inverseViewProjection * far_point_ndc;
-
-    near_point_world.divideByW();
-    far_point_world.divideByW();
-
-    Vector3 ray_origin = {near_point_world[0], near_point_world[1], near_point_world[2]};
-    Vector3 ray_end = {far_point_world[0], far_point_world[1], far_point_world[2]};
-    Vector3 ray_direction = ray_end - ray_origin;
-
-    if (camera.type == CameraType::CAMERA_ORTHO) {
-        float length = camera.farClip - camera.nearClip;
-        ray_direction = ray_direction.normalize() * length;
-    }
-
-    return Ray(ray_origin, ray_direction);
-}
-
 AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mainScene) const{
     AABB aabb;
     Signature signature = scene->getSignature(entity);
@@ -5481,16 +5455,20 @@ bool editor::Project::selectEntitiesInRect(uint32_t sceneId, const std::vector<E
 
 Entity editor::Project::findObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId){
     SceneProject* scenedata = getScene(sceneId);
-    Ray ray = scenedata->sceneRender->getCamera()->screenToRay(x, y);
+    Ray ray = scenedata->sceneRender->screenToRay(x, y);
 
     float distance = FLT_MAX;
     size_t index = 0;
     Entity selEntity = findBestEntityByRay(scenedata->entities, scenedata->scene, ray, scenedata->scene, scenedata->sceneType, distance, index);
 
-    if (selEntity != NULL_ENTITY || !outSceneId) {
+    // child scenes show inline only while stopped; a running scene's layers are the game's
+    if (selEntity != NULL_ENTITY || !outSceneId || scenedata->playState != ScenePlayState::STOPPED) {
         if (outSceneId) *outSceneId = sceneId;
         return selEntity;
     }
+
+    const float viewWidth = (float)scenedata->sceneRender->getViewWidth();
+    const float viewHeight = (float)scenedata->sceneRender->getViewHeight();
 
     for (const ChildSceneRef& childSceneRef : scenedata->childScenes) {
         uint32_t childId = childSceneRef.id;
@@ -5499,7 +5477,7 @@ Entity editor::Project::findObjectByRay(uint32_t sceneId, float x, float y, uint
 
         Entity childCamEntity = childScene->scene->getCamera();
         if (childCamEntity == NULL_ENTITY) continue;
-        Ray childRay = screenToRayFromCamera(childScene->scene->getComponent<CameraComponent>(childCamEntity), x, y);
+        Ray childRay = screenToRayFromCamera(childScene->scene->getComponent<CameraComponent>(childCamEntity), x, y, viewWidth, viewHeight);
 
         distance = FLT_MAX;
         index = 0;
@@ -5563,6 +5541,11 @@ bool editor::Project::selectObjectsByRect(uint32_t sceneId, Vector2 start, Vecto
     clearAllSelections(sceneId);
 
     if (selectEntitiesInRect(sceneId, scenedata->entities, scenedata->scene, camera->getViewProjectionMatrix(), start, end)) {
+        return false;
+    }
+
+    // child scenes show inline only while stopped; a running scene's layers are the game's
+    if (scenedata->playState != ScenePlayState::STOPPED) {
         return false;
     }
 

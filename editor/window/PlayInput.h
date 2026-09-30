@@ -12,9 +12,7 @@ namespace jasperengine::editor {
     class Project;
 
     // Forwards the editor's mouse, touch and keyboard input to the running game.
-    // One instance is shared by every view that can show the game (the Game view,
-    // or a Scene view when the Game view is hidden), so only the view hosting the
-    // game may call it in a given frame.
+    // The Game view owns it: the Scene view stays the editor's while the game plays.
     class PlayInput {
     private:
         Project* project;

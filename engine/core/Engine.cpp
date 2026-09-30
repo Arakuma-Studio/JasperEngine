@@ -909,28 +909,78 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     }
 }
 
-void Engine::calculateCanvas(){
-    Engine::canvasWidth = preferredCanvasWidth;
-    Engine::canvasHeight = preferredCanvasHeight;
-
-    int screenWidth = System::instance().getScreenWidth();
-    int screenHeight = System::instance().getScreenHeight();
+void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
+                               int& canvasWidth, int& canvasHeight, Rect& viewRect){
+    canvasWidth = preferredWidth;
+    canvasHeight = preferredHeight;
 
     //When canvas size is changed
     if (screenWidth != 0 && screenHeight != 0){
         if (scalingMode == Scaling::FITWIDTH){
-            Engine::canvasWidth = preferredCanvasWidth;
-            Engine::canvasHeight = screenHeight * preferredCanvasWidth / screenWidth;
+            canvasWidth = preferredWidth;
+            canvasHeight = screenHeight * preferredWidth / screenWidth;
         }
         if (scalingMode == Scaling::FITHEIGHT){
-            Engine::canvasHeight = preferredCanvasHeight;
-            Engine::canvasWidth = screenWidth * preferredCanvasHeight / screenHeight;
+            canvasHeight = preferredHeight;
+            canvasWidth = screenWidth * preferredHeight / screenHeight;
         }
         if (scalingMode == Scaling::NATIVE){
-            Engine::canvasHeight = screenHeight;
-            Engine::canvasWidth = screenWidth;
+            canvasHeight = screenHeight;
+            canvasWidth = screenWidth;
         }
     }
+
+    int viewX = 0;
+    int viewY = 0;
+    int viewWidth = screenWidth;
+    int viewHeight = screenHeight;
+
+    float screenAspect = (float)screenWidth / (float)screenHeight;
+    float canvasAspect = (float)preferredWidth / (float)preferredHeight;
+
+    //When canvas size is not changed
+    if (scalingMode == Scaling::LETTERBOX){
+        if (screenAspect < canvasAspect){
+            float aspect = (float)screenWidth / (float)preferredWidth;
+            int newHeight = (int)((float)preferredHeight * aspect);
+            int dif = screenHeight - newHeight;
+            viewY = (dif/2);
+            viewHeight = screenHeight-(viewY*2); //diff could be odd, for this use view*2
+        }else{
+            float aspect = (float)screenHeight / (float)preferredHeight;
+            int newWidth = (int)((float)preferredWidth * aspect);
+            int dif = screenWidth - newWidth;
+            viewX = (dif/2);
+            viewWidth = screenWidth-(viewX*2);
+        }
+    }
+
+    if (scalingMode == Scaling::CROP){
+        if (screenAspect > canvasAspect){
+            float aspect = (float)screenWidth / (float)preferredWidth;
+            int newHeight = (int)((float)preferredHeight * aspect);
+            int dif = screenHeight - newHeight;
+            viewY = (dif/2);
+            viewHeight = screenHeight-(viewY*2);
+        }else{
+            float aspect = (float)screenHeight / (float)preferredHeight;
+            int newWidth = (int)((float)preferredWidth * aspect);
+            int dif = screenWidth - newWidth;
+            viewX = (dif/2);
+            viewWidth = screenWidth-(viewX*2);
+        }
+    }
+
+    // S_SCALING_STRETCH do not need nothing
+
+    viewRect.setRect(viewX, viewY, viewWidth, viewHeight);
+}
+
+void Engine::calculateCanvas(){
+    Rect unusedViewRect;
+    computeViewLayout(System::instance().getScreenWidth(), System::instance().getScreenHeight(),
+                      preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                      Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
 }
 
 void Engine::systemInit(int argc, char* argv[], System* system){
@@ -994,55 +1044,11 @@ void Engine::systemViewLoaded(){
 }
 
 void Engine::systemViewChanged(){
-    calculateCanvas();
-
     int screenWidth = System::instance().getScreenWidth();
     int screenHeight = System::instance().getScreenHeight();
-    
-    int viewX = 0;
-    int viewY = 0;
-    int viewWidth = screenWidth;
-    int viewHeight = screenHeight;
-    
-    float screenAspect = (float)screenWidth / (float)screenHeight;
-    float canvasAspect = (float)Engine::getPreferredCanvasWidth() / (float)Engine::getPreferredCanvasHeight();
-    
-    //When canvas size is not changed
-    if (Engine::getScalingMode() == Scaling::LETTERBOX){
-        if (screenAspect < canvasAspect){
-            float aspect = (float)screenWidth / (float)Engine::getPreferredCanvasWidth();
-            int newHeight = (int)((float)Engine::getPreferredCanvasHeight() * aspect);
-            int dif = screenHeight - newHeight;
-            viewY = (dif/2);
-            viewHeight = screenHeight-(viewY*2); //diff could be odd, for this use view*2
-        }else{
-            float aspect = (float)screenHeight / (float)Engine::getPreferredCanvasHeight();
-            int newWidth = (int)((float)Engine::getPreferredCanvasWidth() * aspect);
-            int dif = screenWidth - newWidth;
-            viewX = (dif/2);
-            viewWidth = screenWidth-(viewX*2);
-        }
-    }
-    
-    if (Engine::getScalingMode() == Scaling::CROP){
-        if (screenAspect > canvasAspect){
-            float aspect = (float)screenWidth / (float)Engine::getPreferredCanvasWidth();
-            int newHeight = (int)((float)Engine::getPreferredCanvasHeight() * aspect);
-            int dif = screenHeight - newHeight;
-            viewY = (dif/2);
-            viewHeight = screenHeight-(viewY*2);
-        }else{
-            float aspect = (float)screenHeight / (float)Engine::getPreferredCanvasHeight();
-            int newWidth = (int)((float)Engine::getPreferredCanvasWidth() * aspect);
-            int dif = screenWidth - newWidth;
-            viewX = (dif/2);
-            viewWidth = screenWidth-(viewX*2);
-        }
-    }
-    
-    // S_SCALING_STRETCH do not need nothing
-    
-    viewRect.setRect(viewX, viewY, viewWidth, viewHeight);
+
+    computeViewLayout(screenWidth, screenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                      Engine::canvasWidth, Engine::canvasHeight, viewRect);
 
     if (framebuffer){
         const unsigned int fbWidth = static_cast<unsigned int>(std::max(screenWidth, 0));
@@ -1188,6 +1194,44 @@ void Engine::systemDraw(){
 
     drawSemaphore.release();
 }
+
+#ifdef JASPERENGINE_EDITOR
+void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<ViewLayer>& layers){
+    if (!viewLoaded || !target || layers.empty())
+        return;
+
+    drawSemaphore.acquire();
+
+    // the frame statistics are the game's: a second view of it adds nothing to them
+    const FrameStats gameFrameStats = currentFrameStats;
+
+    bool baseLayer = true;
+    for (const ViewLayer& layer : layers){
+        if (!layer.scene)
+            continue;
+
+        RenderSystem::ViewDesc desc;
+        desc.camera = layer.camera;
+        desc.target = target;
+        desc.viewRect = layer.viewRect;
+        desc.baseLayer = baseLayer;
+        desc.editorOverlays = layer.editorOverlays;
+        desc.fixedResolution = layer.fixedResolution;
+        desc.disableFog = layer.disableFog;
+        desc.canvasWidth = layer.canvasWidth;
+        desc.canvasHeight = layer.canvasHeight;
+        layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
+
+        baseLayer = false;
+    }
+
+    currentFrameStats = gameFrameStats;
+
+    SystemRender::commit();
+
+    drawSemaphore.release();
+}
+#endif
 
 void Engine::systemViewDestroyed(){
     SoundPool::requestShutdown();
