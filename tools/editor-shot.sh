@@ -7,13 +7,16 @@
 # The project is copied first. Writes build/shots/<name>.png and <name>.log.
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
+# STEPS="..." then runs space separated steps: "x,y" left click, "r:x,y" right
+# click, "m:x,y" move the mouse (hover), "k:key" key press, "w:secs" wait, and
+# "s" to save <name>-1.png, <name>-2.png, ... (each step waits 0.4s).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -39,7 +42,7 @@ docker run --rm \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \
     -e HOME="/src/$WORK/home" \
-    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" \
+    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" -e STEPS="${STEPS:-}" \
     "$IMAGE" bash -euo pipefail -c "
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99
@@ -58,6 +61,21 @@ docker run --rm \
             kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited after keys'; tail -30 ../$NAME.log; exit 1; }
             import -window root ../$NAME-keys.png
             echo 'ok: build/shots/$NAME-keys.png'
+        fi
+        if [[ -n \"\$STEPS\" ]]; then
+            n=0
+            for step in \$STEPS; do
+                case \"\$step\" in
+                    s) n=\$((n+1)); import -window root ../$NAME-\$n.png; echo \"ok: build/shots/$NAME-\$n.png\" ;;
+                    w:*) sleep \"\${step#w:}\" ;;
+                    k:*) xdotool key \"\${step#k:}\" ;;
+                    m:*) p=\${step#m:}; xdotool mousemove \${p/,/ } ;;
+                    r:*) p=\${step#r:}; xdotool mousemove \${p/,/ } click 3 ;;
+                    *) xdotool mousemove \${step/,/ } click 1 ;;
+                esac
+                sleep 0.4
+            done
+            kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited during steps'; tail -30 ../$NAME.log; exit 1; }
         fi
         kill \$pid
     "
