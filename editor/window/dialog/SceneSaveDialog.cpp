@@ -114,7 +114,9 @@ void SceneSaveDialog::show() {
         ImGui::InputText("##fileName", m_fileNameBuffer, sizeof(m_fileNameBuffer));
 
         // Show current selected directory path
-        ImGui::TextWrapped("Save in: %s", fs::relative(m_selectedPath, m_projectPath).string().c_str());
+        const fs::path saveDir = fs::relative(m_selectedPath, m_projectPath);
+        const std::string saveIn = (saveDir.empty() || saveDir == ".") ? "Project" : "Project/" + saveDir.generic_string();
+        ImGui::TextWrapped("Save in: %s", saveIn.c_str());
 
         // Get filename as string for validation and processing
         std::string fileName = m_fileNameBuffer;

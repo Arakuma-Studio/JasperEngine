@@ -10,7 +10,8 @@
 # CLICKS="X,Y key:ctrl+s sleep:2 shot:menu X,Y" runs before KEYS: X,Y clicks
 # there, key:K presses K, sleep:N waits, shot:S saves <name>-S.png and
 # drag:X1,Y1,X2,Y2 drags with the left button held, wheel:X,Y,N scrolls N
-# notches down (negative: up).
+# notches down (negative: up). EXPORT_DIR=build/x sets the default build
+# output directory.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +38,10 @@ window:
   height: 900
   maximized: true
 EOF
+# EXPORT_DIR (under the repo) becomes the default Build Settings output directory.
+if [[ -n "${EXPORT_DIR:-}" ]]; then
+    printf 'export:\n  default_dir: /src/%s\n' "$EXPORT_DIR" >> "$ROOT/$WORK/settings.yaml"
+fi
 
 docker run --rm \
     --user "$(id -u):$(id -g)" \
