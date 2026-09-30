@@ -538,7 +538,7 @@ bool Texture::hasData() const{
     return data != nullptr;
 }
 
-std::string Texture::getId() const{
+const std::string& Texture::getId() const{
     return id;
 }
 

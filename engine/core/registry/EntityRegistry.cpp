@@ -3,6 +3,8 @@
 
 #include "EntityRegistry.h"
 
+#include <unordered_set>
+
 using namespace jasperengine;
 
 EntityRegistry::EntityRegistry() {
@@ -393,23 +395,33 @@ size_t EntityRegistry::findBranchLastIndex(Entity entity){
     size_t index = transforms->getIndex(entity);
 
     size_t currentIndex = index + 1;
-    std::vector<Entity> entityList;
-    entityList.push_back(entity);
-
-    bool found = true;
-    while (found){
-        if (currentIndex < transforms->size()){
-            Transform& transform = componentManager.getComponentFromIndex<Transform>(currentIndex);
-            //if not in list
-            if (std::find(entityList.begin(), entityList.end(),transform.parent)==entityList.end()) {
-                found = false;
-            }else{
-                entityList.push_back(transforms->getEntity(currentIndex));
-                currentIndex++;
-            }
-        } else {
-            found = false;
+    // The branch so far: a list while short (the common case), then a set, as a long
+    // branch made the list scan quadratic
+    std::vector<Entity> branchList{entity};
+    std::unordered_set<Entity> branchSet;
+    auto inBranch = [&](Entity candidate) {
+        return branchSet.empty() ?
+            std::find(branchList.begin(), branchList.end(), candidate) != branchList.end() :
+            branchSet.count(candidate) != 0;
+    };
+    auto addToBranch = [&](Entity member) {
+        if (branchSet.empty() && branchList.size() < 32) {
+            branchList.push_back(member);
+            return;
         }
+        if (branchSet.empty()) {
+            branchSet.insert(branchList.begin(), branchList.end());
+        }
+        branchSet.insert(member);
+    };
+
+    while (currentIndex < transforms->size()){
+        const Transform& transform = transforms->getComponentFromIndex(currentIndex);
+        if (!inBranch(transform.parent)) {
+            break;
+        }
+        addToBranch(transforms->getEntity(currentIndex));
+        currentIndex++;
     }
 
     currentIndex--;

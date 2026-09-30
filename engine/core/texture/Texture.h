@@ -94,7 +94,7 @@ namespace jasperengine{
             // A present-but-unloaded or load-failed texture (empty file, missing path)
             // keeps a null data pointer even though it is not empty().
             bool hasData() const;
-            std::string getId() const;
+            const std::string& getId() const;
 
             size_t getNumFaces() const;
             TextureType getType() const;
