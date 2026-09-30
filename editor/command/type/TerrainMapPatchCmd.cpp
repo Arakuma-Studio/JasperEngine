@@ -55,8 +55,8 @@ void editor::TerrainMapPatchCmd::apply(const std::vector<unsigned char>& regionP
                                std::vector<unsigned char>(pixels, pixels + mapBytes));
     TerrainMapUtils::refresh(sceneProject, entity, ref);
 
-    if (project->isEntityInBundle(sceneId, entity)){
-        project->bundlePropertyChanged(sceneId, entity, ComponentType::TerrainComponent, {TerrainMapUtils::getPropertyName(ref)});
+    if (project->isEntityInPrefab(sceneId, entity)){
+        project->prefabPropertyChanged(sceneId, entity, ComponentType::TerrainComponent, {TerrainMapUtils::getPropertyName(ref)});
     }
 
     if (restoreModifiedState){

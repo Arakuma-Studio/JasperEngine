@@ -9,7 +9,7 @@
 
 namespace jasperengine::editor {
 class Project;
-class ResourcesWindow;
+class ProjectWindow;
 }
 
 namespace jasperengine::editor::ai {
@@ -18,7 +18,7 @@ class HttpClient;
 
 class EditorActionExecutor {
 public:
-    EditorActionExecutor(Project* project, ResourcesWindow* resourcesWindow, const HttpClient* httpClient);
+    EditorActionExecutor(Project* project, ProjectWindow* projectWindow, const HttpClient* httpClient);
 
     ActionResult execute(const std::string& name,
                          const Json& arguments,
@@ -26,7 +26,7 @@ public:
 
 private:
     Project* project;
-    ResourcesWindow* resourcesWindow;
+    ProjectWindow* projectWindow;
     const HttpClient* httpClient;
 
     // Validates and runs one action; execute() wraps it to contain throws.
@@ -54,8 +54,8 @@ private:
     ActionResult selectEntities(const Json& arguments);
     ActionResult addComponent(const Json& arguments);
     ActionResult removeComponent(const Json& arguments);
-    ActionResult addBody3DShape(const Json& arguments);
-    ActionResult addBody2DShape(const Json& arguments);
+    ActionResult addRigidbodyCollider(const Json& arguments);
+    ActionResult addRigidbody2DCollider(const Json& arguments);
     ActionResult setComponentProperty(const Json& arguments);
     ActionResult setTextureSettings(const Json& arguments);
     ActionResult addProjectScene(const Json& arguments);
@@ -89,13 +89,13 @@ private:
     ActionResult setProjectScriptDirs(const Json& arguments);
     ActionResult setProjectCxxStandard(const Json& arguments);
     ActionResult updateProjectBuildFile(const Json& arguments);
-    ActionResult createBundleFromEntity(const Json& arguments);
-    ActionResult importBundleInstance(const Json& arguments);
-    ActionResult addEntityToBundle(const Json& arguments);
-    ActionResult removeEntityFromBundle(const Json& arguments);
-    ActionResult makeBundleComponentUnique(const Json& arguments);
-    ActionResult revertBundleComponent(const Json& arguments);
-    ActionResult setStandaloneBundle(const Json& arguments);
+    ActionResult createPrefabFromEntity(const Json& arguments);
+    ActionResult importPrefabInstance(const Json& arguments);
+    ActionResult addEntityToPrefab(const Json& arguments);
+    ActionResult removeEntityFromPrefab(const Json& arguments);
+    ActionResult makePrefabComponentUnique(const Json& arguments);
+    ActionResult revertPrefabComponent(const Json& arguments);
+    ActionResult setStandalonePrefab(const Json& arguments);
     ActionResult exportProject(const Json& arguments, const std::atomic<bool>* cancel);
     ActionResult generateShaders(const Json& arguments, const std::atomic<bool>* cancel);
     ActionResult forkShader(const Json& arguments);

@@ -5,7 +5,7 @@
 
 using namespace jasperengine;
 
-editor::AnchorGizmo::AnchorGizmo(Scene* scene): Object(scene){
+editor::AnchorGizmo::AnchorGizmo(Scene* scene): GameObject(scene){
     area = Rect(0.0f, 0.0f, 0.0f, 0.0f);
 
     anchorLeft = 0.0f;
@@ -13,7 +13,7 @@ editor::AnchorGizmo::AnchorGizmo(Scene* scene): Object(scene){
     anchorRight = 1.0f;
     anchorBottom = 0.0f;
 
-    center = new Object(scene);
+    center = new GameObject(scene);
 
     Vector4 color(0.2f, 0.85f, 1.0f, 1.0f);
 

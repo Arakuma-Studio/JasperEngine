@@ -4,19 +4,19 @@
 #pragma once
 
 
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "object/ui/Polygon.h"
-#include "object/Lines.h"
+#include "object/LineRenderer.h"
 
 #include "render/RenderUtil.h"
 
 namespace jasperengine::editor{
 
-    class Object2DGizmo: public Object{
+    class Object2DGizmo: public GameObject{
     private:
-        Object* center;
+        GameObject* center;
         Polygon* rects[8];
-        Lines* lines;
+        LineRenderer* lines;
 
         float width;
         float height;

@@ -21,14 +21,14 @@ static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
 static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 UISystem::UISystem(Scene* scene): SubSystem(scene){
-    signature.set(scene->getComponentId<UILayoutComponent>());
+    signature.set(scene->getComponentId<RectTransformComponent>());
 
     eventId.clear();
     lastUIFromPointer = NULL_ENTITY;
     lastUIFromPointerHover = NULL_ENTITY;
     lastUIFromClick = NULL_ENTITY;
     lastPanelFromPointer = NULL_ENTITY;
-    textEditSelecting = NULL_ENTITY;
+    inputFieldSelecting = NULL_ENTITY;
     lastPointerDownPos = Vector2(-1, -1);
     lastPointerPos = Vector2(-1, -1);
     pointerDragging = false;
@@ -44,7 +44,7 @@ UISystem::UISystem(Scene* scene): SubSystem(scene){
 UISystem::~UISystem(){
 }
 
-bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     // before the first load, see RenderSystem::loadUI
     ui.texture.setAlphaBorderAuto(true);
 
@@ -239,7 +239,7 @@ void UISystem::syncFontAtlas(TextComponent& text, UIComponent& ui){
     ui.needUpdateTexture = true;
 }
 
-bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
+bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
     std::string fontId = getFontId(text);
 
     text.stbtext = FontPool::get(fontId);
@@ -333,7 +333,7 @@ static void clipTextQuad(Buffer& buffer, Attribute* atrVertice, Attribute* atrTe
     buffer.setVector2(firstVertex + 3, atrTexcoord, uv3);
 }
 
-void UISystem::createText(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
+void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
 
     ui.primitiveType = PrimitiveType::TRIANGLES;
 
@@ -418,14 +418,14 @@ void UISystem::createButtonObjects(Entity entity, ButtonComponent& button){
         button.label = scene->createEntity();
 
         scene->addComponent<Transform>(button.label);
-        scene->addComponent<UILayoutComponent>(button.label);
+        scene->addComponent<RectTransformComponent>(button.label);
         scene->addComponent<UIComponent>(button.label);
         scene->addComponent<TextComponent>(button.label);
 
         scene->addEntityChild(entity, button.label, false);
 
         UIComponent& labelui = scene->getComponent<UIComponent>(button.label);
-        UILayoutComponent& labellayout = scene->getComponent<UILayoutComponent>(button.label);
+        RectTransformComponent& labellayout = scene->getComponent<RectTransformComponent>(button.label);
 
         labelui.color = Vector4(0.0, 0.0, 0.0, 1.0);
         labellayout.ignoreEvents = true;
@@ -438,7 +438,7 @@ void UISystem::createPanelObjects(Entity entity, PanelComponent& panel){
     if (panel.headerimage != NULL_ENTITY && !scene->findComponent<ImageComponent>(panel.headerimage)){
         panel.headerimage = NULL_ENTITY;
     }
-    if (panel.headercontainer != NULL_ENTITY && !scene->findComponent<UIContainerComponent>(panel.headercontainer)){
+    if (panel.headercontainer != NULL_ENTITY && !scene->findComponent<LayoutGroupComponent>(panel.headercontainer)){
         panel.headercontainer = NULL_ENTITY;
     }
     if (panel.headertext != NULL_ENTITY && !scene->findComponent<TextComponent>(panel.headertext)){
@@ -455,14 +455,14 @@ void UISystem::createPanelObjects(Entity entity, PanelComponent& panel){
         panel.headerimage = scene->createEntity();
 
         scene->addComponent<Transform>(panel.headerimage);
-        scene->addComponent<UILayoutComponent>(panel.headerimage);
+        scene->addComponent<RectTransformComponent>(panel.headerimage);
         scene->addComponent<UIComponent>(panel.headerimage);
         scene->addComponent<ImageComponent>(panel.headerimage);
 
         scene->addEntityChild(entity, panel.headerimage, false);
 
         UIComponent& headerui = scene->getComponent<UIComponent>(panel.headerimage);
-        UILayoutComponent& headerimagelayout = scene->getComponent<UILayoutComponent>(panel.headerimage);
+        RectTransformComponent& headerimagelayout = scene->getComponent<RectTransformComponent>(panel.headerimage);
 
         headerui.color = Vector4(0, 0, 0, 0);
         headerimagelayout.ignoreEvents = true;
@@ -478,32 +478,32 @@ void UISystem::createPanelObjects(Entity entity, PanelComponent& panel){
         panel.headercontainer = scene->createEntity();
 
         scene->addComponent<Transform>(panel.headercontainer);
-        scene->addComponent<UILayoutComponent>(panel.headercontainer);
-        scene->addComponent<UIContainerComponent>(panel.headercontainer);
+        scene->addComponent<RectTransformComponent>(panel.headercontainer);
+        scene->addComponent<LayoutGroupComponent>(panel.headercontainer);
 
         scene->addEntityChild(panel.headerimage, panel.headercontainer, false);
 
-        UIContainerComponent& containerui = scene->getComponent<UIContainerComponent>(panel.headercontainer);
-        UILayoutComponent& containerlayout = scene->getComponent<UILayoutComponent>(panel.headercontainer);
+        LayoutGroupComponent& containerui = scene->getComponent<LayoutGroupComponent>(panel.headercontainer);
+        RectTransformComponent& containerlayout = scene->getComponent<RectTransformComponent>(panel.headercontainer);
 
         containerlayout.ignoreEvents = true;
         containerlayout.anchorPreset = AnchorPreset::FULL_LAYOUT;
         containerlayout.ignoreScissor = true;
         containerlayout.usingAnchors = true;
-        containerui.type = ContainerType::HORIZONTAL;
+        containerui.type = LayoutGroupType::HORIZONTAL;
     }
     if (panel.headertext == NULL_ENTITY){
         panel.headertext = scene->createEntity();
 
         scene->addComponent<Transform>(panel.headertext);
-        scene->addComponent<UILayoutComponent>(panel.headertext);
+        scene->addComponent<RectTransformComponent>(panel.headertext);
         scene->addComponent<UIComponent>(panel.headertext);
         scene->addComponent<TextComponent>(panel.headertext);
 
         scene->addEntityChild(panel.headercontainer, panel.headertext, false);
 
         UIComponent& titleui = scene->getComponent<UIComponent>(panel.headertext);
-        UILayoutComponent& titlelayout = scene->getComponent<UILayoutComponent>(panel.headertext);
+        RectTransformComponent& titlelayout = scene->getComponent<RectTransformComponent>(panel.headertext);
 
         titleui.color = Vector4(0.0, 0.0, 0.0, 1.0);
         titlelayout.ignoreEvents = true;
@@ -522,13 +522,13 @@ void UISystem::createScrollbarObjects(Entity entity, ScrollbarComponent& scrollb
         scrollbar.bar = scene->createEntity();
 
         scene->addComponent<Transform>(scrollbar.bar);
-        scene->addComponent<UILayoutComponent>(scrollbar.bar);
+        scene->addComponent<RectTransformComponent>(scrollbar.bar);
         scene->addComponent<UIComponent>(scrollbar.bar);
         scene->addComponent<ImageComponent>(scrollbar.bar);
 
         scene->addEntityChild(entity, scrollbar.bar, false);
 
-        UILayoutComponent& barlayout = scene->getComponent<UILayoutComponent>(scrollbar.bar);
+        RectTransformComponent& barlayout = scene->getComponent<RectTransformComponent>(scrollbar.bar);
 
         barlayout.ignoreEvents = true;
     }
@@ -543,70 +543,70 @@ void UISystem::createProgressbarObjects(Entity entity, ProgressbarComponent& pro
         progressbar.fill = scene->createEntity();
 
         scene->addComponent<Transform>(progressbar.fill);
-        scene->addComponent<UILayoutComponent>(progressbar.fill);
+        scene->addComponent<RectTransformComponent>(progressbar.fill);
         scene->addComponent<UIComponent>(progressbar.fill);
         scene->addComponent<ImageComponent>(progressbar.fill);
 
         scene->addEntityChild(entity, progressbar.fill, false);
 
-        UILayoutComponent& filllayout = scene->getComponent<UILayoutComponent>(progressbar.fill);
+        RectTransformComponent& filllayout = scene->getComponent<RectTransformComponent>(progressbar.fill);
 
         filllayout.ignoreEvents = true;
     }
 }
 
-void UISystem::createTextEditObjects(Entity entity, TextEditComponent& textedit){
-    if (textedit.text != NULL_ENTITY && !scene->findComponent<TextComponent>(textedit.text)){
-        textedit.text = NULL_ENTITY;
+void UISystem::createInputFieldObjects(Entity entity, InputFieldComponent& inputfield){
+    if (inputfield.text != NULL_ENTITY && !scene->findComponent<TextComponent>(inputfield.text)){
+        inputfield.text = NULL_ENTITY;
     }
-    if (textedit.selection != NULL_ENTITY && !scene->findComponent<PolygonComponent>(textedit.selection)){
-        textedit.selection = NULL_ENTITY;
+    if (inputfield.selection != NULL_ENTITY && !scene->findComponent<PolygonComponent>(inputfield.selection)){
+        inputfield.selection = NULL_ENTITY;
     }
-    if (textedit.cursor != NULL_ENTITY && !scene->findComponent<PolygonComponent>(textedit.cursor)){
-        textedit.cursor = NULL_ENTITY;
+    if (inputfield.cursor != NULL_ENTITY && !scene->findComponent<PolygonComponent>(inputfield.cursor)){
+        inputfield.cursor = NULL_ENTITY;
     }
 
-    if (textedit.text == NULL_ENTITY){
-        textedit.text = scene->createEntity();
+    if (inputfield.text == NULL_ENTITY){
+        inputfield.text = scene->createEntity();
 
-        scene->addComponent<Transform>(textedit.text);
-        scene->addComponent<UILayoutComponent>(textedit.text);
-        scene->addComponent<UIComponent>(textedit.text);
-        scene->addComponent<TextComponent>(textedit.text);
+        scene->addComponent<Transform>(inputfield.text);
+        scene->addComponent<RectTransformComponent>(inputfield.text);
+        scene->addComponent<UIComponent>(inputfield.text);
+        scene->addComponent<TextComponent>(inputfield.text);
 
-        scene->addEntityChild(entity, textedit.text, false);
+        scene->addEntityChild(entity, inputfield.text, false);
 
-        UILayoutComponent& textlayout = scene->getComponent<UILayoutComponent>(textedit.text);
-        UIComponent& textui = scene->getComponent<UIComponent>(textedit.text);
+        RectTransformComponent& textlayout = scene->getComponent<RectTransformComponent>(inputfield.text);
+        UIComponent& textui = scene->getComponent<UIComponent>(inputfield.text);
         textui.color = Vector4(0.0, 0.0, 0.0, 1.0);
         textlayout.ignoreEvents = true;
     }
 
-    if (textedit.selection == NULL_ENTITY){
-        textedit.selection = scene->createEntity();
+    if (inputfield.selection == NULL_ENTITY){
+        inputfield.selection = scene->createEntity();
 
-        scene->addComponent<Transform>(textedit.selection);
-        scene->addComponent<UILayoutComponent>(textedit.selection);
-        scene->addComponent<UIComponent>(textedit.selection);
-        scene->addComponent<PolygonComponent>(textedit.selection);
+        scene->addComponent<Transform>(inputfield.selection);
+        scene->addComponent<RectTransformComponent>(inputfield.selection);
+        scene->addComponent<UIComponent>(inputfield.selection);
+        scene->addComponent<PolygonComponent>(inputfield.selection);
 
-        scene->addEntityChild(entity, textedit.selection, false);
+        scene->addEntityChild(entity, inputfield.selection, false);
 
-        UILayoutComponent& selectionlayout = scene->getComponent<UILayoutComponent>(textedit.selection);
+        RectTransformComponent& selectionlayout = scene->getComponent<RectTransformComponent>(inputfield.selection);
         selectionlayout.ignoreEvents = true;
     }
 
-    if (textedit.cursor == NULL_ENTITY){
-        textedit.cursor = scene->createEntity();
+    if (inputfield.cursor == NULL_ENTITY){
+        inputfield.cursor = scene->createEntity();
 
-        scene->addComponent<Transform>(textedit.cursor);
-        scene->addComponent<UILayoutComponent>(textedit.cursor);
-        scene->addComponent<UIComponent>(textedit.cursor);
-        scene->addComponent<PolygonComponent>(textedit.cursor);
+        scene->addComponent<Transform>(inputfield.cursor);
+        scene->addComponent<RectTransformComponent>(inputfield.cursor);
+        scene->addComponent<UIComponent>(inputfield.cursor);
+        scene->addComponent<PolygonComponent>(inputfield.cursor);
 
-        scene->addEntityChild(entity, textedit.cursor, false);
+        scene->addEntityChild(entity, inputfield.cursor, false);
 
-        UILayoutComponent& cursorlayout = scene->getComponent<UILayoutComponent>(textedit.cursor);
+        RectTransformComponent& cursorlayout = scene->getComponent<RectTransformComponent>(inputfield.cursor);
 
         cursorlayout.ignoreEvents = true;
     }
@@ -639,7 +639,7 @@ void UISystem::applyButtonVisual(ButtonComponent& button, UIComponent& ui){
     ui.color = targetColor;
 }
 
-void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (!ui.loaded){
         // resolved here so that the copies swapped into ui.texture already match it
         button.textureNormal.setAlphaBorderAuto(true);
@@ -670,7 +670,7 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
 
     TextComponent& labeltext = scene->getComponent<TextComponent>(button.label);
     UIComponent& labelui = scene->getComponent<UIComponent>(button.label);
-    UILayoutComponent& labellayout = scene->getComponent<UILayoutComponent>(button.label);
+    RectTransformComponent& labellayout = scene->getComponent<RectTransformComponent>(button.label);
 
     labeltext.needUpdateText = true;
     createOrUpdateText(labeltext, labelui, labellayout);
@@ -678,7 +678,7 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
     applyButtonVisual(button, ui);
 }
 
-void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (panel.minWidth > layout.width){
         panel.minWidth = layout.width;
     }
@@ -692,8 +692,8 @@ void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent&
         panel.minHeight = static_cast<unsigned int>(img.patchMarginTop + img.patchMarginBottom + 1);
     }
 
-    if (panel.headerimage != NULL_ENTITY && scene->findComponent<UILayoutComponent>(panel.headerimage)){
-        UILayoutComponent& headerimagelayout = scene->getComponent<UILayoutComponent>(panel.headerimage);
+    if (panel.headerimage != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headerimage)){
+        RectTransformComponent& headerimagelayout = scene->getComponent<RectTransformComponent>(panel.headerimage);
 
         if (panel.defaultHeaderMargin){
             panel.headerMarginLeft = img.patchMarginLeft;
@@ -709,7 +709,7 @@ void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent&
     }
 
     if (panel.headertext != NULL_ENTITY && scene->findComponent<TextComponent>(panel.headertext)){
-        UILayoutComponent& titlelayout = scene->getComponent<UILayoutComponent>(panel.headertext);
+        RectTransformComponent& titlelayout = scene->getComponent<RectTransformComponent>(panel.headertext);
         UIComponent& titleui = scene->getComponent<UIComponent>(panel.headertext);
         TextComponent& headertext = scene->getComponent<TextComponent>(panel.headertext);
 
@@ -719,7 +719,7 @@ void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent&
     }
 }
 
-void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent& layout){
+void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, RectTransformComponent& layout){
     float barSize = scrollbar.barSize;
     float step = scrollbar.step;
 
@@ -740,8 +740,8 @@ void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent&
     scrollbar.barSize = barSize;
     scrollbar.step = step;
 
-    if (scrollbar.bar != NULL_ENTITY && scene->findComponent<UILayoutComponent>(scrollbar.bar)){
-        UILayoutComponent& barlayout = scene->getComponent<UILayoutComponent>(scrollbar.bar);
+    if (scrollbar.bar != NULL_ENTITY && scene->findComponent<RectTransformComponent>(scrollbar.bar)){
+        RectTransformComponent& barlayout = scene->getComponent<RectTransformComponent>(scrollbar.bar);
 
         float innerHeight = std::max(0.0f, (float)layout.height - scrollbar.barMarginTop - scrollbar.barMarginBottom);
         float innerWidth = std::max(0.0f, (float)layout.width - scrollbar.barMarginLeft - scrollbar.barMarginRight);
@@ -807,18 +807,18 @@ void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent&
         scrollbar.onChange.call(step);
 }
 
-void UISystem::updateProgressbar(Entity entity, ProgressbarComponent& progressbar, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+void UISystem::updateProgressbar(Entity entity, ProgressbarComponent& progressbar, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (progressbar.value > 1){
         progressbar.value = 1;
     }else if (progressbar.value < 0){
         progressbar.value = 0;
     }
 
-    if (progressbar.fill == NULL_ENTITY || !scene->findComponent<UILayoutComponent>(progressbar.fill)){
+    if (progressbar.fill == NULL_ENTITY || !scene->findComponent<RectTransformComponent>(progressbar.fill)){
         return;
     }
 
-    UILayoutComponent& filllayout = scene->getComponent<UILayoutComponent>(progressbar.fill);
+    RectTransformComponent& filllayout = scene->getComponent<RectTransformComponent>(progressbar.fill);
 
     if (progressbar.type == ProgressbarType::HORIZONTAL){
         filllayout.anchorPointLeft = 0;
@@ -843,29 +843,29 @@ void UISystem::updateProgressbar(Entity entity, ProgressbarComponent& progressba
     filllayout.usingAnchors = true;
 }
 
-bool UISystem::textEditHasSelection(const TextEditComponent& textedit) const{
-    return textedit.selectionAnchor != textedit.cursorIndex;
+bool UISystem::inputFieldHasSelection(const InputFieldComponent& inputfield) const{
+    return inputfield.selectionAnchor != inputfield.cursorIndex;
 }
 
-int UISystem::textEditSelectionStart(const TextEditComponent& textedit) const{
-    return std::min(textedit.selectionAnchor, textedit.cursorIndex);
+int UISystem::inputFieldSelectionStart(const InputFieldComponent& inputfield) const{
+    return std::min(inputfield.selectionAnchor, inputfield.cursorIndex);
 }
 
-int UISystem::textEditSelectionEnd(const TextEditComponent& textedit) const{
-    return std::max(textedit.selectionAnchor, textedit.cursorIndex);
+int UISystem::inputFieldSelectionEnd(const InputFieldComponent& inputfield) const{
+    return std::max(inputfield.selectionAnchor, inputfield.cursorIndex);
 }
 
-void UISystem::textEditClampCursor(TextEditComponent& textedit, size_t numCodepoints) const{
+void UISystem::inputFieldClampCursor(InputFieldComponent& inputfield, size_t numCodepoints) const{
     int maxIndex = static_cast<int>(numCodepoints);
-    textedit.cursorIndex = std::clamp(textedit.cursorIndex, 0, maxIndex);
-    if (!textEditHasSelection(textedit)){
-        textedit.selectionAnchor = textedit.cursorIndex;
+    inputfield.cursorIndex = std::clamp(inputfield.cursorIndex, 0, maxIndex);
+    if (!inputFieldHasSelection(inputfield)){
+        inputfield.selectionAnchor = inputfield.cursorIndex;
     }else{
-        textedit.selectionAnchor = std::clamp(textedit.selectionAnchor, 0, maxIndex);
+        inputfield.selectionAnchor = std::clamp(inputfield.selectionAnchor, 0, maxIndex);
     }
 }
 
-int UISystem::textEditVisualStep(const TextComponent& text, int cursorIndex, int direction) const{
+int UISystem::inputFieldVisualStep(const TextComponent& text, int cursorIndex, int direction) const{
     size_t numChars = text.charExtents.size();
     if (numChars == 0){
         return cursorIndex + direction;
@@ -878,7 +878,7 @@ int UISystem::textEditVisualStep(const TextComponent& text, int cursorIndex, int
     stops.reserve(numChars + 1);
 
     for (int i = 0; i <= (int)numChars; i++){
-        stops.push_back({textEditCursorPixelX(text, i), i});
+        stops.push_back({inputFieldCursorPixelX(text, i), i});
     }
 
     std::sort(stops.begin(), stops.end());
@@ -896,7 +896,7 @@ int UISystem::textEditVisualStep(const TextComponent& text, int cursorIndex, int
     return cursorIndex + direction;
 }
 
-float UISystem::textEditCursorPixelX(const TextComponent& text, int cursorIndex) const{
+float UISystem::inputFieldCursorPixelX(const TextComponent& text, int cursorIndex) const{
     size_t numChars = text.charExtents.size();
     if (numChars == 0){
         return 0;
@@ -912,7 +912,7 @@ float UISystem::textEditCursorPixelX(const TextComponent& text, int cursorIndex)
     return first.rtl ? first.right : first.left;
 }
 
-int UISystem::textEditFindCursorIndexFromX(const TextComponent& text, float x) const{
+int UISystem::inputFieldFindCursorIndexFromX(const TextComponent& text, float x) const{
     size_t numChars = text.charExtents.size();
     if (numChars == 0){
         return 0;
@@ -948,7 +948,7 @@ int UISystem::textEditFindCursorIndexFromX(const TextComponent& text, float x) c
     return static_cast<int>(afterChar ? nearest + 1 : nearest);
 }
 
-void UISystem::textEditSelectionRects(const TextComponent& text, int start, int end, std::vector<Rect>& rects) const{
+void UISystem::inputFieldSelectionRects(const TextComponent& text, int start, int end, std::vector<Rect>& rects) const{
     rects.clear();
 
     size_t numChars = text.charExtents.size();
@@ -992,65 +992,65 @@ void UISystem::textEditSelectionRects(const TextComponent& text, int start, int 
     rects.push_back(current);
 }
 
-std::string UISystem::textEditMaskText(const std::string& text, char maskChar) const{
+std::string UISystem::inputFieldMaskText(const std::string& text, char maskChar) const{
     return std::string(StringUtils::countCodepoints(text), maskChar);
 }
 
-void UISystem::textEditDeleteSelection(TextEditComponent& textedit, TextComponent& text){
-    if (!textEditHasSelection(textedit)){
+void UISystem::inputFieldDeleteSelection(InputFieldComponent& inputfield, TextComponent& text){
+    if (!inputFieldHasSelection(inputfield)){
         return;
     }
 
     StringUtils::eraseCodepointsUtf8(text.text,
-        static_cast<size_t>(textEditSelectionStart(textedit)),
-        static_cast<size_t>(textEditSelectionEnd(textedit)));
-    textedit.cursorIndex = textEditSelectionStart(textedit);
-    textedit.selectionAnchor = textedit.cursorIndex;
+        static_cast<size_t>(inputFieldSelectionStart(inputfield)),
+        static_cast<size_t>(inputFieldSelectionEnd(inputfield)));
+    inputfield.cursorIndex = inputFieldSelectionStart(inputfield);
+    inputfield.selectionAnchor = inputfield.cursorIndex;
 }
 
-void UISystem::textEditResetBlink(TextEditComponent& textedit) const{
-    textedit.cursorBlinkTimer = 0;
-    if (Transform* cursortransform = scene->findComponent<Transform>(textedit.cursor)){
+void UISystem::inputFieldResetBlink(InputFieldComponent& inputfield) const{
+    inputfield.cursorBlinkTimer = 0;
+    if (Transform* cursortransform = scene->findComponent<Transform>(inputfield.cursor)){
         cursortransform->visible = true;
     }
 }
 
-TextEditComponent* UISystem::findTextEditForTextChild(Entity textEntity) const{
+InputFieldComponent* UISystem::findInputFieldForTextChild(Entity textEntity) const{
     Transform* transform = scene->findComponent<Transform>(textEntity);
     if (!transform || transform->parent == NULL_ENTITY){
         return nullptr;
     }
 
-    TextEditComponent* textedit = scene->findComponent<TextEditComponent>(transform->parent);
-    if (!textedit || textedit->text != textEntity){
+    InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(transform->parent);
+    if (!inputfield || inputfield->text != textEntity){
         return nullptr;
     }
 
-    return textedit;
+    return inputfield;
 }
 
-void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
-    if (textedit.text == NULL_ENTITY || !scene->findComponent<TextComponent>(textedit.text)){
+void UISystem::updateInputField(Entity entity, InputFieldComponent& inputfield, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
+    if (inputfield.text == NULL_ENTITY || !scene->findComponent<TextComponent>(inputfield.text)){
         return;
     }
 
-    Transform& texttransform = scene->getComponent<Transform>(textedit.text);
-    UILayoutComponent& textlayout = scene->getComponent<UILayoutComponent>(textedit.text);
-    UIComponent& textui = scene->getComponent<UIComponent>(textedit.text);
-    TextComponent& text = scene->getComponent<TextComponent>(textedit.text);
+    Transform& texttransform = scene->getComponent<Transform>(inputfield.text);
+    RectTransformComponent& textlayout = scene->getComponent<RectTransformComponent>(inputfield.text);
+    UIComponent& textui = scene->getComponent<UIComponent>(inputfield.text);
+    TextComponent& text = scene->getComponent<TextComponent>(inputfield.text);
 
-    textEditClampCursor(textedit, StringUtils::countCodepoints(text.text));
+    inputFieldClampCursor(inputfield, StringUtils::countCodepoints(text.text));
 
     std::string storedText = text.text;
     Vector4 storedColor = textui.color;
-    bool showingPlaceholder = storedText.empty() && !textedit.placeholder.empty() && !ui.focused;
-    bool showingPassword = textedit.password && !storedText.empty();
+    bool showingPlaceholder = storedText.empty() && !inputfield.placeholder.empty() && !ui.focused;
+    bool showingPassword = inputfield.password && !storedText.empty();
 
     if (showingPlaceholder){
-        text.text = textedit.placeholder;
-        textui.color = textedit.placeholderColor;
+        text.text = inputfield.placeholder;
+        textui.color = inputfield.placeholderColor;
     }else if (showingPassword){
-        text.text = textEditMaskText(storedText, textedit.passwordChar);
+        text.text = inputFieldMaskText(storedText, inputfield.passwordChar);
     }
 
     text.multiline = false;
@@ -1066,23 +1066,23 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
     }
 
     int heightArea = layout.height - img.patchMarginTop - img.patchMarginBottom;
-    int widthArea = layout.width - img.patchMarginRight - img.patchMarginLeft - textedit.cursorWidth;
+    int widthArea = layout.width - img.patchMarginRight - img.patchMarginLeft - inputfield.cursorWidth;
 
-    float cursorPixelX = textEditCursorPixelX(text, textedit.cursorIndex);
-    if (cursorPixelX - textedit.scrollOffset > widthArea){
-        textedit.scrollOffset = cursorPixelX - widthArea;
+    float cursorPixelX = inputFieldCursorPixelX(text, inputfield.cursorIndex);
+    if (cursorPixelX - inputfield.scrollOffset > widthArea){
+        inputfield.scrollOffset = cursorPixelX - widthArea;
     }
-    if (cursorPixelX - textedit.scrollOffset < 0){
-        textedit.scrollOffset = cursorPixelX;
+    if (cursorPixelX - inputfield.scrollOffset < 0){
+        inputfield.scrollOffset = cursorPixelX;
     }
-    if (textlayout.width - textedit.scrollOffset < widthArea && textlayout.width > widthArea){
-        textedit.scrollOffset = textlayout.width - widthArea;
+    if (textlayout.width - inputfield.scrollOffset < widthArea && textlayout.width > widthArea){
+        inputfield.scrollOffset = textlayout.width - widthArea;
     }
-    if (textedit.scrollOffset < 0){
-        textedit.scrollOffset = 0;
+    if (inputfield.scrollOffset < 0){
+        inputfield.scrollOffset = 0;
     }
 
-    float textX = static_cast<float>(img.patchMarginLeft) - textedit.scrollOffset;
+    float textX = static_cast<float>(img.patchMarginLeft) - inputfield.scrollOffset;
     float textY = static_cast<float>(img.patchMarginTop) + (heightArea / 2.0f) - (textlayout.height / 2.0f);
 
     Vector3 textPosition = Vector3(textX, textY, 0);
@@ -1091,17 +1091,17 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
         texttransform.needUpdate = true;
     }
 
-    if (textedit.selection != NULL_ENTITY && scene->findComponent<PolygonComponent>(textedit.selection)){
-        Transform& selectiontransform = scene->getComponent<Transform>(textedit.selection);
-        UILayoutComponent& selectionlayout = scene->getComponent<UILayoutComponent>(textedit.selection);
-        UIComponent& selectionui = scene->getComponent<UIComponent>(textedit.selection);
-        PolygonComponent& selection = scene->getComponent<PolygonComponent>(textedit.selection);
+    if (inputfield.selection != NULL_ENTITY && scene->findComponent<PolygonComponent>(inputfield.selection)){
+        Transform& selectiontransform = scene->getComponent<Transform>(inputfield.selection);
+        RectTransformComponent& selectionlayout = scene->getComponent<RectTransformComponent>(inputfield.selection);
+        UIComponent& selectionui = scene->getComponent<UIComponent>(inputfield.selection);
+        PolygonComponent& selection = scene->getComponent<PolygonComponent>(inputfield.selection);
 
-        bool hasSelection = ui.focused && !textedit.disabled && textEditHasSelection(textedit) && !showingPlaceholder;
+        bool hasSelection = ui.focused && !inputfield.disabled && inputFieldHasSelection(inputfield) && !showingPlaceholder;
 
         std::vector<Rect> selectionRects;
         if (hasSelection){
-            textEditSelectionRects(text, textEditSelectionStart(textedit), textEditSelectionEnd(textedit), selectionRects);
+            inputFieldSelectionRects(text, inputFieldSelectionStart(inputfield), inputFieldSelectionEnd(inputfield), selectionRects);
             hasSelection = !selectionRects.empty();
         }
 
@@ -1131,20 +1131,20 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
                 selection.points.push_back({Vector3(right, selectionHeight, 0), white});
             }
 
-            selectionui.color = textedit.selectionColor;
+            selectionui.color = inputfield.selectionColor;
             selectiontransform.position = Vector3(textX, textY, 0.0);
             selectiontransform.needUpdate = true;
             selection.needUpdatePolygon = true;
         }
     }
 
-    if (textedit.cursor != NULL_ENTITY && scene->findComponent<PolygonComponent>(textedit.cursor)){
-        Transform& cursortransform = scene->getComponent<Transform>(textedit.cursor);
-        UILayoutComponent& cursorlayout = scene->getComponent<UILayoutComponent>(textedit.cursor);
-        UIComponent& cursorui = scene->getComponent<UIComponent>(textedit.cursor);
-        PolygonComponent& cursor = scene->getComponent<PolygonComponent>(textedit.cursor);
+    if (inputfield.cursor != NULL_ENTITY && scene->findComponent<PolygonComponent>(inputfield.cursor)){
+        Transform& cursortransform = scene->getComponent<Transform>(inputfield.cursor);
+        RectTransformComponent& cursorlayout = scene->getComponent<RectTransformComponent>(inputfield.cursor);
+        UIComponent& cursorui = scene->getComponent<UIComponent>(inputfield.cursor);
+        PolygonComponent& cursor = scene->getComponent<PolygonComponent>(inputfield.cursor);
 
-        bool showCursor = ui.focused && !textedit.disabled && !showingPlaceholder;
+        bool showCursor = ui.focused && !inputfield.disabled && !showingPlaceholder;
         if (!showCursor){
             cursortransform.visible = false;
         }
@@ -1156,14 +1156,14 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
 
             cursor.points.clear();
             cursor.points.push_back({Vector3(0, 0, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
-            cursor.points.push_back({Vector3(textedit.cursorWidth, 0, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
+            cursor.points.push_back({Vector3(inputfield.cursorWidth, 0, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
             cursor.points.push_back({Vector3(0, cursorHeight, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
-            cursor.points.push_back({Vector3(textedit.cursorWidth, cursorHeight, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
+            cursor.points.push_back({Vector3(inputfield.cursorWidth, cursorHeight, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
 
             float cursorX = textX + cursorPixelX;
             float cursorY = static_cast<float>(img.patchMarginTop) + (heightArea / 2.0f) - (cursorHeight / 2.0f);
 
-            cursorui.color = textedit.cursorColor;
+            cursorui.color = inputfield.cursorColor;
             cursortransform.position = Vector3(cursorX, cursorY, 0.0);
             cursortransform.needUpdate = true;
             cursor.needUpdatePolygon = true;
@@ -1171,104 +1171,104 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
     }
 }
 
-void UISystem::blinkCursorTextEdit(double dt, TextEditComponent& textedit, UIComponent& ui){
-    if (textedit.cursor == NULL_ENTITY || !scene->findComponent<Transform>(textedit.cursor)){
+void UISystem::blinkCursorInputField(double dt, InputFieldComponent& inputfield, UIComponent& ui){
+    if (inputfield.cursor == NULL_ENTITY || !scene->findComponent<Transform>(inputfield.cursor)){
         return;
     }
 
-    Transform& cursortransform = scene->getComponent<Transform>(textedit.cursor);
+    Transform& cursortransform = scene->getComponent<Transform>(inputfield.cursor);
 
-    if (!ui.focused || textedit.disabled){
+    if (!ui.focused || inputfield.disabled){
         cursortransform.visible = false;
-        textedit.cursorBlinkTimer = 0;
+        inputfield.cursorBlinkTimer = 0;
         return;
     }
 
-    float period = textedit.cursorBlink;
+    float period = inputfield.cursorBlink;
     if (period <= 0.0f){
         cursortransform.visible = true;
-        textedit.cursorBlinkTimer = 0;
+        inputfield.cursorBlinkTimer = 0;
         return;
     }
 
-    textedit.cursorBlinkTimer += static_cast<float>(dt);
+    inputfield.cursorBlinkTimer += static_cast<float>(dt);
     float cycle = period * 2.0f;
-    if (textedit.cursorBlinkTimer >= cycle){
-        textedit.cursorBlinkTimer = std::fmod(textedit.cursorBlinkTimer, cycle);
+    if (inputfield.cursorBlinkTimer >= cycle){
+        inputfield.cursorBlinkTimer = std::fmod(inputfield.cursorBlinkTimer, cycle);
     }
 
-    cursortransform.visible = textedit.cursorBlinkTimer < period;
+    cursortransform.visible = inputfield.cursorBlinkTimer < period;
 }
 
-void UISystem::setTextEditCursorFromLocalX(TextEditComponent& textedit, TextComponent& text, ImageComponent& img, float localX, bool extendSelection){
-    float clickTextX = localX - img.patchMarginLeft + textedit.scrollOffset;
-    textedit.cursorIndex = textEditFindCursorIndexFromX(text, clickTextX);
+void UISystem::setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, TextComponent& text, ImageComponent& img, float localX, bool extendSelection){
+    float clickTextX = localX - img.patchMarginLeft + inputfield.scrollOffset;
+    inputfield.cursorIndex = inputFieldFindCursorIndexFromX(text, clickTextX);
     if (!extendSelection){
-        textedit.selectionAnchor = textedit.cursorIndex;
+        inputfield.selectionAnchor = inputfield.cursorIndex;
     }
-    textEditResetBlink(textedit);
-    textedit.needUpdateTextEdit = true;
+    inputFieldResetBlink(inputfield);
+    inputfield.needUpdateInputField = true;
 }
 
-bool UISystem::handleTextEditCharInput(TextEditComponent& textedit, TextComponent& text, UIComponent& ui, wchar_t codepoint){
-    if (textedit.disabled){
+bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint){
+    if (inputfield.disabled){
         return false;
     }
 
     if (codepoint == '\x1b'){
         ui.focused = false;
         ui.onLostFocus.call();
-        textedit.needUpdateTextEdit = true;
+        inputfield.needUpdateInputField = true;
         return true;
     }
 
     if (codepoint == '\r' || codepoint == '\n'){
-        textedit.onSubmit.call();
+        inputfield.onSubmit.call();
         return true;
     }
 
     if (codepoint == '\b'){
-        if (textEditHasSelection(textedit)){
-            textEditDeleteSelection(textedit, text);
-        }else if (textedit.cursorIndex > 0){
+        if (inputFieldHasSelection(inputfield)){
+            inputFieldDeleteSelection(inputfield, text);
+        }else if (inputfield.cursorIndex > 0){
             StringUtils::eraseCodepointsUtf8(text.text,
-                static_cast<size_t>(textedit.cursorIndex - 1),
-                static_cast<size_t>(textedit.cursorIndex));
-            textedit.cursorIndex--;
-            textedit.selectionAnchor = textedit.cursorIndex;
+                static_cast<size_t>(inputfield.cursorIndex - 1),
+                static_cast<size_t>(inputfield.cursorIndex));
+            inputfield.cursorIndex--;
+            inputfield.selectionAnchor = inputfield.cursorIndex;
         }
     }else if (codepoint >= 32 || codepoint == '\t'){
         std::string insertText = StringUtils::toUTF8(codepoint);
         size_t insertCount = StringUtils::countCodepoints(insertText);
         size_t currentCount = StringUtils::countCodepoints(text.text);
-        size_t selectionSize = textEditHasSelection(textedit)
-            ? static_cast<size_t>(textEditSelectionEnd(textedit) - textEditSelectionStart(textedit))
+        size_t selectionSize = inputFieldHasSelection(inputfield)
+            ? static_cast<size_t>(inputFieldSelectionEnd(inputfield) - inputFieldSelectionStart(inputfield))
             : 0;
 
         if (text.maxTextSize > 0 && currentCount - selectionSize + insertCount > text.maxTextSize){
             return true;
         }
 
-        if (textEditHasSelection(textedit)){
-            textEditDeleteSelection(textedit, text);
+        if (inputFieldHasSelection(inputfield)){
+            inputFieldDeleteSelection(inputfield, text);
         }
 
-        StringUtils::insertUtf8AtCodepoint(text.text, static_cast<size_t>(textedit.cursorIndex), insertText);
-        textedit.cursorIndex += static_cast<int>(insertCount);
-        textedit.selectionAnchor = textedit.cursorIndex;
+        StringUtils::insertUtf8AtCodepoint(text.text, static_cast<size_t>(inputfield.cursorIndex), insertText);
+        inputfield.cursorIndex += static_cast<int>(insertCount);
+        inputfield.selectionAnchor = inputfield.cursorIndex;
     }else{
         return false;
     }
 
     text.needUpdateText = true;
-    textEditResetBlink(textedit);
-    textedit.needUpdateTextEdit = true;
-    textedit.onChange.call();
+    inputFieldResetBlink(inputfield);
+    inputfield.needUpdateInputField = true;
+    inputfield.onChange.call();
     return true;
 }
 
-bool UISystem::handleTextEditKeyDown(TextEditComponent& textedit, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods){
-    if (textedit.disabled){
+bool UISystem::handleInputFieldKeyDown(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods){
+    if (inputfield.disabled){
         return false;
     }
 
@@ -1278,39 +1278,39 @@ bool UISystem::handleTextEditKeyDown(TextEditComponent& textedit, TextComponent&
     bool changed = false;
 
     if (control && key == D_KEY_A){
-        textedit.selectionAnchor = 0;
-        textedit.cursorIndex = static_cast<int>(numCodepoints);
-        textEditResetBlink(textedit);
-        textedit.needUpdateTextEdit = true;
+        inputfield.selectionAnchor = 0;
+        inputfield.cursorIndex = static_cast<int>(numCodepoints);
+        inputFieldResetBlink(inputfield);
+        inputfield.needUpdateInputField = true;
         return true;
     }
 
     auto moveCursor = [&](int newIndex){
-        textedit.cursorIndex = std::clamp(newIndex, 0, static_cast<int>(numCodepoints));
+        inputfield.cursorIndex = std::clamp(newIndex, 0, static_cast<int>(numCodepoints));
         if (!shift){
-            textedit.selectionAnchor = textedit.cursorIndex;
+            inputfield.selectionAnchor = inputfield.cursorIndex;
         }
-        textEditResetBlink(textedit);
-        textedit.needUpdateTextEdit = true;
+        inputFieldResetBlink(inputfield);
+        inputfield.needUpdateInputField = true;
         changed = true;
     };
 
     if (key == D_KEY_LEFT){
-        moveCursor(textEditVisualStep(text, textedit.cursorIndex, -1));
+        moveCursor(inputFieldVisualStep(text, inputfield.cursorIndex, -1));
     }else if (key == D_KEY_RIGHT){
-        moveCursor(textEditVisualStep(text, textedit.cursorIndex, 1));
+        moveCursor(inputFieldVisualStep(text, inputfield.cursorIndex, 1));
     }else if (key == D_KEY_HOME){
         moveCursor(0);
     }else if (key == D_KEY_END){
         moveCursor(static_cast<int>(numCodepoints));
     }else if (key == D_KEY_DELETE){
-        if (textEditHasSelection(textedit)){
-            textEditDeleteSelection(textedit, text);
+        if (inputFieldHasSelection(inputfield)){
+            inputFieldDeleteSelection(inputfield, text);
             changed = true;
-        }else if (textedit.cursorIndex < static_cast<int>(numCodepoints)){
+        }else if (inputfield.cursorIndex < static_cast<int>(numCodepoints)){
             StringUtils::eraseCodepointsUtf8(text.text,
-                static_cast<size_t>(textedit.cursorIndex),
-                static_cast<size_t>(textedit.cursorIndex + 1));
+                static_cast<size_t>(inputfield.cursorIndex),
+                static_cast<size_t>(inputfield.cursorIndex + 1));
             changed = true;
         }
     }else{
@@ -1319,14 +1319,14 @@ bool UISystem::handleTextEditKeyDown(TextEditComponent& textedit, TextComponent&
 
     if (changed){
         text.needUpdateText = true;
-        textedit.onChange.call();
+        inputfield.onChange.call();
         return true;
     }
 
     return changed;
 }
 
-void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, UILayoutComponent& layout){
+void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout){
 
     ui.primitiveType = PrimitiveType::TRIANGLE_STRIP;
 
@@ -1383,7 +1383,7 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, UILay
         ui.needUpdateBuffer = true;
 }
 
-bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, UILayoutComponent& layout){
+bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout){
     if (polygon.needUpdatePolygon){
         if (ui.automaticFlipY){
             CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
@@ -1398,7 +1398,7 @@ bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui,
     return true;
 }
 
-bool UISystem::createOrUpdateImage(ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+bool UISystem::createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (img.needUpdatePatches){
         if (ui.automaticFlipY){
             CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
@@ -1427,7 +1427,7 @@ Vector2 UISystem::getTextMinSize(TextComponent& text){
     return Vector2(minWidth, minHeight);
 }
 
-bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
+bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
     if (text.loaded && text.needReloadAtlas){
         destroyText(text);
     }
@@ -1458,7 +1458,7 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, UILayout
 Entity UISystem::findNearestLayoutParent(Entity startParent) const{
     Entity ancestor = startParent;
     while (ancestor != NULL_ENTITY) {
-        if (scene->findComponent<UILayoutComponent>(ancestor)) {
+        if (scene->findComponent<RectTransformComponent>(ancestor)) {
             return ancestor;
         }
         Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
@@ -1536,7 +1536,7 @@ void UISystem::convertLocalParentSpaceToLayoutSpace(Entity transformParent, Enti
     posY = layoutPoint.y;
 }
 
-Rect UISystem::getAnchorReferenceRect(const UILayoutComponent& layout, const Transform& transform, bool worldPosition){
+Rect UISystem::getAnchorReferenceRect(const RectTransformComponent& layout, const Transform& transform, bool worldPosition){
     auto canvasRect = [this]() {
         int finalCanvasWidth = Engine::getCanvasWidth();
         if (anchorReferenceWidth != 0)
@@ -1553,7 +1553,7 @@ Rect UISystem::getAnchorReferenceRect(const UILayoutComponent& layout, const Tra
         return canvasRect();
     }
 
-    // Bundle roots and other non-UI parents have no UILayout; walk up to the nearest layout parent.
+    // Prefab roots and other non-UI parents have no RectTransform; walk up to the nearest layout parent.
     Entity layoutParent = findNearestLayoutParent(transform.parent);
 
     if (layoutParent == NULL_ENTITY){
@@ -1567,10 +1567,10 @@ Rect UISystem::getAnchorReferenceRect(const UILayoutComponent& layout, const Tra
         return boxRect;
     }
 
-    UILayoutComponent* parentlayout = scene->findComponent<UILayoutComponent>(layoutParent);
+    RectTransformComponent* parentlayout = scene->findComponent<RectTransformComponent>(layoutParent);
     Rect boxRect = Rect(0, 0, parentlayout->width, parentlayout->height);
 
-    UIContainerComponent* parentcontainer = scene->findComponent<UIContainerComponent>(layoutParent);
+    LayoutGroupComponent* parentcontainer = scene->findComponent<LayoutGroupComponent>(layoutParent);
     if (parentcontainer){
         boxRect = parentcontainer->boxes[layout.containerBoxIndex].rect;
     }
@@ -1609,7 +1609,7 @@ int UISystem::getAnchorReferenceHeight() const{
     return anchorReferenceHeight;
 }
 
-void UISystem::applyAnchorPreset(UILayoutComponent& layout){
+void UISystem::applyAnchorPreset(RectTransformComponent& layout){
     if (layout.anchorPreset == AnchorPreset::TOP_LEFT){
         layout.anchorPointLeft = 0;
         layout.anchorPointTop = 0;
@@ -1802,9 +1802,9 @@ void UISystem::load(){
 }
 
 void UISystem::destroy(){
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++) {
-        UILayoutComponent& layout = layouts->getComponentFromIndex(i);
+        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -1829,7 +1829,7 @@ void UISystem::destroy(){
 void UISystem::draw(){
 }
 
-void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entity, Signature signature){
+void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity entity, Signature signature){
     if (signature.test(scene->getComponentId<UIComponent>())){
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
         // replaced or deserialized without its geometry (not saved for images, texts or polygons)
@@ -1841,9 +1841,9 @@ void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entit
 
             if (noGeometry) text.needUpdateText = true;
 
-            if (TextEditComponent* ownerEdit = findTextEditForTextChild(entity)){
+            if (InputFieldComponent* ownerEdit = findInputFieldForTextChild(entity)){
                 if (text.needUpdateText || text.needReloadAtlas || isFontAtlasStale(text)){
-                    ownerEdit->needUpdateTextEdit = true;
+                    ownerEdit->needUpdateInputField = true;
                 }
             }else{
                 createOrUpdateText(text, ui, layout);
@@ -1913,21 +1913,21 @@ void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entit
                 }
             }
 
-            // Textedits
-            if (signature.test(scene->getComponentId<TextEditComponent>())){
-                TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
+            // Inputfields
+            if (signature.test(scene->getComponentId<InputFieldComponent>())){
+                InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
 
-                if (textedit.needUpdateTextEdit){
-                    updateTextEdit(entity, textedit, img, ui, layout);
+                if (inputfield.needUpdateInputField){
+                    updateInputField(entity, inputfield, img, ui, layout);
 
-                    textedit.needUpdateTextEdit = false;
+                    inputfield.needUpdateInputField = false;
                 }
             }
         }
     }
 }
 
-void UISystem::getPanelEdges(const PanelComponent& panel, const UILayoutComponent& layout, const Transform& transform, const UILayoutComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft){
+void UISystem::getPanelEdges(const PanelComponent& panel, const RectTransformComponent& layout, const Transform& transform, const RectTransformComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft){
     int minX;
     int minY;
     int width;
@@ -1975,7 +1975,7 @@ void UISystem::getPanelEdges(const PanelComponent& panel, const UILayoutComponen
 
 Rect UISystem::fitOnPanel(Rect uiRect, Entity parentPanel){
     Transform& paneltransform =  scene->getComponent<Transform>(parentPanel);
-    UILayoutComponent& panellayout =  scene->getComponent<UILayoutComponent>(parentPanel);
+    RectTransformComponent& panellayout =  scene->getComponent<RectTransformComponent>(parentPanel);
     ImageComponent& panelimage =  scene->getComponent<ImageComponent>(parentPanel);
 
     float x = paneltransform.worldPosition.x + (panelimage.patchMarginLeft * paneltransform.worldScale.x);
@@ -2006,10 +2006,10 @@ void UISystem::update(double dt){
     }
 
     // need to be ordered by Transform
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
 
     for (int i = 0; i < layouts->size(); i++){
-        UILayoutComponent& layout = layouts->getComponentFromIndex(i);
+        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -2018,8 +2018,8 @@ void UISystem::update(double dt){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
             if (ui.focused && !isUIActive(entity, signature)){
                 ui.focused = false;
-                if (TextEditComponent* textedit = scene->findComponent<TextEditComponent>(entity)){
-                    textedit->needUpdateTextEdit = true;
+                if (InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+                    inputfield->needUpdateInputField = true;
                 }
                 ui.onLostFocus.call();
                 // the callback may have changed the registry and moved the layout; an
@@ -2028,8 +2028,8 @@ void UISystem::update(double dt){
             }
         }
 
-        if (signature.test(scene->getComponentId<UIContainerComponent>())){
-            UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
+        if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
+            LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
             // reseting all container boxes
             for (int b = 0; b < container.numBoxes; b++){
                 container.boxes[b].layout = NULL_ENTITY;
@@ -2041,8 +2041,8 @@ void UISystem::update(double dt){
             Transform& transform = scene->getComponent<Transform>(entity);
             Entity layoutParentEntity = findNearestLayoutParent(transform.parent);
             if (layoutParentEntity != NULL_ENTITY){
-                UILayoutComponent* parentlayout = scene->findComponent<UILayoutComponent>(layoutParentEntity);
-                UIContainerComponent* parentcontainer = scene->findComponent<UIContainerComponent>(layoutParentEntity);
+                RectTransformComponent* parentlayout = scene->findComponent<RectTransformComponent>(layoutParentEntity);
+                LayoutGroupComponent* parentcontainer = scene->findComponent<LayoutGroupComponent>(layoutParentEntity);
                 // like Unity layout groups, an inactive child takes no space
                 if (parentcontainer && transform.visible && scene->isEntityActiveInHierarchy(entity)){
                     if (parentcontainer->numBoxes < MAX_CONTAINER_BOXES){
@@ -2082,23 +2082,23 @@ void UISystem::update(double dt){
     }
 
     for (Entity entity : layoutEntities){
-        UILayoutComponent* layoutPtr = scene->findComponent<UILayoutComponent>(entity);
+        RectTransformComponent* layoutPtr = scene->findComponent<RectTransformComponent>(entity);
         if (!layoutPtr){
             continue;
         }
 
         createOrUpdateUiComponent(*layoutPtr, entity, scene->getSignature(entity));
 
-        layoutPtr = scene->findComponent<UILayoutComponent>(entity);
+        layoutPtr = scene->findComponent<RectTransformComponent>(entity);
         if (!layoutPtr){
             continue;
         }
 
-        UILayoutComponent& layout = *layoutPtr;
+        RectTransformComponent& layout = *layoutPtr;
         Signature signature = scene->getSignature(entity);
 
-        if (signature.test(scene->getComponentId<UIContainerComponent>())){
-            UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
+        if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
+            LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
 
             // reset cached intrinsic minimums for this frame
             container.contentMinWidth = 0;
@@ -2134,7 +2134,7 @@ void UISystem::update(double dt){
                         container.maxWidth = std::max(container.maxWidth, (unsigned int)container.boxes[b].rect.getWidth());
 
                         // Check if child size is anchor-derived from parent in each dimension
-                        UILayoutComponent* childLayout = scene->findComponent<UILayoutComponent>(container.boxes[b].layout);
+                        RectTransformComponent* childLayout = scene->findComponent<RectTransformComponent>(container.boxes[b].layout);
                         bool widthFromParent = childLayout && childLayout->usingAnchors &&
                             (childLayout->anchorPointLeft != childLayout->anchorPointRight);
                         bool heightFromParent = childLayout && childLayout->usingAnchors &&
@@ -2142,7 +2142,7 @@ void UISystem::update(double dt){
 
                         // If child is anchor-derived but is itself a Container, use its intrinsic
                         // content minimum so the parent cannot shrink below the child's needs
-                        UIContainerComponent* childContainer = scene->findComponent<UIContainerComponent>(container.boxes[b].layout);
+                        LayoutGroupComponent* childContainer = scene->findComponent<LayoutGroupComponent>(container.boxes[b].layout);
 
                         if (!widthFromParent){
                             contentMinTotalWidth += container.boxes[b].rect.getWidth();
@@ -2165,13 +2165,13 @@ void UISystem::update(double dt){
                 }
 
 
-                if (container.type == ContainerType::HORIZONTAL){
+                if (container.type == LayoutGroupType::HORIZONTAL){
                     layout.width = (layout.width > contentMinTotalWidth)? layout.width : contentMinTotalWidth;
                     layout.height = (layout.height > contentMinMaxHeight)? layout.height : contentMinMaxHeight;
-                }else if (container.type == ContainerType::VERTICAL){
+                }else if (container.type == LayoutGroupType::VERTICAL){
                     layout.width = (layout.width > contentMinMaxWidth)? layout.width : contentMinMaxWidth;
                     layout.height = (layout.height > contentMinTotalHeight)? layout.height : contentMinTotalHeight;
-                }else if (container.type == ContainerType::HORIZONTAL_WRAP){
+                }else if (container.type == LayoutGroupType::HORIZONTAL_WRAP){
                     layout.width = (layout.width > container.maxWidth)? layout.width : container.maxWidth;
                     unsigned int effCellW = (container.wrapCellWidth > 0) ? container.wrapCellWidth : container.maxWidth;
                     unsigned int effCellH = (container.wrapCellHeight > 0) ? container.wrapCellHeight : container.maxHeight;
@@ -2184,7 +2184,7 @@ void UISystem::update(double dt){
                     }else{
                         layout.height = (layout.height > container.maxHeight)? layout.height : container.maxHeight;
                     }
-                }else if (container.type == ContainerType::VERTICAL_WRAP){
+                }else if (container.type == LayoutGroupType::VERTICAL_WRAP){
                     layout.height = (layout.height > container.maxHeight)? layout.height : container.maxHeight;
                     unsigned int effCellW = (container.wrapCellWidth > 0) ? container.wrapCellWidth : container.maxWidth;
                     unsigned int effCellH = (container.wrapCellHeight > 0) ? container.wrapCellHeight : container.maxHeight;
@@ -2203,16 +2203,16 @@ void UISystem::update(double dt){
                 if (layout.height < 1) layout.height = 1;
 
                 // Store the intrinsic content minimum for parent containers to use
-                if (container.type == ContainerType::HORIZONTAL){
+                if (container.type == LayoutGroupType::HORIZONTAL){
                     container.contentMinWidth = contentMinTotalWidth;
                     container.contentMinHeight = contentMinMaxHeight;
-                } else if (container.type == ContainerType::VERTICAL){
+                } else if (container.type == LayoutGroupType::VERTICAL){
                     container.contentMinWidth = contentMinMaxWidth;
                     container.contentMinHeight = contentMinTotalHeight;
-                } else if (container.type == ContainerType::HORIZONTAL_WRAP){
+                } else if (container.type == LayoutGroupType::HORIZONTAL_WRAP){
                     container.contentMinWidth = contentMinMaxWidth;
                     container.contentMinHeight = contentMinMaxHeight;
-                } else if (container.type == ContainerType::VERTICAL_WRAP){
+                } else if (container.type == LayoutGroupType::VERTICAL_WRAP){
                     container.contentMinWidth = contentMinMaxWidth;
                     container.contentMinHeight = contentMinMaxHeight;
                 }
@@ -2222,8 +2222,8 @@ void UISystem::update(double dt){
         if (signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
             Entity layoutParentEntity = findNearestLayoutParent(transform.parent);
-            UIContainerComponent* parentcontainer = layoutParentEntity != NULL_ENTITY
-                ? scene->findComponent<UIContainerComponent>(layoutParentEntity)
+            LayoutGroupComponent* parentcontainer = layoutParentEntity != NULL_ENTITY
+                ? scene->findComponent<LayoutGroupComponent>(layoutParentEntity)
                 : nullptr;
             if (parentcontainer && layout.containerBoxIndex >= 0){
                 parentcontainer->boxes[layout.containerBoxIndex].rect = Rect(0, 0, layout.width, layout.height);
@@ -2232,7 +2232,7 @@ void UISystem::update(double dt){
     }
 
     for (int i = 0; i < layouts->size(); i++){
-        UILayoutComponent& layout = layouts->getComponentFromIndex(i);
+        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -2325,20 +2325,20 @@ void UISystem::update(double dt){
             }
         }
 
-        if (signature.test(scene->getComponentId<UIContainerComponent>())){
-            UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
+        if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
+            LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
             int numObjInLine = 0;
 
             // Resolve effective cell sizes: custom override or auto from children
             unsigned int effectiveCellWidth = (container.wrapCellWidth > 0) ? container.wrapCellWidth : container.maxWidth;
             unsigned int effectiveCellHeight = (container.wrapCellHeight > 0) ? container.wrapCellHeight : container.maxHeight;
 
-            if (container.type == ContainerType::HORIZONTAL_WRAP){
+            if (container.type == LayoutGroupType::HORIZONTAL_WRAP){
                 if (effectiveCellWidth > 0){
                     numObjInLine = floor((float)layout.width / (float)effectiveCellWidth);
                 }
                 if (numObjInLine < 1) numObjInLine = 1;
-            }else if (container.type == ContainerType::VERTICAL_WRAP){
+            }else if (container.type == LayoutGroupType::VERTICAL_WRAP){
                 if (effectiveCellHeight > 0){
                     numObjInLine = floor((float)layout.height / (float)effectiveCellHeight);
                 }
@@ -2353,8 +2353,8 @@ void UISystem::update(double dt){
                 // space is distributed equally among the rest.
                 int resolved[MAX_CONTAINER_BOXES];
                 std::fill(resolved, resolved + container.numBoxes, -1);
-                if (container.type == ContainerType::HORIZONTAL || container.type == ContainerType::VERTICAL){
-                    bool horiz = (container.type == ContainerType::HORIZONTAL);
+                if (container.type == LayoutGroupType::HORIZONTAL || container.type == LayoutGroupType::VERTICAL){
+                    bool horiz = (container.type == LayoutGroupType::HORIZONTAL);
                     int available = horiz
                         ? static_cast<int>(layout.width)  - static_cast<int>(container.fixedWidth)
                         : static_cast<int>(layout.height) - static_cast<int>(container.fixedHeight);
@@ -2368,7 +2368,7 @@ void UISystem::update(double dt){
                         int share = (available - frozenTotal) / freeCount;
                         for (int b = 0; b < container.numBoxes; b++){
                             if (!frozen[b] && container.boxes[b].layout != NULL_ENTITY && container.boxes[b].expand){
-                                bool ar = scene->findComponent<UIContainerComponent>(container.boxes[b].layout) != nullptr;
+                                bool ar = scene->findComponent<LayoutGroupComponent>(container.boxes[b].layout) != nullptr;
                                 int nat = horiz ? (int)container.boxes[b].rect.getWidth() : (int)container.boxes[b].rect.getHeight();
                                 if (!ar && nat > share){
                                     frozen[b] = true; frozenTotal += nat; frozenCount++; changed = true; break;
@@ -2391,7 +2391,7 @@ void UISystem::update(double dt){
 
                 for (int b = 0; b < container.numBoxes; b++){
                     if (container.boxes[b].layout != NULL_ENTITY){
-                        if (container.type == ContainerType::HORIZONTAL){
+                        if (container.type == LayoutGroupType::HORIZONTAL){
                             if (b > 0){
                                 container.boxes[b].rect.setX(container.boxes[b-1].rect.getX() + container.boxes[b-1].rect.getWidth());
                             }
@@ -2402,7 +2402,7 @@ void UISystem::update(double dt){
                                 }
                             }
                             container.boxes[b].rect.setHeight(layout.height);
-                        }else if (container.type == ContainerType::VERTICAL){
+                        }else if (container.type == LayoutGroupType::VERTICAL){
                             if (b > 0){
                                 container.boxes[b].rect.setY(container.boxes[b-1].rect.getY() + container.boxes[b-1].rect.getHeight());
                             }
@@ -2413,7 +2413,7 @@ void UISystem::update(double dt){
                                 }
                             }
                             container.boxes[b].rect.setWidth(layout.width);
-                        }else if (container.type == ContainerType::HORIZONTAL_WRAP){
+                        }else if (container.type == LayoutGroupType::HORIZONTAL_WRAP){
                             if (container.useAllWrapSpace){
                                 int line = b / numObjInLine;
                                 int lineIndex = b % numObjInLine;
@@ -2466,7 +2466,7 @@ void UISystem::update(double dt){
                                 }
                             }
                             container.boxes[b].rect.setHeight(effectiveCellHeight);
-                        }else if (container.type == ContainerType::VERTICAL_WRAP){
+                        }else if (container.type == LayoutGroupType::VERTICAL_WRAP){
                             if (container.useAllWrapSpace){
                                 int column = b / numObjInLine;
                                 int columnIndex = b % numObjInLine;
@@ -2543,8 +2543,8 @@ void UISystem::update(double dt){
                 if (layout.width < minSize.x) layout.width = minSize.x;
                 if (layout.height < minSize.y) layout.height = minSize.y;
 
-                if (TextEditComponent* ownerEdit = findTextEditForTextChild(entity)){
-                    ownerEdit->needUpdateTextEdit = true;
+                if (InputFieldComponent* ownerEdit = findInputFieldForTextChild(entity)){
+                    ownerEdit->needUpdateInputField = true;
                 }else{
                     text.needUpdateText = true;
                 }
@@ -2575,12 +2575,12 @@ void UISystem::update(double dt){
         
     }
 
-    auto textedits = scene->getComponentArray<TextEditComponent>();
-    for (int i = 0; i < textedits->size(); i++){
-        Entity entity = textedits->getEntity(i);
+    auto inputfields = scene->getComponentArray<InputFieldComponent>();
+    for (int i = 0; i < inputfields->size(); i++){
+        Entity entity = inputfields->getEntity(i);
         UIComponent* ui = scene->findComponent<UIComponent>(entity);
         if (ui){
-            blinkCursorTextEdit(dt, textedits->getComponentFromIndex(i), *ui);
+            blinkCursorInputField(dt, inputfields->getComponentFromIndex(i), *ui);
         }
     }
 
@@ -2590,10 +2590,10 @@ bool UISystem::hasPendingImages() const{
     return pendingImages;
 }
 
-bool UISystem::isTextEditFocused(){
-    auto textedits = scene->getComponentArray<TextEditComponent>();
-    for (int i = 0; i < textedits->size(); i++){
-        Entity entity = textedits->getEntity(i);
+bool UISystem::isInputFieldFocused(){
+    auto inputfields = scene->getComponentArray<InputFieldComponent>();
+    for (int i = 0; i < inputfields->size(); i++){
+        Entity entity = inputfields->getEntity(i);
         Signature signature = scene->getSignature(entity);
         if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
@@ -2622,17 +2622,17 @@ void UISystem::resetButtonStates() {
 }
 
 bool UISystem::eventOnCharInput(wchar_t codepoint){
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<TextEditComponent>()) && signature.test(scene->getComponentId<UIComponent>())){
-            TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
+        if (signature.test(scene->getComponentId<InputFieldComponent>()) && signature.test(scene->getComponentId<UIComponent>())){
+            InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
             if (ui.focused && isUIActive(entity, signature)){
-                TextComponent* text = scene->findComponent<TextComponent>(textedit.text);
-                if (text && handleTextEditCharInput(textedit, *text, ui, codepoint)){
+                TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
+                if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
                     return true;
                 }
             }
@@ -2643,17 +2643,17 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
 }
 
 bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<TextEditComponent>()) && signature.test(scene->getComponentId<UIComponent>())){
-            TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
+        if (signature.test(scene->getComponentId<InputFieldComponent>()) && signature.test(scene->getComponentId<UIComponent>())){
+            InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
             if (ui.focused && isUIActive(entity, signature)){
-                TextComponent* text = scene->findComponent<TextComponent>(textedit.text);
-                if (text && handleTextEditKeyDown(textedit, *text, ui, key, repeat, mods)){
+                TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
+                if (text && handleInputFieldKeyDown(inputfield, *text, ui, key, repeat, mods)){
                     return true;
                 }
             }
@@ -2706,29 +2706,29 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
     }
 
     Transform* transform = scene->findComponent<Transform>(entity);
-    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
     if (!transform || !layout)
         return;
 
-    if (signature.test(scene->getComponentId<TextEditComponent>())){
-        TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
-        if (!textedit.disabled){
-            TextComponent* text = scene->findComponent<TextComponent>(textedit.text);
+    if (signature.test(scene->getComponentId<InputFieldComponent>())){
+        InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
+        if (!inputfield.disabled){
+            TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
             ImageComponent* img = scene->findComponent<ImageComponent>(entity);
             if (text && img){
                 float localX = x - transform->worldPosition.x;
                 bool extendSelection = (Input::getModifiers() & D_MODIFIER_SHIFT) != 0;
                 if (text->text.empty()){
-                    textedit.cursorIndex = 0;
+                    inputfield.cursorIndex = 0;
                     if (!extendSelection){
-                        textedit.selectionAnchor = 0;
+                        inputfield.selectionAnchor = 0;
                     }
-                    textEditResetBlink(textedit);
-                    textedit.needUpdateTextEdit = true;
+                    inputFieldResetBlink(inputfield);
+                    inputfield.needUpdateInputField = true;
                 }else{
-                    setTextEditCursorFromLocalX(textedit, *text, *img, localX, extendSelection);
+                    setInputFieldCursorFromLocalX(inputfield, *text, *img, localX, extendSelection);
                 }
-                textEditSelecting = entity;
+                inputFieldSelecting = entity;
 
                 bool hadInvalid = false;
                 std::wstring wideText = StringUtils::utf8ToWString(text->text, hadInvalid);
@@ -2743,9 +2743,9 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
         ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
         if (scrollbar.bar != NULL_ENTITY &&
             scene->findComponent<Transform>(scrollbar.bar) &&
-            scene->findComponent<UILayoutComponent>(scrollbar.bar)){
+            scene->findComponent<RectTransformComponent>(scrollbar.bar)){
             Transform& bartransform = scene->getComponent<Transform>(scrollbar.bar);
-            UILayoutComponent& barlayout = scene->getComponent<UILayoutComponent>(scrollbar.bar);
+            RectTransformComponent& barlayout = scene->getComponent<RectTransformComponent>(scrollbar.bar);
 
             if (isCoordInside(x, y, bartransform, barlayout)){
                 scrollbar.barPointerDown = true;
@@ -2774,18 +2774,18 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
         return;
     signature = scene->getSignature(entity);
     if (!signature.test(scene->getComponentId<Transform>()) ||
-        !signature.test(scene->getComponentId<UILayoutComponent>()) ||
+        !signature.test(scene->getComponentId<RectTransformComponent>()) ||
         !signature.test(scene->getComponentId<UIComponent>()))
         return;
     transform = &scene->getComponent<Transform>(entity);
-    layout = &scene->getComponent<UILayoutComponent>(entity);
+    layout = &scene->getComponent<RectTransformComponent>(entity);
     ui = &scene->getComponent<UIComponent>(entity);
 
     if (signature.test(scene->getComponentId<PanelComponent>())){
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-        UILayoutComponent defaultHeaderLayout;
-        const UILayoutComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<UILayoutComponent>(panel.headercontainer)
-            ? scene->getComponent<UILayoutComponent>(panel.headercontainer)
+        RectTransformComponent defaultHeaderLayout;
+        const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
+            ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
             : defaultHeaderLayout;
 
         Rect edgeRight;
@@ -2818,7 +2818,7 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
 
         if (panel.canMove && panel.headercontainer != NULL_ENTITY){
             Transform* headertransform = scene->findComponent<Transform>(panel.headercontainer);
-            UILayoutComponent* headerlayoutPtr = scene->findComponent<UILayoutComponent>(panel.headercontainer);
+            RectTransformComponent* headerlayoutPtr = scene->findComponent<RectTransformComponent>(panel.headercontainer);
             if (headertransform && headerlayoutPtr && isCoordInside(x, y, *headertransform, *headerlayoutPtr)){
                 panel.headerPointerDown = true;
                 pointerInternalGesture = true;
@@ -2840,8 +2840,8 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
             return;
     }
 
-    if (scene->findComponent<TextEditComponent>(entity))
-        scene->getComponent<TextEditComponent>(entity).needUpdateTextEdit = true;
+    if (scene->findComponent<InputFieldComponent>(entity))
+        scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;
 }
 
 bool UISystem::eventOnPointerDown(float x, float y){
@@ -2852,7 +2852,7 @@ bool UISystem::eventOnPointerDown(float x, float y){
     pointerDragging = false;
     pointerInternalGesture = false;
 
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
 
     std::vector<Entity> layoutEntities;
     layoutEntities.reserve(layouts->size());
@@ -2861,7 +2861,7 @@ bool UISystem::eventOnPointerDown(float x, float y){
     }
 
     for (Entity entity : layoutEntities){
-        UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
         if (!layout){
             continue;
         }
@@ -2897,9 +2897,9 @@ bool UISystem::eventOnPointerDown(float x, float y){
                         ui.onLostFocus.call();
                         if (scene->isEntityCreated(entity)){
                             signature = scene->getSignature(entity);
-                            if (signature.test(scene->getComponentId<TextEditComponent>())){
-                                TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
-                                textedit.needUpdateTextEdit = true;
+                            if (signature.test(scene->getComponentId<InputFieldComponent>())){
+                                InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
+                                inputfield.needUpdateInputField = true;
                             }
                         }
                     }
@@ -2936,7 +2936,7 @@ bool UISystem::eventOnPointerDown(float x, float y){
 bool UISystem::eventOnPointerUp(float x, float y){
     lastPointerPos = Vector2(-1, -1);
 
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
     Entity currentUIFromPointer = NULL_ENTITY;
 
     std::vector<Entity> layoutEntities;
@@ -2946,7 +2946,7 @@ bool UISystem::eventOnPointerUp(float x, float y){
     }
 
     for (Entity entity : layoutEntities){
-        UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
         if (!layout)
             continue;
         Signature signature = scene->getSignature(entity);
@@ -3037,7 +3037,7 @@ bool UISystem::eventOnPointerUp(float x, float y){
     lastPanelFromPointer = NULL_ENTITY;
     pointerDragging = false;
     pointerInternalGesture = false;
-    textEditSelecting = NULL_ENTITY;
+    inputFieldSelecting = NULL_ENTITY;
 
     if (lastUIFromPointer != NULL_ENTITY){
         lastUIFromPointer = NULL_ENTITY;
@@ -3051,11 +3051,11 @@ bool UISystem::eventOnPointerUp(float x, float y){
 
 void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
     Transform* transform = scene->findComponent<Transform>(entity);
-    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
     ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity);
     if (!transform || !layout || !scrollbar || !scrollbar->barPointerDown || scrollbar->barSize >= 1.0)
         return;
-    if (!scene->findComponent<Transform>(scrollbar->bar) || !scene->findComponent<UILayoutComponent>(scrollbar->bar))
+    if (!scene->findComponent<Transform>(scrollbar->bar) || !scene->findComponent<RectTransformComponent>(scrollbar->bar))
         return;
 
     Entity bar = scrollbar->bar;
@@ -3102,7 +3102,7 @@ void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
         scrollbar = scene->findComponent<ScrollbarComponent>(entity);
     }
 
-    UILayoutComponent* barlayout = scene->findComponent<UILayoutComponent>(bar);
+    RectTransformComponent* barlayout = scene->findComponent<RectTransformComponent>(bar);
     if (scrollbar && barlayout){
         if (scrollbar->type == ScrollbarType::VERTICAL){
             barlayout->anchorPointTop = pos;
@@ -3147,13 +3147,13 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
                 return;
         }
 
-        if (textEditSelecting == entity){
-            TextEditComponent* textedit = scene->findComponent<TextEditComponent>(entity);
-            if (textedit && !textedit->disabled){
-                TextComponent* text = scene->findComponent<TextComponent>(textedit->text);
+        if (inputFieldSelecting == entity){
+            InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
+            if (inputfield && !inputfield->disabled){
+                TextComponent* text = scene->findComponent<TextComponent>(inputfield->text);
                 ImageComponent* img = scene->findComponent<ImageComponent>(entity);
                 if (text && img){
-                    setTextEditCursorFromLocalX(*textedit, *text, *img, localX, true);
+                    setInputFieldCursorFromLocalX(*inputfield, *text, *img, localX, true);
                 }
             }
         }
@@ -3162,7 +3162,7 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
     applyScrollbarPointerPosition(entity, x, y);
 
     transform = scene->findComponent<Transform>(entity);
-    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
     PanelComponent* panel = scene->findComponent<PanelComponent>(entity);
     if (!transform || !layout || !panel)
         return;
@@ -3173,7 +3173,7 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 
         panel->onMove.call();
         transform = scene->findComponent<Transform>(entity);
-        layout = scene->findComponent<UILayoutComponent>(entity);
+        layout = scene->findComponent<RectTransformComponent>(entity);
         panel = scene->findComponent<PanelComponent>(entity);
         if (!transform || !layout || !panel)
             return;
@@ -3221,13 +3221,13 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 }
 
 bool UISystem::eventOnPointerMove(float x, float y){
-    auto layouts = scene->getComponentArray<UILayoutComponent>();
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
 
     CursorType cursor = CursorType::ARROW;
     Entity currentUIFromPointerHover = NULL_ENTITY;
 
     for (int i = 0; i < layouts->size(); i++){
-        UILayoutComponent& layout = layouts->getComponentFromIndex(i);
+        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
 
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -3246,17 +3246,17 @@ bool UISystem::eventOnPointerMove(float x, float y){
                         currentUIFromPointerHover = entity;
                         cursor = CursorType::ARROW;
 
-                        if (signature.test(scene->getComponentId<TextEditComponent>())){
+                        if (signature.test(scene->getComponentId<InputFieldComponent>())){
                             cursor = CursorType::IBEAM;
 
                         }else if (signature.test(scene->getComponentId<PanelComponent>())){
                             PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
 
-                            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+                            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
                             Transform& transform = scene->getComponent<Transform>(entity);
-                            UILayoutComponent defaultHeaderLayout;
-                            const UILayoutComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<UILayoutComponent>(panel.headercontainer)
-                                ? scene->getComponent<UILayoutComponent>(panel.headercontainer)
+                            RectTransformComponent defaultHeaderLayout;
+                            const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
+                                ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
                                 : defaultHeaderLayout;
 
                             Rect edgeRight;
@@ -3338,7 +3338,7 @@ bool UISystem::eventOnPointerMove(float x, float y){
     return false;
 }
 
-bool UISystem::isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout){
+bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout){
     Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
 
     if (point.x >= (transform.worldPosition.x) &&
@@ -3350,7 +3350,7 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, UILayoutCom
     return false;
 }
 
-bool UISystem::isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout, Vector2 center){
+bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout, Vector2 center){
     Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
 
     if (point.x >= (transform.worldPosition.x - center.x) &&
@@ -3365,7 +3365,7 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, UILayoutCom
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<UIComponent>() ||
-        componentId == scene->getComponentId<UILayoutComponent>() ||
+        componentId == scene->getComponentId<RectTransformComponent>() ||
         componentId == scene->getComponentId<ImageComponent>() ||
         componentId == scene->getComponentId<Transform>()) {
         if (entity == lastUIFromPointer) {
@@ -3427,25 +3427,25 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             progressbar.fill = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<TextEditComponent>()) {
-        TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
-        if (textedit.text != NULL_ENTITY){
-            if (isEntityChild(textedit.text, entity)){
-                scene->destroyEntity(textedit.text);
+    } else if (componentId == scene->getComponentId<InputFieldComponent>()) {
+        InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
+        if (inputfield.text != NULL_ENTITY){
+            if (isEntityChild(inputfield.text, entity)){
+                scene->destroyEntity(inputfield.text);
             }
-            textedit.text = NULL_ENTITY;
+            inputfield.text = NULL_ENTITY;
         }
-        if (textedit.selection != NULL_ENTITY){
-            if (isEntityChild(textedit.selection, entity)){
-                scene->destroyEntity(textedit.selection);
+        if (inputfield.selection != NULL_ENTITY){
+            if (isEntityChild(inputfield.selection, entity)){
+                scene->destroyEntity(inputfield.selection);
             }
-            textedit.selection = NULL_ENTITY;
+            inputfield.selection = NULL_ENTITY;
         }
-        if (textedit.cursor != NULL_ENTITY){
-            if (isEntityChild(textedit.cursor, entity)){
-                scene->destroyEntity(textedit.cursor);
+        if (inputfield.cursor != NULL_ENTITY){
+            if (isEntityChild(inputfield.cursor, entity)){
+                scene->destroyEntity(inputfield.cursor);
             }
-            textedit.cursor = NULL_ENTITY;
+            inputfield.cursor = NULL_ENTITY;
         }
     } else if (componentId == scene->getComponentId<TextComponent>()) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);

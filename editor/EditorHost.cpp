@@ -89,7 +89,7 @@ void EditorHost::registerProjectSaveDialog(std::function<void()> callback) {
     }
 }
 
-Properties* EditorHost::getPropertiesWindow() const {
+InspectorWindow* EditorHost::getInspectorWindow() const {
     return nullptr;
 }
 

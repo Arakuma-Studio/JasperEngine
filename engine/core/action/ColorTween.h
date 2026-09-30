@@ -1,21 +1,21 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef COLORACTION_H
-#define COLORACTION_H
+#ifndef COLORTWEEN_H
+#define COLORTWEEN_H
 
-#include "TimedAction.h"
+#include "Tween.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API ColorAction: public TimedAction{
+    class JASPERENGINE_API ColorTween: public Tween{
 
     public:
-        ColorAction(Scene* scene);
-        ColorAction(Scene* scene, Entity entity);
+        ColorTween(Scene* scene);
+        ColorTween(Scene* scene, Entity entity);
 
         void setAction(Vector3 startColor, Vector3 endColor, float duration, bool loop=false);
         void setAction(Vector4 startColor, Vector4 endColor, float duration, bool loop=false);
     };
 }
 
-#endif //COLORACTION_H
+#endif //COLORTWEEN_H

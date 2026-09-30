@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Structure.h"
+#include "HierarchyWindow.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -24,9 +24,9 @@
 #include "command/type/ModelLoadCmd.h"
 #include "component/InstancedMeshComponent.h"
 #include "subsystem/MeshSystem.h"
-#include "command/type/ImportEntityBundleCmd.h"
-#include "command/type/RemoveEntityFromBundleCmd.h"
-#include "command/type/AddEntityToBundleCmd.h"
+#include "command/type/ImportPrefabCmd.h"
+#include "command/type/RemoveEntityFromPrefabCmd.h"
+#include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityPayload.h"
@@ -52,21 +52,21 @@ static bool hasScripts(Scene* scene, Entity entity) {
     return scriptComponent && !scriptComponent->scripts.empty();
 }
 
-// Collapsed bundle roots also show the script icon when any child has a script
-static bool markBundleScripts(editor::TreeNode& node) {
+// Collapsed prefab roots also show the script icon when any child has a script
+static bool markPrefabScripts(editor::TreeNode& node) {
     bool hasChildScript = false;
     for (editor::TreeNode& child : node.children) {
-        if (markBundleScripts(child)) {
+        if (markPrefabScripts(child)) {
             hasChildScript = true;
         }
     }
-    if (node.isBundleRoot) {
+    if (node.isPrefabRoot) {
         node.hasChildScript = hasChildScript;
     }
     return node.hasScript || hasChildScript;
 }
 
-std::vector<Entity> editor::Structure::getTopLevelSelectedEntities(Entity draggedEntity) {
+std::vector<Entity> editor::HierarchyWindow::getTopLevelSelectedEntities(Entity draggedEntity) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return {draggedEntity};
@@ -114,7 +114,7 @@ std::vector<Entity> editor::Structure::getTopLevelSelectedEntities(Entity dragge
     return result;
 }
 
-std::vector<Entity> editor::Structure::getMovableDraggedEntities(Entity draggedEntity, const TreeNode& targetNode, InsertionType type) {
+std::vector<Entity> editor::HierarchyWindow::getMovableDraggedEntities(Entity draggedEntity, const TreeNode& targetNode, InsertionType type) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return {};
@@ -184,7 +184,7 @@ std::vector<Entity> editor::Structure::getMovableDraggedEntities(Entity draggedE
     return movableEntities;
 }
 
-uint32_t editor::Structure::getNodeSceneId(const TreeNode& node) const {
+uint32_t editor::HierarchyWindow::getNodeSceneId(const TreeNode& node) const {
     if (node.entitySceneId != 0) {
         return node.entitySceneId;
     }
@@ -192,7 +192,7 @@ uint32_t editor::Structure::getNodeSceneId(const TreeNode& node) const {
     return project->getSelectedSceneId();
 }
 
-void editor::Structure::collectVisibleEntitySelectionOrder(const TreeNode& node, bool hasSearch) {
+void editor::HierarchyWindow::collectVisibleEntitySelectionOrder(const TreeNode& node, bool hasSearch) {
     if (hasSearch && !node.matchesSearch && !node.hasMatchingDescendant) {
         return;
     }
@@ -206,7 +206,7 @@ void editor::Structure::collectVisibleEntitySelectionOrder(const TreeNode& node,
     }
 }
 
-std::vector<Entity> editor::Structure::getEntitySelectionRange(uint32_t sceneId, Entity startEntity, Entity endEntity) const {
+std::vector<Entity> editor::HierarchyWindow::getEntitySelectionRange(uint32_t sceneId, Entity startEntity, Entity endEntity) const {
     int startIndex = -1;
     int endIndex = -1;
 
@@ -242,7 +242,7 @@ std::vector<Entity> editor::Structure::getEntitySelectionRange(uint32_t sceneId,
     return range;
 }
 
-void editor::Structure::removeSelectedEntity(uint32_t sceneId, Entity entity) {
+void editor::HierarchyWindow::removeSelectedEntity(uint32_t sceneId, Entity entity) {
     std::vector<Entity> selectedEntities = project->getSelectedEntities(sceneId);
     selectedEntities.erase(
         std::remove(selectedEntities.begin(), selectedEntities.end(), entity),
@@ -251,7 +251,7 @@ void editor::Structure::removeSelectedEntity(uint32_t sceneId, Entity entity) {
     project->replaceSelectedEntities(sceneId, selectedEntities);
 }
 
-void editor::Structure::applyEntitySelection(uint32_t sceneId, Entity entity, bool shiftPressed, bool ctrlPressed) {
+void editor::HierarchyWindow::applyEntitySelection(uint32_t sceneId, Entity entity, bool shiftPressed, bool ctrlPressed) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene || entity == NULL_ENTITY || !sceneProject->scene->isEntityCreated(entity)) {
         return;
@@ -290,7 +290,7 @@ void editor::Structure::applyEntitySelection(uint32_t sceneId, Entity entity, bo
     selectionAnchorEntity = entity;
 }
 
-void editor::Structure::clearSubSelectionForEntity(uint32_t sceneId, Entity entity) {
+void editor::HierarchyWindow::clearSubSelectionForEntity(uint32_t sceneId, Entity entity) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->sceneRender) {
         return;
@@ -313,12 +313,12 @@ void editor::Structure::clearSubSelectionForEntity(uint32_t sceneId, Entity enti
     }
 }
 
-void editor::Structure::resetEntitySelectionAnchor() {
+void editor::HierarchyWindow::resetEntitySelectionAnchor() {
     selectionAnchorSceneId = NULL_PROJECT_SCENE;
     selectionAnchorEntity = NULL_ENTITY;
 }
 
-void editor::Structure::moveCameraToEditorView(Entity cameraEntity) {
+void editor::HierarchyWindow::moveCameraToEditorView(Entity cameraEntity) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene || !sceneProject->sceneRender) {
         return;
@@ -428,7 +428,7 @@ void editor::Structure::moveCameraToEditorView(Entity cameraEntity) {
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(command);
 }
 
-editor::Structure::Structure(Project* project, SceneWindow* sceneWindow){
+editor::HierarchyWindow::HierarchyWindow(Project* project, SceneWindow* sceneWindow){
     this->project = project;
     this->sceneWindow = sceneWindow;
     this->windowOpen = true;
@@ -436,7 +436,7 @@ editor::Structure::Structure(Project* project, SceneWindow* sceneWindow){
     this->openParent = NULL_ENTITY;
 }
 
-void editor::Structure::setOpen(bool open){
+void editor::HierarchyWindow::setOpen(bool open){
     if (open){
         if (!windowOpen){
             focusRequested = true;
@@ -449,32 +449,32 @@ void editor::Structure::setOpen(bool open){
     focusRequested = false;
 }
 
-bool editor::Structure::isOpen() const{
+bool editor::HierarchyWindow::isOpen() const{
     return windowOpen;
 }
 
-const std::vector<editor::CreateMenuEntry>& editor::Structure::getCreateMenuEntries(){
+const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMenuEntries(){
     using T = EntityCreationType;
     // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, shortcut
     static const std::vector<CreateMenuEntry> entries = {
         {nullptr, "Create Empty", ICON_FA_CUBE, T::OBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
         {nullptr, "Create Empty (No Transform)", ICON_FA_CIRCLE_DOT, T::EMPTY, "GameObject", CREATE_IN_ALL, false, true},
 
-        {"3D Object", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
-        {"3D Object", "Sphere", ICON_FA_CIRCLE, T::SPHERE, "Sphere", CREATE_IN_3D},
-        {"3D Object", "Capsule", ICON_FA_CAPSULES, T::CAPSULE, "Capsule", CREATE_IN_3D},
-        {"3D Object", "Cylinder", ICON_FA_DATABASE, T::CYLINDER, "Cylinder", CREATE_IN_3D},
-        {"3D Object", "Plane", ICON_FA_SQUARE, T::PLANE, "Plane", CREATE_IN_3D},
-        {"3D Object", "Quad", ICON_FA_SQUARE_FULL, T::WALL, "Quad", CREATE_IN_3D},
-        {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
-        {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
-        {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
-        {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+        {"3D GameObject", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
+        {"3D GameObject", "Sphere", ICON_FA_CIRCLE, T::SPHERE, "Sphere", CREATE_IN_3D},
+        {"3D GameObject", "Capsule", ICON_FA_CAPSULES, T::CAPSULE, "Capsule", CREATE_IN_3D},
+        {"3D GameObject", "Cylinder", ICON_FA_DATABASE, T::CYLINDER, "Cylinder", CREATE_IN_3D},
+        {"3D GameObject", "Plane", ICON_FA_SQUARE, T::PLANE, "Plane", CREATE_IN_3D},
+        {"3D GameObject", "Quad", ICON_FA_SQUARE_FULL, T::WALL, "Quad", CREATE_IN_3D},
+        {"3D GameObject", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
+        {"3D GameObject", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
+        {"3D GameObject", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        {"3D GameObject", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
 
-        {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
-        {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
-        {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
-        {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::OCCLUDER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
+        {"2D GameObject", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
+        {"2D GameObject", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
+        {"2D GameObject", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
+        {"2D GameObject", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLES, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINES, "Line", CREATE_IN_WORLD},
@@ -494,24 +494,24 @@ const std::vector<editor::CreateMenuEntry>& editor::Structure::getCreateMenuEntr
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
         {"UI", "Scrollbar", ICON_FA_ARROWS_UP_DOWN, T::SCROLLBAR, "Scrollbar", CREATE_IN_ALL},
         {"UI", "Progress Bar", ICON_FA_BARS_PROGRESS, T::PROGRESSBAR, "Progress Bar", CREATE_IN_ALL},
-        {"UI", "Input Field", ICON_FA_I_CURSOR, T::TEXTEDIT, "Input Field", CREATE_IN_ALL},
+        {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
         {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::CONTAINER, "Layout Group", CREATE_IN_ALL, true},
 
-        {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::BODY3D, "Rigidbody", CREATE_IN_3D},
+        {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},
         {"Physics", "Joint", ICON_FA_LINK, T::JOINT3D, "Joint", CREATE_IN_3D},
-        {"Physics", "Rigidbody 2D", ICON_FA_WEIGHT_HANGING, T::BODY2D, "Rigidbody 2D", CREATE_IN_2D, true},
+        {"Physics", "Rigidbody 2D", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY2D, "Rigidbody 2D", CREATE_IN_2D, true},
         {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
 
         {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKY, "Skybox", CREATE_IN_3D},
         {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
 
-        {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_ACTION, "Position Tween", CREATE_IN_ALL},
-        {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_ACTION, "Rotation Tween", CREATE_IN_ALL},
-        {"Tween", "Scale Tween", ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, T::SCALE_ACTION, "Scale Tween", CREATE_IN_ALL},
-        {"Tween", "Color Tween", ICON_FA_PALETTE, T::COLOR_ACTION, "Color Tween", CREATE_IN_ALL},
-        {"Tween", "Alpha Tween", ICON_FA_EYE, T::ALPHA_ACTION, "Alpha Tween", CREATE_IN_ALL},
+        {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_TWEEN, "Position Tween", CREATE_IN_ALL},
+        {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_TWEEN, "Rotation Tween", CREATE_IN_ALL},
+        {"Tween", "Scale Tween", ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, T::SCALE_TWEEN, "Scale Tween", CREATE_IN_ALL},
+        {"Tween", "Color Tween", ICON_FA_PALETTE, T::COLOR_TWEEN, "Color Tween", CREATE_IN_ALL},
+        {"Tween", "Alpha Tween", ICON_FA_EYE, T::ALPHA_TWEEN, "Alpha Tween", CREATE_IN_ALL},
 
         {"Animation", "Animation", ICON_FA_FILM, T::ANIMATION, "Animation", CREATE_IN_ALL},
         {"Animation", "Sprite Animation", ICON_FA_PLAY, T::SPRITE_ANIMATION, "Sprite Animation", CREATE_IN_ALL},
@@ -525,7 +525,7 @@ const std::vector<editor::CreateMenuEntry>& editor::Structure::getCreateMenuEntr
     return entries;
 }
 
-bool editor::Structure::isCreateEntryAvailable(const CreateMenuEntry& entry, SceneType sceneType){
+bool editor::HierarchyWindow::isCreateEntryAvailable(const CreateMenuEntry& entry, SceneType sceneType){
     switch (sceneType) {
         case SceneType::SCENE_3D: return (entry.scenes & CREATE_IN_3D) != 0;
         case SceneType::SCENE_2D: return (entry.scenes & CREATE_IN_2D) != 0;
@@ -534,7 +534,7 @@ bool editor::Structure::isCreateEntryAvailable(const CreateMenuEntry& entry, Sce
     return true;
 }
 
-void editor::Structure::createGameObject(const CreateMenuEntry& entry, Entity parent, bool addToBundle){
+void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return;
@@ -543,7 +543,7 @@ void editor::Structure::createGameObject(const CreateMenuEntry& entry, Entity pa
         parent = NULL_ENTITY;
     }
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-        new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToBundle));
+        new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab));
     openParent = parent;
     // The new GameObject is selected: scroll it into view, as Unity does
     std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
@@ -552,7 +552,7 @@ void editor::Structure::createGameObject(const CreateMenuEntry& entry, Entity pa
     }
 }
 
-Entity editor::Structure::getSelectedParentForCreate() const{
+Entity editor::HierarchyWindow::getSelectedParentForCreate() const{
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return NULL_ENTITY;
@@ -569,8 +569,8 @@ Entity editor::Structure::getSelectedParentForCreate() const{
 
 static const char* createSubmenuIcon(const char* submenu){
     const std::string name = submenu;
-    if (name == "3D Object") return ICON_FA_CUBE;
-    if (name == "2D Object") return ICON_FA_IMAGE;
+    if (name == "3D GameObject") return ICON_FA_CUBE;
+    if (name == "2D GameObject") return ICON_FA_IMAGE;
     if (name == "Effects") return ICON_FA_FIRE;
     if (name == "Light") return ICON_FA_LIGHTBULB;
     if (name == "Audio") return ICON_FA_VOLUME_HIGH;
@@ -584,7 +584,7 @@ static const char* createSubmenuIcon(const char* submenu){
 
 // Unity-order create items: top-level items, submenus, then the trailing items
 // (Camera), with a separator wherever the list switches between the two.
-void editor::Structure::showCreateMenuItems(bool atRoot, Entity parent, bool addToBundle){
+void editor::HierarchyWindow::showCreateMenuItems(bool atRoot, Entity parent, bool addToPrefab){
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject) {
         return;
@@ -609,7 +609,7 @@ void editor::Structure::showCreateMenuItems(bool atRoot, Entity parent, bool add
             if (lastKind == 1) ImGui::Separator();
             lastKind = 0;
             if (ImGui::MenuItem(itemLabel(entry).c_str())) {
-                createGameObject(entry, parent, addToBundle);
+                createGameObject(entry, parent, addToPrefab);
             }
             continue;
         }
@@ -632,7 +632,7 @@ void editor::Structure::showCreateMenuItems(bool atRoot, Entity parent, bool add
                 if (child.separatorBefore && !first) ImGui::Separator();
                 first = false;
                 if (ImGui::MenuItem(itemLabel(child).c_str())) {
-                    createGameObject(child, parent, addToBundle);
+                    createGameObject(child, parent, addToPrefab);
                 }
             }
             ImGui::EndMenu();
@@ -640,7 +640,7 @@ void editor::Structure::showCreateMenuItems(bool atRoot, Entity parent, bool add
     }
 }
 
-void editor::Structure::showToolbar(){
+void editor::HierarchyWindow::showToolbar(){
     // Unity's "+ v" create dropdown, then the search field filling the rest
     if (ImGui::Button(ICON_FA_PLUS " " ICON_FA_CARET_DOWN)) {
         ImGui::OpenPopup("HierarchyCreateMenu");
@@ -657,7 +657,7 @@ void editor::Structure::showToolbar(){
     }
 }
 
-void editor::Structure::showSceneMenu(SceneProject* sceneProject){
+void editor::HierarchyWindow::showSceneMenu(SceneProject* sceneProject){
     if (!sceneProject) {
         return;
     }
@@ -697,72 +697,72 @@ void editor::Structure::showSceneMenu(SceneProject* sceneProject){
     }
 }
 
-void editor::Structure::showPrefabMenu(const TreeNode& node){
+void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
     const uint32_t sceneId = project->getSelectedSceneId();
 
-    if (!node.isBundle && !node.isParentBundle) {
+    if (!node.isPrefab && !node.isParentPrefab) {
         if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Create Prefab", nullptr, false, !node.isLocked && node.hasTransform)) {
-            saveNodeAsBundle(node);
+            saveNodeAsPrefab(node);
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            std::filesystem::path directory = std::filesystem::relative(getBundleSaveDirectory(), project->getProjectPath());
+            std::filesystem::path directory = std::filesystem::relative(getPrefabSaveDirectory(), project->getProjectPath());
             ImGui::SetItemTooltip("Saves to %s", directory == "." ? "the project root" : directory.string().c_str());
         }
 
-        const auto& sceneBundles = project->getEntityBundles(sceneId);
-        if (ImGui::BeginMenu(ICON_FA_BOXES_STACKED "  Add to Prefab", !sceneBundles.empty())) {
-            for (const auto& [path, bundlePtr] : sceneBundles) {
-                auto sceneIt = bundlePtr->instances.find(sceneId);
-                if (sceneIt == bundlePtr->instances.end() || sceneIt->second.empty()) continue;
+        const auto& scenePrefabs = project->getPrefabs(sceneId);
+        if (ImGui::BeginMenu(ICON_FA_BOXES_STACKED "  Add to Prefab", !scenePrefabs.empty())) {
+            for (const auto& [path, prefabPtr] : scenePrefabs) {
+                auto sceneIt = prefabPtr->instances.find(sceneId);
+                if (sceneIt == prefabPtr->instances.end() || sceneIt->second.empty()) continue;
                 std::string label = path.stem().string();
                 if (ImGui::MenuItem(label.c_str())) {
                     Entity rootEntity = sceneIt->second.front().rootEntity;
-                    CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, rootEntity));
+                    CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToPrefabCmd(project, sceneId, node.id, rootEntity));
                 }
             }
             ImGui::EndMenu();
         }
     }
 
-    if (node.isParentBundle && !node.isBundleRoot) {
-        if (ImGui::MenuItem(ICON_FA_LOCK_OPEN "  Remove from Prefab", nullptr, false, node.isBundle)) {
-            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, node.id, node.parent));
+    if (node.isParentPrefab && !node.isPrefabRoot) {
+        if (ImGui::MenuItem(ICON_FA_LOCK_OPEN "  Remove from Prefab", nullptr, false, node.isPrefab)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromPrefabCmd(project, sceneId, node.id, node.parent));
         }
-        if (ImGui::MenuItem(ICON_FA_BOXES_STACKED "  Add to Prefab", nullptr, false, !node.isBundle)) {
-            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, node.parent));
+        if (ImGui::MenuItem(ICON_FA_BOXES_STACKED "  Add to Prefab", nullptr, false, !node.isPrefab)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToPrefabCmd(project, sceneId, node.id, node.parent));
         }
     }
 
-    if (node.isBundleRoot && node.hasBundleParent) {
-        bool isNestedMember = node.isBundle && (node.bundleFilepath != node.nestedBundleFilepath);
+    if (node.isPrefabRoot && node.hasPrefabParent) {
+        bool isNestedMember = node.isPrefab && (node.prefabFilepath != node.nestedPrefabFilepath);
         if (ImGui::MenuItem(ICON_FA_LOCK_OPEN "  Remove from Parent Prefab", nullptr, false, isNestedMember)) {
-            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, node.id, node.parent));
+            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromPrefabCmd(project, sceneId, node.id, node.parent));
         }
         if (ImGui::MenuItem(ICON_FA_BOXES_STACKED "  Add to Parent Prefab", nullptr, false, !isNestedMember)) {
-            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, node.parent));
+            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToPrefabCmd(project, sceneId, node.id, node.parent));
         }
     }
 
-    if (node.isBundle || node.isBundleRoot) {
+    if (node.isPrefab || node.isPrefabRoot) {
         ImGui::Separator();
-        std::filesystem::path assetPath = node.isBundleRoot ? node.nestedBundleFilepath : node.bundleFilepath;
+        std::filesystem::path assetPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
         }
     }
 }
 
-void editor::Structure::revealInProject(const std::filesystem::path& path){
-    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
+void editor::HierarchyWindow::revealInProject(const std::filesystem::path& path){
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
         std::filesystem::path absolute = path;
         if (absolute.is_relative()) {
             absolute = project->getProjectPath() / absolute;
         }
-        resourcesWindow->revealAsset(absolute);
+        projectWindow->revealAsset(absolute);
     }
 }
 
-void editor::Structure::beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName){
+void editor::HierarchyWindow::beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName){
     renameTarget = target;
     renameSceneId = sceneId;
     renameEntity = entity;
@@ -775,7 +775,7 @@ void editor::Structure::beginRename(RenameTarget target, uint32_t sceneId, Entit
     }
 }
 
-bool editor::Structure::isRenaming(const TreeNode& node) const{
+bool editor::HierarchyWindow::isRenaming(const TreeNode& node) const{
     if (renameTarget == RenameTarget::Scene) {
         return node.isScene && node.id == renameSceneId;
     }
@@ -785,7 +785,7 @@ bool editor::Structure::isRenaming(const TreeNode& node) const{
     return false;
 }
 
-void editor::Structure::drawRenameField(){
+void editor::HierarchyWindow::drawRenameField(){
     renameMissedFrames = 0;
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -815,7 +815,7 @@ void editor::Structure::drawRenameField(){
     }
 }
 
-void editor::Structure::commitRename(){
+void editor::HierarchyWindow::commitRename(){
     const RenameTarget target = renameTarget;
     renameTarget = RenameTarget::None;
     if (renameBuffer[0] == '\0') {
@@ -836,7 +836,7 @@ void editor::Structure::commitRename(){
     }
 }
 
-bool editor::Structure::renameSelected(){
+bool editor::HierarchyWindow::renameSelected(){
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return false;
@@ -846,24 +846,24 @@ bool editor::Structure::renameSelected(){
         return false;
     }
     setOpen(true);
-    ImGui::SetWindowFocus(Structure::WINDOW_NAME);
+    ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
     beginRename(RenameTarget::Entity, sceneProject->id, selected[0], sceneProject->scene->getEntityName(selected[0]));
     return true;
 }
 
-bool editor::Structure::isFocused() const{
+bool editor::HierarchyWindow::isFocused() const{
     return windowOpen && windowFocused;
 }
 
-void editor::Structure::drawInsertionMarker(const ImVec2& p1, const ImVec2& p2) {
+void editor::HierarchyWindow::drawInsertionMarker(const ImVec2& p1, const ImVec2& p2) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImU32 col = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
     float thickness = Theme::dpi(2.0f);
     draw_list->AddLine(p1, p2, col, thickness);
 }
 
-std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
-    if (signature.test(scene->getComponentId<BundleComponent>())){
+std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* scene){
+    if (signature.test(scene->getComponentId<PrefabComponent>())){
         return ICON_FA_CUBE;
     }else if (signature.test(scene->getComponentId<ModelComponent>())){
         return ICON_FA_PERSON_RUNNING;
@@ -881,13 +881,13 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
         return ICON_FA_CLONE;
     }else if (signature.test(scene->getComponentId<MeshComponent>())){
         return ICON_FA_DICE_D20;
-    }else if (signature.test(scene->getComponentId<SkyComponent>())){
+    }else if (signature.test(scene->getComponentId<SkyboxComponent>())){
         return ICON_FA_CLOUD;
     }else if (signature.test(scene->getComponentId<FogComponent>())){
         return ICON_FA_SMOG;
     }else if (signature.test(scene->getComponentId<ReflectionProbeComponent>())){
         return ICON_FA_BULLSEYE;
-    }else if (signature.test(scene->getComponentId<UIContainerComponent>())){
+    }else if (signature.test(scene->getComponentId<LayoutGroupComponent>())){
         return ICON_FA_OBJECT_GROUP;
     }else if (signature.test(scene->getComponentId<ButtonComponent>())){
         return ICON_FA_SQUARE_CARET_RIGHT;
@@ -897,7 +897,7 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
         return ICON_FA_BARS_PROGRESS;
     }else if (signature.test(scene->getComponentId<TextComponent>())){
         return ICON_FA_FONT;
-    }else if (signature.test(scene->getComponentId<TextEditComponent>())){
+    }else if (signature.test(scene->getComponentId<InputFieldComponent>())){
         return ICON_FA_I_CURSOR;
     }else if (signature.test(scene->getComponentId<PolygonComponent>())){
         return ICON_FA_DRAW_POLYGON;
@@ -911,7 +911,7 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
         return ICON_FA_LIGHTBULB;
     }else if (signature.test(scene->getComponentId<Light2DComponent>())){
         return ICON_FA_LIGHTBULB;
-    }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){
+    }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
         return ICON_FA_CIRCLE_HALF_STROKE;
     }else if (signature.test(scene->getComponentId<CameraComponent>())){
         return ICON_FA_VIDEO;
@@ -921,15 +921,15 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
         return ICON_FA_FILM;
     }else if (signature.test(scene->getComponentId<SpriteAnimationComponent>())){
         return ICON_FA_PLAY;
-    }else if (signature.test(scene->getComponentId<PositionActionComponent>())){
+    }else if (signature.test(scene->getComponentId<PositionTweenComponent>())){
         return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
-    }else if (signature.test(scene->getComponentId<RotationActionComponent>())){
+    }else if (signature.test(scene->getComponentId<RotationTweenComponent>())){
         return ICON_FA_ROTATE;
-    }else if (signature.test(scene->getComponentId<ScaleActionComponent>())){
+    }else if (signature.test(scene->getComponentId<ScaleTweenComponent>())){
         return ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
-    }else if (signature.test(scene->getComponentId<ColorActionComponent>())){
+    }else if (signature.test(scene->getComponentId<ColorTweenComponent>())){
         return ICON_FA_PALETTE;
-    }else if (signature.test(scene->getComponentId<AlphaActionComponent>())){
+    }else if (signature.test(scene->getComponentId<AlphaTweenComponent>())){
         return ICON_FA_EYE;
     }else if (signature.test(scene->getComponentId<TranslateTracksComponent>())){
         return ICON_FA_ROUTE;
@@ -939,20 +939,20 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
         return ICON_FA_MAXIMIZE;
     }else if (signature.test(scene->getComponentId<MorphTracksComponent>())){
         return ICON_FA_SHAPES;
-    }else if (signature.test(scene->getComponentId<ParticlesComponent>())){
+    }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         return ICON_FA_FIRE;
-    }else if (signature.test(scene->getComponentId<LinesComponent>())){
+    }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
         return ICON_FA_GRIP_LINES;
     }else if (signature.test(scene->getComponentId<PointsComponent>())){
         return ICON_FA_CIRCLE;
     }else if (signature.test(scene->getComponentId<ActionComponent>())){
         return ICON_FA_PLAY;
-    }else if (signature.test(scene->getComponentId<SoundComponent>())){
+    }else if (signature.test(scene->getComponentId<AudioSourceComponent>())){
         if (signature.test(scene->getComponentId<Transform>())) {
             return ICON_FA_VOLUME_HIGH;
         }
         return ICON_FA_FILE_AUDIO;
-    }else if (signature.test(scene->getComponentId<Body2DComponent>()) || signature.test(scene->getComponentId<Body3DComponent>())){
+    }else if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) || signature.test(scene->getComponentId<RigidbodyComponent>())){
         return ICON_FA_WEIGHT_HANGING;
     }else if (signature.test(scene->getComponentId<Transform>())){
         return ICON_FA_CUBE; // plain GameObject, Unity's generic cube
@@ -961,7 +961,7 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
     return ICON_FA_CIRCLE_DOT;
 }
 
-void editor::Structure::moveDraggedEntitiesToTarget(const std::vector<Entity>& draggedEntities, Entity target, InsertionType type) {
+void editor::HierarchyWindow::moveDraggedEntitiesToTarget(const std::vector<Entity>& draggedEntities, Entity target, InsertionType type) {
     if (draggedEntities.empty()) {
         return;
     }
@@ -996,7 +996,7 @@ void editor::Structure::moveDraggedEntitiesToTarget(const std::vector<Entity>& d
     }
 }
 
-void editor::Structure::moveDraggedEntitiesToRootLevel(const std::vector<Entity>& draggedEntities, const std::unordered_set<Entity>& entitiesSet) {
+void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<Entity>& draggedEntities, const std::unordered_set<Entity>& entitiesSet) {
     if (draggedEntities.empty()) {
         return;
     }
@@ -1027,15 +1027,15 @@ void editor::Structure::moveDraggedEntitiesToRootLevel(const std::vector<Entity>
     moveDraggedEntitiesToTarget(draggedEntities, lastRootEntity, InsertionType::AFTER);
 }
 
-void editor::Structure::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
+void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
 
-        if (path.extension() == ".bundle") {
-            // Import the entity bundle into the current scene using command
+        if (path.extension() == ".prefab") {
+            // Import the prefab into the current scene using command
             std::filesystem::path relativePath = std::filesystem::relative(path, project->getProjectPath());
 
-            ImportEntityBundleCmd* importCmd = new ImportEntityBundleCmd(project, project->getSelectedSceneId(), relativePath, parent, true);
+            ImportPrefabCmd* importCmd = new ImportPrefabCmd(project, project->getSelectedSceneId(), relativePath, parent, true);
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(importCmd);
 
             std::vector<Entity> newEntities = importCmd->getImportedEntities();
@@ -1049,7 +1049,7 @@ void editor::Structure::handleEntityFilesDrop(const std::vector<std::string>& fi
     }
 }
 
-void editor::Structure::handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId) {
+void editor::HierarchyWindow::handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId) {
     if (ownerSceneId == NULL_PROJECT_SCENE) {
         return;
     }
@@ -1103,7 +1103,7 @@ void editor::Structure::handleSceneFilesDropAsChildScenes(const std::vector<std:
     }
 }
 
-void editor::Structure::showAddChildSceneMenu() {
+void editor::HierarchyWindow::showAddChildSceneMenu() {
     if (ImGui::BeginMenu(ICON_FA_FOLDER_TREE "  Add Child Scene")) {
         uint32_t currentSceneId = project->getSelectedSceneId();
         const auto& scenes = project->getScenes();
@@ -1133,7 +1133,7 @@ void editor::Structure::showAddChildSceneMenu() {
     }
 }
 
-bool editor::Structure::nodeMatchesSearch(const TreeNode& node, const std::string& searchLower) {
+bool editor::HierarchyWindow::nodeMatchesSearch(const TreeNode& node, const std::string& searchLower) {
     std::string nodeName = node.name;
     std::string searchStr = searchLower;
 
@@ -1147,7 +1147,7 @@ bool editor::Structure::nodeMatchesSearch(const TreeNode& node, const std::strin
     return nodeName.find(searchStr) != std::string::npos;
 }
 
-bool editor::Structure::hasMatchingDescendant(const TreeNode& node, const std::string& searchLower) {
+bool editor::HierarchyWindow::hasMatchingDescendant(const TreeNode& node, const std::string& searchLower) {
     // Check if any child matches
     for (const auto& child : node.children) {
         if (nodeMatchesSearch(child, searchLower)) {
@@ -1161,7 +1161,7 @@ bool editor::Structure::hasMatchingDescendant(const TreeNode& node, const std::s
     return false;
 }
 
-void editor::Structure::markMatchingNodes(TreeNode& node, const std::string& searchLower) {
+void editor::HierarchyWindow::markMatchingNodes(TreeNode& node, const std::string& searchLower) {
     node.matchesSearch = nodeMatchesSearch(node, searchLower);
     node.hasMatchingDescendant = false;
 
@@ -1173,14 +1173,14 @@ void editor::Structure::markMatchingNodes(TreeNode& node, const std::string& sea
     }
 }
 
-std::vector<char> editor::Structure::buildEntityPayload(const TreeNode& node) {
+std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& node) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
         return {};
     }
 
     std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(node.id);
-    // Stop destroys runtime entities, so none can be moved, referenced or saved as a bundle
+    // Stop destroys runtime entities, so none can be moved, referenced or saved as a prefab
     for (Entity entity : draggedEntities) {
         if (cachedPlayCreatedEntities.count(entity) > 0) {
             return {};
@@ -1197,7 +1197,7 @@ std::vector<char> editor::Structure::buildEntityPayload(const TreeNode& node) {
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
     } else {
         // Embed the full export data (including virtual action children) in the entity payload.
-        // Structure uses the EntityPayload header for reparenting; Resources uses the YAML tail.
+        // Hierarchy uses the EntityPayload header for reparenting; Resources uses the YAML tail.
         entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene);
     }
 
@@ -1217,9 +1217,9 @@ std::vector<char> editor::Structure::buildEntityPayload(const TreeNode& node) {
     return payloadData;
 }
 
-std::filesystem::path editor::Structure::getBundleSaveDirectory() const {
-    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
-        std::filesystem::path currentPath = resourcesWindow->getCurrentPath();
+std::filesystem::path editor::HierarchyWindow::getPrefabSaveDirectory() const {
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+        std::filesystem::path currentPath = projectWindow->getCurrentPath();
         if (!currentPath.empty()) {
             return currentPath;
         }
@@ -1227,19 +1227,19 @@ std::filesystem::path editor::Structure::getBundleSaveDirectory() const {
     return project->getProjectPath();
 }
 
-void editor::Structure::saveNodeAsBundle(const TreeNode& node) {
-    ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow();
-    if (!resourcesWindow) {
+void editor::HierarchyWindow::saveNodeAsPrefab(const TreeNode& node) {
+    ProjectWindow* projectWindow = Backend::getApp().getProjectWindow();
+    if (!projectWindow) {
         return;
     }
 
     std::vector<char> payloadData = buildEntityPayload(node);
     if (!payloadData.empty()) {
-        resourcesWindow->saveEntityFile(getBundleSaveDirectory(), payloadData.data(), payloadData.size());
+        projectWindow->saveEntityFile(getPrefabSaveDirectory(), payloadData.data(), payloadData.size());
     }
 }
 
-void editor::Structure::showTreeNode(editor::TreeNode& node) {
+void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     // Skip nodes that don't match search and don't have matching descendants
     bool hasSearch = strlen(searchBuffer) > 0;
     if (hasSearch && !node.matchesSearch && !node.hasMatchingDescendant) {
@@ -1291,7 +1291,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         // Model entities can exist for a few frames as leaves while their children load
         // asynchronously. Initialize tree state only once children exist so imported
         // model hierarchies start collapsed instead of inheriting an earlier leaf state.
-        ImGui::SetNextItemOpen(!node.isBone && !node.isBundleRoot && !isModelWithChildren, ImGuiCond_Once);
+        ImGui::SetNextItemOpen(!node.isBone && !node.isPrefabRoot && !isModelWithChildren, ImGuiCond_Once);
     }
 
     if(!node.isScene && openParent == node.id) {
@@ -1323,8 +1323,8 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     } else if (node.isPlayCreated) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 0.65f, 1.0f)); // Green: created by the running scene
         pushedHighlightColor = true;
-    } else if (!node.isScene && !node.isChildScene && node.isLocked && node.isBundle) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.67f, 0.74f, 0.85f, 0.95f)); // Muted blue-gray for locked bundle entities
+    } else if (!node.isScene && !node.isChildScene && node.isLocked && node.isPrefab) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.67f, 0.74f, 0.85f, 0.95f)); // Muted blue-gray for locked prefab entities
         pushedHighlightColor = true;
     } else if (!node.isScene && !node.isChildScene && node.isLocked && !node.canEditModelHierarchy) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]); // Use theme's disabled color
@@ -1332,10 +1332,10 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     } else if (node.isChildScene) {
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
         pushedHighlightColor = true;
-    } else if ((node.isBundle && !node.isParentBundle) || (node.isBundleRoot && node.isParentBundle)) {
+    } else if ((node.isPrefab && !node.isParentPrefab) || (node.isPrefabRoot && node.isParentPrefab)) {
         ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_TEXT_COLOR); // Prefab instance root
         pushedHighlightColor = true;
-    } else if (node.isBundle && node.isParentBundle) {
+    } else if (node.isPrefab && node.isParentPrefab) {
         ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_MEMBER_TEXT_COLOR); // GameObject inside a prefab instance
         pushedHighlightColor = true;
     }
@@ -1402,12 +1402,12 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         const std::string pathText = childScenePath.empty() ? "Unsaved scene" : childScenePath.generic_string();
         ImGui::SetItemTooltip("Child Scene\nPath: %s", pathText.c_str());
     }else{
-        if (node.isBundle) {
+        if (node.isPrefab) {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-                std::filesystem::path tooltipPath = node.isBundleRoot ? node.nestedBundleFilepath : node.bundleFilepath;
-                EntityBundle* bundle = project->getEntityBundle(tooltipPath);
-                uint32_t instanceId = bundle ? bundle->getInstanceId(project->getSelectedSceneId(), node.id) : 0;
-                Entity registryEntity = bundle ? bundle->getRegistryEntity(project->getSelectedSceneId(), node.id) : NULL_ENTITY;
+                std::filesystem::path tooltipPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
+                Prefab* prefab = project->getPrefab(tooltipPath);
+                uint32_t instanceId = prefab ? prefab->getInstanceId(project->getSelectedSceneId(), node.id) : 0;
+                Entity registryEntity = prefab ? prefab->getRegistryEntity(project->getSelectedSceneId(), node.id) : NULL_ENTITY;
 
                 ImGui::BeginTooltip();
                 ImGui::Text("GameObject: %u", node.id);
@@ -1613,12 +1613,12 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     std::string path(data + offset);
                     if (!path.empty()) {
                         if (node.isScene) {
-                            if (Util::isSceneFile(path) || Util::isBundleFile(path)) {
+                            if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
                         } else {
-                            if (Util::isBundleFile(path)) {
+                            if (Util::isPrefabFile(path)) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
@@ -1647,7 +1647,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                 }
 
                 // Dropping on the scene root: allow adding child scenes via .scene files,
-                // and keep supporting .bundle imports.
+                // and keep supporting .prefab imports.
                 if (node.isScene) {
                     handleSceneFilesDropAsChildScenes(droppedPaths, node.id);
                     handleEntityFilesDrop(droppedPaths, NULL_ENTITY);
@@ -1662,7 +1662,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                 }
 
                 if (payload->IsDelivery()) {
-                    ImGui::SetWindowFocus(Structure::WINDOW_NAME);
+                    ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
                 }
             }
         }
@@ -1800,13 +1800,13 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
             if (!entityDeleted && !node.isPlayCreated && node.hasTransform) {
                 ImGui::Separator();
                 static bool createInPrefab = false;
-                if (node.isBundle) {
+                if (node.isPrefab) {
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y * 0.5f));
                     ImGui::Checkbox("Add to Prefab", &createInPrefab);
                     ImGui::SetItemTooltip("New GameObjects become part of this prefab");
                     ImGui::PopStyleVar(1);
                 }
-                showCreateMenuItems(false, node.id, node.isBundle && createInPrefab);
+                showCreateMenuItems(false, node.id, node.isPrefab && createInPrefab);
             }
 
             if (!entityDeleted && !node.isPlayCreated) {
@@ -1829,9 +1829,9 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
 
                 if (selectedScene->sceneType == SceneType::SCENE_2D || selectedScene->sceneType == SceneType::SCENE_3D) {
                     const bool is3D = selectedScene->sceneType == SceneType::SCENE_3D;
-                    ComponentType bodyType = is3D ? ComponentType::Body3DComponent : ComponentType::Body2DComponent;
-                    bool hasBody = is3D ? signature.test(scene->getComponentId<Body3DComponent>())
-                                        : signature.test(scene->getComponentId<Body2DComponent>());
+                    ComponentType bodyType = is3D ? ComponentType::RigidbodyComponent : ComponentType::Rigidbody2DComponent;
+                    bool hasBody = is3D ? signature.test(scene->getComponentId<RigidbodyComponent>())
+                                        : signature.test(scene->getComponentId<Rigidbody2DComponent>());
                     separatorOnce();
                     if (ImGui::MenuItem(is3D ? ICON_FA_WEIGHT_HANGING "  Add Rigidbody" : ICON_FA_WEIGHT_HANGING "  Add Rigidbody 2D",
                                         nullptr, false, !node.isLocked && !hasBody)) {
@@ -1839,11 +1839,11 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     }
 
                     bool canAddShadowCaster = !is3D
-                        && !signature.test(scene->getComponentId<Occluder2DComponent>())
+                        && !signature.test(scene->getComponentId<ShadowCaster2DComponent>())
                         && (signature.test(scene->getComponentId<SpriteComponent>())
                             || signature.test(scene->getComponentId<TilemapComponent>()));
                     if (!is3D && ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE "  Add Shadow Caster 2D", nullptr, false, !node.isLocked && canAddShadowCaster)) {
-                        CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, ComponentType::Occluder2DComponent));
+                        CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, ComponentType::ShadowCaster2DComponent));
                     }
 
                     bool hasMesh = signature.test(scene->getComponentId<MeshComponent>());
@@ -2088,11 +2088,11 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     popNodeImGuiId(node);
 }
 
-void editor::Structure::revealEntity(uint32_t sceneId, Entity entity) {
+void editor::HierarchyWindow::revealEntity(uint32_t sceneId, Entity entity) {
     revealRequest = {sceneId, entity};
 }
 
-bool editor::Structure::collectRevealPath(TreeNode& node) {
+bool editor::HierarchyWindow::collectRevealPath(TreeNode& node) {
     bool isEntityNode = !node.isScene && !node.isChildScene;
     if (isEntityNode && node.id == revealRequest.entity && getNodeSceneId(node) == revealRequest.sceneId) {
         revealTargetNode = &node;
@@ -2109,7 +2109,7 @@ bool editor::Structure::collectRevealPath(TreeNode& node) {
     return false;
 }
 
-void editor::Structure::syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId, Entity collapsedAncestor) {
+void editor::HierarchyWindow::syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId, Entity collapsedAncestor) {
     if (node.isScene) {
         sceneWindow->beginStructureVisibilityUpdate(node.id);
         collapsedSceneId = NULL_PROJECT_SCENE;
@@ -2141,7 +2141,7 @@ void editor::Structure::syncSceneWindowSelectionHierarchy(const TreeNode& node, 
     }
 }
 
-void editor::Structure::pushNodeImGuiId(const TreeNode& node){
+void editor::HierarchyWindow::pushNodeImGuiId(const TreeNode& node){
     if (node.isScene){
         ImGui::PushID("SceneNode");
         ImGui::PushID((int)node.id);
@@ -2160,7 +2160,7 @@ void editor::Structure::pushNodeImGuiId(const TreeNode& node){
     }
 }
 
-void editor::Structure::popNodeImGuiId(const TreeNode& node){
+void editor::HierarchyWindow::popNodeImGuiId(const TreeNode& node){
     if (node.isScene){
         ImGui::PopID();
         ImGui::PopID();
@@ -2181,7 +2181,7 @@ void editor::Structure::popNodeImGuiId(const TreeNode& node){
 
 // Walks the scene (and any inline child scenes) into the TreeNode hierarchy the panel
 // draws. Called only when the cache key changes, so it must not depend on frame state.
-void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet){
+void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet){
 
     sceneEntitiesSet = std::unordered_set<Entity>(sceneProject->entities.begin(), sceneProject->entities.end());
 
@@ -2195,14 +2195,14 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
     Entity mainCamera = sceneProject->mainCamera;
     size_t order = 0;
     std::unordered_map<Entity, TreeNode*> entityNodeMap;
-    std::unordered_map<Entity, std::filesystem::path> bundleEntityPaths;
-    std::unordered_map<Entity, std::list<TreeNode>> virtualBundleChildren;
+    std::unordered_map<Entity, std::filesystem::path> prefabEntityPaths;
+    std::unordered_map<Entity, std::list<TreeNode>> virtualPrefabChildren;
     std::unordered_map<Entity, std::list<TreeNode>> virtualActionChildren;
 
     for (Entity entity : sceneProject->entities) {
-        std::filesystem::path bundlePath = project->findEntityBundlePathFor(sceneProject->id, entity);
-        if (!bundlePath.empty()) {
-            bundleEntityPaths.emplace(entity, std::move(bundlePath));
+        std::filesystem::path prefabPath = project->findPrefabPathFor(sceneProject->id, entity);
+        if (!prefabPath.empty()) {
+            prefabEntityPaths.emplace(entity, std::move(prefabPath));
         }
     }
 
@@ -2263,7 +2263,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.isMainCamera = (entity == childScene->mainCamera);
                     enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
-                    enode.isBundleRoot = signature.test(childScene->scene->getComponentId<BundleComponent>());
+                    enode.isPrefabRoot = signature.test(childScene->scene->getComponentId<PrefabComponent>());
                     enode.order = order++;
                     enode.name = childScene->scene->getEntityName(entity);
                     childSceneNode.children.push_back(enode);
@@ -2286,7 +2286,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.isMainCamera = (entity == childScene->mainCamera);
                     enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
-                    enode.isBundleRoot = signature.test(childScene->scene->getComponentId<BundleComponent>());
+                    enode.isPrefabRoot = signature.test(childScene->scene->getComponentId<PrefabComponent>());
                     enode.hasTransform = true;
                     enode.isLocked = ProjectUtils::isEntityLocked(childScene->scene, entity);
                     enode.order = order++;
@@ -2336,45 +2336,45 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.isLocked = child.isPlayCreated || ProjectUtils::isEntityLocked(sceneProject->scene, entity);
             child.order = order++;
             child.name = sceneProject->scene->getEntityName(entity);
-            auto bundleIt = bundleEntityPaths.find(entity);
-            if (bundleIt != bundleEntityPaths.end()) {
-                child.isBundle = true;
-                child.bundleFilepath = bundleIt->second;
-                if (signature.test(sceneProject->scene->getComponentId<BundleComponent>())) {
-                    child.isBundleRoot = true;
-                    child.nestedBundleFilepath = sceneProject->scene->getComponent<BundleComponent>(entity).path;
+            auto prefabIt = prefabEntityPaths.find(entity);
+            if (prefabIt != prefabEntityPaths.end()) {
+                child.isPrefab = true;
+                child.prefabFilepath = prefabIt->second;
+                if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
+                    child.isPrefabRoot = true;
+                    child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
                 }
             }
 
             bool addedAsVirtualChild = false;
             Entity actionTarget = ProjectUtils::getVirtualParent(sceneProject->scene, entity);
             if (actionTarget != NULL_ENTITY && sceneEntitiesSet.find(actionTarget) != sceneEntitiesSet.end()) {
-                // Check if they are in the same bundle
-                bool sameBundle = false;
-                auto targetBundleIt = bundleEntityPaths.find(actionTarget);
-                if (bundleIt != bundleEntityPaths.end() && targetBundleIt != bundleEntityPaths.end() && bundleIt->second == targetBundleIt->second) {
-                    sameBundle = true;
+                // Check if they are in the same prefab
+                bool samePrefab = false;
+                auto targetPrefabIt = prefabEntityPaths.find(actionTarget);
+                if (prefabIt != prefabEntityPaths.end() && targetPrefabIt != prefabEntityPaths.end() && prefabIt->second == targetPrefabIt->second) {
+                    samePrefab = true;
                 }
 
-                // Priority is Action target, but if both are bundles, ensure it prefers organizing by the actual local parent element correctly.
-                if (sameBundle || bundleIt == bundleEntityPaths.end()) {
+                // Priority is Action target, but if both are prefabs, ensure it prefers organizing by the actual local parent element correctly.
+                if (samePrefab || prefabIt == prefabEntityPaths.end()) {
                     child.parent = actionTarget;
-                    if (sameBundle) {
-                        child.isParentBundle = true;
-                        child.hasBundleParent = true;
+                    if (samePrefab) {
+                        child.isParentPrefab = true;
+                        child.hasPrefabParent = true;
                     }
                     virtualActionChildren[actionTarget].push_back(std::move(child));
                     addedAsVirtualChild = true;
                 }
             }
             
-            if (!addedAsVirtualChild && bundleIt != bundleEntityPaths.end()) {
-                EntityBundle* bundle = project->getEntityBundle(bundleIt->second);
-                Entity bundleRoot = bundle ? bundle->getRootEntity(sceneProject->id, entity) : NULL_ENTITY;
-                if (bundleRoot != NULL_ENTITY && bundleRoot != entity) {
-                    child.parent = bundleRoot;
-                    child.isParentBundle = true;
-                    virtualBundleChildren[bundleRoot].push_back(std::move(child));
+            if (!addedAsVirtualChild && prefabIt != prefabEntityPaths.end()) {
+                Prefab* prefab = project->getPrefab(prefabIt->second);
+                Entity prefabRoot = prefab ? prefab->getRootEntity(sceneProject->id, entity) : NULL_ENTITY;
+                if (prefabRoot != NULL_ENTITY && prefabRoot != entity) {
+                    child.parent = prefabRoot;
+                    child.isParentPrefab = true;
+                    virtualPrefabChildren[prefabRoot].push_back(std::move(child));
                     addedAsVirtualChild = true;
                 }
             }
@@ -2423,26 +2423,26 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.canEditModelHierarchy = ProjectUtils::canEditModelBranch(sceneProject->scene, entity, &child.hierarchyReason);
             child.order = order++;
             child.name = sceneProject->scene->getEntityName(entity);
-            auto bundleIt = bundleEntityPaths.find(entity);
-            if (bundleIt != bundleEntityPaths.end()) {
-                child.isBundle = true;
-                child.bundleFilepath = bundleIt->second;
+            auto prefabIt = prefabEntityPaths.find(entity);
+            if (prefabIt != prefabEntityPaths.end()) {
+                child.isPrefab = true;
+                child.prefabFilepath = prefabIt->second;
             }
-            if (signature.test(sceneProject->scene->getComponentId<BundleComponent>())) {
-                child.isBundleRoot = true;
-                child.nestedBundleFilepath = sceneProject->scene->getComponent<BundleComponent>(entity).path;
+            if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
+                child.isPrefabRoot = true;
+                child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
             }
             auto parentIt = entityNodeMap.find(transform.parent);
             TreeNode* parent = parentIt != entityNodeMap.end() ? parentIt->second : nullptr;
             if (parent){
                 child.parent = parent->id;
-                auto parentBundleIt = bundleEntityPaths.find(transform.parent);
-                if (parentBundleIt != bundleEntityPaths.end()) {
-                    child.isParentBundle = true;
-                    child.hasBundleParent = true;
-                    // Locally added bundle roots treated as top-level visually, not nested
-                    if (child.isBundleRoot && child.bundleFilepath != parentBundleIt->second) {
-                        child.isParentBundle = false;
+                auto parentPrefabIt = prefabEntityPaths.find(transform.parent);
+                if (parentPrefabIt != prefabEntityPaths.end()) {
+                    child.isParentPrefab = true;
+                    child.hasPrefabParent = true;
+                    // Locally added prefab roots treated as top-level visually, not nested
+                    if (child.isPrefabRoot && child.prefabFilepath != parentPrefabIt->second) {
+                        child.isParentPrefab = false;
                     }
                 }
                 parent->children.push_back(child);
@@ -2457,7 +2457,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
         }
     }
 
-    for (auto& [rootEntity, children] : virtualBundleChildren) {
+    for (auto& [rootEntity, children] : virtualPrefabChildren) {
         auto parentIt = entityNodeMap.find(rootEntity);
         if (parentIt == entityNodeMap.end() || children.empty()) {
             continue;
@@ -2500,10 +2500,10 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
         }
     } while (splicedNew);
 
-    markBundleScripts(root);
+    markPrefabScripts(root);
 }
 
-void editor::Structure::show(){
+void editor::HierarchyWindow::show(){
     windowFocused = false;
     if (!windowOpen) {
         return;
@@ -2521,7 +2521,7 @@ void editor::Structure::show(){
 
     bool wasOpen = windowOpen;
 
-    if (!ImGui::Begin(Structure::WINDOW_NAME, &windowOpen)) {
+    if (!ImGui::Begin(HierarchyWindow::WINDOW_NAME, &windowOpen)) {
         ImGui::End();
         if (wasOpen && !windowOpen) {
             setOpen(false);
@@ -2658,7 +2658,7 @@ void editor::Structure::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isBundleFile(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
@@ -2689,7 +2689,7 @@ void editor::Structure::show(){
                 handleEntityFilesDrop(droppedPaths);
 
                 if (payload->IsDelivery()) {
-                    ImGui::SetWindowFocus(Structure::WINDOW_NAME);
+                    ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
                 }
             }
         }

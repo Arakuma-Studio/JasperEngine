@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef SOUND_COMPONENT_H
-#define SOUND_COMPONENT_H
+#ifndef AUDIO_SOURCE_COMPONENT_H
+#define AUDIO_SOURCE_COMPONENT_H
 
 #include "Engine.h"
 
@@ -14,27 +14,27 @@ namespace SoLoud{
 
 namespace jasperengine{
 
-    enum class SoundState{
+    enum class AudioSourceState{
         Playing,
         Paused,
         Stopped
     };
 
-    enum class SoundAttenuation{
+    enum class AudioSourceAttenuation{
         NO_ATTENUATION,
         INVERSE_DISTANCE,
         LINEAR_DISTANCE,
         EXPONENTIAL_DISTANCE
     };
 
-    struct JASPERENGINE_API SoundComponent{
+    struct JASPERENGINE_API AudioSourceComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
         std::shared_ptr<SoLoud::Wav> sample = nullptr;
         unsigned int handle = 0; //Soloud handle
 
-        SoundState state = SoundState::Stopped;
+        AudioSourceState state = AudioSourceState::Stopped;
 
         std::string filename;
         bool loaded = false;
@@ -63,7 +63,7 @@ namespace jasperengine{
         // for 3D sound
         float minDistance = 1.0;
         float maxDistance = 1000.0;
-        SoundAttenuation attenuationModel = SoundAttenuation::NO_ATTENUATION;
+        AudioSourceAttenuation attenuationModel = AudioSourceAttenuation::NO_ATTENUATION;
         float attenuationRolloffFactor = 1.0; // means that end of max distance sound will be zero
         float dopplerFactor = 1.0;
 
@@ -76,4 +76,4 @@ namespace jasperengine{
 
 }
 
-#endif //SOUND_COMPONENT_H
+#endif //AUDIO_SOURCE_COMPONENT_H

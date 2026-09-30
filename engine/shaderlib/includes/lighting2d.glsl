@@ -1,7 +1,7 @@
 // Dedicated 2D light path (USE_LIGHT2D). Lights live in the world XY plane with
 // an optional virtual Z height for normal-map response; attenuation is a radial
 // falloff pow(1 - d/range, falloff). Shadows (USE_SHADOWS_2D) sample per-light
-// 1D polar depth rows (one atlas row per light) rendered from Occluder2D segments.
+// 1D polar depth rows (one atlas row per light) rendered from ShadowCaster2D segments.
 
 // Normal for the 2D light path. The lit path already has getNormalInfo(), but it
 // is compiled out under MATERIAL_UNLIT, so this is a minimal standalone version.

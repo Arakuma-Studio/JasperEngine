@@ -68,10 +68,10 @@ namespace luabridge
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
-    template<> struct Stack<Occluder2DShape> : EnumWrapper<Occluder2DShape>{};
+    template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
-    template<> struct Stack<SoundState> : EnumWrapper<SoundState>{};
-    template<> struct Stack<SoundAttenuation> : EnumWrapper<SoundAttenuation>{};
+    template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
+    template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
@@ -79,14 +79,14 @@ namespace luabridge
     template<> struct Stack<FileErrors> : EnumWrapper<FileErrors>{};
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
-    template<> struct Stack<ContainerType> : EnumWrapper<ContainerType>{};
+    template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
-    template<> struct Stack<Shape2DType> : EnumWrapper<Shape2DType>{};
-    template<> struct Stack<Shape3DType> : EnumWrapper<Shape3DType>{};
+    template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};
+    template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
 

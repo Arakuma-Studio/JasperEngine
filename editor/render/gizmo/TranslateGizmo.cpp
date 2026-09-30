@@ -16,7 +16,7 @@ const Vector3 editor::TranslateGizmo::yaxisColorHightlight = Vector3(0.7, 0.9, 0
 const Vector3 editor::TranslateGizmo::zaxisColorHightlight = Vector3(0.7, 0.7, 0.9);
 const float editor::TranslateGizmo::rectAlpha = 0.6;
 
-editor::TranslateGizmo::TranslateGizmo(Scene* scene, bool use2DGizmo): Object(scene){
+editor::TranslateGizmo::TranslateGizmo(Scene* scene, bool use2DGizmo): GameObject(scene){
     float cylinderRadius = 0.05;
     float cylinderHeight = 2;
     float centerSize = 0.2;
@@ -25,21 +25,21 @@ editor::TranslateGizmo::TranslateGizmo(Scene* scene, bool use2DGizmo): Object(sc
 
     this->use2DGizmo = use2DGizmo;
 
-    sphere = new Shape(scene);
+    sphere = new Primitive(scene);
 
-    xaxis = new Shape(scene);
-    xarrow = new Shape(scene);
+    xaxis = new Primitive(scene);
+    xarrow = new Primitive(scene);
 
-    yaxis = new Shape(scene);
-    yarrow = new Shape(scene);
+    yaxis = new Primitive(scene);
+    yarrow = new Primitive(scene);
 
     if (!use2DGizmo){
-        zaxis = new Shape(scene);
-        zarrow = new Shape(scene);
+        zaxis = new Primitive(scene);
+        zarrow = new Primitive(scene);
 
-        xyrect = new Shape(scene);
-        yzrect = new Shape(scene);
-        xzrect = new Shape(scene);
+        xyrect = new Primitive(scene);
+        yzrect = new Primitive(scene);
+        xzrect = new Primitive(scene);
     }
     
     sphere->createSphere(centerSize);

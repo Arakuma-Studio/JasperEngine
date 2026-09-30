@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "TextEdit.h"
+#include "InputField.h"
 
 #include "component/PolygonComponent.h"
 #include "component/TextComponent.h"
@@ -11,18 +11,18 @@
 
 using namespace jasperengine;
 
-TextEdit::TextEdit(Scene* scene): Image(scene){
-    addComponent<TextEditComponent>();
+InputField::InputField(Scene* scene): Image(scene){
+    addComponent<InputFieldComponent>();
 }
 
-TextEdit::TextEdit(Scene* scene, Entity entity): Image(scene, entity){
+InputField::InputField(Scene* scene, Entity entity): Image(scene, entity){
 }
 
-TextEdit::~TextEdit(){
+InputField::~InputField(){
 }
 
-bool TextEdit::hasText() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+bool InputField::hasText() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.text == NULL_ENTITY){
         return false;
     }
@@ -31,8 +31,8 @@ bool TextEdit::hasText() const{
     return signature.test(scene->getComponentId<TextComponent>());
 }
 
-bool TextEdit::hasCursor() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+bool InputField::hasCursor() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.cursor == NULL_ENTITY){
         return false;
     }
@@ -41,8 +41,8 @@ bool TextEdit::hasCursor() const{
     return signature.test(scene->getComponentId<PolygonComponent>());
 }
 
-bool TextEdit::hasSelection() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+bool InputField::hasSelection() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.selection == NULL_ENTITY){
         return false;
     }
@@ -51,15 +51,15 @@ bool TextEdit::hasSelection() const{
     return signature.test(scene->getComponentId<PolygonComponent>());
 }
 
-void TextEdit::ensureText(){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::ensureText(){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (!hasText() || !hasCursor() || !hasSelection()){
-        scene->getSystem<UISystem>()->createTextEditObjects(getEntity(), tecomp);
+        scene->getSystem<UISystem>()->createInputFieldObjects(getEntity(), tecomp);
     }
 }
 
-Text TextEdit::getTextObject() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+Text InputField::getTextObject() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (!hasText()){
         return Text(scene, NULL_ENTITY);
     }
@@ -69,8 +69,8 @@ Text TextEdit::getTextObject() const{
 
 // Fully qualify Polygon: UISystem.h pulls in wingdi.h on Windows, whose GDI Polygon()
 // function clashes with jasperengine::Polygon when used as an unqualified return type here.
-jasperengine::Polygon TextEdit::getCursorObject() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+jasperengine::Polygon InputField::getCursorObject() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (!hasCursor()){
         return Polygon(scene, NULL_ENTITY);
     }
@@ -78,8 +78,8 @@ jasperengine::Polygon TextEdit::getCursorObject() const{
     return Polygon(scene, tecomp.cursor);
 }
 
-jasperengine::Polygon TextEdit::getSelectionObject() const{
-    const TextEditComponent& tecomp = getComponent<TextEditComponent>();
+jasperengine::Polygon InputField::getSelectionObject() const{
+    const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (!hasSelection()){
         return Polygon(scene, NULL_ENTITY);
     }
@@ -87,23 +87,23 @@ jasperengine::Polygon TextEdit::getSelectionObject() const{
     return Polygon(scene, tecomp.selection);
 }
 
-void TextEdit::setDisabled(bool disabled){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setDisabled(bool disabled){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     tecomp.disabled = disabled;
 
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-bool TextEdit::getDisabled() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+bool InputField::getDisabled() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     return  tecomp.disabled;
 }
 
-void TextEdit::setText(const std::string& text){
+void InputField::setText(const std::string& text){
     ensureText();
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(tecomp.text);
 
     if (textcomp.text != text){
@@ -112,78 +112,78 @@ void TextEdit::setText(const std::string& text){
         tecomp.cursorIndex = static_cast<int>(StringUtils::countCodepoints(text));
         tecomp.selectionAnchor = tecomp.cursorIndex;
         tecomp.scrollOffset = 0;
-        tecomp.needUpdateTextEdit = true;
+        tecomp.needUpdateInputField = true;
     }
 }
 
-std::string TextEdit::getText() const{
+std::string InputField::getText() const{
     if (!hasText()){
         return "";
     }
 
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(tecomp.text);
 
     return textcomp.text;
 }
 
-void TextEdit::setTextColor(Vector4 color){
+void InputField::setTextColor(Vector4 color){
     ensureText();
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     UIComponent& uitext = scene->getComponent<UIComponent>(tecomp.text);
 
     uitext.color = Color::sRGBToLinear(color);
 }
 
-void TextEdit::setTextColor(const float red, const float green, const float blue, const float alpha){
+void InputField::setTextColor(const float red, const float green, const float blue, const float alpha){
     setTextColor(Vector4(red, green, blue, alpha));
 }
 
-void TextEdit::setTextColor(const float red, const float green, const float blue){
+void InputField::setTextColor(const float red, const float green, const float blue){
     setTextColor(Vector4(red, green, blue, getTextColor().w));
 }
 
-Vector4 TextEdit::getTextColor() const{
+Vector4 InputField::getTextColor() const{
     if (!hasText()){
         return Vector4(0.0, 0.0, 0.0, 1.0);
     }
 
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     UIComponent& uitext = scene->getComponent<UIComponent>(tecomp.text);
 
     return Color::linearTosRGB(uitext.color);
 }
 
-void TextEdit::setTextFont(const std::string& font){
+void InputField::setTextFont(const std::string& font){
     ensureText();
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     getTextObject().setFont(font);
 
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-std::string TextEdit::getTextFont() const{
+std::string InputField::getTextFont() const{
     if (!hasText()){
         return "";
     }
 
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(tecomp.text);
 
     return textcomp.font[0];
 }
 
-void TextEdit::setFontSize(unsigned int fontSize){
+void InputField::setFontSize(unsigned int fontSize){
     ensureText();
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     getTextObject().setFontSize(fontSize);
 
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-unsigned int TextEdit::getFontSize() const{
+unsigned int InputField::getFontSize() const{
     if (!hasText()){
         return 0;
     }
@@ -191,12 +191,12 @@ unsigned int TextEdit::getFontSize() const{
     return getTextObject().getFontSize();
 }
 
-void TextEdit::setMaxTextSize(unsigned int maxTextSize){
+void InputField::setMaxTextSize(unsigned int maxTextSize){
     ensureText();
     getTextObject().setMaxTextSize(maxTextSize);
 }
 
-unsigned int TextEdit::getMaxTextSize() const{
+unsigned int InputField::getMaxTextSize() const{
     if (!hasText()){
         return 0;
     }
@@ -204,153 +204,153 @@ unsigned int TextEdit::getMaxTextSize() const{
     return getTextObject().getMaxTextSize();
 }
 
-void TextEdit::setPlaceholder(const std::string& placeholder){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setPlaceholder(const std::string& placeholder){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.placeholder != placeholder){
         tecomp.placeholder = placeholder;
-        tecomp.needUpdateTextEdit = true;
+        tecomp.needUpdateInputField = true;
     }
 }
 
-std::string TextEdit::getPlaceholder() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+std::string InputField::getPlaceholder() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.placeholder;
 }
 
-void TextEdit::setPlaceholderColor(Vector4 color){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setPlaceholderColor(Vector4 color){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.placeholderColor = Color::sRGBToLinear(color);
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-void TextEdit::setPlaceholderColor(const float red, const float green, const float blue, const float alpha){
+void InputField::setPlaceholderColor(const float red, const float green, const float blue, const float alpha){
     setPlaceholderColor(Vector4(red, green, blue, alpha));
 }
 
-void TextEdit::setPlaceholderColor(const float red, const float green, const float blue){
+void InputField::setPlaceholderColor(const float red, const float green, const float blue){
     setPlaceholderColor(Vector4(red, green, blue, getPlaceholderColor().w));
 }
 
-Vector4 TextEdit::getPlaceholderColor() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+Vector4 InputField::getPlaceholderColor() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return Color::linearTosRGB(tecomp.placeholderColor);
 }
 
-void TextEdit::setPassword(bool password){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setPassword(bool password){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.password != password){
         tecomp.password = password;
-        tecomp.needUpdateTextEdit = true;
+        tecomp.needUpdateInputField = true;
     }
 }
 
-bool TextEdit::getPassword() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+bool InputField::getPassword() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.password;
 }
 
-void TextEdit::setPasswordChar(char passwordChar){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setPasswordChar(char passwordChar){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.passwordChar != passwordChar){
         tecomp.passwordChar = passwordChar;
-        tecomp.needUpdateTextEdit = true;
+        tecomp.needUpdateInputField = true;
     }
 }
 
-char TextEdit::getPasswordChar() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+char InputField::getPasswordChar() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.passwordChar;
 }
 
-void TextEdit::setCursorIndex(int cursorIndex){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setCursorIndex(int cursorIndex){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.cursorIndex = cursorIndex;
     tecomp.selectionAnchor = cursorIndex;
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-int TextEdit::getCursorIndex() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+int InputField::getCursorIndex() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.cursorIndex;
 }
 
-void TextEdit::setSelection(int anchor, int focus){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setSelection(int anchor, int focus){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.selectionAnchor = anchor;
     tecomp.cursorIndex = focus;
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-int TextEdit::getSelectionAnchor() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+int InputField::getSelectionAnchor() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.selectionAnchor;
 }
 
-int TextEdit::getSelectionFocus() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+int InputField::getSelectionFocus() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return tecomp.cursorIndex;
 }
 
-void TextEdit::setCursorBlink(float cursorBlink){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setCursorBlink(float cursorBlink){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     tecomp.cursorBlink = cursorBlink;
 }
 
-float TextEdit::getCursorBlink() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+float InputField::getCursorBlink() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     return tecomp.cursorBlink;
 }
 
-void TextEdit::setCursorWidth(float cursorWidth){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setCursorWidth(float cursorWidth){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.cursorWidth != cursorWidth){
         tecomp.cursorWidth = cursorWidth;
-        tecomp.needUpdateTextEdit = true;
+        tecomp.needUpdateInputField = true;
     }
 }
 
-float TextEdit::getCursorWidth() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+float InputField::getCursorWidth() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
 
     return tecomp.cursorWidth;
 }
 
-void TextEdit::setCursorColor(Vector4 color){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
-    tecomp.needUpdateTextEdit = true;
+void InputField::setCursorColor(Vector4 color){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
+    tecomp.needUpdateInputField = true;
     tecomp.cursorColor = Color::sRGBToLinear(color);
 }
 
-void TextEdit::setCursorColor(const float red, const float green, const float blue, const float alpha){
+void InputField::setCursorColor(const float red, const float green, const float blue, const float alpha){
     setCursorColor(Vector4(red, green, blue, alpha));
 }
 
-void TextEdit::setCursorColor(const float red, const float green, const float blue){
+void InputField::setCursorColor(const float red, const float green, const float blue){
     setCursorColor(Vector4(red, green, blue, getCursorColor().w));
 }
 
-Vector4 TextEdit::getCursorColor() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+Vector4 InputField::getCursorColor() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return Color::linearTosRGB(tecomp.cursorColor);
 }
 
-void TextEdit::setSelectionColor(Vector4 color){
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+void InputField::setSelectionColor(Vector4 color){
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.selectionColor = Color::sRGBToLinear(color);
-    tecomp.needUpdateTextEdit = true;
+    tecomp.needUpdateInputField = true;
 }
 
-void TextEdit::setSelectionColor(const float red, const float green, const float blue, const float alpha){
+void InputField::setSelectionColor(const float red, const float green, const float blue, const float alpha){
     setSelectionColor(Vector4(red, green, blue, alpha));
 }
 
-void TextEdit::setSelectionColor(const float red, const float green, const float blue){
+void InputField::setSelectionColor(const float red, const float green, const float blue){
     setSelectionColor(Vector4(red, green, blue, getSelectionColor().w));
 }
 
-Vector4 TextEdit::getSelectionColor() const{
-    TextEditComponent& tecomp = getComponent<TextEditComponent>();
+Vector4 InputField::getSelectionColor() const{
+    InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     return Color::linearTosRGB(tecomp.selectionColor);
 }

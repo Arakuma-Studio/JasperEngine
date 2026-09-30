@@ -96,6 +96,6 @@ Scene* editor::MeshPreviewRender::getScene(){
     return scene;
 }
 
-Object* editor::MeshPreviewRender::getObject(){
+GameObject* editor::MeshPreviewRender::getGameObject(){
     return mesh;
 }

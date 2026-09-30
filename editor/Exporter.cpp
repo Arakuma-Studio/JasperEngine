@@ -1413,12 +1413,12 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             };
             if (!project->isPhysics2DEnabled()) {
                 warnDroppedPhysics("2D", [](Scene* scene) {
-                    return scene->getComponentArray<Body2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
+                    return scene->getComponentArray<Rigidbody2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
                 });
             }
             if (!project->isPhysics3DEnabled()) {
                 warnDroppedPhysics("3D", [](Scene* scene) {
-                    return scene->getComponentArray<Body3DComponent>()->size() > 0 || scene->getComponentArray<Joint3DComponent>()->size() > 0;
+                    return scene->getComponentArray<RigidbodyComponent>()->size() > 0 || scene->getComponentArray<Joint3DComponent>()->size() > 0;
                 });
             }
 
@@ -2291,11 +2291,11 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxShapes2D         = std::max(agg.maxShapes2D, sceneProject.maxValues.maxShapes2D);
-        agg.maxShapePoints2D    = std::max(agg.maxShapePoints2D, sceneProject.maxValues.maxShapePoints2D);
-        agg.maxShapes3D         = std::max(agg.maxShapes3D, sceneProject.maxValues.maxShapes3D);
-        agg.maxShapeVertices3D  = std::max(agg.maxShapeVertices3D, sceneProject.maxValues.maxShapeVertices3D);
-        agg.maxShapeIndices3D   = std::max(agg.maxShapeIndices3D, sceneProject.maxValues.maxShapeIndices3D);
+        agg.maxColliders2D         = std::max(agg.maxColliders2D, sceneProject.maxValues.maxColliders2D);
+        agg.maxColliderPoints2D    = std::max(agg.maxColliderPoints2D, sceneProject.maxValues.maxColliderPoints2D);
+        agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
+        agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
+        agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -2318,11 +2318,11 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
     out += indent + define("MAX_SPRITE_FRAMES", agg.maxSpriteFrames, MAX_SPRITE_FRAMES);
     out += indent + define("MAX_EXTERNAL_BUFFERS", agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS);
     out += indent + define("MAX_BONES", agg.maxBones, MAX_BONES);
-    out += indent + define("MAX_SHAPES_2D", agg.maxShapes2D, MAX_SHAPES_2D);
-    out += indent + define("MAX_SHAPE_POINTS_2D", agg.maxShapePoints2D, MAX_SHAPE_POINTS_2D);
-    out += indent + define("MAX_SHAPES_3D", agg.maxShapes3D, MAX_SHAPES_3D);
-    out += indent + define("MAX_SHAPE_VERTICES_3D", agg.maxShapeVertices3D, MAX_SHAPE_VERTICES_3D);
-    out += indent + define("MAX_SHAPE_INDICES_3D", agg.maxShapeIndices3D, MAX_SHAPE_INDICES_3D);
+    out += indent + define("MAX_COLLIDERS_2D", agg.maxColliders2D, MAX_COLLIDERS_2D);
+    out += indent + define("MAX_COLLIDER_POINTS_2D", agg.maxColliderPoints2D, MAX_COLLIDER_POINTS_2D);
+    out += indent + define("MAX_COLLIDERS_3D", agg.maxColliders3D, MAX_COLLIDERS_3D);
+    out += indent + define("MAX_COLLIDER_VERTICES_3D", agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D);
+    out += indent + define("MAX_COLLIDER_INDICES_3D", agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D);
     return out;
 }
 
@@ -2708,14 +2708,14 @@ bool editor::Exporter::writeAppleProjectSettings() {
     if (!project->isPhysics2DEnabled()) {
         removeProjectLinesContaining("JASPERENGINE_PHYSICS_2D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
-            "Body2D.cpp", "Contact2D.cpp", "Joint2D.cpp", "Manifold2D.cpp"
+            "Rigidbody2D.cpp", "Contact2D.cpp", "Joint2D.cpp", "Manifold2D.cpp"
         });
         if (!unlinkBackend("box2d")) return false;
     }
     if (!project->isPhysics3DEnabled()) {
         removeProjectLinesContaining("JASPERENGINE_PHYSICS_3D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
-            "Body3D.cpp", "CollideShapeResult3D.cpp", "Contact3D.cpp", "Joint3D.cpp"
+            "Rigidbody.cpp", "CollideShapeResult3D.cpp", "Contact3D.cpp", "Joint3D.cpp"
         });
         if (!unlinkBackend("joltphysics")) return false;
     }

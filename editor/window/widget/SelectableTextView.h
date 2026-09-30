@@ -12,7 +12,7 @@ namespace jasperengine::editor {
 
 // A scrollable, wrapped, colored text region whose content can be selected and
 // copied with the mouse (drag, double-click word, triple-click line), Ctrl+A,
-// Ctrl+C and a right-click menu. Modeled on the Output window's log viewer but
+// Ctrl+C and a right-click menu. Modeled on the Console window's log viewer but
 // driven by a simple list of colored paragraphs so it can be reused.
 class SelectableTextView {
 public:

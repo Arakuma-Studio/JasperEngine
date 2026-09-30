@@ -5,11 +5,11 @@
 
 using namespace jasperengine;
 
-Mirror::Mirror(Scene* scene): Shape(scene){
+Mirror::Mirror(Scene* scene): Primitive(scene){
     addComponent<MirrorComponent>();
 }
 
-Mirror::Mirror(Scene* scene, Entity entity): Shape(scene, entity){
+Mirror::Mirror(Scene* scene, Entity entity): Primitive(scene, entity){
 }
 
 Mirror::~Mirror(){

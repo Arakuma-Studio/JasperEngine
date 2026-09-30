@@ -45,7 +45,7 @@ namespace jasperengine::editor{
 
     struct CameraObjects{
         Sprite* icon = nullptr;
-        Lines* lines = nullptr;
+        LineRenderer* lines = nullptr;
 
         CameraType type = CameraType::CAMERA_UI;
         bool isMainCamera = false;
@@ -105,7 +105,7 @@ namespace jasperengine::editor{
         Quaternion instanceStartRotation;
         Vector3 instanceStartScale;
 
-        // Occluder2D polygon point sub-selection
+        // ShadowCaster2D polygon point sub-selection
         Entity selectedOccluderPointEntity = 0;  // NULL_ENTITY
         int selectedOccluderPointIndex = -1;
 
@@ -153,7 +153,7 @@ namespace jasperengine::editor{
 
     protected:
         void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
-        void drawCameraFrustumLines(Lines* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
+        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
         void setupCameraIcon(CameraObjects& co);
         void setupSoundIcon(SoundObjects& so);
         void setupLight2DIcon(Light2DObjects& lo);
@@ -167,8 +167,8 @@ namespace jasperengine::editor{
         // Set only while the Game view pass draws through a game camera
         Entity gameViewCameraEntity = NULL_ENTITY;
 
-        Lines* selLines;
-        Lines* terrainBrushLines;
+        LineRenderer* selLines;
+        LineRenderer* terrainBrushLines;
 
         ToolsLayer toolslayer;
         UILayer uilayer;
@@ -259,7 +259,7 @@ namespace jasperengine::editor{
         OBB getInstanceOBB(Entity entity, int instanceIndex, bool visual = false);
         Quaternion getInstanceWorldRotation(const Transform& transform, const InstancedMeshComponent& instmesh, const InstanceData& inst) const;
 
-        // Occluder2D polygon point sub-selection
+        // ShadowCaster2D polygon point sub-selection
         int getSelectedOccluderPointIndex() const { return selectedOccluderPointIndex; }
         Entity getSelectedOccluderPointEntity() const { return selectedOccluderPointEntity; }
         void selectOccluderPoint(Entity entity, int pointIndex);

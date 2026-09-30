@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef TIMEDACTION_COMPONENT_H
-#define TIMEDACTION_COMPONENT_H
+#ifndef TWEEN_COMPONENT_H
+#define TWEEN_COMPONENT_H
 
 #include "action/Ease.h"
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API TimedActionComponent{
+    struct JASPERENGINE_API TweenComponent{
         float time = 0;
         float value = 0;
         
@@ -20,4 +20,4 @@ namespace jasperengine{
 
 }
 
-#endif //TIMEDACTION_COMPONENT_H
+#endif //TWEEN_COMPONENT_H

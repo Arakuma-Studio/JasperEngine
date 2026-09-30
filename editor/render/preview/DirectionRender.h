@@ -5,8 +5,8 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/Light.h"
 
 namespace jasperengine::editor{
@@ -17,9 +17,9 @@ namespace jasperengine::editor{
         Camera* camera;
         Light* light;
 
-        Object* arrowObject;
-        Shape* arrowShaft;
-        Shape* arrowHead;
+        GameObject* arrowObject;
+        Primitive* arrowShaft;
+        Primitive* arrowHead;
 
         Vector3 direction;
 
@@ -43,7 +43,7 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         Texture getTexture();
         Scene* getScene();
-        Object* getObject();
+        GameObject* getGameObject();
     };
 
 }

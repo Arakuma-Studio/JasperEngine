@@ -12,9 +12,9 @@ editor::DirectionRender::DirectionRender(){
     camera = new Camera(scene);
     light = new Light(scene);
     
-    arrowObject = new Object(scene);
-    arrowShaft = new Shape(scene);
-    arrowHead = new Shape(scene);
+    arrowObject = new GameObject(scene);
+    arrowShaft = new Primitive(scene);
+    arrowHead = new Primitive(scene);
 
     scene->setBackgroundColor(0.0, 0.0, 0.0, 0.0);
     scene->setCamera(camera);
@@ -135,6 +135,6 @@ Scene* editor::DirectionRender::getScene(){
     return scene;
 }
 
-Object* editor::DirectionRender::getObject(){
+GameObject* editor::DirectionRender::getGameObject(){
     return arrowObject;
 }

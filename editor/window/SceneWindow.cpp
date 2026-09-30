@@ -207,7 +207,7 @@ bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, 
                 project->clearAllSelections(sceneId);
             }
             project->addSelectedEntity(hitSceneId, hitEntity);
-            if (Structure* structure = Backend::getApp().getStructureWindow()) {
+            if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()) {
                 structure->revealEntity(hitSceneId, hitEntity);
             }
             return true;
@@ -682,8 +682,8 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
                                     cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", Texture(droppedAssetPath));
-                                    cmd->addProperty<unsigned int>(ComponentType::UILayoutComponent, "width", tempImage->getWidth());
-                                    cmd->addProperty<unsigned int>(ComponentType::UILayoutComponent, "height", tempImage->getHeight());
+                                    cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "width", tempImage->getWidth());
+                                    cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "height", tempImage->getHeight());
                                 }
 
                                 CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
@@ -2048,7 +2048,7 @@ void editor::SceneWindow::show() {
                     Widgets::image(previewTex, imageSize);
 
                     // Yellow frame as a "viewing through camera" cue (inset 1px so it's not clipped at the edge).
-                    // Matches the previewed camera's highlight color in the Structure tree.
+                    // Matches the previewed camera's highlight color in the Hierarchy tree.
                     const float frameInset = Theme::dpi(1.0f);
                     drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {

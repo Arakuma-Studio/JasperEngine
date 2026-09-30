@@ -1,20 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef ROTATIONACTION_H
-#define ROTATIONACTION_H
+#ifndef ROTATIONTWEEN_H
+#define ROTATIONTWEEN_H
 
-#include "TimedAction.h"
+#include "Tween.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API RotationAction: public TimedAction{
+    class JASPERENGINE_API RotationTween: public Tween{
 
     public:
-        RotationAction(Scene* scene);
-        RotationAction(Scene* scene, Entity entity);
+        RotationTween(Scene* scene);
+        RotationTween(Scene* scene, Entity entity);
 
         void setAction(Quaternion startRotation, Quaternion endRotation, float duration, bool loop=false);
     };
 }
 
-#endif //ROTATIONACTION_H
+#endif //ROTATIONTWEEN_H

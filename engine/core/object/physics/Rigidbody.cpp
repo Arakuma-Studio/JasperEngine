@@ -1,11 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Body3D.h"
+#include "Rigidbody.h"
 
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "subsystem/PhysicsSystem.h"
-#include "component/Body3DComponent.h"
+#include "component/RigidbodyComponent.h"
 #include "util/JoltPhysicsAux.h"
 
 #include <iostream>
@@ -37,103 +37,103 @@ BodyType getJoltToBodyType(JPH::EMotionType type){
     return BodyType::STATIC;
 }
 
-static int appendShape3D(Body3DComponent& body){
-    if (!body.shapes.validIndex(body.numShapes)){
+static int appendCollider3D(RigidbodyComponent& body){
+    if (!body.colliders.validIndex(body.numColliders)){
         Log::error("Cannot add more shapes in this body");
         return -1;
     }
 
-    size_t index = body.numShapes;
-    body.shapes[index] = Shape3D();
-    body.numShapes++;
-    body.needUpdateShapes = true;
+    size_t index = body.numColliders;
+    body.colliders[index] = Collider3D();
+    body.numColliders++;
+    body.needUpdateColliders = true;
 
     return static_cast<int>(index);
 }
 
-Body3D::Body3D(Scene* scene, Entity entity): EntityHandle(scene, entity){
+Rigidbody::Rigidbody(Scene* scene, Entity entity): EntityHandle(scene, entity){
 }
 
-Body3D::~Body3D(){
+Rigidbody::~Rigidbody(){
 }
 
-Body3D::Body3D(const Body3D& rhs): EntityHandle(rhs){
+Rigidbody::Rigidbody(const Rigidbody& rhs): EntityHandle(rhs){
 }
 
-Body3D& Body3D::operator=(const Body3D& rhs){
+Rigidbody& Rigidbody::operator=(const Rigidbody& rhs){
     EntityHandle::operator = (rhs);
 
     return *this;
 }
 
-void Body3D::checkBody(const Body3DComponent& body) const{
+void Rigidbody::checkBody(const RigidbodyComponent& body) const{
     if (body.body.IsInvalid()){
-        Log::error("Body3D is not loaded");
-        throw std::runtime_error("Body3D is not loaded");
+        Log::error("Rigidbody is not loaded");
+        throw std::runtime_error("Rigidbody is not loaded");
     }
 }
 
-const JPH::BodyLockInterface& Body3D::getBodyLockInterface() const{
+const JPH::BodyLockInterface& Rigidbody::getBodyLockInterface() const{
     return scene->getSystem<PhysicsSystem>()->getBodyLockInterface3D();
 }
 
-JPH::BodyInterface& Body3D::getBodyInterface() const{
+JPH::BodyInterface& Rigidbody::getBodyInterface() const{
     return scene->getSystem<PhysicsSystem>()->getBodyInterface3D();
 }
 
-const JPH::Body& Body3D::getJoltBody() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+const JPH::Body& Rigidbody::getJoltBody() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
 
     JPH::BodyLockRead lock(getBodyLockInterface(), body.body);
     if (!lock.Succeeded())
-        throw std::runtime_error("Body3D is locked");
+        throw std::runtime_error("Rigidbody is locked");
 
     return lock.GetBody();
 }
 
-JPH::Body& Body3D::getJoltBodyWrite() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+JPH::Body& Rigidbody::getJoltBodyWrite() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
 
     JPH::BodyLockWrite lock(getBodyLockInterface(), body.body);
     if (!lock.Succeeded())
-        throw std::runtime_error("Body3D is locked");
+        throw std::runtime_error("Rigidbody is locked");
 
     return lock.GetBody();
 }
 
-JPH::Body* Body3D::getJoltBodyNoLock() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+JPH::Body* Rigidbody::getJoltBodyNoLock() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     return getBodyLockInterface().TryGetBody(body.body);
 }
 
-Object Body3D::getAttachedObject(){
-    return Object(scene, entity);
+GameObject Rigidbody::getAttachedObject(){
+    return GameObject(scene, entity);
 }
 
-void Body3D::load(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::load(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.needReloadBody = true;
-    body.needUpdateShapes = true;
+    body.needUpdateColliders = true;
 
-    scene->getSystem<PhysicsSystem>()->loadBody3D(entity);
+    scene->getSystem<PhysicsSystem>()->loadRigidbody(entity);
 }
 
-int Body3D::createBoxShape(float width, float height, float depth){
-    return createBoxShape(Vector3::ZERO, Quaternion::IDENTITY, width, height, depth);
+int Rigidbody::createBoxCollider(float width, float height, float depth){
+    return createBoxCollider(Vector3::ZERO, Quaternion::IDENTITY, width, height, depth);
 }
 
-int Body3D::createBoxShape(Vector3 position, Quaternion rotation, float width, float height, float depth){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createBoxCollider(Vector3 position, Quaternion rotation, float width, float height, float depth){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::BOX;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::BOX;
     shape.position = position;
     shape.rotation = rotation;
     shape.width = width;
@@ -143,17 +143,17 @@ int Body3D::createBoxShape(Vector3 position, Quaternion rotation, float width, f
     return index;
 }
 
-int Body3D::createSphereShape(float radius){
-    return createSphereShape(Vector3::ZERO, Quaternion::IDENTITY, radius);
+int Rigidbody::createSphereCollider(float radius){
+    return createSphereCollider(Vector3::ZERO, Quaternion::IDENTITY, radius);
 }
 
-int Body3D::createSphereShape(Vector3 position, Quaternion rotation, float radius){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createSphereCollider(Vector3 position, Quaternion rotation, float radius){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::SPHERE;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::SPHERE;
     shape.position = position;
     shape.rotation = rotation;
     shape.radius = radius;
@@ -161,17 +161,17 @@ int Body3D::createSphereShape(Vector3 position, Quaternion rotation, float radiu
     return index;
 }
 
-int Body3D::createCapsuleShape(float halfHeight, float radius){
-    return createCapsuleShape(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, radius);
+int Rigidbody::createCapsuleCollider(float halfHeight, float radius){
+    return createCapsuleCollider(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, radius);
 }
 
-int Body3D::createCapsuleShape(Vector3 position, Quaternion rotation, float halfHeight, float radius){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createCapsuleCollider(Vector3 position, Quaternion rotation, float halfHeight, float radius){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::CAPSULE;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::CAPSULE;
     shape.position = position;
     shape.rotation = rotation;
     shape.halfHeight = halfHeight;
@@ -180,17 +180,17 @@ int Body3D::createCapsuleShape(Vector3 position, Quaternion rotation, float half
     return index;
 }
 
-int Body3D::createTaperedCapsuleShape(float halfHeight, float topRadius, float bottomRadius){
-    return createTaperedCapsuleShape(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, topRadius, bottomRadius);
+int Rigidbody::createTaperedCapsuleCollider(float halfHeight, float topRadius, float bottomRadius){
+    return createTaperedCapsuleCollider(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, topRadius, bottomRadius);
 }
 
-int Body3D::createTaperedCapsuleShape(Vector3 position, Quaternion rotation, float halfHeight, float topRadius, float bottomRadius){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createTaperedCapsuleCollider(Vector3 position, Quaternion rotation, float halfHeight, float topRadius, float bottomRadius){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::TAPERED_CAPSULE;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::TAPERED_CAPSULE;
     shape.position = position;
     shape.rotation = rotation;
     shape.halfHeight = halfHeight;
@@ -200,17 +200,17 @@ int Body3D::createTaperedCapsuleShape(Vector3 position, Quaternion rotation, flo
     return index;
 }
 
-int Body3D::createCylinderShape(float halfHeight, float radius){
-    return createCylinderShape(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, radius);
+int Rigidbody::createCylinderCollider(float halfHeight, float radius){
+    return createCylinderCollider(Vector3::ZERO, Quaternion::IDENTITY, halfHeight, radius);
 }
 
-int Body3D::createCylinderShape(Vector3 position, Quaternion rotation, float halfHeight, float radius){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createCylinderCollider(Vector3 position, Quaternion rotation, float halfHeight, float radius){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::CYLINDER;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::CYLINDER;
     shape.position = position;
     shape.rotation = rotation;
     shape.halfHeight = halfHeight;
@@ -219,33 +219,33 @@ int Body3D::createCylinderShape(Vector3 position, Quaternion rotation, float hal
     return index;
 }
 
-int Body3D::createConvexHullShape(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createConvexHullCollider(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::CONVEX_HULL;
-    shape.source = Shape3DSource::ENTITY_MESH;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::CONVEX_HULL;
+    shape.source = Collider3DSource::ENTITY_MESH;
     shape.sourceEntity = entity;
 
     return index;
 }
 
-int Body3D::createConvexHullShape(std::vector<Vector3> vertices){
-    return createConvexHullShape(Vector3::ZERO, Quaternion::IDENTITY, vertices);
+int Rigidbody::createConvexHullCollider(std::vector<Vector3> vertices){
+    return createConvexHullCollider(Vector3::ZERO, Quaternion::IDENTITY, vertices);
 }
 
-int Body3D::createConvexHullShape(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createConvexHullCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::CONVEX_HULL;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::CONVEX_HULL;
     shape.position = position;
     shape.rotation = rotation;
-    shape.source = Shape3DSource::RAW_VERTICES;
+    shape.source = Collider3DSource::RAW_VERTICES;
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
@@ -259,33 +259,33 @@ int Body3D::createConvexHullShape(Vector3 position, Quaternion rotation, std::ve
     return index;
 }
 
-int Body3D::createMeshShape(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createMeshCollider(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::MESH;
-    shape.source = Shape3DSource::ENTITY_MESH;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::MESH;
+    shape.source = Collider3DSource::ENTITY_MESH;
     shape.sourceEntity = entity;
 
     return index;
 }
 
-int Body3D::createMeshShape(std::vector<Vector3> vertices, std::vector<uint16_t> indices){
-    return createMeshShape(Vector3::ZERO, Quaternion::IDENTITY, vertices, indices);
+int Rigidbody::createMeshCollider(std::vector<Vector3> vertices, std::vector<uint16_t> indices){
+    return createMeshCollider(Vector3::ZERO, Quaternion::IDENTITY, vertices, indices);
 }
 
-int Body3D::createMeshShape(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::MESH;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::MESH;
     shape.position = position;
     shape.rotation = rotation;
-    shape.source = Shape3DSource::RAW_MESH;
+    shape.source = Collider3DSource::RAW_MESH;
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
@@ -308,52 +308,52 @@ int Body3D::createMeshShape(Vector3 position, Quaternion rotation, std::vector<V
     return index;
 }
 
-int Body3D::createHeightFieldShape(){
-    return createHeightFieldShape(0);
+int Rigidbody::createHeightFieldCollider(){
+    return createHeightFieldCollider(0);
 }
 
-int Body3D::createHeightFieldShape(unsigned int samplesSize){
-    Body3DComponent& body = getComponent<Body3DComponent>();
-    int index = appendShape3D(body);
+int Rigidbody::createHeightFieldCollider(unsigned int samplesSize){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    int index = appendCollider3D(body);
     if (index < 0) return index;
 
-    Shape3D& shape = body.shapes[index];
-    shape.type = Shape3DType::HEIGHTFIELD;
-    shape.source = Shape3DSource::ENTITY_HEIGHTFIELD;
+    Collider3D& shape = body.colliders[index];
+    shape.type = Collider3DType::HEIGHTFIELD;
+    shape.source = Collider3DSource::ENTITY_HEIGHTFIELD;
     shape.sourceEntity = entity;
     shape.samplesSize = samplesSize;
 
     return index;
 }
 
-size_t Body3D::getNumShapes() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+size_t Rigidbody::getNumColliders() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    return body.numShapes;
+    return body.numColliders;
 }
 
-Shape3DType Body3D::getShapeType(size_t index) const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Collider3DType Rigidbody::getColliderType(size_t index) const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].type;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].type;
     }else{
         Log::error("Cannot find shape %i of body", index);
         throw std::runtime_error("Cannot find shape");
     }
 }
 
-void Body3D::setShapeDensity(float density){
-    setShapeDensity(0, density);
+void Rigidbody::setColliderDensity(float density){
+    setColliderDensity(0, density);
 }
 
-void Body3D::setShapeDensity(size_t index, float density){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setColliderDensity(size_t index, float density){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].density = density;
-        if (body.shapes[index].shape && body.shapes[index].shape->GetType() == JPH::EShapeType::Convex){
-            JPH::ConvexShape* convexShape = (JPH::ConvexShape*)body.shapes[index].shape.GetPtr();
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].density = density;
+        if (body.colliders[index].shape && body.colliders[index].shape->GetType() == JPH::EShapeType::Convex){
+            JPH::ConvexShape* convexShape = (JPH::ConvexShape*)body.colliders[index].shape.GetPtr();
             convexShape->SetDensity(density);
         }else{
             Log::warn("The shape %i does not have density", index);
@@ -363,15 +363,15 @@ void Body3D::setShapeDensity(size_t index, float density){
     }
 }
 
-float Body3D::getShapeDensity() const{
-    return getShapeDensity(0);
+float Rigidbody::getColliderDensity() const{
+    return getColliderDensity(0);
 }
 
-float Body3D::getShapeDensity(size_t index) const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+float Rigidbody::getColliderDensity(size_t index) const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].density;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].density;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -379,8 +379,8 @@ float Body3D::getShapeDensity(size_t index) const{
     return 0;
 }
 
-void Body3D::setType(BodyType type){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setType(BodyType type){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     body.type = type;
 
@@ -394,60 +394,60 @@ void Body3D::setType(BodyType type){
         JPH::BodyInterface& bodyInterface = getBodyInterface();
         bodyInterface.SetMotionType(body.body, getBodyTypeToJolt(type), activation);
         if (type != BodyType::STATIC){
-            bodyInterface.SetMotionQuality(body.body, PhysicsSystem::getBody3DMotionQualityToJolt(body.motionQuality));
+            bodyInterface.SetMotionQuality(body.body, PhysicsSystem::getRigidbodyMotionQualityToJolt(body.motionQuality));
         }
     }
 }
 
-BodyType Body3D::getType() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+BodyType Rigidbody::getType() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     return getJoltToBodyType(getBodyInterface().GetMotionType(body.body));
 }
 
-void Body3D::setMotionQuality(Body3DMotionQuality motionQuality){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setMotionQuality(RigidbodyMotionQuality motionQuality){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     body.motionQuality = motionQuality;
 
     if (!body.body.IsInvalid()){
-        getBodyInterface().SetMotionQuality(body.body, PhysicsSystem::getBody3DMotionQualityToJolt(motionQuality));
+        getBodyInterface().SetMotionQuality(body.body, PhysicsSystem::getRigidbodyMotionQualityToJolt(motionQuality));
     }
 }
 
-Body3DMotionQuality Body3D::getMotionQuality() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+RigidbodyMotionQuality Rigidbody::getMotionQuality() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     return body.motionQuality;
 }
 
-bool Body3D::canBeKinematicOrDynamic() const{
+bool Rigidbody::canBeKinematicOrDynamic() const{
     return getJoltBody().CanBeKinematicOrDynamic();
 }
 
-void Body3D::activate(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::activate(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
 
     getBodyInterface().ActivateBody(body.body);
 }
 
-void Body3D::deactivate(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::deactivate(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
 
     getBodyInterface().DeactivateBody(body.body);
 }
 
-bool Body3D::isSensor() const{
-    return getComponent<Body3DComponent>().sensor;
+bool Rigidbody::isSensor() const{
+    return getComponent<RigidbodyComponent>().sensor;
 }
 
-void Body3D::setIsSensor(bool sensor){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setIsSensor(bool sensor){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.sensor = sensor;
 
     if (!body.body.IsInvalid()){
@@ -455,21 +455,21 @@ void Body3D::setIsSensor(bool sensor){
     }
 }
 
-bool Body3D::isCollideKinematicVsNonDynamic() const{
+bool Rigidbody::isCollideKinematicVsNonDynamic() const{
     return getJoltBody().GetCollideKinematicVsNonDynamic();
 }
 
-void Body3D::setCollideKinematicVsNonDynamic(bool collideKinematicVsNonDynamic){
+void Rigidbody::setCollideKinematicVsNonDynamic(bool collideKinematicVsNonDynamic){
     getJoltBodyWrite().SetCollideKinematicVsNonDynamic(collideKinematicVsNonDynamic);
 }
 
-void Body3D::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
+void Rigidbody::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
     if (allowedDOFs == JPH::EAllowedDOFs::None){
-        Log::error("Body3D allowed DOFs cannot be empty (Jolt forbids it). Use a static or kinematic body, or lock movement with setGravityFactor(0).");
+        Log::error("Rigidbody allowed DOFs cannot be empty (Jolt forbids it). Use a static or kinematic body, or lock movement with setGravityFactor(0).");
         return;
     }
 
-    Body3DComponent& body = getComponent<Body3DComponent>();
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.allowedDOFs = static_cast<uint8_t>(allowedDOFs);
 
     if (!body.body.IsInvalid()){
@@ -481,15 +481,15 @@ void Body3D::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
     }
 }
 
-void Body3D::setAllowedDOFsAll(){
+void Rigidbody::setAllowedDOFsAll(){
     applyAllowedDOFs(JPH::EAllowedDOFs::All);
 }
 
-void Body3D::setAllowedDOFs2DPlane(){
+void Rigidbody::setAllowedDOFs2DPlane(){
     applyAllowedDOFs(JPH::EAllowedDOFs::Plane2D);
 }
 
-void Body3D::setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ){
+void Rigidbody::setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ){
     JPH::EAllowedDOFs allowedDOFs = JPH::EAllowedDOFs::None;
 
     if (translationX){
@@ -514,22 +514,22 @@ void Body3D::setAllowedDOFs(bool translationX, bool translationY, bool translati
     applyAllowedDOFs(allowedDOFs);
 }
 
-float Body3D::getMass() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+float Rigidbody::getMass() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     return getBodyInterface().GetShape(body.body)->GetMassProperties().mMass;
 }
 
-void Body3D::setMass(float mass){
+void Rigidbody::setMass(float mass){
     JPH::Body& jbody = getJoltBodyWrite();
     JPH::MassProperties massProperties = jbody.GetShape()->GetMassProperties();
     massProperties.mMass = mass;
     jbody.GetMotionProperties()->SetMassProperties(jbody.GetMotionProperties()->GetAllowedDOFs(), massProperties);
 }
 
-void Body3D::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     if (!body.body.IsInvalid()){
         body.solidBoxSize = solidBoxSize;
@@ -540,12 +540,12 @@ void Body3D::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensi
     }
 }
 
-float Body3D::getGravityFactor() const{
-    return getComponent<Body3DComponent>().gravityFactor;
+float Rigidbody::getGravityFactor() const{
+    return getComponent<RigidbodyComponent>().gravityFactor;
 }
 
-void Body3D::setGravityFactor(float gravityFactor){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setGravityFactor(float gravityFactor){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.gravityFactor = gravityFactor;
 
     if (!body.body.IsInvalid()){
@@ -556,15 +556,15 @@ void Body3D::setGravityFactor(float gravityFactor){
     }
 }
 
-void Body3D::setBitsFilter(uint16_t category, uint16_t mask){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setBitsFilter(uint16_t category, uint16_t mask){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(category, mask));
 }
 
-uint16_t Body3D::getCategoryBitsFilter() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+uint16_t Rigidbody::getCategoryBitsFilter() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::ObjectLayer objectLayer = getBodyInterface().GetObjectLayer(body.body);
@@ -572,8 +572,8 @@ uint16_t Body3D::getCategoryBitsFilter() const{
     return JPH::ObjectLayerPairFilterMask::sGetGroup(objectLayer);
 }
 
-void Body3D::setCategoryBitsFilter(uint16_t category){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setCategoryBitsFilter(uint16_t category){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::BodyInterface &body_interface = getBodyInterface();
@@ -584,8 +584,8 @@ void Body3D::setCategoryBitsFilter(uint16_t category){
     body_interface.SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(category, mask));
 }
 
-uint16_t Body3D::getMaskBitsFilter() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+uint16_t Rigidbody::getMaskBitsFilter() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::ObjectLayer objectLayer = getBodyInterface().GetObjectLayer(body.body);
@@ -593,8 +593,8 @@ uint16_t Body3D::getMaskBitsFilter() const{
     return JPH::ObjectLayerPairFilterMask::sGetMask(objectLayer);
 }
 
-void Body3D::setMaskBitsFilter(uint16_t mask){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setMaskBitsFilter(uint16_t mask){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::BodyInterface &body_interface = getBodyInterface();
@@ -605,34 +605,34 @@ void Body3D::setMaskBitsFilter(uint16_t mask){
     body_interface.SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(group, mask));
 }
 
-uint32_t Body3D::getCollisionGroupID() const{
+uint32_t Rigidbody::getCollisionGroupID() const{
     return getJoltBody().GetCollisionGroup().GetGroupID();
 }
 
-void Body3D::setCollisionGroupID(uint32_t group){
+void Rigidbody::setCollisionGroupID(uint32_t group){
     JPH::Ref<JPH::GroupFilterTable> group_filter = new JPH::GroupFilterTable(2);
     group_filter->DisableCollision(0, 0);
 
     getJoltBodyWrite().SetCollisionGroup(JPH::CollisionGroup(group_filter, group, 0));
 }
 
-bool Body3D::isAllowSleeping() const{
+bool Rigidbody::isAllowSleeping() const{
     return getJoltBody().GetAllowSleeping();
 }
 
-void Body3D::setAllowSleeping(bool allowSleeping){
+void Rigidbody::setAllowSleeping(bool allowSleeping){
     getJoltBodyWrite().SetAllowSleeping(allowSleeping);
 }
 
-float Body3D::getFriction() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+float Rigidbody::getFriction() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     return getBodyInterface().GetFriction(body.body);
 }
 
-void Body3D::setFriction(float friction){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setFriction(float friction){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     if (friction < 0 || friction > 1){
         Log::warn("Friction should be 0 and 1, 0 = no friction");
@@ -642,22 +642,22 @@ void Body3D::setFriction(float friction){
     getBodyInterface().SetFriction(body.body, friction);
 }
 
-float Body3D::getRestitution() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+float Rigidbody::getRestitution() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     return getBodyInterface().GetRestitution(body.body);
 }
 
-void Body3D::setRestitution(float restitution){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setRestitution(float restitution){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().SetRestitution(body.body, restitution);
 }
 
-Vector3 Body3D::getPosition() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Vector3 Rigidbody::getPosition() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::RVec3 position = getBodyInterface().GetPosition(body.body);
@@ -665,17 +665,17 @@ Vector3 Body3D::getPosition() const{
     return Vector3(position.GetX(), position.GetY(), position.GetZ());
 }
 
-void Body3D::setPosition(Vector3 position){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setPosition(Vector3 position){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().SetPosition(body.body, JPH::Vec3(position.x, position.y, position.z), JPH::EActivation::Activate);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromBody3D(entity, position, getRotation());
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody(entity, position, getRotation());
 }
 
-Quaternion Body3D::getRotation() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Quaternion Rigidbody::getRotation() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Quat rotation = getBodyInterface().GetRotation(body.body);
@@ -683,18 +683,18 @@ Quaternion Body3D::getRotation() const{
     return Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
 }
 
-void Body3D::setRotation(Quaternion rotation){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setRotation(Quaternion rotation){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
 
     checkBody(body);
     getBodyInterface().SetRotation(body.body, physicsSystem->toValidatedJoltRotation(rotation, entity, -1), JPH::EActivation::Activate);
 
-    physicsSystem->updateTransformFromBody3D(entity, getPosition(), getRotation());
+    physicsSystem->updateTransformFromRigidbody(entity, getPosition(), getRotation());
 }
 
-Vector3 Body3D::getLinearVelocity() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Vector3 Rigidbody::getLinearVelocity() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetLinearVelocity(body.body);
@@ -702,19 +702,19 @@ Vector3 Body3D::getLinearVelocity() const{
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-void Body3D::setLinearVelocity(Vector3 linearVelocity){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setLinearVelocity(Vector3 linearVelocity){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().SetLinearVelocity(body.body, JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
-void Body3D::setLinearVelocityClamped(Vector3 linearVelocity){
+void Rigidbody::setLinearVelocityClamped(Vector3 linearVelocity){
     getJoltBodyWrite().SetLinearVelocityClamped(JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
-Vector3 Body3D::getAngularVelocity() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Vector3 Rigidbody::getAngularVelocity() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetAngularVelocity(body.body);
@@ -722,25 +722,25 @@ Vector3 Body3D::getAngularVelocity() const{
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-void Body3D::setAngularVelocity(Vector3 angularVelocity){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::setAngularVelocity(Vector3 angularVelocity){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().SetAngularVelocity(body.body, JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 
-void Body3D::setAngularVelocityClamped(Vector3 angularVelocity){
+void Rigidbody::setAngularVelocityClamped(Vector3 angularVelocity){
     getJoltBodyWrite().SetAngularVelocityClamped(JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 
-Vector3 Body3D::getPointVelocityCOM(Vector3 pointRelativeToCOM) const{
+Vector3 Rigidbody::getPointVelocityCOM(Vector3 pointRelativeToCOM) const{
     JPH::Vec3 vec = getJoltBody().GetPointVelocityCOM(JPH::Vec3(pointRelativeToCOM.x, pointRelativeToCOM.y, pointRelativeToCOM.z));
 
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-Vector3 Body3D::getPointVelocity(Vector3 point) const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Vector3 Rigidbody::getPointVelocity(Vector3 point) const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetPointVelocity(body.body, JPH::Vec3(point.x, point.y, point.z));
@@ -748,20 +748,20 @@ Vector3 Body3D::getPointVelocity(Vector3 point) const{
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-Vector3 Body3D::getAccumulatedForce() const{
+Vector3 Rigidbody::getAccumulatedForce() const{
     JPH::Vec3 vec = getJoltBody().GetAccumulatedForce();
 
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-Vector3 Body3D::getAccumulatedTorque() const{
+Vector3 Rigidbody::getAccumulatedTorque() const{
     JPH::Vec3 vec = getJoltBody().GetAccumulatedTorque();
 
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-Matrix4 Body3D::getInverseInertia() const{
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Matrix4 Rigidbody::getInverseInertia() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Mat44 mat = getBodyInterface().GetInverseInertia(body.body);
@@ -774,50 +774,50 @@ Matrix4 Body3D::getInverseInertia() const{
     return retMat;
 }
 
-void Body3D::applyForce(const Vector3& force){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyForce(const Vector3& force){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddForce(body.body, JPH::Vec3(force.x, force.y, force.z));
 }
 
-void Body3D::applyForce(const Vector3& force, const Vector3& point){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyForce(const Vector3& force, const Vector3& point){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddForce(body.body, JPH::Vec3(force.x, force.y, force.z), JPH::Vec3(point.x, point.y, point.z));
 }
 
-void Body3D::applyTorque(const Vector3& torque){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyTorque(const Vector3& torque){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddTorque(body.body, JPH::Vec3(torque.x, torque.y, torque.z));
 }
 
-void Body3D::applyImpulse(const Vector3& impulse){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyImpulse(const Vector3& impulse){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddImpulse(body.body, JPH::Vec3(impulse.x, impulse.y, impulse.z));
 }
 
-void Body3D::applyImpulse(const Vector3& impulse, const Vector3& point){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyImpulse(const Vector3& impulse, const Vector3& point){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddImpulse(body.body, JPH::Vec3(impulse.x, impulse.y, impulse.z), JPH::Vec3(point.x, point.y, point.z));
 }
 
-void Body3D::applyAngularImpulse(const Vector3& angularImpulse){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+void Rigidbody::applyAngularImpulse(const Vector3& angularImpulse){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     getBodyInterface().AddAngularImpulse(body.body, JPH::Vec3(angularImpulse.x, angularImpulse.y, angularImpulse.z));
 }
 
-bool Body3D::applyBuoyancyImpulse(const Vector3& surfacePosition, const Vector3& surfaceNormal, const float buoyancy, const float linearDrag, const float angularDrag, const Vector3& fluidVelocity, const Vector3& gravity, const float deltaTime){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+bool Rigidbody::applyBuoyancyImpulse(const Vector3& surfacePosition, const Vector3& surfaceNormal, const float buoyancy, const float linearDrag, const float angularDrag, const Vector3& fluidVelocity, const Vector3& gravity, const float deltaTime){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     JPH::Vec3 surPos = JPH::Vec3(surfacePosition.x, surfacePosition.y, surfacePosition.z);
     JPH::Vec3 surNor = JPH::Vec3(surfaceNormal.x, surfaceNormal.y, surfaceNormal.z);
@@ -827,8 +827,8 @@ bool Body3D::applyBuoyancyImpulse(const Vector3& surfacePosition, const Vector3&
     return getJoltBodyWrite().ApplyBuoyancyImpulse(surPos, surNor, buoyancy, linearDrag, angularDrag, fluVel, grav, deltaTime);
 }
 
-Vector3 Body3D::getCenterOfMassPosition(){
-    Body3DComponent& body = getComponent<Body3DComponent>();
+Vector3 Rigidbody::getCenterOfMassPosition(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
     JPH::Vec3 vec = getBodyInterface().GetCenterOfMassPosition(body.body);
@@ -836,10 +836,10 @@ Vector3 Body3D::getCenterOfMassPosition(){
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
 
-void Body3D::setEnabled(bool enabled){
-    getComponent<Body3DComponent>().enabled = enabled;
+void Rigidbody::setEnabled(bool enabled){
+    getComponent<RigidbodyComponent>().enabled = enabled;
 }
 
-bool Body3D::isEnabled() const{
-    return getComponent<Body3DComponent>().enabled;
+bool Rigidbody::isEnabled() const{
+    return getComponent<RigidbodyComponent>().enabled;
 }

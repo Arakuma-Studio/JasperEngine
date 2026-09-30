@@ -6,7 +6,7 @@
 
 #include "SubSystem.h"
 
-#include "component/SoundComponent.h"
+#include "component/AudioSourceComponent.h"
 
 namespace SoLoud{
 	class Soloud;
@@ -26,7 +26,7 @@ namespace jasperengine{
 		Vector3 cameraLastPosition;
 		bool outputRequested = false;
 
-        bool loadSoundSample(SoundComponent& audio);
+        bool loadSoundSample(AudioSourceComponent& audio);
         void preloadSoundAssets();
 
 	public:
@@ -43,11 +43,11 @@ namespace jasperengine{
 		static void setGlobalVolume(float volume);
 		static float getGlobalVolume();
 
-        bool loadSound(SoundComponent& audio);
-		void destroySound(SoundComponent& audio);
+        bool loadSound(AudioSourceComponent& audio);
+		void destroySound(AudioSourceComponent& audio);
 		void getLoadCount(size_t& loaded, size_t& total) const;
 		void stopSceneSounds();
-		bool seekSound(SoundComponent& audio, double time);
+		bool seekSound(AudioSourceComponent& audio, double time);
 
 		void setPaused(bool paused) override;
 

@@ -5,7 +5,7 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "object/ui/Image.h"
 #include "object/ui/Polygon.h"
 #include "object/ui/Progressbar.h"
@@ -21,7 +21,7 @@ namespace jasperengine::editor{
         Scene* scene;
         Camera* camera;
 
-        Object* selectionRect;
+        GameObject* selectionRect;
 
         Polygon* upRect;
         Polygon* bottomRect;

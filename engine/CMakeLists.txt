@@ -762,15 +762,15 @@ set(JASPERENGINE_SRCS
     core/Scene.cpp
     core/System.cpp
     core/action/Action.cpp
-    core/action/AlphaAction.cpp
+    core/action/AlphaTween.cpp
     core/action/Animation.cpp
-    core/action/ColorAction.cpp
-    core/action/Particles.cpp
-    core/action/PositionAction.cpp
-    core/action/RotationAction.cpp
-    core/action/ScaleAction.cpp
+    core/action/ColorTween.cpp
+    core/action/ParticleSystem.cpp
+    core/action/PositionTween.cpp
+    core/action/RotationTween.cpp
+    core/action/ScaleTween.cpp
     core/action/SpriteAnimation.cpp
-    core/action/TimedAction.cpp
+    core/action/Tween.cpp
     core/action/keyframe/MorphTracks.cpp
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
@@ -785,7 +785,7 @@ set(JASPERENGINE_SRCS
     core/io/File.cpp
     core/io/FileData.cpp
     core/io/ResourcePack.cpp
-    core/manager/BundleManager.cpp
+    core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
     core/math/AABB.cpp
@@ -805,32 +805,32 @@ set(JASPERENGINE_SRCS
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/Light2D.cpp
-    core/object/Lines.cpp
+    core/object/LineRenderer.cpp
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/Model.cpp
-    core/object/Object.cpp
-    core/object/Occluder2D.cpp
+    core/object/GameObject.cpp
+    core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
-    core/object/Shape.cpp
+    core/object/Primitive.cpp
     core/object/Sprite.cpp
     core/object/Terrain.cpp
     core/object/Tilemap.cpp
-    core/object/sound/Sound.cpp
+    core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
     core/object/environment/ReflectionProbe.cpp
-    core/object/environment/SkyBox.cpp
+    core/object/environment/Skybox.cpp
     core/object/ui/Button.cpp
-    core/object/ui/Container.cpp
+    core/object/ui/LayoutGroup.cpp
     core/object/ui/Image.cpp
     core/object/ui/Panel.cpp
     core/object/ui/Polygon.cpp
     core/object/ui/Scrollbar.cpp
     core/object/ui/Progressbar.cpp
     core/object/ui/Text.cpp
-    core/object/ui/TextEdit.cpp
-    core/object/ui/UILayout.cpp
+    core/object/ui/InputField.cpp
+    core/object/ui/RectTransform.cpp
     core/pool/FontPool.cpp
     core/pool/ShaderPool.cpp
     core/pool/SoundPool.cpp
@@ -856,7 +856,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
-    core/script/binding/ObjectClassesLua.cpp
+    core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/shader/ShaderData.cpp
@@ -885,7 +885,7 @@ set(JASPERENGINE_SRCS
 
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
-        core/object/physics/Body2D.cpp
+        core/object/physics/Rigidbody2D.cpp
         core/object/physics/Contact2D.cpp
         core/object/physics/Joint2D.cpp
         core/object/physics/Manifold2D.cpp
@@ -894,7 +894,7 @@ endif()
 
 if(JASPERENGINE_PHYSICS_3D)
     list(APPEND JASPERENGINE_SRCS
-        core/object/physics/Body3D.cpp
+        core/object/physics/Rigidbody.cpp
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp

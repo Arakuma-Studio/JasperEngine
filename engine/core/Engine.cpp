@@ -15,8 +15,8 @@
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
-#include "component/TextEditComponent.h"
-#include "component/SoundComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
@@ -884,16 +884,16 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         scrollbars->getComponentFromIndex(i).onChange.clear();
     }
 
-    auto textEdits = scene->getComponentArray<TextEditComponent>();
-    for (size_t i = 0; i < textEdits->size(); i++) {
-        TextEditComponent& textEdit = textEdits->getComponentFromIndex(i);
-        textEdit.onChange.clear();
-        textEdit.onSubmit.clear();
+    auto inputFields = scene->getComponentArray<InputFieldComponent>();
+    for (size_t i = 0; i < inputFields->size(); i++) {
+        InputFieldComponent& inputField = inputFields->getComponentFromIndex(i);
+        inputField.onChange.clear();
+        inputField.onSubmit.clear();
     }
 
-    auto sounds = scene->getComponentArray<SoundComponent>();
+    auto sounds = scene->getComponentArray<AudioSourceComponent>();
     for (size_t i = 0; i < sounds->size(); i++) {
-        SoundComponent& sound = sounds->getComponentFromIndex(i);
+        AudioSourceComponent& sound = sounds->getComponentFromIndex(i);
         sound.onStart.clear();
         sound.onPause.clear();
         sound.onStop.clear();

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "ImportEntityBundleCmd.h"
+#include "ImportPrefabCmd.h"
 
 #include "editor/Out.h"
 #include "Stream.h"
@@ -9,7 +9,7 @@
 
 using namespace jasperengine;
 
-editor::ImportEntityBundleCmd::ImportEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent, bool needSaveScene){
+editor::ImportPrefabCmd::ImportPrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent, bool needSaveScene){
     this->project = project;
     this->sceneId = sceneId;
     this->filepath = filepath;
@@ -17,10 +17,10 @@ editor::ImportEntityBundleCmd::ImportEntityBundleCmd(Project* project, uint32_t 
     this->needSaveScene = needSaveScene;
     this->rootEntity = NULL_ENTITY;
     this->wasModified = project->getScene(sceneId)->isModified;
-    this->addedToParentBundle = false;
+    this->addedToParentPrefab = false;
 }
 
-bool editor::ImportEntityBundleCmd::execute(){
+bool editor::ImportPrefabCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     if (!sceneProject){
@@ -31,7 +31,7 @@ bool editor::ImportEntityBundleCmd::execute(){
 
     Scene* scene = sceneProject->scene;
 
-    // Create root entity with BundleComponent (Preserve ID for Undo/Redo)
+    // Create root entity with PrefabComponent (Preserve ID for Undo/Redo)
     if (rootEntity == NULL_ENTITY){
         rootEntity = scene->createUserEntity();
     }else{
@@ -40,20 +40,20 @@ bool editor::ImportEntityBundleCmd::execute(){
         }
     }
 
-    BundleComponent bundleComp;
-    bundleComp.name = filepath.stem().string();
-    bundleComp.path = filepath.string();
-    scene->addComponent<BundleComponent>(rootEntity, bundleComp);
+    PrefabComponent prefabComp;
+    prefabComp.name = filepath.stem().string();
+    prefabComp.path = filepath.string();
+    scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
-    // Check if bundle has top-level entities with transforms to decide if root needs one
-    EntityBundle* bundle = project->getEntityBundle(filepath);
+    // Check if prefab has top-level entities with transforms to decide if root needs one
+    Prefab* prefab = project->getPrefab(filepath);
     bool hasTopLevelTransform = false;
 
-    if (!bundle || bundle->registryEntities.empty()) {
-        // Bundle not loaded yet — load from disk to check
+    if (!prefab || prefab->registryEntities.empty()) {
+        // Prefab not loaded yet — load from disk to check
         try {
-            std::filesystem::path fullBundlePath = project->getProjectPath() / filepath;
-            YAML::Node node = YAML::LoadFile(fullBundlePath.string());
+            std::filesystem::path fullPrefabPath = project->getProjectPath() / filepath;
+            YAML::Node node = YAML::LoadFile(fullPrefabPath.string());
             // Temporarily decode to check for transforms
             EntityRegistry tempRegistry;
             std::vector<Entity> tempEntities;
@@ -66,15 +66,15 @@ bool editor::ImportEntityBundleCmd::execute(){
                 }
             }
         } catch (const std::exception& e) {
-            Out::error("Failed to check bundle file: %s", e.what());
+            Out::error("Failed to check prefab file: %s", e.what());
             scene->destroyEntity(rootEntity);
             rootEntity = NULL_ENTITY;
             return false;
         }
     } else {
-        std::vector<Entity> topLevel = Project::getTopLevelEntities(bundle->registry.get(), bundle->registryEntities);
+        std::vector<Entity> topLevel = Project::getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
         for (Entity e : topLevel) {
-            if (bundle->registry->getSignature(e).test(bundle->registry->getComponentId<Transform>())) {
+            if (prefab->registry->getSignature(e).test(prefab->registry->getComponentId<Transform>())) {
                 hasTopLevelTransform = true;
                 break;
             }
@@ -88,7 +88,7 @@ bool editor::ImportEntityBundleCmd::execute(){
     // Set name
     std::string rootName = filepath.stem().string();
     if (rootName.empty()) {
-        rootName = "Bundle";
+        rootName = "Prefab";
     }
     scene->setEntityName(rootEntity, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
     sceneProject->entities.push_back(rootEntity);
@@ -100,8 +100,8 @@ bool editor::ImportEntityBundleCmd::execute(){
         }
     }
 
-    // Import bundle contents
-    importedEntities = project->importEntityBundle(sceneProject, &sceneProject->entities, filepath, rootEntity, needSaveScene);
+    // Import prefab contents
+    importedEntities = project->importPrefab(sceneProject, &sceneProject->entities, filepath, rootEntity, needSaveScene);
 
     if (importedEntities.empty()){
         // Clean up root if import failed
@@ -114,7 +114,7 @@ bool editor::ImportEntityBundleCmd::execute(){
         return false;
     }
 
-    // Applied after the import so nothing the bundle brings in overwrites it.
+    // Applied after the import so nothing the prefab brings in overwrites it.
     if (hasPlacement){
         if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
             rootTransform->position = placementPosition;
@@ -124,11 +124,11 @@ bool editor::ImportEntityBundleCmd::execute(){
         }
     }
 
-    // If parent is part of a bundle, add the new root as a nested bundle member. A brush
-    // placement never does: it drops props into the scene, not into a shared bundle asset.
-    addedToParentBundle = false;
-    if (parent != NULL_ENTITY && !hasPlacement && project->isEntityInBundle(sceneId, parent)) {
-        addedToParentBundle = project->addEntityToBundle(sceneId, rootEntity, parent, false);
+    // If parent is part of a prefab, add the new root as a nested prefab member. A brush
+    // placement never does: it drops props into the scene, not into a shared prefab asset.
+    addedToParentPrefab = false;
+    if (parent != NULL_ENTITY && !hasPlacement && project->isEntityInPrefab(sceneId, parent)) {
+        addedToParentPrefab = project->addEntityToPrefab(sceneId, rootEntity, parent, false);
     }
 
     if (!quiet){
@@ -139,26 +139,26 @@ bool editor::ImportEntityBundleCmd::execute(){
             ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneId)).c_str());
         }
 
-        editor::Out::info("Imported entity bundle from '%s' to scene '%s'", filepath.string().c_str(), sceneProject->name.c_str());
+        editor::Out::info("Imported prefab from '%s' to scene '%s'", filepath.string().c_str(), sceneProject->name.c_str());
     }
 
     return true;
 }
 
-void editor::ImportEntityBundleCmd::undo(){
+void editor::ImportPrefabCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject) {
         return;
     }
 
-    // Remove from parent bundle first if it was added
-    if (addedToParentBundle) {
-        project->removeEntityFromBundle(sceneId, rootEntity, false);
-        addedToParentBundle = false;
+    // Remove from parent prefab first if it was added
+    if (addedToParentPrefab) {
+        project->removeEntityFromPrefab(sceneId, rootEntity, false);
+        addedToParentPrefab = false;
     }
 
-    // Unimport the entity bundle (removes instance + destroys entities)
-    project->unimportEntityBundle(sceneId, filepath, rootEntity, importedEntities);
+    // Unimport the prefab (removes instance + destroys entities)
+    project->unimportPrefab(sceneId, filepath, rootEntity, importedEntities);
 
     // Restore previous selection
     if (!quiet && !lastSelected.empty()) {
@@ -169,21 +169,21 @@ void editor::ImportEntityBundleCmd::undo(){
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ImportEntityBundleCmd::mergeWith(editor::Command* otherCommand){
+bool editor::ImportPrefabCmd::mergeWith(editor::Command* otherCommand){
     return false;
 }
 
-std::vector<Entity> editor::ImportEntityBundleCmd::getImportedEntities() const{
+std::vector<Entity> editor::ImportPrefabCmd::getImportedEntities() const{
     return importedEntities;
 }
 
-void editor::ImportEntityBundleCmd::setPlacement(const Vector3& position, const Quaternion& rotation, const Vector3& scale){
+void editor::ImportPrefabCmd::setPlacement(const Vector3& position, const Quaternion& rotation, const Vector3& scale){
     hasPlacement = true;
     placementPosition = position;
     placementRotation = rotation;
     placementScale = scale;
 }
 
-void editor::ImportEntityBundleCmd::setQuiet(bool quiet){
+void editor::ImportPrefabCmd::setQuiet(bool quiet){
     this->quiet = quiet;
 }

@@ -80,7 +80,7 @@ bool editor::DeleteFileCmd::execute(){
         for (const auto& deletedPath : deletedPaths) {
             project->cleanupMaterialFilePath(deletedPath);
             project->cleanupSceneFilePath(deletedPath);
-            project->cleanupEntityBundleFilePath(deletedPath);
+            project->cleanupPrefabFilePath(deletedPath);
             project->cleanupScriptFilePath(deletedPath);
             project->cleanupAssetFilePath(deletedPath);
             project->cleanupShaderFilePath(deletedPath);

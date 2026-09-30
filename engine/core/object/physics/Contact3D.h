@@ -5,7 +5,7 @@
 #define Contact3D_H
 
 #include "Entity.h"
-#include "Body3D.h"
+#include "Rigidbody.h"
 
 #include "Jolt/Physics/Body/Body.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
@@ -34,8 +34,8 @@ namespace jasperengine{
         Vector3 getBaseOffset() const;
         Vector3 getWorldSpaceNormal() const;
         float getPenetrationDepth() const;
-        size_t getShapeIndex1() const;
-        size_t getShapeIndex2() const;
+        size_t getColliderIndex1() const;
+        size_t getColliderIndex2() const;
         Vector3 getRelativeContactPointsOnA(size_t index) const;
         Vector3 getRelativeContactPointsOnB(size_t index) const;
 

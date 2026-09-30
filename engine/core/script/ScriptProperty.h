@@ -69,7 +69,7 @@ namespace jasperengine {
         int luaRef = 0; // For Lua script instance
 
         // Optional: Store the actual type name for editor UI/debugging
-        std::string ptrTypeName; // e.g., "Mesh*", "Object*", "EntityHandle*"
+        std::string ptrTypeName; // e.g., "Mesh*", "GameObject*", "EntityHandle*"
 
         // Helper template to get typed value
         template<typename T>

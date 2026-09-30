@@ -15,7 +15,7 @@ namespace jasperengine::editor{
 
     enum class EntityCreationType{
         EMPTY,
-        OBJECT,
+        GAMEOBJECT,
         BOX,
         PLANE,
         WALL,
@@ -31,39 +31,39 @@ namespace jasperengine::editor{
         BUTTON,
         SCROLLBAR,
         PROGRESSBAR,
-        TEXTEDIT,
+        INPUT_FIELD,
         PANEL,
         POLYGON,
-        CONTAINER,
+        LAYOUT_GROUP,
         POINT_LIGHT,
         DIRECTIONAL_LIGHT,
         SPOT_LIGHT,
         POINT_LIGHT_2D,
-        OCCLUDER_2D,
+        SHADOW_CASTER_2D,
         JOINT2D,
         JOINT3D,
-        BODY2D,
-        BODY3D,
-        SKY,
+        RIGIDBODY2D,
+        RIGIDBODY,
+        SKYBOX,
         FOG,
         CAMERA,
-        SOUND,
-        SOUND_3D,
+        AUDIO_SOURCE,
+        AUDIO_SOURCE_3D,
         ANIMATION,
         SPRITE_ANIMATION,
-        POSITION_ACTION,
-        ROTATION_ACTION,
-        SCALE_ACTION,
-        COLOR_ACTION,
-        ALPHA_ACTION,
+        POSITION_TWEEN,
+        ROTATION_TWEEN,
+        SCALE_TWEEN,
+        COLOR_TWEEN,
+        ALPHA_TWEEN,
         TRANSLATE_TRACKS,
         ROTATE_TRACKS,
         SCALE_TRACKS,
         MORPH_TRACKS,
         MODEL,
-        PARTICLES,
+        PARTICLE_SYSTEM,
         POINTS,
-        LINES,
+        LINE_RENDERER,
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE
@@ -86,7 +86,7 @@ namespace jasperengine::editor{
         Entity parent;
         EntityCreationType type;
         std::vector<Entity> lastSelected;
-        bool addToBundle;
+        bool addToPrefab;
         bool quiet = false;
         bool wasModified;
         bool wasMainCamera;
@@ -96,9 +96,9 @@ namespace jasperengine::editor{
         uint64_t updateFlags;
 
     public:
-        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToBundle = false);
-        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToBundle = false);
-        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, Entity parent, bool addToBundle = false);
+        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToPrefab = false);
+        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToPrefab = false);
+        CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, Entity parent, bool addToPrefab = false);
 
         bool execute() override;
         void undo() override;

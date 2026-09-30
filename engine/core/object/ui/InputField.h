@@ -1,24 +1,24 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef TEXTEDIT_H
-#define TEXTEDIT_H
+#ifndef INPUT_FIELD_H
+#define INPUT_FIELD_H
 
 #include "Image.h"
 #include "Text.h"
 #include "Polygon.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API TextEdit: public Image{
+    class JASPERENGINE_API InputField: public Image{
     private:
         void ensureText();
         bool hasCursor() const;
         bool hasSelection() const;
 
     public:
-        TextEdit(Scene* scene);
-        TextEdit(Scene* scene, Entity entity);
-        virtual ~TextEdit();
+        InputField(Scene* scene);
+        InputField(Scene* scene, Entity entity);
+        virtual ~InputField();
 
         bool hasText() const;
         Text getTextObject() const;
@@ -84,4 +84,4 @@ namespace jasperengine{
     };
 }
 
-#endif //TEXTEDIT_H
+#endif //INPUT_FIELD_H

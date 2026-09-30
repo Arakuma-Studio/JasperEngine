@@ -6,7 +6,7 @@
 
 #include "Image.h"
 #include "Text.h"
-#include "Container.h"
+#include "LayoutGroup.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Panel: public Image{
@@ -24,7 +24,7 @@ namespace jasperengine{
         bool hasHeader() const;
 
         Image getHeaderImageObject() const;
-        Container getHeaderContainerObject() const;
+        LayoutGroup getHeaderContainerObject() const;
         Text getHeaderTextObject() const;
 
         void setTitle(const std::string& text);

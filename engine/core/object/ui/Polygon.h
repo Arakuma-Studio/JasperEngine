@@ -4,10 +4,10 @@
 #ifndef POLYGON_H
 #define POLYGON_H
 
-#include "UILayout.h"
+#include "RectTransform.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API Polygon: public UILayout{
+    class JASPERENGINE_API Polygon: public RectTransform{
 
     public:
         Polygon(Scene* scene);

@@ -9,28 +9,28 @@ EntityRegistry::EntityRegistry() {
     registerComponent<MeshComponent>();
     registerComponent<ModelComponent>();
     registerComponent<BoneComponent>();
-    registerComponent<SkyComponent>();
+    registerComponent<SkyboxComponent>();
     registerComponent<FogComponent>();
     registerComponent<MirrorComponent>();
-    registerComponent<UIContainerComponent>();
-    registerComponent<UILayoutComponent>();
+    registerComponent<LayoutGroupComponent>();
+    registerComponent<RectTransformComponent>();
     registerComponent<SpriteComponent>();
     registerComponent<SpriteAnimationComponent>();
     registerComponent<Transform>();
     registerComponent<CameraComponent>();
     registerComponent<LightComponent>();
     registerComponent<Light2DComponent>();
-    registerComponent<Occluder2DComponent>();
+    registerComponent<ShadowCaster2DComponent>();
     registerComponent<ActionComponent>();
-    registerComponent<TimedActionComponent>();
-    registerComponent<PositionActionComponent>();
-    registerComponent<RotationActionComponent>();
-    registerComponent<ScaleActionComponent>();
-    registerComponent<ColorActionComponent>();
-    registerComponent<AlphaActionComponent>();
-    registerComponent<ParticlesComponent>();
+    registerComponent<TweenComponent>();
+    registerComponent<PositionTweenComponent>();
+    registerComponent<RotationTweenComponent>();
+    registerComponent<ScaleTweenComponent>();
+    registerComponent<ColorTweenComponent>();
+    registerComponent<AlphaTweenComponent>();
+    registerComponent<ParticleSystemComponent>();
     registerComponent<PointsComponent>();
-    registerComponent<LinesComponent>();
+    registerComponent<LineRendererComponent>();
     registerComponent<TextComponent>();
     registerComponent<UIComponent>();
     registerComponent<ImageComponent>();
@@ -38,7 +38,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PanelComponent>();
     registerComponent<ScrollbarComponent>();
     registerComponent<ProgressbarComponent>();
-    registerComponent<TextEditComponent>();
+    registerComponent<InputFieldComponent>();
     registerComponent<MeshPolygonComponent>();
     registerComponent<PolygonComponent>();
     registerComponent<AnimationComponent>();
@@ -49,18 +49,18 @@ EntityRegistry::EntityRegistry() {
     registerComponent<ScaleTracksComponent>();
     registerComponent<ScriptComponent>();
     registerComponent<TerrainComponent>();
-    registerComponent<SoundComponent>();
+    registerComponent<AudioSourceComponent>();
     registerComponent<TilemapComponent>();
 #ifdef JASPERENGINE_PHYSICS_2D
-    registerComponent<Body2DComponent>();
+    registerComponent<Rigidbody2DComponent>();
     registerComponent<Joint2DComponent>();
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-    registerComponent<Body3DComponent>();
+    registerComponent<RigidbodyComponent>();
     registerComponent<Joint3DComponent>();
 #endif
     registerComponent<InstancedMeshComponent>();
-    registerComponent<BundleComponent>();
+    registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
 }
 
@@ -109,8 +109,8 @@ void EntityRegistry::sortComponentsByTransform(Signature entitySignature){
     }
 
     // UI layout component
-    if (entitySignature.test(getComponentId<UILayoutComponent>())){
-        auto layout = componentManager.getComponentArray<UILayoutComponent>();
+    if (entitySignature.test(getComponentId<RectTransformComponent>())){
+        auto layout = componentManager.getComponentArray<RectTransformComponent>();
         layout->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
     }
 
@@ -127,14 +127,14 @@ void EntityRegistry::sortComponentsByTransform(Signature entitySignature){
     }
 
     // Lines component
-    if (entitySignature.test(getComponentId<LinesComponent>())){
-        auto lines = componentManager.getComponentArray<LinesComponent>();
+    if (entitySignature.test(getComponentId<LineRendererComponent>())){
+        auto lines = componentManager.getComponentArray<LineRendererComponent>();
         lines->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
     }
 
     // Sound component
-    if (entitySignature.test(getComponentId<SoundComponent>())){
-        auto audios = componentManager.getComponentArray<SoundComponent>();
+    if (entitySignature.test(getComponentId<AudioSourceComponent>())){
+        auto audios = componentManager.getComponentArray<AudioSourceComponent>();
         audios->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
     }
 }
@@ -492,7 +492,7 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
                 // set local position to be the same of world position
                 transformChild.modelMatrix.decompose(transformChild.position, transformChild.scale, transformChild.rotation);
                 // the matrix origin of a pivoted UI element is not its position
-                if (UILayoutComponent* layout = findComponent<UILayoutComponent>(child)){
+                if (RectTransformComponent* layout = findComponent<RectTransformComponent>(child)){
                     transformChild.position -= getUIPivotShift(*layout, transformChild.rotation, transformChild.scale);
                 }
             }
@@ -511,7 +511,7 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
                     if (changeTransform){
                         Matrix4 localMatrix = transformParent.modelMatrix.inverse() * transformChild.modelMatrix;
                         localMatrix.decompose(transformChild.position, transformChild.scale, transformChild.rotation);
-                        if (UILayoutComponent* layout = findComponent<UILayoutComponent>(child)){
+                        if (RectTransformComponent* layout = findComponent<RectTransformComponent>(child)){
                             transformChild.position -= getUIPivotShift(*layout, transformChild.rotation, transformChild.scale);
                         }
                     }

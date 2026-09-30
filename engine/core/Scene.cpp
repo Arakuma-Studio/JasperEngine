@@ -65,7 +65,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         action.onStep.removeByTagSubstring(tag);
     });
 
-    removeComponentSubscriptionsByTag<SoundComponent>(this, substring, [](SoundComponent& sound, const std::string& tag) {
+    removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {
         sound.onStart.removeByTagSubstring(tag);
         sound.onPause.removeByTagSubstring(tag);
         sound.onStop.removeByTagSubstring(tag);
@@ -100,9 +100,9 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         scrollbar.onChange.removeByTagSubstring(tag);
     });
 
-    removeComponentSubscriptionsByTag<TextEditComponent>(this, substring, [](TextEditComponent& textEdit, const std::string& tag) {
-        textEdit.onChange.removeByTagSubstring(tag);
-        textEdit.onSubmit.removeByTagSubstring(tag);
+    removeComponentSubscriptionsByTag<InputFieldComponent>(this, substring, [](InputFieldComponent& inputField, const std::string& tag) {
+        inputField.onChange.removeByTagSubstring(tag);
+        inputField.onSubmit.removeByTagSubstring(tag);
     });
 
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);

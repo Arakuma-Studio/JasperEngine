@@ -565,7 +565,7 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("point", &RayReturn::point)
         .addProperty("normal", &RayReturn::normal)
         .addProperty("body", &RayReturn::body)
-        .addProperty("shapeIndex", &RayReturn::shapeIndex)
+        .addProperty("colliderIndex", &RayReturn::colliderIndex)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -580,12 +580,12 @@ void LuaBinding::registerMathClasses(lua_State *L){
             luabridge::overload<const OBB&>(&Ray::intersects),
             luabridge::overload<const Plane&>(&Ray::intersects),
 #ifdef JASPERENGINE_PHYSICS_2D
-            luabridge::overload<const Body2D&>(&Ray::intersects),
-            luabridge::overload<const Body2D&, size_t>(&Ray::intersects),
+            luabridge::overload<const Rigidbody2D&>(&Ray::intersects),
+            luabridge::overload<const Rigidbody2D&, size_t>(&Ray::intersects),
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-            luabridge::overload<const Body3D&>(&Ray::intersects),
-            luabridge::overload<const Body3D&, size_t>(&Ray::intersects),
+            luabridge::overload<const Rigidbody&>(&Ray::intersects),
+            luabridge::overload<const Rigidbody&, size_t>(&Ray::intersects),
 #endif
             luabridge::overload<Scene*, RayFilter>(&Ray::intersects),
             luabridge::overload<Scene*, RayFilter, bool>(&Ray::intersects),

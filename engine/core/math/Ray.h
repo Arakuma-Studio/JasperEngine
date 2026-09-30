@@ -16,8 +16,8 @@
 namespace jasperengine {
 
     class Scene;
-    class Body2D;
-    class Body3D;
+    class Rigidbody2D;
+    class Rigidbody;
 
     enum class RayFilter{
         BODY_2D,
@@ -31,7 +31,7 @@ namespace jasperengine {
         Vector3 point;
         Vector3 normal;
         Entity body;
-        size_t shapeIndex;
+        size_t colliderIndex;
 
         operator bool() const {
             return hit;
@@ -69,12 +69,12 @@ namespace jasperengine {
         RayReturn intersects(const OBB& obb) const;
         RayReturn intersects(const Sphere& sphere) const;
 #ifdef JASPERENGINE_PHYSICS_2D
-        RayReturn intersects(const Body2D& body) const;
-        RayReturn intersects(const Body2D& body, size_t shape) const;
+        RayReturn intersects(const Rigidbody2D& body) const;
+        RayReturn intersects(const Rigidbody2D& body, size_t shape) const;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-        RayReturn intersects(const Body3D& body) const;
-        RayReturn intersects(const Body3D& body, size_t shape) const;
+        RayReturn intersects(const Rigidbody& body) const;
+        RayReturn intersects(const Rigidbody& body, size_t shape) const;
 #endif
         RayReturn intersects(Scene* scene, RayFilter raytest) const;
         RayReturn intersects(Scene* scene, RayFilter raytest, bool onlyStatic) const;

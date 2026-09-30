@@ -9,7 +9,7 @@
 #include "action/SpriteAnimation.h"
 
 #include "Mesh.h"
-#include "Occluder2D.h"
+#include "ShadowCaster2D.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Sprite: public Mesh{
@@ -33,8 +33,8 @@ namespace jasperengine{
 
         bool createSprite();
 
-        Occluder2D getOccluder2D();
-        void removeOccluder2D();
+        ShadowCaster2D getShadowCaster2D();
+        void removeShadowCaster2D();
 
         void setSize(unsigned int width, unsigned int height);
         void setWidth(unsigned int width);

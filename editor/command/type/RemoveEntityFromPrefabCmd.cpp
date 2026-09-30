@@ -1,11 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "RemoveEntityFromBundleCmd.h"
+#include "RemoveEntityFromPrefabCmd.h"
 
 using namespace jasperengine;
 
-editor::RemoveEntityFromBundleCmd::RemoveEntityFromBundleCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent){
+editor::RemoveEntityFromPrefabCmd::RemoveEntityFromPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent){
     this->project = project;
     this->sceneId = sceneId;
     this->entity = entity;
@@ -14,8 +14,8 @@ editor::RemoveEntityFromBundleCmd::RemoveEntityFromBundleCmd(Project* project, u
     this->wasModified = project->getScene(sceneId)->isModified;
 }
 
-bool editor::RemoveEntityFromBundleCmd::execute(){
-    recovery = project->removeEntityFromBundle(sceneId, entity, false);
+bool editor::RemoveEntityFromPrefabCmd::execute(){
+    recovery = project->removeEntityFromPrefab(sceneId, entity, false);
 
     bool result = !recovery.empty();
     if (result){
@@ -25,13 +25,13 @@ bool editor::RemoveEntityFromBundleCmd::execute(){
     return result;
 }
 
-void editor::RemoveEntityFromBundleCmd::undo(){
-    project->addEntityToBundle(sceneId, recovery, parent, false);
+void editor::RemoveEntityFromPrefabCmd::undo(){
+    project->addEntityToPrefab(sceneId, recovery, parent, false);
 
     project->getScene(sceneId)->isModified = wasModified;
 }
 
-bool editor::RemoveEntityFromBundleCmd::mergeWith(editor::Command* otherCommand){
+bool editor::RemoveEntityFromPrefabCmd::mergeWith(editor::Command* otherCommand){
 
     return false;
 }

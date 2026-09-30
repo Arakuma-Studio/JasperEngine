@@ -40,7 +40,7 @@ namespace jasperengine{
             Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
             Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-            return scene->getSystem<PhysicsSystem>()->shouldCollide2D.callRet(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB, true);
+            return scene->getSystem<PhysicsSystem>()->shouldCollide2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, true);
         }
 
         static bool PreSolve(b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context){
@@ -55,7 +55,7 @@ namespace jasperengine{
             Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
             Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-            return scene->getSystem<PhysicsSystem>()->preSolve2D.callRet(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB, Manifold2D(scene, manifold), true);
+            return scene->getSystem<PhysicsSystem>()->preSolve2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, Manifold2D(scene, manifold), true);
         }
 
         // A shape destroyed since the step (a body removed or recreated, or by an earlier
@@ -78,7 +78,7 @@ namespace jasperengine{
                 Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
                 Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-                scene->getSystem<PhysicsSystem>()->beginContact2D.call(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB);
+                scene->getSystem<PhysicsSystem>()->beginContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB);
             }
 
             for (int i = 0; i < contactEvents.endCount; ++i){
@@ -95,7 +95,7 @@ namespace jasperengine{
                 Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
                 Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-                scene->getSystem<PhysicsSystem>()->endContact2D.call(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB);
+                scene->getSystem<PhysicsSystem>()->endContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB);
             }
 
             for (int i = 0; i < contactEvents.hitCount; ++i){
@@ -115,7 +115,7 @@ namespace jasperengine{
                 Vector2 point(hitEvent->point.x, hitEvent->point.y);
                 Vector2 normal(hitEvent->normal.x, hitEvent->normal.y);
 
-                scene->getSystem<PhysicsSystem>()->hitContact2D.call(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB, point, normal, hitEvent->approachSpeed);
+                scene->getSystem<PhysicsSystem>()->hitContact2D.call(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, point, normal, hitEvent->approachSpeed);
             }
 
             for (int i = 0; i < sensorEvents.beginCount; ++i){
@@ -132,7 +132,7 @@ namespace jasperengine{
                 Entity entitySensor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdSensor));
                 Entity entityVisitor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdVisitor));
 
-                scene->getSystem<PhysicsSystem>()->beginSensorContact2D.call(Body2D(scene, entitySensor), shapeIndexSensor, Body2D(scene, entityVisitor), shapeIndexVisitor);
+                scene->getSystem<PhysicsSystem>()->beginSensorContact2D.call(Rigidbody2D(scene, entitySensor), shapeIndexSensor, Rigidbody2D(scene, entityVisitor), shapeIndexVisitor);
             }
 
             for (int i = 0; i < sensorEvents.endCount; ++i){
@@ -149,7 +149,7 @@ namespace jasperengine{
                 Entity entitySensor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdSensor));
                 Entity entityVisitor = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdVisitor));
 
-                scene->getSystem<PhysicsSystem>()->endSensorContact2D.call(Body2D(scene, entitySensor), shapeIndexSensor, Body2D(scene, entityVisitor), shapeIndexVisitor);
+                scene->getSystem<PhysicsSystem>()->endSensorContact2D.call(Rigidbody2D(scene, entitySensor), shapeIndexSensor, Rigidbody2D(scene, entityVisitor), shapeIndexVisitor);
             }
         }
 
@@ -196,11 +196,11 @@ namespace jasperengine{
         bool ShouldCollide(b2Fixture* fixtureA, b2Fixture* fixtureB){
             unsigned long shapeIndexA = fixtureA->GetUserData().pointer;
             Entity entityA = fixtureA->GetBody()->GetUserData().pointer;
-            Body2D bodyA(scene, entityA);
+            Rigidbody2D bodyA(scene, entityA);
 
             unsigned long shapeIndexB = fixtureB->GetUserData().pointer;
             Entity entityB = fixtureB->GetBody()->GetUserData().pointer;
-            Body2D bodyB(scene, entityB);
+            Rigidbody2D bodyB(scene, entityB);
 
             return physicsSystem->shouldCollide2D.callRet(bodyA, shapeIndexA, bodyB, shapeIndexB, true);
         }

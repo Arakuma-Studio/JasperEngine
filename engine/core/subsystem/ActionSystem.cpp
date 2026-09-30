@@ -34,7 +34,7 @@ Vector3 ActionSystem::getParticleDisplayScale(Vector3 scale, Transform* targetTr
         scale.z * getParticleInverseScale(targetTransform->worldScale.z));
 }
 
-bool ActionSystem::isParticleWorldSpace(ParticlesComponent& particles, Transform* targetTransform){
+bool ActionSystem::isParticleWorldSpace(ParticleSystemComponent& particles, Transform* targetTransform){
     return !particles.localSpace && targetTransform;
 }
 
@@ -64,42 +64,42 @@ void ActionSystem::updateParticleTargetTransform(Transform& transform){
     transform.worldRotation = transform.rotation;
 }
 
-Vector3 ActionSystem::getParticleSimulationPosition(ParticlesComponent& particles, Transform* targetTransform, Vector3 position){
+Vector3 ActionSystem::getParticleSimulationPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position){
     if (isParticleWorldSpace(particles, targetTransform))
         return targetTransform->modelMatrix * position;
 
     return position;
 }
 
-Vector3 ActionSystem::getParticleSimulationDirection(ParticlesComponent& particles, Transform* targetTransform, Vector3 direction){
+Vector3 ActionSystem::getParticleSimulationDirection(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 direction){
     if (isParticleWorldSpace(particles, targetTransform))
         return targetTransform->worldRotation * direction;
 
     return direction;
 }
 
-Quaternion ActionSystem::getParticleSimulationRotation(ParticlesComponent& particles, Transform* targetTransform, Quaternion rotation){
+Quaternion ActionSystem::getParticleSimulationRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation){
     if (isParticleWorldSpace(particles, targetTransform))
         return targetTransform->worldRotation * rotation;
 
     return rotation;
 }
 
-Vector3 ActionSystem::getParticleDisplayPosition(ParticlesComponent& particles, Transform* targetTransform, Vector3 position){
+Vector3 ActionSystem::getParticleDisplayPosition(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 position){
     if (isParticleWorldSpace(particles, targetTransform))
         return particles.cachedTargetModelInv * position;
 
     return position;
 }
 
-Quaternion ActionSystem::getParticleDisplayRotation(ParticlesComponent& particles, Transform* targetTransform, Quaternion rotation){
+Quaternion ActionSystem::getParticleDisplayRotation(ParticleSystemComponent& particles, Transform* targetTransform, Quaternion rotation){
     if (isParticleWorldSpace(particles, targetTransform))
         return particles.cachedTargetWorldRotInv * rotation;
 
     return rotation;
 }
 
-Vector3 ActionSystem::getParticleDisplayScale(ParticlesComponent& particles, Transform* targetTransform, Vector3 scale){
+Vector3 ActionSystem::getParticleDisplayScale(ParticleSystemComponent& particles, Transform* targetTransform, Vector3 scale){
     if (isParticleWorldSpace(particles, targetTransform))
         return Vector3(
             scale.x * particles.cachedTargetInvScale.x,
@@ -109,7 +109,7 @@ Vector3 ActionSystem::getParticleDisplayScale(ParticlesComponent& particles, Tra
     return scale;
 }
 
-void ActionSystem::updateParticleTargetCache(ParticlesComponent& particles, Transform* targetTransform){
+void ActionSystem::updateParticleTargetCache(ParticleSystemComponent& particles, Transform* targetTransform){
     if (!isParticleWorldSpace(particles, targetTransform))
         return;
 
@@ -187,13 +187,13 @@ int ActionSystem::sampleBurstCount(ParticleBurst& burst){
     return minCount + (int)((float)span * (float)rand() / (float)(RAND_MAX + 1.0));
 }
 
-void ActionSystem::sortParticleBursts(ParticlesComponent& particles){
+void ActionSystem::sortParticleBursts(ParticleSystemComponent& particles){
     std::sort(particles.bursts.begin(), particles.bursts.end(), [](const ParticleBurst& a, const ParticleBurst& b){
         return a.time < b.time;
     });
 }
 
-void ActionSystem::sortParticleColorGradient(ParticlesComponent& particles){
+void ActionSystem::sortParticleColorGradient(ParticleSystemComponent& particles){
     particles.colorGradient.normalize();
 }
 
@@ -241,7 +241,7 @@ Vector3 ActionSystem::sampleParticleColorGradient(const ParticleColorGradient& g
     return color;
 }
 
-float ActionSystem::getParticleCycleDuration(ParticlesComponent& particles){
+float ActionSystem::getParticleCycleDuration(ParticleSystemComponent& particles){
     float cycleDuration = 0.0f;
     if (particles.rate > 0){
         cycleDuration = std::max(cycleDuration, (float)particles.maxParticles / (float)particles.rate);
@@ -255,7 +255,7 @@ float ActionSystem::getParticleCycleDuration(ParticlesComponent& particles){
     return cycleDuration;
 }
 
-void ActionSystem::syncParticleInstance(size_t idx, ParticlesComponent& particles, InstancedMeshComponent& instmesh, Transform* targetTransform){
+void ActionSystem::syncParticleInstance(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, Transform* targetTransform){
     ParticleData& particle = particles.particles[idx];
     InstanceData& instance = instmesh.instances[idx];
 
@@ -264,7 +264,7 @@ void ActionSystem::syncParticleInstance(size_t idx, ParticlesComponent& particle
     instance.scale = getParticleDisplayScale(particles, targetTransform, particle.scale);
 }
 
-void ActionSystem::syncParticlePoint(size_t idx, ParticlesComponent& particles, PointsComponent& points, Transform* targetTransform){
+void ActionSystem::syncParticlePoint(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
     points.points[idx].position = getParticleDisplayPosition(particles, targetTransform, particles.particles[idx].position);
 }
 
@@ -304,8 +304,8 @@ void ActionSystem::actionStart(Entity entity){
             }
         }
 
-        if (signature.test(scene->getComponentId<ParticlesComponent>())){
-            ParticlesComponent& particles = scene->getComponent<ParticlesComponent>(entity);
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
             if (targetSignature.test(scene->getComponentId<MeshComponent>())) {
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
@@ -365,8 +365,8 @@ void ActionSystem::actionStop(Entity entity){
         return;
     }
 
-    if (TimedActionComponent* timedaction = scene->findComponent<TimedActionComponent>(entity)){
-        timedActionStop(*timedaction);
+    if (TweenComponent* tween = scene->findComponent<TweenComponent>(entity)){
+        tweenStop(*tween);
     }
 
     if (target != NULL_ENTITY && scene->isEntityCreated(target)){
@@ -610,86 +610,86 @@ void ActionSystem::spriteActionUpdate(double dt, Entity entity, ActionComponent&
     }
 }
 
-void ActionSystem::timedActionStop(TimedActionComponent& timedaction){
-    timedaction.time = 0;
-    timedaction.value = 0;
+void ActionSystem::tweenStop(TweenComponent& tween){
+    tween.time = 0;
+    tween.value = 0;
 }
 
-void ActionSystem::timedActionUpdate(double dt, Entity entity, ActionComponent& action, TimedActionComponent& timedaction){
-    if ((timedaction.time == 1) && !timedaction.loop){
+void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween){
+    if ((tween.time == 1) && !tween.loop){
         actionStop(entity);
         //onFinish.call(object);
     } else {
-        float duration = timedaction.duration / action.speed;
+        float duration = tween.duration / action.speed;
 
         if (duration > 0) {
 
             if (action.timecount >= duration){
-                if (!timedaction.loop){
+                if (!tween.loop){
                     action.timecount = duration;
                 }else{
                     action.timecount -= duration;
                 }
             }
 
-            timedaction.time = action.timecount / duration;
+            tween.time = action.timecount / duration;
         } else {
-            timedaction.time = 1;
+            tween.time = 1;
         }
 
-        timedaction.value = timedaction.function.call(timedaction.time);
-        //Log::debug("step time %f value %f \n", timedaction.time, timedaction.value);
+        tween.value = tween.function.call(tween.time);
+        //Log::debug("step time %f value %f \n", tween.time, tween.value);
     }
 }
 
-void ActionSystem::positionActionUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, PositionActionComponent& posaction, Transform& transform){
-    Vector3 position = (posaction.endPosition - posaction.startPosition) * timedaction.value;
+void ActionSystem::positionTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform){
+    Vector3 position = (posaction.endPosition - posaction.startPosition) * tween.value;
     transform.position = posaction.startPosition + position;
     transform.needUpdate = true;
 }
 
-void ActionSystem::rotationActionUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, RotationActionComponent& rotaction, Transform& transform){
-    transform.rotation = Quaternion::slerp(timedaction.value, rotaction.startRotation, rotaction.endRotation, rotaction.shortestPath);
+void ActionSystem::rotationTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform){
+    transform.rotation = Quaternion::slerp(tween.value, rotaction.startRotation, rotaction.endRotation, rotaction.shortestPath);
     transform.needUpdate = true;
 }
 
-void ActionSystem::scaleActionUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, ScaleActionComponent& scaleaction, Transform& transform){
-    Vector3 scale = (scaleaction.endScale - scaleaction.startScale) * timedaction.value;
-    transform.scale = scaleaction.startScale + scale;
+void ActionSystem::scaleTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, ScaleTweenComponent& scaletween, Transform& transform){
+    Vector3 scale = (scaletween.endScale - scaletween.startScale) * tween.value;
+    transform.scale = scaletween.startScale + scale;
     transform.needUpdate = true;
 }
 
-void ActionSystem::colorActionMeshUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, ColorActionComponent& coloraction, MeshComponent& mesh){
-    Vector3 color = (coloraction.endColor - coloraction.startColor) * timedaction.value;
-    if (coloraction.useSRGB){
-        mesh.submeshes[0].material.baseColorFactor = Color::sRGBToLinear(coloraction.startColor + color);
+void ActionSystem::colorTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, MeshComponent& mesh){
+    Vector3 color = (colortween.endColor - colortween.startColor) * tween.value;
+    if (colortween.useSRGB){
+        mesh.submeshes[0].material.baseColorFactor = Color::sRGBToLinear(colortween.startColor + color);
     }else{
-        mesh.submeshes[0].material.baseColorFactor = coloraction.startColor + color;
+        mesh.submeshes[0].material.baseColorFactor = colortween.startColor + color;
     }
 }
 
-void ActionSystem::colorActionUIUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, ColorActionComponent& coloraction, UIComponent& ui){
-    Vector3 color = (coloraction.endColor - coloraction.startColor) * timedaction.value;
-    if (coloraction.useSRGB){
-        ui.color = Color::sRGBToLinear(coloraction.startColor + color);
+void ActionSystem::colorTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, UIComponent& ui){
+    Vector3 color = (colortween.endColor - colortween.startColor) * tween.value;
+    if (colortween.useSRGB){
+        ui.color = Color::sRGBToLinear(colortween.startColor + color);
     }else{
-        ui.color = coloraction.startColor + color;
+        ui.color = colortween.startColor + color;
     }
 }
 
-void ActionSystem::alphaActionMeshUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, AlphaActionComponent& alphaaction, MeshComponent& mesh){
-    float alpha = (alphaaction.endAlpha - alphaaction.startAlpha) * timedaction.value;
+void ActionSystem::alphaTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, MeshComponent& mesh){
+    float alpha = (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
 
-    mesh.submeshes[0].material.baseColorFactor.w = alphaaction.startAlpha + alpha;
+    mesh.submeshes[0].material.baseColorFactor.w = alphatween.startAlpha + alpha;
 }
 
-void ActionSystem::alphaActionUIUpdate(double dt, ActionComponent& action, TimedActionComponent& timedaction, AlphaActionComponent& alphaaction, UIComponent& ui){
-    float alpha = (alphaaction.endAlpha - alphaaction.startAlpha) * timedaction.value;
+void ActionSystem::alphaTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, UIComponent& ui){
+    float alpha = (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
 
-    ui.color.w = alphaaction.startAlpha + alpha;
+    ui.color.w = alphatween.startAlpha + alpha;
 }
 
-int ActionSystem::findUnusedParticle(ParticlesComponent& particles){
+int ActionSystem::findUnusedParticle(ParticleSystemComponent& particles){
 
     for (int i=particles.lastUsedParticle; i<particles.particles.size(); i++){
         if (particles.particles[i].life <= particles.particles[i].time){
@@ -765,7 +765,7 @@ Rect ActionSystem::getSpriteInitializerValue(std::vector<int>& frames, PointsCom
     return Rect(0,0,1,1);
 }
 
-void ActionSystem::applyParticleInitializers(size_t idx, ParticlesComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
+void ActionSystem::applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
     ParticleLifeInitializer& lifeInit = particles.lifeInitializer;
     particles.particles[idx].life = getFloatInitializerValue(lifeInit.minLife, lifeInit.maxLife);
 
@@ -808,7 +808,7 @@ void ActionSystem::applyParticleInitializers(size_t idx, ParticlesComponent& par
 
 }
 
-void ActionSystem::applyParticleInitializers(size_t idx, ParticlesComponent& particles, PointsComponent& points, Transform* targetTransform){
+void ActionSystem::applyParticleInitializers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
     ParticleLifeInitializer& lifeInit = particles.lifeInitializer;
     particles.particles[idx].life = getFloatInitializerValue(lifeInit.minLife, lifeInit.maxLife);
 
@@ -901,7 +901,7 @@ Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames
     return Rect(0,0,1,1);
 }
 
-void ActionSystem::applyParticleModifiers(size_t idx, ParticlesComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
+void ActionSystem::applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
     float particleTime = particles.particles[idx].time;
     float value;
 
@@ -958,7 +958,7 @@ void ActionSystem::applyParticleModifiers(size_t idx, ParticlesComponent& partic
 
 }
 
-void ActionSystem::applyParticleModifiers(size_t idx, ParticlesComponent& particles, PointsComponent& points, Transform* targetTransform){
+void ActionSystem::applyParticleModifiers(size_t idx, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
     float particleTime = particles.particles[idx].time;
     float value;
 
@@ -1012,7 +1012,7 @@ void ActionSystem::applyParticleModifiers(size_t idx, ParticlesComponent& partic
     // scale modifier is not applicable to points
 }
 
-void ActionSystem::advanceParticle(size_t idx, float dt, ParticlesComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
+void ActionSystem::advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, SpriteComponent* sprite, Transform* targetTransform){
     float life = particles.particles[idx].life;
     float time = particles.particles[idx].time;
 
@@ -1042,7 +1042,7 @@ void ActionSystem::advanceParticle(size_t idx, float dt, ParticlesComponent& par
     instmesh.needUpdateInstances = true;
 }
 
-void ActionSystem::advanceParticle(size_t idx, float dt, ParticlesComponent& particles, PointsComponent& points, Transform* targetTransform){
+void ActionSystem::advanceParticle(size_t idx, float dt, ParticleSystemComponent& particles, PointsComponent& points, Transform* targetTransform){
     float life = particles.particles[idx].life;
     float time = particles.particles[idx].time;
 
@@ -1072,7 +1072,7 @@ void ActionSystem::advanceParticle(size_t idx, float dt, ParticlesComponent& par
     points.needUpdate = true;
 }
 
-void ActionSystem::particleActionStart(ParticlesComponent& particles, InstancedMeshComponent& instmesh, MeshComponent& mesh){
+void ActionSystem::particleActionStart(ParticleSystemComponent& particles, InstancedMeshComponent& instmesh, MeshComponent& mesh){
     // Creating particles
     particles.particles.clear();
     instmesh.instances.clear();
@@ -1101,7 +1101,7 @@ void ActionSystem::particleActionStart(ParticlesComponent& particles, InstancedM
     particles.currentBurst = 0;
 }
 
-void ActionSystem::particleActionStart(ParticlesComponent& particles, PointsComponent& points){
+void ActionSystem::particleActionStart(ParticleSystemComponent& particles, PointsComponent& points){
     if (particles.sizeInitializer.minSize == 0 && particles.sizeInitializer.maxSize == 0){
         float size = std::max(points.texture.getWidth(), points.texture.getHeight());
         particles.sizeInitializer.minSize = size;
@@ -1138,7 +1138,7 @@ void ActionSystem::particleActionStart(ParticlesComponent& particles, PointsComp
 
 void ActionSystem::particleActionReset(Entity entity){
     ActionComponent* action = scene->findComponent<ActionComponent>(entity);
-    ParticlesComponent* particles = scene->findComponent<ParticlesComponent>(entity);
+    ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
     if (!action || !particles) {
         return;
     }
@@ -1177,7 +1177,7 @@ void ActionSystem::particleActionReset(Entity entity){
     }
 }
 
-void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticlesComponent& particles, InstancedMeshComponent& instmesh){
+void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, InstancedMeshComponent& instmesh){
     SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target);
     Transform* targetTransform = scene->findComponent<Transform>(target);
     updateParticleTargetCache(particles, targetTransform);
@@ -1251,7 +1251,7 @@ void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target
     }
 }
 
-void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticlesComponent& particles, PointsComponent& points){
+void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target, ActionComponent& action, ParticleSystemComponent& particles, PointsComponent& points){
     Transform* targetTransform = scene->findComponent<Transform>(target);
     updateParticleTargetCache(particles, targetTransform);
 
@@ -1586,7 +1586,7 @@ float ActionSystem::getDuration(Entity entity, int depth) {
     }
 
     float duration = 0;
-    if (TimedActionComponent* timed = scene->findComponent<TimedActionComponent>(entity)) {
+    if (TweenComponent* timed = scene->findComponent<TweenComponent>(entity)) {
         duration = timed->duration;
     } else if (AnimationComponent* anim = scene->findComponent<AnimationComponent>(entity)) {
         if (anim->duration > 0) {
@@ -1607,7 +1607,7 @@ float ActionSystem::getDuration(Entity entity, int depth) {
             totalMs += spriteanim->framesTime[i];
         }
         duration = totalMs / 1000.0f;
-    } else if (ParticlesComponent* parts = scene->findComponent<ParticlesComponent>(entity)) {
+    } else if (ParticleSystemComponent* parts = scene->findComponent<ParticleSystemComponent>(entity)) {
         float emitDuration = getParticleCycleDuration(*parts);
         if (emitDuration > 0.0f) {
             if (parts->loop) {
@@ -1655,10 +1655,10 @@ void ActionSystem::destroy(){
         action.stopTrigger = false;
         action.pauseTrigger = false;
 
-        if (signature.test(scene->getComponentId<TimedActionComponent>())) {
-            TimedActionComponent &timedaction = scene->getComponent<TimedActionComponent>(entity);
-            timedaction.time = 0;
-            timedaction.value = 0;
+        if (signature.test(scene->getComponentId<TweenComponent>())) {
+            TweenComponent &tween = scene->getComponent<TweenComponent>(entity);
+            tween.time = 0;
+            tween.value = 0;
         }
     }
 }
@@ -1704,9 +1704,9 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
     }
 
     //Particles (a disabled Particle System holds its particles until enabled again)
-    if (signature.test(scene->getComponentId<ParticlesComponent>()) &&
-            scene->getComponent<ParticlesComponent>(entity).enabled){
-        ParticlesComponent& particles = scene->getComponent<ParticlesComponent>(entity);
+    if (signature.test(scene->getComponentId<ParticleSystemComponent>()) &&
+            scene->getComponent<ParticleSystemComponent>(entity).enabled){
+        ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
 
         if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
             InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
@@ -1775,64 +1775,64 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
     }
 
 
-    if (signature.test(scene->getComponentId<TimedActionComponent>())){
-        TimedActionComponent& timedaction = scene->getComponent<TimedActionComponent>(entity);
+    if (signature.test(scene->getComponentId<TweenComponent>())){
+        TweenComponent& tween = scene->getComponent<TweenComponent>(entity);
 
-        timedActionUpdate(dt, entity, action, timedaction);
+        tweenUpdate(dt, entity, action, tween);
         if (action.state != ActionState::Running) return;
 
         //Transform animation
         if (targetSignature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(action.target);
 
-            if (signature.test(scene->getComponentId<PositionActionComponent>())){
-                PositionActionComponent& posaction = scene->getComponent<PositionActionComponent>(entity);
+            if (signature.test(scene->getComponentId<PositionTweenComponent>())){
+                PositionTweenComponent& posaction = scene->getComponent<PositionTweenComponent>(entity);
 
-                positionActionUpdate(dt, action, timedaction, posaction, transform);
+                positionTweenUpdate(dt, action, tween, posaction, transform);
             }
 
-            if (signature.test(scene->getComponentId<RotationActionComponent>())){
-                RotationActionComponent& rotaction = scene->getComponent<RotationActionComponent>(entity);
+            if (signature.test(scene->getComponentId<RotationTweenComponent>())){
+                RotationTweenComponent& rotaction = scene->getComponent<RotationTweenComponent>(entity);
 
-                rotationActionUpdate(dt, action, timedaction, rotaction, transform);
+                rotationTweenUpdate(dt, action, tween, rotaction, transform);
             }
 
-            if (signature.test(scene->getComponentId<ScaleActionComponent>())){
-                ScaleActionComponent& scaleaction = scene->getComponent<ScaleActionComponent>(entity);
+            if (signature.test(scene->getComponentId<ScaleTweenComponent>())){
+                ScaleTweenComponent& scaletween = scene->getComponent<ScaleTweenComponent>(entity);
 
-                scaleActionUpdate(dt, action, timedaction, scaleaction, transform);
+                scaleTweenUpdate(dt, action, tween, scaletween, transform);
             }
         }
 
         //Color animation
-        if (signature.test(scene->getComponentId<ColorActionComponent>())){
-            ColorActionComponent& coloraction = scene->getComponent<ColorActionComponent>(entity);
+        if (signature.test(scene->getComponentId<ColorTweenComponent>())){
+            ColorTweenComponent& colortween = scene->getComponent<ColorTweenComponent>(entity);
 
             if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
-                colorActionMeshUpdate(dt, action, timedaction, coloraction, mesh);
+                colorTweenMeshUpdate(dt, action, tween, colortween, mesh);
             }
             if (targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
-                colorActionUIUpdate(dt, action, timedaction, coloraction, ui);
+                colorTweenUIUpdate(dt, action, tween, colortween, ui);
             }
         }
 
         //Alpha animation
-        if (signature.test(scene->getComponentId<AlphaActionComponent>())){
-            AlphaActionComponent& alphaaction = scene->getComponent<AlphaActionComponent>(entity);
+        if (signature.test(scene->getComponentId<AlphaTweenComponent>())){
+            AlphaTweenComponent& alphatween = scene->getComponent<AlphaTweenComponent>(entity);
 
             if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
-                alphaActionMeshUpdate(dt, action, timedaction, alphaaction, mesh);
+                alphaTweenMeshUpdate(dt, action, tween, alphatween, mesh);
             }
             if (targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
-                alphaActionUIUpdate(dt, action, timedaction, alphaaction, ui);
+                alphaTweenUIUpdate(dt, action, tween, alphatween, ui);
             }
         }
 

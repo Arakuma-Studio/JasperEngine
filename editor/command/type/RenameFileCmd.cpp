@@ -52,8 +52,8 @@ bool editor::RenameFileCmd::execute(){
                 if (isDir || Util::isSceneFile(extension)) {
                     project->remapSceneFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isBundleFile(extension)) {
-                    project->remapEntityBundleFilePath(sourceFs, destFs);
+                if (isDir || Util::isPrefabFile(extension)) {
+                    project->remapPrefabFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isScriptFile(extension)) {
                     project->remapScriptFilePath(sourceFs, destFs);
@@ -93,8 +93,8 @@ void editor::RenameFileCmd::undo(){
                 if (isDir || Util::isSceneFile(extension)) {
                     project->remapSceneFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isBundleFile(extension)) {
-                    project->remapEntityBundleFilePath(sourceFs, destFs);
+                if (isDir || Util::isPrefabFile(extension)) {
+                    project->remapPrefabFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isScriptFile(extension)) {
                     project->remapScriptFilePath(sourceFs, destFs);

@@ -1,30 +1,30 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef Sound_h
-#define Sound_h
+#ifndef AudioSource_h
+#define AudioSource_h
 
 #include "EntityHandle.h"
-#include "Object.h"
-#include "component/SoundComponent.h"
+#include "GameObject.h"
+#include "component/AudioSourceComponent.h"
 
 namespace jasperengine {
 
-    class JASPERENGINE_API Sound: public EntityHandle{
+    class JASPERENGINE_API AudioSource: public EntityHandle{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Sound is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
-        Sound(Scene* scene);
-        Sound(Scene* scene, bool is3D);
-        Sound(Scene* scene, Entity entity);
-        virtual ~Sound();
+        AudioSource(Scene* scene);
+        AudioSource(Scene* scene, bool is3D);
+        AudioSource(Scene* scene, Entity entity);
+        virtual ~AudioSource();
 
         int loadSound(const std::string& filename);
         void destroySound();
 
-        Object getObject() const;
+        GameObject getGameObject() const;
 
         void play();
         void pause();
@@ -72,8 +72,8 @@ namespace jasperengine {
         void setMaxDistance(float maxDistance);
         float getMaxDistance() const;
 
-        void setAttenuationModel(SoundAttenuation attenuationModel);
-        SoundAttenuation getAttenuationModel() const;
+        void setAttenuationModel(AudioSourceAttenuation attenuationModel);
+        AudioSourceAttenuation getAttenuationModel() const;
 
         void setAttenuationRolloffFactor(float attenuationRolloffFactor);
         float getAttenuationRolloffFactor() const;
@@ -84,4 +84,4 @@ namespace jasperengine {
 
 }
 
-#endif /* Sound_h */
+#endif /* AudioSource_h */

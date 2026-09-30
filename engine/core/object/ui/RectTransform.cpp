@@ -1,24 +1,24 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "UILayout.h"
+#include "RectTransform.h"
 
 #include "util/Color.h"
 
 using namespace jasperengine;
 
-UILayout::UILayout(Scene* scene): Object(scene){
-    addComponent<UILayoutComponent>();
+RectTransform::RectTransform(Scene* scene): GameObject(scene){
+    addComponent<RectTransformComponent>();
 }
 
-UILayout::UILayout(Scene* scene, Entity entity): Object(scene, entity){
+RectTransform::RectTransform(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
-UILayout::~UILayout(){
+RectTransform::~RectTransform(){
 }
 
-void UILayout::setSize(unsigned int width, unsigned int height){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setSize(unsigned int width, unsigned int height){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.width = width;
     layout.height = height;
@@ -26,36 +26,36 @@ void UILayout::setSize(unsigned int width, unsigned int height){
     layout.needUpdateSizes = true;
 }
 
-void UILayout::setWidth(unsigned int width){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setWidth(unsigned int width){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.width = width;
 
     layout.needUpdateSizes = true;
 }
 
-void UILayout::setHeight(unsigned int height){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setHeight(unsigned int height){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.height = height;
 
     layout.needUpdateSizes = true;
 }
 
-unsigned int UILayout::getWidth() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+unsigned int RectTransform::getWidth() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.width;
 }
 
-unsigned int UILayout::getHeight() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+unsigned int RectTransform::getHeight() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.height;
 }
 
-void UILayout::setAnchorPoints(float left, float top, float right, float bottom){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPoints(float left, float top, float right, float bottom){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPointLeft = left;
     layout.anchorPointTop = top;
@@ -66,8 +66,8 @@ void UILayout::setAnchorPoints(float left, float top, float right, float bottom)
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorPointLeft(float left){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPointLeft(float left){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPointLeft = left;
 
@@ -75,8 +75,8 @@ void UILayout::setAnchorPointLeft(float left){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorPointTop(float top){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPointTop(float top){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPointTop = top;
 
@@ -84,8 +84,8 @@ void UILayout::setAnchorPointTop(float top){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorPointRight(float right){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPointRight(float right){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPointRight = right;
 
@@ -93,8 +93,8 @@ void UILayout::setAnchorPointRight(float right){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorPointBottom(float bottom){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPointBottom(float bottom){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPointBottom = bottom;
 
@@ -102,32 +102,32 @@ void UILayout::setAnchorPointBottom(float bottom){
     layout.usingAnchors = true;
 }
 
-float UILayout::getAnchorPointLeft() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getAnchorPointLeft() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorPointLeft;
 }
 
-float UILayout::getAnchorPointTop() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getAnchorPointTop() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorPointTop;
 }
 
-float UILayout::getAnchorPointRight() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getAnchorPointRight() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorPointRight;
 }
 
-float UILayout::getAnchorPointBottom() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getAnchorPointBottom() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorPointBottom;
 }
 
-void UILayout::setAnchorOffsets(int left, int top, int right, int bottom){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorOffsets(int left, int top, int right, int bottom){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorOffsetLeft = left;
     layout.anchorOffsetTop = top;
@@ -138,8 +138,8 @@ void UILayout::setAnchorOffsets(int left, int top, int right, int bottom){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorOffsetLeft(int left){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorOffsetLeft(int left){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorOffsetLeft = left;
 
@@ -147,8 +147,8 @@ void UILayout::setAnchorOffsetLeft(int left){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorOffsetTop(int top){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorOffsetTop(int top){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorOffsetTop = top;
 
@@ -156,8 +156,8 @@ void UILayout::setAnchorOffsetTop(int top){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorOffsetRight(int right){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorOffsetRight(int right){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorOffsetRight = right;
 
@@ -165,8 +165,8 @@ void UILayout::setAnchorOffsetRight(int right){
     layout.usingAnchors = true;
 }
 
-void UILayout::setAnchorOffsetBottom(int bottom){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorOffsetBottom(int bottom){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorOffsetBottom = bottom;
 
@@ -174,68 +174,68 @@ void UILayout::setAnchorOffsetBottom(int bottom){
     layout.usingAnchors = true;
 }
 
-int UILayout::getAnchorOffsetLeft() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+int RectTransform::getAnchorOffsetLeft() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorOffsetLeft;
 }
 
-int UILayout::getAnchorOffsetTop() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+int RectTransform::getAnchorOffsetTop() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorOffsetTop;
 }
 
-int UILayout::getAnchorOffsetRight() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+int RectTransform::getAnchorOffsetRight() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorOffsetRight;
 }
 
-int UILayout::getAnchorOffsetBottom() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+int RectTransform::getAnchorOffsetBottom() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorOffsetBottom;
 }
 
-void UILayout::setPositionXOffset(float xOffset){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setPositionXOffset(float xOffset){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.positionOffset = Vector2(xOffset, layout.positionOffset.y);
 }
 
-float UILayout::getPositionXOffset() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getPositionXOffset() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.positionOffset.x;
 }
 
-void UILayout::setPositionYOffset(float yOffset){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setPositionYOffset(float yOffset){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.positionOffset = Vector2(layout.positionOffset.x, yOffset);
 }
 
-float UILayout::getPositionYOffset() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+float RectTransform::getPositionYOffset() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.positionOffset.y;
 }
 
-void UILayout::setPositionOffset(Vector2 positionOffset){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setPositionOffset(Vector2 positionOffset){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.positionOffset = positionOffset;
 }
 
-Vector2 UILayout::getPositionOffset() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+Vector2 RectTransform::getPositionOffset() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.positionOffset;
 }
 
-void UILayout::setPivot(Vector2 pivot){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setPivot(Vector2 pivot){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
     Transform& transform = getComponent<Transform>();
 
     if (layout.pivot != pivot){
@@ -245,55 +245,55 @@ void UILayout::setPivot(Vector2 pivot){
     }
 }
 
-void UILayout::setPivot(float x, float y){
+void RectTransform::setPivot(float x, float y){
     setPivot(Vector2(x, y));
 }
 
-Vector2 UILayout::getPivot() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+Vector2 RectTransform::getPivot() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.pivot;
 }
 
-void UILayout::setAnchorPreset(AnchorPreset anchorPreset){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setAnchorPreset(AnchorPreset anchorPreset){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.anchorPreset = anchorPreset;
 
     layout.usingAnchors = true;
 }
 
-AnchorPreset UILayout::getAnchorPreset() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+AnchorPreset RectTransform::getAnchorPreset() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.anchorPreset;
 }
 
-void UILayout::setUsingAnchors(bool usingAnchors){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setUsingAnchors(bool usingAnchors){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.usingAnchors = usingAnchors;
 }
 
-bool UILayout::isUsingAnchors() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+bool RectTransform::isUsingAnchors() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.usingAnchors;
 }
 
-void UILayout::setIgnoreScissor(bool ignoreScissor){
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+void RectTransform::setIgnoreScissor(bool ignoreScissor){
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     layout.ignoreScissor = ignoreScissor;
 }
 
-bool UILayout::isIgnoreScissor() const{
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+bool RectTransform::isIgnoreScissor() const{
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return layout.ignoreScissor;
 }
 
-void UILayout::setEnabled(bool enabled){
+void RectTransform::setEnabled(bool enabled){
     if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
         ui->enabled = enabled;
     }else{
@@ -301,7 +301,7 @@ void UILayout::setEnabled(bool enabled){
     }
 }
 
-bool UILayout::isEnabled() const{
+bool RectTransform::isEnabled() const{
     UIComponent* ui = scene->findComponent<UIComponent>(entity);
     return !ui || ui->enabled;
 }

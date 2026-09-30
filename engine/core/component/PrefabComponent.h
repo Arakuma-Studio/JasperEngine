@@ -1,18 +1,18 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef BUNDLE_COMPONENT_H
-#define BUNDLE_COMPONENT_H
+#ifndef PREFAB_COMPONENT_H
+#define PREFAB_COMPONENT_H
 
 #include <string>
 
 namespace jasperengine{
 
-    struct BundleComponent {
+    struct PrefabComponent {
         std::string name;
         std::string path;
     };
 
 }
 
-#endif //BUNDLE_COMPONENT_H
+#endif //PREFAB_COMPONENT_H

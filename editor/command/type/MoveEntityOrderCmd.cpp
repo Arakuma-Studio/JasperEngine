@@ -27,33 +27,33 @@ bool editor::MoveEntityOrderCmd::execute(){
         return false;
     }
 
-    if (project->isEntityInBundle(sceneId, source)){
+    if (project->isEntityInPrefab(sceneId, source)){
 
-        fs::path sourceBundlePath = project->findEntityBundlePathFor(sceneId, source);
-        fs::path targetBundlePath = project->findEntityBundlePathFor(sceneId, target);
+        fs::path sourcePrefabPath = project->findPrefabPathFor(sceneId, source);
+        fs::path targetPrefabPath = project->findPrefabPathFor(sceneId, target);
 
         if (type == InsertionType::INTO){
-            if (!project->isEntityInBundle(sceneId, target)){
-                Out::error("Cannot move bundle entity %u into target %u", source, target);
+            if (!project->isEntityInPrefab(sceneId, target)){
+                Out::error("Cannot move prefab entity %u into target %u", source, target);
                 return false;
             }
         }else{
             Transform* transformTarget = sceneProject->scene->findComponent<Transform>(target);
             if (transformTarget){
-                fs::path parentBundlePath = project->findEntityBundlePathFor(sceneId, transformTarget->parent);
+                fs::path parentPrefabPath = project->findPrefabPathFor(sceneId, transformTarget->parent);
 
-                EntityBundle* sourceBundle = project->getEntityBundle(sourceBundlePath);
-                bool isSourceRoot = sourceBundle && (sourceBundle->getRootEntity(sceneId, source) == source);
+                Prefab* sourcePrefab = project->getPrefab(sourcePrefabPath);
+                bool isSourceRoot = sourcePrefab && (sourcePrefab->getRootEntity(sceneId, source) == source);
 
-                if (parentBundlePath != sourceBundlePath && targetBundlePath != sourceBundlePath && !isSourceRoot){
-                    Out::error("Cannot move bundle entity %u outside entity bundle", source);
+                if (parentPrefabPath != sourcePrefabPath && targetPrefabPath != sourcePrefabPath && !isSourceRoot){
+                    Out::error("Cannot move prefab entity %u outside prefab", source);
                     return false;
                 }
             }
         }
 
-        if (targetBundlePath == sourceBundlePath){
-            bundleMoveRecovery = project->moveEntityFromBundle(sceneId, source, target, type, false);
+        if (targetPrefabPath == sourcePrefabPath){
+            prefabMoveRecovery = project->moveEntityFromPrefab(sceneId, source, target, type, false);
         }
     }
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
@@ -66,8 +66,8 @@ bool editor::MoveEntityOrderCmd::execute(){
 void editor::MoveEntityOrderCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
-    if (bundleMoveRecovery.size() > 0){
-        project->undoMoveEntityInBundle(sceneId, source, target, bundleMoveRecovery, false);
+    if (prefabMoveRecovery.size() > 0){
+        project->undoMoveEntityInPrefab(sceneId, source, target, prefabMoveRecovery, false);
     }
     ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities, source, oldParent, oldIndex, hasTransform);
 

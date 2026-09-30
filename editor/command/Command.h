@@ -17,7 +17,7 @@ namespace jasperengine::editor{
 
         virtual bool mergeWith(Command* olderCommand) = 0;
 
-        // True if this can change what the Structure tree shows. Defaults to true so a
+        // True if this can change what the Hierarchy tree shows. Defaults to true so a
         // new command is never silently stale.
         virtual bool affectsStructure() const { return true; }
 

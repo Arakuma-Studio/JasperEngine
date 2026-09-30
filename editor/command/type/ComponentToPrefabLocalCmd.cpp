@@ -1,13 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "ComponentToBundleLocalCmd.h"
+#include "ComponentToPrefabLocalCmd.h"
 
 #include "Stream.h"
 
 using namespace jasperengine;
 
-editor::ComponentToBundleLocalCmd::ComponentToBundleLocalCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
+editor::ComponentToPrefabLocalCmd::ComponentToPrefabLocalCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
     this->project = project;
     this->sceneId = sceneId;
     this->entities.push_back(entity);
@@ -16,18 +16,18 @@ editor::ComponentToBundleLocalCmd::ComponentToBundleLocalCmd(Project* project, u
     this->wasModified = project->getScene(sceneId)->isModified;
 }
 
-bool editor::ComponentToBundleLocalCmd::execute() {
+bool editor::ComponentToPrefabLocalCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
     for (Entity entity : entities){
-        fs::path filepath = project->findEntityBundlePathFor(sceneId, entity);
+        fs::path filepath = project->findPrefabPathFor(sceneId, entity);
         if (sceneProject && !filepath.empty()) {
-            EntityBundle* bundle = project->getEntityBundle(filepath);
+            Prefab* prefab = project->getPrefab(filepath);
 
-            if (bundle->hasComponentOverride(sceneId, entity, componentType)){
+            if (prefab->hasComponentOverride(sceneId, entity, componentType)){
                 return false;
             }
 
-            bundle->setComponentOverride(sceneProject->id, entity, componentType);
+            prefab->setComponentOverride(sceneProject->id, entity, componentType);
         }
     }
 
@@ -36,19 +36,19 @@ bool editor::ComponentToBundleLocalCmd::execute() {
     return true;
 }
 
-void editor::ComponentToBundleLocalCmd::undo() {
+void editor::ComponentToPrefabLocalCmd::undo() {
     SceneProject* sceneProject = project->getScene(sceneId);
     for (Entity entity : entities){
-        fs::path filepath = project->findEntityBundlePathFor(sceneId, entity);
+        fs::path filepath = project->findPrefabPathFor(sceneId, entity);
         if (sceneProject && !filepath.empty()) {
-            EntityBundle* bundle = project->getEntityBundle(filepath);
+            Prefab* prefab = project->getPrefab(filepath);
 
-            bundle->clearComponentOverride(sceneProject->id, entity, componentType);
+            prefab->clearComponentOverride(sceneProject->id, entity, componentType);
 
-            Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
-            Catalog::copyComponent(bundle->registry.get(), registryEntity, sceneProject->scene, entity, componentType);
+            Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
+            Catalog::copyComponent(prefab->registry.get(), registryEntity, sceneProject->scene, entity, componentType);
             std::unordered_map<Entity, Entity> registryToLocal;
-            if (const EntityBundle::Instance* instance = bundle->getInstance(sceneId, entity)) {
+            if (const Prefab::Instance* instance = prefab->getInstance(sceneId, entity)) {
                 for (const auto& member : instance->members) {
                     registryToLocal[member.registryEntity] = member.localEntity;
                 }
@@ -60,8 +60,8 @@ void editor::ComponentToBundleLocalCmd::undo() {
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ComponentToBundleLocalCmd::mergeWith(Command* otherCommand){
-    ComponentToBundleLocalCmd* otherCmd = dynamic_cast<ComponentToBundleLocalCmd*>(otherCommand);
+bool editor::ComponentToPrefabLocalCmd::mergeWith(Command* otherCommand){
+    ComponentToPrefabLocalCmd* otherCmd = dynamic_cast<ComponentToPrefabLocalCmd*>(otherCommand);
     if (otherCmd != nullptr){
         if (sceneId == otherCmd->sceneId){
 

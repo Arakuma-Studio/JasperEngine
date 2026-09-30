@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Sound.h"
+#include "AudioSource.h"
 #include "subsystem/AudioSystem.h"
 #include "pool/SoundPool.h"
 
@@ -12,36 +12,36 @@
 
 using namespace jasperengine;
 
-Sound::Sound(Scene* scene): EntityHandle(scene){
-    addComponent<SoundComponent>();
+AudioSource::AudioSource(Scene* scene): EntityHandle(scene){
+    addComponent<AudioSourceComponent>();
 }
 
-Sound::Sound(Scene* scene, bool is3D): EntityHandle(scene){
-    addComponent<SoundComponent>();
+AudioSource::AudioSource(Scene* scene, bool is3D): EntityHandle(scene){
+    addComponent<AudioSourceComponent>();
     if (is3D){
         addComponent<Transform>();
     }
 }
 
-Sound::Sound(Scene* scene, Entity entity): EntityHandle(scene, entity){
+AudioSource::AudioSource(Scene* scene, Entity entity): EntityHandle(scene, entity){
 }
 
 
-Sound::~Sound(){
+AudioSource::~AudioSource(){
 
 }
 
-Object Sound::getObject() const{
+GameObject AudioSource::getGameObject() const{
     if (!isSound3D()){
         Log::error("Cannot get object from 2D sound: enable 3D sound first");
         throw std::runtime_error("Cannot get object from 2D sound");
     }
 
-    return Object(scene, entity);
+    return GameObject(scene, entity);
 }
 
-int Sound::loadSound(const std::string& filename){
-    SoundComponent& audio = getComponent<SoundComponent>();
+int AudioSource::loadSound(const std::string& filename){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     // the loaded sample would keep playing the old file
     if (!audio.filename.empty() && audio.filename != filename) {
@@ -57,76 +57,76 @@ int Sound::loadSound(const std::string& filename){
         return false;
 }
 
-void Sound::destroySound(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::destroySound(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     scene->getSystem<AudioSystem>()->destroySound(audio);
 }
 
-void Sound::play(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::play(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     audio.startTrigger = true;
     audio.pauseTrigger = false;
     audio.stopTrigger = false;
 }
 
-void Sound::pause(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::pause(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     audio.startTrigger = false;
     audio.pauseTrigger = true;
     audio.stopTrigger = false;
 }
 
-void Sound::stop(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::stop(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     audio.startTrigger = false;
     audio.pauseTrigger = false;
     audio.stopTrigger = true;
 }
 
-void Sound::seek(double time){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::seek(double time){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     scene->getSystem<AudioSystem>()->seekSound(audio, time);
 }
 
-double Sound::getLength(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+double AudioSource::getLength(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.length;
 }
 
-double Sound::getPlayingTime(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+double AudioSource::getPlayingTime(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.playingTime;
 }
 
-bool Sound::isPlaying(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isPlaying(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
-    if ((audio.length > audio.playingTime) && (audio.playingTime != 0) && (audio.state == SoundState::Playing)) {
+    if ((audio.length > audio.playingTime) && (audio.playingTime != 0) && (audio.state == AudioSourceState::Playing)) {
         return true;
     }
     return false;
 }
 
-bool Sound::isPaused(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isPaused(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
-    return (audio.state == SoundState::Paused);
+    return (audio.state == AudioSourceState::Paused);
 }
 
-bool Sound::isStopped(){
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isStopped(){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
-    return (audio.state == SoundState::Stopped);
+    return (audio.state == AudioSourceState::Stopped);
 }
 
-void Sound::setSound3D(bool sound3D){
+void AudioSource::setSound3D(bool sound3D){
     bool hasTransform = scene->findComponent<Transform>(entity) != nullptr;
     if (sound3D && !hasTransform){
         addComponent<Transform>();
@@ -134,28 +134,28 @@ void Sound::setSound3D(bool sound3D){
         removeComponent<Transform>();
     }
 
-    SoundComponent& audio = getComponent<SoundComponent>();
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
     audio.needUpdate = true;
 }
 
-bool Sound::isSound3D() const{
+bool AudioSource::isSound3D() const{
     return scene->findComponent<Transform>(entity) != nullptr;
 }
 
-void Sound::setClockedSound(bool enableClocked){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setClockedSound(bool enableClocked){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     audio.enableClocked = enableClocked;
 }
 
-bool Sound::isClockedSound() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isClockedSound() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.enableClocked;
 }
 
-void Sound::setVolume(double volume){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setVolume(double volume){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.volume != volume){
         audio.volume = volume;
@@ -163,14 +163,14 @@ void Sound::setVolume(double volume){
     }
 }
 
-double Sound::getVolume() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+double AudioSource::getVolume() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.volume;
 }
 
-void Sound::setSpeed(float speed){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setSpeed(float speed){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.speed != speed){
         audio.speed = speed;
@@ -178,14 +178,14 @@ void Sound::setSpeed(float speed){
     }
 }
 
-float Sound::getSpeed() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getSpeed() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.speed;
 }
 
-void Sound::setPan(float pan){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setPan(float pan){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.pan != pan){
         audio.pan = pan;
@@ -193,14 +193,14 @@ void Sound::setPan(float pan){
     }
 }
 
-float Sound::getPan() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getPan() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.pan;
 }
 
-void Sound::setLooping(bool looping){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setLooping(bool looping){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.looping != looping){
         audio.looping = looping;
@@ -208,14 +208,14 @@ void Sound::setLooping(bool looping){
     }
 }
 
-bool Sound::isLooping() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isLooping() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.looping;
 }
 
-void Sound::setLoopingPoint(double loopingPoint){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setLoopingPoint(double loopingPoint){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.loopingPoint != loopingPoint){
         audio.loopingPoint = loopingPoint;
@@ -223,14 +223,14 @@ void Sound::setLoopingPoint(double loopingPoint){
     }
 }
 
-double Sound::getLoopingPoint() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+double AudioSource::getLoopingPoint() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.loopingPoint;
 }
 
-void Sound::setProtectVoice(bool protectVoice){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setProtectVoice(bool protectVoice){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.protectVoice != protectVoice){
         audio.protectVoice = protectVoice;
@@ -238,14 +238,14 @@ void Sound::setProtectVoice(bool protectVoice){
     }
 }
 
-bool Sound::isProtectVoice() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+bool AudioSource::isProtectVoice() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.protectVoice;
 }
 
-void Sound::setInaudibleBehavior(bool mustTick, bool kill){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setInaudibleBehavior(bool mustTick, bool kill){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.inaudibleBehaviorMustTick != mustTick || audio.inaudibleBehaviorKill != kill){
         audio.inaudibleBehaviorMustTick = mustTick;
@@ -254,8 +254,8 @@ void Sound::setInaudibleBehavior(bool mustTick, bool kill){
     }
 }
 
-void Sound::setMinMaxDistance(float minDistance, float maxDistance){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setMinMaxDistance(float minDistance, float maxDistance){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.minDistance != minDistance || audio.maxDistance != maxDistance){
         audio.minDistance = minDistance;
@@ -264,8 +264,8 @@ void Sound::setMinMaxDistance(float minDistance, float maxDistance){
     }
 }
 
-void Sound::setMinDistance(float minDistance){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setMinDistance(float minDistance){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.minDistance != minDistance){
         audio.minDistance = minDistance;
@@ -273,14 +273,14 @@ void Sound::setMinDistance(float minDistance){
     }
 }
 
-float Sound::getMinDistance() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getMinDistance() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.minDistance;
 }
 
-void Sound::setMaxDistance(float maxDistance){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setMaxDistance(float maxDistance){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.maxDistance != maxDistance){
         audio.maxDistance = maxDistance;
@@ -288,14 +288,14 @@ void Sound::setMaxDistance(float maxDistance){
     }
 }
 
-float Sound::getMaxDistance() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getMaxDistance() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.maxDistance;
 }
 
-void Sound::setAttenuationModel(SoundAttenuation attenuationModel){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setAttenuationModel(AudioSourceAttenuation attenuationModel){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.attenuationModel != attenuationModel){
         audio.attenuationModel = attenuationModel;
@@ -303,14 +303,14 @@ void Sound::setAttenuationModel(SoundAttenuation attenuationModel){
     }
 }
 
-SoundAttenuation Sound::getAttenuationModel() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+AudioSourceAttenuation AudioSource::getAttenuationModel() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.attenuationModel;
 }
 
-void Sound::setAttenuationRolloffFactor(float attenuationRolloffFactor){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setAttenuationRolloffFactor(float attenuationRolloffFactor){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.attenuationRolloffFactor != attenuationRolloffFactor){
         audio.attenuationRolloffFactor = attenuationRolloffFactor;
@@ -318,14 +318,14 @@ void Sound::setAttenuationRolloffFactor(float attenuationRolloffFactor){
     }
 }
 
-float Sound::getAttenuationRolloffFactor() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getAttenuationRolloffFactor() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.attenuationRolloffFactor;
 }
 
-void Sound::setDopplerFactor(float dopplerFactor){
-    SoundComponent& audio = getComponent<SoundComponent>();
+void AudioSource::setDopplerFactor(float dopplerFactor){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     if (audio.dopplerFactor != dopplerFactor){
         audio.dopplerFactor = dopplerFactor;
@@ -333,16 +333,16 @@ void Sound::setDopplerFactor(float dopplerFactor){
     }
 }
 
-float Sound::getDopplerFactor() const{
-    SoundComponent& audio = getComponent<SoundComponent>();
+float AudioSource::getDopplerFactor() const{
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
 
     return audio.dopplerFactor;
 }
 
-void Sound::setEnabled(bool enabled){
-    getComponent<SoundComponent>().enabled = enabled;
+void AudioSource::setEnabled(bool enabled){
+    getComponent<AudioSourceComponent>().enabled = enabled;
 }
 
-bool Sound::isEnabled() const{
-    return getComponent<SoundComponent>().enabled;
+bool AudioSource::isEnabled() const{
+    return getComponent<AudioSourceComponent>().enabled;
 }

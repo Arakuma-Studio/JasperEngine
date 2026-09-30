@@ -11,7 +11,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
-#include "command/type/ImportEntityBundleCmd.h"
+#include "command/type/ImportPrefabCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/TerrainMapPatchCmd.h"
@@ -26,7 +26,7 @@
 #include "util/TerrainNoise.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
-#include "window/ResourcesWindow.h"
+#include "window/ProjectWindow.h"
 #include "window/Widgets.h"
 
 #include <algorithm>
@@ -459,8 +459,8 @@ static void collectTerrainMapTokens(const std::string& content, std::unordered_s
     }
 }
 
-// Scans every project file that can reference textures — scenes, entity bundles
-// (.bundle via Util::isBundleFile) and materials — and collects the terrain map
+// Scans every project file that can reference textures — scenes, prefabs
+// (.prefab via Util::isPrefabFile) and materials — and collects the terrain map
 // filenames they mention. Returns false when any file could not be read; the caller
 // must then not delete anything, since an unreadable file may hold the only
 // reference to a map.
@@ -487,7 +487,7 @@ static bool collectTerrainMapDiskReferences(const fs::path& projectPath, std::un
             }
         }else if (entry.is_regular_file(ec)){
             const std::string entryPath = entry.path().string();
-            if (Util::isSceneFile(entryPath) || Util::isMaterialFile(entryPath) || Util::isBundleFile(entryPath)){
+            if (Util::isSceneFile(entryPath) || Util::isMaterialFile(entryPath) || Util::isPrefabFile(entryPath)){
                 std::ifstream file(entry.path(), std::ios::binary);
                 if (!file){
                     return false;
@@ -575,7 +575,7 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
         return flushOk;
     }
 
-    // Pass 2 — on-disk references: closed scenes (and bundles/materials) can still
+    // Pass 2 — on-disk references: closed scenes (and prefabs/materials) can still
     // reference candidate maps, so scan the project files before deleting. When the
     // scan cannot complete, delete nothing: a false "unused" verdict permanently
     // loses painted terrain, while a kept orphan only wastes a little disk.
@@ -980,14 +980,14 @@ private:
         window->applySnapshotToTexture(project, *texture, snapshot);
         TerrainMapUtils::refresh(sceneProject, entity, ref);
 
-        if (project->isEntityInBundle(sceneId, entity)){
+        if (project->isEntityInPrefab(sceneId, entity)){
             std::vector<std::string> properties = {TerrainMapUtils::getPropertyName(ref)};
             // The list carries its own length, which is what a newly created map needs
             const std::string container = TerrainMapUtils::getContainerPropertyName(ref);
             if (!container.empty()){
                 properties.push_back(container);
             }
-            project->bundlePropertyChanged(sceneId, entity, ComponentType::TerrainComponent, properties);
+            project->prefabPropertyChanged(sceneId, entity, ComponentType::TerrainComponent, properties);
         }
 
         if (restoreModifiedState){
@@ -1944,11 +1944,11 @@ bool editor::TerrainEditWindow::addStrokePatchCommand(SceneProject* sceneProject
     return true;
 }
 
-// The brush places models, instanced hosts and bundle roots. A light or a camera parented
+// The brush places models, instanced hosts and prefab roots. A light or a camera parented
 // to the terrain is not a prop, so it neither blocks spacing nor answers to the erase brush.
 static bool isPlacedObject(Scene* scene, Entity entity){
     return scene->findComponent<MeshComponent>(entity) != nullptr ||
-           scene->findComponent<BundleComponent>(entity) != nullptr;
+           scene->findComponent<PrefabComponent>(entity) != nullptr;
 }
 
 Entity editor::TerrainEditWindow::findInstanceHost(SceneProject* sceneProject, Entity terrainEntity, const std::string& assetPath){
@@ -1969,9 +1969,9 @@ Entity editor::TerrainEditWindow::findInstanceHost(SceneProject* sceneProject, E
     return NULL_ENTITY;
 }
 
-// A bundle is a hierarchy of entities, so there is nothing to instance it into
+// A prefab is a hierarchy of entities, so there is nothing to instance it into
 bool editor::TerrainEditWindow::useInstancedPlacement() const{
-    return placeInstanced && !Util::isBundleFile(placeAssetPath) && placeAssetPath != instancingRejectedAsset;
+    return placeInstanced && !Util::isPrefabFile(placeAssetPath) && placeAssetPath != instancingRejectedAsset;
 }
 
 // Props are direct children of the terrain, and an instanced host counts as its instances
@@ -1996,9 +1996,9 @@ std::vector<Vector2> editor::TerrainEditWindow::collectPlacedPoints(SceneProject
 }
 
 editor::Command* editor::TerrainEditWindow::makePlacementCommand(SceneProject* sceneProject, Entity terrainEntity, const Vector3& localPosition, const Quaternion& rotation, const Vector3& scale){
-    // Bundle paths are stored relative to the project, asset paths relative to the assets directory
-    if (Util::isBundleFile(placeAssetPath)){
-        ImportEntityBundleCmd* command = new ImportEntityBundleCmd(project, sceneProject->id, fs::path(placeAssetPath), terrainEntity, true);
+    // Prefab paths are stored relative to the project, asset paths relative to the assets directory
+    if (Util::isPrefabFile(placeAssetPath)){
+        ImportPrefabCmd* command = new ImportPrefabCmd(project, sceneProject->id, fs::path(placeAssetPath), terrainEntity, true);
         command->setQuiet(true);
         command->setPlacement(localPosition, rotation, scale);
         return command;
@@ -2354,7 +2354,7 @@ float editor::TerrainEditWindow::drawAssetThumbnail(const std::string& path, con
     const float thumbSize = std::min(ImGui::GetFrameHeight() * scale, std::max(1.0f, ImGui::GetContentRegionAvail().x));
     int width = 0;
     int height = 0;
-    ImTextureID thumbnail = Backend::getApp().getResourcesWindow()->getAssetThumbnail(path, width, height);
+    ImTextureID thumbnail = Backend::getApp().getProjectWindow()->getAssetThumbnail(path, width, height);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const float rounding = ImGui::GetStyle().FrameRounding;
@@ -2929,7 +2929,7 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
     }
     ImGui::PopTextWrapPos();
 
-    // Bundles are stored relative to the project, models relative to the assets directory
+    // Prefabs are stored relative to the project, models relative to the assets directory
     auto assignAsset = [&](const fs::path& path){
         endStroke();
         instancingRejectedAsset.clear();
@@ -2937,7 +2937,7 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
             placeAssetPath.clear();
             return;
         }
-        if (Util::isBundleFile(path.string())){
+        if (Util::isPrefabFile(path.string())){
             std::error_code ec;
             const fs::path relative = fs::relative(path, project->getProjectPath(), ec);
             if (ec || relative.empty() || *relative.begin() == ".."){
@@ -2956,7 +2956,7 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
 
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
     if (iconButton(ICON_FA_FOLDER_OPEN, "browse_place_asset", "Choose model or Prefab", false, buttonSize)){
-        const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_MODEL | FILE_DIALOG_BUNDLE);
+        const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_MODEL | FILE_DIALOG_PREFAB);
         if (!path.empty()){
             assignAsset(path);
         }
@@ -2972,7 +2972,7 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
     if (ImGui::BeginDragDropTarget()){
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
             const std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
-            if (!dropped.empty() && (Util::isModelFile(dropped[0]) || Util::isBundleFile(dropped[0]))){
+            if (!dropped.empty() && (Util::isModelFile(dropped[0]) || Util::isPrefabFile(dropped[0]))){
                 assignAsset(dropped[0]);
             }
         }
@@ -3297,7 +3297,7 @@ void editor::TerrainEditWindow::show(){
         brushButton(TerrainBrushMode::EraseObject, ICON_FA_ERASER, "terrain_erase_object", "Erase the terrain's placed GameObjects under the brush (Ctrl places)");
 
         terrainPropertyRow("Instanced", "Batch every placement of this asset into one draw. Instances can be moved but carry no components of their own, so turn this off for props that need Colliders, scripts or animation.");
-        ImGui::BeginDisabled(Util::isBundleFile(placeAssetPath));
+        ImGui::BeginDisabled(Util::isPrefabFile(placeAssetPath));
         ImGui::Checkbox("##place_instanced", &placeInstanced);
         ImGui::EndDisabled();
         terrainPropertyRow("Spacing", "Closest two placements are allowed to get, in world units.");

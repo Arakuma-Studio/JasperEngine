@@ -51,7 +51,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "SceneManager.h"
-#include "BundleManager.h"
+#include "PrefabManager.h"
 
 using namespace jasperengine;
 
@@ -73,7 +73,7 @@ std::vector<Entity> editor::Project::getTopLevelEntities(const EntityRegistry* r
     return topLevelEntities;
 }
 
-// Translate a local entity through the supplied map. Bundle-boundary remaps clear values
+// Translate a local entity through the supplied map. Prefab-boundary remaps clear values
 // outside the map; recovery remaps leave those unrelated values untouched.
 static bool remapLocalEntity(Entity& value, const std::unordered_map<Entity, Entity>& entityMap, bool clearUnmapped) {
     if (value == NULL_ENTITY) {
@@ -92,7 +92,7 @@ static bool remapLocalEntity(Entity& value, const std::unordered_map<Entity, Ent
 }
 
 // Remap one entity-typed property in place. Cross-scene references are cleared only when
-// crossing a bundle boundary; recovery leaves them untouched.
+// crossing a prefab boundary; recovery leaves them untouched.
 static bool remapEntityRef(const editor::PropertyData& property, const std::unordered_map<Entity, Entity>& entityMap, bool clearUnmapped) {
     if (!property.ref) {
         return false;
@@ -270,7 +270,7 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
-// True when a component holds an entity reference pointing outside the bundle
+// True when a component holds an entity reference pointing outside the prefab
 // instance: a cross-scene reference, or a local entity that is not one of the
 // instance's members. Such references cannot be shared through the registry.
 static bool componentHasExternalEntityRef(EntityRegistry* registry, Entity entity, editor::ComponentType componentType, const std::unordered_set<Entity>& memberLocals) {
@@ -329,13 +329,13 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
     }
 }
 
-void editor::Project::overrideExternalRefComponents(EntityRegistry* scene, EntityBundle::Instance& instance) {
+void editor::Project::overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance) {
     std::unordered_set<Entity> memberLocals;
     for (const auto& member : instance.members) {
         memberLocals.insert(member.localEntity);
     }
 
-    // An entity reference pointing outside the bundle is per-instance data that cannot
+    // An entity reference pointing outside the prefab is per-instance data that cannot
     // be shared through the registry. Promote each component that holds one to a
     // per-instance override so the value is kept on this instance and persisted.
     for (const auto& member : instance.members) {
@@ -660,7 +660,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
-    visitComponents(registry->getComponentArray<SkyComponent>(), [&](SkyComponent& sky) {
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
         if (visitTexturePaths(sky.texture, transform)) {
             sky.needUpdateTexture = true;
             changed = true;
@@ -727,7 +727,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
-    visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
+    visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         if (!sound.filename.empty() && transform(sound.filename)) {
             sound.loaded = false;
             sound.loadFailed = false;
@@ -813,7 +813,7 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
         addTexture(button.textureDisabled, true);
     });
 
-    visitComponents(registry->getComponentArray<SkyComponent>(), [&](SkyComponent& sky) {
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
         addTexture(sky.texture, false);
     });
 
@@ -849,7 +849,7 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
         addFile(resources.models, model.filename);
     });
 
-    visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
+    visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         addFile(resources.sounds, sound.filename);
     });
 
@@ -1151,7 +1151,7 @@ void editor::Project::remapSceneFilePath(const std::filesystem::path& oldPath, c
     }
 }
 
-void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+void editor::Project::remapPrefabFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
     if (projectPath.empty()) {
         return;
     }
@@ -1163,38 +1163,38 @@ void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& old
         return;
     }
 
-    std::vector<std::pair<fs::path, EntityBundle>> remappedBundles;
+    std::vector<std::pair<fs::path, Prefab>> remappedPrefabs;
     std::unordered_set<uint32_t> affectedSceneIds;
 
-    for (auto it = entityBundles.begin(); it != entityBundles.end();) {
+    for (auto it = prefabAssets.begin(); it != prefabAssets.end();) {
         fs::path updatedPath;
         if (!remapRelativePath(oldRelative, newRelative, it->first, updatedPath)) {
             ++it;
             continue;
         }
 
-        EntityBundle updatedBundle = std::move(it->second);
-        for (const auto& [sceneId, instances] : updatedBundle.instances) {
+        Prefab updatedPrefab = std::move(it->second);
+        for (const auto& [sceneId, instances] : updatedPrefab.instances) {
             if (!instances.empty()) {
                 affectedSceneIds.insert(sceneId);
             }
         }
 
-        remappedBundles.emplace_back(updatedPath, std::move(updatedBundle));
-        it = entityBundles.erase(it);
+        remappedPrefabs.emplace_back(updatedPath, std::move(updatedPrefab));
+        it = prefabAssets.erase(it);
     }
 
-    for (auto& [filepath, bundle] : remappedBundles) {
-        entityBundles.emplace(std::move(filepath), std::move(bundle));
+    for (auto& [filepath, prefab] : remappedPrefabs) {
+        prefabAssets.emplace(std::move(filepath), std::move(prefab));
     }
 
-    bool changed = !remappedBundles.empty();
+    bool changed = !remappedPrefabs.empty();
 
     bool standaloneChanged = false;
-    for (fs::path& bundlePath : standaloneBundles) {
+    for (fs::path& prefabPath : standalonePrefabs) {
         fs::path updatedPath;
-        if (remapRelativePath(oldRelative, newRelative, bundlePath, updatedPath)) {
-            bundlePath = updatedPath;
+        if (remapRelativePath(oldRelative, newRelative, prefabPath, updatedPath)) {
+            prefabPath = updatedPath;
             standaloneChanged = true;
         }
     }
@@ -1208,21 +1208,21 @@ void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& old
             continue;
         }
 
-        bool sceneBundleChanged = false;
-        auto bundleArray = sceneProject.scene->getComponentArray<BundleComponent>();
-        for (size_t i = 0; i < bundleArray->size(); ++i) {
-            BundleComponent& bundleComp = bundleArray->getComponentFromIndex(i);
+        bool scenePrefabChanged = false;
+        auto prefabArray = sceneProject.scene->getComponentArray<PrefabComponent>();
+        for (size_t i = 0; i < prefabArray->size(); ++i) {
+            PrefabComponent& prefabComp = prefabArray->getComponentFromIndex(i);
             std::string updatedPath;
-            if (remapRelativeString(oldRelative, newRelative, bundleComp.path, updatedPath)) {
-                bundleComp.path = updatedPath;
+            if (remapRelativeString(oldRelative, newRelative, prefabComp.path, updatedPath)) {
+                prefabComp.path = updatedPath;
                 sceneProject.isModified = true;
                 changed = true;
-                sceneBundleChanged = true;
+                scenePrefabChanged = true;
             }
         }
 
-        if (sceneBundleChanged) {
-            updateSceneBundles(&sceneProject);
+        if (scenePrefabChanged) {
+            updateScenePrefabs(&sceneProject);
         }
     }
 
@@ -1230,7 +1230,7 @@ void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& old
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->isModified = true;
             if (sceneProject->scene) {
-                updateSceneBundles(sceneProject);
+                updateScenePrefabs(sceneProject);
             }
         }
     }
@@ -1252,12 +1252,12 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
         }
     }
 
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!remapScriptPathsInRegistry(bundle.registry.get(), oldPath, newPath)) {
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (!remapScriptPathsInRegistry(prefab.registry.get(), oldPath, newPath)) {
             continue;
         }
-        bundle.isModified = true;
-        saveEntityBundleToDisk(bundlePath);
+        prefab.isModified = true;
+        savePrefabToDisk(prefabPath);
     }
 }
 
@@ -1359,7 +1359,7 @@ void editor::Project::cleanupSceneFilePath(const std::filesystem::path& deletedP
             [sceneId](const SceneProject& s) { return s.id == sceneId; });
         if (it != scenes.end()) {
             deleteSceneProject(&(*it));
-            cleanupEntityBundlesForScene(sceneId);
+            cleanupPrefabsForScene(sceneId);
             removeTab(TabType::SCENE, it->filepath.string());
             markParentScenesNeedUpdate(sceneId);
             editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -1372,7 +1372,7 @@ void editor::Project::cleanupSceneFilePath(const std::filesystem::path& deletedP
     }
 }
 
-void editor::Project::cleanupEntityBundleFilePath(const std::filesystem::path& deletedPath) {
+void editor::Project::cleanupPrefabFilePath(const std::filesystem::path& deletedPath) {
     if (projectPath.empty()) {
         return;
     }
@@ -1382,34 +1382,34 @@ void editor::Project::cleanupEntityBundleFilePath(const std::filesystem::path& d
         return;
     }
 
-    std::vector<fs::path> bundlesToRemove;
+    std::vector<fs::path> prefabsToRemove;
 
-    for (const auto& [filepath, bundle] : entityBundles) {
+    for (const auto& [filepath, prefab] : prefabAssets) {
         if (matchesRelativePath(deletedRelative, filepath)) {
-            bundlesToRemove.push_back(filepath);
+            prefabsToRemove.push_back(filepath);
         }
     }
 
-    bool changed = !bundlesToRemove.empty();
+    bool changed = !prefabsToRemove.empty();
     std::unordered_set<uint32_t> affectedSceneIds;
 
-    const size_t listedBefore = standaloneBundles.size();
-    standaloneBundles.erase(
-        std::remove_if(standaloneBundles.begin(), standaloneBundles.end(),
-            [&](const fs::path& bundlePath) { return matchesRelativePath(deletedRelative, bundlePath); }),
-        standaloneBundles.end());
-    if (standaloneBundles.size() != listedBefore) {
+    const size_t listedBefore = standalonePrefabs.size();
+    standalonePrefabs.erase(
+        std::remove_if(standalonePrefabs.begin(), standalonePrefabs.end(),
+            [&](const fs::path& prefabPath) { return matchesRelativePath(deletedRelative, prefabPath); }),
+        standalonePrefabs.end());
+    if (standalonePrefabs.size() != listedBefore) {
         saveProject();
     }
 
-    for (const auto& bundlePath : bundlesToRemove) {
-        EntityBundle* bundle = getEntityBundle(bundlePath);
-        if (!bundle) {
+    for (const auto& prefabPath : prefabsToRemove) {
+        Prefab* prefab = getPrefab(prefabPath);
+        if (!prefab) {
             continue;
         }
 
         std::vector<std::pair<uint32_t, std::pair<Entity, std::vector<Entity>>>> instancesToRemove;
-        for (const auto& [sceneId, instances] : bundle->instances) {
+        for (const auto& [sceneId, instances] : prefab->instances) {
             affectedSceneIds.insert(sceneId);
             for (const auto& instance : instances) {
                 std::vector<Entity> memberEntities;
@@ -1426,17 +1426,17 @@ void editor::Project::cleanupEntityBundleFilePath(const std::filesystem::path& d
         }
 
         for (const auto& [sceneId, rootAndMembers] : instancesToRemove) {
-            unimportEntityBundle(sceneId, bundlePath, rootAndMembers.first, rootAndMembers.second);
+            unimportPrefab(sceneId, prefabPath, rootAndMembers.first, rootAndMembers.second);
         }
 
-        removeEntityBundle(bundlePath);
+        removePrefab(prefabPath);
     }
 
     for (uint32_t sceneId : affectedSceneIds) {
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->isModified = true;
             if (sceneProject->scene) {
-                updateSceneBundles(sceneProject);
+                updateScenePrefabs(sceneProject);
             }
         }
     }
@@ -1458,12 +1458,12 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
         }
     }
 
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!cleanupScriptPathsInRegistry(bundle.registry.get(), deletedPath)) {
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (!cleanupScriptPathsInRegistry(prefab.registry.get(), deletedPath)) {
             continue;
         }
-        bundle.isModified = true;
-        saveEntityBundleToDisk(bundlePath);
+        prefab.isModified = true;
+        savePrefabToDisk(prefabPath);
     }
 }
 
@@ -1477,13 +1477,13 @@ void editor::Project::applyAssetPathChange(const std::function<bool(std::string&
         sceneProject.needUpdateRender = true;
     }
 
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!bundle.registry || !visitAssetPathsInRegistry(bundle.registry.get(), transform)) {
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform)) {
             continue;
         }
 
-        bundle.isModified = true;
-        saveEntityBundleToDisk(bundlePath);
+        prefab.isModified = true;
+        savePrefabToDisk(prefabPath);
     }
 
     visitAssetPathsInMaterialFiles(transform);
@@ -1557,8 +1557,8 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         applyToArray(registry->getComponentArray<MeshComponent>(), &MeshComponent::customDepthShader);
         applyToArray(registry->getComponentArray<UIComponent>(), &UIComponent::customShader);
         applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
-        applyToArray(registry->getComponentArray<LinesComponent>(), &LinesComponent::customShader);
-        applyToArray(registry->getComponentArray<SkyComponent>(), &SkyComponent::customShader);
+        applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
+        applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
         return changed;
     };
 
@@ -1587,13 +1587,13 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         }
     }
 
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!bundle.registry) {
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (!prefab.registry) {
             continue;
         }
-        if (applyToRegistry(bundle.registry.get())) {
-            bundle.isModified = true;
-            saveEntityBundleToDisk(bundlePath);
+        if (applyToRegistry(prefab.registry.get())) {
+            prefab.isModified = true;
+            savePrefabToDisk(prefabPath);
         }
     }
 }
@@ -2127,7 +2127,7 @@ static bool holdsOnlyAssets(const std::filesystem::path& directory){
         }
 
         const std::string path = entry.path().string();
-        if (editor::Util::isSceneFile(path) || editor::Util::isBundleFile(path) || editor::Util::isMaterialFile(path) ||
+        if (editor::Util::isSceneFile(path) || editor::Util::isPrefabFile(path) || editor::Util::isMaterialFile(path) ||
             editor::Util::isScriptFile(path) || editor::Util::isShaderFile(path)){
             return false;
         }
@@ -2443,20 +2443,20 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
             }
         }
 
-        for (auto& [bundlePath, bundle] : entityBundles){
-            if (!bundle.registry){
+        for (auto& [prefabPath, prefab] : prefabAssets){
+            if (!prefab.registry){
                 continue;
             }
 
-            bool bundleChanged = assetsChanged && visitAssetPathsInRegistry(bundle.registry.get(), assetVisitor);
-            bundleChanged |= luaChanged && visitLuaPathsInRegistry(bundle.registry.get(), luaVisitor);
+            bool prefabChanged = assetsChanged && visitAssetPathsInRegistry(prefab.registry.get(), assetVisitor);
+            prefabChanged |= luaChanged && visitLuaPathsInRegistry(prefab.registry.get(), luaVisitor);
 
-            if (!bundleChanged){
+            if (!prefabChanged){
                 continue;
             }
 
-            bundle.isModified = true;
-            saveEntityBundleToDisk(bundlePath);
+            prefab.isModified = true;
+            savePrefabToDisk(prefabPath);
         }
 
         if (assetsChanged){
@@ -2802,10 +2802,10 @@ uint32_t editor::Project::createNewSceneInternal(std::string sceneName, SceneTyp
         sunCreator.addProperty<float>(ComponentType::LightComponent, "range", 100);
         sunCreator.execute();
 
-        CreateEntityCmd skyCreator(this, data.id, "Sky", EntityCreationType::SKY);
+        CreateEntityCmd skyCreator(this, data.id, "Sky", EntityCreationType::SKYBOX);
         Texture defaultSky;
         ProjectUtils::setDefaultSkyTexture(defaultSky);
-        skyCreator.addProperty<Texture>(ComponentType::SkyComponent, "texture", defaultSky);
+        skyCreator.addProperty<Texture>(ComponentType::SkyboxComponent, "texture", defaultSky);
         skyCreator.execute();
 
         clearSelectedEntities(data.id);
@@ -2901,19 +2901,19 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
     }
 }
 
-void editor::Project::updateSceneBundles(SceneProject* sceneProject) {
+void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
     if (!sceneProject) {
         return;
     }
 
-    sceneProject->bundles.clear();
+    sceneProject->prefabs.clear();
 
-    for (const auto& [bundlePath, bundle] : entityBundles) {
-        if (bundle.instances.find(sceneProject->id) != bundle.instances.end()) {
-            BundleSceneInfo info;
-            info.bundlePath = bundlePath;
-            info.functionName = Factory::bundleToFunctionName(bundlePath);
-            sceneProject->bundles.push_back(std::move(info));
+    for (const auto& [prefabPath, prefab] : prefabAssets) {
+        if (prefab.instances.find(sceneProject->id) != prefab.instances.end()) {
+            PrefabSceneInfo info;
+            info.prefabPath = prefabPath;
+            info.functionName = Factory::prefabToFunctionName(prefabPath);
+            sceneProject->prefabs.push_back(std::move(info));
         }
     }
 }
@@ -2962,22 +2962,22 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
     }
 
-    auto bodies2d = sceneProject->scene->getComponentArray<Body2DComponent>();
+    auto bodies2d = sceneProject->scene->getComponentArray<Rigidbody2DComponent>();
     for (size_t i = 0; i < bodies2d->size(); ++i) {
-        const Body2DComponent& body = bodies2d->getComponentFromIndex(i);
-        maxValues.maxShapes2D = std::max(maxValues.maxShapes2D, static_cast<unsigned int>(body.numShapes));
-        for (size_t s = 0; s < body.numShapes; ++s) {
-            maxValues.maxShapePoints2D = std::max(maxValues.maxShapePoints2D, static_cast<unsigned int>(body.shapes[s].numVertices));
+        const Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+        maxValues.maxColliders2D = std::max(maxValues.maxColliders2D, static_cast<unsigned int>(body.numColliders));
+        for (size_t s = 0; s < body.numColliders; ++s) {
+            maxValues.maxColliderPoints2D = std::max(maxValues.maxColliderPoints2D, static_cast<unsigned int>(body.colliders[s].numVertices));
         }
     }
 
-    auto bodies3d = sceneProject->scene->getComponentArray<Body3DComponent>();
+    auto bodies3d = sceneProject->scene->getComponentArray<RigidbodyComponent>();
     for (size_t i = 0; i < bodies3d->size(); ++i) {
-        const Body3DComponent& body = bodies3d->getComponentFromIndex(i);
-        maxValues.maxShapes3D = std::max(maxValues.maxShapes3D, static_cast<unsigned int>(body.numShapes));
-        for (size_t s = 0; s < body.numShapes; ++s) {
-            maxValues.maxShapeVertices3D = std::max(maxValues.maxShapeVertices3D, static_cast<unsigned int>(body.shapes[s].numVertices));
-            maxValues.maxShapeIndices3D = std::max(maxValues.maxShapeIndices3D, static_cast<unsigned int>(body.shapes[s].numIndices));
+        const RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        maxValues.maxColliders3D = std::max(maxValues.maxColliders3D, static_cast<unsigned int>(body.numColliders));
+        for (size_t s = 0; s < body.numColliders; ++s) {
+            maxValues.maxColliderVertices3D = std::max(maxValues.maxColliderVertices3D, static_cast<unsigned int>(body.colliders[s].numVertices));
+            maxValues.maxColliderIndices3D = std::max(maxValues.maxColliderIndices3D, static_cast<unsigned int>(body.colliders[s].numIndices));
         }
     }
 }
@@ -3088,15 +3088,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             }
         }
 
-        if (signature.test(scene->getComponentId<LinesComponent>())) {
-            const LinesComponent& ln = scene->getComponent<LinesComponent>(entity);
+        if (signature.test(scene->getComponentId<LineRendererComponent>())) {
+            const LineRendererComponent& ln = scene->getComponent<LineRendererComponent>(entity);
             if (ln.loaded) {
                 insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES));
             }
         }
 
-        if (signature.test(scene->getComponentId<SkyComponent>())) {
-            const SkyComponent& sky = scene->getComponent<SkyComponent>(entity);
+        if (signature.test(scene->getComponentId<SkyboxComponent>())) {
+            const SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
             if (sky.loaded) {
                 insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX));
             }
@@ -3123,7 +3123,7 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
     // 2D lights with shadows render occluder segments through the shadow2d
-    // pass. The runtime additionally gates on an enabled Occluder2D existing
+    // pass. The runtime additionally gates on an enabled ShadowCaster2D existing
     // (RenderSystem::loadLights2D), but scripts can spawn occluders at runtime,
     // so a shadow-casting light alone is enough to require the shader.
     {
@@ -3184,9 +3184,9 @@ void editor::Project::invalidateCustomShaders() {
                 flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
                 flagReload(pts->needReload, scenePoints || !pts->customShader.empty());
-            if (LinesComponent* ln = scene->findComponent<LinesComponent>(entity))
+            if (LineRendererComponent* ln = scene->findComponent<LineRendererComponent>(entity))
                 flagReload(ln->needReload, sceneLines || !ln->customShader.empty());
-            if (SkyComponent* sky = scene->findComponent<SkyComponent>(entity))
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
                 flagReload(sky->needReload, sceneSky || !sky->customShader.empty());
         }
 
@@ -3443,7 +3443,7 @@ void editor::Project::discardHalfLoadedScene(SceneProject* sceneProject, bool ap
 
     if (sceneId != NULL_PROJECT_SCENE) {
         unlinkAllMaterialFiles(sceneId);
-        cleanupEntityBundlesForScene(sceneId);
+        cleanupPrefabsForScene(sceneId);
     }
 
     if (appended && !scenes.empty()) {
@@ -3561,7 +3561,7 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
 
     deleteSceneProject(&(*it));
 
-    cleanupEntityBundlesForScene(sceneId);
+    cleanupPrefabsForScene(sceneId);
 
     removeTab(TabType::SCENE, it->filepath.string());
 
@@ -3632,8 +3632,8 @@ void editor::Project::removeScene(uint32_t sceneId) {
     // Remove C++ source file
     generator.clearSceneSource(it->name, getProjectInternalPath());
 
-    // Cleanup EntityBundles
-    cleanupEntityBundlesForScene(sceneId);
+    // Cleanup Prefabs
+    cleanupPrefabsForScene(sceneId);
 
     removeTab(TabType::SCENE, it->filepath.string());
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -3703,7 +3703,7 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
     }
 
     updateSceneCppScripts(sceneProject);
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 }
 
 bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
@@ -3770,7 +3770,7 @@ void editor::Project::unloadChildSceneInline(uint32_t childSceneId) {
     }
 
     deleteSceneProject(childScene);
-    cleanupEntityBundlesForScene(childSceneId);
+    cleanupPrefabsForScene(childSceneId);
     childScene->expandedInline = false;
     markParentScenesNeedUpdate(childSceneId);
 
@@ -3975,8 +3975,8 @@ void editor::Project::resetConfigs() {
     scenes.clear();
     unresolvedScenes.clear();
     unresolvedSceneStates.clear();
-    entityBundles.clear();
-    standaloneBundles.clear();
+    prefabAssets.clear();
+    standalonePrefabs.clear();
     editor::getEditorHost().resetLastActivatedScene();
 
     // A project may be closed, edited externally, then reopened in the same editor
@@ -4081,18 +4081,18 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
     return mergedScripts;
 }
 
-std::vector<editor::BundleSceneInfo> editor::Project::collectAllBundles() const {
+std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const {
     std::unordered_set<std::string> uniquePaths;
-    std::vector<BundleSceneInfo> result;
+    std::vector<PrefabSceneInfo> result;
 
     for (const auto& sceneProject : scenes) {
-        for (const auto& bundle : sceneProject.bundles) {
-            std::string pathKey = bundle.bundlePath.generic_string();
+        for (const auto& prefab : sceneProject.prefabs) {
+            std::string pathKey = prefab.prefabPath.generic_string();
             if (!uniquePaths.insert(pathKey).second) {
                 continue;
             }
 
-            fs::path fullPath = bundle.bundlePath;
+            fs::path fullPath = prefab.prefabPath;
             if (fullPath.is_relative()) {
                 fullPath = getProjectPath() / fullPath;
             }
@@ -4100,20 +4100,20 @@ std::vector<editor::BundleSceneInfo> editor::Project::collectAllBundles() const 
                 continue;
             }
 
-            result.push_back(bundle);
+            result.push_back(prefab);
         }
     }
 
-    // Standalone bundles have no scene recording them, and only the loaded ones get a source
-    for (const fs::path& bundlePath : standaloneBundles) {
-        const EntityBundle* bundle = getEntityBundle(bundlePath);
-        if (!bundle || !bundle->registry || !uniquePaths.insert(bundlePath.generic_string()).second) {
+    // Standalone prefabs have no scene recording them, and only the loaded ones get a source
+    for (const fs::path& prefabPath : standalonePrefabs) {
+        const Prefab* prefab = getPrefab(prefabPath);
+        if (!prefab || !prefab->registry || !uniquePaths.insert(prefabPath.generic_string()).second) {
             continue;
         }
 
-        BundleSceneInfo info;
-        info.bundlePath = bundlePath;
-        info.functionName = Factory::bundleToFunctionName(bundlePath);
+        PrefabSceneInfo info;
+        info.prefabPath = prefabPath;
+        info.functionName = Factory::prefabToFunctionName(prefabPath);
         result.push_back(std::move(info));
     }
 
@@ -4263,7 +4263,7 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 }
 
 // Entities a script spawns while playing are not in the editor list, so without this they
-// stay alive after Stop: drawn in the viewport but no longer reachable from the Structure.
+// stay alive after Stop: drawn in the viewport but no longer reachable from the Hierarchy.
 void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
@@ -4293,8 +4293,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
 
-        // Destroy all bundle instances created during play before restoring snapshot
-        BundleManager::destroyAllInstances(sceneProject->scene);
+        // Destroy all prefab instances created during play before restoring snapshot
+        PrefabManager::destroyAllInstances(sceneProject->scene);
 
         // Stop scene audio before restoring snapshot to prevent stale SoLoud handles on the next play
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
@@ -4394,7 +4394,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
     editor::getEditorHost().enqueueMainThreadTask([]() {
         SceneManager::clearAll();
-        BundleManager::clearAll();
+        PrefabManager::clearAll();
         editor::getEditorHost().resetLastActivatedScene();
     });
 
@@ -4602,7 +4602,7 @@ const char* versionControlAttributes =
     "* text=auto eol=lf\n"
     "\n"
     "*.scene   text eol=lf\n"
-    "*.bundle  text eol=lf\n"
+    "*.prefab  text eol=lf\n"
     "*.yaml    text eol=lf\n"
     "*.lua     text eol=lf\n"
     "*.cmake   text eol=lf\n"
@@ -4972,9 +4972,9 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         return false;
     }
 
-    for (const auto& [filepath, bundle] : entityBundles) {
-        if (bundle.instances.find(sceneProject->id) != bundle.instances.end() && bundle.isModified) {
-            saveEntityBundleToDisk(filepath);
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        if (prefab.instances.find(sceneProject->id) != prefab.instances.end() && prefab.isModified) {
+            savePrefabToDisk(filepath);
         }
     }
 
@@ -4990,7 +4990,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     sceneProject->shaderKeys = std::move(shaderKeys);
 
     updateSceneCppScripts(sceneProject);
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
@@ -5079,8 +5079,8 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 }
 
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
-    std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, sceneProject->id, getProjectPath(), getProjectInternalPath());
-    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), bundleInstances, collectResourcesInRegistry(sceneProject->scene));
+    std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath());
+    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
 bool editor::Project::hasMissingSceneSources() const {
@@ -5111,8 +5111,8 @@ void editor::Project::writeMissingSceneSources() {
         if (probe) {
             deleteSceneProject(probe.get());
         }
-        // forget the bundle instances the probe registered
-        cleanupEntityBundlesForScene(sceneProject.id);
+        // forget the prefab instances the probe registered
+        cleanupPrefabsForScene(sceneProject.id);
     }
 }
 
@@ -5132,8 +5132,8 @@ void editor::Project::configureGenerator() {
     }
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
-    std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
+    std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
 }
 
 void editor::Project::updateGeneratedSources() {
@@ -5251,10 +5251,10 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
         aabb = scene->getComponent<MeshComponent>(entity).worldAABB;
     }else if (signature.test(scene->getComponentId<UIComponent>())){
         aabb = scene->getComponent<UIComponent>(entity).worldAABB;
-        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){
-            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
                 Transform& transform = scene->getComponent<Transform>(entity);
                 aabb = transform.modelMatrix * AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
             }
@@ -5262,7 +5262,7 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
     }else if (signature.test(scene->getComponentId<LightComponent>()) ||
               signature.test(scene->getComponentId<Light2DComponent>()) ||
               signature.test(scene->getComponentId<CameraComponent>()) ||
-              signature.test(scene->getComponentId<SoundComponent>())){
+              signature.test(scene->getComponentId<AudioSourceComponent>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         float size = 16.0f;
         SceneRender* editorRender = nullptr;
@@ -5286,14 +5286,14 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
             }
         }
         aabb = transform.modelMatrix * AABB(-size, -size, -size, size, size, size);
-    }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){
-        const Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+    }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
+        const ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
         Transform& transform = scene->getComponent<Transform>(entity);
 
         // hug the polygon points; the entity origin is only the fallback when
         // there is nothing else to bound
         AABB localAABB(Vector3(0, 0, -1), Vector3(0, 0, 1));
-        if (occluder.shape == Occluder2DShape::POLYGON && occluder.points.size() > 0){
+        if (occluder.shape == ShadowCaster2DShape::POLYGON && occluder.points.size() > 0){
             localAABB.setNull();
             for (const Vector2& point : occluder.points){
                 localAABB.merge(Vector3(point.x, point.y, 0.0f));
@@ -5303,7 +5303,7 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
             localAABB.setExtents(mn, mx);
         }
         aabb = transform.modelMatrix * localAABB;
-    }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LinesComponent>())){
+    }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())){
         if (signature.test(scene->getComponentId<Transform>())) {
             const Transform& transform = scene->getComponent<Transform>(entity);
             const Transform& camtransform = mainScene->getComponent<Transform>(mainScene->getCamera());
@@ -5333,8 +5333,8 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
                 }
             }
 
-            if (signature.test(scene->getComponentId<LinesComponent>())){
-                const LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+            if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
                 for (const LineData& line : lines.lines) {
                     mergeWorldPoint(transform.modelMatrix * line.pointA);
                     mergeWorldPoint(transform.modelMatrix * line.pointB);
@@ -5354,22 +5354,22 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
         aabb = SceneRender::getMeshLocalAABB(scene->getComponent<MeshComponent>(entity));
     }else if (signature.test(scene->getComponentId<UIComponent>())){
         aabb = scene->getComponent<UIComponent>(entity).aabb;
-        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){
-            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
                 aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
             }
         }
     }else if (signature.test(scene->getComponentId<LightComponent>()) ||
               signature.test(scene->getComponentId<Light2DComponent>()) ||
               signature.test(scene->getComponentId<CameraComponent>()) ||
-              signature.test(scene->getComponentId<SoundComponent>())){
+              signature.test(scene->getComponentId<AudioSourceComponent>())){
         aabb = AABB::ZERO;
-    }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){
-        const Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+    }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
+        const ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
         aabb.setNull();
-        if (occluder.shape == Occluder2DShape::POLYGON && occluder.points.size() > 0){
+        if (occluder.shape == ShadowCaster2DShape::POLYGON && occluder.points.size() > 0){
             // hug the polygon points only
             for (const Vector2& point : occluder.points){
                 aabb.merge(Vector3(point.x, point.y, 0.0f));
@@ -5377,7 +5377,7 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
         }else{
             aabb.merge(Vector3::ZERO); // fallback: the entity origin
         }
-    }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LinesComponent>())){
+    }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())){
         aabb.setNull();
         // Always include the entity origin (local space zero)
         aabb.merge(Vector3::ZERO);
@@ -5388,8 +5388,8 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
                 aabb.merge(pt.position);
             }
         }
-        if (signature.test(scene->getComponentId<LinesComponent>())){
-            const LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+        if (signature.test(scene->getComponentId<LineRendererComponent>())){
+            const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
             for (const LineData& line : lines.lines) {
                 aabb.merge(line.pointA);
                 aabb.merge(line.pointB);
@@ -5987,8 +5987,8 @@ bool editor::Project::hasSelectedSceneUnsavedChanges() const{
     return hasSceneUnsavedChanges(selectedScene);
 }
 
-bool editor::Project::hasSelectedSceneUnsavedEntityBundles() const{
-    return hasUnsavedEntityBundles(selectedScene);
+bool editor::Project::hasSelectedSceneUnsavedPrefabs() const{
+    return hasUnsavedPrefabs(selectedScene);
 }
 
 bool editor::Project::hasLocalUnsavedChanges(uint32_t sceneId) const{
@@ -6001,7 +6001,7 @@ bool editor::Project::hasLocalUnsavedChanges(uint32_t sceneId) const{
         return true;
     }
 
-    if (hasUnsavedEntityBundles(sceneId)){
+    if (hasUnsavedPrefabs(sceneId)){
         return true;
     }
 
@@ -6036,9 +6036,9 @@ bool editor::Project::hasSceneUnsavedChanges(uint32_t sceneId) const{
     return hasSceneUnsavedChangesImpl(sceneId, visited);
 }
 
-bool editor::Project::hasUnsavedEntityBundles(uint32_t sceneId) const{
-    for (const auto& [filepath, bundle] : entityBundles) {
-        if (bundle.isModified && bundle.hasInstances(sceneId)) {
+bool editor::Project::hasUnsavedPrefabs(uint32_t sceneId) const{
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        if (prefab.isModified && prefab.hasInstances(sceneId)) {
             return true;
         }
     }
@@ -6053,16 +6053,16 @@ bool editor::Project::hasScenesUnsavedChanges() const{
         }
     }
 
-    if (hasUnsavedEntityBundles()){
+    if (hasUnsavedPrefabs()){
          return true;
     }
 
     return false;
 }
 
-bool editor::Project::hasUnsavedEntityBundles() const{
-    for (const auto& [filepath, bundle] : entityBundles) {
-        if (bundle.isModified) {
+bool editor::Project::hasUnsavedPrefabs() const{
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        if (prefab.isModified) {
             return true;
         }
     }
@@ -6138,15 +6138,15 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
     return hasChanges;
 }
 
-bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YAML::Node entityNode){
+bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode){
     if (!filepath.is_relative()) {
-        Out::error("EntityBundle filepath must be relative: %s", filepath.string().c_str());
+        Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return false;
     }
 
-    auto it = entityBundles.find(filepath);
-    if (it != entityBundles.end()) {
-        Out::error("EntityBundle group already exists at %s", filepath.string().c_str());
+    auto it = prefabAssets.find(filepath);
+    if (it != prefabAssets.end()) {
+        Out::error("Prefab group already exists at %s", filepath.string().c_str());
         return false;
     }
 
@@ -6157,11 +6157,11 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
     }
 
     // Create new group
-    EntityBundle newGroup;
+    Prefab newGroup;
     newGroup.registry = std::make_unique<EntityRegistry>();
     newGroup.isModified = true;
 
-    EntityBundle::Instance newInstance;
+    Prefab::Instance newInstance;
     newInstance.instanceId = newGroup.nextInstanceId++;
 
     // Keep original scene order for member mapping and undo operations.
@@ -6176,7 +6176,7 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
         }
         remapEntityProperties(newGroup.registry.get(), regEntities, localToRegistry);
     } else {
-        Out::error("createEntityBundle(%s): entity count mismatch: branchEntities=%zu, regEntities=%zu",
+        Out::error("createPrefab(%s): entity count mismatch: branchEntities=%zu, regEntities=%zu",
             filepath.string().c_str(), branchEntities.size(), regEntities.size());
         // Without a member mapping every ref would keep a scene-local ID; store
         // None rather than letting stale IDs into the registry
@@ -6186,12 +6186,12 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
     Scene* scene = sceneProject->scene;
     Entity rootEntity = scene->createUserEntity();
 
-    BundleComponent bundleComp;
-    bundleComp.name = filepath.stem().string();
-    bundleComp.path = filepath.string();
-    scene->addComponent<BundleComponent>(rootEntity, bundleComp);
+    PrefabComponent prefabComp;
+    prefabComp.name = filepath.stem().string();
+    prefabComp.path = filepath.string();
+    scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
-    // Only create a transform root when bundle top-level entities use hierarchy.
+    // Only create a transform root when prefab top-level entities use hierarchy.
     std::vector<Entity> topLevelEntities = getTopLevelEntities(newGroup.registry.get(), regEntities);
     bool hasTopLevelTransform = false;
     for (Entity topLevelEntity : topLevelEntities) {
@@ -6207,17 +6207,17 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
 
     std::string rootName = filepath.stem().string();
     if (rootName.empty()) {
-        rootName = "Bundle";
+        rootName = "Prefab";
     }
 
     std::unordered_set<Entity> ignoredEntities(branchEntities.begin(), branchEntities.end());
     scene->setEntityName(rootEntity, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName, ignoredEntities));
     sceneProject->entities.push_back(rootEntity);
 
-    Entity firstBundleEntity = NULL_ENTITY;
-    Entity firstBundleTransformEntity = NULL_ENTITY;
-    size_t firstBundleIndex = std::numeric_limits<size_t>::max();
-    size_t firstBundleTransformIndex = std::numeric_limits<size_t>::max();
+    Entity firstPrefabEntity = NULL_ENTITY;
+    Entity firstPrefabTransformEntity = NULL_ENTITY;
+    size_t firstPrefabIndex = std::numeric_limits<size_t>::max();
+    size_t firstPrefabTransformIndex = std::numeric_limits<size_t>::max();
 
     for (Entity branchEntity : branchEntities) {
         auto itSceneEntity = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), branchEntity);
@@ -6226,19 +6226,19 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
         }
 
         size_t entityIndex = std::distance(sceneProject->entities.begin(), itSceneEntity);
-        if (entityIndex < firstBundleIndex) {
-            firstBundleIndex = entityIndex;
-            firstBundleEntity = branchEntity;
+        if (entityIndex < firstPrefabIndex) {
+            firstPrefabIndex = entityIndex;
+            firstPrefabEntity = branchEntity;
         }
 
-        if (scene->findComponent<Transform>(branchEntity) && entityIndex < firstBundleTransformIndex) {
-            firstBundleTransformIndex = entityIndex;
-            firstBundleTransformEntity = branchEntity;
+        if (scene->findComponent<Transform>(branchEntity) && entityIndex < firstPrefabTransformIndex) {
+            firstPrefabTransformIndex = entityIndex;
+            firstPrefabTransformEntity = branchEntity;
         }
     }
 
     // Place root before the first bundled entity to preserve visual ordering.
-    Entity moveTarget = hasTopLevelTransform ? firstBundleTransformEntity : firstBundleEntity;
+    Entity moveTarget = hasTopLevelTransform ? firstPrefabTransformEntity : firstPrefabEntity;
     if (moveTarget != NULL_ENTITY) {
         Entity oldParent = NULL_ENTITY;
         size_t oldIndex = 0;
@@ -6246,7 +6246,7 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
         ProjectUtils::moveEntityOrderByTarget(scene, sceneProject->entities, rootEntity, moveTarget, InsertionType::BEFORE, oldParent, oldIndex, hasTransform);
     }
 
-    // Reparent top-level transformed bundle entities under the new root.
+    // Reparent top-level transformed prefab entities under the new root.
     if (hasTopLevelTransform) {
         std::vector<Entity> sceneTopLevelEntities = getTopLevelEntities(scene, branchEntities);
         for (Entity topLevelEntity : sceneTopLevelEntities) {
@@ -6263,31 +6263,31 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
         newInstance.members.push_back({branchEntities[i], regEntities[i]});
     }
 
-    // References to entities outside the bundle stayed on the scene members while the
+    // References to entities outside the prefab stayed on the scene members while the
     // registry stored None; keep and persist them by overriding those components.
     overrideExternalRefComponents(scene, newInstance);
 
     newGroup.instances[sceneId].push_back(std::move(newInstance));
 
-    entityBundles.emplace(filepath, std::move(newGroup));
+    prefabAssets.emplace(filepath, std::move(newGroup));
 
     // Set up event subscriptions for this shared group
-    saveEntityBundleToDisk(filepath);
+    savePrefabToDisk(filepath);
 
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 
     sceneProject->isModified = true;
 
     return true;
 }
 
-bool editor::Project::removeEntityBundle(const std::filesystem::path& filepath) {
-    auto it = entityBundles.find(filepath);
-    if (it == entityBundles.end()) {
+bool editor::Project::removePrefab(const std::filesystem::path& filepath) {
+    auto it = prefabAssets.find(filepath);
+    if (it == prefabAssets.end()) {
         return false;
     }
 
-    // Undo scene-side changes introduced by createEntityBundle for each instance.
+    // Undo scene-side changes introduced by createPrefab for each instance.
     for (const auto& [sceneId, instances] : it->second.instances) {
         SceneProject* sceneProject = getScene(sceneId);
         if (!sceneProject) {
@@ -6304,7 +6304,7 @@ bool editor::Project::removeEntityBundle(const std::filesystem::path& filepath) 
                 continue;
             }
 
-            // If the bundle root owns transformed members, detach them back before removing root.
+            // If the prefab root owns transformed members, detach them back before removing root.
             Transform* rootTransform = scene->findComponent<Transform>(instance.rootEntity);
             if (rootTransform) {
                 Entity rootParent = rootTransform->parent;
@@ -6331,39 +6331,39 @@ bool editor::Project::removeEntityBundle(const std::filesystem::path& filepath) 
         it->second.registry->clear();
     }
 
-    entityBundles.erase(it);
+    prefabAssets.erase(it);
 
     for (SceneProject& sceneProject : scenes) {
-        updateSceneBundles(&sceneProject);
+        updateScenePrefabs(&sceneProject);
     }
 
-    editor::Out::info("Removed entity bundle: %s", filepath.string().c_str());
+    editor::Out::info("Removed prefab: %s", filepath.string().c_str());
     return true;
 }
 
-bool editor::Project::addComponentToBundle(uint32_t sceneId, Entity entity, ComponentType componentType, bool addToItself){
+bool editor::Project::addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool addToItself){
     ComponentRecovery recovery;
-    return addComponentToBundle(sceneId, entity, componentType, recovery, addToItself);
+    return addComponentToPrefab(sceneId, entity, componentType, recovery, addToItself);
 }
 
-bool editor::Project::addComponentToBundle(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery, bool addToItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+bool editor::Project::addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery, bool addToItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    if (bundle->hasComponentOverride(sceneId, entity, componentType)){
+    if (prefab->hasComponentOverride(sceneId, entity, componentType)){
         Out::warning("Component %s of entity %u in scene %u is overridden", Catalog::getComponentName(componentType).c_str(), entity, sceneId);
         return false;
     }
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
     if (registryEntity == NULL_ENTITY) {
-        Out::error("Failed to find registry entities for bundle entities %u in scene %u", entity, sceneId);
+        Out::error("Failed to find registry entities for prefab entities %u in scene %u", entity, sceneId);
         return false;
     }
 
@@ -6378,27 +6378,27 @@ bool editor::Project::addComponentToBundle(uint32_t sceneId, Entity entity, Comp
         }
     }
 
-    ProjectUtils::addEntityComponent(bundle->registry.get(), registryEntity, componentType, bundle->registryEntities, regNode);
+    ProjectUtils::addEntityComponent(prefab->registry.get(), registryEntity, componentType, prefab->registryEntities, regNode);
 
-    std::vector<uint32_t> staleBundleScenes;
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    std::vector<uint32_t> stalePrefabScenes;
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene) {
             Out::error("Failed to find scene %u", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         if (!otherScene->scene) {
             Out::error("Scene %u is not loaded", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         for (auto& instance : sceneInstances) {
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || addToItself) {
-                Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
 
                 if (otherEntity != NULL_ENTITY) {
-                    if (!bundle->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
+                    if (!prefab->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
                         YAML::Node compNode;
                         std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId);
                         if (recovery.find(recoveryKey) != recovery.end()) {
@@ -6418,60 +6418,60 @@ bool editor::Project::addComponentToBundle(uint32_t sceneId, Entity entity, Comp
             }
         }
     }
-    for (uint32_t staleId : staleBundleScenes) {
-        cleanupEntityBundlesForScene(staleId);
+    for (uint32_t staleId : stalePrefabScenes) {
+        cleanupPrefabsForScene(staleId);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
 
-editor::ComponentRecovery editor::Project::removeComponentFromBundle(uint32_t sceneId, Entity entity, ComponentType componentType, bool encodeComponent, bool removeToItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+editor::ComponentRecovery editor::Project::removeComponentFromPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool encodeComponent, bool removeToItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return {};
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    if (bundle->hasComponentOverride(sceneId, entity, componentType)){
+    if (prefab->hasComponentOverride(sceneId, entity, componentType)){
         Out::warning("Component %s of entity %u in scene %u is overridden", Catalog::getComponentName(componentType).c_str(), entity, sceneId);
         return {};
     }
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
     if (registryEntity == NULL_ENTITY) {
-        Out::error("Failed to find registry entities for bundle entities %u in scene %u", entity, sceneId);
+        Out::error("Failed to find registry entities for prefab entities %u in scene %u", entity, sceneId);
         return {};
     }
 
     ComponentRecovery recovery;
     std::string recoveryDefKey = std::to_string(NULL_PROJECT_SCENE);
     recovery[recoveryDefKey].entity = registryEntity;
-    recovery[recoveryDefKey].node = ProjectUtils::removeEntityComponent(bundle->registry.get(), registryEntity, componentType, bundle->registryEntities, encodeComponent);
+    recovery[recoveryDefKey].node = ProjectUtils::removeEntityComponent(prefab->registry.get(), registryEntity, componentType, prefab->registryEntities, encodeComponent);
 
-    std::vector<uint32_t> staleBundleScenes;
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    std::vector<uint32_t> stalePrefabScenes;
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene) {
             Out::error("Failed to find scene %u", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         if (!otherScene->scene) {
             Out::error("Scene %u is not loaded", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         for (auto& instance : sceneInstances) {
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || removeToItself) {
-                Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
 
                 if (otherEntity != NULL_ENTITY) {
-                    if (!bundle->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
+                    if (!prefab->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
                         std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId);
                         recovery[recoveryKey].entity = otherEntity;
                         recovery[recoveryKey].node = ProjectUtils::removeEntityComponent(otherScene->scene, otherEntity, componentType, otherScene->entities, encodeComponent);
@@ -6483,61 +6483,61 @@ editor::ComponentRecovery editor::Project::removeComponentFromBundle(uint32_t sc
         }
         ProjectUtils::reconcileTrackedEntities(otherScene->scene, otherScene->entities, this, otherSceneId);
     }
-    for (uint32_t staleId : staleBundleScenes) {
-        cleanupEntityBundlesForScene(staleId);
+    for (uint32_t staleId : stalePrefabScenes) {
+        cleanupPrefabsForScene(staleId);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return recovery;
 }
 
-const std::vector<std::filesystem::path>& editor::Project::getStandaloneBundles() const {
-    return standaloneBundles;
+const std::vector<std::filesystem::path>& editor::Project::getStandalonePrefabs() const {
+    return standalonePrefabs;
 }
 
-bool editor::Project::isStandaloneBundle(const std::filesystem::path& filepath) const {
+bool editor::Project::isStandalonePrefab(const std::filesystem::path& filepath) const {
     const std::string key = filepath.generic_string();
-    for (const fs::path& bundlePath : standaloneBundles) {
-        if (bundlePath.generic_string() == key) {
+    for (const fs::path& prefabPath : standalonePrefabs) {
+        if (prefabPath.generic_string() == key) {
             return true;
         }
     }
     return false;
 }
 
-// Loads the listed bundles, dropping the ones whose file is gone or cannot be read
-void editor::Project::setStandaloneBundles(std::vector<std::filesystem::path> bundlePaths) {
-    standaloneBundles = std::move(bundlePaths);
+// Loads the listed prefabs, dropping the ones whose file is gone or cannot be read
+void editor::Project::setStandalonePrefabs(std::vector<std::filesystem::path> prefabPaths) {
+    standalonePrefabs = std::move(prefabPaths);
 
-    for (auto it = entityBundles.begin(); it != entityBundles.end();) {
-        if (it->second.instances.empty() && !isStandaloneBundle(it->first)) {
-            it = entityBundles.erase(it);
+    for (auto it = prefabAssets.begin(); it != prefabAssets.end();) {
+        if (it->second.instances.empty() && !isStandalonePrefab(it->first)) {
+            it = prefabAssets.erase(it);
         } else {
             ++it;
         }
     }
 
-    for (auto it = standaloneBundles.begin(); it != standaloneBundles.end();) {
+    for (auto it = standalonePrefabs.begin(); it != standalonePrefabs.end();) {
         const fs::path fullPath = getProjectPath() / *it;
         std::error_code ec;
 
-        if (!entityBundles.count(*it) && fs::exists(fullPath, ec)) {
-            EntityBundle bundle;
-            bundle.registry = std::make_unique<EntityRegistry>();
+        if (!prefabAssets.count(*it) && fs::exists(fullPath, ec)) {
+            Prefab prefab;
+            prefab.registry = std::make_unique<EntityRegistry>();
 
             try {
                 YAML::Node node = YAML::LoadFile(fullPath.string());
-                Stream::decodeEntitySelection(node, bundle.registry.get(), &bundle.registryEntities);
-                entityBundles.emplace(*it, std::move(bundle));
+                Stream::decodeEntitySelection(node, prefab.registry.get(), &prefab.registryEntities);
+                prefabAssets.emplace(*it, std::move(prefab));
             } catch (const std::exception& e) {
-                Out::error("Failed to load entity bundle: %s", e.what());
+                Out::error("Failed to load prefab: %s", e.what());
             }
         }
 
-        if (!entityBundles.count(*it)) {
-            Out::warning("Entity bundle \"%s\" is not available, removed from the standalone bundles", it->string().c_str());
-            it = standaloneBundles.erase(it);
+        if (!prefabAssets.count(*it)) {
+            Out::warning("Prefab \"%s\" is not available, removed from the standalone prefabs", it->string().c_str());
+            it = standalonePrefabs.erase(it);
             continue;
         }
 
@@ -6579,64 +6579,64 @@ std::vector<std::filesystem::path> editor::Project::findProjectFiles(const std::
     return files;
 }
 
-std::vector<std::filesystem::path> editor::Project::findBundleFiles() const {
-    return findProjectFiles(&Util::isBundleFile);
+std::vector<std::filesystem::path> editor::Project::findPrefabFiles() const {
+    return findProjectFiles(&Util::isPrefabFile);
 }
 
-void editor::Project::saveEntityBundleToDisk(const std::filesystem::path& filepath) {
-    EntityBundle* bundle = getEntityBundle(filepath);
-    YAML::Node encodedNode = encodeEntityBundleNode(filepath);
+void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
+    Prefab* prefab = getPrefab(filepath);
+    YAML::Node encodedNode = encodePrefabNode(filepath);
     if (encodedNode && !encodedNode.IsNull()) {
-        std::filesystem::path fullBundlePath = getProjectPath() / filepath;
-        std::ofstream fout(fullBundlePath.string());
+        std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
+        std::ofstream fout(fullPrefabPath.string());
         if (fout.is_open()) {  // Check if file opened successfully
             fout << YAML::Dump(encodedNode);
             fout.close();
-            bundle->isModified = false;
-            markReferencedSceneIdsPersisted(bundle->registry.get());
+            prefab->isModified = false;
+            markReferencedSceneIdsPersisted(prefab->registry.get());
         } else {
-            Out::error("Failed to open file for writing: %s", fullBundlePath.string().c_str());
+            Out::error("Failed to open file for writing: %s", fullPrefabPath.string().c_str());
         }
     }
 }
 
-editor::EntityBundle* editor::Project::getEntityBundle(const std::filesystem::path& filepath){
+editor::Prefab* editor::Project::getPrefab(const std::filesystem::path& filepath){
     if (filepath.empty()){
         return nullptr;
     }
-    auto it = entityBundles.find(filepath);
-    if (it != entityBundles.end()) {
+    auto it = prefabAssets.find(filepath);
+    if (it != prefabAssets.end()) {
         return &it->second;
     }
     return nullptr;
 }
 
-const editor::EntityBundle* editor::Project::getEntityBundle(const std::filesystem::path& filepath) const{
+const editor::Prefab* editor::Project::getPrefab(const std::filesystem::path& filepath) const{
     if (filepath.empty()){
         return nullptr;
     }
-    auto it = entityBundles.find(filepath);
-    if (it != entityBundles.end()) {
+    auto it = prefabAssets.find(filepath);
+    if (it != prefabAssets.end()) {
         return &it->second;
     }
     return nullptr;
 }
 
-std::map<std::filesystem::path, const editor::EntityBundle*> editor::Project::getEntityBundles(uint32_t sceneId) const {
-    std::map<std::filesystem::path, const EntityBundle*> bundlesInScene;
-    for (const auto& [filepath, bundle] : entityBundles) {
-        if (bundle.hasInstances(sceneId)) {
-            bundlesInScene[filepath] = &bundle;
+std::map<std::filesystem::path, const editor::Prefab*> editor::Project::getPrefabs(uint32_t sceneId) const {
+    std::map<std::filesystem::path, const Prefab*> prefabsInScene;
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        if (prefab.hasInstances(sceneId)) {
+            prefabsInScene[filepath] = &prefab;
         }
     }
-    return bundlesInScene;
+    return prefabsInScene;
 }
 
-std::filesystem::path editor::Project::findEntityBundlePathFor(uint32_t sceneId, Entity entity) const {
-    // First pass: prefer member matches (so nested bundle roots resolve to the outer bundle)
-    for (const auto& [filepath, bundle] : entityBundles) {
-        auto sceneIt = bundle.instances.find(sceneId);
-        if (sceneIt == bundle.instances.end()) {
+std::filesystem::path editor::Project::findPrefabPathFor(uint32_t sceneId, Entity entity) const {
+    // First pass: prefer member matches (so nested prefab roots resolve to the outer prefab)
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
             continue;
         }
 
@@ -6650,9 +6650,9 @@ std::filesystem::path editor::Project::findEntityBundlePathFor(uint32_t sceneId,
     }
 
     // Second pass: root matches
-    for (const auto& [filepath, bundle] : entityBundles) {
-        auto sceneIt = bundle.instances.find(sceneId);
-        if (sceneIt == bundle.instances.end()) {
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
             continue;
         }
 
@@ -6712,27 +6712,27 @@ YAML::Node editor::Project::changeEntitiesNode(Entity& firstEntity, YAML::Node n
     return node;
 }
 
-YAML::Node editor::Project::encodeEntityBundleNode(const std::filesystem::path& filepath) const {
-    const EntityBundle* bundle = getEntityBundle(filepath);
-    if (!bundle || !bundle->registry) {
+YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepath) const {
+    const Prefab* prefab = getPrefab(filepath);
+    if (!prefab || !prefab->registry) {
         return YAML::Node();
     }
 
-    std::vector<Entity> topLevelEntities = getTopLevelEntities(bundle->registry.get(), bundle->registryEntities);
-    return Stream::encodeEntitySelection(topLevelEntities, bundle->registry.get(), this);
+    std::vector<Entity> topLevelEntities = getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
+    return Stream::encodeEntitySelection(topLevelEntities, prefab->registry.get(), this);
 }
 
-std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& bundleOverrides, const YAML::Node& bundleLocalEntities, std::unordered_map<Entity, Entity>* entityRemap) {
+std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap) {
     if (!filepath.is_relative()) {
-        Out::error("EntityBundle filepath must be relative: %s", filepath.string().c_str());
+        Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return {};
     }
 
-    // Cycle detection for nested bundles
+    // Cycle detection for nested prefabs
     static thread_local std::unordered_set<std::string> loadingPaths;
     std::string pathStr = filepath.string();
     if (loadingPaths.count(pathStr)) {
-        Out::error("Circular bundle reference detected: %s", pathStr.c_str());
+        Out::error("Circular prefab reference detected: %s", pathStr.c_str());
         return {};
     }
     loadingPaths.insert(pathStr);
@@ -6742,54 +6742,54 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
         ~LoadingPathGuard() { paths.erase(path); }
     } loadingGuard{loadingPaths, pathStr};
 
-    auto it = entityBundles.find(filepath);
+    auto it = prefabAssets.find(filepath);
 
-    if (it == entityBundles.end()) {
-        EntityBundle newGroup;
+    if (it == prefabAssets.end()) {
+        Prefab newGroup;
         newGroup.registry = std::make_unique<EntityRegistry>();
         newGroup.isModified = false;
 
-        auto [newIt, inserted] = entityBundles.emplace(filepath, std::move(newGroup));
+        auto [newIt, inserted] = prefabAssets.emplace(filepath, std::move(newGroup));
         it = newIt;
     }
 
-    auto& bundle = it->second;
+    auto& prefab = it->second;
 
-    EntityBundle::Instance newInstance;
-    newInstance.instanceId = bundle.nextInstanceId++;
+    Prefab::Instance newInstance;
+    newInstance.instanceId = prefab.nextInstanceId++;
 
     YAML::Node node;
-    if (bundle.isModified) {
-        YAML::Node bundleNode;
-        bundleNode["type"] = "EntityBundle";
+    if (prefab.isModified) {
+        YAML::Node prefabNode;
+        prefabNode["type"] = "Prefab";
         YAML::Node membersNode(YAML::NodeType::Sequence);
-        if (!bundle.registryEntities.empty()) {
-            std::vector<Entity> topLevelEntities = getTopLevelEntities(bundle.registry.get(), bundle.registryEntities);
+        if (!prefab.registryEntities.empty()) {
+            std::vector<Entity> topLevelEntities = getTopLevelEntities(prefab.registry.get(), prefab.registryEntities);
             for (Entity entity : topLevelEntities) {
-                membersNode.push_back(Stream::encodeEntity(entity, bundle.registry.get(), this));
+                membersNode.push_back(Stream::encodeEntity(entity, prefab.registry.get(), this));
             }
         }
-        bundleNode["members"] = membersNode;
-        node = bundleNode;
+        prefabNode["members"] = membersNode;
+        node = prefabNode;
     } else {
         try {
-            std::filesystem::path fullBundlePath = getProjectPath() / filepath;
-            node = YAML::LoadFile(fullBundlePath.string());
-            bundle.registry->clear();
-            bundle.registryEntities.clear();
-            Stream::decodeEntitySelection(node, bundle.registry.get(), &bundle.registryEntities);
+            std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
+            node = YAML::LoadFile(fullPrefabPath.string());
+            prefab.registry->clear();
+            prefab.registryEntities.clear();
+            Stream::decodeEntitySelection(node, prefab.registry.get(), &prefab.registryEntities);
         } catch (const std::exception& e) {
-            Out::error("Failed to load entity bundle file: %s", e.what());
+            Out::error("Failed to load prefab file: %s", e.what());
             return {};
         }
     }
 
     Scene* scene = sceneProject->scene;
 
-    // Decode bundle entities into the scene
+    // Decode prefab entities into the scene
     std::vector<Entity> newEntities = Stream::decodeEntitySelection(node, scene, entities);
 
-    // Reparent top-level transformed bundle entities under root
+    // Reparent top-level transformed prefab entities under root
     bool hasTopLevelTransform = scene->getSignature(rootEntity).test(scene->getComponentId<Transform>());
     if (hasTopLevelTransform) {
         std::vector<Entity> sceneTopLevelEntities = getTopLevelEntities(scene, newEntities);
@@ -6802,7 +6802,7 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
 
     newInstance.rootEntity = rootEntity;
 
-    std::vector<Entity> regEntities = bundle.registryEntities;
+    std::vector<Entity> regEntities = prefab.registryEntities;
     if (newEntities.size() == regEntities.size()) {
         std::unordered_map<Entity, Entity> registryToLocal;
         for (size_t i = 0; i < newEntities.size(); i++) {
@@ -6811,30 +6811,30 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
         }
         remapEntityProperties(scene, newEntities, registryToLocal);
     } else {
-        Out::error("importEntityBundle(%s): entity count mismatch: newEntities=%zu, regEntities=%zu",
+        Out::error("importPrefab(%s): entity count mismatch: newEntities=%zu, regEntities=%zu",
             filepath.string().c_str(), newEntities.size(), regEntities.size());
         // Without a member mapping every ref would keep a registry ID; store None
         // rather than letting it resolve to an arbitrary entity in this scene
         remapEntityProperties(scene, newEntities, {});
     }
 
-    // Remove decoded children of nested bundle roots
+    // Remove decoded children of nested prefab roots
     // (they will be recreated by the recursive import below)
-    std::unordered_set<Entity> nestedBundleRoots;
+    std::unordered_set<Entity> nestedPrefabRoots;
     for (Entity ent : newEntities) {
-        if (scene->findComponent<BundleComponent>(ent)) {
-            nestedBundleRoots.insert(ent);
+        if (scene->findComponent<PrefabComponent>(ent)) {
+            nestedPrefabRoots.insert(ent);
         }
     }
-    if (!nestedBundleRoots.empty()) {
+    if (!nestedPrefabRoots.empty()) {
         std::unordered_set<Entity> entitiesToRemove;
         for (Entity ent : newEntities) {
-            if (nestedBundleRoots.count(ent)) continue;
+            if (nestedPrefabRoots.count(ent)) continue;
             Transform* tf = scene->findComponent<Transform>(ent);
             if (!tf) continue;
             Entity ancestor = tf->parent;
             while (ancestor != NULL_ENTITY) {
-                if (nestedBundleRoots.count(ancestor)) {
+                if (nestedPrefabRoots.count(ancestor)) {
                     entitiesToRemove.insert(ent);
                     break;
                 }
@@ -6854,20 +6854,20 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
             newEntities.end());
         newInstance.members.erase(
             std::remove_if(newInstance.members.begin(), newInstance.members.end(),
-                [&entitiesToRemove](const EntityBundle::EntityMember& m) { return entitiesToRemove.count(m.localEntity); }),
+                [&entitiesToRemove](const Prefab::EntityMember& m) { return entitiesToRemove.count(m.localEntity); }),
             newInstance.members.end());
     }
 
-    // Collect nested overrides/localEntities (entries with bundlePath)
+    // Collect nested overrides/localEntities (entries with prefabPath)
     std::map<std::string, YAML::Node> nestedOverridesMap;
     std::map<std::string, YAML::Node> nestedLocalEntitiesMap;
 
-    if (bundleOverrides && bundleOverrides.IsSequence()) {
-        for (const auto& entry : bundleOverrides) {
-            if (entry["bundlePath"]) {
-                std::string bp = entry["bundlePath"].as<std::string>();
-                if (entry["bundleRootRegistryEntity"]) {
-                    bp += "_" + std::to_string(entry["bundleRootRegistryEntity"].as<Entity>());
+    if (prefabOverrides && prefabOverrides.IsSequence()) {
+        for (const auto& entry : prefabOverrides) {
+            if (entry["prefabPath"]) {
+                std::string bp = entry["prefabPath"].as<std::string>();
+                if (entry["prefabRootRegistryEntity"]) {
+                    bp += "_" + std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
                 }
                 YAML::Node cleanEntry;
                 cleanEntry["registryEntity"] = entry["registryEntity"];
@@ -6877,25 +6877,25 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
         }
     }
 
-    if (bundleLocalEntities && bundleLocalEntities.IsSequence()) {
-        for (const auto& entry : bundleLocalEntities) {
-            if (entry["bundlePath"]) {
-                std::string bp = entry["bundlePath"].as<std::string>();
-                if (entry["bundleRootRegistryEntity"]) {
-                    bp += "_" + std::to_string(entry["bundleRootRegistryEntity"].as<Entity>());
+    if (prefabLocalEntities && prefabLocalEntities.IsSequence()) {
+        for (const auto& entry : prefabLocalEntities) {
+            if (entry["prefabPath"]) {
+                std::string bp = entry["prefabPath"].as<std::string>();
+                if (entry["prefabRootRegistryEntity"]) {
+                    bp += "_" + std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
                 }
                 YAML::Node cleanEntry = YAML::Clone(entry);
-                cleanEntry.remove("bundlePath");
-                cleanEntry.remove("bundleRootRegistryEntity");
+                cleanEntry.remove("prefabPath");
+                cleanEntry.remove("prefabRootRegistryEntity");
                 nestedLocalEntitiesMap[bp].push_back(cleanEntry);
             }
         }
     }
 
     // Apply component overrides keyed by registryEntity (skip nested entries)
-    if (bundleOverrides && bundleOverrides.IsSequence()) {
-        for (const auto& entry : bundleOverrides) {
-            if (entry["bundlePath"]) continue;
+    if (prefabOverrides && prefabOverrides.IsSequence()) {
+        for (const auto& entry : prefabOverrides) {
+            if (entry["prefabPath"]) continue;
             if (!entry["registryEntity"]) continue;
             Entity regEntity = entry["registryEntity"].as<Entity>();
 
@@ -6929,11 +6929,11 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
 
     std::vector<Entity> allResult = newEntities;
 
-    // Recursively import nested bundles
+    // Recursively import nested prefabs
     for (Entity ent : newEntities) {
-        BundleComponent* bundleComp = scene->findComponent<BundleComponent>(ent);
-        if (bundleComp && !bundleComp->path.empty()) {
-            // Find the registry entity for this nested bundle root in the parent bundle
+        PrefabComponent* prefabComp = scene->findComponent<PrefabComponent>(ent);
+        if (prefabComp && !prefabComp->path.empty()) {
+            // Find the registry entity for this nested prefab root in the parent prefab
             Entity nestedRegEntity = NULL_ENTITY;
             for (const auto& member : newInstance.members) {
                 if (member.localEntity == ent) {
@@ -6942,7 +6942,7 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
                 }
             }
 
-            std::string nestedKey = bundleComp->path;
+            std::string nestedKey = prefabComp->path;
             if (nestedRegEntity != NULL_ENTITY) {
                 nestedKey += "_" + std::to_string(nestedRegEntity);
             }
@@ -6952,15 +6952,15 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
             if (ovrIt != nestedOverridesMap.end()) nestedOvr = ovrIt->second;
             auto locIt = nestedLocalEntitiesMap.find(nestedKey);
             if (locIt != nestedLocalEntitiesMap.end()) nestedLoc = locIt->second;
-            std::vector<Entity> nestedEntities = importEntityBundle(sceneProject, entities, bundleComp->path, ent, false, nestedOvr, nestedLoc, entityRemap);
+            std::vector<Entity> nestedEntities = importPrefab(sceneProject, entities, prefabComp->path, ent, false, nestedOvr, nestedLoc, entityRemap);
             allResult.insert(allResult.end(), nestedEntities.begin(), nestedEntities.end());
         }
     }
 
     // Create scene-specific local entities (skip nested entries)
-    if (bundleLocalEntities && bundleLocalEntities.IsSequence()) {
-        for (const auto& localEntNode : bundleLocalEntities) {
-            if (localEntNode["bundlePath"]) continue;
+    if (prefabLocalEntities && prefabLocalEntities.IsSequence()) {
+        for (const auto& localEntNode : prefabLocalEntities) {
+            if (localEntNode["prefabPath"]) continue;
             Entity parentRegEntity = NULL_ENTITY;
             size_t childIndex = 0;
             if (localEntNode["parentRegistryEntity"]) {
@@ -6970,7 +6970,7 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
                 childIndex = localEntNode["childIndex"].as<size_t>();
             }
 
-            // Find the parent local entity (or use bundle root)
+            // Find the parent local entity (or use prefab root)
             Entity parentEntity = rootEntity;
             if (parentRegEntity != NULL_ENTITY) {
                 for (const auto& member : newInstance.members) {
@@ -7000,16 +7000,16 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
         }
     }
 
-    bundle.instances[sceneProject->id].push_back(std::move(newInstance));
+    prefab.instances[sceneProject->id].push_back(std::move(newInstance));
 
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 
     sceneProject->isModified = needSaveScene;
 
     return allResult;
 }
 
-void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity rootEntity) {
+void editor::Project::removePrefabInstanceTracking(uint32_t sceneId, Entity rootEntity) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
         return;
@@ -7017,28 +7017,28 @@ void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity root
 
     Scene* scene = sceneProject->scene;
     std::unordered_set<Entity> visitedEntities;
-    auto removeBundleInstance = [&](auto&& self, Entity entity) -> void {
+    auto removePrefabInstance = [&](auto&& self, Entity entity) -> void {
         if (entity == NULL_ENTITY || !scene->isEntityCreated(entity) ||
             !visitedEntities.insert(entity).second) {
             return;
         }
 
-        const BundleComponent* component = scene->findComponent<BundleComponent>(entity);
-        EntityBundle* nestedBundle = component ? getEntityBundle(component->path) : nullptr;
-        if (!nestedBundle) {
+        const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
+        Prefab* nestedPrefab = component ? getPrefab(component->path) : nullptr;
+        if (!nestedPrefab) {
             return;
         }
 
         std::vector<Entity> nestedMembers;
-        auto sceneIt = nestedBundle->instances.find(sceneId);
-        if (sceneIt != nestedBundle->instances.end()) {
+        auto sceneIt = nestedPrefab->instances.find(sceneId);
+        if (sceneIt != nestedPrefab->instances.end()) {
             auto instance = std::find_if(sceneIt->second.begin(), sceneIt->second.end(),
-                [entity](const EntityBundle::Instance& candidate) {
+                [entity](const Prefab::Instance& candidate) {
                     return candidate.rootEntity == entity;
                 });
             if (instance != sceneIt->second.end()) {
                 nestedMembers.reserve(instance->members.size());
-                for (const EntityBundle::EntityMember& member : instance->members) {
+                for (const Prefab::EntityMember& member : instance->members) {
                     nestedMembers.push_back(member.localEntity);
                 }
             }
@@ -7048,25 +7048,25 @@ void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity root
             self(self, member);
         }
 
-        sceneIt = nestedBundle->instances.find(sceneId);
-        if (sceneIt != nestedBundle->instances.end()) {
+        sceneIt = nestedPrefab->instances.find(sceneId);
+        if (sceneIt != nestedPrefab->instances.end()) {
             auto& instances = sceneIt->second;
             instances.erase(std::remove_if(instances.begin(), instances.end(),
-                [entity](const EntityBundle::Instance& candidate) {
+                [entity](const Prefab::Instance& candidate) {
                     return candidate.rootEntity == entity;
                 }), instances.end());
             if (instances.empty()) {
-                nestedBundle->instances.erase(sceneIt);
+                nestedPrefab->instances.erase(sceneIt);
             }
         }
     };
 
-    removeBundleInstance(removeBundleInstance, rootEntity);
+    removePrefabInstance(removePrefabInstance, rootEntity);
 
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 }
 
-bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities) {
+bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -7097,28 +7097,28 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
         }
     }
 
-    // Drop bundle metadata recursively before any corresponding scene entity disappears.
-    // The additional flat pass covers nested bundle roots stored as scene-local children
-    // rather than members of their containing bundle.
-    removeBundleInstanceTracking(sceneId, rootEntity);
-    if (EntityBundle* rootBundle = getEntityBundle(filepath)) {
-        auto sceneIt = rootBundle->instances.find(sceneId);
-        if (sceneIt != rootBundle->instances.end()) {
+    // Drop prefab metadata recursively before any corresponding scene entity disappears.
+    // The additional flat pass covers nested prefab roots stored as scene-local children
+    // rather than members of their containing prefab.
+    removePrefabInstanceTracking(sceneId, rootEntity);
+    if (Prefab* rootPrefab = getPrefab(filepath)) {
+        auto sceneIt = rootPrefab->instances.find(sceneId);
+        if (sceneIt != rootPrefab->instances.end()) {
             auto& instances = sceneIt->second;
             instances.erase(std::remove_if(instances.begin(), instances.end(),
-                [rootEntity](const EntityBundle::Instance& instance) {
+                [rootEntity](const Prefab::Instance& instance) {
                     return instance.rootEntity == rootEntity;
                 }), instances.end());
             if (instances.empty()) {
-                rootBundle->instances.erase(sceneIt);
+                rootPrefab->instances.erase(sceneIt);
             }
         }
     }
     for (Entity entity : memberEntities) {
-        removeBundleInstanceTracking(sceneId, entity);
+        removePrefabInstanceTracking(sceneId, entity);
     }
     for (Entity entity : allEntitiesToDestroy) {
-        removeBundleInstanceTracking(sceneId, entity);
+        removePrefabInstanceTracking(sceneId, entity);
     }
 
     // Destroy local entities first (they may reference members as parents)
@@ -7134,14 +7134,14 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
         DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
     }
 
-    updateSceneBundles(sceneProject);
+    updateScenePrefabs(sceneProject);
 
     sceneProject->isModified = true;
 
     return true;
 }
 
-bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity parent, bool createItself){
+bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself){
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject){
         return false;
@@ -7149,15 +7149,15 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
 
     Scene* scene = sceneProject->scene;
 
-    // Find which bundle the parent belongs to
-    // First check if parent is a bundle root (for explicit "Insert to Bundle" targeting)
+    // Find which prefab the parent belongs to
+    // First check if parent is a prefab root (for explicit "Insert to Prefab" targeting)
     fs::path filepath;
-    for (const auto& [bundlePath, bundle] : entityBundles) {
-        auto sceneIt = bundle.instances.find(sceneId);
-        if (sceneIt == bundle.instances.end()) continue;
+    for (const auto& [prefabPath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) continue;
         for (const auto& instance : sceneIt->second) {
             if (instance.rootEntity == parent) {
-                filepath = bundlePath;
+                filepath = prefabPath;
                 break;
             }
         }
@@ -7165,62 +7165,62 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
     }
     // Fall back to general lookup if parent is not a root
     if (filepath.empty()) {
-        filepath = findEntityBundlePathFor(sceneId, parent);
+        filepath = findPrefabPathFor(sceneId, parent);
     }
     if (filepath.empty()) {
-        Out::error("Entity parent %u in scene %u is not part of any entity bundle", parent, sceneId);
+        Out::error("Entity parent %u in scene %u is not part of any prefab", parent, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    if (!bundle) {
+    Prefab* prefab = getPrefab(filepath);
+    if (!prefab) {
         return false;
     }
-    uint32_t instanceId = bundle->getInstanceId(sceneId, parent);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, parent);
     if (instanceId == 0) {
         Out::error("Failed to find instance for parent entity %u in scene %u", parent, sceneId);
         return false;
     }
 
-    Entity registryParent = bundle->getRegistryEntity(sceneId, parent);
-    // parent could be the bundle root (no registryEntity)
+    Entity registryParent = prefab->getRegistryEntity(sceneId, parent);
+    // parent could be the prefab root (no registryEntity)
     // In that case the entity will be a top-level member under root
 
     // Encode the entity (preserve original for entity ID collection)
     YAML::Node nodeOriginal = Stream::encodeEntity(entity, scene, nullptr, sceneProject);
     YAML::Node nodeRegData = clearEntitiesNode(YAML::Clone(nodeOriginal));
 
-    // Don't add nested bundle children to parent bundle's registry
-    bool isNestedBundle = scene->findComponent<BundleComponent>(entity) != nullptr;
-    if (isNestedBundle) {
+    // Don't add nested prefab children to parent prefab's registry
+    bool isNestedPrefab = scene->findComponent<PrefabComponent>(entity) != nullptr;
+    if (isNestedPrefab) {
         nodeRegData.remove("children");
     }
 
     // Decode into registry
-    std::vector<Entity> regEntities = Stream::decodeEntity(nodeRegData, bundle->registry.get(), &bundle->registryEntities);
+    std::vector<Entity> regEntities = Stream::decodeEntity(nodeRegData, prefab->registry.get(), &prefab->registryEntities);
     if (regEntities.empty()) {
-        Out::error("Failed to decode entity into bundle registry");
+        Out::error("Failed to decode entity into prefab registry");
         return false;
     }
 
     bool hasTransform = scene->getSignature(entity).test(scene->getComponentId<Transform>());
     Entity previousRegistryEntity = NULL_ENTITY;
-    auto regEntityIt = std::find(bundle->registryEntities.begin(), bundle->registryEntities.end(), regEntities[0]);
-    if (regEntityIt != bundle->registryEntities.begin() && regEntityIt != bundle->registryEntities.end()) {
+    auto regEntityIt = std::find(prefab->registryEntities.begin(), prefab->registryEntities.end(), regEntities[0]);
+    if (regEntityIt != prefab->registryEntities.begin() && regEntityIt != prefab->registryEntities.end()) {
         previousRegistryEntity = *std::prev(regEntityIt);
     }
 
     // Position in registry if parent has a registry entity
     if (registryParent != NULL_ENTITY) {
-        ProjectUtils::moveEntityOrderByTransform(bundle->registry.get(), bundle->registryEntities, regEntities[0], registryParent, 0, false);
+        ProjectUtils::moveEntityOrderByTransform(prefab->registry.get(), prefab->registryEntities, regEntities[0], registryParent, 0, false);
     }
 
     // Remap the newly decoded registry entities: references to an existing member or
-    // to the new subtree translate to registry IDs; anything outside the bundle is
+    // to the new subtree translate to registry IDs; anything outside the prefab is
     // cleared to None so a scene-local ID never leaks into the shared registry.
     {
         std::unordered_map<Entity, Entity> localToRegistry;
-        if (const EntityBundle::Instance* srcInstance = bundle->getInstanceById(sceneId, instanceId)) {
+        if (const Prefab::Instance* srcInstance = prefab->getInstanceById(sceneId, instanceId)) {
             for (const auto& member : srcInstance->members) {
                 localToRegistry[member.localEntity] = member.registryEntity;
             }
@@ -7232,11 +7232,11 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
                 localToRegistry[srcBranch[i]] = regEntities[i];
             }
         }
-        remapEntityProperties(bundle->registry.get(), regEntities, localToRegistry);
+        remapEntityProperties(prefab->registry.get(), regEntities, localToRegistry);
     }
 
     // For each instance, add the entity as a new member
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene || !otherScene->scene) {
             continue;
@@ -7258,22 +7258,22 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
 
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || createItself) {
 
-                YAML::Node nodeData = Stream::encodeEntity(regEntities[0], bundle->registry.get());
+                YAML::Node nodeData = Stream::encodeEntity(regEntities[0], prefab->registry.get());
                 newOtherEntities = Stream::decodeEntity(nodeData, otherScene->scene, &otherScene->entities);
                 if (hasTransform && !newOtherEntities.empty()) {
                     ProjectUtils::moveEntityOrderByTransform(otherScene->scene, otherScene->entities, newOtherEntities[0], otherParent, 0, false);
                 }
 
-                // For nested bundles, import the bundle contents for this instance too
-                if (isNestedBundle && !newOtherEntities.empty()) {
-                    BundleComponent* bc = otherScene->scene->findComponent<BundleComponent>(newOtherEntities[0]);
+                // For nested prefabs, import the prefab contents for this instance too
+                if (isNestedPrefab && !newOtherEntities.empty()) {
+                    PrefabComponent* bc = otherScene->scene->findComponent<PrefabComponent>(newOtherEntities[0]);
                     if (bc) {
-                        importEntityBundle(otherScene, &otherScene->entities, bc->path, newOtherEntities[0], false);
+                        importPrefab(otherScene, &otherScene->entities, bc->path, newOtherEntities[0], false);
                     }
                 }
             } else {
-                // Current instance: collect the existing entity IDs and reparent under the bundle.
-                if (isNestedBundle) {
+                // Current instance: collect the existing entity IDs and reparent under the prefab.
+                if (isNestedPrefab) {
                     newOtherEntities.push_back(entity);
                 } else {
                     ProjectUtils::collectEntities(nodeOriginal, newOtherEntities);
@@ -7287,7 +7287,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
             if (!hasTransform && !newOtherEntities.empty()) {
                 Entity orderAnchor = instance.rootEntity;
                 if (previousRegistryEntity != NULL_ENTITY) {
-                    Entity previousLocalEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, previousRegistryEntity);
+                    Entity previousLocalEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, previousRegistryEntity);
                     if (previousLocalEntity != NULL_ENTITY) {
                         orderAnchor = previousLocalEntity;
                     }
@@ -7309,7 +7309,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
 
                 if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || createItself) {
                     // Freshly decoded from the registry: translate registry IDs to this
-                    // instance's local IDs (references outside the bundle stay None).
+                    // instance's local IDs (references outside the prefab stay None).
                     std::unordered_map<Entity, Entity> registryToLocal;
                     for (const auto& member : instance.members) {
                         registryToLocal[member.registryEntity] = member.localEntity;
@@ -7317,7 +7317,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
                     remapEntityProperties(otherScene->scene, newOtherEntities, registryToLocal);
                 } else {
                     // Current instance kept its original scene references; persist any
-                    // that point outside the bundle by overriding those components.
+                    // that point outside the prefab by overriding those components.
                     overrideExternalRefComponents(otherScene->scene, instance);
                 }
             }
@@ -7326,27 +7326,27 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, Entity entity, Entity 
         }
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
 
-bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
+bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
         bool createItself, std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>* restoredEntities){
-    fs::path filepath = findEntityBundlePathFor(sceneId, parent);
+    fs::path filepath = findPrefabPathFor(sceneId, parent);
     if (filepath.empty()) {
-        Out::error("Entity parent %u in scene %u is not part of any entity bundle", parent, sceneId);
+        Out::error("Entity parent %u in scene %u is not part of any prefab", parent, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    if (!bundle) {
+    Prefab* prefab = getPrefab(filepath);
+    if (!prefab) {
         return false;
     }
-    bool wasBundleModified = bundle->isModified;
+    bool wasPrefabModified = prefab->isModified;
     bool deferSourceRemap = entityRemap && restoredEntities;
 
-    Entity registryParent = bundle->getRegistryEntity(sceneId, parent);
+    Entity registryParent = prefab->getRegistryEntity(sceneId, parent);
 
     // Recover registry data
     std::string recoveryDefKey = std::to_string(NULL_PROJECT_SCENE);
@@ -7358,21 +7358,21 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
     }
 
     if (!nodeRegData) {
-        Out::error("No registry data in recovery for addEntityToBundle");
+        Out::error("No registry data in recovery for addEntityToPrefab");
         return false;
     }
 
     std::unordered_map<Entity, Entity> recoveredRegistryIds;
-    std::vector<Entity> regEntities = Stream::decodeEntity(nodeRegData, bundle->registry.get(),
-        &bundle->registryEntities, nullptr, nullptr, NULL_ENTITY, true, false, &recoveredRegistryIds);
+    std::vector<Entity> regEntities = Stream::decodeEntity(nodeRegData, prefab->registry.get(),
+        &prefab->registryEntities, nullptr, nullptr, NULL_ENTITY, true, false, &recoveredRegistryIds);
     if (regEntities.empty()) {
-        Out::error("Could not recover registry data for entity bundle");
+        Out::error("Could not recover registry data for prefab");
         return false;
     }
-    remapEntityProperties(bundle->registry.get(), bundle->registryEntities, recoveredRegistryIds, false);
-    bool regHasTransform = bundle->registry->getSignature(regEntities[0]).test(bundle->registry->getComponentId<Transform>());
-    ProjectUtils::moveEntityOrderByIndex(bundle->registry.get(), bundle->registryEntities, regEntities[0], registryParent, regTransformIndex, regHasTransform);
-    uint32_t sourceInstanceId = bundle->getInstanceId(sceneId, parent);
+    remapEntityProperties(prefab->registry.get(), prefab->registryEntities, recoveredRegistryIds, false);
+    bool regHasTransform = prefab->registry->getSignature(regEntities[0]).test(prefab->registry->getComponentId<Transform>());
+    ProjectUtils::moveEntityOrderByIndex(prefab->registry.get(), prefab->registryEntities, regEntities[0], registryParent, regTransformIndex, regHasTransform);
+    uint32_t sourceInstanceId = prefab->getInstanceId(sceneId, parent);
 
     struct InstanceRecoveryTarget {
         uint32_t sceneId = NULL_PROJECT_SCENE;
@@ -7381,8 +7381,8 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
     };
 
     std::vector<InstanceRecoveryTarget> recoveryTargets;
-    for (const auto& [otherSceneId, sceneInstances] : bundle->instances) {
-        for (const EntityBundle::Instance& instance : sceneInstances) {
+    for (const auto& [otherSceneId, sceneInstances] : prefab->instances) {
+        for (const Prefab::Instance& instance : sceneInstances) {
             recoveryTargets.push_back({otherSceneId, instance.instanceId, instance.rootEntity});
         }
     }
@@ -7392,7 +7392,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
         uint32_t instanceId = 0;
         const NodeRecoveryEntry* recoveredEntry = nullptr;
         std::vector<Entity> entities;
-        std::vector<EntityBundle::EntityMember> members;
+        std::vector<Prefab::EntityMember> members;
         std::unordered_map<Entity, Entity> localRemap;
         Entity parent = NULL_ENTITY;
         size_t transformIndex = 0;
@@ -7417,7 +7417,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
             referenceEntitiesByScene.try_emplace(target.sceneId, otherScene->entities);
         }
 
-        EntityBundle::Instance* instance = bundle->getInstanceById(target.sceneId, target.instanceId);
+        Prefab::Instance* instance = prefab->getInstanceById(target.sceneId, target.instanceId);
         if (!instance) {
             validRecovery = false;
             break;
@@ -7434,11 +7434,11 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
             nodeData = recoveredEntry->node;
             transformIndex = recoveredEntry->transformIndex;
         } else {
-            nodeData = Stream::encodeEntity(regEntities[0], bundle->registry.get());
+            nodeData = Stream::encodeEntity(regEntities[0], prefab->registry.get());
         }
 
         // Resolve everything needed from the instance before decoding. A malformed circular
-        // bundle can recursively append another instance of this bundle and reallocate its
+        // prefab can recursively append another instance of this prefab and reallocate its
         // instance vector, so no iterator, reference, or pointer may survive the decode.
         Entity otherParent = instance->rootEntity;
         if (registryParent != NULL_ENTITY) {
@@ -7463,27 +7463,27 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
         }
 
         const std::unordered_set<Entity> branchEntities(newOtherEntities.begin(), newOtherEntities.end());
-        bool nestedBundlesMapped = true;
+        bool nestedPrefabsMapped = true;
         if (recoveredEntry) {
-            for (const NestedBundleRecovery& savedBundle : recoveredEntry->nestedBundles) {
-                Entity nestedRoot = savedBundle.rootEntity;
+            for (const NestedPrefabRecovery& savedPrefab : recoveredEntry->nestedPrefabs) {
+                Entity nestedRoot = savedPrefab.rootEntity;
                 if (auto rootRemap = recoveredLocalIds.find(nestedRoot); rootRemap != recoveredLocalIds.end()) {
                     nestedRoot = rootRemap->second;
                 }
 
-                EntityBundle* nestedBundle = getEntityBundle(savedBundle.path);
-                const EntityBundle::Instance* nestedInstance = nestedBundle ?
-                    nestedBundle->getInstance(target.sceneId, nestedRoot) : nullptr;
+                Prefab* nestedPrefab = getPrefab(savedPrefab.path);
+                const Prefab::Instance* nestedInstance = nestedPrefab ?
+                    nestedPrefab->getInstance(target.sceneId, nestedRoot) : nullptr;
                 if (!nestedInstance || nestedInstance->rootEntity != nestedRoot ||
                     !otherScene->scene->isEntityCreated(nestedRoot) ||
                     (decodeBranch && !branchEntities.count(nestedRoot))) {
-                    nestedBundlesMapped = false;
+                    nestedPrefabsMapped = false;
                     break;
                 }
 
-                for (const EntityBundle::EntityMember& savedMember : savedBundle.members) {
+                for (const Prefab::EntityMember& savedMember : savedPrefab.members) {
                     Entity registryEntity = savedMember.registryEntity;
-                    if (nestedBundle == bundle) {
+                    if (nestedPrefab == prefab) {
                         if (auto registryRemap = recoveredRegistryIds.find(registryEntity);
                             registryRemap != recoveredRegistryIds.end()) {
                             registryEntity = registryRemap->second;
@@ -7491,29 +7491,29 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
                     }
 
                     auto restoredMember = std::find_if(nestedInstance->members.begin(), nestedInstance->members.end(),
-                        [&](const EntityBundle::EntityMember& member) {
+                        [&](const Prefab::EntityMember& member) {
                             return member.registryEntity == registryEntity;
                         });
                     if (restoredMember == nestedInstance->members.end() ||
                         !otherScene->scene->isEntityCreated(restoredMember->localEntity) ||
                         (decodeBranch && !branchEntities.count(restoredMember->localEntity))) {
-                        nestedBundlesMapped = false;
+                        nestedPrefabsMapped = false;
                         break;
                     }
                     if (restoredMember->localEntity != savedMember.localEntity) {
                         recoveredLocalIds[savedMember.localEntity] = restoredMember->localEntity;
                     }
                 }
-                if (!nestedBundlesMapped) {
+                if (!nestedPrefabsMapped) {
                     break;
                 }
             }
         }
 
-        std::vector<EntityBundle::EntityMember> membersToRestore;
+        std::vector<Prefab::EntityMember> membersToRestore;
         if (recoveredEntry && !recoveredEntry->members.empty()) {
             membersToRestore.reserve(recoveredEntry->members.size());
-            for (const EntityBundle::EntityMember& saved : recoveredEntry->members) {
+            for (const Prefab::EntityMember& saved : recoveredEntry->members) {
                 Entity localEntity = saved.localEntity;
                 auto localRemap = recoveredLocalIds.find(localEntity);
                 if (localRemap != recoveredLocalIds.end()) {
@@ -7528,7 +7528,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
 
                 if (branchEntities.count(localEntity) && recoveredRegistryEntities.count(registryEntity) &&
                     otherScene->scene->isEntityCreated(localEntity) &&
-                    bundle->registry->isEntityCreated(registryEntity)) {
+                    prefab->registry->isEntityCreated(registryEntity)) {
                     membersToRestore.push_back({localEntity, registryEntity});
                 }
             }
@@ -7538,7 +7538,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
             }
         }
 
-        bool canPairMembers = nestedBundlesMapped && (recoveredEntry && !recoveredEntry->members.empty() ?
+        bool canPairMembers = nestedPrefabsMapped && (recoveredEntry && !recoveredEntry->members.empty() ?
             membersToRestore.size() == recoveredEntry->members.size() :
             membersToRestore.size() == regEntities.size());
         pendingRecoveries.push_back({target.sceneId, target.instanceId, recoveredEntry,
@@ -7554,7 +7554,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
     if (validRecovery) {
         validRecovery = std::all_of(pendingRecoveries.begin(), pendingRecoveries.end(),
             [&](const PendingInstanceRecovery& pending) {
-                return bundle->getInstanceById(pending.sceneId, pending.instanceId) != nullptr;
+                return prefab->getInstanceById(pending.sceneId, pending.instanceId) != nullptr;
             });
     }
 
@@ -7568,7 +7568,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
                 continue;
             }
             for (Entity entity : pending.entities) {
-                removeBundleInstanceTracking(pending.sceneId, entity);
+                removePrefabInstanceTracking(pending.sceneId, entity);
                 if (!pendingScene->scene->isEntityCreated(entity)) {
                     continue;
                 }
@@ -7587,23 +7587,23 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
         for (const auto& [oldEntity, newEntity] : recoveredRegistryIds) {
             reverseRegistryRemap[newEntity] = oldEntity;
         }
-        remapEntityProperties(bundle->registry.get(), bundle->registryEntities,
+        remapEntityProperties(prefab->registry.get(), prefab->registryEntities,
             reverseRegistryRemap, false);
-        DeleteEntityCmd::destroyEntities(bundle->registry.get(), regEntities, bundle->registryEntities);
+        DeleteEntityCmd::destroyEntities(prefab->registry.get(), regEntities, prefab->registryEntities);
         for (const auto& [otherSceneId, modified] : sceneModifiedStates) {
             if (SceneProject* otherScene = getScene(otherSceneId)) {
                 otherScene->isModified = modified;
             }
         }
-        bundle->isModified = wasBundleModified;
-        Out::error("Could not pair recovered entity bundle members");
+        prefab->isModified = wasPrefabModified;
+        Out::error("Could not pair recovered prefab members");
         return false;
     }
 
     std::map<uint32_t, std::unordered_map<Entity, Entity>> sceneEntityRemaps;
     for (PendingInstanceRecovery& pending : pendingRecoveries) {
         SceneProject* pendingScene = getScene(pending.sceneId);
-        EntityBundle::Instance* instance = bundle->getInstanceById(pending.sceneId, pending.instanceId);
+        Prefab::Instance* instance = prefab->getInstanceById(pending.sceneId, pending.instanceId);
         if (!pendingScene || !pendingScene->scene || !instance) {
             continue;
         }
@@ -7647,7 +7647,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
 
         if (pending.decodeBranch && !pending.recoveredEntry) {
             std::unordered_map<Entity, Entity> registryToLocal;
-            for (const EntityBundle::EntityMember& member : instance->members) {
+            for (const Prefab::EntityMember& member : instance->members) {
                 registryToLocal[member.registryEntity] = member.localEntity;
             }
             remapEntityProperties(otherScene, pending.entities, registryToLocal);
@@ -7685,57 +7685,57 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
         remapEntityProperties(otherScene->scene, liveReferences, entityMap, false);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
 
-editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, Entity entity, bool destroyItself) {
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+editor::NodeRecovery editor::Project::removeEntityFromPrefab(uint32_t sceneId, Entity entity, bool destroyItself) {
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any entity bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return {};
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    if (!bundle) {
+    Prefab* prefab = getPrefab(filepath);
+    if (!prefab) {
         return {};
     }
 
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return {};
     }
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
     if (registryEntity == NULL_ENTITY) {
-        Out::error("Failed to find registry entity for bundle entity %u in scene %u", entity, sceneId);
+        Out::error("Failed to find registry entity for prefab entity %u in scene %u", entity, sceneId);
         return {};
     }
 
-    YAML::Node regData = Stream::encodeEntity(registryEntity, bundle->registry.get(), nullptr, nullptr);
+    YAML::Node regData = Stream::encodeEntity(registryEntity, prefab->registry.get(), nullptr, nullptr);
 
     size_t transformIndex;
     NodeRecovery recovery;
 
-    if (bundle->registry->findComponent<Transform>(registryEntity)) {
-        transformIndex = ProjectUtils::getTransformIndex(bundle->registry.get(), registryEntity);
+    if (prefab->registry->findComponent<Transform>(registryEntity)) {
+        transformIndex = ProjectUtils::getTransformIndex(prefab->registry.get(), registryEntity);
     } else {
-        auto regIt = std::find(bundle->registryEntities.begin(), bundle->registryEntities.end(), registryEntity);
-        transformIndex = (regIt != bundle->registryEntities.end()) ? std::distance(bundle->registryEntities.begin(), regIt) : 0;
+        auto regIt = std::find(prefab->registryEntities.begin(), prefab->registryEntities.end(), registryEntity);
+        transformIndex = (regIt != prefab->registryEntities.end()) ? std::distance(prefab->registryEntities.begin(), regIt) : 0;
     }
     std::string recoveryDefKey = std::to_string(NULL_PROJECT_SCENE);
     recovery[recoveryDefKey] = {YAML::Clone(regData), transformIndex};
 
     // Registry entities behind members the engine cascade orphaned in the scene instances.
     // The shared registry has no systems and never cascades, so these are mirrored into the
-    // registry removal below to keep the saved bundle definition consistent with the instances.
+    // registry removal below to keep the saved prefab definition consistent with the instances.
     std::unordered_set<Entity> cascadedRegistryEntities;
 
     // Process each scene that has instances
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene || !otherScene->scene) {
             continue;
@@ -7756,24 +7756,24 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
                 continue;
             }
 
-            const BundleComponent* nestedComponent = otherScene->scene->findComponent<BundleComponent>(otherEntity);
-            const EntityBundle* nestedBundle = nestedComponent ? getEntityBundle(nestedComponent->path) : nullptr;
-            const EntityBundle::Instance* nestedInstance = nestedBundle ?
-                nestedBundle->getInstance(otherSceneId, otherEntity) : nullptr;
-            bool isNestedBundleRoot = nestedInstance && nestedInstance->rootEntity == otherEntity;
+            const PrefabComponent* nestedComponent = otherScene->scene->findComponent<PrefabComponent>(otherEntity);
+            const Prefab* nestedPrefab = nestedComponent ? getPrefab(nestedComponent->path) : nullptr;
+            const Prefab::Instance* nestedInstance = nestedPrefab ?
+                nestedPrefab->getInstance(otherSceneId, otherEntity) : nullptr;
+            bool isNestedPrefabRoot = nestedInstance && nestedInstance->rootEntity == otherEntity;
             YAML::Node nodeExtend = Stream::encodeEntity(otherEntity, otherScene->scene,
-                this, otherScene, !isNestedBundleRoot);
+                this, otherScene, !isNestedPrefabRoot);
 
             std::vector<Entity> allEntities;
             ProjectUtils::collectEntities(nodeExtend, allEntities);
 
-            // Project-aware snapshots keep nested bundle branches opaque. Expand their live
+            // Project-aware snapshots keep nested prefab branches opaque. Expand their live
             // instance members and hierarchy here so the scene-side removal still destroys
-            // the complete branch while recovery remains bundle-aware.
+            // the complete branch while recovery remains prefab-aware.
             std::unordered_set<Entity> collectedEntities(allEntities.begin(), allEntities.end());
             // Expansion records each imported root before appending its members, preserving
             // the parent-before-child order used to resolve deeper roots during recovery.
-            std::vector<NestedBundleRecovery> nestedBundles;
+            std::vector<NestedPrefabRecovery> nestedPrefabs;
             auto appendEntity = [&](Entity candidate) {
                 if (candidate != NULL_ENTITY && otherScene->scene->isEntityCreated(candidate) &&
                     collectedEntities.insert(candidate).second) {
@@ -7783,13 +7783,13 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
             auto transforms = otherScene->scene->getComponentArray<Transform>();
             for (size_t entityIndex = 0; entityIndex < allEntities.size(); ++entityIndex) {
                 Entity branchEntity = allEntities[entityIndex];
-                const BundleComponent* component = otherScene->scene->findComponent<BundleComponent>(branchEntity);
-                const EntityBundle* childBundle = component ? getEntityBundle(component->path) : nullptr;
-                const EntityBundle::Instance* childInstance = childBundle ?
-                    childBundle->getInstance(otherSceneId, branchEntity) : nullptr;
+                const PrefabComponent* component = otherScene->scene->findComponent<PrefabComponent>(branchEntity);
+                const Prefab* childPrefab = component ? getPrefab(component->path) : nullptr;
+                const Prefab::Instance* childInstance = childPrefab ?
+                    childPrefab->getInstance(otherSceneId, branchEntity) : nullptr;
                 if (childInstance && childInstance->rootEntity == branchEntity) {
-                    nestedBundles.push_back({component->path, branchEntity, childInstance->members});
-                    for (const EntityBundle::EntityMember& member : childInstance->members) {
+                    nestedPrefabs.push_back({component->path, branchEntity, childInstance->members});
+                    for (const Prefab::EntityMember& member : childInstance->members) {
                         appendEntity(member.localEntity);
                     }
                 }
@@ -7811,12 +7811,12 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
             std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.rootEntity);
             NodeRecoveryEntry& recoveryEntry = recovery[recoveryKey];
             recoveryEntry = {nodeExtend, transformIndex};
-            recoveryEntry.nestedBundles = std::move(nestedBundles);
+            recoveryEntry.nestedPrefabs = std::move(nestedPrefabs);
 
             // Remove members from this instance
             for (const Entity& e : allEntities) {
                 auto itRem = std::find_if(instance.members.begin(), instance.members.end(),
-                    [e](const EntityBundle::EntityMember& member) {
+                    [e](const Prefab::EntityMember& member) {
                         return member.localEntity == e;
                     });
                 if (itRem != instance.members.end()) {
@@ -7836,7 +7836,7 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
                 // Remove nested-instance metadata and suppress authored ownership callbacks
                 // before any component removal can cascade into a later entity in the branch.
                 for (const Entity& entityToDestroy : allEntities) {
-                    removeBundleInstanceTracking(otherSceneId, entityToDestroy);
+                    removePrefabInstanceTracking(otherSceneId, entityToDestroy);
                     if (ActionComponent* action = otherScene->scene->findComponent<ActionComponent>(entityToDestroy)) {
                         action->ownedTarget = false;
                     }
@@ -7852,7 +7852,7 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
 
             // A destroy above can cascade inside the engine and take other members of this
             // instance with it. Drop any such missing member (and its override entry) to keep
-            // the bundle instance metadata in sync with the scene.
+            // the prefab instance metadata in sync with the scene.
             for (auto memberIt = instance.members.begin(); memberIt != instance.members.end(); ) {
                 if (!otherScene->scene->isEntityCreated(memberIt->localEntity)) {
                     if (destroyItself && memberIt->registryEntity != NULL_ENTITY) {
@@ -7870,16 +7870,16 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
 
         sceneInstances.erase(
             std::remove_if(sceneInstances.begin(), sceneInstances.end(),
-                [](const EntityBundle::Instance& inst) {
+                [](const Prefab::Instance& inst) {
                     return inst.members.empty() && inst.rootEntity == NULL_ENTITY;
                 }),
             sceneInstances.end()
         );
     }
 
-    for (auto it = bundle->instances.begin(); it != bundle->instances.end(); ) {
+    for (auto it = prefab->instances.begin(); it != prefab->instances.end(); ) {
         if (it->second.empty()) {
-            it = bundle->instances.erase(it);
+            it = prefab->instances.erase(it);
         } else {
             ++it;
         }
@@ -7895,62 +7895,62 @@ editor::NodeRecovery editor::Project::removeEntityFromBundle(uint32_t sceneId, E
         registryEntitiesToRemove.push_back(regEntity);
     }
 
-    DeleteEntityCmd::destroyEntities(bundle->registry.get(), registryEntitiesToRemove,
-        bundle->registryEntities);
+    DeleteEntityCmd::destroyEntities(prefab->registry.get(), registryEntitiesToRemove,
+        prefab->registryEntities);
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return recovery;
 }
 
-bool editor::Project::isEntityInBundle(uint32_t sceneId, Entity entity) const{
-    for (const auto& [filepath, bundle] : entityBundles){
-        if (bundle.containsEntity(sceneId, entity)) {
+bool editor::Project::isEntityInPrefab(uint32_t sceneId, Entity entity) const{
+    for (const auto& [filepath, prefab] : prefabAssets){
+        if (prefab.containsEntity(sceneId, entity)) {
             return true;
         }
     }
     return false;
 }
 
-void editor::Project::cleanupEntityBundlesForScene(uint32_t sceneId){
-    for (auto it = entityBundles.begin(); it != entityBundles.end(); ) {
+void editor::Project::cleanupPrefabsForScene(uint32_t sceneId){
+    for (auto it = prefabAssets.begin(); it != prefabAssets.end(); ) {
         it->second.instances.erase(sceneId);
-        if (it->second.instances.empty() && !isStandaloneBundle(it->first)) {
-            it = entityBundles.erase(it);
+        if (it->second.instances.empty() && !isStandalonePrefab(it->first)) {
+            it = prefabAssets.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-bool editor::Project::bundlePropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+bool editor::Project::prefabPropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
 
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any entity bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    // Bundle roots don't have registry entities; their properties are per-instance
-    if (bundle->getRootEntity(sceneId, entity) == entity) {
+    // Prefab roots don't have registry entities; their properties are per-instance
+    if (prefab->getRootEntity(sceneId, entity) == entity) {
         return true;
     }
 
-    if (!bundle->hasComponentOverride(sceneId, entity, componentType)){
-        Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
+    if (!prefab->hasComponentOverride(sceneId, entity, componentType)){
+        Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
         if (registryEntity == NULL_ENTITY) {
-            Out::error("Failed to find registry entity for bundle entity %u in scene %u", entity, sceneId);
+            Out::error("Failed to find registry entity for prefab entity %u in scene %u", entity, sceneId);
             return false;
         }
-        EntityRegistry* registry = bundle->registry.get();
+        EntityRegistry* registry = prefab->registry.get();
 
         // Build the source instance's member map (the only shareable reference targets).
         std::unordered_map<Entity, Entity> localToRegistry;
         std::unordered_set<Entity> memberLocals;
-        if (const EntityBundle::Instance* sourceInstance = bundle->getInstanceById(sceneId, instanceId)) {
+        if (const Prefab::Instance* sourceInstance = prefab->getInstanceById(sceneId, instanceId)) {
             for (const auto& member : sourceInstance->members) {
                 localToRegistry[member.localEntity] = member.registryEntity;
                 memberLocals.insert(member.localEntity);
@@ -7958,10 +7958,10 @@ bool editor::Project::bundlePropertyChanged(uint32_t sceneId, Entity entity, Com
         }
 
         if (componentHasExternalEntityRef(getScene(sceneId)->scene, entity, componentType, memberLocals)) {
-            // The component now points outside the bundle, so it is per-instance data.
+            // The component now points outside the prefab, so it is per-instance data.
             // Promote it to an override on this instance and leave the shared registry
             // (and the other instances) untouched.
-            bundle->setComponentOverride(sceneId, entity, componentType);
+            prefab->setComponentOverride(sceneId, entity, componentType);
         } else {
             if (properties.size() == 0){
                 Catalog::copyComponent(getScene(sceneId)->scene, entity, registry, registryEntity, componentType);
@@ -7973,26 +7973,26 @@ bool editor::Project::bundlePropertyChanged(uint32_t sceneId, Entity entity, Com
             // Remap entity references from scene-local IDs to registry IDs.
             remapEntityPropertiesInComponent(registry, registryEntity, componentType, properties, localToRegistry);
 
-            std::vector<uint32_t> staleBundleScenes;
-            for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+            std::vector<uint32_t> stalePrefabScenes;
+            for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
                 SceneProject* otherScene = getScene(otherSceneId);
                 if (!otherScene) {
                     Out::error("Failed to find scene %u", otherSceneId);
-                    staleBundleScenes.push_back(otherSceneId);
+                    stalePrefabScenes.push_back(otherSceneId);
                     continue;
                 }
                 if (!otherScene->scene) {
                     Out::error("Scene %u is not loaded", otherSceneId);
-                    staleBundleScenes.push_back(otherSceneId);
+                    stalePrefabScenes.push_back(otherSceneId);
                     continue;
                 }
                 for (auto& instance : sceneInstances) {
                     if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || changeItself) {
-                        Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                        Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
 
                         // Instances that hold their own external reference on this component
                         // are overridden, so they are skipped here and keep their wiring.
-                        if (!bundle->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
+                        if (!prefab->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
                             if (otherScene->isVisible){
                                 otherScene->needUpdateRender = true;
                             }
@@ -8014,86 +8014,86 @@ bool editor::Project::bundlePropertyChanged(uint32_t sceneId, Entity entity, Com
                     }
                 }
             }
-            for (uint32_t staleId : staleBundleScenes) {
-                cleanupEntityBundlesForScene(staleId);
+            for (uint32_t staleId : stalePrefabScenes) {
+                cleanupPrefabsForScene(staleId);
             }
         }
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
 
-bool editor::Project::bundleNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+bool editor::Project::prefabNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
 
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any entity bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    // Bundle roots don't have registry entities; their name is per-instance
-    if (bundle->getRootEntity(sceneId, entity) == entity) {
+    // Prefab roots don't have registry entities; their name is per-instance
+    if (prefab->getRootEntity(sceneId, entity) == entity) {
         return true;
     }
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
     if (registryEntity == NULL_ENTITY) {
-        Out::error("Failed to find registry entity for bundle entity %u in scene %u", entity, sceneId);
+        Out::error("Failed to find registry entity for prefab entity %u in scene %u", entity, sceneId);
         return false;
     }
-    EntityRegistry* registry = bundle->registry.get();
+    EntityRegistry* registry = prefab->registry.get();
 
     registry->setEntityName(registryEntity, name);
 
-    std::vector<uint32_t> staleBundleScenes;
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    std::vector<uint32_t> stalePrefabScenes;
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene) {
             Out::error("Failed to find scene %u", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         if (!otherScene->scene) {
             Out::error("Scene %u is not loaded", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         for (auto& instance : sceneInstances) {
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || changeItself) {
-                Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
 
                 otherScene->scene->setEntityName(otherEntity, name);
                 otherScene->isModified = true;
             }
         }
     }
-    for (uint32_t staleId : staleBundleScenes) {
-        cleanupEntityBundlesForScene(staleId);
+    for (uint32_t staleId : stalePrefabScenes) {
+        cleanupPrefabsForScene(staleId);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
 
-editor::SharedMoveRecovery editor::Project::moveEntityFromBundle(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+editor::SharedMoveRecovery editor::Project::moveEntityFromPrefab(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any entity bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return {};
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    if (!isEntityInBundle(sceneId, target)){
+    if (!isEntityInPrefab(sceneId, target)){
         if (type == InsertionType::INTO){
-            Out::error("Cannot move bundle entity %u into non-bundle target %u in scene %u", entity, target, sceneId);
+            Out::error("Cannot move prefab entity %u into non-prefab target %u in scene %u", entity, target, sceneId);
             return {};
         }
 
@@ -8102,37 +8102,37 @@ editor::SharedMoveRecovery editor::Project::moveEntityFromBundle(uint32_t sceneI
         auto targetIt = std::find(entities.begin(), entities.end(), target);
 
         if (entityIt != entities.end() && targetIt != entities.end()) {
-            Entity nextBundle = NULL_ENTITY;
+            Entity nextPrefab = NULL_ENTITY;
 
             if (entityIt < targetIt) {
                 for (auto it = targetIt - 1; it > entityIt; --it) {
-                    if (isEntityInBundle(sceneId, *it)) {
-                        nextBundle = *it;
+                    if (isEntityInPrefab(sceneId, *it)) {
+                        nextPrefab = *it;
                         break;
                     }
                 }
             } else {
                 for (auto it = targetIt + 1; it < entityIt; ++it) {
-                    if (isEntityInBundle(sceneId, *it)) {
-                        nextBundle = *it;
+                    if (isEntityInPrefab(sceneId, *it)) {
+                        nextPrefab = *it;
                         break;
                     }
                 }
             }
 
-            if (nextBundle != NULL_ENTITY) {
-                target = nextBundle;
+            if (nextPrefab != NULL_ENTITY) {
+                target = nextPrefab;
             }else{
-                // Not need to move entity in other scenes and registry if target is not in bundle
+                // Not need to move entity in other scenes and registry if target is not in prefab
                 return {};
             }
         }
     }
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
-    Entity registryTarget = bundle->getRegistryEntity(sceneId, target);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
+    Entity registryTarget = prefab->getRegistryEntity(sceneId, target);
     if (registryEntity == NULL_ENTITY || registryTarget == NULL_ENTITY) {
-        Out::error("Failed to find registry entities for bundle entities %u or %u in scene %u", entity, target, sceneId);
+        Out::error("Failed to find registry entities for prefab entities %u or %u in scene %u", entity, target, sceneId);
         return {};
     }
 
@@ -8141,27 +8141,27 @@ editor::SharedMoveRecovery editor::Project::moveEntityFromBundle(uint32_t sceneI
     Entity oldParent;
     size_t oldIndex;
     bool hasTransform;
-    ProjectUtils::moveEntityOrderByTarget(bundle->registry.get(), bundle->registryEntities, registryEntity, registryTarget, type, oldParent, oldIndex, hasTransform);
+    ProjectUtils::moveEntityOrderByTarget(prefab->registry.get(), prefab->registryEntities, registryEntity, registryTarget, type, oldParent, oldIndex, hasTransform);
     std::string recoveryDefKey = std::to_string(NULL_PROJECT_SCENE);
     recovery[recoveryDefKey] = {oldParent, oldIndex, hasTransform};
 
-    std::vector<uint32_t> staleBundleScenes;
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    std::vector<uint32_t> stalePrefabScenes;
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene) {
             Out::error("Failed to find scene %u", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         if (!otherScene->scene) {
             Out::error("Scene %u is not loaded", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         for (auto& instance : sceneInstances) {
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || moveItself) {
-                Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
-                Entity otherTarget = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
+                Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                Entity otherTarget = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
 
                 if (otherEntity != NULL_ENTITY && otherTarget != NULL_ENTITY) {
                     Entity otherOldParent;
@@ -8176,29 +8176,29 @@ editor::SharedMoveRecovery editor::Project::moveEntityFromBundle(uint32_t sceneI
             }
         }
     }
-    for (uint32_t staleId : staleBundleScenes) {
-        cleanupEntityBundlesForScene(staleId);
+    for (uint32_t staleId : stalePrefabScenes) {
+        cleanupPrefabsForScene(staleId);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return recovery;
 }
 
-bool editor::Project::undoMoveEntityInBundle(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself){
-    fs::path filepath = findEntityBundlePathFor(sceneId, entity);
+bool editor::Project::undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself){
+    fs::path filepath = findPrefabPathFor(sceneId, entity);
     if (filepath.empty()) {
-        Out::error("Entity %u in scene %u is not part of any entity bundle", entity, sceneId);
+        Out::error("Entity %u in scene %u is not part of any prefab", entity, sceneId);
         return false;
     }
 
-    EntityBundle* bundle = getEntityBundle(filepath);
-    uint32_t instanceId = bundle->getInstanceId(sceneId, entity);
+    Prefab* prefab = getPrefab(filepath);
+    uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
 
-    Entity registryEntity = bundle->getRegistryEntity(sceneId, entity);
-    Entity registryTarget = bundle->getRegistryEntity(sceneId, target);
+    Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
+    Entity registryTarget = prefab->getRegistryEntity(sceneId, target);
     if (registryEntity == NULL_ENTITY || registryTarget == NULL_ENTITY) {
-        Out::error("Failed to find registry entities for bundle entities %u or %u in scene %u", entity, target, sceneId);
+        Out::error("Failed to find registry entities for prefab entities %u or %u in scene %u", entity, target, sceneId);
         return false;
     }
 
@@ -8207,19 +8207,19 @@ bool editor::Project::undoMoveEntityInBundle(uint32_t sceneId, Entity entity, En
         Out::error("No recovery data provided for undoing move of entity %u in scene %u", entity, sceneId);
         return false;
     }
-    ProjectUtils::moveEntityOrderByIndex(bundle->registry.get(), bundle->registryEntities, registryEntity, recovery.at(recoveryDefKey).oldParent, recovery.at(recoveryDefKey).oldIndex, recovery.at(recoveryDefKey).hasTransform);
+    ProjectUtils::moveEntityOrderByIndex(prefab->registry.get(), prefab->registryEntities, registryEntity, recovery.at(recoveryDefKey).oldParent, recovery.at(recoveryDefKey).oldIndex, recovery.at(recoveryDefKey).hasTransform);
 
-    std::vector<uint32_t> staleBundleScenes;
-    for (auto& [otherSceneId, sceneInstances] : bundle->instances) {
+    std::vector<uint32_t> stalePrefabScenes;
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
         SceneProject* otherScene = getScene(otherSceneId);
         if (!otherScene) {
             Out::error("Failed to find scene %u", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         if (!otherScene->scene) {
             Out::error("Scene %u is not loaded", otherSceneId);
-            staleBundleScenes.push_back(otherSceneId);
+            stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
         // Inverting to get correct entity index
@@ -8228,8 +8228,8 @@ bool editor::Project::undoMoveEntityInBundle(uint32_t sceneId, Entity entity, En
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || moveItself) {
                 std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId);
                 if (recovery.find(recoveryKey) != recovery.end()) {
-                    Entity otherEntity = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
-                    Entity otherTarget = bundle->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
+                    Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                    Entity otherTarget = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
                     if (otherEntity != NULL_ENTITY && otherTarget != NULL_ENTITY) {
                         ProjectUtils::moveEntityOrderByIndex(otherScene->scene, otherScene->entities, otherEntity, recovery.at(recoveryKey).oldParent, recovery.at(recoveryKey).oldIndex, recovery.at(recoveryKey).hasTransform);
                     }
@@ -8237,11 +8237,11 @@ bool editor::Project::undoMoveEntityInBundle(uint32_t sceneId, Entity entity, En
             }
         }
     }
-    for (uint32_t staleId : staleBundleScenes) {
-        cleanupEntityBundlesForScene(staleId);
+    for (uint32_t staleId : stalePrefabScenes) {
+        cleanupPrefabsForScene(staleId);
     }
 
-    bundle->isModified = true;
+    prefab->isModified = true;
 
     return true;
 }
@@ -8334,7 +8334,7 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
 
         cleanupPlaySession(session);
         SceneManager::clearAll();
-        BundleManager::clearAll();
+        PrefabManager::clearAll();
         jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
@@ -8406,7 +8406,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     }
                 } else {
                     updateSceneCppScripts(&currentSceneProject);
-                    updateSceneBundles(&currentSceneProject);
+                    updateScenePrefabs(&currentSceneProject);
                 }
             } else if (!currentSceneProject.scene && currentSceneProject.cppScripts.empty() && !currentSceneProject.filepath.empty()) {
                 // SceneManager can load a closed scene while playing, so its scripts must be built too;
@@ -8450,8 +8450,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     return;
                 }
 
-                std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, currentSceneProject.id, getProjectPath(), getProjectInternalPath());
-                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), bundleInstances, collectResourcesInRegistry(entry.runtime->scene));
+                std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath());
+                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {
                     std::scoped_lock lock(playSessionMutex);
@@ -8473,7 +8473,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         }
 
         registerSceneManager();
-        registerBundleManager();
+        registerPrefabManager();
 
         YAML::Node playSnapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
 
@@ -8488,8 +8488,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         }
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
-        std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
+        std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -8826,8 +8826,8 @@ SceneResources editor::Project::collectPlaySceneResources(uint32_t sceneId) {
     if (probe) {
         deleteSceneProject(probe.get());
     }
-    // forget the bundle instances the probe registered
-    cleanupEntityBundlesForScene(sceneId);
+    // forget the prefab instances the probe registered
+    cleanupPrefabsForScene(sceneId);
 
     return resources;
 }
@@ -8847,62 +8847,62 @@ editor::SceneProject* editor::Project::findSceneProjectByScene(Scene* scene) {
     return nullptr;
 }
 
-void editor::Project::registerBundleManager() {
-    BundleManager::clearAll();
-    uint32_t bundleId = 0;
-    for (const auto& [bundlePath, bundle] : entityBundles) {
-        // Same set the standalone build compiles, see collectAllBundles
-        if (bundle.instances.empty() && !isStandaloneBundle(bundlePath)) {
+void editor::Project::registerPrefabManager() {
+    PrefabManager::clearAll();
+    uint32_t prefabId = 0;
+    for (const auto& [prefabPath, prefab] : prefabAssets) {
+        // Same set the standalone build compiles, see collectAllPrefabs
+        if (prefab.instances.empty() && !isStandalonePrefab(prefabPath)) {
             continue;
         }
 
-        bundleId++;
-        fs::path capturableBundlePath = bundlePath;
-        fs::path noExt = bundlePath;
+        prefabId++;
+        fs::path capturablePrefabPath = prefabPath;
+        fs::path noExt = prefabPath;
         noExt.replace_extension();
-        std::string bundleName = noExt.generic_string();
+        std::string prefabName = noExt.generic_string();
 
-        // Determine if root needs Transform based on bundle's top-level entities
+        // Determine if root needs Transform based on prefab's top-level entities
         bool hasTopLevelTransform = false;
-        if (bundle.registry) {
-            std::vector<Entity> topLevelEntities = getTopLevelEntities(bundle.registry.get(), bundle.registryEntities);
+        if (prefab.registry) {
+            std::vector<Entity> topLevelEntities = getTopLevelEntities(prefab.registry.get(), prefab.registryEntities);
             for (Entity topLevelEntity : topLevelEntities) {
-                if (bundle.registry->getSignature(topLevelEntity).test(bundle.registry->getComponentId<Transform>())) {
+                if (prefab.registry->getSignature(topLevelEntity).test(prefab.registry->getComponentId<Transform>())) {
                     hasTopLevelTransform = true;
                     break;
                 }
             }
         }
 
-        BundleManager::registerBundle(bundleId, bundleName,
-            // Factory: create bundle instance via importEntityBundle
-            [this, capturableBundlePath, hasTopLevelTransform](Scene* scene, Entity root) -> bool {
+        PrefabManager::registerPrefab(prefabId, prefabName,
+            // Factory: create prefab instance via importPrefab
+            [this, capturablePrefabPath, hasTopLevelTransform](Scene* scene, Entity root) -> bool {
                 SceneProject* sceneProject = findSceneProjectByScene(scene);
                 if (!sceneProject) return false;
 
-                EntityBundle* existingBundle = getEntityBundle(capturableBundlePath);
-                if (existingBundle) {
-                    const EntityBundle::Instance* existing = existingBundle->getInstance(sceneProject->id, root);
+                Prefab* existingPrefab = getPrefab(capturablePrefabPath);
+                if (existingPrefab) {
+                    const Prefab::Instance* existing = existingPrefab->getInstance(sceneProject->id, root);
                     if (existing && existing->rootEntity == root) {
-                        Out::error("BundleManager: root entity %u already hosts bundle '%s'",
-                            root, capturableBundlePath.string().c_str());
+                        Out::error("PrefabManager: root entity %u already hosts prefab '%s'",
+                            root, capturablePrefabPath.string().c_str());
                         return false;
                     }
                 }
 
                 const std::string oldName = scene->getEntityName(root);
-                const bool addedBundle = !scene->findComponent<BundleComponent>(root);
+                const bool addedPrefab = !scene->findComponent<PrefabComponent>(root);
                 const bool addedTransform = hasTopLevelTransform && !scene->findComponent<Transform>(root);
                 const std::vector<Entity> entitiesSnapshot = sceneProject->entities;
 
-                // BundleManager destroys the entities created by the import, this only has to
+                // PrefabManager destroys the entities created by the import, this only has to
                 // undo what the factory itself changed on the root plus the instance metadata
                 auto restoreRoot = [&]() {
-                    removeBundleInstanceTracking(sceneProject->id, root);
+                    removePrefabInstanceTracking(sceneProject->id, root);
                     if (scene->isEntityCreated(root)) {
                         scene->setEntityName(root, oldName);
-                        if (addedBundle)
-                            scene->removeComponent<BundleComponent>(root);
+                        if (addedPrefab)
+                            scene->removeComponent<PrefabComponent>(root);
                         if (addedTransform)
                             scene->removeComponent<Transform>(root);
                     }
@@ -8910,19 +8910,19 @@ void editor::Project::registerBundleManager() {
                 };
 
                 if (oldName.empty()) {
-                    // the plain stem, not a unique one: a "Bundle 2" is a name the same script
+                    // the plain stem, not a unique one: a "Prefab 2" is a name the same script
                     // would not find in the export, which names the root by the stem
-                    std::string rootName = capturableBundlePath.stem().string();
+                    std::string rootName = capturablePrefabPath.stem().string();
                     if (rootName.empty())
-                        rootName = "Bundle";
+                        rootName = "Prefab";
                     scene->setEntityName(root, rootName);
                 }
 
-                if (addedBundle) {
-                    BundleComponent bundleComp;
-                    bundleComp.name = capturableBundlePath.stem().string();
-                    bundleComp.path = capturableBundlePath.string();
-                    scene->addComponent<BundleComponent>(root, bundleComp);
+                if (addedPrefab) {
+                    PrefabComponent prefabComp;
+                    prefabComp.name = capturablePrefabPath.stem().string();
+                    prefabComp.path = capturablePrefabPath.string();
+                    scene->addComponent<PrefabComponent>(root, prefabComp);
                 }
 
                 if (addedTransform)
@@ -8932,43 +8932,43 @@ void editor::Project::registerBundleManager() {
                     sceneProject->entities.push_back(root);
 
                 try {
-                    importEntityBundle(sceneProject, &sceneProject->entities, capturableBundlePath, root, false);
+                    importPrefab(sceneProject, &sceneProject->entities, capturablePrefabPath, root, false);
                 } catch (const std::exception& e) {
-                    Out::error("BundleManager: import of '%s' failed: %s",
-                        capturableBundlePath.string().c_str(), e.what());
+                    Out::error("PrefabManager: import of '%s' failed: %s",
+                        capturablePrefabPath.string().c_str(), e.what());
                     restoreRoot();
                     return false;
                 } catch (...) {
-                    Out::error("BundleManager: import of '%s' failed",
-                        capturableBundlePath.string().c_str());
+                    Out::error("PrefabManager: import of '%s' failed",
+                        capturablePrefabPath.string().c_str());
                     restoreRoot();
                     return false;
                 }
 
-                EntityBundle* bundle = getEntityBundle(capturableBundlePath);
-                const EntityBundle::Instance* instance = bundle ? bundle->getInstance(sceneProject->id, root) : nullptr;
+                Prefab* prefab = getPrefab(capturablePrefabPath);
+                const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneProject->id, root) : nullptr;
                 if (instance && instance->rootEntity == root)
                     return true;
 
                 restoreRoot();
                 return false;
             },
-            // Destroyer: remove bundle instance via unimportEntityBundle
-            [this, capturableBundlePath](Scene* scene, Entity root) -> bool {
+            // Destroyer: remove prefab instance via unimportPrefab
+            [this, capturablePrefabPath](Scene* scene, Entity root) -> bool {
                 SceneProject* sceneProject = findSceneProjectByScene(scene);
                 if (!sceneProject) return false;
 
-                EntityBundle* bundle = getEntityBundle(capturableBundlePath);
-                if (!bundle) return false;
+                Prefab* prefab = getPrefab(capturablePrefabPath);
+                if (!prefab) return false;
 
-                const EntityBundle::Instance* instance = bundle->getInstance(sceneProject->id, root);
+                const Prefab::Instance* instance = prefab->getInstance(sceneProject->id, root);
                 if (!instance || instance->rootEntity != root) return false;
 
                 std::vector<Entity> members;
                 for (const auto& m : instance->members)
                     members.push_back(m.localEntity);
                 bool wasModified = sceneProject->isModified;
-                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members);
+                bool result = unimportPrefab(sceneProject->id, capturablePrefabPath, root, members);
                 sceneProject->isModified = wasModified;
                 return result;
             }
@@ -9224,7 +9224,7 @@ void editor::Project::stop(uint32_t sceneId) {
             } else {
                 cleanupPlaySession(session);
                 SceneManager::clearAll();
-                BundleManager::clearAll();
+                PrefabManager::clearAll();
                 editor::getEditorHost().resetLastActivatedScene();
                 if (mainSceneProject) {
                     mainSceneProject->playState = ScenePlayState::STOPPED;

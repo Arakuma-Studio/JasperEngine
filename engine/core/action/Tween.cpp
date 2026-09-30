@@ -1,67 +1,67 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "TimedAction.h"
+#include "Tween.h"
 
 using namespace jasperengine;
 
-TimedAction::TimedAction(Scene* scene): Action(scene){
-    addComponent<TimedActionComponent>();
+Tween::Tween(Scene* scene): Action(scene){
+    addComponent<TweenComponent>();
 }
 
-TimedAction::TimedAction(Scene* scene, Entity entity): Action(scene, entity){
+Tween::Tween(Scene* scene, Entity entity): Action(scene, entity){
 
 }
 
-void TimedAction::setAction(float duration, bool loop){
+void Tween::setAction(float duration, bool loop){
     ActionComponent& action = getComponent<ActionComponent>();
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+    TweenComponent& tween = getComponent<TweenComponent>();
 
     action.timecount = 0;
-    timedAction.duration = duration;
-    timedAction.loop = loop;
-    timedAction.time = 0;
-    timedAction.value = 0;
+    tween.duration = duration;
+    tween.loop = loop;
+    tween.time = 0;
+    tween.value = 0;
 }
 
-void TimedAction::setFunctionType(EaseType functionType){
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+void Tween::setFunctionType(EaseType functionType){
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    timedAction.function.setType(functionType);
+    tween.function.setType(functionType);
 }
 
-float TimedAction::getValue() const{
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+float Tween::getValue() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    return timedAction.value;
+    return tween.value;
 }
 
-float TimedAction::getTime() const{
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+float Tween::getTime() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    return timedAction.time;
+    return tween.time;
 }
 
-void TimedAction::setDuration(float duration){
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+void Tween::setDuration(float duration){
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    timedAction.duration = duration;
+    tween.duration = duration;
 }
 
-float TimedAction::getDuration() const{
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+float Tween::getDuration() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    return timedAction.duration;
+    return tween.duration;
 }
 
-void TimedAction::setLoop(bool loop){
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+void Tween::setLoop(bool loop){
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    timedAction.loop = loop;
+    tween.loop = loop;
 }
 
-bool TimedAction::isLoop() const{
-    TimedActionComponent& timedAction = getComponent<TimedActionComponent>();
+bool Tween::isLoop() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
 
-    return timedAction.loop;
+    return tween.loop;
 }

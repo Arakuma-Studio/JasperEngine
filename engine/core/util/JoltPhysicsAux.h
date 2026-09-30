@@ -5,7 +5,7 @@
 #define JoltPhysicsAux_h
 
 #include "subsystem/PhysicsSystem.h"
-#include "object/physics/Body3D.h"
+#include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
 
@@ -105,11 +105,11 @@ namespace jasperengine{
         }
 
 		virtual void OnBodyActivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			physicsSystem->onBodyActivated3D(Body3D(scene, inBodyUserData));
+			physicsSystem->onBodyActivated3D(Rigidbody(scene, inBodyUserData));
 		}
 
 		virtual void OnBodyDeactivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData) override{
-			physicsSystem->onBodyDeactivated3D(Body3D(scene, inBodyUserData));
+			physicsSystem->onBodyDeactivated3D(Rigidbody(scene, inBodyUserData));
 		}
 	};
 
@@ -126,10 +126,10 @@ namespace jasperengine{
 		// See: ContactListener
 		virtual JPH::ValidateResult	OnContactValidate(const JPH::Body &inBody1, const JPH::Body &inBody2, JPH::RVec3Arg inBaseOffset, const JPH::CollideShapeResult &inCollisionResult) override{
 			Entity entity1 = inBody1.GetUserData();
-			Body3D body1(scene, entity1);
+			Rigidbody body1(scene, entity1);
 
 			Entity entity2 = inBody2.GetUserData();
-			Body3D body2(scene, entity2);
+			Rigidbody body2(scene, entity2);
 
 			if (!physicsSystem->shouldCollide3D.callRet(body1, body2, Vector3(inBaseOffset.GetX(), inBaseOffset.GetY(), inBaseOffset.GetZ()), CollideShapeResult3D(scene, &inBody1, &inBody2, &inCollisionResult), true)){
 				return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
@@ -140,20 +140,20 @@ namespace jasperengine{
 
 		virtual void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
 			Entity entity1 = inBody1.GetUserData();
-			Body3D body1(scene, entity1);
+			Rigidbody body1(scene, entity1);
 
 			Entity entity2 = inBody2.GetUserData();
-			Body3D body2(scene, entity2);
+			Rigidbody body2(scene, entity2);
 
 			physicsSystem->onContactAdded3D(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));
 		}
 
 		virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
 			Entity entity1 = inBody1.GetUserData();
-			Body3D body1(scene, entity1);
+			Rigidbody body1(scene, entity1);
 
 			Entity entity2 = inBody2.GetUserData();
-			Body3D body2(scene, entity2);
+			Rigidbody body2(scene, entity2);
 
 			physicsSystem->onContactPersisted3D(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));
 		}
@@ -185,7 +185,7 @@ namespace jasperengine{
 			size_t shapeIndex1 = shape1->GetSubShapeUserData(inSubShapePair.GetSubShapeID1());
 			size_t shapeIndex2 = shape2->GetSubShapeUserData(inSubShapePair.GetSubShapeID2());
 
-			physicsSystem->onContactRemoved3D(Body3D(scene, entity1), Body3D(scene, entity2), (unsigned long)shapeIndex1, (unsigned long)shapeIndex2);
+			physicsSystem->onContactRemoved3D(Rigidbody(scene, entity1), Rigidbody(scene, entity2), (unsigned long)shapeIndex1, (unsigned long)shapeIndex2);
 		}
 	};
 

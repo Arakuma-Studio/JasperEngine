@@ -18,7 +18,7 @@
 
 namespace jasperengine::editor {
 
-class ResourcesWindow;
+class ProjectWindow;
 
 // Clean, Copilot-style chat surface. Provider/key details live in
 // AiSettingsWindow; quick conversation controls live with the composer.
@@ -56,7 +56,7 @@ private:
     };
 
     Project* project;
-    ResourcesWindow* resourcesWindow;
+    ProjectWindow* projectWindow;
     ai::AiService service;
     ai::ConversationStore conversationStore;
     ai::ModelCatalog modelCatalog;
@@ -156,7 +156,7 @@ private:
 public:
     static constexpr const char* WINDOW_NAME = "AI Chat";
 
-    AiChatWindow(Project* project, ResourcesWindow* resourcesWindow);
+    AiChatWindow(Project* project, ProjectWindow* projectWindow);
 
     // Wakes the backend loop from the AI worker instead of waiting out its idle tick.
     void setWakeCallback(std::function<void()> callback);

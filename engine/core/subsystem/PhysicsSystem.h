@@ -9,7 +9,7 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "component/Body2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
 #include "component/Joint2DComponent.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Manifold2D.h"
@@ -17,7 +17,7 @@
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "object/physics/Body3D.h"
+#include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
 #include "Jolt/Jolt.h"
@@ -79,20 +79,20 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		void ensureWorld2D();
-		void updateBody2DPosition(Signature signature, Entity entity, Body2DComponent& body);
+		void updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body);
 		bool loadJoint2D(Entity entity, Joint2DComponent& joint);
-		bool syncBody2DShapes(Entity entity, Body2DComponent& body);
+		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body);
 		static Vector2 absScale2D(const Vector2& scale);
 		static float maxScaleXY(const Vector2& scale);
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-		void updateBody3DPosition(Signature signature, Entity entity, Body3DComponent& body);
+		void updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body);
 		bool loadJoint3D(Entity entity, Joint3DComponent& joint);
-		bool syncBody3DShapes(Entity entity, Body3DComponent& body);
-		bool isShapeSourceLoading(Entity entity, const Shape3D& shapeData) const;
-		bool createShape3DForIndex(Entity entity, Body3DComponent& body, size_t index);
+		bool syncRigidbodyColliders(Entity entity, RigidbodyComponent& body);
+		bool isShapeSourceLoading(Entity entity, const Collider3D& shapeData) const;
+		bool createCollider3DForIndex(Entity entity, RigidbodyComponent& body, size_t index);
 
-		bool createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape);
+		bool createGenericJoltBody(Entity entity, RigidbodyComponent& body, const JPH::ShapeRefC shape);
 
 		static Vector3 absScale(const Vector3& scale);
 		static float maxScaleXZ(const Vector3& scale);
@@ -141,73 +141,73 @@ namespace jasperengine{
         // cannot be created then (refused, retried next update) and teardown is queued.
         bool isSteppingWorld3D() const;
 
-		static JPH::EMotionQuality getBody3DMotionQualityToJolt(Body3DMotionQuality motionQuality);
+		static JPH::EMotionQuality getRigidbodyMotionQualityToJolt(RigidbodyMotionQuality motionQuality);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-		FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)> beginContact2D;
-		FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)> endContact2D;
-		FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)> beginSensorContact2D;
-		FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)> endSensorContact2D;
-		FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)> hitContact2D;
-		FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)> preSolve2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> beginContact2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> endContact2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> beginSensorContact2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> endSensorContact2D;
+		FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)> hitContact2D;
+		FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)> preSolve2D;
 
-		FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)> shouldCollide2D;
+		FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)> shouldCollide2D;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-		FunctionSubscribe<void(Body3D)> onBodyActivated3D;
-		FunctionSubscribe<void(Body3D)> onBodyDeactivated3D;
-		FunctionSubscribe<void(Body3D, Body3D, Contact3D)> onContactAdded3D;
-		FunctionSubscribe<void(Body3D, Body3D, Contact3D)> onContactPersisted3D;
-		FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)> onContactRemoved3D;
+		FunctionSubscribe<void(Rigidbody)> onBodyActivated3D;
+		FunctionSubscribe<void(Rigidbody)> onBodyDeactivated3D;
+		FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)> onContactAdded3D;
+		FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)> onContactPersisted3D;
+		FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)> onContactRemoved3D;
 
-		FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)> shouldCollide3D;
+		FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)> shouldCollide3D;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-		void createBody2D(Entity entity);
-		void removeBody2D(Entity entity);
+		void createRigidbody2D(Entity entity);
+		void removeRigidbody2D(Entity entity);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-		void createBody3D(Entity entity);
-		void removeBody3D(Entity entity);
+		void createRigidbody(Entity entity);
+		void removeRigidbody(Entity entity);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		b2WorldId getWorld2D() const;
 		b2BodyId getBody(Entity entity);
 
-		bool loadBody2D(Entity entity);
-		void destroyBody2D(Body2DComponent& body);
+		bool loadRigidbody2D(Entity entity);
+		void destroyRigidbody2D(Rigidbody2DComponent& body);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::PhysicsSystem* getWorld3D();
-		bool loadBody3D(Entity entity);
-		void destroyBody3D(Body3DComponent& body);
+		bool loadRigidbody(Entity entity);
+		void destroyRigidbody(RigidbodyComponent& body);
 #endif
 
 		// Writes a body pose back into its entity, so the transform sync of the next
 		// step does not undo a pose written straight to the body.
 #ifdef JASPERENGINE_PHYSICS_2D
-		void updateTransformFromBody2D(Entity entity, Vector2 position, float angle);
+		void updateTransformFromRigidbody2D(Entity entity, Vector2 position, float angle);
 #endif
-		void updateTransformFromBody3D(Entity entity, Vector3 position, Quaternion rotation);
+		void updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation);
 
 #ifdef JASPERENGINE_PHYSICS_3D
-		JPH::Quat toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int shapeIndex);
+		JPH::Quat toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int colliderIndex);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-		int loadShape2D(Body2DComponent& body, void* shape, Shape2DType type);
-		void destroyShape2D(Body2DComponent& body, size_t index);
+		int loadCollider2D(Rigidbody2DComponent& body, void* shape, Collider2DType type);
+		void destroyCollider2D(Rigidbody2DComponent& body, size_t index);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-		int loadShape3D(Body3DComponent& body, const Vector3& position, const Quaternion& rotation, JPH::ShapeSettings* shapeSettings);
-		void destroyShape3D(Body3DComponent& body, size_t index);
+		int loadCollider3D(RigidbodyComponent& body, const Vector3& position, const Quaternion& rotation, JPH::ShapeSettings* shapeSettings);
+		void destroyCollider3D(RigidbodyComponent& body, size_t index);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D

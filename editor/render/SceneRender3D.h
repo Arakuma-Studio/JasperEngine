@@ -18,7 +18,7 @@ namespace jasperengine::editor{
 
     struct LightObjects{
         Sprite* icon = nullptr;
-        Lines* lines = nullptr;
+        LineRenderer* lines = nullptr;
 
         LightType type;
         float innerConeCos = 0.0f;
@@ -30,7 +30,7 @@ namespace jasperengine::editor{
     };
 
     struct BodyObjects{
-        Lines* lines = nullptr;
+        LineRenderer* lines = nullptr;
 
         // Mesh and hull shapes walk their whole source buffer to build these, so they
         // are kept until the signature of what feeds them changes.
@@ -51,18 +51,18 @@ namespace jasperengine::editor{
         static constexpr size_t kMaxHullInputPoints = 256;
         static constexpr size_t kMaxSourceParentHops = 64;
 
-        Lines* lines;
+        LineRenderer* lines;
 
         std::map<Entity, LightObjects> lightObjects;
         std::map<Entity, CameraObjects> cameraObjects;
         std::map<Entity, SoundObjects> soundObjects;
         std::map<Entity, BodyObjects> bodyObjects;
-        std::map<Entity, Lines*> jointLines;
-        std::map<Entity, Lines*> boneLines;
-        std::map<Entity, Lines*> linePointLines;
-        std::map<Entity, Lines*> polygonPointLines;
-        std::map<Entity, Lines*> trackLines;
-        std::map<Entity, Lines*> reflectionProbeLines;
+        std::map<Entity, LineRenderer*> jointLines;
+        std::map<Entity, LineRenderer*> boneLines;
+        std::map<Entity, LineRenderer*> linePointLines;
+        std::map<Entity, LineRenderer*> polygonPointLines;
+        std::map<Entity, LineRenderer*> trackLines;
+        std::map<Entity, LineRenderer*> reflectionProbeLines;
 
         ViewportGizmo viewgizmo;
 
@@ -88,9 +88,9 @@ namespace jasperengine::editor{
         void createOrUpdateLightIcon(Entity entity, const Transform& transform, LightType lightType, bool newLight);
         void createOrUpdateCameraIcon(Entity entity, const Transform& transform, bool newCamera);
         void createOrUpdateSoundIcon(Entity entity, const Transform& transform, bool newSound);
-        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Body3DComponent& body, bool visible, bool highlighted);
+        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const RigidbodyComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint3DComponent& joint, bool visible, bool highlighted);
-        void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LinesComponent& lines, bool visible);
+        void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
         bool instanciatePolygonPointLines(Entity entity);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);
         bool instanciateTrackLines(Entity entity);

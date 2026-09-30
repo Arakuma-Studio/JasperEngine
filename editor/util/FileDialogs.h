@@ -20,7 +20,7 @@ namespace jasperengine::editor{
         FILE_DIALOG_AUDIO = 1 << 3,
         FILE_DIALOG_SHADER = 1 << 4,
         FILE_DIALOG_SCRIPT = 1 << 5,
-        FILE_DIALOG_BUNDLE = 1 << 6,
+        FILE_DIALOG_PREFAB = 1 << 6,
         FILE_DIALOG_MATERIAL = 1 << 7
     };
 
@@ -57,7 +57,7 @@ namespace jasperengine::editor{
                 std::string audioExtensions;
                 std::string shaderExtensions;
                 std::string scriptExtensions;
-                std::string bundleExtensions;
+                std::string prefabExtensions;
                 std::string materialExtensions;
                 std::vector<nfdfilteritem_t> filterItems;
                 if (filterFlags & FILE_DIALOG_IMAGE) {
@@ -84,9 +84,9 @@ namespace jasperengine::editor{
                     scriptExtensions = Util::getScriptExtensions();
                     filterItems.push_back({ "Script files", scriptExtensions.c_str() });
                 }
-                if (filterFlags & FILE_DIALOG_BUNDLE) {
-                    bundleExtensions = Util::getBundleExtensions();
-                    filterItems.push_back({ "Entity bundles", bundleExtensions.c_str() });
+                if (filterFlags & FILE_DIALOG_PREFAB) {
+                    prefabExtensions = Util::getPrefabExtensions();
+                    filterItems.push_back({ "Prefabs", prefabExtensions.c_str() });
                 }
                 if (filterFlags & FILE_DIALOG_MATERIAL) {
                     materialExtensions = Util::getMaterialExtensions();

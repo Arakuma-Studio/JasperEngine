@@ -10,7 +10,7 @@
 
 namespace jasperengine::editor{
 
-    class AddEntityToBundleCmd: public Command{
+    class AddEntityToPrefabCmd: public Command{
 
     private:
         Project* project;
@@ -25,7 +25,7 @@ namespace jasperengine::editor{
         bool hasTransform;
 
     public:
-        AddEntityToBundleCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);
+        AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);
 
         bool execute() override;
         void undo() override;

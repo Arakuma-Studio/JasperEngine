@@ -7,12 +7,12 @@
 #include "object/EntityHandle.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API SkyBox: public EntityHandle{
+    class JASPERENGINE_API Skybox: public EntityHandle{
 
     public:
-        SkyBox(Scene* scene);
-        SkyBox(Scene* scene, Entity entity);
-        virtual ~SkyBox();
+        Skybox(Scene* scene);
+        Skybox(Scene* scene, Entity entity);
+        virtual ~Skybox();
 
         bool load();
 

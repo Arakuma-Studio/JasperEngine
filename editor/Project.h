@@ -11,7 +11,7 @@
 #include "Conector.h"
 #include "Generator.h"
 #include "Configs.h"
-#include "util/EntityBundle.h"
+#include "util/Prefab.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
@@ -71,11 +71,11 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxShapes2D = 0;
-        unsigned int maxShapePoints2D = 0;
-        unsigned int maxShapes3D = 0;
-        unsigned int maxShapeVertices3D = 0;
-        unsigned int maxShapeIndices3D = 0;
+        unsigned int maxColliders2D = 0;
+        unsigned int maxColliderPoints2D = 0;
+        unsigned int maxColliders3D = 0;
+        unsigned int maxColliderVertices3D = 0;
+        unsigned int maxColliderIndices3D = 0;
     };
 
     struct ChildSceneRef {
@@ -97,7 +97,7 @@ namespace jasperengine::editor{
         bool needUpdateRender = true;
         // Extra frames to keep drawing after a change so late async uploads still show.
         int renderSettleFrames = 0;
-        // Bumped on structural changes so the Structure window can cache its tree.
+        // Bumped on structural changes so the Hierarchy window can cache its tree.
         uint64_t structureVersion = 0;
         bool isModified = false;
         // True while the id has never reached disk, so a scene replacing this one
@@ -114,22 +114,22 @@ namespace jasperengine::editor{
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
-        std::vector<BundleSceneInfo> bundles;
+        std::vector<PrefabSceneInfo> prefabs;
         YAML::Node editorCameraState;
     };
 
-    struct NestedBundleRecovery {
+    struct NestedPrefabRecovery {
         std::filesystem::path path;
         Entity rootEntity = NULL_ENTITY;
-        std::vector<EntityBundle::EntityMember> members;
+        std::vector<Prefab::EntityMember> members;
     };
 
     struct NodeRecoveryEntry {
         YAML::Node node;
         size_t transformIndex = 0;
-        std::vector<EntityBundle::EntityMember> members;
+        std::vector<Prefab::EntityMember> members;
         std::map<Entity, uint64_t> overrides;
-        std::vector<NestedBundleRecovery> nestedBundles;
+        std::vector<NestedPrefabRecovery> nestedPrefabs;
     };
 
     using NodeRecovery = std::map<std::string, NodeRecoveryEntry>;
@@ -395,8 +395,8 @@ namespace jasperengine::editor{
         std::chrono::steady_clock::time_point lastMaterialRefreshTime;
         static constexpr double materialRefreshIntervalSec = 0.2;
 
-        std::map<std::filesystem::path, EntityBundle> entityBundles;
-        std::vector<std::filesystem::path> standaloneBundles;  // built without a scene instance
+        std::map<std::filesystem::path, Prefab> prefabAssets;
+        std::vector<std::filesystem::path> standalonePrefabs;  // built without a scene instance
 
         std::string libName;
 
@@ -410,11 +410,11 @@ namespace jasperengine::editor{
         void resetConfigs();
 
         void updateSceneCppScripts(SceneProject* sceneProject);
-        void updateSceneBundles(SceneProject* sceneProject);
-        void removeBundleInstanceTracking(uint32_t sceneId, Entity rootEntity);
+        void updateScenePrefabs(SceneProject* sceneProject);
+        void removePrefabInstanceTracking(uint32_t sceneId, Entity rootEntity);
 
         std::vector<SceneScriptSource> collectAllSceneCppScripts() const;
-        std::vector<BundleSceneInfo> collectAllBundles() const;
+        std::vector<PrefabSceneInfo> collectAllPrefabs() const;
 
         void pauseEngineScene(Scene* scene, bool pause) const;
 
@@ -422,7 +422,7 @@ namespace jasperengine::editor{
 
         void registerSceneManager();
         SceneResources collectPlaySceneResources(uint32_t sceneId);
-        void registerBundleManager();
+        void registerPrefabManager();
 
         SceneProject* findSceneProjectByScene(Scene* scene);
 
@@ -449,12 +449,12 @@ namespace jasperengine::editor{
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
-        // Runs an asset transform over every scene, entity bundle and material file,
+        // Runs an asset transform over every scene, prefab and material file,
         // marking what changed.
         void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
-        // Points/Lines/Sky) across all scenes and entity bundles, flagging shader reloads
-        // and marking affected scenes/bundles modified. The transform mutates the value in
+        // Points/Lines/Sky) across all scenes and prefabs, flagging shader reloads
+        // and marking affected scenes/prefabs modified. The transform mutates the value in
         // place and returns whether it changed.
         void applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform);
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
@@ -691,13 +691,13 @@ namespace jasperengine::editor{
 
         void remapMaterialFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapEntityBundleFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        void remapPrefabFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
         void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
-        void cleanupEntityBundleFilePath(const std::filesystem::path& deletedPath);
+        void cleanupPrefabFilePath(const std::filesystem::path& deletedPath);
         void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
         void cleanupAssetFilePath(const std::filesystem::path& deletedPath);
         void cleanupShaderFilePath(const std::filesystem::path& deletedPath);
@@ -799,7 +799,7 @@ namespace jasperengine::editor{
         std::vector<Entity> getPlayCreatedEntities(const SceneProject* sceneProject) const;
 
         void replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities);
-        // A running scene and its Stop destroy entities the Structure lets the user select
+        // A running scene and its Stop destroy entities the Hierarchy lets the user select
         void deselectDestroyedEntities(SceneProject* sceneProject);
         void setSelectedEntity(uint32_t sceneId, Entity selectedEntity);
         void addSelectedEntity(uint32_t sceneId, Entity selectedEntity);
@@ -810,12 +810,12 @@ namespace jasperengine::editor{
         bool hasSelectedEntities(uint32_t sceneId) const;
 
         bool hasSelectedSceneUnsavedChanges() const;
-        bool hasSelectedSceneUnsavedEntityBundles() const;
+        bool hasSelectedSceneUnsavedPrefabs() const;
         bool hasLocalUnsavedChanges(uint32_t sceneId) const;
         bool hasSceneUnsavedChanges(uint32_t sceneId) const;
-        bool hasUnsavedEntityBundles(uint32_t sceneId) const;
+        bool hasUnsavedPrefabs(uint32_t sceneId) const;
         bool hasScenesUnsavedChanges() const;
-        bool hasUnsavedEntityBundles() const;
+        bool hasUnsavedPrefabs() const;
 
         void updateAllScriptsProperties(uint32_t sceneId);
         // Returns true when a script property definition changed.
@@ -824,7 +824,7 @@ namespace jasperengine::editor{
         static std::vector<Entity> getTopLevelEntities(const EntityRegistry* registry, const std::vector<Entity>& orderedEntities);
         // Remaps every entity reference across a set of entities. References to a mapped
         // member are translated. By default references outside the map are cleared so raw
-        // IDs cannot leak across a bundle boundary; recovery paths pass clearUnmapped=false
+        // IDs cannot leak across a prefab boundary; recovery paths pass clearUnmapped=false
         // to preserve external references while repairing replacement IDs.
         static void remapEntityProperties(EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, Entity>& entityMap, bool clearUnmapped = true);
         // Same rule as remapEntityProperties, scoped to one component. When `properties`
@@ -832,52 +832,52 @@ namespace jasperengine::editor{
         // "scripts") also covers the indexed references expanded from it.
         static void remapEntityPropertiesInComponent(EntityRegistry* registry, Entity entity, ComponentType componentType, const std::vector<std::string>& properties, const std::unordered_map<Entity, Entity>& entityMap);
         // Promotes to a per-instance override every member component holding an entity
-        // reference that points outside the bundle (cross-scene, or a non-member local
+        // reference that points outside the prefab (cross-scene, or a non-member local
         // entity). Such references cannot be shared, so overriding keeps and persists them.
-        static void overrideExternalRefComponents(EntityRegistry* scene, EntityBundle::Instance& instance);
+        static void overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance);
 
-        //=== EntityBundle part ===
+        //=== Prefab part ===
 
-        bool createEntityBundle(uint32_t sceneId, fs::path filepath, YAML::Node entityNode);
-        bool removeEntityBundle(const std::filesystem::path& filepath);
+        bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode);
+        bool removePrefab(const std::filesystem::path& filepath);
 
-        const std::vector<std::filesystem::path>& getStandaloneBundles() const;
-        void setStandaloneBundles(std::vector<std::filesystem::path> bundlePaths);
-        bool isStandaloneBundle(const std::filesystem::path& filepath) const;
-        std::vector<std::filesystem::path> findBundleFiles() const;
+        const std::vector<std::filesystem::path>& getStandalonePrefabs() const;
+        void setStandalonePrefabs(std::vector<std::filesystem::path> prefabPaths);
+        bool isStandalonePrefab(const std::filesystem::path& filepath) const;
+        std::vector<std::filesystem::path> findPrefabFiles() const;
 
-        void saveEntityBundleToDisk(const std::filesystem::path& filepath);
+        void savePrefabToDisk(const std::filesystem::path& filepath);
 
-        EntityBundle* getEntityBundle(const std::filesystem::path& filepath);
-        const EntityBundle* getEntityBundle(const std::filesystem::path& filepath) const;
-        std::map<std::filesystem::path, const EntityBundle*> getEntityBundles(uint32_t sceneId) const;
-        std::filesystem::path findEntityBundlePathFor(uint32_t sceneId, Entity entity) const;
+        Prefab* getPrefab(const std::filesystem::path& filepath);
+        const Prefab* getPrefab(const std::filesystem::path& filepath) const;
+        std::map<std::filesystem::path, const Prefab*> getPrefabs(uint32_t sceneId) const;
+        std::filesystem::path findPrefabPathFor(uint32_t sceneId, Entity entity) const;
 
-        YAML::Node encodeEntityBundleNode(const std::filesystem::path& filepath) const;
+        YAML::Node encodePrefabNode(const std::filesystem::path& filepath) const;
 
-        std::vector<Entity> importEntityBundle(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& bundleOverrides = YAML::Node(), const YAML::Node& bundleLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr);
-        bool unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities);
+        std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr);
+        bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities);
 
-        bool addEntityToBundle(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
-        bool addEntityToBundle(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
+        bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
+        bool addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
             bool createItself = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr,
             std::vector<Entity>* restoredEntities = nullptr);
-        NodeRecovery removeEntityFromBundle(uint32_t sceneId, Entity entity, bool destroyItself = true);
+        NodeRecovery removeEntityFromPrefab(uint32_t sceneId, Entity entity, bool destroyItself = true);
 
-        bool bundlePropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself = false);
-        bool bundleNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself = false);
-        bool isEntityInBundle(uint32_t sceneId, Entity entity) const;
+        bool prefabPropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself = false);
+        bool prefabNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself = false);
+        bool isEntityInPrefab(uint32_t sceneId, Entity entity) const;
 
-        bool addComponentToBundle(uint32_t sceneId, Entity entity, ComponentType componentType, bool addToItself = true);
-        bool addComponentToBundle(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery, bool addToItself = true);
-        ComponentRecovery removeComponentFromBundle(uint32_t sceneId, Entity entity, ComponentType componentType, bool encodeComponent = true, bool removeToItself = true);
+        bool addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool addToItself = true);
+        bool addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery, bool addToItself = true);
+        ComponentRecovery removeComponentFromPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool encodeComponent = true, bool removeToItself = true);
 
-        SharedMoveRecovery moveEntityFromBundle(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself = true);
-        bool undoMoveEntityInBundle(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
+        SharedMoveRecovery moveEntityFromPrefab(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself = true);
+        bool undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
 
-        void cleanupEntityBundlesForScene(uint32_t sceneId);
+        void cleanupPrefabsForScene(uint32_t sceneId);
 
-        //=== end EntityBundle part ===
+        //=== end Prefab part ===
 
         YAML::Node clearEntitiesNode(YAML::Node node);
         YAML::Node changeEntitiesNode(Entity& firstEntity, YAML::Node node);

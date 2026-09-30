@@ -1,16 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef BODY3D_H
-#define BODY3D_H
+#ifndef RIGIDBODY_H
+#define RIGIDBODY_H
 
 #ifndef JASPERENGINE_PHYSICS_3D
-#error "Body3D needs 3D Physics, enabled in Project Settings > Build"
+#error "Rigidbody needs 3D Physics, enabled in Project Settings > Build"
 #endif
 
 #include "EntityHandle.h"
 #include "math/Vector2.h"
-#include "component/Body3DComponent.h"
+#include "component/RigidbodyComponent.h"
 
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/Body.h"
@@ -18,11 +18,11 @@
 
 namespace jasperengine{
 
-    class Object;
+    class GameObject;
 
-    class JASPERENGINE_API Body3D: public EntityHandle{
+    class JASPERENGINE_API Rigidbody: public EntityHandle{
     protected:
-        void checkBody(const Body3DComponent& body) const;
+        void checkBody(const RigidbodyComponent& body) const;
 
         void applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs);
 
@@ -31,57 +31,57 @@ namespace jasperengine{
 
     public:
 
-        // component checkbox (Unity Behaviour.enabled): a disabled Body3D is skipped by its system
+        // component checkbox (Unity Behaviour.enabled): a disabled Rigidbody is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
-        Body3D(Scene* scene, Entity entity);
-        virtual ~Body3D();
+        Rigidbody(Scene* scene, Entity entity);
+        virtual ~Rigidbody();
 
-        Body3D(const Body3D& rhs);
-        Body3D& operator=(const Body3D& rhs);
+        Rigidbody(const Rigidbody& rhs);
+        Rigidbody& operator=(const Rigidbody& rhs);
 
         const JPH::Body& getJoltBody() const;
         JPH::Body& getJoltBodyWrite() const;
         JPH::Body* getJoltBodyNoLock() const;
 
-        Object getAttachedObject();
+        GameObject getAttachedObject();
 
         void load();
 
-        int createBoxShape(float width, float height, float depth);
-        int createBoxShape(Vector3 position, Quaternion rotation, float width, float height, float depth);
-        int createSphereShape(float radius);
-        int createSphereShape(Vector3 position, Quaternion rotation, float radius);
-        int createCapsuleShape(float halfHeight, float radius);
-        int createCapsuleShape(Vector3 position, Quaternion rotation, float halfHeight, float radius);
-        int createTaperedCapsuleShape(float halfHeight, float topRadius, float bottomRadius);
-        int createTaperedCapsuleShape(Vector3 position, Quaternion rotation, float halfHeight, float topRadius, float bottomRadius);
-        int createCylinderShape(float halfHeight, float radius);
-        int createCylinderShape(Vector3 position, Quaternion rotation, float halfHeight, float radius);
-        int createConvexHullShape();
-        int createConvexHullShape(std::vector<Vector3> vertices);
-        int createConvexHullShape(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices);
-        int createMeshShape();
-        int createMeshShape(std::vector<Vector3> vertices, std::vector<uint16_t> indices);
-        int createMeshShape(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices);
-        int createHeightFieldShape();
-        int createHeightFieldShape(unsigned int samplesSize);
+        int createBoxCollider(float width, float height, float depth);
+        int createBoxCollider(Vector3 position, Quaternion rotation, float width, float height, float depth);
+        int createSphereCollider(float radius);
+        int createSphereCollider(Vector3 position, Quaternion rotation, float radius);
+        int createCapsuleCollider(float halfHeight, float radius);
+        int createCapsuleCollider(Vector3 position, Quaternion rotation, float halfHeight, float radius);
+        int createTaperedCapsuleCollider(float halfHeight, float topRadius, float bottomRadius);
+        int createTaperedCapsuleCollider(Vector3 position, Quaternion rotation, float halfHeight, float topRadius, float bottomRadius);
+        int createCylinderCollider(float halfHeight, float radius);
+        int createCylinderCollider(Vector3 position, Quaternion rotation, float halfHeight, float radius);
+        int createConvexHullCollider();
+        int createConvexHullCollider(std::vector<Vector3> vertices);
+        int createConvexHullCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices);
+        int createMeshCollider();
+        int createMeshCollider(std::vector<Vector3> vertices, std::vector<uint16_t> indices);
+        int createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices);
+        int createHeightFieldCollider();
+        int createHeightFieldCollider(unsigned int samplesSize);
         //TODO:
         // MutableCompoundShape
 
-        size_t getNumShapes() const;
-        Shape3DType getShapeType(size_t index) const;
+        size_t getNumColliders() const;
+        Collider3DType getColliderType(size_t index) const;
 
-        void setShapeDensity(float density);
-        void setShapeDensity(size_t index, float density);
-        float getShapeDensity() const;
-        float getShapeDensity(size_t index) const;
+        void setColliderDensity(float density);
+        void setColliderDensity(size_t index, float density);
+        float getColliderDensity() const;
+        float getColliderDensity(size_t index) const;
 
         void setType(BodyType type);
         BodyType getType() const;
 
-        void setMotionQuality(Body3DMotionQuality motionQuality);
-        Body3DMotionQuality getMotionQuality() const;
+        void setMotionQuality(RigidbodyMotionQuality motionQuality);
+        RigidbodyMotionQuality getMotionQuality() const;
 
         bool canBeKinematicOrDynamic() const;
 
@@ -99,7 +99,7 @@ namespace jasperengine{
         void setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ);
 
         float getMass() const;
-        // Live body only, lost on reload; persist mass via Shape3D::density.
+        // Live body only, lost on reload; persist mass via Collider3D::density.
         void setMass(float mass);
 
         void setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity);
@@ -128,7 +128,7 @@ namespace jasperengine{
         void setRestitution(float restitution);
 
         // Body pose in world space. The transform only reaches the body between fixed
-        // steps, so place a body from onFixedUpdate with these instead of Object.
+        // steps, so place a body from onFixedUpdate with these instead of GameObject.
         Vector3 getPosition() const;
         void setPosition(Vector3 position);
 
@@ -165,4 +165,4 @@ namespace jasperengine{
     };
 }
 
-#endif //BODY3D_H
+#endif //RIGIDBODY_H

@@ -1,30 +1,30 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef OBJECT_H
-#define OBJECT_H
+#ifndef GAMEOBJECT_H
+#define GAMEOBJECT_H
 
 #include "EntityHandle.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "Body2D.h"
+#include "Rigidbody2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "Body3D.h"
+#include "Rigidbody.h"
 #endif
 #include "math/Ray.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Object: public EntityHandle{
+    class JASPERENGINE_API GameObject: public EntityHandle{
     public:
-        Object(Scene* scene);
-        Object(Scene* scene, Entity entity);
-        virtual ~Object();
+        GameObject(Scene* scene);
+        GameObject(Scene* scene, Entity entity);
+        virtual ~GameObject();
 
-        void addChild(Object* child);
+        void addChild(GameObject* child);
         void addChild(Entity child);
 
-        void removeChild(Object* child);
+        void removeChild(GameObject* child);
         void removeChild(Entity child);
 
         void removeParent();
@@ -78,12 +78,12 @@ namespace jasperengine{
         void updateTransform();
 
 #ifdef JASPERENGINE_PHYSICS_2D
-        Body2D getBody2D();
-        void removeBody2D();
+        Rigidbody2D getRigidbody2D();
+        void removeRigidbody2D();
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-        Body3D getBody3D();
-        void removeBody3D();
+        Rigidbody getRigidbody();
+        void removeRigidbody();
 #endif
 
         Ray getRay(Vector3 direction);
@@ -91,4 +91,4 @@ namespace jasperengine{
 
 }
 
-#endif //OBJECT_H
+#endif //GAMEOBJECT_H

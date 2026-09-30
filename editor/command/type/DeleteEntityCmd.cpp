@@ -130,14 +130,14 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
             Entity entity = coverage.allEntities[i];
             Entity root = coverage.entityToRoot.at(entity);
 
-            // Bundle roots are opaque hierarchy nodes, and nested roots may themselves be
-            // members of an already covered bundle instance.
-            if (const BundleComponent* component = scene->findComponent<BundleComponent>(entity);
+            // Prefab roots are opaque hierarchy nodes, and nested roots may themselves be
+            // members of an already covered prefab instance.
+            if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
                 component && !component->path.empty()) {
-                const EntityBundle* bundle = project->getEntityBundle(component->path);
-                const EntityBundle::Instance* instance = bundle ? bundle->getInstance(sceneId, entity) : nullptr;
+                const Prefab* prefab = project->getPrefab(component->path);
+                const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, entity) : nullptr;
                 if (instance && instance->rootEntity == entity) {
-                    for (const EntityBundle::EntityMember& member : instance->members) {
+                    for (const Prefab::EntityMember& member : instance->members) {
                         addEntity(member.localEntity, root);
                     }
                 }
@@ -245,7 +245,7 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
         }
     }
 
-    // Keep only roots not already contained by another root's hierarchy or bundle instance.
+    // Keep only roots not already contained by another root's hierarchy or prefab instance.
     std::unordered_set<Entity> coveredRoots;
     std::vector<Entity> roots = rootEntities();
     for (Entity root : roots) {
@@ -263,24 +263,24 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
     // owner root -> dependency roots that must be deleted first.
     DeleteCoverage coverage = collectCoverage(rootEntities());
 
-    bundleInstanceSnapshots.clear();
-    auto rememberBundleInstance = [&](const fs::path& path, Entity root) {
+    prefabInstanceSnapshots.clear();
+    auto rememberPrefabInstance = [&](const fs::path& path, Entity root) {
         if (path.empty() || root == NULL_ENTITY ||
-            std::find_if(bundleInstanceSnapshots.begin(), bundleInstanceSnapshots.end(), [&](const BundleInstanceSnapshot& saved) {
+            std::find_if(prefabInstanceSnapshots.begin(), prefabInstanceSnapshots.end(), [&](const PrefabInstanceSnapshot& saved) {
                 return saved.path == path && saved.rootEntity == root;
-            }) != bundleInstanceSnapshots.end()) {
+            }) != prefabInstanceSnapshots.end()) {
             return;
         }
-        const EntityBundle* bundle = project->getEntityBundle(path);
-        const EntityBundle::Instance* instance = bundle ? bundle->getInstance(sceneId, root) : nullptr;
+        const Prefab* prefab = project->getPrefab(path);
+        const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, root) : nullptr;
         if (instance && instance->rootEntity == root) {
-            bundleInstanceSnapshots.push_back({path, root, instance->members});
+            prefabInstanceSnapshots.push_back({path, root, instance->members});
         }
     };
 
     for (Entity entity : coverage.allEntities) {
-        if (const BundleComponent* component = scene->findComponent<BundleComponent>(entity)) {
-            rememberBundleInstance(component->path, entity);
+        if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity)) {
+            rememberPrefabInstance(component->path, entity);
         }
     }
 
@@ -342,20 +342,20 @@ void editor::DeleteEntityCmd::snapshotEntities(){
     SceneProject* sceneProject = project->getScene(sceneId);
     for (DeleteEntityData& entityData : entities) {
         entityData.data = YAML::Node();
-        entityData.recoveryBundleData.clear();
-        entityData.isBundleRoot = false;
-        entityData.bundlePath.clear();
+        entityData.recoveryPrefabData.clear();
+        entityData.isPrefabRoot = false;
+        entityData.prefabPath.clear();
 
         if (!sceneProject->scene->isEntityCreated(entityData.entity)) {
             continue;
         }
 
-        entityData.bundlePath = project->findEntityBundlePathFor(sceneId, entityData.entity);
-        EntityBundle* bundle = project->getEntityBundle(entityData.bundlePath);
+        entityData.prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
+        Prefab* prefab = project->getPrefab(entityData.prefabPath);
 
-        if (bundle) {
-            entityData.isBundleRoot = entityData.entity == bundle->getRootEntity(sceneId, entityData.entity);
-            if (entityData.isBundleRoot) {
+        if (prefab) {
+            entityData.isPrefabRoot = entityData.entity == prefab->getRootEntity(sceneId, entityData.entity);
+            if (entityData.isPrefabRoot) {
                 entityData.data = Stream::encodeEntity(entityData.entity, sceneProject->scene, project, sceneProject);
             }
         } else {
@@ -426,54 +426,54 @@ bool editor::DeleteEntityCmd::execute(){
 
     for (size_t index : deleteOrder){
         DeleteEntityData& entityData = entities[index];
-        // A previously processed structural root (notably a complete bundle instance) may
+        // A previously processed structural root (notably a complete prefab instance) may
         // already have removed this member; that root's snapshot is sufficient for undo.
         if (!sceneProject->scene->isEntityCreated(entityData.entity)) {
             continue;
         }
 
-        EntityBundle* bundle = project->getEntityBundle(entityData.bundlePath);
+        Prefab* prefab = project->getPrefab(entityData.prefabPath);
 
-        if (bundle) {
-            if (entityData.isBundleRoot) {
-                const auto* inst = bundle->getInstance(sceneId, entityData.entity);
+        if (prefab) {
+            if (entityData.isPrefabRoot) {
+                const auto* inst = prefab->getInstance(sceneId, entityData.entity);
                 std::vector<Entity> memberEntities;
                 if (inst) {
                     for (const auto& member : inst->members) {
                         memberEntities.push_back(member.localEntity);
                     }
                 }
-                project->unimportEntityBundle(sceneId, entityData.bundlePath, entityData.entity, memberEntities);
+                project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities);
             } else {
                 if (!entityData.hasTransform) {
-                    entityData.parent = bundle->getRootEntity(sceneId, entityData.entity);
+                    entityData.parent = prefab->getRootEntity(sceneId, entityData.entity);
                 }
-                entityData.recoveryBundleData = project->removeEntityFromBundle(sceneId, entityData.entity, true);
+                entityData.recoveryPrefabData = project->removeEntityFromPrefab(sceneId, entityData.entity, true);
             }
         } else {
             std::vector<Entity> allEntities;
             ProjectUtils::collectEntities(entityData.data, allEntities);
 
-            // A bundle nested below a normal hierarchy root must go through the bundle
+            // A prefab nested below a normal hierarchy root must go through the prefab
             // bookkeeping path before its encoded root is destroyed with the hierarchy.
             for (auto it = allEntities.rbegin(); it != allEntities.rend(); ++it) {
                 Entity nestedRoot = *it;
-                const BundleComponent* component = sceneProject->scene->findComponent<BundleComponent>(nestedRoot);
+                const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(nestedRoot);
                 if (!component || component->path.empty()) {
                     continue;
                 }
                 fs::path nestedPath = component->path;
-                EntityBundle* nestedBundle = project->getEntityBundle(nestedPath);
-                const EntityBundle::Instance* instance = nestedBundle ? nestedBundle->getInstance(sceneId, nestedRoot) : nullptr;
+                Prefab* nestedPrefab = project->getPrefab(nestedPath);
+                const Prefab::Instance* instance = nestedPrefab ? nestedPrefab->getInstance(sceneId, nestedRoot) : nullptr;
                 if (!instance || instance->rootEntity != nestedRoot) {
                     continue;
                 }
                 std::vector<Entity> members;
                 members.reserve(instance->members.size());
-                for (const EntityBundle::EntityMember& member : instance->members) {
+                for (const Prefab::EntityMember& member : instance->members) {
                     members.push_back(member.localEntity);
                 }
-                project->unimportEntityBundle(sceneId, nestedPath, nestedRoot, members);
+                project->unimportPrefab(sceneId, nestedPath, nestedRoot, members);
             }
 
             destroyEntities(sceneProject->scene, allEntities, sceneProject->entities, project, sceneId);
@@ -500,7 +500,7 @@ void editor::DeleteEntityCmd::undo(){
             restoredParent = parentRemap->second;
         }
 
-        if (entityData.recoveryBundleData.size() == 0){
+        if (entityData.recoveryPrefabData.size() == 0){
             if (!entityData.data.IsMap() || !entityData.data["type"]) {
                 continue;
             }
@@ -518,9 +518,9 @@ void editor::DeleteEntityCmd::undo(){
 
         }else{
 
-            if (!project->addEntityToBundle(sceneId, entityData.recoveryBundleData, restoredParent,
+            if (!project->addEntityToPrefab(sceneId, entityData.recoveryPrefabData, restoredParent,
                 true, &entityRemap, &restoredEntities)) {
-                Out::error("Could not restore deleted bundle entity %u in scene %u; undo stopped before remapping",
+                Out::error("Could not restore deleted prefab entity %u in scene %u; undo stopped before remapping",
                     entityData.entity, sceneId);
                 CameraTextureLink::resolve(sceneProject->scene);
                 return;
@@ -528,24 +528,24 @@ void editor::DeleteEntityCmd::undo(){
         }
     }
 
-    // Bundle imports allocate scene-local member IDs outside Stream's YAML decoder. Snapshots
+    // Prefab imports allocate scene-local member IDs outside Stream's YAML decoder. Snapshots
     // are stored outer-first, so each nested root is mapped before its own instance is visited.
-    for (const BundleInstanceSnapshot& saved : bundleInstanceSnapshots) {
+    for (const PrefabInstanceSnapshot& saved : prefabInstanceSnapshots) {
         Entity root = saved.rootEntity;
         auto rootRemap = entityRemap.find(root);
         if (rootRemap != entityRemap.end()) {
             root = rootRemap->second;
         }
 
-        const EntityBundle* bundle = project->getEntityBundle(saved.path);
-        const EntityBundle::Instance* instance = bundle ? bundle->getInstance(sceneId, root) : nullptr;
+        const Prefab* prefab = project->getPrefab(saved.path);
+        const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, root) : nullptr;
         if (!instance || instance->rootEntity != root) {
             continue;
         }
 
-        for (const EntityBundle::EntityMember& oldMember : saved.members) {
+        for (const Prefab::EntityMember& oldMember : saved.members) {
             auto newMember = std::find_if(instance->members.begin(), instance->members.end(),
-                [&](const EntityBundle::EntityMember& member) {
+                [&](const Prefab::EntityMember& member) {
                     return member.registryEntity == oldMember.registryEntity;
                 });
             if (newMember != instance->members.end() && newMember->localEntity != oldMember.localEntity) {
@@ -581,7 +581,7 @@ void editor::DeleteEntityCmd::undo(){
         };
         for (DeleteEntityData& entityData : entities) {
             remapEntity(entityData.parent);
-            if (!entityData.recoveryBundleData.empty()) {
+            if (!entityData.recoveryPrefabData.empty()) {
                 remapEntity(entityData.entity);
             }
         }
@@ -620,11 +620,11 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
                     requestedEntities.push_back(entity);
                 }
             }
-            for (const BundleInstanceSnapshot& instance : otherCmd->bundleInstanceSnapshots) {
-                if (std::find_if(bundleInstanceSnapshots.begin(), bundleInstanceSnapshots.end(), [&](const BundleInstanceSnapshot& saved) {
+            for (const PrefabInstanceSnapshot& instance : otherCmd->prefabInstanceSnapshots) {
+                if (std::find_if(prefabInstanceSnapshots.begin(), prefabInstanceSnapshots.end(), [&](const PrefabInstanceSnapshot& saved) {
                         return saved.path == instance.path && saved.rootEntity == instance.rootEntity;
-                    }) == bundleInstanceSnapshots.end()) {
-                    bundleInstanceSnapshots.push_back(instance);
+                    }) == prefabInstanceSnapshots.end()) {
+                    prefabInstanceSnapshots.push_back(instance);
                 }
             }
 

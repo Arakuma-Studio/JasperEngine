@@ -11,23 +11,23 @@
 #include "EntityHandle.h"
 #include "Fog.h"
 #include "ReflectionProbe.h"
-#include "SkyBox.h"
-#include "Object.h"
+#include "Skybox.h"
+#include "GameObject.h"
 #include "Camera.h"
 #include "Polygon.h"
 #include "Terrain.h"
 #include "Light.h"
 #include "Light2D.h"
-#include "Occluder2D.h"
+#include "ShadowCaster2D.h"
 #include "Mesh.h"
-#include "Shape.h"
+#include "Primitive.h"
 #include "Mirror.h"
 #include "Tilemap.h"
 #include "Bone.h"
 #include "Model.h"
 #include "MeshPolygon.h"
 #include "Points.h"
-#include "Lines.h"
+#include "LineRenderer.h"
 #include "Sprite.h"
 #include "Text.h"
 #include "Image.h"
@@ -35,17 +35,17 @@
 #include "Panel.h"
 #include "Scrollbar.h"
 #include "Progressbar.h"
-#include "TextEdit.h"
-#include "Container.h"
-#include "Sound.h"
+#include "InputField.h"
+#include "LayoutGroup.h"
+#include "AudioSource.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "Body2D.h"
+#include "Rigidbody2D.h"
 #include "Joint2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "Body3D.h"
+#include "Rigidbody.h"
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
@@ -54,7 +54,7 @@
 using namespace jasperengine;
 
 
-void LuaBinding::registerObjectClasses(lua_State *L){
+void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
     luabridge::getGlobalNamespace(L)
@@ -83,26 +83,26 @@ void LuaBinding::registerObjectClasses(lua_State *L){
 
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Shape2DType")
-        .addVariable("POLYGON", Shape2DType::POLYGON)
-        .addVariable("CIRCLE", Shape2DType::CIRCLE)
-        .addVariable("CAPSULE", Shape2DType::CAPSULE)
-        .addVariable("SEGMENT", Shape2DType::SEGMENT)
-        .addVariable("CHAIN", Shape2DType::CHAIN)
+        .beginNamespace("Collider2DType")
+        .addVariable("POLYGON", Collider2DType::POLYGON)
+        .addVariable("CIRCLE", Collider2DType::CIRCLE)
+        .addVariable("CAPSULE", Collider2DType::CAPSULE)
+        .addVariable("SEGMENT", Collider2DType::SEGMENT)
+        .addVariable("CHAIN", Collider2DType::CHAIN)
         .endNamespace();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Shape3DType")
-        .addVariable("SPHERE", Shape3DType::SPHERE)
-        .addVariable("BOX", Shape3DType::BOX)
-        .addVariable("CAPSULE", Shape3DType::CAPSULE)
-        .addVariable("TAPERED_CAPSULE", Shape3DType::TAPERED_CAPSULE)
-        .addVariable("CYLINDER", Shape3DType::CYLINDER)
-        .addVariable("CONVEX_HULL", Shape3DType::CONVEX_HULL)
-        .addVariable("MESH", Shape3DType::MESH)
-        .addVariable("HEIGHTFIELD", Shape3DType::HEIGHTFIELD)
+        .beginNamespace("Collider3DType")
+        .addVariable("SPHERE", Collider3DType::SPHERE)
+        .addVariable("BOX", Collider3DType::BOX)
+        .addVariable("CAPSULE", Collider3DType::CAPSULE)
+        .addVariable("TAPERED_CAPSULE", Collider3DType::TAPERED_CAPSULE)
+        .addVariable("CYLINDER", Collider3DType::CYLINDER)
+        .addVariable("CONVEX_HULL", Collider3DType::CONVEX_HULL)
+        .addVariable("MESH", Collider3DType::MESH)
+        .addVariable("HEIGHTFIELD", Collider3DType::HEIGHTFIELD)
         .endNamespace();
 #endif
 
@@ -115,9 +115,9 @@ void LuaBinding::registerObjectClasses(lua_State *L){
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Body3DMotionQuality")
-        .addVariable("DISCRETE", Body3DMotionQuality::DISCRETE)
-        .addVariable("LINEAR_CAST", Body3DMotionQuality::LINEAR_CAST)
+        .beginNamespace("RigidbodyMotionQuality")
+        .addVariable("DISCRETE", RigidbodyMotionQuality::DISCRETE)
+        .addVariable("LINEAR_CAST", RigidbodyMotionQuality::LINEAR_CAST)
         .endNamespace();
 #endif
 
@@ -184,84 +184,84 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<SkyBox, EntityHandle>("SkyBox")
+        .deriveClass<Skybox, EntityHandle>("Skybox")
         .addConstructor <void (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("setTextures", 
-            luabridge::overload<const std::string&,const std::string&,const std::string&,const std::string&,const std::string&,const std::string&>(&SkyBox::setTextures),
-            luabridge::overload<const std::string&,TextureData,TextureData,TextureData,TextureData,TextureData,TextureData>(&SkyBox::setTextures))
-        .addFunction("setTexture", &SkyBox::setTexture)
-        .addFunction("setTexturePositiveX", &SkyBox::setTexturePositiveX)
-        .addFunction("setTextureNegativeX", &SkyBox::setTextureNegativeX)
-        .addFunction("setTexturePositiveY", &SkyBox::setTexturePositiveY)
-        .addFunction("setTextureNegativeY", &SkyBox::setTextureNegativeY)
-        .addFunction("setTexturePositiveZ", &SkyBox::setTexturePositiveZ)
-        .addFunction("setTextureNegativeZ", &SkyBox::setTextureNegativeZ)
-        .addProperty("color", &SkyBox::getColor, (void(SkyBox::*)(Vector4))&SkyBox::setColor)
+            luabridge::overload<const std::string&,const std::string&,const std::string&,const std::string&,const std::string&,const std::string&>(&Skybox::setTextures),
+            luabridge::overload<const std::string&,TextureData,TextureData,TextureData,TextureData,TextureData,TextureData>(&Skybox::setTextures))
+        .addFunction("setTexture", &Skybox::setTexture)
+        .addFunction("setTexturePositiveX", &Skybox::setTexturePositiveX)
+        .addFunction("setTextureNegativeX", &Skybox::setTextureNegativeX)
+        .addFunction("setTexturePositiveY", &Skybox::setTexturePositiveY)
+        .addFunction("setTextureNegativeY", &Skybox::setTextureNegativeY)
+        .addFunction("setTexturePositiveZ", &Skybox::setTexturePositiveZ)
+        .addFunction("setTextureNegativeZ", &Skybox::setTextureNegativeZ)
+        .addProperty("color", &Skybox::getColor, (void(Skybox::*)(Vector4))&Skybox::setColor)
         .addFunction("setColor", 
-            luabridge::overload<const float, const float, const float>(&SkyBox::setColor),
-            luabridge::overload<const float, const float, const float, const float>(&SkyBox::setColor))
-        .addProperty("alpha", &SkyBox::getAlpha, &SkyBox::setAlpha)
-        .addProperty("rotation", &SkyBox::getRotation, &SkyBox::setRotation)
-        .addProperty("customShader", &SkyBox::getCustomShader, &SkyBox::setCustomShader)
+            luabridge::overload<const float, const float, const float>(&Skybox::setColor),
+            luabridge::overload<const float, const float, const float, const float>(&Skybox::setColor))
+        .addProperty("alpha", &Skybox::getAlpha, &Skybox::setAlpha)
+        .addProperty("rotation", &Skybox::getRotation, &Skybox::setRotation)
+        .addProperty("customShader", &Skybox::getCustomShader, &Skybox::setCustomShader)
         .addFunction("setShaderUniform",
-            luabridge::overload<const std::string&, const Vector4&>(&SkyBox::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&SkyBox::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector2&>(&SkyBox::setShaderUniform),
-            luabridge::overload<const std::string&, float>(&SkyBox::setShaderUniform))
-        .addFunction("getShaderUniform", &SkyBox::getShaderUniform)
-        .addFunction("removeShaderUniform", &SkyBox::removeShaderUniform)
+            luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
+        .addFunction("getShaderUniform", &Skybox::getShaderUniform)
+        .addFunction("removeShaderUniform", &Skybox::removeShaderUniform)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Object, EntityHandle>("Object")
+        .deriveClass<GameObject, EntityHandle>("GameObject")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("addChild", 
-            luabridge::overload<Object*>(&Object::addChild),
-            luabridge::overload<Entity>(&Object::addChild))
+            luabridge::overload<GameObject*>(&GameObject::addChild),
+            luabridge::overload<Entity>(&GameObject::addChild))
         .addFunction("removeChild", 
-            luabridge::overload<Object*>(&Object::removeChild),
-            luabridge::overload<Entity>(&Object::removeChild))
-        .addFunction("removeParent", &Object::removeParent)
-        .addFunction("moveToTop", &Object::moveToTop)
-        .addFunction("moveUp", &Object::moveUp)
-        .addFunction("moveDown", &Object::moveDown)
-        .addFunction("moveToBottom", &Object::moveToBottom)
-        .addProperty("position", &Object::getPosition, (void(Object::*)(Vector3))&Object::setPosition)
+            luabridge::overload<GameObject*>(&GameObject::removeChild),
+            luabridge::overload<Entity>(&GameObject::removeChild))
+        .addFunction("removeParent", &GameObject::removeParent)
+        .addFunction("moveToTop", &GameObject::moveToTop)
+        .addFunction("moveUp", &GameObject::moveUp)
+        .addFunction("moveDown", &GameObject::moveDown)
+        .addFunction("moveToBottom", &GameObject::moveToBottom)
+        .addProperty("position", &GameObject::getPosition, (void(GameObject::*)(Vector3))&GameObject::setPosition)
         .addFunction("setPosition", 
-            luabridge::overload<const float, const float, const float>(&Object::setPosition),
-            luabridge::overload<const float, const float>(&Object::setPosition))
-        .addFunction("getWorldPosition", &Object::getWorldPosition)
-        .addProperty("rotation", &Object::getRotation, (void(Object::*)(Quaternion))&Object::setRotation)
-        .addFunction("setRotation", (void(Object::*)(const float, const float, const float))&Object::setRotation)
-        .addFunction("getWorldRotation", &Object::getWorldRotation)
-        .addProperty("scale", &Object::getScale, (void(Object::*)(Vector3))&Object::setScale)
-        .addFunction("setScale", (void(Object::*)(const float))&Object::setScale)
-        .addFunction("getWorldScale", &Object::getWorldScale)
-        .addProperty("visible", &Object::isVisible, &Object::setVisible)
-        .addFunction("setVisibleOnly", &Object::setVisibleOnly)
-        .addFunction("setBillboard", (void(Object::*)(bool, bool, bool))&Object::setBillboard)
-        .addProperty("billboard", &Object::isBillboard, (void(Object::*)(bool))&Object::setBillboard)
-        .addProperty("billboardRotation", &Object::getBillboardRotation, (void(Object::*)(Quaternion))&Object::setBillboardRotation)
-        .addFunction("setBillboardRotation", (void(Object::*)(const float, const float, const float))&Object::setBillboardRotation)
-        .addProperty("fakeBillboard", &Object::isFakeBillboard, &Object::setFakeBillboard)
-        .addProperty("cylindricalBillboard", &Object::isCylindricalBillboard, &Object::setCylindricalBillboard)
-        .addProperty("localMatrix", &Object::getLocalMatrix, &Object::setLocalMatrix)
-        .addProperty("modelMatrix", &Object::getModelMatrix)
-        .addProperty("normalMatrix", &Object::getNormalMatrix)
-        .addFunction("updateTransform", &Object::updateTransform)
+            luabridge::overload<const float, const float, const float>(&GameObject::setPosition),
+            luabridge::overload<const float, const float>(&GameObject::setPosition))
+        .addFunction("getWorldPosition", &GameObject::getWorldPosition)
+        .addProperty("rotation", &GameObject::getRotation, (void(GameObject::*)(Quaternion))&GameObject::setRotation)
+        .addFunction("setRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setRotation)
+        .addFunction("getWorldRotation", &GameObject::getWorldRotation)
+        .addProperty("scale", &GameObject::getScale, (void(GameObject::*)(Vector3))&GameObject::setScale)
+        .addFunction("setScale", (void(GameObject::*)(const float))&GameObject::setScale)
+        .addFunction("getWorldScale", &GameObject::getWorldScale)
+        .addProperty("visible", &GameObject::isVisible, &GameObject::setVisible)
+        .addFunction("setVisibleOnly", &GameObject::setVisibleOnly)
+        .addFunction("setBillboard", (void(GameObject::*)(bool, bool, bool))&GameObject::setBillboard)
+        .addProperty("billboard", &GameObject::isBillboard, (void(GameObject::*)(bool))&GameObject::setBillboard)
+        .addProperty("billboardRotation", &GameObject::getBillboardRotation, (void(GameObject::*)(Quaternion))&GameObject::setBillboardRotation)
+        .addFunction("setBillboardRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setBillboardRotation)
+        .addProperty("fakeBillboard", &GameObject::isFakeBillboard, &GameObject::setFakeBillboard)
+        .addProperty("cylindricalBillboard", &GameObject::isCylindricalBillboard, &GameObject::setCylindricalBillboard)
+        .addProperty("localMatrix", &GameObject::getLocalMatrix, &GameObject::setLocalMatrix)
+        .addProperty("modelMatrix", &GameObject::getModelMatrix)
+        .addProperty("normalMatrix", &GameObject::getNormalMatrix)
+        .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
-        .addFunction("getBody2D", &Object::getBody2D)
-        .addFunction("removeBody2D", &Object::removeBody2D)
+        .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
+        .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-        .addFunction("getBody3D", &Object::getBody3D)
-        .addFunction("removeBody3D", &Object::removeBody3D)
+        .addFunction("getRigidbody", &GameObject::getRigidbody)
+        .addFunction("removeRigidbody", &GameObject::removeRigidbody)
 #endif
-        .addFunction("getRay", &Object::getRay)
+        .addFunction("getRay", &GameObject::getRay)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Camera, Object>("Camera")
+        .deriveClass<Camera, GameObject>("Camera")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Camera::isEnabled, &Camera::setEnabled)
         .addFunction("activate", &Camera::activate)
@@ -316,7 +316,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
 
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Light, Object>("Light")
+        .deriveClass<Light, GameObject>("Light")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
         .addProperty("type", &Light::getType, &Light::setType)
@@ -352,7 +352,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Light2D, Object>("Light2D")
+        .deriveClass<Light2D, GameObject>("Light2D")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Light2D::isEnabled, &Light2D::setEnabled)
         .addProperty("color", &Light2D::getColor, (void(Light2D::*)(Vector3))&Light2D::setColor)
@@ -373,20 +373,20 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Occluder2DShape")
-        .addVariable("AUTO_QUAD", Occluder2DShape::AUTO_QUAD)
-        .addVariable("POLYGON", Occluder2DShape::POLYGON)
+        .beginNamespace("ShadowCaster2DShape")
+        .addVariable("AUTO_QUAD", ShadowCaster2DShape::AUTO_QUAD)
+        .addVariable("POLYGON", ShadowCaster2DShape::POLYGON)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Occluder2D, Object>("Occluder2D")
+        .deriveClass<ShadowCaster2D, GameObject>("ShadowCaster2D")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addProperty("shape", &Occluder2D::getShape, &Occluder2D::setShape)
-        .addFunction("addVertex", (void(Occluder2D::*)(float, float))&Occluder2D::addVertex)
-        .addFunction("clearVertices", &Occluder2D::clearVertices)
-        .addFunction("getVertexCount", &Occluder2D::getVertexCount)
-        .addProperty("closed", &Occluder2D::isClosed, &Occluder2D::setClosed)
-        .addProperty("enabled", &Occluder2D::isEnabled, &Occluder2D::setEnabled)
+        .addProperty("shape", &ShadowCaster2D::getShape, &ShadowCaster2D::setShape)
+        .addFunction("addVertex", (void(ShadowCaster2D::*)(float, float))&ShadowCaster2D::addVertex)
+        .addFunction("clearVertices", &ShadowCaster2D::clearVertices)
+        .addFunction("getVertexCount", &ShadowCaster2D::getVertexCount)
+        .addProperty("closed", &ShadowCaster2D::isClosed, &ShadowCaster2D::setClosed)
+        .addProperty("enabled", &ShadowCaster2D::isEnabled, &ShadowCaster2D::setEnabled)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -404,7 +404,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<ReflectionProbe, Object>("ReflectionProbe")
+        .deriveClass<ReflectionProbe, GameObject>("ReflectionProbe")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("mode", &ReflectionProbe::getMode, &ReflectionProbe::setMode)
         .addProperty("updateMode", &ReflectionProbe::getUpdateMode, &ReflectionProbe::setUpdateMode)
@@ -427,7 +427,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Mesh, Object>("Mesh")
+        .deriveClass<Mesh, GameObject>("Mesh")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Mesh::isEnabled, &Mesh::setEnabled)
         .addFunction("setTexture", 
@@ -535,37 +535,37 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Shape, Mesh>("Shape")
+        .deriveClass<Primitive, Mesh>("Primitive")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("createPlane", 
-            luabridge::overload<float, float>(&Shape::createPlane),
-            luabridge::overload<float, float, unsigned int>(&Shape::createPlane))
+            luabridge::overload<float, float>(&Primitive::createPlane),
+            luabridge::overload<float, float, unsigned int>(&Primitive::createPlane))
         .addFunction("createWall", 
-            luabridge::overload<float, float>(&Shape::createWall),
-            luabridge::overload<float, float, unsigned int>(&Shape::createWall))
+            luabridge::overload<float, float>(&Primitive::createWall),
+            luabridge::overload<float, float, unsigned int>(&Primitive::createWall))
         .addFunction("createBox", 
-            luabridge::overload<float, float, float>(&Shape::createBox),
-            luabridge::overload<float, float, float, unsigned int>(&Shape::createBox))
+            luabridge::overload<float, float, float>(&Primitive::createBox),
+            luabridge::overload<float, float, float, unsigned int>(&Primitive::createBox))
         .addFunction("createSphere", 
-            luabridge::overload<float>(&Shape::createSphere),
-            luabridge::overload<float, unsigned int, unsigned int>(&Shape::createSphere))
+            luabridge::overload<float>(&Primitive::createSphere),
+            luabridge::overload<float, unsigned int, unsigned int>(&Primitive::createSphere))
         .addFunction("createCylinder", 
-            luabridge::overload<float, float>(&Shape::createCylinder),
-            luabridge::overload<float, float, float>(&Shape::createCylinder),
-            luabridge::overload<float, float, unsigned int, unsigned int>(&Shape::createCylinder),
-            luabridge::overload<float, float, float, unsigned int, unsigned int>(&Shape::createCylinder))
+            luabridge::overload<float, float>(&Primitive::createCylinder),
+            luabridge::overload<float, float, float>(&Primitive::createCylinder),
+            luabridge::overload<float, float, unsigned int, unsigned int>(&Primitive::createCylinder),
+            luabridge::overload<float, float, float, unsigned int, unsigned int>(&Primitive::createCylinder))
         .addFunction("createCapsule", 
-            luabridge::overload<float, float>(&Shape::createCapsule),
-            luabridge::overload<float, float, float>(&Shape::createCapsule),
-            luabridge::overload<float, float, unsigned int, unsigned int>(&Shape::createCapsule),
-            luabridge::overload<float, float, float, unsigned int, unsigned int>(&Shape::createCapsule))
+            luabridge::overload<float, float>(&Primitive::createCapsule),
+            luabridge::overload<float, float, float>(&Primitive::createCapsule),
+            luabridge::overload<float, float, unsigned int, unsigned int>(&Primitive::createCapsule),
+            luabridge::overload<float, float, float, unsigned int, unsigned int>(&Primitive::createCapsule))
         .addFunction("createTorus", 
-            luabridge::overload<float, float>(&Shape::createTorus),
-            luabridge::overload<float, float, unsigned int, unsigned int>(&Shape::createTorus))
+            luabridge::overload<float, float>(&Primitive::createTorus),
+            luabridge::overload<float, float, unsigned int, unsigned int>(&Primitive::createTorus))
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Mirror, Shape>("Mirror")
+        .deriveClass<Mirror, Primitive>("Mirror")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("normal", &Mirror::getNormal, (void(Mirror::*)(Vector3))&Mirror::setNormal)
         .addFunction("setNormal", (void(Mirror::*)(const float, const float, const float))&Mirror::setNormal)
@@ -616,7 +616,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Bone, Object>("Bone")
+        .deriveClass<Bone, GameObject>("Bone")
         .addConstructor <void (*) (Scene*, Entity)> ()
         .endClass();
 
@@ -699,7 +699,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Points, Object>("Points")
+        .deriveClass<Points, GameObject>("Points")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Points::isEnabled, &Points::setEnabled)
         .addProperty("maxPoints", &Points::getMaxPoints, &Points::setMaxPoints)
@@ -751,44 +751,44 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Lines, Object>("Lines")
+        .deriveClass<LineRenderer, GameObject>("LineRenderer")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addProperty("enabled", &Lines::isEnabled, &Lines::setEnabled)
-        .addProperty("maxLines", &Lines::getMaxLines, &Lines::setMaxLines)
+        .addProperty("enabled", &LineRenderer::isEnabled, &LineRenderer::setEnabled)
+        .addProperty("maxLines", &LineRenderer::getMaxLines, &LineRenderer::setMaxLines)
         .addFunction("addLine", 
-            luabridge::overload<Vector3, Vector3>(&Lines::addLine),
-            luabridge::overload<Vector3, Vector3, Vector3>(&Lines::addLine),
-            luabridge::overload<Vector3, Vector3, Vector4>(&Lines::addLine),
-            luabridge::overload<Vector3, Vector3, Vector4, Vector4>(&Lines::addLine))
-        .addFunction("getLine", &Lines::getLine)
+            luabridge::overload<Vector3, Vector3>(&LineRenderer::addLine),
+            luabridge::overload<Vector3, Vector3, Vector3>(&LineRenderer::addLine),
+            luabridge::overload<Vector3, Vector3, Vector4>(&LineRenderer::addLine),
+            luabridge::overload<Vector3, Vector3, Vector4, Vector4>(&LineRenderer::addLine))
+        .addFunction("getLine", &LineRenderer::getLine)
         .addFunction("updateLine", 
-            luabridge::overload<size_t, Vector3, Vector3>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector3, Vector3, Vector3>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector3, Vector3, Vector4>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector3, Vector3, Vector4, Vector4>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector3>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector4>(&Lines::updateLine),
-            luabridge::overload<size_t, Vector4, Vector4>(&Lines::updateLine))
-        .addFunction("removeLine", &Lines::removeLine)
-        .addFunction("updateLines", &Lines::updateLines)
-        .addFunction("getNumLines", &Lines::getNumLines)
-        .addFunction("clearLines", &Lines::clearLines)
-        .addProperty("customShader", &Lines::getCustomShader, &Lines::setCustomShader)
+            luabridge::overload<size_t, Vector3, Vector3>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector3, Vector3, Vector3>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector3, Vector3, Vector4>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector3, Vector3, Vector4, Vector4>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector3>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector4>(&LineRenderer::updateLine),
+            luabridge::overload<size_t, Vector4, Vector4>(&LineRenderer::updateLine))
+        .addFunction("removeLine", &LineRenderer::removeLine)
+        .addFunction("updateLines", &LineRenderer::updateLines)
+        .addFunction("getNumLines", &LineRenderer::getNumLines)
+        .addFunction("clearLines", &LineRenderer::clearLines)
+        .addProperty("customShader", &LineRenderer::getCustomShader, &LineRenderer::setCustomShader)
         .addFunction("setShaderUniform",
-            luabridge::overload<const std::string&, const Vector4&>(&Lines::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Lines::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector2&>(&Lines::setShaderUniform),
-            luabridge::overload<const std::string&, float>(&Lines::setShaderUniform))
-        .addFunction("getShaderUniform", &Lines::getShaderUniform)
-        .addFunction("removeShaderUniform", &Lines::removeShaderUniform)
+            luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
+        .addFunction("getShaderUniform", &LineRenderer::getShaderUniform)
+        .addFunction("removeShaderUniform", &LineRenderer::removeShaderUniform)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Sprite, Mesh>("Sprite")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Sprite::isEnabled, &Sprite::setEnabled)
-        .addFunction("getOccluder2D", &Sprite::getOccluder2D)
-        .addFunction("removeOccluder2D", &Sprite::removeOccluder2D)
+        .addFunction("getShadowCaster2D", &Sprite::getShadowCaster2D)
+        .addFunction("removeShadowCaster2D", &Sprite::removeShadowCaster2D)
         .addFunction("setSize", &Sprite::setSize)
         .addProperty("width", &Sprite::getWidth, &Sprite::setWidth)
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
@@ -817,51 +817,51 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<UILayout, Object>("UILayout")
+        .deriveClass<RectTransform, GameObject>("RectTransform")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addProperty("enabled", &UILayout::isEnabled, &UILayout::setEnabled)
-        .addFunction("setSize", &UILayout::setSize)
-        .addProperty("width", &UILayout::getWidth, &UILayout::setWidth)
-        .addProperty("height", &UILayout::getHeight, &UILayout::setHeight)
-        .addFunction("setAnchorPoints", &UILayout::setAnchorPoints)
-        .addProperty("anchorPointLeft", &UILayout::getAnchorPointLeft, &UILayout::setAnchorPointLeft)
-        .addProperty("anchorPointTop", &UILayout::getAnchorPointTop, &UILayout::setAnchorPointTop)
-        .addProperty("anchorPointRight", &UILayout::getAnchorPointRight, &UILayout::setAnchorPointRight)
-        .addProperty("anchorPointBottom", &UILayout::getAnchorPointBottom, &UILayout::setAnchorPointBottom)
-        .addFunction("setAnchorOffsets", &UILayout::setAnchorOffsets)
-        .addProperty("anchorOffsetLeft", &UILayout::getAnchorOffsetLeft, &UILayout::setAnchorOffsetLeft)
-        .addProperty("anchorOffsetTop", &UILayout::getAnchorOffsetTop, &UILayout::setAnchorOffsetTop)
-        .addProperty("anchorOffsetRight", &UILayout::getAnchorOffsetRight, &UILayout::setAnchorOffsetRight)
-        .addProperty("anchorOffsetBottom", &UILayout::getAnchorOffsetBottom, &UILayout::setAnchorOffsetBottom)
-        .addProperty("positionXOffset", &UILayout::getPositionXOffset, &UILayout::setPositionXOffset)
-        .addProperty("positionYOffset", &UILayout::getPositionYOffset, &UILayout::setPositionYOffset)
-        .addProperty("positionOffset", &UILayout::getPositionOffset, &UILayout::setPositionOffset)
-        .addProperty("pivot", &UILayout::getPivot, (void(UILayout::*)(Vector2))&UILayout::setPivot)
-        .addFunction("setPivot", (void(UILayout::*)(float, float))&UILayout::setPivot)
-        .addProperty("anchorPreset", &UILayout::getAnchorPreset, &UILayout::setAnchorPreset)
-        .addProperty("usingAnchors", &UILayout::isUsingAnchors, &UILayout::setUsingAnchors)
-        .addProperty("ignoreScissor", &UILayout::isIgnoreScissor, &UILayout::setIgnoreScissor)
-        .addFunction("getUILayoutComponent", &UILayout::getComponent<UILayoutComponent>)
+        .addProperty("enabled", &RectTransform::isEnabled, &RectTransform::setEnabled)
+        .addFunction("setSize", &RectTransform::setSize)
+        .addProperty("width", &RectTransform::getWidth, &RectTransform::setWidth)
+        .addProperty("height", &RectTransform::getHeight, &RectTransform::setHeight)
+        .addFunction("setAnchorPoints", &RectTransform::setAnchorPoints)
+        .addProperty("anchorPointLeft", &RectTransform::getAnchorPointLeft, &RectTransform::setAnchorPointLeft)
+        .addProperty("anchorPointTop", &RectTransform::getAnchorPointTop, &RectTransform::setAnchorPointTop)
+        .addProperty("anchorPointRight", &RectTransform::getAnchorPointRight, &RectTransform::setAnchorPointRight)
+        .addProperty("anchorPointBottom", &RectTransform::getAnchorPointBottom, &RectTransform::setAnchorPointBottom)
+        .addFunction("setAnchorOffsets", &RectTransform::setAnchorOffsets)
+        .addProperty("anchorOffsetLeft", &RectTransform::getAnchorOffsetLeft, &RectTransform::setAnchorOffsetLeft)
+        .addProperty("anchorOffsetTop", &RectTransform::getAnchorOffsetTop, &RectTransform::setAnchorOffsetTop)
+        .addProperty("anchorOffsetRight", &RectTransform::getAnchorOffsetRight, &RectTransform::setAnchorOffsetRight)
+        .addProperty("anchorOffsetBottom", &RectTransform::getAnchorOffsetBottom, &RectTransform::setAnchorOffsetBottom)
+        .addProperty("positionXOffset", &RectTransform::getPositionXOffset, &RectTransform::setPositionXOffset)
+        .addProperty("positionYOffset", &RectTransform::getPositionYOffset, &RectTransform::setPositionYOffset)
+        .addProperty("positionOffset", &RectTransform::getPositionOffset, &RectTransform::setPositionOffset)
+        .addProperty("pivot", &RectTransform::getPivot, (void(RectTransform::*)(Vector2))&RectTransform::setPivot)
+        .addFunction("setPivot", (void(RectTransform::*)(float, float))&RectTransform::setPivot)
+        .addProperty("anchorPreset", &RectTransform::getAnchorPreset, &RectTransform::setAnchorPreset)
+        .addProperty("usingAnchors", &RectTransform::isUsingAnchors, &RectTransform::setUsingAnchors)
+        .addProperty("ignoreScissor", &RectTransform::isIgnoreScissor, &RectTransform::setIgnoreScissor)
+        .addFunction("getRectTransformComponent", &RectTransform::getComponent<RectTransformComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Container, UILayout>("Container")
+        .deriveClass<LayoutGroup, RectTransform>("LayoutGroup")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addProperty("type", &Container::getType, &Container::setType)
-        .addProperty("useAllWrapSpace", &Container::isUseAllWrapSpace, &Container::setUseAllWrapSpace)
-        .addProperty("wrapCellWidth", &Container::getWrapCellWidth, &Container::setWrapCellWidth)
-        .addProperty("wrapCellHeight", &Container::getWrapCellHeight, &Container::setWrapCellHeight)
-        .addProperty("contentWidth", &Container::getContentWidth)
-        .addProperty("contentHeight", &Container::getContentHeight)
-        .addFunction("resize", &Container::resize)
+        .addProperty("type", &LayoutGroup::getType, &LayoutGroup::setType)
+        .addProperty("useAllWrapSpace", &LayoutGroup::isUseAllWrapSpace, &LayoutGroup::setUseAllWrapSpace)
+        .addProperty("wrapCellWidth", &LayoutGroup::getWrapCellWidth, &LayoutGroup::setWrapCellWidth)
+        .addProperty("wrapCellHeight", &LayoutGroup::getWrapCellHeight, &LayoutGroup::setWrapCellHeight)
+        .addProperty("contentWidth", &LayoutGroup::getContentWidth)
+        .addProperty("contentHeight", &LayoutGroup::getContentHeight)
+        .addFunction("resize", &LayoutGroup::resize)
         .addFunction("setBoxExpand", 
-            luabridge::overload<size_t, bool>(&Container::setBoxExpand),
-            luabridge::overload<bool>(&Container::setBoxExpand))
-        .addFunction("isBoxExpand", &Container::isBoxExpand)
+            luabridge::overload<size_t, bool>(&LayoutGroup::setBoxExpand),
+            luabridge::overload<bool>(&LayoutGroup::setBoxExpand))
+        .addFunction("isBoxExpand", &LayoutGroup::isBoxExpand)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Polygon, UILayout>("Polygon")
+        .deriveClass<Polygon, RectTransform>("Polygon")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("addVertex", 
             luabridge::overload<Vector3>(&Polygon::addVertex),
@@ -889,7 +889,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Text, UILayout>("Text")
+        .deriveClass<Text, RectTransform>("Text")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
@@ -933,7 +933,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Image, UILayout>("Image")
+        .deriveClass<Image, RectTransform>("Image")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("setPatchMargin", 
             luabridge::overload<unsigned int>(&Image::setPatchMargin),
@@ -1078,202 +1078,202 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<TextEdit, Image>("TextEdit")
+        .deriveClass<InputField, Image>("InputField")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addFunction("getTextObject", &TextEdit::getTextObject)
-        .addFunction("getSelectionObject", &TextEdit::getSelectionObject)
-        .addProperty("disabled", &TextEdit::getDisabled, &TextEdit::setDisabled)
-        .addProperty("text", &TextEdit::getText, &TextEdit::setText)
-        .addProperty("textColor", &TextEdit::getTextColor, (void(TextEdit::*)(Vector4))&TextEdit::setTextColor)
+        .addFunction("getTextObject", &InputField::getTextObject)
+        .addFunction("getSelectionObject", &InputField::getSelectionObject)
+        .addProperty("disabled", &InputField::getDisabled, &InputField::setDisabled)
+        .addProperty("text", &InputField::getText, &InputField::setText)
+        .addProperty("textColor", &InputField::getTextColor, (void(InputField::*)(Vector4))&InputField::setTextColor)
         .addFunction("setTextColor", 
-            luabridge::overload<const float, const float, const float>(&TextEdit::setTextColor),
-            luabridge::overload<const float, const float, const float, const float>(&TextEdit::setTextColor))
-        .addProperty("textFont", &TextEdit::getTextFont, &TextEdit::setTextFont)
-        .addProperty("fontSize", &TextEdit::getFontSize, &TextEdit::setFontSize)
-        .addProperty("maxTextSize", &TextEdit::getMaxTextSize, &TextEdit::setMaxTextSize)
-        .addProperty("placeholder", &TextEdit::getPlaceholder, &TextEdit::setPlaceholder)
-        .addProperty("placeholderColor", &TextEdit::getPlaceholderColor, (void(TextEdit::*)(Vector4))&TextEdit::setPlaceholderColor)
+            luabridge::overload<const float, const float, const float>(&InputField::setTextColor),
+            luabridge::overload<const float, const float, const float, const float>(&InputField::setTextColor))
+        .addProperty("textFont", &InputField::getTextFont, &InputField::setTextFont)
+        .addProperty("fontSize", &InputField::getFontSize, &InputField::setFontSize)
+        .addProperty("maxTextSize", &InputField::getMaxTextSize, &InputField::setMaxTextSize)
+        .addProperty("placeholder", &InputField::getPlaceholder, &InputField::setPlaceholder)
+        .addProperty("placeholderColor", &InputField::getPlaceholderColor, (void(InputField::*)(Vector4))&InputField::setPlaceholderColor)
         .addFunction("setPlaceholderColor",
-            luabridge::overload<const float, const float, const float>(&TextEdit::setPlaceholderColor),
-            luabridge::overload<const float, const float, const float, const float>(&TextEdit::setPlaceholderColor))
-        .addProperty("password", &TextEdit::getPassword, &TextEdit::setPassword)
-        .addProperty("passwordChar", &TextEdit::getPasswordChar, &TextEdit::setPasswordChar)
-        .addProperty("cursorIndex", &TextEdit::getCursorIndex, &TextEdit::setCursorIndex)
-        .addFunction("getSelectionAnchor", &TextEdit::getSelectionAnchor)
-        .addFunction("getSelectionFocus", &TextEdit::getSelectionFocus)
-        .addFunction("setSelection", &TextEdit::setSelection)
-        .addProperty("cursorColor", &TextEdit::getCursorColor, (void(TextEdit::*)(Vector4))&TextEdit::setCursorColor)
+            luabridge::overload<const float, const float, const float>(&InputField::setPlaceholderColor),
+            luabridge::overload<const float, const float, const float, const float>(&InputField::setPlaceholderColor))
+        .addProperty("password", &InputField::getPassword, &InputField::setPassword)
+        .addProperty("passwordChar", &InputField::getPasswordChar, &InputField::setPasswordChar)
+        .addProperty("cursorIndex", &InputField::getCursorIndex, &InputField::setCursorIndex)
+        .addFunction("getSelectionAnchor", &InputField::getSelectionAnchor)
+        .addFunction("getSelectionFocus", &InputField::getSelectionFocus)
+        .addFunction("setSelection", &InputField::setSelection)
+        .addProperty("cursorColor", &InputField::getCursorColor, (void(InputField::*)(Vector4))&InputField::setCursorColor)
         .addFunction("setCursorColor", 
-            luabridge::overload<const float, const float, const float>(&TextEdit::setCursorColor),
-            luabridge::overload<const float, const float, const float, const float>(&TextEdit::setCursorColor))
-        .addProperty("selectionColor", &TextEdit::getSelectionColor, (void(TextEdit::*)(Vector4))&TextEdit::setSelectionColor)
+            luabridge::overload<const float, const float, const float>(&InputField::setCursorColor),
+            luabridge::overload<const float, const float, const float, const float>(&InputField::setCursorColor))
+        .addProperty("selectionColor", &InputField::getSelectionColor, (void(InputField::*)(Vector4))&InputField::setSelectionColor)
         .addFunction("setSelectionColor",
-            luabridge::overload<const float, const float, const float>(&TextEdit::setSelectionColor),
-            luabridge::overload<const float, const float, const float, const float>(&TextEdit::setSelectionColor))
-        .addProperty("cursorBlink", &TextEdit::getCursorBlink, &TextEdit::setCursorBlink)
-        .addProperty("cursorWidth", &TextEdit::getCursorWidth, &TextEdit::setCursorWidth)
-        .addFunction("getTextEditComponent", &TextEdit::getComponent<TextEditComponent>)
+            luabridge::overload<const float, const float, const float>(&InputField::setSelectionColor),
+            luabridge::overload<const float, const float, const float, const float>(&InputField::setSelectionColor))
+        .addProperty("cursorBlink", &InputField::getCursorBlink, &InputField::setCursorBlink)
+        .addProperty("cursorWidth", &InputField::getCursorWidth, &InputField::setCursorWidth)
+        .addFunction("getInputFieldComponent", &InputField::getComponent<InputFieldComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Sound, EntityHandle>("Sound")
-        .addProperty("enabled", &Sound::isEnabled, &Sound::setEnabled)
+        .deriveClass<AudioSource, EntityHandle>("AudioSource")
+        .addProperty("enabled", &AudioSource::isEnabled, &AudioSource::setEnabled)
         // Entity before bool: a number must bind the entity overload, not is3D
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
-        .addFunction("loadSound", &Sound::loadSound)
-        .addFunction("destroySound", &Sound::destroySound)
-        .addFunction("getObject", &Sound::getObject)
-        .addFunction("play", &Sound::play)
-        .addFunction("pause", &Sound::pause)
-        .addFunction("stop", &Sound::stop)
-        .addFunction("seek", &Sound::seek)
-        .addFunction("getLength", &Sound::getLength)
-        .addFunction("getPlayingTime", &Sound::getPlayingTime)
-        .addFunction("isPlaying", &Sound::isPlaying)
-        .addFunction("isPaused", &Sound::isPaused)
-        .addFunction("isStopped", &Sound::isStopped)
-        .addProperty("sound3D", &Sound::isSound3D, &Sound::setSound3D)
-        .addProperty("clockedSound", &Sound::isClockedSound, &Sound::setClockedSound)
-        .addProperty("volume", &Sound::getVolume, &Sound::setVolume)
-        .addProperty("speed", &Sound::getSpeed, &Sound::setSpeed)
-        .addProperty("pan", &Sound::getPan, &Sound::setPan)
-        .addProperty("looping", &Sound::isLooping, &Sound::setLooping)
-        .addProperty("loopingPoint", &Sound::getLoopingPoint, &Sound::setLoopingPoint)
-        .addProperty("protectVoice", &Sound::isProtectVoice, &Sound::setProtectVoice)
-        .addFunction("setInaudibleBehavior", &Sound::setInaudibleBehavior)
-        .addFunction("setMinMaxDistance", &Sound::setMinMaxDistance)
-        .addProperty("minDistance", &Sound::getMinDistance, &Sound::setMinDistance)
-        .addProperty("maxDistance", &Sound::getMaxDistance, &Sound::setMaxDistance)
-        .addProperty("attenuationModel", &Sound::getAttenuationModel, &Sound::setAttenuationModel)
-        .addProperty("attenuationRolloffFactor", &Sound::getAttenuationRolloffFactor, &Sound::setAttenuationRolloffFactor)
-        .addProperty("dopplerFactor", &Sound::getDopplerFactor, &Sound::setDopplerFactor)
-        .addFunction("getSoundComponent", &Sound::getComponent<SoundComponent>)
+        .addFunction("loadSound", &AudioSource::loadSound)
+        .addFunction("destroySound", &AudioSource::destroySound)
+        .addFunction("getGameObject", &AudioSource::getGameObject)
+        .addFunction("play", &AudioSource::play)
+        .addFunction("pause", &AudioSource::pause)
+        .addFunction("stop", &AudioSource::stop)
+        .addFunction("seek", &AudioSource::seek)
+        .addFunction("getLength", &AudioSource::getLength)
+        .addFunction("getPlayingTime", &AudioSource::getPlayingTime)
+        .addFunction("isPlaying", &AudioSource::isPlaying)
+        .addFunction("isPaused", &AudioSource::isPaused)
+        .addFunction("isStopped", &AudioSource::isStopped)
+        .addProperty("sound3D", &AudioSource::isSound3D, &AudioSource::setSound3D)
+        .addProperty("clockedSound", &AudioSource::isClockedSound, &AudioSource::setClockedSound)
+        .addProperty("volume", &AudioSource::getVolume, &AudioSource::setVolume)
+        .addProperty("speed", &AudioSource::getSpeed, &AudioSource::setSpeed)
+        .addProperty("pan", &AudioSource::getPan, &AudioSource::setPan)
+        .addProperty("looping", &AudioSource::isLooping, &AudioSource::setLooping)
+        .addProperty("loopingPoint", &AudioSource::getLoopingPoint, &AudioSource::setLoopingPoint)
+        .addProperty("protectVoice", &AudioSource::isProtectVoice, &AudioSource::setProtectVoice)
+        .addFunction("setInaudibleBehavior", &AudioSource::setInaudibleBehavior)
+        .addFunction("setMinMaxDistance", &AudioSource::setMinMaxDistance)
+        .addProperty("minDistance", &AudioSource::getMinDistance, &AudioSource::setMinDistance)
+        .addProperty("maxDistance", &AudioSource::getMaxDistance, &AudioSource::setMaxDistance)
+        .addProperty("attenuationModel", &AudioSource::getAttenuationModel, &AudioSource::setAttenuationModel)
+        .addProperty("attenuationRolloffFactor", &AudioSource::getAttenuationRolloffFactor, &AudioSource::setAttenuationRolloffFactor)
+        .addProperty("dopplerFactor", &AudioSource::getDopplerFactor, &AudioSource::setDopplerFactor)
+        .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Body2D, EntityHandle>("Body2D")
+        .deriveClass<Rigidbody2D, EntityHandle>("Rigidbody2D")
         .addConstructor <void (Scene*, Entity)> ()
-        .addFunction("getAttachedObject", &Body2D::getAttachedObject)
-        .addProperty("pointsToMeterScale", &Body2D::getPointsToMeterScale)
-        .addFunction("load", &Body2D::load)
-        .addFunction("createBoxShape", &Body2D::createBoxShape)
-        .addFunction("createCenteredBoxShape", 
-            luabridge::overload<float, float>(&Body2D::createCenteredBoxShape),
-            luabridge::overload<float, float, Vector2, float>(&Body2D::createCenteredBoxShape))
-        .addFunction("createRoundedBoxShape", &Body2D::createRoundedBoxShape)
-        .addFunction("createPolygonShape", &Body2D::createPolygonShape)
-        .addFunction("createCircleShape", &Body2D::createCircleShape)
-        .addFunction("createCapsuleShape", &Body2D::createCapsuleShape)
-        .addFunction("createSegmentShape", &Body2D::createSegmentShape)
-        .addFunction("createChainShape", &Body2D::createChainShape)
-        .addFunction("removeAllShapes", &Body2D::removeAllShapes)
-        .addFunction("getBodyContacts", &Body2D::getBodyContacts)
-        .addFunction("getShapeContacts", &Body2D::getShapeContacts)
-        .addFunction("getNumShapes", &Body2D::getNumShapes)
-        .addFunction("getShapeType", &Body2D::getShapeType)
-        .addProperty("shapeDensity", (float(Body2D::*)()const)&Body2D::getShapeDensity, (void(Body2D::*)(float))&Body2D::setShapeDensity)
-        .addFunction("setShapeDensity", 
-            luabridge::overload<float>(&Body2D::setShapeDensity),
-            luabridge::overload<size_t, float>(&Body2D::setShapeDensity))
-        .addFunction("getShapeDensity", 
-            luabridge::overload<>(&Body2D::getShapeDensity),
-            luabridge::overload<size_t>(&Body2D::getShapeDensity))
-        .addProperty("shapeFriction", (float(Body2D::*)()const)&Body2D::getShapeFriction, (void(Body2D::*)(float))&Body2D::setShapeFriction)
-        .addFunction("setShapeFriction", 
-            luabridge::overload<float>(&Body2D::setShapeFriction),
-            luabridge::overload<size_t, float>(&Body2D::setShapeFriction))
-        .addFunction("getShapeFriction", 
-            luabridge::overload<>(&Body2D::getShapeFriction),
-            luabridge::overload<size_t>(&Body2D::getShapeFriction))
-        .addProperty("shapeRestitution", (float(Body2D::*)()const)&Body2D::getShapeRestitution, (void(Body2D::*)(float))&Body2D::setShapeRestitution)
-        .addFunction("setShapeRestitution", 
-            luabridge::overload<float>(&Body2D::setShapeRestitution),
-            luabridge::overload<size_t, float>(&Body2D::setShapeRestitution))
-        .addFunction("getShapeRestitution", 
-            luabridge::overload<>(&Body2D::getShapeRestitution),
-            luabridge::overload<size_t>(&Body2D::getShapeRestitution))
-        .addProperty("shapeSensor", (bool(Body2D::*)()const)&Body2D::isShapeSensor, (void(Body2D::*)(bool))&Body2D::setShapeSensor)
-        .addFunction("setShapeSensor", 
-            luabridge::overload<bool>(&Body2D::setShapeSensor),
-            luabridge::overload<size_t, bool>(&Body2D::setShapeSensor))
-        .addFunction("isShapeSensor", 
-            luabridge::overload<>(&Body2D::isShapeSensor),
-            luabridge::overload<size_t>(&Body2D::isShapeSensor))
-        .addProperty("shapeEnableHitEvents", (bool(Body2D::*)()const)&Body2D::isShapeEnableHitEvents, (void(Body2D::*)(bool))&Body2D::setShapeEnableHitEvents)
-        .addFunction("setShapeEnableHitEvents", 
-            luabridge::overload<bool>(&Body2D::setShapeEnableHitEvents),
-            luabridge::overload<size_t, bool>(&Body2D::setShapeEnableHitEvents))
-        .addFunction("isShapeEnableHitEvents", 
-            luabridge::overload<>(&Body2D::isShapeEnableHitEvents),
-            luabridge::overload<size_t>(&Body2D::isShapeEnableHitEvents))
-        .addProperty("shapeContactEvents", (bool(Body2D::*)()const)&Body2D::isShapeContactEvents, (void(Body2D::*)(bool))&Body2D::setShapeContactEvents)
-        .addFunction("setShapeContactEvents", 
-            luabridge::overload<bool>(&Body2D::setShapeContactEvents),
-            luabridge::overload<size_t, bool>(&Body2D::setShapeContactEvents))
-        .addFunction("isShapeContactEvents", 
-            luabridge::overload<>(&Body2D::isShapeContactEvents),
-            luabridge::overload<size_t>(&Body2D::isShapeContactEvents))
-        .addProperty("shapePreSolveEvents", (bool(Body2D::*)()const)&Body2D::isShapePreSolveEvents, (void(Body2D::*)(bool))&Body2D::setShapePreSolveEvents)
-        .addFunction("setShapePreSolveEvents", 
-            luabridge::overload<bool>(&Body2D::setShapePreSolveEvents),
-            luabridge::overload<size_t, bool>(&Body2D::setShapePreSolveEvents))
-        .addFunction("isShapePreSolveEvents", 
-            luabridge::overload<>(&Body2D::isShapePreSolveEvents),
-            luabridge::overload<size_t>(&Body2D::isShapePreSolveEvents))
-        .addProperty("shapeSensorEvents", (bool(Body2D::*)() const)&Body2D::isShapeSensorEvents, (void(Body2D::*)(bool))&Body2D::setShapeSensorEvents)
-        .addFunction("setShapeSensorEvents", 
-            luabridge::overload<bool>(&Body2D::setShapeSensorEvents),
-            luabridge::overload<size_t, bool>(&Body2D::setShapeSensorEvents))
-        .addFunction("isShapeSensorEvents", 
-            luabridge::overload<>(&Body2D::isShapeSensorEvents),
-            luabridge::overload<size_t>(&Body2D::isShapeSensorEvents))
-        .addProperty("position", &Body2D::getPosition, &Body2D::setPosition)
-        .addProperty("angle", &Body2D::getAngle, &Body2D::setAngle)
-        .addProperty("linearVelocity", &Body2D::getLinearVelocity, &Body2D::setLinearVelocity)
-        .addProperty("angularVelocity", &Body2D::getAngularVelocity, &Body2D::setAngularVelocity)
-        .addProperty("linearDamping", &Body2D::getLinearDamping, &Body2D::setLinearDamping)
-        .addProperty("angularDamping", &Body2D::getAngularDamping, &Body2D::setAngularDamping)
-        .addProperty("enableSleep", &Body2D::isEnableSleep, &Body2D::setEnableSleep)
-        .addProperty("awake", &Body2D::isAwake, &Body2D::setAwake)
-        .addProperty("fixedRotation", &Body2D::isFixedRotation, &Body2D::setFixedRotation)
-        .addProperty("bullet", &Body2D::isBullet, &Body2D::setBullet)
-        .addProperty("type", &Body2D::getType, &Body2D::setType)
-        .addProperty("enabled", &Body2D::isEnabled, &Body2D::setEnabled)
-        .addProperty("gravityScale", &Body2D::getGravityScale, &Body2D::setGravityScale)
+        .addFunction("getAttachedObject", &Rigidbody2D::getAttachedObject)
+        .addProperty("pointsToMeterScale", &Rigidbody2D::getPointsToMeterScale)
+        .addFunction("load", &Rigidbody2D::load)
+        .addFunction("createBoxCollider", &Rigidbody2D::createBoxCollider)
+        .addFunction("createCenteredBoxCollider", 
+            luabridge::overload<float, float>(&Rigidbody2D::createCenteredBoxCollider),
+            luabridge::overload<float, float, Vector2, float>(&Rigidbody2D::createCenteredBoxCollider))
+        .addFunction("createRoundedBoxCollider", &Rigidbody2D::createRoundedBoxCollider)
+        .addFunction("createPolygonCollider", &Rigidbody2D::createPolygonCollider)
+        .addFunction("createCircleCollider", &Rigidbody2D::createCircleCollider)
+        .addFunction("createCapsuleCollider", &Rigidbody2D::createCapsuleCollider)
+        .addFunction("createSegmentCollider", &Rigidbody2D::createSegmentCollider)
+        .addFunction("createChainCollider", &Rigidbody2D::createChainCollider)
+        .addFunction("removeAllColliders", &Rigidbody2D::removeAllColliders)
+        .addFunction("getBodyContacts", &Rigidbody2D::getBodyContacts)
+        .addFunction("getColliderContacts", &Rigidbody2D::getColliderContacts)
+        .addFunction("getNumColliders", &Rigidbody2D::getNumColliders)
+        .addFunction("getColliderType", &Rigidbody2D::getColliderType)
+        .addProperty("shapeDensity", (float(Rigidbody2D::*)()const)&Rigidbody2D::getColliderDensity, (void(Rigidbody2D::*)(float))&Rigidbody2D::setColliderDensity)
+        .addFunction("setColliderDensity", 
+            luabridge::overload<float>(&Rigidbody2D::setColliderDensity),
+            luabridge::overload<size_t, float>(&Rigidbody2D::setColliderDensity))
+        .addFunction("getColliderDensity", 
+            luabridge::overload<>(&Rigidbody2D::getColliderDensity),
+            luabridge::overload<size_t>(&Rigidbody2D::getColliderDensity))
+        .addProperty("shapeFriction", (float(Rigidbody2D::*)()const)&Rigidbody2D::getColliderFriction, (void(Rigidbody2D::*)(float))&Rigidbody2D::setColliderFriction)
+        .addFunction("setColliderFriction", 
+            luabridge::overload<float>(&Rigidbody2D::setColliderFriction),
+            luabridge::overload<size_t, float>(&Rigidbody2D::setColliderFriction))
+        .addFunction("getColliderFriction", 
+            luabridge::overload<>(&Rigidbody2D::getColliderFriction),
+            luabridge::overload<size_t>(&Rigidbody2D::getColliderFriction))
+        .addProperty("shapeRestitution", (float(Rigidbody2D::*)()const)&Rigidbody2D::getColliderRestitution, (void(Rigidbody2D::*)(float))&Rigidbody2D::setColliderRestitution)
+        .addFunction("setColliderRestitution", 
+            luabridge::overload<float>(&Rigidbody2D::setColliderRestitution),
+            luabridge::overload<size_t, float>(&Rigidbody2D::setColliderRestitution))
+        .addFunction("getColliderRestitution", 
+            luabridge::overload<>(&Rigidbody2D::getColliderRestitution),
+            luabridge::overload<size_t>(&Rigidbody2D::getColliderRestitution))
+        .addProperty("shapeSensor", (bool(Rigidbody2D::*)()const)&Rigidbody2D::isColliderSensor, (void(Rigidbody2D::*)(bool))&Rigidbody2D::setColliderSensor)
+        .addFunction("setColliderSensor", 
+            luabridge::overload<bool>(&Rigidbody2D::setColliderSensor),
+            luabridge::overload<size_t, bool>(&Rigidbody2D::setColliderSensor))
+        .addFunction("isColliderSensor", 
+            luabridge::overload<>(&Rigidbody2D::isColliderSensor),
+            luabridge::overload<size_t>(&Rigidbody2D::isColliderSensor))
+        .addProperty("shapeEnableHitEvents", (bool(Rigidbody2D::*)()const)&Rigidbody2D::isColliderEnableHitEvents, (void(Rigidbody2D::*)(bool))&Rigidbody2D::setColliderEnableHitEvents)
+        .addFunction("setColliderEnableHitEvents", 
+            luabridge::overload<bool>(&Rigidbody2D::setColliderEnableHitEvents),
+            luabridge::overload<size_t, bool>(&Rigidbody2D::setColliderEnableHitEvents))
+        .addFunction("isColliderEnableHitEvents", 
+            luabridge::overload<>(&Rigidbody2D::isColliderEnableHitEvents),
+            luabridge::overload<size_t>(&Rigidbody2D::isColliderEnableHitEvents))
+        .addProperty("shapeContactEvents", (bool(Rigidbody2D::*)()const)&Rigidbody2D::isColliderContactEvents, (void(Rigidbody2D::*)(bool))&Rigidbody2D::setColliderContactEvents)
+        .addFunction("setColliderContactEvents", 
+            luabridge::overload<bool>(&Rigidbody2D::setColliderContactEvents),
+            luabridge::overload<size_t, bool>(&Rigidbody2D::setColliderContactEvents))
+        .addFunction("isColliderContactEvents", 
+            luabridge::overload<>(&Rigidbody2D::isColliderContactEvents),
+            luabridge::overload<size_t>(&Rigidbody2D::isColliderContactEvents))
+        .addProperty("shapePreSolveEvents", (bool(Rigidbody2D::*)()const)&Rigidbody2D::isColliderPreSolveEvents, (void(Rigidbody2D::*)(bool))&Rigidbody2D::setColliderPreSolveEvents)
+        .addFunction("setColliderPreSolveEvents", 
+            luabridge::overload<bool>(&Rigidbody2D::setColliderPreSolveEvents),
+            luabridge::overload<size_t, bool>(&Rigidbody2D::setColliderPreSolveEvents))
+        .addFunction("isColliderPreSolveEvents", 
+            luabridge::overload<>(&Rigidbody2D::isColliderPreSolveEvents),
+            luabridge::overload<size_t>(&Rigidbody2D::isColliderPreSolveEvents))
+        .addProperty("shapeSensorEvents", (bool(Rigidbody2D::*)() const)&Rigidbody2D::isColliderSensorEvents, (void(Rigidbody2D::*)(bool))&Rigidbody2D::setColliderSensorEvents)
+        .addFunction("setColliderSensorEvents", 
+            luabridge::overload<bool>(&Rigidbody2D::setColliderSensorEvents),
+            luabridge::overload<size_t, bool>(&Rigidbody2D::setColliderSensorEvents))
+        .addFunction("isColliderSensorEvents", 
+            luabridge::overload<>(&Rigidbody2D::isColliderSensorEvents),
+            luabridge::overload<size_t>(&Rigidbody2D::isColliderSensorEvents))
+        .addProperty("position", &Rigidbody2D::getPosition, &Rigidbody2D::setPosition)
+        .addProperty("angle", &Rigidbody2D::getAngle, &Rigidbody2D::setAngle)
+        .addProperty("linearVelocity", &Rigidbody2D::getLinearVelocity, &Rigidbody2D::setLinearVelocity)
+        .addProperty("angularVelocity", &Rigidbody2D::getAngularVelocity, &Rigidbody2D::setAngularVelocity)
+        .addProperty("linearDamping", &Rigidbody2D::getLinearDamping, &Rigidbody2D::setLinearDamping)
+        .addProperty("angularDamping", &Rigidbody2D::getAngularDamping, &Rigidbody2D::setAngularDamping)
+        .addProperty("enableSleep", &Rigidbody2D::isEnableSleep, &Rigidbody2D::setEnableSleep)
+        .addProperty("awake", &Rigidbody2D::isAwake, &Rigidbody2D::setAwake)
+        .addProperty("fixedRotation", &Rigidbody2D::isFixedRotation, &Rigidbody2D::setFixedRotation)
+        .addProperty("bullet", &Rigidbody2D::isBullet, &Rigidbody2D::setBullet)
+        .addProperty("type", &Rigidbody2D::getType, &Rigidbody2D::setType)
+        .addProperty("enabled", &Rigidbody2D::isEnabled, &Rigidbody2D::setEnabled)
+        .addProperty("gravityScale", &Rigidbody2D::getGravityScale, &Rigidbody2D::setGravityScale)
         .addFunction("setBitsFilter", 
-            luabridge::overload<uint16_t, uint16_t>(&Body2D::setBitsFilter),
-            luabridge::overload<size_t, uint16_t, uint16_t>(&Body2D::setBitsFilter))
-        .addProperty("categoryBitsFilter", (uint16_t(Body2D::*)()const)&Body2D::getCategoryBitsFilter, (void(Body2D::*)(uint16_t))&Body2D::setCategoryBitsFilter)
+            luabridge::overload<uint16_t, uint16_t>(&Rigidbody2D::setBitsFilter),
+            luabridge::overload<size_t, uint16_t, uint16_t>(&Rigidbody2D::setBitsFilter))
+        .addProperty("categoryBitsFilter", (uint16_t(Rigidbody2D::*)()const)&Rigidbody2D::getCategoryBitsFilter, (void(Rigidbody2D::*)(uint16_t))&Rigidbody2D::setCategoryBitsFilter)
         .addFunction("setCategoryBitsFilter", 
-            luabridge::overload<uint16_t>(&Body2D::setCategoryBitsFilter),
-            luabridge::overload<size_t, uint16_t>(&Body2D::setCategoryBitsFilter))
+            luabridge::overload<uint16_t>(&Rigidbody2D::setCategoryBitsFilter),
+            luabridge::overload<size_t, uint16_t>(&Rigidbody2D::setCategoryBitsFilter))
         .addFunction("getCategoryBitsFilter", 
-            luabridge::overload<>(&Body2D::getCategoryBitsFilter),
-            luabridge::overload<size_t>(&Body2D::getCategoryBitsFilter))
-        .addProperty("maskBitsFilter", (uint16_t(Body2D::*)()const)&Body2D::getMaskBitsFilter, (void(Body2D::*)(uint16_t))&Body2D::setMaskBitsFilter)
+            luabridge::overload<>(&Rigidbody2D::getCategoryBitsFilter),
+            luabridge::overload<size_t>(&Rigidbody2D::getCategoryBitsFilter))
+        .addProperty("maskBitsFilter", (uint16_t(Rigidbody2D::*)()const)&Rigidbody2D::getMaskBitsFilter, (void(Rigidbody2D::*)(uint16_t))&Rigidbody2D::setMaskBitsFilter)
         .addFunction("setMaskBitsFilter", 
-            luabridge::overload<uint16_t>(&Body2D::setMaskBitsFilter),
-            luabridge::overload<size_t, uint16_t>(&Body2D::setMaskBitsFilter))
+            luabridge::overload<uint16_t>(&Rigidbody2D::setMaskBitsFilter),
+            luabridge::overload<size_t, uint16_t>(&Rigidbody2D::setMaskBitsFilter))
         .addFunction("getMaskBitsFilter", 
-            luabridge::overload<>(&Body2D::getMaskBitsFilter),
-            luabridge::overload<size_t>(&Body2D::getMaskBitsFilter))
-        .addProperty("groupIndexFilter", (int16_t(Body2D::*)()const)&Body2D::getGroupIndexFilter, (void(Body2D::*)(int16_t))&Body2D::setGroupIndexFilter)
+            luabridge::overload<>(&Rigidbody2D::getMaskBitsFilter),
+            luabridge::overload<size_t>(&Rigidbody2D::getMaskBitsFilter))
+        .addProperty("groupIndexFilter", (int16_t(Rigidbody2D::*)()const)&Rigidbody2D::getGroupIndexFilter, (void(Rigidbody2D::*)(int16_t))&Rigidbody2D::setGroupIndexFilter)
         .addFunction("setGroupIndexFilter", 
-            luabridge::overload<int16_t>(&Body2D::setGroupIndexFilter),
-            luabridge::overload<size_t, int16_t>(&Body2D::setGroupIndexFilter))
+            luabridge::overload<int16_t>(&Rigidbody2D::setGroupIndexFilter),
+            luabridge::overload<size_t, int16_t>(&Rigidbody2D::setGroupIndexFilter))
         .addFunction("getGroupIndexFilter", 
-            luabridge::overload<>(&Body2D::getGroupIndexFilter),
-            luabridge::overload<size_t>(&Body2D::getGroupIndexFilter))
-        .addFunction("getMass", &Body2D::getMass)
-        .addFunction("getRotationalInertia", &Body2D::getRotationalInertia)
-        .addFunction("applyMassFromShapes", &Body2D::applyMassFromShapes)
-        .addFunction("applyForce", &Body2D::applyForce)
-        .addFunction("applyForceToCenter", &Body2D::applyForceToCenter)
-        .addFunction("applyTorque", &Body2D::applyTorque)
-        .addFunction("applyLinearImpulse", &Body2D::applyLinearImpulse)
-        .addFunction("applyLinearImpulseToCenter", &Body2D::applyLinearImpulseToCenter)
-        .addFunction("applyAngularImpulse", &Body2D::applyAngularImpulse)
+            luabridge::overload<>(&Rigidbody2D::getGroupIndexFilter),
+            luabridge::overload<size_t>(&Rigidbody2D::getGroupIndexFilter))
+        .addFunction("getMass", &Rigidbody2D::getMass)
+        .addFunction("getRotationalInertia", &Rigidbody2D::getRotationalInertia)
+        .addFunction("applyMassFromColliders", &Rigidbody2D::applyMassFromColliders)
+        .addFunction("applyForce", &Rigidbody2D::applyForce)
+        .addFunction("applyForceToCenter", &Rigidbody2D::applyForceToCenter)
+        .addFunction("applyTorque", &Rigidbody2D::applyTorque)
+        .addFunction("applyLinearImpulse", &Rigidbody2D::applyLinearImpulse)
+        .addFunction("applyLinearImpulseToCenter", &Rigidbody2D::applyLinearImpulseToCenter)
+        .addFunction("applyAngularImpulse", &Rigidbody2D::applyAngularImpulse)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1312,96 +1312,96 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("getManifold", &Contact2D::getManifold)
         .addFunction("getBodyEntityA", &Contact2D::getBodyEntityA)
         .addFunction("getBodyA", &Contact2D::getBodyA)
-        .addFunction("getShapeIndexA", &Contact2D::getShapeIndexA)
+        .addFunction("getColliderIndexA", &Contact2D::getColliderIndexA)
         .addFunction("getBodyEntityB", &Contact2D::getBodyEntityB)
         .addFunction("getBodyB", &Contact2D::getBodyB)
-        .addFunction("getShapeIndexB", &Contact2D::getShapeIndexB)
+        .addFunction("getColliderIndexB", &Contact2D::getColliderIndexB)
         .endClass();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
-        .deriveClass<Body3D, EntityHandle>("Body3D")
+        .deriveClass<Rigidbody, EntityHandle>("Rigidbody")
         .addConstructor <void (Scene*, Entity)> ()
-        .addProperty("enabled", &Body3D::isEnabled, &Body3D::setEnabled)
-        .addFunction("getAttachedObject", &Body3D::getAttachedObject)
-        .addFunction("load", &Body3D::load)
-        .addFunction("createBoxShape", 
-            luabridge::overload<float, float, float>(&Body3D::createBoxShape),
-            luabridge::overload<Vector3, Quaternion, float, float, float>(&Body3D::createBoxShape))
-        .addFunction("createSphereShape", 
-            luabridge::overload<float>(&Body3D::createSphereShape),
-            luabridge::overload<Vector3, Quaternion, float>(&Body3D::createSphereShape))
-        .addFunction("createCapsuleShape", 
-            luabridge::overload<float, float>(&Body3D::createCapsuleShape),
-            luabridge::overload<Vector3, Quaternion, float, float>(&Body3D::createCapsuleShape))
-        .addFunction("createTaperedCapsuleShape", 
-            luabridge::overload<float, float, float>(&Body3D::createTaperedCapsuleShape),
-            luabridge::overload<Vector3, Quaternion, float, float, float>(&Body3D::createTaperedCapsuleShape))
-        .addFunction("createCylinderShape", 
-            luabridge::overload<float, float>(&Body3D::createCylinderShape),
-            luabridge::overload<Vector3, Quaternion, float, float>(&Body3D::createCylinderShape))
-        .addFunction("createConvexHullShape",
-            luabridge::overload<>(&Body3D::createConvexHullShape),
-            luabridge::overload<std::vector<Vector3>>(&Body3D::createConvexHullShape),
-            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>>(&Body3D::createConvexHullShape))
-        .addFunction("createMeshShape", 
-            luabridge::overload<>(&Body3D::createMeshShape),
-            luabridge::overload<std::vector<Vector3>, std::vector<uint16_t>>(&Body3D::createMeshShape),
-            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint16_t>>(&Body3D::createMeshShape))
-        .addFunction("createHeightFieldShape", 
-            luabridge::overload<>(&Body3D::createHeightFieldShape),
-            luabridge::overload<unsigned int>(&Body3D::createHeightFieldShape))
-        .addFunction("getNumShapes", &Body3D::getNumShapes)
-        .addFunction("getShapeType", &Body3D::getShapeType)
-        .addProperty("shapeDensity", (float(Body3D::*)()const)&Body3D::getShapeDensity, (void(Body3D::*)(float))&Body3D::setShapeDensity)
-        .addFunction("setShapeDensity", 
-            luabridge::overload<float>(&Body3D::setShapeDensity),
-            luabridge::overload<size_t, float>(&Body3D::setShapeDensity))
-        .addFunction("getShapeDensity", 
-            luabridge::overload<>(&Body3D::getShapeDensity),
-            luabridge::overload<size_t>(&Body3D::getShapeDensity))
-        .addProperty("type", &Body3D::getType, &Body3D::setType)
-        .addProperty("motionQuality", &Body3D::getMotionQuality, &Body3D::setMotionQuality)
-        .addFunction("canBeKinematicOrDynamic", &Body3D::canBeKinematicOrDynamic)
-        .addFunction("activate", &Body3D::activate)
-        .addFunction("deactivate", &Body3D::deactivate)
-        .addProperty("sensor", &Body3D::isSensor, &Body3D::setIsSensor)
-        .addProperty("collideKinematicVsNonDynamic", &Body3D::isCollideKinematicVsNonDynamic, &Body3D::setCollideKinematicVsNonDynamic)
-        .addFunction("setAllowedDOFsAll", &Body3D::setAllowedDOFsAll)
-        .addFunction("setAllowedDOFs2DPlane", &Body3D::setAllowedDOFs2DPlane)
-        .addFunction("setAllowedDOFs", &Body3D::setAllowedDOFs)
-        .addProperty("mass", &Body3D::getMass, &Body3D::setMass)
-        .addFunction("setOverrideMassAndInertia", &Body3D::setOverrideMassAndInertia)
-        .addProperty("gravityFactor", &Body3D::getGravityFactor, &Body3D::setGravityFactor)
-        .addProperty("collisionGroupID", &Body3D::getCollisionGroupID, &Body3D::setCollisionGroupID)
-        .addFunction("setBitsFilter", &Body3D::setBitsFilter)
-        .addProperty("categoryBitsFilter", &Body3D::getCategoryBitsFilter, &Body3D::setCategoryBitsFilter)
-        .addProperty("maskBitsFilter", &Body3D::getMaskBitsFilter, &Body3D::setMaskBitsFilter)
-        .addProperty("allowSleeping", &Body3D::isAllowSleeping, &Body3D::setAllowSleeping)
-        .addProperty("friction", &Body3D::getFriction, &Body3D::setFriction)
-        .addProperty("restitution", &Body3D::getRestitution, &Body3D::setRestitution)
-        .addProperty("position", &Body3D::getPosition, &Body3D::setPosition)
-        .addProperty("rotation", &Body3D::getRotation, &Body3D::setRotation)
-        .addProperty("linearVelocity", &Body3D::getLinearVelocity, &Body3D::setLinearVelocity)
-        .addFunction("setLinearVelocityClamped", &Body3D::setLinearVelocityClamped)
-        .addProperty("angularVelocity", &Body3D::getAngularVelocity, &Body3D::setAngularVelocity)
-        .addFunction("setAngularVelocityClamped", &Body3D::setAngularVelocityClamped)
-        .addFunction("getPointVelocityCOM", &Body3D::getPointVelocityCOM)
-        .addFunction("getPointVelocity", &Body3D::getPointVelocity)
-        .addFunction("getAccumulatedForce", &Body3D::getAccumulatedForce)
-        .addFunction("getAccumulatedTorque", &Body3D::getAccumulatedTorque)
-        .addFunction("getInverseInertia", &Body3D::getInverseInertia)
+        .addProperty("enabled", &Rigidbody::isEnabled, &Rigidbody::setEnabled)
+        .addFunction("getAttachedObject", &Rigidbody::getAttachedObject)
+        .addFunction("load", &Rigidbody::load)
+        .addFunction("createBoxCollider", 
+            luabridge::overload<float, float, float>(&Rigidbody::createBoxCollider),
+            luabridge::overload<Vector3, Quaternion, float, float, float>(&Rigidbody::createBoxCollider))
+        .addFunction("createSphereCollider", 
+            luabridge::overload<float>(&Rigidbody::createSphereCollider),
+            luabridge::overload<Vector3, Quaternion, float>(&Rigidbody::createSphereCollider))
+        .addFunction("createCapsuleCollider", 
+            luabridge::overload<float, float>(&Rigidbody::createCapsuleCollider),
+            luabridge::overload<Vector3, Quaternion, float, float>(&Rigidbody::createCapsuleCollider))
+        .addFunction("createTaperedCapsuleCollider", 
+            luabridge::overload<float, float, float>(&Rigidbody::createTaperedCapsuleCollider),
+            luabridge::overload<Vector3, Quaternion, float, float, float>(&Rigidbody::createTaperedCapsuleCollider))
+        .addFunction("createCylinderCollider", 
+            luabridge::overload<float, float>(&Rigidbody::createCylinderCollider),
+            luabridge::overload<Vector3, Quaternion, float, float>(&Rigidbody::createCylinderCollider))
+        .addFunction("createConvexHullCollider",
+            luabridge::overload<>(&Rigidbody::createConvexHullCollider),
+            luabridge::overload<std::vector<Vector3>>(&Rigidbody::createConvexHullCollider),
+            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>>(&Rigidbody::createConvexHullCollider))
+        .addFunction("createMeshCollider", 
+            luabridge::overload<>(&Rigidbody::createMeshCollider),
+            luabridge::overload<std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider),
+            luabridge::overload<Vector3, Quaternion, std::vector<Vector3>, std::vector<uint16_t>>(&Rigidbody::createMeshCollider))
+        .addFunction("createHeightFieldCollider", 
+            luabridge::overload<>(&Rigidbody::createHeightFieldCollider),
+            luabridge::overload<unsigned int>(&Rigidbody::createHeightFieldCollider))
+        .addFunction("getNumColliders", &Rigidbody::getNumColliders)
+        .addFunction("getColliderType", &Rigidbody::getColliderType)
+        .addProperty("shapeDensity", (float(Rigidbody::*)()const)&Rigidbody::getColliderDensity, (void(Rigidbody::*)(float))&Rigidbody::setColliderDensity)
+        .addFunction("setColliderDensity", 
+            luabridge::overload<float>(&Rigidbody::setColliderDensity),
+            luabridge::overload<size_t, float>(&Rigidbody::setColliderDensity))
+        .addFunction("getColliderDensity", 
+            luabridge::overload<>(&Rigidbody::getColliderDensity),
+            luabridge::overload<size_t>(&Rigidbody::getColliderDensity))
+        .addProperty("type", &Rigidbody::getType, &Rigidbody::setType)
+        .addProperty("motionQuality", &Rigidbody::getMotionQuality, &Rigidbody::setMotionQuality)
+        .addFunction("canBeKinematicOrDynamic", &Rigidbody::canBeKinematicOrDynamic)
+        .addFunction("activate", &Rigidbody::activate)
+        .addFunction("deactivate", &Rigidbody::deactivate)
+        .addProperty("sensor", &Rigidbody::isSensor, &Rigidbody::setIsSensor)
+        .addProperty("collideKinematicVsNonDynamic", &Rigidbody::isCollideKinematicVsNonDynamic, &Rigidbody::setCollideKinematicVsNonDynamic)
+        .addFunction("setAllowedDOFsAll", &Rigidbody::setAllowedDOFsAll)
+        .addFunction("setAllowedDOFs2DPlane", &Rigidbody::setAllowedDOFs2DPlane)
+        .addFunction("setAllowedDOFs", &Rigidbody::setAllowedDOFs)
+        .addProperty("mass", &Rigidbody::getMass, &Rigidbody::setMass)
+        .addFunction("setOverrideMassAndInertia", &Rigidbody::setOverrideMassAndInertia)
+        .addProperty("gravityFactor", &Rigidbody::getGravityFactor, &Rigidbody::setGravityFactor)
+        .addProperty("collisionGroupID", &Rigidbody::getCollisionGroupID, &Rigidbody::setCollisionGroupID)
+        .addFunction("setBitsFilter", &Rigidbody::setBitsFilter)
+        .addProperty("categoryBitsFilter", &Rigidbody::getCategoryBitsFilter, &Rigidbody::setCategoryBitsFilter)
+        .addProperty("maskBitsFilter", &Rigidbody::getMaskBitsFilter, &Rigidbody::setMaskBitsFilter)
+        .addProperty("allowSleeping", &Rigidbody::isAllowSleeping, &Rigidbody::setAllowSleeping)
+        .addProperty("friction", &Rigidbody::getFriction, &Rigidbody::setFriction)
+        .addProperty("restitution", &Rigidbody::getRestitution, &Rigidbody::setRestitution)
+        .addProperty("position", &Rigidbody::getPosition, &Rigidbody::setPosition)
+        .addProperty("rotation", &Rigidbody::getRotation, &Rigidbody::setRotation)
+        .addProperty("linearVelocity", &Rigidbody::getLinearVelocity, &Rigidbody::setLinearVelocity)
+        .addFunction("setLinearVelocityClamped", &Rigidbody::setLinearVelocityClamped)
+        .addProperty("angularVelocity", &Rigidbody::getAngularVelocity, &Rigidbody::setAngularVelocity)
+        .addFunction("setAngularVelocityClamped", &Rigidbody::setAngularVelocityClamped)
+        .addFunction("getPointVelocityCOM", &Rigidbody::getPointVelocityCOM)
+        .addFunction("getPointVelocity", &Rigidbody::getPointVelocity)
+        .addFunction("getAccumulatedForce", &Rigidbody::getAccumulatedForce)
+        .addFunction("getAccumulatedTorque", &Rigidbody::getAccumulatedTorque)
+        .addFunction("getInverseInertia", &Rigidbody::getInverseInertia)
         .addFunction("applyForce", 
-            luabridge::overload<const Vector3&>(&Body3D::applyForce),
-            luabridge::overload<const Vector3&, const Vector3&>(&Body3D::applyForce))
-        .addFunction("applyTorque", &Body3D::applyTorque)
+            luabridge::overload<const Vector3&>(&Rigidbody::applyForce),
+            luabridge::overload<const Vector3&, const Vector3&>(&Rigidbody::applyForce))
+        .addFunction("applyTorque", &Rigidbody::applyTorque)
         .addFunction("applyImpulse", 
-            luabridge::overload<const Vector3&>(&Body3D::applyImpulse),
-            luabridge::overload<const Vector3&, const Vector3&>(&Body3D::applyImpulse))
-        .addFunction("applyAngularImpulse", &Body3D::applyAngularImpulse)
-        .addFunction("applyBuoyancyImpulse", &Body3D::applyBuoyancyImpulse)
-        .addFunction("getCenterOfMassPosition", &Body3D::getCenterOfMassPosition)
+            luabridge::overload<const Vector3&>(&Rigidbody::applyImpulse),
+            luabridge::overload<const Vector3&, const Vector3&>(&Rigidbody::applyImpulse))
+        .addFunction("applyAngularImpulse", &Rigidbody::applyAngularImpulse)
+        .addFunction("applyBuoyancyImpulse", &Rigidbody::applyBuoyancyImpulse)
+        .addFunction("getCenterOfMassPosition", &Rigidbody::getCenterOfMassPosition)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1429,8 +1429,8 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("getBaseOffset", &Contact3D::getBaseOffset)
         .addFunction("getWorldSpaceNormal", &Contact3D::getWorldSpaceNormal)
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
-        .addFunction("getShapeIndex1", &Contact3D::getShapeIndex1)
-        .addFunction("getShapeIndex2", &Contact3D::getShapeIndex2)
+        .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
+        .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)
         .addFunction("getRelativeContactPointsOnA", &Contact3D::getRelativeContactPointsOnA)
         .addFunction("getRelativeContactPointsOnB", &Contact3D::getRelativeContactPointsOnB)
         .addProperty("combinedFriction", &Contact3D::getCombinedFriction, &Contact3D::setCombinedFriction)
@@ -1443,8 +1443,8 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("getContactPointOnA", &CollideShapeResult3D::getContactPointOnA)
         .addFunction("getContactPointOnB", &CollideShapeResult3D::getContactPointOnB)
         .addFunction("getPenetrationAxis", &CollideShapeResult3D::getPenetrationAxis)
-        .addFunction("getShapeIndex1", &CollideShapeResult3D::getShapeIndex1)
-        .addFunction("getShapeIndex2", &CollideShapeResult3D::getShapeIndex2)
+        .addFunction("getColliderIndex1", &CollideShapeResult3D::getColliderIndex1)
+        .addFunction("getColliderIndex2", &CollideShapeResult3D::getColliderIndex2)
         .endClass();
 #endif
 

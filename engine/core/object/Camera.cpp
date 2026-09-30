@@ -9,7 +9,7 @@
 
 using namespace jasperengine;
 
-Camera::Camera(Scene* scene): Object(scene){
+Camera::Camera(Scene* scene): GameObject(scene){
     addComponent<CameraComponent>();
 
     CameraComponent& cameraComponent = getComponent<CameraComponent>();
@@ -21,7 +21,7 @@ Camera::Camera(Scene* scene): Object(scene){
     transform.position = Vector3(0.0, 0.0, 1.0);
 }
 
-Camera::Camera(Scene* scene, Entity entity): Object(scene, entity){
+Camera::Camera(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 Camera::~Camera(){

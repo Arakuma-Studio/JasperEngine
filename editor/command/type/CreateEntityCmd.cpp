@@ -4,47 +4,47 @@
 #include "CreateEntityCmd.h"
 
 #include "editor/Out.h"
-#include "util/ShapeParameters.h"
+#include "util/PrimitiveParameters.h"
 #include "util/ProjectUtils.h"
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
 
 using namespace jasperengine;
 
-editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToBundle){
+editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToPrefab){
     this->project = project;
     this->sceneId = sceneId;
     this->entityName = entityName;
     this->entity = NULL_ENTITY;
     this->parent = NULL_ENTITY;
     this->type = EntityCreationType::EMPTY;
-    this->addToBundle = addToBundle;
+    this->addToPrefab = addToPrefab;
     this->wasModified = project->getScene(sceneId)->isModified;
     this->wasMainCamera = false;
     this->updateFlags = 0;
 }
 
-editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToBundle){
+editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToPrefab){
     this->project = project;
     this->sceneId = sceneId;
     this->entityName = entityName;
     this->entity = NULL_ENTITY;
     this->parent = NULL_ENTITY;
     this->type = type;
-    this->addToBundle = addToBundle;
+    this->addToPrefab = addToPrefab;
     this->wasModified = project->getScene(sceneId)->isModified;
     this->wasMainCamera = false;
     this->updateFlags = 0;
 }
 
-editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, Entity parent, bool addToBundle){
+editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, Entity parent, bool addToPrefab){
     this->project = project;
     this->sceneId = sceneId;
     this->entityName = entityName;
     this->entity = NULL_ENTITY;
     this->parent = parent;
     this->type = type;
-    this->addToBundle = addToBundle;
+    this->addToPrefab = addToPrefab;
     this->wasModified = project->getScene(sceneId)->isModified;
     this->wasMainCamera = false;
     this->updateFlags = 0;
@@ -74,7 +74,7 @@ bool editor::CreateEntityCmd::execute(){
 
     entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, entityName);
 
-    if (type == EntityCreationType::OBJECT){
+    if (type == EntityCreationType::GAMEOBJECT){
 
         scene->addComponent<Transform>(entity, {});
 
@@ -83,7 +83,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createBox(mesh, shapeDefs.boxWidth, shapeDefs.boxHeight, shapeDefs.boxDepth);
 
@@ -92,7 +92,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createPlane(mesh, shapeDefs.planeWidth, shapeDefs.planeDepth);
 
@@ -101,7 +101,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createWall(mesh, shapeDefs.wallWidth, shapeDefs.wallHeight);
 
@@ -112,7 +112,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<MirrorComponent>(entity, {}); // default normal +Z matches the wall
         updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::MirrorComponent);
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createWall(mesh, shapeDefs.wallWidth, shapeDefs.wallHeight);
 
@@ -121,7 +121,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createSphere(mesh, shapeDefs.sphereRadius, shapeDefs.sphereSlices, shapeDefs.sphereStacks);
 
@@ -130,7 +130,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createCylinder(mesh, shapeDefs.cylinderBaseRadius, shapeDefs.cylinderTopRadius, shapeDefs.cylinderHeight, shapeDefs.cylinderSlices, shapeDefs.cylinderStacks);
 
@@ -139,7 +139,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createCapsule(mesh, shapeDefs.capsuleBaseRadius, shapeDefs.capsuleTopRadius, shapeDefs.capsuleHeight, shapeDefs.capsuleSlices, shapeDefs.capsuleStacks);
 
@@ -148,25 +148,25 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
-        ShapeParameters shapeDefs;
+        PrimitiveParameters shapeDefs;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         scene->getSystem<MeshSystem>()->createTorus(mesh, shapeDefs.torusRadius, shapeDefs.torusRingRadius, shapeDefs.torusSides, shapeDefs.torusRings);
 
     }else if (type == EntityCreationType::IMAGE){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 100;
         layout.height = 100;
 
     }else if (type == EntityCreationType::TEXT){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<TextComponent>(entity, {});
 
@@ -177,12 +177,12 @@ bool editor::CreateEntityCmd::execute(){
     }else if (type == EntityCreationType::BUTTON){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<ButtonComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 150;
         layout.height = 50;
 
@@ -200,12 +200,12 @@ bool editor::CreateEntityCmd::execute(){
     }else if (type == EntityCreationType::SCROLLBAR){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<ScrollbarComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 16;
         layout.height = 200;
 
@@ -222,12 +222,12 @@ bool editor::CreateEntityCmd::execute(){
     }else if (type == EntityCreationType::PROGRESSBAR){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<ProgressbarComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 200;
         layout.height = 16;
 
@@ -244,46 +244,46 @@ bool editor::CreateEntityCmd::execute(){
         progressbarComp.value = 0.5f;
         progressbarComp.needUpdateProgressbar = true;
 
-    }else if (type == EntityCreationType::TEXTEDIT){
+    }else if (type == EntityCreationType::INPUT_FIELD){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
-        scene->addComponent<TextEditComponent>(entity, {});
+        scene->addComponent<InputFieldComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 200;
         layout.height = 32;
 
-        TextEditComponent& textEditComp = scene->getComponent<TextEditComponent>(entity);
-        scene->getSystem<UISystem>()->createTextEditObjects(entity, textEditComp);
+        InputFieldComponent& inputFieldComp = scene->getComponent<InputFieldComponent>(entity);
+        scene->getSystem<UISystem>()->createInputFieldObjects(entity, inputFieldComp);
 
-        scene->setEntityName(textEditComp.text, "Text");
-        scene->setEntityName(textEditComp.selection, "Selection");
-        scene->setEntityName(textEditComp.cursor, "Cursor");
+        scene->setEntityName(inputFieldComp.text, "Text");
+        scene->setEntityName(inputFieldComp.selection, "Selection");
+        scene->setEntityName(inputFieldComp.cursor, "Cursor");
 
-        registerChildEntity(textEditComp.text, entity);
-        registerChildEntity(textEditComp.selection, entity);
-        registerChildEntity(textEditComp.cursor, entity);
+        registerChildEntity(inputFieldComp.text, entity);
+        registerChildEntity(inputFieldComp.selection, entity);
+        registerChildEntity(inputFieldComp.cursor, entity);
 
-        TextComponent& textComp = scene->getComponent<TextComponent>(textEditComp.text);
+        TextComponent& textComp = scene->getComponent<TextComponent>(inputFieldComp.text);
         textComp.text = "";
         textComp.multiline = false;
         textComp.needUpdateText = true;
 
-        textEditComp.placeholder = "Enter text...";
-        textEditComp.needUpdateTextEdit = true;
+        inputFieldComp.placeholder = "Enter text...";
+        inputFieldComp.needUpdateInputField = true;
 
     }else if (type == EntityCreationType::PANEL){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<PanelComponent>(entity, {});
         scene->addComponent<ImageComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 250;
         layout.height = 150;
 
@@ -310,11 +310,11 @@ bool editor::CreateEntityCmd::execute(){
     }else if (type == EntityCreationType::POLYGON){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
         scene->addComponent<UIComponent>(entity, {});
         scene->addComponent<PolygonComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 100;
         layout.height = 100;
 
@@ -325,13 +325,13 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
-    }else if (type == EntityCreationType::CONTAINER){
+    }else if (type == EntityCreationType::LAYOUT_GROUP){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<UILayoutComponent>(entity, {});
-        scene->addComponent<UIContainerComponent>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<LayoutGroupComponent>(entity, {});
 
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         layout.width = 100;
         layout.height = 100;
 
@@ -402,16 +402,16 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 200.0f;
         light.intensity = 1.0f;
 
-    }else if (type == EntityCreationType::OCCLUDER_2D){
+    }else if (type == EntityCreationType::SHADOW_CASTER_2D){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<Occluder2DComponent>(entity, {});
-        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::Occluder2DComponent);
+        scene->addComponent<ShadowCaster2DComponent>(entity, {});
+        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::ShadowCaster2DComponent);
 
         // a standalone occluder entity has no sibling mesh for AUTO_QUAD to derive
         // an outline from, so start as an editable polygon with a default square
-        Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
-        occluder.shape = Occluder2DShape::POLYGON;
+        ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
+        occluder.shape = ShadowCaster2DShape::POLYGON;
         occluder.points.push_back(Vector2(-50.0f, -50.0f));
         occluder.points.push_back(Vector2(50.0f, -50.0f));
         occluder.points.push_back(Vector2(50.0f, 50.0f));
@@ -425,19 +425,19 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Joint3DComponent>(entity, {});
 
-    }else if (type == EntityCreationType::BODY2D){
+    }else if (type == EntityCreationType::RIGIDBODY2D){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<Body2DComponent>(entity, {});
+        scene->addComponent<Rigidbody2DComponent>(entity, {});
 
-    }else if (type == EntityCreationType::BODY3D){
+    }else if (type == EntityCreationType::RIGIDBODY){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<Body3DComponent>(entity, {});
+        scene->addComponent<RigidbodyComponent>(entity, {});
 
-    }else if (type == EntityCreationType::SKY){
+    }else if (type == EntityCreationType::SKYBOX){
 
-        scene->addComponent<SkyComponent>(entity, {});
+        scene->addComponent<SkyboxComponent>(entity, {});
 
     }else if (type == EntityCreationType::FOG){
 
@@ -466,47 +466,47 @@ bool editor::CreateEntityCmd::execute(){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
-    }else if (type == EntityCreationType::POSITION_ACTION){
+    }else if (type == EntityCreationType::POSITION_TWEEN){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<TimedActionComponent>(entity, {});
-        scene->addComponent<PositionActionComponent>(entity, {});
+        scene->addComponent<TweenComponent>(entity, {});
+        scene->addComponent<PositionTweenComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
-    }else if (type == EntityCreationType::ROTATION_ACTION){
+    }else if (type == EntityCreationType::ROTATION_TWEEN){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<TimedActionComponent>(entity, {});
-        scene->addComponent<RotationActionComponent>(entity, {});
+        scene->addComponent<TweenComponent>(entity, {});
+        scene->addComponent<RotationTweenComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
-    }else if (type == EntityCreationType::SCALE_ACTION){
+    }else if (type == EntityCreationType::SCALE_TWEEN){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<TimedActionComponent>(entity, {});
-        scene->addComponent<ScaleActionComponent>(entity, {});
+        scene->addComponent<TweenComponent>(entity, {});
+        scene->addComponent<ScaleTweenComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
-    }else if (type == EntityCreationType::COLOR_ACTION){
+    }else if (type == EntityCreationType::COLOR_TWEEN){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<TimedActionComponent>(entity, {});
-        scene->addComponent<ColorActionComponent>(entity, {});
+        scene->addComponent<TweenComponent>(entity, {});
+        scene->addComponent<ColorTweenComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
-    }else if (type == EntityCreationType::ALPHA_ACTION){
+    }else if (type == EntityCreationType::ALPHA_TWEEN){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<TimedActionComponent>(entity, {});
-        scene->addComponent<AlphaActionComponent>(entity, {});
+        scene->addComponent<TweenComponent>(entity, {});
+        scene->addComponent<AlphaTweenComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
@@ -593,14 +593,14 @@ bool editor::CreateEntityCmd::execute(){
             wasMainCamera = true;
         }
 
-    }else if (type == EntityCreationType::SOUND){
+    }else if (type == EntityCreationType::AUDIO_SOURCE){
 
-        scene->addComponent<SoundComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, {});
 
-    }else if (type == EntityCreationType::SOUND_3D){
+    }else if (type == EntityCreationType::AUDIO_SOURCE_3D){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<SoundComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, {});
 
     }else if (type == EntityCreationType::MODEL){
 
@@ -608,10 +608,10 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<ModelComponent>(entity, {});
 
-    }else if (type == EntityCreationType::PARTICLES){
+    }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 
         scene->addComponent<ActionComponent>(entity, {});
-        scene->addComponent<ParticlesComponent>(entity, {});
+        scene->addComponent<ParticleSystemComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
@@ -621,10 +621,10 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<PointsComponent>(entity, {});
 
-    }else if (type == EntityCreationType::LINES){
+    }else if (type == EntityCreationType::LINE_RENDERER){
 
         scene->addComponent<Transform>(entity, {});
-        scene->addComponent<LinesComponent>(entity, {});
+        scene->addComponent<LineRendererComponent>(entity, {});
 
     }else if (type == EntityCreationType::MESH_POLYGON){
 
@@ -678,10 +678,10 @@ bool editor::CreateEntityCmd::execute(){
 
     sceneProject->isModified = true;
 
-    if (addToBundle){
-        project->addEntityToBundle(sceneId, entity, parent, false);
+    if (addToPrefab){
+        project->addEntityToPrefab(sceneId, entity, parent, false);
         for (const auto& child : childEntities){
-            project->addEntityToBundle(sceneId, child.entity, child.parent, false);
+            project->addEntityToPrefab(sceneId, child.entity, child.parent, false);
         }
     }
 
@@ -700,11 +700,11 @@ void editor::CreateEntityCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     if (sceneProject){
-        if (addToBundle){
+        if (addToPrefab){
             for (const auto& child : childEntities){
-                project->removeEntityFromBundle(sceneId, child.entity, false);
+                project->removeEntityFromPrefab(sceneId, child.entity, false);
             }
-            project->removeEntityFromBundle(sceneId, entity, false);
+            project->removeEntityFromPrefab(sceneId, entity, false);
         }
 
         if (wasMainCamera && sceneProject->mainCamera == entity){

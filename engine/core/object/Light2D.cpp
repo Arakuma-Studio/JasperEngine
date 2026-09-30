@@ -8,11 +8,11 @@
 
 using namespace jasperengine;
 
-Light2D::Light2D(Scene* scene): Object(scene){
+Light2D::Light2D(Scene* scene): GameObject(scene){
     addComponent<Light2DComponent>();
 }
 
-Light2D::Light2D(Scene* scene, Entity entity): Object(scene, entity){
+Light2D::Light2D(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 Light2D::~Light2D(){

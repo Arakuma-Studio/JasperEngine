@@ -17,7 +17,7 @@ bool AudioSystem::inited = false;
 float AudioSystem::globalVolume = 1.0;
 
 AudioSystem::AudioSystem(Scene* scene): SubSystem(scene){
-    signature.set(scene->getComponentId<SoundComponent>());
+    signature.set(scene->getComponentId<AudioSourceComponent>());
 
     cameraLastPosition = Vector3(0, 0, 0);
 }
@@ -56,7 +56,7 @@ void AudioSystem::deInit(){
     }
 }
 
-bool AudioSystem::loadSoundSample(SoundComponent& audio){
+bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
     if (audio.filename.empty()) {
         return false;
     }
@@ -71,7 +71,7 @@ bool AudioSystem::loadSoundSample(SoundComponent& audio){
             audio.loadFailed = true;
             audio.length = 0;
             audio.startTrigger = false;
-            audio.state = SoundState::Stopped;
+            audio.state = AudioSourceState::Stopped;
             audio.sample.reset();
             return false;
         }
@@ -89,7 +89,7 @@ bool AudioSystem::loadSoundSample(SoundComponent& audio){
     return true;
 }
 
-bool AudioSystem::loadSound(SoundComponent& audio){
+bool AudioSystem::loadSound(AudioSourceComponent& audio){
     if (!loadSoundSample(audio)) {
         return false;
     }
@@ -102,9 +102,9 @@ bool AudioSystem::loadSound(SoundComponent& audio){
 }
 
 void AudioSystem::preloadSoundAssets(){
-    auto audios = scene->getComponentArray<SoundComponent>();
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
     for (int i = 0; i < audios->size(); i++) {
-        SoundComponent& audio = audios->getComponentFromIndex(i);
+        AudioSourceComponent& audio = audios->getComponentFromIndex(i);
 
         if (audio.filename.empty()) {
             if (audio.loaded || audio.handle != 0 || audio.sample) {
@@ -123,9 +123,9 @@ void AudioSystem::getLoadCount(size_t& loaded, size_t& total) const{
     loaded = 0;
     total = 0;
 
-    auto audios = scene->getComponentArray<SoundComponent>();
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
     for (int i = 0; i < audios->size(); i++) {
-        const SoundComponent& audio = audios->getComponentFromIndex(i);
+        const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
         if (audio.filename.empty()) {
             continue;
         }
@@ -138,7 +138,7 @@ void AudioSystem::getLoadCount(size_t& loaded, size_t& total) const{
     }
 }
 
-void AudioSystem::destroySound(SoundComponent& audio){
+void AudioSystem::destroySound(AudioSourceComponent& audio){
     if (inited && audio.handle != 0) {
         getSoloud().stop(audio.handle);
     }
@@ -157,7 +157,7 @@ void AudioSystem::destroySound(SoundComponent& audio){
     }
 }
 
-bool AudioSystem::seekSound(SoundComponent& audio, double time){
+bool AudioSystem::seekSound(AudioSourceComponent& audio, double time){
     SoLoud::result res = getSoloud().seek(audio.handle, time);
 
     if (res != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR)
@@ -169,9 +169,9 @@ bool AudioSystem::seekSound(SoundComponent& audio, double time){
 void AudioSystem::setPaused(bool paused) {
     this->paused = paused;
     if (inited) {
-        auto audios = scene->getComponentArray<SoundComponent>();
+        auto audios = scene->getComponentArray<AudioSourceComponent>();
         for (int i = 0; i < audios->size(); i++) {
-            SoundComponent& audio = audios->getComponentFromIndex(i);
+            AudioSourceComponent& audio = audios->getComponentFromIndex(i);
             if (audio.handle != 0) {
                 getSoloud().setPause(audio.handle, paused);
             }
@@ -180,9 +180,9 @@ void AudioSystem::setPaused(bool paused) {
 }
 
 void AudioSystem::stopSceneSounds() {
-    auto audios = scene->getComponentArray<SoundComponent>();
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
     for (int i = 0; i < audios->size(); i++) {
-        SoundComponent& audio = audios->getComponentFromIndex(i);
+        AudioSourceComponent& audio = audios->getComponentFromIndex(i);
 
         if (inited && audio.handle != 0) {
             getSoloud().stop(audio.handle);
@@ -235,9 +235,9 @@ float AudioSystem::getGlobalVolume(){
 
 void AudioSystem::load(){
     // a file that failed before is tried again by each scene that loads it
-    auto audios = scene->getComponentArray<SoundComponent>();
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
     for (int i = 0; i < audios->size(); i++) {
-        const SoundComponent& audio = audios->getComponentFromIndex(i);
+        const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
         if (!audio.filename.empty() && !audio.loaded) {
             SoundPool::retry(audio.filename);
         }
@@ -256,7 +256,7 @@ void AudioSystem::update(double dt){
         return;
     }
 
-    auto audios = scene->getComponentArray<SoundComponent>();
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
 
     // open the output early, a device started by the first play cuts that sound
     if (!outputRequested && audios->size() > 0) {
@@ -269,7 +269,7 @@ void AudioSystem::update(double dt){
                        scene->findComponent<Transform>(scene->getCamera());
 
     for (int i = 0; i < audios->size(); i++){
-		SoundComponent& audio = audios->getComponentFromIndex(i);
+		AudioSourceComponent& audio = audios->getComponentFromIndex(i);
 
         Entity entity = audios->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -299,8 +299,8 @@ void AudioSystem::update(double dt){
                 audio.handle = 0;
                 audio.playingTime = 0;
             }
-            if (audio.state == SoundState::Paused) {
-                audio.state = SoundState::Stopped;
+            if (audio.state == AudioSourceState::Paused) {
+                audio.state = AudioSourceState::Stopped;
             }
             audio.startTrigger = false;
             audio.pauseTrigger = false;
@@ -308,9 +308,9 @@ void AudioSystem::update(double dt){
             continue;
         }
 
-        bool pendingStart = audio.startTrigger || (audio.state == SoundState::Playing && audio.handle == 0);
+        bool pendingStart = audio.startTrigger || (audio.state == AudioSourceState::Playing && audio.handle == 0);
 
-        if (audio.state == SoundState::Playing || pendingStart){
+        if (audio.state == AudioSourceState::Playing || pendingStart){
             if (!audio.loaded){
                 loadSound(audio);
             }
@@ -321,7 +321,7 @@ void AudioSystem::update(double dt){
                 audio.pauseTrigger = false;
 
                 getSoloud().setPause(audio.handle, true);
-                audio.state = SoundState::Paused;
+                audio.state = AudioSourceState::Paused;
             }
             if (audio.stopTrigger){
                 audio.stopTrigger = false;
@@ -329,12 +329,12 @@ void AudioSystem::update(double dt){
                 getSoloud().stop(audio.handle);
                 audio.handle = 0;
                 audio.playingTime = 0;
-                audio.state = SoundState::Stopped;
+                audio.state = AudioSourceState::Stopped;
             }
             if (pendingStart){
                 audio.startTrigger = false;
 
-                if (audio.state != SoundState::Paused || audio.handle == 0) {
+                if (audio.state != AudioSourceState::Paused || audio.handle == 0) {
                     if (!init()) {
                         continue;
                     }
@@ -364,10 +364,10 @@ void AudioSystem::update(double dt){
                     cameraLastPosition = cameraTransform.worldPosition;
                 }
 
-                audio.state = SoundState::Playing;
+                audio.state = AudioSourceState::Playing;
             }
 
-            if (audio.state == SoundState::Playing){
+            if (audio.state == AudioSourceState::Playing){
                 audio.playingTime = getSoloud().getStreamTime(audio.handle);
 
                 if (audio.needUpdate){
@@ -391,11 +391,11 @@ void AudioSystem::update(double dt){
                         Vector3 camVelocity = cameraLastPosition - camWorldPos;
 
                         unsigned int attModel = SoLoud::AudioSource::NO_ATTENUATION;
-                        if (audio.attenuationModel == SoundAttenuation::INVERSE_DISTANCE)
+                        if (audio.attenuationModel == AudioSourceAttenuation::INVERSE_DISTANCE)
                             attModel = SoLoud::AudioSource::INVERSE_DISTANCE;
-                        if (audio.attenuationModel == SoundAttenuation::LINEAR_DISTANCE)
+                        if (audio.attenuationModel == AudioSourceAttenuation::LINEAR_DISTANCE)
                             attModel = SoLoud::AudioSource::LINEAR_DISTANCE;
-                        if (audio.attenuationModel == SoundAttenuation::EXPONENTIAL_DISTANCE)
+                        if (audio.attenuationModel == AudioSourceAttenuation::EXPONENTIAL_DISTANCE)
                             attModel = SoLoud::AudioSource::EXPONENTIAL_DISTANCE;
 
                         getSoloud().set3dSourceMinMaxDistance(audio.handle, audio.minDistance, audio.maxDistance);
@@ -433,8 +433,8 @@ void AudioSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 }
 
 void AudioSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
-	if (componentId == scene->getComponentId<SoundComponent>()) {
-		SoundComponent& audio = scene->getComponent<SoundComponent>(entity);
+	if (componentId == scene->getComponentId<AudioSourceComponent>()) {
+		AudioSourceComponent& audio = scene->getComponent<AudioSourceComponent>(entity);
 		destroySound(audio);
 	}
 }

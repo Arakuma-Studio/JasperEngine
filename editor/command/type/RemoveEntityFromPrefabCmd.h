@@ -10,7 +10,7 @@
 
 namespace jasperengine::editor{
 
-    class RemoveEntityFromBundleCmd: public Command{
+    class RemoveEntityFromPrefabCmd: public Command{
 
     private:
         Project* project;
@@ -23,7 +23,7 @@ namespace jasperengine::editor{
         NodeRecovery recovery;
 
     public:
-        RemoveEntityFromBundleCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);
+        RemoveEntityFromPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);
 
         bool execute() override;
         void undo() override;

@@ -54,8 +54,8 @@ bool editor::UnlinkMaterialCmd::execute(){
                 *overrideMask |= propertyFields;
             }
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
             }
         }
     }
@@ -88,8 +88,8 @@ void editor::UnlinkMaterialCmd::undo(){
                 *overrideMask = data.oldOverrideFields;
             }
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
             }
         }
 

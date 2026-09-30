@@ -222,7 +222,7 @@ float PhysicsSystem::maxScaleXYZ(const Vector3& scale){
     return std::max(scale.x, std::max(scale.y, scale.z));
 }
 
-JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int shapeIndex){
+JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int colliderIndex){
     const double w = rotation.w;
     const double x = rotation.x;
     const double y = rotation.y;
@@ -233,16 +233,16 @@ JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Ent
     if (!std::isfinite(lengthSquared) || lengthSquared <= minimumLengthSquared){
         if (reportedInvalidRotations.insert(entity).second){
             const std::string entityName = scene->getEntityName(entity);
-            if (shapeIndex < 0){
+            if (colliderIndex < 0){
                 Log::error(
-                    "Body3D entity %u (%s) has an invalid transform rotation quaternion "
+                    "Rigidbody entity %u (%s) has an invalid transform rotation quaternion "
                     "(w=%g, x=%g, y=%g, z=%g). Using identity before passing it to Jolt.",
                     entity, entityName.c_str(), w, x, y, z);
             }else{
                 Log::error(
-                    "Body3D entity %u (%s) has an invalid shape %d rotation quaternion "
+                    "Rigidbody entity %u (%s) has an invalid shape %d rotation quaternion "
                     "(w=%g, x=%g, y=%g, z=%g). Using identity before passing it to Jolt.",
-                    entity, entityName.c_str(), shapeIndex, w, x, y, z);
+                    entity, entityName.c_str(), colliderIndex, w, x, y, z);
             }
         }
         return JPH::Quat::sIdentity();
@@ -256,16 +256,16 @@ JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Ent
     if (std::abs(lengthSquared - 1.0) > joltNormalizationTolerance
         && warnedNonNormalizedRotations.insert(entity).second){
         const std::string entityName = scene->getEntityName(entity);
-        if (shapeIndex < 0){
+        if (colliderIndex < 0){
             Log::warn(
-                "Body3D entity %u (%s) has a non-normalized transform rotation quaternion "
+                "Rigidbody entity %u (%s) has a non-normalized transform rotation quaternion "
                 "(squared length=%g). Normalizing it before passing it to Jolt.",
                 entity, entityName.c_str(), lengthSquared);
         }else{
             Log::warn(
-                "Body3D entity %u (%s) has a non-normalized shape %d rotation quaternion "
+                "Rigidbody entity %u (%s) has a non-normalized shape %d rotation quaternion "
                 "(squared length=%g). Normalizing it before passing it to Jolt.",
-                entity, entityName.c_str(), shapeIndex, lengthSquared);
+                entity, entityName.c_str(), colliderIndex, lengthSquared);
         }
     }
 
@@ -277,11 +277,11 @@ JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Ent
         static_cast<float>(w * inverseLength));
 }
 
-JPH::EMotionQuality PhysicsSystem::getBody3DMotionQualityToJolt(Body3DMotionQuality motionQuality){
+JPH::EMotionQuality PhysicsSystem::getRigidbodyMotionQualityToJolt(RigidbodyMotionQuality motionQuality){
     switch (motionQuality){
-        case Body3DMotionQuality::LINEAR_CAST:
+        case RigidbodyMotionQuality::LINEAR_CAST:
             return JPH::EMotionQuality::LinearCast;
-        case Body3DMotionQuality::DISCRETE:
+        case RigidbodyMotionQuality::DISCRETE:
         default:
             return JPH::EMotionQuality::Discrete;
     }
@@ -290,7 +290,7 @@ JPH::EMotionQuality PhysicsSystem::getBody3DMotionQualityToJolt(Body3DMotionQual
 
 PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
-	signature.set(scene->getComponentId<Body2DComponent>());
+	signature.set(scene->getComponentId<Rigidbody2DComponent>());
 #endif
 
 	this->scene = scene;
@@ -522,7 +522,7 @@ void PhysicsSystem::flushPendingDestroys3D(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateTransformFromBody2D(Entity entity, Vector2 position, float angle){
+void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Vector2 position, float angle){
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform){
         return;
@@ -531,11 +531,11 @@ void PhysicsSystem::updateTransformFromBody2D(Entity entity, Vector2 position, f
     // Box2D does not own Z, it is kept from the current world position
     Vector3 worldPosition = Vector3(position.x, position.y, transform->worldPosition.z);
 
-    updateTransformFromBody3D(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
+    updateTransformFromRigidbody(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
 }
 #endif
 
-void PhysicsSystem::updateTransformFromBody3D(Entity entity, Vector3 position, Quaternion rotation){
+void PhysicsSystem::updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation){
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform){
         return;
@@ -561,7 +561,7 @@ void PhysicsSystem::updateTransformFromBody3D(Entity entity, Vector3 position, Q
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateBody2DPosition(Signature signature, Entity entity, Body2DComponent& body){
+void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (b2Body_IsValid(body.body)){
@@ -585,7 +585,7 @@ void PhysicsSystem::updateBody2DPosition(Signature signature, Entity entity, Bod
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void PhysicsSystem::updateBody3DPosition(Signature signature, Entity entity, Body3DComponent& body){
+void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (!body.body.IsInvalid()){
@@ -673,18 +673,18 @@ bool PhysicsSystem::loadJoint3D(Entity entity, Joint3DComponent& joint){
     Signature signatureA = scene->getSignature(joint.bodyA);
     Signature signatureB = scene->getSignature(joint.bodyB);
 
-    if (!signatureA.test(scene->getComponentId<Body3DComponent>()) || !signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (!signatureA.test(scene->getComponentId<RigidbodyComponent>()) || !signatureB.test(scene->getComponentId<RigidbodyComponent>())){
         Log::error("Cannot create joint, error in bodyA or bodyB");
         return false;
     }
 
-    if (!loadBody3D(joint.bodyA) || !loadBody3D(joint.bodyB)){
+    if (!loadRigidbody(joint.bodyA) || !loadRigidbody(joint.bodyB)){
         Log::error("Cannot create 3D joint, bodyA or bodyB has no valid physics shape/body");
         return false;
     }
 
-    Body3DComponent& bodyAComp = scene->getComponent<Body3DComponent>(joint.bodyA);
-    Body3DComponent& bodyBComp = scene->getComponent<Body3DComponent>(joint.bodyB);
+    RigidbodyComponent& bodyAComp = scene->getComponent<RigidbodyComponent>(joint.bodyA);
+    RigidbodyComponent& bodyBComp = scene->getComponent<RigidbodyComponent>(joint.bodyB);
 
     if (bodyAComp.body.IsInvalid() || bodyBComp.body.IsInvalid()){
         Log::error("Cannot create 3D joint, bodyA or bodyB body id is invalid");
@@ -774,7 +774,7 @@ bool PhysicsSystem::loadJoint3D(Entity entity, Joint3DComponent& joint){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
+bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body){
     if (!b2Body_IsValid(body.body)){
         return false;
     }
@@ -794,12 +794,12 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
         return radius * radiusScale / pointsToMeterScale2D;
     };
 
-    for (size_t i = 0; i < body.numShapes; i++){
-        destroyShape2D(body, i);
+    for (size_t i = 0; i < body.numColliders; i++){
+        destroyCollider2D(body, i);
     }
 
-    for (size_t i = 0; i < body.numShapes; i++){
-        Shape2D& shapeData = body.shapes[i];
+    for (size_t i = 0; i < body.numColliders; i++){
+        Collider2D& shapeData = body.colliders[i];
 
         b2ShapeDef shapeDef = b2DefaultShapeDef();
         shapeDef.userData = reinterpret_cast<void*>(i);
@@ -818,7 +818,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
         shapeData.shape = b2_nullShapeId;
         shapeData.chain = b2_nullChainId;
 
-        if (shapeData.type == Shape2DType::POLYGON){
+        if (shapeData.type == Collider2DType::POLYGON){
             std::vector<b2Vec2> b2vertices;
 
             if (shapeData.numVertices >= 3){
@@ -868,7 +868,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
 
             b2Polygon polygon = b2MakePolygon(&hull, std::max(0.0f, toBox2DRadius(shapeData.radius)));
             shapeData.shape = b2CreatePolygonShape(body.body, &shapeDef, &polygon);
-        }else if (shapeData.type == Shape2DType::CIRCLE){
+        }else if (shapeData.type == Collider2DType::CIRCLE){
             float radius = toBox2DRadius(shapeData.radius);
             if (radius <= 0.0f){
                 Log::error("Cannot create circle shape %zu: radius must be > 0", i);
@@ -879,7 +879,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
             circle.center = toBox2DPoint(scaledPoint(shapeData.pointA));
             circle.radius = radius;
             shapeData.shape = b2CreateCircleShape(body.body, &shapeDef, &circle);
-        }else if (shapeData.type == Shape2DType::CAPSULE){
+        }else if (shapeData.type == Collider2DType::CAPSULE){
             float radius = toBox2DRadius(shapeData.radius);
             if (radius <= 0.0f){
                 Log::error("Cannot create capsule shape %zu: radius must be > 0", i);
@@ -898,7 +898,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
             capsule.center2 = toBox2DPoint(center2);
             capsule.radius = radius;
             shapeData.shape = b2CreateCapsuleShape(body.body, &shapeDef, &capsule);
-        }else if (shapeData.type == Shape2DType::SEGMENT){
+        }else if (shapeData.type == Collider2DType::SEGMENT){
             Vector2 point1 = scaledPoint(shapeData.pointA);
             Vector2 point2 = scaledPoint(shapeData.pointB);
             if (point1 == point2){
@@ -910,7 +910,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
             segment.point1 = toBox2DPoint(point1);
             segment.point2 = toBox2DPoint(point2);
             shapeData.shape = b2CreateSegmentShape(body.body, &shapeDef, &segment);
-        }else if (shapeData.type == Shape2DType::CHAIN){
+        }else if (shapeData.type == Collider2DType::CHAIN){
             if (shapeData.numVertices < 4){
                 Log::error("Cannot create chain shape %zu: Box2D requires at least 4 vertices", i);
                 continue;
@@ -939,7 +939,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
         }
     }
 
-    body.needUpdateShapes = false;
+    body.needUpdateColliders = false;
     body.loadedScale = entityScale;
 
     return true;
@@ -947,56 +947,56 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, size_t index){
-    Shape3D& shapeData = body.shapes[index];
+bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& body, size_t index){
+    Collider3D& shapeData = body.colliders[index];
     shapeData.shape = NULL;
     const Vector3 entityScale = entityWorldScale(scene, entity);
     const Vector3 absEntityScale = absScale(entityScale);
 
-    if (shapeData.type == Shape3DType::BOX){
+    if (shapeData.type == Collider3DType::BOX){
         JPH::BoxShapeSettings shape_settings(JPH::Vec3(shapeData.width * absEntityScale.x / 2.0f, shapeData.height * absEntityScale.y / 2.0f, shapeData.depth * absEntityScale.z / 2.0f));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::SPHERE){
+    }else if (shapeData.type == Collider3DType::SPHERE){
         JPH::SphereShapeSettings shape_settings(shapeData.radius * maxScaleXYZ(absEntityScale));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::CAPSULE){
+    }else if (shapeData.type == Collider3DType::CAPSULE){
         JPH::CapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::TAPERED_CAPSULE){
+    }else if (shapeData.type == Collider3DType::TAPERED_CAPSULE){
         const float radiusScale = maxScaleXZ(absEntityScale);
         JPH::TaperedCapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.topRadius * radiusScale, shapeData.bottomRadius * radiusScale);
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::CYLINDER){
+    }else if (shapeData.type == Collider3DType::CYLINDER){
         JPH::CylinderShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::CONVEX_HULL){
-        if (shapeData.source == Shape3DSource::NONE){
-            shapeData.source = Shape3DSource::ENTITY_MESH;
+    }else if (shapeData.type == Collider3DType::CONVEX_HULL){
+        if (shapeData.source == Collider3DSource::NONE){
+            shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
-            Log::warn("Body3D entity %u has CONVEX_HULL with Source=None. Falling back to Entity Mesh source.", entity);
+            Log::warn("Rigidbody entity %u has CONVEX_HULL with Source=None. Falling back to Entity Mesh source.", entity);
         }
 
         JPH::Array<JPH::Vec3> jvertices;
 
-        if (shapeData.source == Shape3DSource::RAW_VERTICES){
+        if (shapeData.source == Collider3DSource::RAW_VERTICES){
             jvertices.resize(shapeData.numVertices);
             for (size_t i = 0; i < shapeData.numVertices; i++){
                 Vector3 vertex = shapeData.vertices[i] * entityScale;
                 jvertices[i] = JPH::Vec3(vertex.x, vertex.y, vertex.z);
             }
-        }else if (shapeData.source == Shape3DSource::ENTITY_MESH){
+        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
             Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
             std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
             if (sourceEntities.empty()){
@@ -1029,19 +1029,19 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::MESH){
-        if (shapeData.source == Shape3DSource::NONE){
-            shapeData.source = Shape3DSource::ENTITY_MESH;
+    }else if (shapeData.type == Collider3DType::MESH){
+        if (shapeData.source == Collider3DSource::NONE){
+            shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
-            Log::warn("Body3D entity %u has MESH with Source=None. Falling back to Entity Mesh source.", entity);
+            Log::warn("Rigidbody entity %u has MESH with Source=None. Falling back to Entity Mesh source.", entity);
         }
 
         JPH::VertexList jvertices;
         JPH::IndexedTriangleList jindices;
 
-        if (shapeData.source == Shape3DSource::RAW_MESH){
+        if (shapeData.source == Collider3DSource::RAW_MESH){
             jvertices.resize(shapeData.numVertices);
             for (size_t i = 0; i < shapeData.numVertices; i++){
                 Vector3 vertex = shapeData.vertices[i] * entityScale;
@@ -1055,7 +1055,7 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
                     jindices[i].mIdx[j] = shapeData.indices[(3 * i) + j];
                 }
             }
-        }else if (shapeData.source == Shape3DSource::ENTITY_MESH){
+        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
             Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
             std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
             if (sourceEntities.empty()){
@@ -1118,13 +1118,13 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return false;
         shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Shape3DType::HEIGHTFIELD){
-        if (shapeData.source == Shape3DSource::NONE){
-            shapeData.source = Shape3DSource::ENTITY_HEIGHTFIELD;
+    }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
+        if (shapeData.source == Collider3DSource::NONE){
+            shapeData.source = Collider3DSource::ENTITY_HEIGHTFIELD;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
-            Log::warn("Body3D entity %u has HEIGHTFIELD with Source=None. Falling back to Entity Heightfield source.", entity);
+            Log::warn("Rigidbody entity %u has HEIGHTFIELD with Source=None. Falling back to Entity Heightfield source.", entity);
         }
 
         Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
@@ -1196,11 +1196,11 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
 // can land several frames after Scene::load: models are parsed on a worker thread and
 // terrains wait on their heightmap. The parent walk covers multi-node models, whose child
 // meshes are filled in by the ancestor holding the ModelComponent.
-bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Shape3D& shapeData) const{
-    if (shapeData.type != Shape3DType::CONVEX_HULL && shapeData.type != Shape3DType::MESH && shapeData.type != Shape3DType::HEIGHTFIELD){
+bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Collider3D& shapeData) const{
+    if (shapeData.type != Collider3DType::CONVEX_HULL && shapeData.type != Collider3DType::MESH && shapeData.type != Collider3DType::HEIGHTFIELD){
         return false;
     }
-    if (shapeData.source == Shape3DSource::RAW_VERTICES || shapeData.source == Shape3DSource::RAW_MESH){
+    if (shapeData.source == Collider3DSource::RAW_VERTICES || shapeData.source == Collider3DSource::RAW_MESH){
         return false;
     }
 
@@ -1224,36 +1224,36 @@ bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Shape3D& shapeData
     return false;
 }
 
-bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
+bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){
     if (!body.body.IsInvalid()){
-        destroyBody3D(body);
+        destroyRigidbody(body);
         body.body = JPH::BodyID();
     }
 
-    for (size_t i = 0; i < body.numShapes; i++){
+    for (size_t i = 0; i < body.numColliders; i++){
         // a source still loading is not a failure: fixedUpdate retries the body every step
-        if (isShapeSourceLoading(entity, body.shapes[i])){
+        if (isShapeSourceLoading(entity, body.colliders[i])){
             return false;
         }
 
-        if (!createShape3DForIndex(entity, body, i)){
+        if (!createCollider3DForIndex(entity, body, i)){
             Log::error("Cannot create runtime shape %i for 3D Body entity: %u", i, entity);
             return false;
         }
     }
 
-    if (body.numShapes == 0){
+    if (body.numColliders == 0){
         return false;
     }
 
-    if (body.numShapes > 1){
+    if (body.numColliders > 1){
         const Vector3 entityScale = entityWorldScale(scene, entity);
         JPH::StaticCompoundShapeSettings compound_shape;
-        for (size_t i = 0; i < body.numShapes; i++){
-            Vector3 scaledPosition = body.shapes[i].position * entityScale;
+        for (size_t i = 0; i < body.numColliders; i++){
+            Vector3 scaledPosition = body.colliders[i].position * entityScale;
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
-            JPH::Quat jQuat = toValidatedJoltRotation(body.shapes[i].rotation, entity, static_cast<int>(i));
-            compound_shape.AddShape(jPosition, jQuat, body.shapes[i].shape);
+            JPH::Quat jQuat = toValidatedJoltRotation(body.colliders[i].rotation, entity, static_cast<int>(i));
+            compound_shape.AddShape(jPosition, jQuat, body.colliders[i].shape);
         }
 
         JPH::ShapeSettings::ShapeResult shape_result = compound_shape.Create();
@@ -1264,7 +1264,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
 
         if (!createGenericJoltBody(entity, body, shape_result.Get())) return false;
     }else{
-        Shape3D& shapeData = body.shapes[0];
+        Collider3D& shapeData = body.colliders[0];
         if (shapeData.position != Vector3::ZERO || shapeData.rotation != Quaternion::IDENTITY){
             Vector3 scaledPosition = shapeData.position * entityWorldScale(scene, entity);
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
@@ -1283,17 +1283,17 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     }
 
     body.needReloadBody = false;
-    body.needUpdateShapes = false;
+    body.needUpdateColliders = false;
     body.newBody = true;
     body.loadedScale = entityWorldScale(scene, entity);
 
     return true;
 }
 
-static_assert((uint8_t)JPH::EAllowedDOFs::Plane2D == (Body3DAllowedDOF_TranslationX | Body3DAllowedDOF_TranslationY | Body3DAllowedDOF_RotationZ)
-    && (uint8_t)JPH::EAllowedDOFs::All == Body3DAllowedDOF_All, "Body3DAllowedDOFFlags must keep Jolt's bits");
+static_assert((uint8_t)JPH::EAllowedDOFs::Plane2D == (RigidbodyAllowedDOF_TranslationX | RigidbodyAllowedDOF_TranslationY | RigidbodyAllowedDOF_RotationZ)
+    && (uint8_t)JPH::EAllowedDOFs::All == RigidbodyAllowedDOF_All, "RigidbodyAllowedDOFFlags must keep Jolt's bits");
 
-bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape){
+bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& body, const JPH::ShapeRefC shape){
     JPH::ObjectLayer layer = JPH::ObjectLayerPairFilterMask::sGetObjectLayer(1);
     JPH::EMotionType joltType = JPH::EMotionType::Static;
     JPH::EActivation activation = JPH::EActivation::DontActivate;
@@ -1308,7 +1308,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
     }
 
     if (joltType != JPH::EMotionType::Static && shape && shape->MustBeStatic()){
-        Log::warn("Body3D entity %u uses a static-only shape (Mesh/HeightField/Plane/...) and cannot be %s. Forcing body type to Static.",
+        Log::warn("Rigidbody entity %u uses a static-only shape (Mesh/HeightField/Plane/...) and cannot be %s. Forcing body type to Static.",
                   entity,
                   body.type == BodyType::DYNAMIC ? "Dynamic" : "Kinematic");
         body.type = BodyType::STATIC;
@@ -1317,7 +1317,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
     }
 
     JPH::BodyCreationSettings settings(shape, JPH::Vec3(0.0, 0.0, 0.0), JPH::Quat::sIdentity(), joltType, layer);
-    settings.mMotionQuality = getBody3DMotionQualityToJolt(body.motionQuality);
+    settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
     settings.mGravityFactor = body.gravityFactor;
     settings.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(body.allowedDOFs);
@@ -1348,41 +1348,41 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::createBody2D(Entity entity){
+void PhysicsSystem::createRigidbody2D(Entity entity){
     Signature signature = scene->getSignature(entity);
 
-    if (!signature.test(scene->getComponentId<Body2DComponent>())){
-        scene->addComponent<Body2DComponent>(entity);
-        //loadBody2D(entity);
+    if (!signature.test(scene->getComponentId<Rigidbody2DComponent>())){
+        scene->addComponent<Rigidbody2DComponent>(entity);
+        //loadRigidbody2D(entity);
     }
 }
 
-void PhysicsSystem::removeBody2D(Entity entity){
+void PhysicsSystem::removeRigidbody2D(Entity entity){
     Signature signature = scene->getSignature(entity);
 
-    if (signature.test(scene->getComponentId<Body2DComponent>())){
-        destroyBody2D(scene->getComponent<Body2DComponent>(entity));
-        scene->removeComponent<Body2DComponent>(entity);
+    if (signature.test(scene->getComponentId<Rigidbody2DComponent>())){
+        destroyRigidbody2D(scene->getComponent<Rigidbody2DComponent>(entity));
+        scene->removeComponent<Rigidbody2DComponent>(entity);
     }
 }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void PhysicsSystem::createBody3D(Entity entity){
+void PhysicsSystem::createRigidbody(Entity entity){
     Signature signature = scene->getSignature(entity);
 
-    if (!signature.test(scene->getComponentId<Body3DComponent>())){
-        scene->addComponent<Body3DComponent>(entity);
-        //loadBody3D(entity);
+    if (!signature.test(scene->getComponentId<RigidbodyComponent>())){
+        scene->addComponent<RigidbodyComponent>(entity);
+        //loadRigidbody(entity);
     }
 }
 
-void PhysicsSystem::removeBody3D(Entity entity){
+void PhysicsSystem::removeRigidbody(Entity entity){
     Signature signature = scene->getSignature(entity);
 
-    if (signature.test(scene->getComponentId<Body3DComponent>())){
-        destroyBody3D(scene->getComponent<Body3DComponent>(entity));
-        scene->removeComponent<Body3DComponent>(entity);
+    if (signature.test(scene->getComponentId<RigidbodyComponent>())){
+        destroyRigidbody(scene->getComponent<RigidbodyComponent>(entity));
+        scene->removeComponent<RigidbodyComponent>(entity);
     }
 }
 #endif
@@ -1401,7 +1401,7 @@ JPH::PhysicsSystem* PhysicsSystem::getWorld3D(){
 
 #ifdef JASPERENGINE_PHYSICS_2D
 b2BodyId PhysicsSystem::getBody(Entity entity){
-    Body2DComponent* body = scene->findComponent<Body2DComponent>(entity);
+    Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
 
     if (body){
         return body->body;
@@ -1410,7 +1410,7 @@ b2BodyId PhysicsSystem::getBody(Entity entity){
     return b2_nullBodyId;
 }
 
-bool PhysicsSystem::loadBody2D(Entity entity){
+bool PhysicsSystem::loadRigidbody2D(Entity entity){
     ensureWorld2D();
     if (!b2World_IsValid(world2D)){
         return false;
@@ -1419,7 +1419,7 @@ bool PhysicsSystem::loadBody2D(Entity entity){
     // shapes are sized by the world scale
     resolveWorldPose(scene, entity);
 
-    Body2DComponent& body = scene->getComponent<Body2DComponent>(entity);
+    Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(entity);
 
     if (!b2Body_IsValid(body.body) || body.needReloadBody){
         if (b2Body_IsValid(body.body)){
@@ -1441,31 +1441,31 @@ bool PhysicsSystem::loadBody2D(Entity entity){
         body.body = b2CreateBody(world2D, &bodyDef);
         body.newBody = true;
         body.needReloadBody = false;
-        body.needUpdateShapes = true;
+        body.needUpdateColliders = true;
 
-        return syncBody2DShapes(entity, body);
+        return syncRigidbody2DColliders(entity, body);
     }
 
     Vector2 entityScale = entityWorldScale2D(scene, entity);
     if (entityScale != body.loadedScale){
-        body.needUpdateShapes = true;
+        body.needUpdateColliders = true;
     }
 
-    if (body.needUpdateShapes){
-        return syncBody2DShapes(entity, body);
+    if (body.needUpdateColliders){
+        return syncRigidbody2DColliders(entity, body);
     }
 
     return true;
 }
 
-void PhysicsSystem::destroyBody2D(Body2DComponent& body){
+void PhysicsSystem::destroyRigidbody2D(Rigidbody2DComponent& body){
     // When a world leaves scope or is deleted by calling delete on a pointer
     // all the memory reserved for bodies, fixtures, and joints is freed
     if (b2Body_IsValid(body.body)){
-        for (int i = 0; i < body.numShapes; i++){
-            destroyShape2D(body, i);
+        for (int i = 0; i < body.numColliders; i++){
+            destroyCollider2D(body, i);
         }
-        body.numShapes = 0;
+        body.numColliders = 0;
 
         b2DestroyBody(body.body);
 
@@ -1475,7 +1475,7 @@ void PhysicsSystem::destroyBody2D(Body2DComponent& body){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-bool PhysicsSystem::loadBody3D(Entity entity){
+bool PhysicsSystem::loadRigidbody(Entity entity){
     // The step holds the broad phase; the update loop retries any body without a handle.
     if (steppingWorld3D){
         Log::error("Cannot load a 3D body while the physics world is stepping, retrying next update");
@@ -1484,20 +1484,20 @@ bool PhysicsSystem::loadBody3D(Entity entity){
 
     resolveWorldPose(scene, entity);
 
-    Body3DComponent& body = scene->getComponent<Body3DComponent>(entity);
+    RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(entity);
     Vector3 entityScale = entityWorldScale(scene, entity);
     if (!body.body.IsInvalid() && entityScale != body.loadedScale){
-        body.needUpdateShapes = true;
+        body.needUpdateColliders = true;
     }
 
-    if (body.needReloadBody || body.needUpdateShapes || body.body.IsInvalid()){
-        return syncBody3DShapes(entity, body);
+    if (body.needReloadBody || body.needUpdateColliders || body.body.IsInvalid()){
+        return syncRigidbodyColliders(entity, body);
     }
 
     return true;
 }
 
-void PhysicsSystem::destroyBody3D(Body3DComponent& body){
+void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
     if (body.body.IsInvalid()){
         return;
     }
@@ -1515,8 +1515,8 @@ void PhysicsSystem::destroyBody3D(Body3DComponent& body){
         body_interface.DestroyBody(body.body);
     }
 
-    for (int i = 0; i < body.numShapes; i++){
-        destroyShape3D(body, i);
+    for (int i = 0; i < body.numColliders; i++){
+        destroyCollider3D(body, i);
     }
 
     body.body = JPH::BodyID();
@@ -1524,67 +1524,67 @@ void PhysicsSystem::destroyBody3D(Body3DComponent& body){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-int PhysicsSystem::loadShape2D(Body2DComponent& body, void* shape, Shape2DType type){
-    if (!b2Shape_IsValid(body.shapes[body.numShapes].shape)){
+int PhysicsSystem::loadCollider2D(Rigidbody2DComponent& body, void* shape, Collider2DType type){
+    if (!b2Shape_IsValid(body.colliders[body.numColliders].shape)){
         b2ShapeDef shapeDef = b2DefaultShapeDef();
-        shapeDef.userData = reinterpret_cast<void*>(body.numShapes);
+        shapeDef.userData = reinterpret_cast<void*>(body.numColliders);
 
         if (!b2Body_IsValid(body.body)){
             Log::error("Cannot create 2D body shape without loaded body");
             return -1;
         }
 
-        body.shapes[body.numShapes].shape = b2_nullShapeId;
-        body.shapes[body.numShapes].chain = b2_nullChainId;
+        body.colliders[body.numColliders].shape = b2_nullShapeId;
+        body.colliders[body.numColliders].chain = b2_nullChainId;
 
-        if (type == Shape2DType::POLYGON){
-            body.shapes[body.numShapes].shape = b2CreatePolygonShape(body.body, &shapeDef, (b2Polygon*)shape);
-        }else if (type == Shape2DType::CIRCLE){
-            body.shapes[body.numShapes].shape = b2CreateCircleShape(body.body, &shapeDef, (b2Circle*)shape);
-        }else if (type == Shape2DType::CAPSULE){
-            body.shapes[body.numShapes].shape = b2CreateCapsuleShape(body.body, &shapeDef, (b2Capsule*)shape);
-        }else if (type == Shape2DType::SEGMENT){
-            body.shapes[body.numShapes].shape = b2CreateSegmentShape(body.body, &shapeDef, (b2Segment*)shape);
-        }else if (type == Shape2DType::CHAIN){
-            body.shapes[body.numShapes].chain = b2CreateChain(body.body, (b2ChainDef*)shape);
+        if (type == Collider2DType::POLYGON){
+            body.colliders[body.numColliders].shape = b2CreatePolygonShape(body.body, &shapeDef, (b2Polygon*)shape);
+        }else if (type == Collider2DType::CIRCLE){
+            body.colliders[body.numColliders].shape = b2CreateCircleShape(body.body, &shapeDef, (b2Circle*)shape);
+        }else if (type == Collider2DType::CAPSULE){
+            body.colliders[body.numColliders].shape = b2CreateCapsuleShape(body.body, &shapeDef, (b2Capsule*)shape);
+        }else if (type == Collider2DType::SEGMENT){
+            body.colliders[body.numColliders].shape = b2CreateSegmentShape(body.body, &shapeDef, (b2Segment*)shape);
+        }else if (type == Collider2DType::CHAIN){
+            body.colliders[body.numColliders].chain = b2CreateChain(body.body, (b2ChainDef*)shape);
         }
 
-        body.numShapes++;
+        body.numColliders++;
 
-        return (body.numShapes - 1);
+        return (body.numColliders - 1);
     }
 
     return -1;
 }
 
-void PhysicsSystem::destroyShape2D(Body2DComponent& body, size_t index){
-    if (b2Shape_IsValid(body.shapes[index].shape)){
-        b2DestroyShape(body.shapes[index].shape, true);
+void PhysicsSystem::destroyCollider2D(Rigidbody2DComponent& body, size_t index){
+    if (b2Shape_IsValid(body.colliders[index].shape)){
+        b2DestroyShape(body.colliders[index].shape, true);
 
-        body.shapes[index].shape = b2_nullShapeId;
+        body.colliders[index].shape = b2_nullShapeId;
     }
-    if (b2Chain_IsValid(body.shapes[index].chain)){
-        b2DestroyChain(body.shapes[index].chain);
+    if (b2Chain_IsValid(body.colliders[index].chain)){
+        b2DestroyChain(body.colliders[index].chain);
 
-        body.shapes[index].chain = b2_nullChainId;
+        body.colliders[index].chain = b2_nullChainId;
     }
 }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-int PhysicsSystem::loadShape3D(Body3DComponent& body, const Vector3& position, const Quaternion& rotation, JPH::ShapeSettings* shapeSettings){
+int PhysicsSystem::loadCollider3D(RigidbodyComponent& body, const Vector3& position, const Quaternion& rotation, JPH::ShapeSettings* shapeSettings){
     JPH::ShapeSettings::ShapeResult shape_result = shapeSettings->Create();
     if (shape_result.IsValid()){
         JPH::Shape* shape = shape_result.Get();
-        shape->SetUserData(body.numShapes);
+        shape->SetUserData(body.numColliders);
 
-        body.shapes[body.numShapes].shape = shape;
-        body.shapes[body.numShapes].position = position;
-        body.shapes[body.numShapes].rotation = rotation;
+        body.colliders[body.numColliders].shape = shape;
+        body.colliders[body.numColliders].position = position;
+        body.colliders[body.numColliders].rotation = rotation;
 
-        body.numShapes++;
+        body.numColliders++;
 
-        return (body.numShapes - 1);
+        return (body.numColliders - 1);
     }else{
         Log::error("Cannot create shape for 3D Body");
     }
@@ -1592,9 +1592,9 @@ int PhysicsSystem::loadShape3D(Body3DComponent& body, const Vector3& position, c
     return -1;
 }
 
-void PhysicsSystem::destroyShape3D(Body3DComponent& body, size_t index){
+void PhysicsSystem::destroyCollider3D(RigidbodyComponent& body, size_t index){
     // ShapeRefC::operator= releases the owned reference; do not call Shape::Release manually.
-    body.shapes[index].shape = nullptr;
+    body.colliders[index].shape = nullptr;
 }
 #endif
 
@@ -1603,13 +1603,13 @@ bool PhysicsSystem::loadDistanceJoint2D(Entity entity, Joint2DComponent& joint, 
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2Vec2 worldPivotA = {anchorA.x / pointsToMeterScale2D, anchorA.y / pointsToMeterScale2D};
         b2Vec2 worldPivotB = {anchorB.x / pointsToMeterScale2D, anchorB.y / pointsToMeterScale2D};
@@ -1654,13 +1654,13 @@ bool PhysicsSystem::loadRevoluteJoint2D(Entity entity, Joint2DComponent& joint, 
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
 
@@ -1686,13 +1686,13 @@ bool PhysicsSystem::loadPrismaticJoint2D(Entity entity, Joint2DComponent& joint,
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
         float axisLengthSq = axis.x * axis.x + axis.y * axis.y;
@@ -1725,15 +1725,15 @@ bool PhysicsSystem::loadMouseJoint2D(Entity entity, Joint2DComponent& joint, Ent
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        if (!loadBody2D(bodyA) || !loadBody2D(bodyB)){
+        if (!loadRigidbody2D(bodyA) || !loadRigidbody2D(bodyB)){
             Log::error("Cannot create mouse 2D joint, bodyA or bodyB could not be loaded");
             return false;
         }
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
         if (myBodyA.type != BodyType::DYNAMIC){
             Log::error("Cannot create mouse 2D joint, bodyA must be dynamic");
@@ -1745,8 +1745,8 @@ bool PhysicsSystem::loadMouseJoint2D(Entity entity, Joint2DComponent& joint, Ent
             return false;
         }
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         if (!b2Body_IsValid(myBodyA.body) || !b2Body_IsValid(myBodyB.body)){
             Log::error("Cannot create mouse 2D joint, bodyA or bodyB has no valid physics body");
@@ -1781,13 +1781,13 @@ bool PhysicsSystem::loadWheelJoint2D(Entity entity, Joint2DComponent& joint, Ent
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
         float axisLengthSq = axis.x * axis.x + axis.y * axis.y;
@@ -1820,13 +1820,13 @@ bool PhysicsSystem::loadWeldJoint2D(Entity entity, Joint2DComponent& joint, Enti
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
 
@@ -1852,13 +1852,13 @@ bool PhysicsSystem::loadMotorJoint2D(Entity entity, Joint2DComponent& joint, Ent
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body2DComponent>()) && signatureB.test(scene->getComponentId<Body2DComponent>())){
+    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
 
-        Body2DComponent myBodyA = scene->getComponent<Body2DComponent>(bodyA);
-        Body2DComponent myBodyB = scene->getComponent<Body2DComponent>(bodyB);
+        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
+        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
 
-        updateBody2DPosition(signatureA, bodyA, myBodyA);
-        updateBody2DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
+        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
 
         b2MotorJointDef jointDef = b2DefaultMotorJointDef();
         jointDef.bodyIdA = myBodyA.body;
@@ -1889,13 +1889,13 @@ bool PhysicsSystem::loadFixedJoint3D(Joint3DComponent& joint, Entity bodyA, Enti
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         JPH::FixedConstraintSettings settings;
         settings.mAutoDetectPoint = true;
@@ -1928,13 +1928,13 @@ bool PhysicsSystem::loadDistanceJoint3D(Joint3DComponent& joint, Entity bodyA, E
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
         JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
@@ -1980,13 +1980,13 @@ bool PhysicsSystem::loadPointJoint3D(Joint3DComponent& joint, Entity bodyA, Enti
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         JPH::PointConstraintSettings settings;
         settings.mPoint1 = settings.mPoint2 = JPH::Vec3(anchor.x, anchor.y, anchor.z);
@@ -2019,13 +2019,13 @@ bool PhysicsSystem::loadHingeJoint3D(Joint3DComponent& joint, Entity bodyA, Enti
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         float axisLengthSq = axis.x * axis.x + axis.y * axis.y + axis.z * axis.z;
         if (axisLengthSq < 1.0e-6f){
@@ -2091,13 +2091,13 @@ bool PhysicsSystem::loadConeJoint3D(Joint3DComponent& joint, Entity bodyA, Entit
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         float axisLengthSq = twistAxis.x * twistAxis.x + twistAxis.y * twistAxis.y + twistAxis.z * twistAxis.z;
         if (axisLengthSq < 1.0e-6f){
@@ -2140,13 +2140,13 @@ bool PhysicsSystem::loadPrismaticJoint3D(Joint3DComponent& joint, Entity bodyA, 
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         if (limitsMax < limitsMin){
             std::swap(limitsMin, limitsMax);
@@ -2215,13 +2215,13 @@ bool PhysicsSystem::loadSwingTwistJoint3D(Joint3DComponent& joint, Entity bodyA,
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         float twistAxisLengthSq = twistAxis.x * twistAxis.x + twistAxis.y * twistAxis.y + twistAxis.z * twistAxis.z;
         if (twistAxisLengthSq < 1.0e-6f){
@@ -2304,13 +2304,13 @@ bool PhysicsSystem::loadSixDOFJoint3D(Joint3DComponent& joint, Entity bodyA, Ent
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         float axisXLengthSq = axisX.x * axisX.x + axisX.y * axisX.y + axisX.z * axisX.z;
         if (axisXLengthSq < 1.0e-6f){
@@ -2381,13 +2381,13 @@ bool PhysicsSystem::loadPathJoint3D(Joint3DComponent& joint, Entity bodyA, Entit
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         JPH::Ref<JPH::PathConstraintPathHermite> path = new JPH::PathConstraintPathHermite;
 
@@ -2435,13 +2435,13 @@ bool PhysicsSystem::loadGearJoint3D(Joint3DComponent& joint, Entity bodyA, Entit
     Signature signatureHingeA = scene->getSignature(hingeA);
     Signature signatureHingeB = scene->getSignature(hingeB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         if (signatureHingeA.test(scene->getComponentId<Joint3DComponent>()) && signatureHingeB.test(scene->getComponentId<Joint3DComponent>())){
 
@@ -2508,13 +2508,13 @@ bool PhysicsSystem::loadRackAndPinionJoint3D(Joint3DComponent& joint, Entity bod
     Signature signatureHinge = scene->getSignature(hinge);
     Signature signatureSlider = scene->getSignature(slider);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         if (signatureHinge.test(scene->getComponentId<Joint3DComponent>()) && signatureSlider.test(scene->getComponentId<Joint3DComponent>())){
 
@@ -2580,13 +2580,13 @@ bool PhysicsSystem::loadPulleyJoint3D(Joint3DComponent& joint, Entity bodyA, Ent
     Signature signatureA = scene->getSignature(bodyA);
     Signature signatureB = scene->getSignature(bodyB);
 
-    if (signatureA.test(scene->getComponentId<Body3DComponent>()) && signatureB.test(scene->getComponentId<Body3DComponent>())){
+    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
 
-        Body3DComponent myBodyA = scene->getComponent<Body3DComponent>(bodyA);
-        Body3DComponent myBodyB = scene->getComponent<Body3DComponent>(bodyB);
+        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
+        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
 
-        updateBody3DPosition(signatureA, bodyA, myBodyA);
-        updateBody3DPosition(signatureB, bodyB, myBodyB);
+        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
+        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
 
         JPH::PulleyConstraintSettings settings;
         settings.mBodyPoint1 = JPH::Vec3(anchorA.x, anchorA.y, anchorA.z);
@@ -2639,7 +2639,7 @@ void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude
     if (index >= 0 && index < MAX_BROADPHASELAYER_3D){
         broad_phase_layer_interface->ConfigureLayer(JPH::BroadPhaseLayer(index), groupsToInclude, groupsToExclude);
 
-        auto bodies3d = scene->getComponentArray<Body3DComponent>();
+        auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
         if (bodies3d->size() > 0){
             Log::warn("BroadPhaseLayers should be add before any 3D body creation");
         }
@@ -2652,16 +2652,16 @@ void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude
 void PhysicsSystem::load(){
     // A newly loaded scene can receive a variable-timestep gameplay update before
     // the fixed-step accumulator has enough time for its first physics update.
-    // Materialize physics objects now so Body2D/Body3D APIs are valid from the
+    // Materialize physics objects now so Rigidbody2D/Rigidbody APIs are valid from the
     // first gameplay callback, but do not advance either physics world here.
 #ifdef JASPERENGINE_PHYSICS_2D
-    auto bodies2d = scene->getComponentArray<Body2DComponent>();
+    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
     for (size_t i = 0; i < bodies2d->size(); i++){
-        Body2DComponent& body = bodies2d->getComponentFromIndex(i);
+        Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
         Entity entity = bodies2d->getEntity(i);
 
-        if (loadBody2D(entity) && b2Body_IsValid(body.body)){
-            updateBody2DPosition(scene->getSignature(entity), entity, body);
+        if (loadRigidbody2D(entity) && b2Body_IsValid(body.body)){
+            updateRigidbody2DPosition(scene->getSignature(entity), entity, body);
         }
     }
 
@@ -2676,13 +2676,13 @@ void PhysicsSystem::load(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-    auto bodies3d = scene->getComponentArray<Body3DComponent>();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
     for (size_t i = 0; i < bodies3d->size(); i++){
-        Body3DComponent& body = bodies3d->getComponentFromIndex(i);
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
         Entity entity = bodies3d->getEntity(i);
 
-        if (loadBody3D(entity) && !body.body.IsInvalid()){
-            updateBody3DPosition(scene->getSignature(entity), entity, body);
+        if (loadRigidbody(entity) && !body.body.IsInvalid()){
+            updateRigidbodyPosition(scene->getSignature(entity), entity, body);
         }
     }
 
@@ -2715,15 +2715,15 @@ void PhysicsSystem::fixedUpdate(double dt){
     const float fixedStep = (float)dt;
 
 #ifdef JASPERENGINE_PHYSICS_2D
-	auto bodies2d = scene->getComponentArray<Body2DComponent>();
+	auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
 
 	for (int i = 0; i < bodies2d->size(); i++){
-		Body2DComponent& body = bodies2d->getComponentFromIndex(i);
+		Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateShapes || entityWorldScale2D(scene, entity) != body.loadedScale){
-            loadBody2D(entity);
+        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || entityWorldScale2D(scene, entity) != body.loadedScale){
+            loadRigidbody2D(entity);
         }
 
         if (b2Body_IsValid(body.body)){
@@ -2739,7 +2739,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateBody2DPosition(signature, entity, body);
+                updateRigidbody2DPosition(signature, entity, body);
 
                 body.newBody = false;
             }
@@ -2815,15 +2815,15 @@ void PhysicsSystem::fixedUpdate(double dt){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-    auto bodies3d = scene->getComponentArray<Body3DComponent>();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
 
 	for (int i = 0; i < bodies3d->size(); i++){
-		Body3DComponent& body = bodies3d->getComponentFromIndex(i);
+		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
 		Entity entity = bodies3d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateShapes || entityWorldScale(scene, entity) != body.loadedScale){
-            loadBody3D(entity);
+        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateColliders || entityWorldScale(scene, entity) != body.loadedScale){
+            loadRigidbody(entity);
         }
 
         if (!body.body.IsInvalid()){
@@ -2840,7 +2840,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateBody3DPosition(signature, entity, body);
+                updateRigidbodyPosition(signature, entity, body);
 
                 body.newBody = false;
             }
@@ -2884,7 +2884,7 @@ void PhysicsSystem::fixedUpdate(double dt){
 	}
 
 	for (int i = 0; i < bodies3d->size(); i++){
-		Body3DComponent& body = bodies3d->getComponentFromIndex(i);
+		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
 		Entity entity = bodies3d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
@@ -2934,18 +2934,18 @@ void PhysicsSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 
 void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 #ifdef JASPERENGINE_PHYSICS_2D
-	if (componentId == scene->getComponentId<Body2DComponent>()) {
-		Body2DComponent& body2d = scene->getComponent<Body2DComponent>(entity);
-		destroyBody2D(body2d);
+	if (componentId == scene->getComponentId<Rigidbody2DComponent>()) {
+		Rigidbody2DComponent& rigidbody2d = scene->getComponent<Rigidbody2DComponent>(entity);
+		destroyRigidbody2D(rigidbody2d);
 	} else if (componentId == scene->getComponentId<Joint2DComponent>()) {
 		Joint2DComponent& joint2d = scene->getComponent<Joint2DComponent>(entity);
 		destroyJoint2D(joint2d);
 	}
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-	if (componentId == scene->getComponentId<Body3DComponent>()) {
-		Body3DComponent& body3d = scene->getComponent<Body3DComponent>(entity);
-		destroyBody3D(body3d);
+	if (componentId == scene->getComponentId<RigidbodyComponent>()) {
+		RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(entity);
+		destroyRigidbody(rigidbody);
 		warnedNonNormalizedRotations.erase(entity);
 		reportedInvalidRotations.erase(entity);
 	} else if (componentId == scene->getComponentId<Joint3DComponent>()) {

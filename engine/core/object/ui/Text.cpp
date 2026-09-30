@@ -11,12 +11,12 @@
 
 using namespace jasperengine;
 
-Text::Text(Scene* scene): UILayout(scene){
+Text::Text(Scene* scene): RectTransform(scene){
     addComponent<UIComponent>();
     addComponent<TextComponent>();
 }
 
-Text::Text(Scene* scene, Entity entity): UILayout(scene, entity){
+Text::Text(Scene* scene, Entity entity): RectTransform(scene, entity){
 }
 
 Text::~Text(){
@@ -25,7 +25,7 @@ Text::~Text(){
 bool Text::createText(){
     TextComponent& textcomp = getComponent<TextComponent>();
     UIComponent& ui = getComponent<UIComponent>();
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return scene->getSystem<UISystem>()->createOrUpdateText(textcomp, ui, layout);
 }

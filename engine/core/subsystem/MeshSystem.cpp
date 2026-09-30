@@ -5836,7 +5836,7 @@ void MeshSystem::removeInstancedMesh(Entity entity){
     Signature signature = scene->getSignature(entity);
 
     if (signature.test(scene->getComponentId<InstancedMeshComponent>())){
-        //destroyInstancedMesh(scene->getComponent<Body3DComponent>(entity));
+        //destroyInstancedMesh(scene->getComponent<RigidbodyComponent>(entity));
         scene->removeComponent<InstancedMeshComponent>(entity);
 
         if (signature.test(scene->getComponentId<MeshComponent>())){

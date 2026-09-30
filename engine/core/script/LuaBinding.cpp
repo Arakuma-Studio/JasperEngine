@@ -11,28 +11,28 @@
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
 #include "object/EntityHandle.h"
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "object/Mesh.h"
-#include "object/Shape.h"
+#include "object/Primitive.h"
 #include "object/Mirror.h"
 #include "object/Model.h"
 #include "object/MeshPolygon.h"
 #include "object/Points.h"
-#include "object/Lines.h"
+#include "object/LineRenderer.h"
 #include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "object/Tilemap.h"
 #include "object/Light.h"
 #include "object/Light2D.h"
-#include "object/Occluder2D.h"
+#include "object/ShadowCaster2D.h"
 #include "object/Camera.h"
 #include "object/Bone.h"
 #include "object/environment/Fog.h"
 #include "object/environment/ReflectionProbe.h"
-#include "object/environment/SkyBox.h"
-#include "object/sound/Sound.h"
-#include "object/ui/UILayout.h"
-#include "object/ui/Container.h"
+#include "object/environment/Skybox.h"
+#include "object/sound/AudioSource.h"
+#include "object/ui/RectTransform.h"
+#include "object/ui/LayoutGroup.h"
 #include "object/ui/Polygon.h"
 #include "object/ui/Text.h"
 #include "object/ui/Image.h"
@@ -40,24 +40,24 @@
 #include "object/ui/Panel.h"
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
-#include "object/ui/TextEdit.h"
+#include "object/ui/InputField.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "object/physics/Body2D.h"
+#include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "object/physics/Body3D.h"
+#include "object/physics/Rigidbody.h"
 #include "object/physics/Joint3D.h"
 #endif
 #include "action/Action.h"
-#include "action/TimedAction.h"
-#include "action/AlphaAction.h"
-#include "action/ColorAction.h"
-#include "action/PositionAction.h"
-#include "action/RotationAction.h"
-#include "action/ScaleAction.h"
+#include "action/Tween.h"
+#include "action/AlphaTween.h"
+#include "action/ColorTween.h"
+#include "action/PositionTween.h"
+#include "action/RotationTween.h"
+#include "action/ScaleTween.h"
 #include "action/Animation.h"
-#include "action/Particles.h"
+#include "action/ParticleSystem.h"
 #include "action/SpriteAnimation.h"
 #include "action/keyframe/MorphTracks.h"
 #include "action/keyframe/RotateTracks.h"
@@ -507,7 +507,7 @@ void LuaBinding::registerClasses(lua_State *L){
     luaL_openlibs(L);
 
     registerCoreClasses(L);
-    registerObjectClasses(L);
+    registerGameObjectClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
     registerIOClasses(L);
@@ -594,26 +594,26 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
         if (key == KeyName) return pushEntityHandleTyped<Type>(L, scene, entity)
 
     DISPATCH_TYPE(Fog, "fog");
-    DISPATCH_TYPE(SkyBox, "skybox");
+    DISPATCH_TYPE(Skybox, "skybox");
     DISPATCH_TYPE(ReflectionProbe, "reflectionprobe");
-    DISPATCH_TYPE(Object, "object");
+    DISPATCH_TYPE(GameObject, "gameobject");
     DISPATCH_TYPE(Camera, "camera");
     DISPATCH_TYPE(Light, "light");
     DISPATCH_TYPE(Light2D, "light2d");
-    DISPATCH_TYPE(Occluder2D, "occluder2d");
+    DISPATCH_TYPE(ShadowCaster2D, "shadowcaster2d");
     DISPATCH_TYPE(Mesh, "mesh");
-    DISPATCH_TYPE(Shape, "shape");
+    DISPATCH_TYPE(Primitive, "primitive");
     DISPATCH_TYPE(Mirror, "mirror");
     DISPATCH_TYPE(Terrain, "terrain");
     DISPATCH_TYPE(Tilemap, "tilemap");
     DISPATCH_TYPE(Model, "model");
     DISPATCH_TYPE(MeshPolygon, "meshpolygon");
     DISPATCH_TYPE(Points, "points");
-    DISPATCH_TYPE(Lines, "lines");
+    DISPATCH_TYPE(LineRenderer, "linerenderer");
     DISPATCH_TYPE(Sprite, "sprite");
-    DISPATCH_TYPE(Sound, "sound");
-    DISPATCH_TYPE(UILayout, "uilayout");
-    DISPATCH_TYPE(Container, "container");
+    DISPATCH_TYPE(AudioSource, "audiosource");
+    DISPATCH_TYPE(RectTransform, "recttransform");
+    DISPATCH_TYPE(LayoutGroup, "layoutgroup");
     DISPATCH_TYPE(Polygon, "polygon");
     DISPATCH_TYPE(Text, "text");
     DISPATCH_TYPE(Image, "image");
@@ -621,25 +621,25 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Panel, "panel");
     DISPATCH_TYPE(Scrollbar, "scrollbar");
     DISPATCH_TYPE(Progressbar, "progressbar");
-    DISPATCH_TYPE(TextEdit, "textedit");
+    DISPATCH_TYPE(InputField, "inputfield");
     DISPATCH_TYPE(Bone, "bone");
 #ifdef JASPERENGINE_PHYSICS_2D
-    DISPATCH_TYPE(Body2D, "body2d");
+    DISPATCH_TYPE(Rigidbody2D, "rigidbody2d");
     DISPATCH_TYPE(Joint2D, "joint2d");
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-    DISPATCH_TYPE(Body3D, "body3d");
+    DISPATCH_TYPE(Rigidbody, "rigidbody");
     DISPATCH_TYPE(Joint3D, "joint3d");
 #endif
     DISPATCH_TYPE(Action, "action");
-    DISPATCH_TYPE(TimedAction, "timedaction");
-    DISPATCH_TYPE(AlphaAction, "alphaaction");
-    DISPATCH_TYPE(ColorAction, "coloraction");
-    DISPATCH_TYPE(PositionAction, "positionaction");
-    DISPATCH_TYPE(RotationAction, "rotationaction");
-    DISPATCH_TYPE(ScaleAction, "scaleaction");
+    DISPATCH_TYPE(Tween, "tween");
+    DISPATCH_TYPE(AlphaTween, "alphatween");
+    DISPATCH_TYPE(ColorTween, "colortween");
+    DISPATCH_TYPE(PositionTween, "positiontween");
+    DISPATCH_TYPE(RotationTween, "rotationtween");
+    DISPATCH_TYPE(ScaleTween, "scaletween");
     DISPATCH_TYPE(Animation, "animation");
-    DISPATCH_TYPE(Particles, "particles");
+    DISPATCH_TYPE(ParticleSystem, "particlesystem");
     DISPATCH_TYPE(SpriteAnimation, "spriteanimation");
     DISPATCH_TYPE(MorphTracks, "morphtracks");
     DISPATCH_TYPE(RotateTracks, "rotatetracks");

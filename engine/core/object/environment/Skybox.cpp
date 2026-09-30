@@ -1,158 +1,158 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "SkyBox.h"
+#include "Skybox.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 
-SkyBox::SkyBox(Scene* scene): EntityHandle(scene){
-    addComponent<SkyComponent>();
+Skybox::Skybox(Scene* scene): EntityHandle(scene){
+    addComponent<SkyboxComponent>();
 }
 
-SkyBox::SkyBox(Scene* scene, Entity entity): EntityHandle(scene, entity){
+Skybox::Skybox(Scene* scene, Entity entity): EntityHandle(scene, entity){
 }
 
-SkyBox::~SkyBox(){
+Skybox::~Skybox(){
 }
 
-bool SkyBox::load(){
-    SkyComponent& sky = getComponent<SkyComponent>();
+bool Skybox::load(){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     auto renderSystem = scene->getSystem<RenderSystem>();
     return renderSystem->loadSky(entity, sky, renderSystem->getScenePipelines());
 }
 
-void SkyBox::setTextures(const std::string& id,
+void Skybox::setTextures(const std::string& id,
                         TextureData texturePositiveX, TextureData textureNegativeX,
                         TextureData texturePositiveY, TextureData textureNegativeY,
                         TextureData texturePositiveZ, TextureData textureNegativeZ){
 
-    SkyComponent& sky = getComponent<SkyComponent>();
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubeDatas(id, texturePositiveX, textureNegativeX, texturePositiveY, textureNegativeY, texturePositiveZ, textureNegativeZ);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTextures(const std::string& texturePositiveX, const std::string& textureNegativeX,
+void Skybox::setTextures(const std::string& texturePositiveX, const std::string& textureNegativeX,
                         const std::string& texturePositiveY, const std::string& textureNegativeY,
                         const std::string& texturePositiveZ, const std::string& textureNegativeZ){
     
-    SkyComponent& sky = getComponent<SkyComponent>();
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePaths(texturePositiveX, textureNegativeX, texturePositiveY, textureNegativeY, texturePositiveZ, textureNegativeZ);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTexture(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTexture(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubeMap(texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTexturePositiveX(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTexturePositiveX(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(0, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTextureNegativeX(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTextureNegativeX(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(1, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTexturePositiveY(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTexturePositiveY(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(2, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTextureNegativeY(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTextureNegativeY(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(3, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTexturePositiveZ(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTexturePositiveZ(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(4, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setTextureNegativeZ(const std::string& texture){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setTextureNegativeZ(const std::string& texture){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.texture.setCubePath(5, texture);
 
     sky.needUpdateTexture = true;
 }
 
-void SkyBox::setColor(Vector4 color){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setColor(Vector4 color){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.color = color;
 }
 
-void SkyBox::setColor(const float r, const float g, const float b){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setColor(const float r, const float g, const float b){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.color = Vector4(r, g, b, sky.color.w);
 }
 
-void SkyBox::setColor(const float r, const float g, const float b, const float a){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setColor(const float r, const float g, const float b, const float a){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.color = Vector4(r, g, b, a);
 }
 
-void SkyBox::setAlpha(const float alpha){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setAlpha(const float alpha){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.color = Vector4(sky.color.x, sky.color.y, sky.color.z, alpha);
 }
 
-Vector4 SkyBox::getColor() const{
-    SkyComponent& sky = getComponent<SkyComponent>();
+Vector4 Skybox::getColor() const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return sky.color;
 }
 
-float SkyBox::getAlpha() const{
-    SkyComponent& sky = getComponent<SkyComponent>();
+float Skybox::getAlpha() const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return sky.color.w;
 }
 
-void SkyBox::setRotation(float angle){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setRotation(float angle){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     sky.rotation = angle;
     sky.needUpdateSky = true;
 }
 
-float SkyBox::getRotation() const{
-    SkyComponent& sky = getComponent<SkyComponent>();
+float Skybox::getRotation() const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return sky.rotation;
 }
 
-void SkyBox::setCustomShader(const std::string& path){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setCustomShader(const std::string& path){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     if (sky.customShader != path){
         sky.customShader = path;
@@ -161,39 +161,39 @@ void SkyBox::setCustomShader(const std::string& path){
     }
 }
 
-std::string SkyBox::getCustomShader() const{
-    SkyComponent& sky = getComponent<SkyComponent>();
+std::string Skybox::getCustomShader() const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return sky.customShader;
 }
 
-void SkyBox::setShaderUniform(const std::string& name, const Vector4& value){
-    SkyComponent& sky = getComponent<SkyComponent>();
+void Skybox::setShaderUniform(const std::string& name, const Vector4& value){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     if (ShaderUniforms::set(sky.shaderUniforms, name, value))
         sky.needUpdateShaderUniforms = true;
 }
 
-void SkyBox::setShaderUniform(const std::string& name, const Vector3& value){
+void Skybox::setShaderUniform(const std::string& name, const Vector3& value){
     setShaderUniform(name, Vector4(value.x, value.y, value.z, 0.0f));
 }
 
-void SkyBox::setShaderUniform(const std::string& name, const Vector2& value){
+void Skybox::setShaderUniform(const std::string& name, const Vector2& value){
     setShaderUniform(name, Vector4(value.x, value.y, 0.0f, 0.0f));
 }
 
-void SkyBox::setShaderUniform(const std::string& name, float value){
+void Skybox::setShaderUniform(const std::string& name, float value){
     setShaderUniform(name, Vector4(value, 0.0f, 0.0f, 0.0f));
 }
 
-Vector4 SkyBox::getShaderUniform(const std::string& name) const{
-    SkyComponent& sky = getComponent<SkyComponent>();
+Vector4 Skybox::getShaderUniform(const std::string& name) const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     return ShaderUniforms::get(sky.shaderUniforms, name);
 }
 
-bool SkyBox::removeShaderUniform(const std::string& name){
-    SkyComponent& sky = getComponent<SkyComponent>();
+bool Skybox::removeShaderUniform(const std::string& name){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     if (!ShaderUniforms::remove(sky.shaderUniforms, name))
         return false;

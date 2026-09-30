@@ -183,7 +183,7 @@ namespace {
     static const FastPropertyDescriptor kTransformProperties[] = {
         makeFastProperty<Transform, Vector3, &Transform::position>("position", PropertyType::Vector3, UpdateFlags_Transform | UpdateFlags_Layout_Anchors),
         makeFastProperty<Transform, Quaternion, &Transform::rotation>("rotation", PropertyType::Quat, UpdateFlags_Transform),
-        makeFastProperty<Transform, Vector3, &Transform::scale>("scale", PropertyType::Vector3, UpdateFlags_Transform | UpdateFlags_Body2D | UpdateFlags_Body3D),
+        makeFastProperty<Transform, Vector3, &Transform::scale>("scale", PropertyType::Vector3, UpdateFlags_Transform | UpdateFlags_Rigidbody2D | UpdateFlags_Rigidbody),
         makeFastProperty<Transform, bool, &Transform::visible>("visible", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<Transform, bool, &Transform::billboard>("billboard", PropertyType::Bool, UpdateFlags_Transform),
         makeFastProperty<Transform, bool, &Transform::fakeBillboard>("fakeBillboard", PropertyType::Bool, UpdateFlags_Transform),
@@ -198,23 +198,23 @@ namespace {
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
     };
 
-    static const FastPropertyDescriptor kUILayoutProperties[] = {
-        makeFastPropertyNoDefault<UILayoutComponent, unsigned int, &UILayoutComponent::width>("width", PropertyType::UInt, UpdateFlags_Layout_Sizes | UpdateFlags_Layout_Anchors),
-        makeFastPropertyNoDefault<UILayoutComponent, unsigned int, &UILayoutComponent::height>("height", PropertyType::UInt, UpdateFlags_Layout_Sizes | UpdateFlags_Layout_Anchors),
-        makeFastProperty<UILayoutComponent, float, &UILayoutComponent::anchorPointLeft>("anchorPointLeft", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, float, &UILayoutComponent::anchorPointTop>("anchorPointTop", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, float, &UILayoutComponent::anchorPointRight>("anchorPointRight", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, float, &UILayoutComponent::anchorPointBottom>("anchorPointBottom", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetLeft>("anchorOffsetLeft", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetTop>("anchorOffsetTop", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetRight>("anchorOffsetRight", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetBottom>("anchorOffsetBottom", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, Vector2, &UILayoutComponent::positionOffset>("positionOffset", PropertyType::Vector2, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, Vector2, &UILayoutComponent::pivot>("pivot", PropertyType::Vector2, UpdateFlags_Transform),
-        makeFastProperty<UILayoutComponent, AnchorPreset, &UILayoutComponent::anchorPreset>("anchorPreset", PropertyType::Enum, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, bool, &UILayoutComponent::usingAnchors>("usingAnchors", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, bool, &UILayoutComponent::ignoreScissor>("ignoreScissor", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<UILayoutComponent, bool, &UILayoutComponent::ignoreEvents>("ignoreEvents", PropertyType::Bool, UpdateFlags_None),
+    static const FastPropertyDescriptor kRectTransformProperties[] = {
+        makeFastPropertyNoDefault<RectTransformComponent, unsigned int, &RectTransformComponent::width>("width", PropertyType::UInt, UpdateFlags_Layout_Sizes | UpdateFlags_Layout_Anchors),
+        makeFastPropertyNoDefault<RectTransformComponent, unsigned int, &RectTransformComponent::height>("height", PropertyType::UInt, UpdateFlags_Layout_Sizes | UpdateFlags_Layout_Anchors),
+        makeFastProperty<RectTransformComponent, float, &RectTransformComponent::anchorPointLeft>("anchorPointLeft", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, float, &RectTransformComponent::anchorPointTop>("anchorPointTop", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, float, &RectTransformComponent::anchorPointRight>("anchorPointRight", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, float, &RectTransformComponent::anchorPointBottom>("anchorPointBottom", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, int, &RectTransformComponent::anchorOffsetLeft>("anchorOffsetLeft", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, int, &RectTransformComponent::anchorOffsetTop>("anchorOffsetTop", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, int, &RectTransformComponent::anchorOffsetRight>("anchorOffsetRight", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, int, &RectTransformComponent::anchorOffsetBottom>("anchorOffsetBottom", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, Vector2, &RectTransformComponent::positionOffset>("positionOffset", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, Vector2, &RectTransformComponent::pivot>("pivot", PropertyType::Vector2, UpdateFlags_Transform),
+        makeFastProperty<RectTransformComponent, AnchorPreset, &RectTransformComponent::anchorPreset>("anchorPreset", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, bool, &RectTransformComponent::usingAnchors>("usingAnchors", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, bool, &RectTransformComponent::ignoreScissor>("ignoreScissor", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RectTransformComponent, bool, &RectTransformComponent::ignoreEvents>("ignoreEvents", PropertyType::Bool, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kImageProperties[] = {
@@ -277,20 +277,20 @@ namespace {
         makeFastProperty<PanelComponent, bool, &PanelComponent::canBringToFront>("canBringToFront", PropertyType::Bool, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kTextEditProperties[] = {
-        makeFastProperty<TextEditComponent, Entity, &TextEditComponent::text>("text", PropertyType::Entity, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, Entity, &TextEditComponent::selection>("selection", PropertyType::Entity, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, Entity, &TextEditComponent::cursor>("cursor", PropertyType::Entity, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, float, &TextEditComponent::cursorBlink>("cursorBlink", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, float, &TextEditComponent::cursorWidth>("cursorWidth", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, Vector4, &TextEditComponent::cursorColor>("cursorColor", PropertyType::Vector4, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, Vector4, &TextEditComponent::selectionColor>("selectionColor", PropertyType::Vector4, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, Vector4, &TextEditComponent::placeholderColor>("placeholderColor", PropertyType::Vector4, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, std::string, &TextEditComponent::placeholder>("placeholder", PropertyType::String, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, int, &TextEditComponent::cursorIndex>("cursorIndex", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, int, &TextEditComponent::selectionAnchor>("selectionAnchor", PropertyType::Int, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, bool, &TextEditComponent::disabled>("disabled", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<TextEditComponent, bool, &TextEditComponent::password>("password", PropertyType::Bool, UpdateFlags_None),
+    static const FastPropertyDescriptor kInputFieldProperties[] = {
+        makeFastProperty<InputFieldComponent, Entity, &InputFieldComponent::text>("text", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, Entity, &InputFieldComponent::selection>("selection", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, Entity, &InputFieldComponent::cursor>("cursor", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, float, &InputFieldComponent::cursorBlink>("cursorBlink", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, float, &InputFieldComponent::cursorWidth>("cursorWidth", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, Vector4, &InputFieldComponent::cursorColor>("cursorColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, Vector4, &InputFieldComponent::selectionColor>("selectionColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, Vector4, &InputFieldComponent::placeholderColor>("placeholderColor", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, std::string, &InputFieldComponent::placeholder>("placeholder", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, int, &InputFieldComponent::cursorIndex>("cursorIndex", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, int, &InputFieldComponent::selectionAnchor>("selectionAnchor", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, bool, &InputFieldComponent::disabled>("disabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<InputFieldComponent, bool, &InputFieldComponent::password>("password", PropertyType::Bool, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kSpriteTopProperties[] = {
@@ -336,42 +336,42 @@ namespace {
         makeFastProperty<ActionComponent, bool, &ActionComponent::ownedTarget>("ownedTarget", PropertyType::Bool, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kTimedActionProperties[] = {
-        makeFastProperty<TimedActionComponent, float, &TimedActionComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<TimedActionComponent, bool, &TimedActionComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<TimedActionComponent, Ease, &TimedActionComponent::function>("function", PropertyType::Ease, UpdateFlags_None),
+    static const FastPropertyDescriptor kTweenProperties[] = {
+        makeFastProperty<TweenComponent, float, &TweenComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<TweenComponent, bool, &TweenComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TweenComponent, Ease, &TweenComponent::function>("function", PropertyType::Ease, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kPositionActionProperties[] = {
-        makeFastPropertyNoDefault<PositionActionComponent, Vector3, &PositionActionComponent::endPosition>("endPosition", PropertyType::Vector3, UpdateFlags_None),
-        makeFastPropertyNoDefault<PositionActionComponent, Vector3, &PositionActionComponent::startPosition>("startPosition", PropertyType::Vector3, UpdateFlags_None),
+    static const FastPropertyDescriptor kPositionTweenProperties[] = {
+        makeFastPropertyNoDefault<PositionTweenComponent, Vector3, &PositionTweenComponent::endPosition>("endPosition", PropertyType::Vector3, UpdateFlags_None),
+        makeFastPropertyNoDefault<PositionTweenComponent, Vector3, &PositionTweenComponent::startPosition>("startPosition", PropertyType::Vector3, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kRotationActionProperties[] = {
-        makeFastPropertyNoDefault<RotationActionComponent, Quaternion, &RotationActionComponent::endRotation>("endRotation", PropertyType::Quat, UpdateFlags_None),
-        makeFastPropertyNoDefault<RotationActionComponent, Quaternion, &RotationActionComponent::startRotation>("startRotation", PropertyType::Quat, UpdateFlags_None),
-        makeFastProperty<RotationActionComponent, bool, &RotationActionComponent::shortestPath>("shortestPath", PropertyType::Bool, UpdateFlags_None),
+    static const FastPropertyDescriptor kRotationTweenProperties[] = {
+        makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::endRotation>("endRotation", PropertyType::Quat, UpdateFlags_None),
+        makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::startRotation>("startRotation", PropertyType::Quat, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, bool, &RotationTweenComponent::shortestPath>("shortestPath", PropertyType::Bool, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kScaleActionProperties[] = {
-        makeFastPropertyNoDefault<ScaleActionComponent, Vector3, &ScaleActionComponent::endScale>("endScale", PropertyType::Vector3, UpdateFlags_None),
-        makeFastPropertyNoDefault<ScaleActionComponent, Vector3, &ScaleActionComponent::startScale>("startScale", PropertyType::Vector3, UpdateFlags_None),
+    static const FastPropertyDescriptor kScaleTweenProperties[] = {
+        makeFastPropertyNoDefault<ScaleTweenComponent, Vector3, &ScaleTweenComponent::endScale>("endScale", PropertyType::Vector3, UpdateFlags_None),
+        makeFastPropertyNoDefault<ScaleTweenComponent, Vector3, &ScaleTweenComponent::startScale>("startScale", PropertyType::Vector3, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kColorActionProperties[] = {
-        makeFastPropertyNoDefault<ColorActionComponent, Vector3, &ColorActionComponent::endColor>("endColor", PropertyType::Vector3, UpdateFlags_None),
-        makeFastPropertyNoDefault<ColorActionComponent, Vector3, &ColorActionComponent::startColor>("startColor", PropertyType::Vector3, UpdateFlags_None),
-        makeFastProperty<ColorActionComponent, bool, &ColorActionComponent::useSRGB>("useSRGB", PropertyType::Bool, UpdateFlags_None),
+    static const FastPropertyDescriptor kColorTweenProperties[] = {
+        makeFastPropertyNoDefault<ColorTweenComponent, Vector3, &ColorTweenComponent::endColor>("endColor", PropertyType::Vector3, UpdateFlags_None),
+        makeFastPropertyNoDefault<ColorTweenComponent, Vector3, &ColorTweenComponent::startColor>("startColor", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<ColorTweenComponent, bool, &ColorTweenComponent::useSRGB>("useSRGB", PropertyType::Bool, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kAlphaActionProperties[] = {
-        makeFastPropertyNoDefault<AlphaActionComponent, float, &AlphaActionComponent::endAlpha>("endAlpha", PropertyType::Float, UpdateFlags_None),
-        makeFastPropertyNoDefault<AlphaActionComponent, float, &AlphaActionComponent::startAlpha>("startAlpha", PropertyType::Float, UpdateFlags_None),
+    static const FastPropertyDescriptor kAlphaTweenProperties[] = {
+        makeFastPropertyNoDefault<AlphaTweenComponent, float, &AlphaTweenComponent::endAlpha>("endAlpha", PropertyType::Float, UpdateFlags_None),
+        makeFastPropertyNoDefault<AlphaTweenComponent, float, &AlphaTweenComponent::startAlpha>("startAlpha", PropertyType::Float, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kBundleProperties[] = {
-        makeFastProperty<BundleComponent, std::string, &BundleComponent::name>("name", PropertyType::String, UpdateFlags_None),
-        makeFastProperty<BundleComponent, std::string, &BundleComponent::path>("path", PropertyType::String, UpdateFlags_None),
+    static const FastPropertyDescriptor kPrefabProperties[] = {
+        makeFastProperty<PrefabComponent, std::string, &PrefabComponent::name>("name", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<PrefabComponent, std::string, &PrefabComponent::path>("path", PropertyType::String, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kBoneProperties[] = {
@@ -433,11 +433,11 @@ namespace {
         makeFastProperty<Light2DComponent, unsigned int, &Light2DComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kOccluder2DProperties[] = {
-        makeFastProperty<Occluder2DComponent, Occluder2DShape, &Occluder2DComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
-        makeFastProperty<Occluder2DComponent, bool, &Occluder2DComponent::closed>("closed", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<Occluder2DComponent, bool, &Occluder2DComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
-        makeFastPropertyNoDefault<Occluder2DComponent, std::vector<Vector2>, &Occluder2DComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
+    static const FastPropertyDescriptor kShadowCaster2DProperties[] = {
+        makeFastProperty<ShadowCaster2DComponent, ShadowCaster2DShape, &ShadowCaster2DComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<ShadowCaster2DComponent, bool, &ShadowCaster2DComponent::closed>("closed", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<ShadowCaster2DComponent, bool, &ShadowCaster2DComponent::enabled>("enabled", PropertyType::Bool, UpdateFlags_None),
+        makeFastPropertyNoDefault<ShadowCaster2DComponent, std::vector<Vector2>, &ShadowCaster2DComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kFogProperties[] = {
@@ -491,34 +491,34 @@ namespace {
         makeFastProperty<CameraComponent, TextureFilter, &CameraComponent::framebufferFilter>("framebufferFilter", PropertyType::Enum, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kSoundProperties[] = {
-        makeFastProperty<SoundComponent, SoundState, &SoundComponent::state>("state", PropertyType::Enum, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, std::string, &SoundComponent::filename>("filename", PropertyType::String, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, bool, &SoundComponent::enableClocked>("enableClocked", PropertyType::Bool, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, double, &SoundComponent::volume>("volume", PropertyType::Double, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::speed>("speed", PropertyType::Float, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::pan>("pan", PropertyType::Float, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, bool, &SoundComponent::looping>("looping", PropertyType::Bool, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, double, &SoundComponent::loopingPoint>("loopingPoint", PropertyType::Double, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, bool, &SoundComponent::protectVoice>("protectVoice", PropertyType::Bool, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, bool, &SoundComponent::inaudibleBehaviorMustTick>("inaudibleBehaviorMustTick", PropertyType::Bool, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, bool, &SoundComponent::inaudibleBehaviorKill>("inaudibleBehaviorKill", PropertyType::Bool, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::minDistance>("minDistance", PropertyType::Float, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::maxDistance>("maxDistance", PropertyType::Float, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, SoundAttenuation, &SoundComponent::attenuationModel>("attenuationModel", PropertyType::Enum, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::attenuationRolloffFactor>("attenuationRolloffFactor", PropertyType::Float, UpdateFlags_Sound),
-        makeFastProperty<SoundComponent, float, &SoundComponent::dopplerFactor>("dopplerFactor", PropertyType::Float, UpdateFlags_Sound),
-        makeFastPropertyNoDefault<SoundComponent, double, &SoundComponent::length>("length", PropertyType::Double, UpdateFlags_None),
-        makeFastPropertyNoDefault<SoundComponent, double, &SoundComponent::playingTime>("playingTime", PropertyType::Double, UpdateFlags_None),
+    static const FastPropertyDescriptor kAudioSourceProperties[] = {
+        makeFastProperty<AudioSourceComponent, AudioSourceState, &AudioSourceComponent::state>("state", PropertyType::Enum, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, std::string, &AudioSourceComponent::filename>("filename", PropertyType::String, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::enableClocked>("enableClocked", PropertyType::Bool, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, double, &AudioSourceComponent::volume>("volume", PropertyType::Double, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::speed>("speed", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::pan>("pan", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::looping>("looping", PropertyType::Bool, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, double, &AudioSourceComponent::loopingPoint>("loopingPoint", PropertyType::Double, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::protectVoice>("protectVoice", PropertyType::Bool, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::inaudibleBehaviorMustTick>("inaudibleBehaviorMustTick", PropertyType::Bool, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::inaudibleBehaviorKill>("inaudibleBehaviorKill", PropertyType::Bool, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::minDistance>("minDistance", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::maxDistance>("maxDistance", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, AudioSourceAttenuation, &AudioSourceComponent::attenuationModel>("attenuationModel", PropertyType::Enum, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::attenuationRolloffFactor>("attenuationRolloffFactor", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::dopplerFactor>("dopplerFactor", PropertyType::Float, UpdateFlags_AudioSource),
+        makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::length>("length", PropertyType::Double, UpdateFlags_None),
+        makeFastPropertyNoDefault<AudioSourceComponent, double, &AudioSourceComponent::playingTime>("playingTime", PropertyType::Double, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kSkyProperties[] = {
-        makeFastProperty<SkyComponent, Texture, &SkyComponent::texture>("texture", PropertyType::Texture, UpdateFlags_Sky_Texture),
-        makeFastProperty<SkyComponent, Vector4, &SkyComponent::color>("color", PropertyType::Vector4, UpdateFlags_None),
-        makeFastProperty<SkyComponent, float, &SkyComponent::rotation>("rotation", PropertyType::Float, UpdateFlags_Sky),
-        makeFastProperty<SkyComponent, bool, &SkyComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<SkyComponent, std::string, &SkyComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
-        makeFastProperty<SkyComponent, ShaderUniformValues, &SkyComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<SkyboxComponent, Texture, &SkyboxComponent::texture>("texture", PropertyType::Texture, UpdateFlags_Sky_Texture),
+        makeFastProperty<SkyboxComponent, Vector4, &SkyboxComponent::color>("color", PropertyType::Vector4, UpdateFlags_None),
+        makeFastProperty<SkyboxComponent, float, &SkyboxComponent::rotation>("rotation", PropertyType::Float, UpdateFlags_Sky),
+        makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
     };
 
     static const FastPropertyDescriptor kTextProperties[] = {
@@ -595,12 +595,12 @@ namespace {
         makeFastProperty<MeshComponent, unsigned int, &MeshComponent::numSubmeshes>("numSubmeshes", PropertyType::UInt, UpdateFlags_None),
     };
 
-    static const FastPropertyDescriptor kUIContainerTopProperties[] = {
-        makeFastProperty<UIContainerComponent, ContainerType, &UIContainerComponent::type>("type", PropertyType::Enum, UpdateFlags_Layout_Sizes),
-        makeFastProperty<UIContainerComponent, bool, &UIContainerComponent::useAllWrapSpace>("useAllWrapSpace", PropertyType::Bool, UpdateFlags_Layout_Sizes),
-        makeFastProperty<UIContainerComponent, unsigned int, &UIContainerComponent::wrapCellWidth>("wrapCellWidth", PropertyType::UInt, UpdateFlags_Layout_Sizes),
-        makeFastProperty<UIContainerComponent, unsigned int, &UIContainerComponent::wrapCellHeight>("wrapCellHeight", PropertyType::UInt, UpdateFlags_Layout_Sizes),
-        makeFastProperty<UIContainerComponent, unsigned int, &UIContainerComponent::numBoxes>("numBoxes", PropertyType::UInt, UpdateFlags_None),
+    static const FastPropertyDescriptor kLayoutGroupTopProperties[] = {
+        makeFastProperty<LayoutGroupComponent, LayoutGroupType, &LayoutGroupComponent::type>("type", PropertyType::Enum, UpdateFlags_Layout_Sizes),
+        makeFastProperty<LayoutGroupComponent, bool, &LayoutGroupComponent::useAllWrapSpace>("useAllWrapSpace", PropertyType::Bool, UpdateFlags_Layout_Sizes),
+        makeFastProperty<LayoutGroupComponent, unsigned int, &LayoutGroupComponent::wrapCellWidth>("wrapCellWidth", PropertyType::UInt, UpdateFlags_Layout_Sizes),
+        makeFastProperty<LayoutGroupComponent, unsigned int, &LayoutGroupComponent::wrapCellHeight>("wrapCellHeight", PropertyType::UInt, UpdateFlags_Layout_Sizes),
+        makeFastProperty<LayoutGroupComponent, unsigned int, &LayoutGroupComponent::numBoxes>("numBoxes", PropertyType::UInt, UpdateFlags_None),
     };
 
     PropertyData getMeshPropertyFast(MeshComponent* comp, const std::string& propertyName) {
@@ -706,15 +706,15 @@ namespace {
         return PropertyData();
     }
 
-    PropertyData getUIContainerPropertyFast(UIContainerComponent* comp, const std::string& propertyName) {
-        UIContainerComponent& def = getDefaultComponent<UIContainerComponent>();
+    PropertyData getLayoutGroupPropertyFast(LayoutGroupComponent* comp, const std::string& propertyName) {
+        LayoutGroupComponent& def = getDefaultComponent<LayoutGroupComponent>();
 
         if (!comp) {
             return PropertyData();
         }
 
         // Flat properties
-        PropertyData result = resolveDirectProperties(comp, propertyName, kUIContainerTopProperties);
+        PropertyData result = resolveDirectProperties(comp, propertyName, kLayoutGroupTopProperties);
         if (result.ref) return result;
 
         // boxes[N].field
@@ -864,37 +864,37 @@ namespace {
         return PropertyData();
     }
 
-    PropertyData getBody2DPropertyFast(Body2DComponent* comp, const std::string& propertyName) {
-        Body2DComponent& defaultBody2D = getDefaultComponent<Body2DComponent>();
+    PropertyData getRigidbody2DPropertyFast(Rigidbody2DComponent* comp, const std::string& propertyName) {
+        Rigidbody2DComponent& defaultRigidbody2D = getDefaultComponent<Rigidbody2DComponent>();
 
         if (!comp) {
             return PropertyData();
         }
 
         if (propertyName == "type") {
-            return {PropertyType::Enum, UpdateFlags_Body2D, (void*)&defaultBody2D.type, (void*)&comp->type};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.type, (void*)&comp->type};
         }
-        if (propertyName == "numShapes") {
-            return {PropertyType::UInt, UpdateFlags_Body2D, (void*)&defaultBody2D.numShapes, (void*)&comp->numShapes};
+        if (propertyName == "numColliders") {
+            return {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&defaultRigidbody2D.numColliders, (void*)&comp->numColliders};
         }
 
-        constexpr const char* shapePrefix = "shapes[";
+        constexpr const char* shapePrefix = "colliders[";
         if (propertyName.compare(0, 7, shapePrefix) != 0) {
             return PropertyData();
         }
 
         size_t pos = 7;
-        size_t shapeIndex = 0;
-        if (!parseIndex(propertyName, pos, shapeIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
+        size_t colliderIndex = 0;
+        if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
-        Shape2D& shape = comp->shapes[shapeIndex];
-        Shape2D& defaultShape = defaultBody2D.shapes[0];
+        Collider2D& shape = comp->colliders[colliderIndex];
+        Collider2D& defaultShape = defaultRigidbody2D.colliders[0];
 
         pos++;
         if (pos == propertyName.size()) {
-            return {PropertyType::Custom, UpdateFlags_Body2D, (void*)&defaultShape, (void*)&shape};
+            return {PropertyType::Custom, UpdateFlags_Rigidbody2D, (void*)&defaultShape, (void*)&shape};
         }
 
         if (propertyName[pos] != '.') {
@@ -903,43 +903,43 @@ namespace {
 
         const size_t fieldPos = pos + 1;
         if (propertyName.compare(fieldPos, 4, "type") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Enum, UpdateFlags_Body2D, (void*)&defaultShape.type, (void*)&shape.type};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defaultShape.type, (void*)&shape.type};
         }
         if (propertyName.compare(fieldPos, 6, "pointA") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defaultShape.pointA, (void*)&shape.pointA};
+            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointA, (void*)&shape.pointA};
         }
         if (propertyName.compare(fieldPos, 6, "pointB") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defaultShape.pointB, (void*)&shape.pointB};
+            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.pointB, (void*)&shape.pointB};
         }
         if (propertyName.compare(fieldPos, 6, "radius") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body2D, (void*)&defaultShape.radius, (void*)&shape.radius};
+            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.radius, (void*)&shape.radius};
         }
         if (propertyName.compare(fieldPos, 4, "loop") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.loop, (void*)&shape.loop};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.loop, (void*)&shape.loop};
         }
         if (propertyName.compare(fieldPos, 7, "density") == 0 && fieldPos + 7 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body2D, (void*)&defaultShape.density, (void*)&shape.density};
+            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.density, (void*)&shape.density};
         }
         if (propertyName.compare(fieldPos, 8, "friction") == 0 && fieldPos + 8 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body2D, (void*)&defaultShape.friction, (void*)&shape.friction};
+            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.friction, (void*)&shape.friction};
         }
         if (propertyName.compare(fieldPos, 11, "restitution") == 0 && fieldPos + 11 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body2D, (void*)&defaultShape.restitution, (void*)&shape.restitution};
+            return {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defaultShape.restitution, (void*)&shape.restitution};
         }
         if (propertyName.compare(fieldPos, 6, "sensor") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.sensor, (void*)&shape.sensor};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensor, (void*)&shape.sensor};
         }
         if (propertyName.compare(fieldPos, 15, "enableHitEvents") == 0 && fieldPos + 15 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.enableHitEvents, (void*)&shape.enableHitEvents};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.enableHitEvents, (void*)&shape.enableHitEvents};
         }
         if (propertyName.compare(fieldPos, 13, "contactEvents") == 0 && fieldPos + 13 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.contactEvents, (void*)&shape.contactEvents};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.contactEvents, (void*)&shape.contactEvents};
         }
         if (propertyName.compare(fieldPos, 14, "preSolveEvents") == 0 && fieldPos + 14 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.preSolveEvents, (void*)&shape.preSolveEvents};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.preSolveEvents, (void*)&shape.preSolveEvents};
         }
         if (propertyName.compare(fieldPos, 12, "sensorEvents") == 0 && fieldPos + 12 == propertyName.size()) {
-            return {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defaultShape.sensorEvents, (void*)&shape.sensorEvents};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defaultShape.sensorEvents, (void*)&shape.sensorEvents};
         }
 
         constexpr const char* verticesPrefix = "vertices[";
@@ -954,61 +954,61 @@ namespace {
                 return PropertyData();
             }
 
-            return {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
+            return {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
         }
 
         return PropertyData();
     }
 
-    jasperengine::editor::PropertyData getBody3DPropertyFast(jasperengine::Body3DComponent* comp, const std::string& propertyName) {
-        Body3DComponent& defaultBody3D = getDefaultComponent<Body3DComponent>();
+    jasperengine::editor::PropertyData getRigidbodyPropertyFast(jasperengine::RigidbodyComponent* comp, const std::string& propertyName) {
+        RigidbodyComponent& defaultRigidbody = getDefaultComponent<RigidbodyComponent>();
 
         if (!comp) {
             return PropertyData();
         }
 
         if (propertyName == "type") {
-            return {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defaultBody3D.type, (void*)&comp->type};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.type, (void*)&comp->type};
         }
         if (propertyName == "motionQuality") {
-            return {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defaultBody3D.motionQuality, (void*)&comp->motionQuality};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.motionQuality, (void*)&comp->motionQuality};
         }
         if (propertyName == "sensor") {
-            return {PropertyType::Bool, UpdateFlags_Body3D, (void*)&defaultBody3D.sensor, (void*)&comp->sensor};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.sensor, (void*)&comp->sensor};
         }
         if (propertyName == "gravityFactor") {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultBody3D.gravityFactor, (void*)&comp->gravityFactor};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.gravityFactor, (void*)&comp->gravityFactor};
         }
-        if (propertyName == "numShapes") {
-            return {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defaultBody3D.numShapes, (void*)&comp->numShapes};
+        if (propertyName == "numColliders") {
+            return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.numColliders, (void*)&comp->numColliders};
         }
         if (propertyName == "overrideMassProperties") {
-            return {PropertyType::Bool, UpdateFlags_Body3D, (void*)&defaultBody3D.overrideMassProperties, (void*)&comp->overrideMassProperties};
+            return {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.overrideMassProperties, (void*)&comp->overrideMassProperties};
         }
         if (propertyName == "solidBoxSize") {
-            return {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&defaultBody3D.solidBoxSize, (void*)&comp->solidBoxSize};
+            return {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.solidBoxSize, (void*)&comp->solidBoxSize};
         }
         if (propertyName == "solidBoxDensity") {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultBody3D.solidBoxDensity, (void*)&comp->solidBoxDensity};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.solidBoxDensity, (void*)&comp->solidBoxDensity};
         }
 
-        constexpr const char* shapePrefix = "shapes[";
+        constexpr const char* shapePrefix = "colliders[";
         if (propertyName.compare(0, 7, shapePrefix) != 0) {
             return PropertyData();
         }
 
         size_t pos = 7;
-        size_t shapeIndex = 0;
-        if (!parseIndex(propertyName, pos, shapeIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
+        size_t colliderIndex = 0;
+        if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
-        Shape3D& shape = comp->shapes[shapeIndex];
-        Shape3D& defaultShape = defaultBody3D.shapes[0];
+        Collider3D& shape = comp->colliders[colliderIndex];
+        Collider3D& defaultShape = defaultRigidbody.colliders[0];
 
         pos++;
         if (pos == propertyName.size()) {
-            return {PropertyType::Custom, UpdateFlags_Body3D, (void*)&defaultShape, (void*)&shape};
+            return {PropertyType::Custom, UpdateFlags_Rigidbody, (void*)&defaultShape, (void*)&shape};
         }
 
         if (propertyName[pos] != '.') {
@@ -1018,52 +1018,52 @@ namespace {
         const size_t fieldPos = pos + 1;
 
         if (propertyName.compare(fieldPos, 4, "type") == 0 && fieldPos + 4 == propertyName.size()) {
-            return {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defaultShape.type, (void*)&shape.type};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defaultShape.type, (void*)&shape.type};
         }
         if (propertyName.compare(fieldPos, 8, "position") == 0 && fieldPos + 8 == propertyName.size()) {
-            return {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&defaultShape.position, (void*)&shape.position};
+            return {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&defaultShape.position, (void*)&shape.position};
         }
         if (propertyName.compare(fieldPos, 8, "rotation") == 0 && fieldPos + 8 == propertyName.size()) {
-            return {PropertyType::Quat, UpdateFlags_Body3D, (void*)&defaultShape.rotation, (void*)&shape.rotation};
+            return {PropertyType::Quat, UpdateFlags_Rigidbody, (void*)&defaultShape.rotation, (void*)&shape.rotation};
         }
         if (propertyName.compare(fieldPos, 5, "width") == 0 && fieldPos + 5 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.width, (void*)&shape.width};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.width, (void*)&shape.width};
         }
         if (propertyName.compare(fieldPos, 6, "height") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.height, (void*)&shape.height};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.height, (void*)&shape.height};
         }
         if (propertyName.compare(fieldPos, 5, "depth") == 0 && fieldPos + 5 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.depth, (void*)&shape.depth};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.depth, (void*)&shape.depth};
         }
         if (propertyName.compare(fieldPos, 6, "radius") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.radius, (void*)&shape.radius};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.radius, (void*)&shape.radius};
         }
         if (propertyName.compare(fieldPos, 10, "halfHeight") == 0 && fieldPos + 10 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.halfHeight, (void*)&shape.halfHeight};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.halfHeight, (void*)&shape.halfHeight};
         }
         if (propertyName.compare(fieldPos, 9, "topRadius") == 0 && fieldPos + 9 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.topRadius, (void*)&shape.topRadius};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.topRadius, (void*)&shape.topRadius};
         }
         if (propertyName.compare(fieldPos, 12, "bottomRadius") == 0 && fieldPos + 12 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.bottomRadius, (void*)&shape.bottomRadius};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.bottomRadius, (void*)&shape.bottomRadius};
         }
         if (propertyName.compare(fieldPos, 7, "density") == 0 && fieldPos + 7 == propertyName.size()) {
-            return {PropertyType::Float, UpdateFlags_Body3D, (void*)&defaultShape.density, (void*)&shape.density};
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultShape.density, (void*)&shape.density};
         }
         if (propertyName.compare(fieldPos, 6, "source") == 0 && fieldPos + 6 == propertyName.size()) {
-            return {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defaultShape.source, (void*)&shape.source};
+            return {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defaultShape.source, (void*)&shape.source};
         }
         if (propertyName.compare(fieldPos, 12, "sourceEntity") == 0 && fieldPos + 12 == propertyName.size()) {
-            return {PropertyType::Entity, UpdateFlags_Body3D, (void*)&defaultShape.sourceEntity, (void*)&shape.sourceEntity};
+            return {PropertyType::Entity, UpdateFlags_Rigidbody, (void*)&defaultShape.sourceEntity, (void*)&shape.sourceEntity};
         }
         if (propertyName.compare(fieldPos, 11, "samplesSize") == 0 && fieldPos + 11 == propertyName.size()) {
-            return {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defaultShape.samplesSize, (void*)&shape.samplesSize};
+            return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultShape.samplesSize, (void*)&shape.samplesSize};
         }
         if (propertyName.compare(fieldPos, 11, "numVertices") == 0 && fieldPos + 11 == propertyName.size()) {
-            return {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defaultShape.numVertices, (void*)&shape.numVertices};
+            return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultShape.numVertices, (void*)&shape.numVertices};
         }
         if (propertyName.compare(fieldPos, 10, "numIndices") == 0 && fieldPos + 10 == propertyName.size()) {
-            return {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defaultShape.numIndices, (void*)&shape.numIndices};
+            return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultShape.numIndices, (void*)&shape.numIndices};
         }
 
         constexpr const char* verticesPrefix = "vertices[";
@@ -1078,7 +1078,7 @@ namespace {
                 return PropertyData();
             }
 
-            return {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
+            return {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&defaultShape.vertices[0], (void*)&shape.vertices[vertexIndex]};
         }
 
         return PropertyData();
@@ -1094,8 +1094,8 @@ namespace {
         return resolveDirectProperties(static_cast<UIComponent*>(comp), propertyName, kUIProperties);
     }
 
-    PropertyData resolveUILayoutPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<UILayoutComponent*>(comp), propertyName, kUILayoutProperties);
+    PropertyData resolveRectTransformPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<RectTransformComponent*>(comp), propertyName, kRectTransformProperties);
     }
 
     PropertyData resolveImagePropertyFast(void* comp, const std::string& propertyName) {
@@ -1114,8 +1114,8 @@ namespace {
         return resolveDirectProperties(static_cast<ProgressbarComponent*>(comp), propertyName, kProgressbarProperties);
     }
 
-    PropertyData resolveTextEditPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<TextEditComponent*>(comp), propertyName, kTextEditProperties);
+    PropertyData resolveInputFieldPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<InputFieldComponent*>(comp), propertyName, kInputFieldProperties);
     }
 
     PropertyData resolvePanelPropertyFast(void* comp, const std::string& propertyName) {
@@ -1421,8 +1421,8 @@ namespace {
         return resolveDirectProperties(static_cast<Light2DComponent*>(comp), propertyName, kLight2DProperties);
     }
 
-    PropertyData resolveOccluder2DPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<Occluder2DComponent*>(comp), propertyName, kOccluder2DProperties);
+    PropertyData resolveShadowCaster2DPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<ShadowCaster2DComponent*>(comp), propertyName, kShadowCaster2DProperties);
     }
 
     PropertyData resolveCameraPropertyFast(void* comp, const std::string& propertyName) {
@@ -1430,11 +1430,11 @@ namespace {
     }
 
     PropertyData resolveAudioPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<SoundComponent*>(comp), propertyName, kSoundProperties);
+        return resolveDirectProperties(static_cast<AudioSourceComponent*>(comp), propertyName, kAudioSourceProperties);
     }
 
     PropertyData resolveSkyPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<SkyComponent*>(comp), propertyName, kSkyProperties);
+        return resolveDirectProperties(static_cast<SkyboxComponent*>(comp), propertyName, kSkyProperties);
     }
 
     PropertyData resolveTextPropertyFast(void* comp, const std::string& propertyName) {
@@ -1475,16 +1475,16 @@ namespace {
         return PropertyData();
     }
 
-    PropertyData resolveBody2DPropertyFast(void* comp, const std::string& propertyName) {
-        return getBody2DPropertyFast(static_cast<Body2DComponent*>(comp), propertyName);
+    PropertyData resolveRigidbody2DPropertyFast(void* comp, const std::string& propertyName) {
+        return getRigidbody2DPropertyFast(static_cast<Rigidbody2DComponent*>(comp), propertyName);
     }
 
-    PropertyData resolveBody3DPropertyFast(void* comp, const std::string& propertyName) {
-        return getBody3DPropertyFast(static_cast<Body3DComponent*>(comp), propertyName);
+    PropertyData resolveRigidbodyPropertyFast(void* comp, const std::string& propertyName) {
+        return getRigidbodyPropertyFast(static_cast<RigidbodyComponent*>(comp), propertyName);
     }
 
-    PropertyData getParticlesPropertyFast(ParticlesComponent* comp, const std::string& propertyName) {
-        ParticlesComponent& def = getDefaultComponent<ParticlesComponent>();
+    PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
+        ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
         if (!comp) return PropertyData();
 
         // Top-level properties
@@ -1614,7 +1614,7 @@ namespace {
     }
 
     PropertyData resolveParticlesPropertyFast(void* comp, const std::string& propertyName) {
-        return getParticlesPropertyFast(static_cast<ParticlesComponent*>(comp), propertyName);
+        return getParticlesPropertyFast(static_cast<ParticleSystemComponent*>(comp), propertyName);
     }
 
     PropertyData getInstancedMeshPropertyFast(InstancedMeshComponent* comp, const std::string& propertyName) {
@@ -1705,28 +1705,28 @@ namespace {
         return resolveDirectProperties(static_cast<ActionComponent*>(comp), propertyName, kActionProperties);
     }
 
-    PropertyData resolveTimedActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<TimedActionComponent*>(comp), propertyName, kTimedActionProperties);
+    PropertyData resolveTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<TweenComponent*>(comp), propertyName, kTweenProperties);
     }
 
-    PropertyData resolvePositionActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<PositionActionComponent*>(comp), propertyName, kPositionActionProperties);
+    PropertyData resolvePositionTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<PositionTweenComponent*>(comp), propertyName, kPositionTweenProperties);
     }
 
-    PropertyData resolveRotationActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<RotationActionComponent*>(comp), propertyName, kRotationActionProperties);
+    PropertyData resolveRotationTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<RotationTweenComponent*>(comp), propertyName, kRotationTweenProperties);
     }
 
-    PropertyData resolveScaleActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<ScaleActionComponent*>(comp), propertyName, kScaleActionProperties);
+    PropertyData resolveScaleTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<ScaleTweenComponent*>(comp), propertyName, kScaleTweenProperties);
     }
 
-    PropertyData resolveColorActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<ColorActionComponent*>(comp), propertyName, kColorActionProperties);
+    PropertyData resolveColorTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<ColorTweenComponent*>(comp), propertyName, kColorTweenProperties);
     }
 
-    PropertyData resolveAlphaActionPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<AlphaActionComponent*>(comp), propertyName, kAlphaActionProperties);
+    PropertyData resolveAlphaTweenPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<AlphaTweenComponent*>(comp), propertyName, kAlphaTweenProperties);
     }
 
     PropertyData resolveSpriteAnimationPropertyFast(void* compRef, const std::string& propertyName) {
@@ -1841,16 +1841,16 @@ namespace {
         return getMeshPropertyFast(static_cast<MeshComponent*>(comp), propertyName);
     }
 
-    PropertyData resolveUIContainerPropertyFast(void* comp, const std::string& propertyName) {
-        return getUIContainerPropertyFast(static_cast<UIContainerComponent*>(comp), propertyName);
+    PropertyData resolveLayoutGroupPropertyFast(void* comp, const std::string& propertyName) {
+        return getLayoutGroupPropertyFast(static_cast<LayoutGroupComponent*>(comp), propertyName);
     }
 
     PropertyData resolveScriptPropertyFast(void* comp, const std::string& propertyName) {
         return getScriptPropertyFast(static_cast<ScriptComponent*>(comp), propertyName);
     }
 
-    PropertyData resolveBundlePropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<BundleComponent*>(comp), propertyName, kBundleProperties);
+    PropertyData resolvePrefabPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<PrefabComponent*>(comp), propertyName, kPrefabProperties);
     }
 
     PropertyData resolveBonePropertyFast(void* comp, const std::string& propertyName) {
@@ -2045,28 +2045,28 @@ namespace {
         enumerateFromDescriptors(comp, ps, kActionProperties);
     }
 
-    void enumerateTimedActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kTimedActionProperties);
+    void enumerateTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kTweenProperties);
     }
 
-    void enumeratePositionActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kPositionActionProperties);
+    void enumeratePositionTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kPositionTweenProperties);
     }
 
-    void enumerateRotationActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kRotationActionProperties);
+    void enumerateRotationTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kRotationTweenProperties);
     }
 
-    void enumerateScaleActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kScaleActionProperties);
+    void enumerateScaleTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kScaleTweenProperties);
     }
 
-    void enumerateColorActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kColorActionProperties);
+    void enumerateColorTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kColorTweenProperties);
     }
 
-    void enumerateAlphaActionProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kAlphaActionProperties);
+    void enumerateAlphaTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kAlphaTweenProperties);
     }
 
     void enumerateModelProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
@@ -2104,8 +2104,8 @@ namespace {
         }
     }
 
-    void enumerateBundleProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kBundleProperties);
+    void enumeratePrefabProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kPrefabProperties);
     }
 
     void enumerateBoneProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2224,8 +2224,8 @@ namespace {
         enumerateFromDescriptors(comp, ps, kUIProperties);
     }
 
-    void enumerateUILayoutProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kUILayoutProperties);
+    void enumerateRectTransformProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kRectTransformProperties);
     }
 
     void enumerateImageProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2244,8 +2244,8 @@ namespace {
         enumerateFromDescriptors(comp, ps, kProgressbarProperties);
     }
 
-    void enumerateTextEditProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kTextEditProperties);
+    void enumerateInputFieldProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kInputFieldProperties);
     }
 
     void enumeratePanelProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2397,8 +2397,8 @@ namespace {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
 
-    void enumerateOccluder2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kOccluder2DProperties);
+    void enumerateShadowCaster2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kShadowCaster2DProperties);
     }
 
     void enumerateCameraProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2406,7 +2406,7 @@ namespace {
     }
 
     void enumerateAudioProperties(void* comp, std::map<std::string, PropertyData>& ps) {
-        enumerateFromDescriptors(comp, ps, kSoundProperties);
+        enumerateFromDescriptors(comp, ps, kAudioSourceProperties);
     }
 
     void enumerateSkyProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2435,81 +2435,81 @@ namespace {
         }
     }
 
-    void enumerateBody2DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        Body2DComponent* comp = static_cast<Body2DComponent*>(compRef);
-        Body2DComponent& def = getDefaultComponent<Body2DComponent>();
+    void enumerateRigidbody2DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        Rigidbody2DComponent* comp = static_cast<Rigidbody2DComponent*>(compRef);
+        Rigidbody2DComponent& def = getDefaultComponent<Rigidbody2DComponent>();
 
-        ps["type"] = {PropertyType::Enum, UpdateFlags_Body2D, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
-        ps["numShapes"] = {PropertyType::UInt, UpdateFlags_Body2D, (void*)&def.numShapes, compRef ? (void*)&comp->numShapes : nullptr};
+        ps["type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
+        ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody2D, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
 
-        for (int s = 0; s < (compRef ? (int)comp->numShapes : 1); s++) {
+        for (int s = 0; s < (compRef ? (int)comp->numColliders : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";
 
-            Shape2D& shape = compRef ? comp->shapes[s] : def.shapes[0];
-            Shape2D& defShape = def.shapes[0];
+            Collider2D& shape = compRef ? comp->colliders[s] : def.colliders[0];
+            Collider2D& defShape = def.colliders[0];
 
-            ps["shapes[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Body2D, (void*)&defShape, compRef ? (void*)&shape : nullptr};
-            ps["shapes[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Body2D, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
-            ps["shapes[" + idx + "].pointA"] = {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defShape.pointA, compRef ? (void*)&shape.pointA : nullptr};
-            ps["shapes[" + idx + "].pointB"] = {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defShape.pointB, compRef ? (void*)&shape.pointB : nullptr};
-            ps["shapes[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Body2D, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
-            ps["shapes[" + idx + "].loop"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.loop, compRef ? (void*)&shape.loop : nullptr};
-            ps["shapes[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Body2D, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
-            ps["shapes[" + idx + "].friction"] = {PropertyType::Float, UpdateFlags_Body2D, (void*)&defShape.friction, compRef ? (void*)&shape.friction : nullptr};
-            ps["shapes[" + idx + "].restitution"] = {PropertyType::Float, UpdateFlags_Body2D, (void*)&defShape.restitution, compRef ? (void*)&shape.restitution : nullptr};
-            ps["shapes[" + idx + "].sensor"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.sensor, compRef ? (void*)&shape.sensor : nullptr};
-            ps["shapes[" + idx + "].enableHitEvents"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.enableHitEvents, compRef ? (void*)&shape.enableHitEvents : nullptr};
-            ps["shapes[" + idx + "].contactEvents"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.contactEvents, compRef ? (void*)&shape.contactEvents : nullptr};
-            ps["shapes[" + idx + "].preSolveEvents"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.preSolveEvents, compRef ? (void*)&shape.preSolveEvents : nullptr};
-            ps["shapes[" + idx + "].sensorEvents"] = {PropertyType::Bool, UpdateFlags_Body2D, (void*)&defShape.sensorEvents, compRef ? (void*)&shape.sensorEvents : nullptr};
+            ps["colliders[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Rigidbody2D, (void*)&defShape, compRef ? (void*)&shape : nullptr};
+            ps["colliders[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Rigidbody2D, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
+            ps["colliders[" + idx + "].pointA"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointA, compRef ? (void*)&shape.pointA : nullptr};
+            ps["colliders[" + idx + "].pointB"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.pointB, compRef ? (void*)&shape.pointB : nullptr};
+            ps["colliders[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
+            ps["colliders[" + idx + "].loop"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.loop, compRef ? (void*)&shape.loop : nullptr};
+            ps["colliders[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
+            ps["colliders[" + idx + "].friction"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.friction, compRef ? (void*)&shape.friction : nullptr};
+            ps["colliders[" + idx + "].restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody2D, (void*)&defShape.restitution, compRef ? (void*)&shape.restitution : nullptr};
+            ps["colliders[" + idx + "].sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensor, compRef ? (void*)&shape.sensor : nullptr};
+            ps["colliders[" + idx + "].enableHitEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.enableHitEvents, compRef ? (void*)&shape.enableHitEvents : nullptr};
+            ps["colliders[" + idx + "].contactEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.contactEvents, compRef ? (void*)&shape.contactEvents : nullptr};
+            ps["colliders[" + idx + "].preSolveEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.preSolveEvents, compRef ? (void*)&shape.preSolveEvents : nullptr};
+            ps["colliders[" + idx + "].sensorEvents"] = {PropertyType::Bool, UpdateFlags_Rigidbody2D, (void*)&defShape.sensorEvents, compRef ? (void*)&shape.sensorEvents : nullptr};
 
             for (int v = 0; v < (compRef ? (int)shape.numVertices : 1); v++) {
                 std::string vidx = compRef ? std::to_string(v) : "";
-                ps["shapes[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector2, UpdateFlags_Body2D, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
+                ps["colliders[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector2, UpdateFlags_Rigidbody2D, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
             }
         }
     }
 
-    void enumerateBody3DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        Body3DComponent* comp = static_cast<Body3DComponent*>(compRef);
-        Body3DComponent& def = getDefaultComponent<Body3DComponent>();
+    void enumerateRigidbodyProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        RigidbodyComponent* comp = static_cast<RigidbodyComponent*>(compRef);
+        RigidbodyComponent& def = getDefaultComponent<RigidbodyComponent>();
 
-        ps["type"] = {PropertyType::Enum, UpdateFlags_Body3D, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
-        ps["motionQuality"] = {PropertyType::Enum, UpdateFlags_Body3D, (void*)&def.motionQuality, compRef ? (void*)&comp->motionQuality : nullptr};
-        ps["sensor"] = {PropertyType::Bool, UpdateFlags_Body3D, (void*)&def.sensor, compRef ? (void*)&comp->sensor : nullptr};
-        ps["gravityFactor"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&def.gravityFactor, compRef ? (void*)&comp->gravityFactor : nullptr};
-        ps["numShapes"] = {PropertyType::UInt, UpdateFlags_Body3D, (void*)&def.numShapes, compRef ? (void*)&comp->numShapes : nullptr};
-        ps["overrideMassProperties"] = {PropertyType::Bool, UpdateFlags_Body3D, (void*)&def.overrideMassProperties, compRef ? (void*)&comp->overrideMassProperties : nullptr};
-        ps["solidBoxSize"] = {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&def.solidBoxSize, compRef ? (void*)&comp->solidBoxSize : nullptr};
-        ps["solidBoxDensity"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&def.solidBoxDensity, compRef ? (void*)&comp->solidBoxDensity : nullptr};
+        ps["type"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&def.type, compRef ? (void*)&comp->type : nullptr};
+        ps["motionQuality"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&def.motionQuality, compRef ? (void*)&comp->motionQuality : nullptr};
+        ps["sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.sensor, compRef ? (void*)&comp->sensor : nullptr};
+        ps["gravityFactor"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.gravityFactor, compRef ? (void*)&comp->gravityFactor : nullptr};
+        ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
+        ps["overrideMassProperties"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.overrideMassProperties, compRef ? (void*)&comp->overrideMassProperties : nullptr};
+        ps["solidBoxSize"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&def.solidBoxSize, compRef ? (void*)&comp->solidBoxSize : nullptr};
+        ps["solidBoxDensity"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.solidBoxDensity, compRef ? (void*)&comp->solidBoxDensity : nullptr};
 
-        for (int s = 0; s < (compRef ? (int)comp->numShapes : 1); s++) {
+        for (int s = 0; s < (compRef ? (int)comp->numColliders : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";
 
-            Shape3D& shape = compRef ? comp->shapes[s] : def.shapes[0];
-            Shape3D& defShape = def.shapes[0];
+            Collider3D& shape = compRef ? comp->colliders[s] : def.colliders[0];
+            Collider3D& defShape = def.colliders[0];
 
-            ps["shapes[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Body3D, (void*)&defShape, compRef ? (void*)&shape : nullptr};
-            ps["shapes[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
-            ps["shapes[" + idx + "].position"] = {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&defShape.position, compRef ? (void*)&shape.position : nullptr};
-            ps["shapes[" + idx + "].rotation"] = {PropertyType::Quat, UpdateFlags_Body3D, (void*)&defShape.rotation, compRef ? (void*)&shape.rotation : nullptr};
-            ps["shapes[" + idx + "].width"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.width, compRef ? (void*)&shape.width : nullptr};
-            ps["shapes[" + idx + "].height"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.height, compRef ? (void*)&shape.height : nullptr};
-            ps["shapes[" + idx + "].depth"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.depth, compRef ? (void*)&shape.depth : nullptr};
-            ps["shapes[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
-            ps["shapes[" + idx + "].halfHeight"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.halfHeight, compRef ? (void*)&shape.halfHeight : nullptr};
-            ps["shapes[" + idx + "].topRadius"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.topRadius, compRef ? (void*)&shape.topRadius : nullptr};
-            ps["shapes[" + idx + "].bottomRadius"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.bottomRadius, compRef ? (void*)&shape.bottomRadius : nullptr};
-            ps["shapes[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Body3D, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
-            ps["shapes[" + idx + "].source"] = {PropertyType::Enum, UpdateFlags_Body3D, (void*)&defShape.source, compRef ? (void*)&shape.source : nullptr};
-            ps["shapes[" + idx + "].sourceEntity"] = {PropertyType::Entity, UpdateFlags_Body3D, (void*)&defShape.sourceEntity, compRef ? (void*)&shape.sourceEntity : nullptr};
-            ps["shapes[" + idx + "].samplesSize"] = {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defShape.samplesSize, compRef ? (void*)&shape.samplesSize : nullptr};
-            ps["shapes[" + idx + "].numVertices"] = {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defShape.numVertices, compRef ? (void*)&shape.numVertices : nullptr};
-            ps["shapes[" + idx + "].numIndices"] = {PropertyType::UInt, UpdateFlags_Body3D, (void*)&defShape.numIndices, compRef ? (void*)&shape.numIndices : nullptr};
+            ps["colliders[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_Rigidbody, (void*)&defShape, compRef ? (void*)&shape : nullptr};
+            ps["colliders[" + idx + "].type"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defShape.type, compRef ? (void*)&shape.type : nullptr};
+            ps["colliders[" + idx + "].position"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&defShape.position, compRef ? (void*)&shape.position : nullptr};
+            ps["colliders[" + idx + "].rotation"] = {PropertyType::Quat, UpdateFlags_Rigidbody, (void*)&defShape.rotation, compRef ? (void*)&shape.rotation : nullptr};
+            ps["colliders[" + idx + "].width"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.width, compRef ? (void*)&shape.width : nullptr};
+            ps["colliders[" + idx + "].height"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.height, compRef ? (void*)&shape.height : nullptr};
+            ps["colliders[" + idx + "].depth"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.depth, compRef ? (void*)&shape.depth : nullptr};
+            ps["colliders[" + idx + "].radius"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.radius, compRef ? (void*)&shape.radius : nullptr};
+            ps["colliders[" + idx + "].halfHeight"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.halfHeight, compRef ? (void*)&shape.halfHeight : nullptr};
+            ps["colliders[" + idx + "].topRadius"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.topRadius, compRef ? (void*)&shape.topRadius : nullptr};
+            ps["colliders[" + idx + "].bottomRadius"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.bottomRadius, compRef ? (void*)&shape.bottomRadius : nullptr};
+            ps["colliders[" + idx + "].density"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defShape.density, compRef ? (void*)&shape.density : nullptr};
+            ps["colliders[" + idx + "].source"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&defShape.source, compRef ? (void*)&shape.source : nullptr};
+            ps["colliders[" + idx + "].sourceEntity"] = {PropertyType::Entity, UpdateFlags_Rigidbody, (void*)&defShape.sourceEntity, compRef ? (void*)&shape.sourceEntity : nullptr};
+            ps["colliders[" + idx + "].samplesSize"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.samplesSize, compRef ? (void*)&shape.samplesSize : nullptr};
+            ps["colliders[" + idx + "].numVertices"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.numVertices, compRef ? (void*)&shape.numVertices : nullptr};
+            ps["colliders[" + idx + "].numIndices"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defShape.numIndices, compRef ? (void*)&shape.numIndices : nullptr};
 
             for (int v = 0; v < (compRef ? (int)shape.numVertices : 1); v++) {
                 std::string vidx = compRef ? std::to_string(v) : "";
-                ps["shapes[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector3, UpdateFlags_Body3D, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
+                ps["colliders[" + idx + "].vertices[" + vidx + "]"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&defShape.vertices[0], compRef ? (void*)&shape.vertices[v] : nullptr};
             }
         }
     }
@@ -2548,11 +2548,11 @@ namespace {
         }
     }
 
-    void enumerateUIContainerProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        UIContainerComponent* comp = static_cast<UIContainerComponent*>(compRef);
-        UIContainerComponent& def = getDefaultComponent<UIContainerComponent>();
+    void enumerateLayoutGroupProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        LayoutGroupComponent* comp = static_cast<LayoutGroupComponent*>(compRef);
+        LayoutGroupComponent& def = getDefaultComponent<LayoutGroupComponent>();
 
-        enumerateFromDescriptors(compRef, ps, kUIContainerTopProperties);
+        enumerateFromDescriptors(compRef, ps, kLayoutGroupTopProperties);
 
         for (int b = 0; b < (compRef ? MAX_CONTAINER_BOXES : 1); b++) {
             std::string idx = compRef ? std::to_string(b) : "";
@@ -2644,8 +2644,8 @@ namespace {
     }
 
     void enumerateParticlesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        ParticlesComponent* comp = static_cast<ParticlesComponent*>(compRef);
-        ParticlesComponent& def = getDefaultComponent<ParticlesComponent>();
+        ParticleSystemComponent* comp = static_cast<ParticleSystemComponent*>(compRef);
+        ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
 
         ps["maxParticles"] = {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, comp ? &comp->maxParticles : nullptr};
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
@@ -2863,8 +2863,8 @@ namespace {
         }
     }
 
-    PropertyData getLinesPropertyFast(LinesComponent* comp, const std::string& propertyName) {
-        LinesComponent& def = getDefaultComponent<LinesComponent>();
+    PropertyData getLinesPropertyFast(LineRendererComponent* comp, const std::string& propertyName) {
+        LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
         if (!comp) return PropertyData();
 
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
@@ -2906,12 +2906,12 @@ namespace {
     }
 
     PropertyData resolveLinesPropertyFast(void* comp, const std::string& propertyName) {
-        return getLinesPropertyFast(static_cast<LinesComponent*>(comp), propertyName);
+        return getLinesPropertyFast(static_cast<LineRendererComponent*>(comp), propertyName);
     }
 
     void enumerateLinesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
-        LinesComponent* comp = static_cast<LinesComponent*>(compRef);
-        LinesComponent& def = getDefaultComponent<LinesComponent>();
+        LineRendererComponent* comp = static_cast<LineRendererComponent*>(compRef);
+        LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
 
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
@@ -3046,13 +3046,13 @@ namespace {
         {ComponentType::Transform, &findComponentPtr<Transform>, &resolveTransformPropertyFast, &enumerateTransformProperties},
         {ComponentType::MeshComponent, &findComponentPtr<MeshComponent>, &resolveMeshPropertyFast, &enumerateMeshProperties},
         {ComponentType::UIComponent, &findComponentPtr<UIComponent>, &resolveUIPropertyFast, &enumerateUIProperties},
-        {ComponentType::UILayoutComponent, &findComponentPtr<UILayoutComponent>, &resolveUILayoutPropertyFast, &enumerateUILayoutProperties},
-        {ComponentType::UIContainerComponent, &findComponentPtr<UIContainerComponent>, &resolveUIContainerPropertyFast, &enumerateUIContainerProperties},
+        {ComponentType::RectTransformComponent, &findComponentPtr<RectTransformComponent>, &resolveRectTransformPropertyFast, &enumerateRectTransformProperties},
+        {ComponentType::LayoutGroupComponent, &findComponentPtr<LayoutGroupComponent>, &resolveLayoutGroupPropertyFast, &enumerateLayoutGroupProperties},
         {ComponentType::ImageComponent, &findComponentPtr<ImageComponent>, &resolveImagePropertyFast, &enumerateImageProperties},
         {ComponentType::ButtonComponent, &findComponentPtr<ButtonComponent>, &resolveButtonPropertyFast, &enumerateButtonProperties},
         {ComponentType::ScrollbarComponent, &findComponentPtr<ScrollbarComponent>, &resolveScrollbarPropertyFast, &enumerateScrollbarProperties},
         {ComponentType::ProgressbarComponent, &findComponentPtr<ProgressbarComponent>, &resolveProgressbarPropertyFast, &enumerateProgressbarProperties},
-        {ComponentType::TextEditComponent, &findComponentPtr<TextEditComponent>, &resolveTextEditPropertyFast, &enumerateTextEditProperties},
+        {ComponentType::InputFieldComponent, &findComponentPtr<InputFieldComponent>, &resolveInputFieldPropertyFast, &enumerateInputFieldProperties},
         {ComponentType::PanelComponent, &findComponentPtr<PanelComponent>, &resolvePanelPropertyFast, &enumeratePanelProperties},
         {ComponentType::PolygonComponent, &findComponentPtr<PolygonComponent>, &resolvePolygonPropertyFast, &enumeratePolygonProperties},
         {ComponentType::MeshPolygonComponent, &findComponentPtr<MeshPolygonComponent>, &resolveMeshPolygonPropertyFast, &enumerateMeshPolygonProperties},
@@ -3064,31 +3064,31 @@ namespace {
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
-        {ComponentType::Occluder2DComponent, &findComponentPtr<Occluder2DComponent>, &resolveOccluder2DPropertyFast, &enumerateOccluder2DProperties},
+        {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
-        {ComponentType::SoundComponent, &findComponentPtr<SoundComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
-        {ComponentType::SkyComponent, &findComponentPtr<SkyComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
+        {ComponentType::AudioSourceComponent, &findComponentPtr<AudioSourceComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
+        {ComponentType::SkyboxComponent, &findComponentPtr<SkyboxComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
         {ComponentType::ScriptComponent, &findComponentPtr<ScriptComponent>, &resolveScriptPropertyFast, &enumerateScriptProperties},
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
-        {ComponentType::Body2DComponent, &findComponentPtr<Body2DComponent>, &resolveBody2DPropertyFast, &enumerateBody2DProperties},
-        {ComponentType::Body3DComponent, &findComponentPtr<Body3DComponent>, &resolveBody3DPropertyFast, &enumerateBody3DProperties},
+        {ComponentType::Rigidbody2DComponent, &findComponentPtr<Rigidbody2DComponent>, &resolveRigidbody2DPropertyFast, &enumerateRigidbody2DProperties},
+        {ComponentType::RigidbodyComponent, &findComponentPtr<RigidbodyComponent>, &resolveRigidbodyPropertyFast, &enumerateRigidbodyProperties},
         {ComponentType::InstancedMeshComponent, &findComponentPtr<InstancedMeshComponent>, &resolveInstancedMeshPropertyFast, &enumerateInstancedMeshProperties},
-        {ComponentType::ParticlesComponent, &findComponentPtr<ParticlesComponent>, &resolveParticlesPropertyFast, &enumerateParticlesProperties},
+        {ComponentType::ParticleSystemComponent, &findComponentPtr<ParticleSystemComponent>, &resolveParticlesPropertyFast, &enumerateParticlesProperties},
         {ComponentType::PointsComponent, &findComponentPtr<PointsComponent>, &resolvePointsPropertyFast, &enumeratePointsProperties},
-        {ComponentType::LinesComponent, &findComponentPtr<LinesComponent>, &resolveLinesPropertyFast, &enumerateLinesProperties},
+        {ComponentType::LineRendererComponent, &findComponentPtr<LineRendererComponent>, &resolveLinesPropertyFast, &enumerateLinesProperties},
         {ComponentType::ActionComponent, &findComponentPtr<ActionComponent>, &resolveActionPropertyFast, &enumerateActionProperties},
-        {ComponentType::TimedActionComponent, &findComponentPtr<TimedActionComponent>, &resolveTimedActionPropertyFast, &enumerateTimedActionProperties},
-        {ComponentType::PositionActionComponent, &findComponentPtr<PositionActionComponent>, &resolvePositionActionPropertyFast, &enumeratePositionActionProperties},
-        {ComponentType::RotationActionComponent, &findComponentPtr<RotationActionComponent>, &resolveRotationActionPropertyFast, &enumerateRotationActionProperties},
-        {ComponentType::ScaleActionComponent, &findComponentPtr<ScaleActionComponent>, &resolveScaleActionPropertyFast, &enumerateScaleActionProperties},
-        {ComponentType::ColorActionComponent, &findComponentPtr<ColorActionComponent>, &resolveColorActionPropertyFast, &enumerateColorActionProperties},
-        {ComponentType::AlphaActionComponent, &findComponentPtr<AlphaActionComponent>, &resolveAlphaActionPropertyFast, &enumerateAlphaActionProperties},
+        {ComponentType::TweenComponent, &findComponentPtr<TweenComponent>, &resolveTweenPropertyFast, &enumerateTweenProperties},
+        {ComponentType::PositionTweenComponent, &findComponentPtr<PositionTweenComponent>, &resolvePositionTweenPropertyFast, &enumeratePositionTweenProperties},
+        {ComponentType::RotationTweenComponent, &findComponentPtr<RotationTweenComponent>, &resolveRotationTweenPropertyFast, &enumerateRotationTweenProperties},
+        {ComponentType::ScaleTweenComponent, &findComponentPtr<ScaleTweenComponent>, &resolveScaleTweenPropertyFast, &enumerateScaleTweenProperties},
+        {ComponentType::ColorTweenComponent, &findComponentPtr<ColorTweenComponent>, &resolveColorTweenPropertyFast, &enumerateColorTweenProperties},
+        {ComponentType::AlphaTweenComponent, &findComponentPtr<AlphaTweenComponent>, &resolveAlphaTweenPropertyFast, &enumerateAlphaTweenProperties},
         {ComponentType::SpriteAnimationComponent, &findComponentPtr<SpriteAnimationComponent>, &resolveSpriteAnimationPropertyFast, &enumerateSpriteAnimationProperties},
         {ComponentType::AnimationComponent, &findComponentPtr<AnimationComponent>, &resolveAnimationPropertyFast, &enumerateAnimationProperties},
         {ComponentType::ModelComponent, &findComponentPtr<ModelComponent>, &resolveModelPropertyFast, &enumerateModelProperties},
-        {ComponentType::BundleComponent, &findComponentPtr<BundleComponent>, &resolveBundlePropertyFast, &enumerateBundleProperties},
+        {ComponentType::PrefabComponent, &findComponentPtr<PrefabComponent>, &resolvePrefabPropertyFast, &enumeratePrefabProperties},
         {ComponentType::BoneComponent, &findComponentPtr<BoneComponent>, &resolveBonePropertyFast, &enumerateBoneProperties},
         {ComponentType::KeyframeTracksComponent, &findComponentPtr<KeyframeTracksComponent>, &resolveKeyframeTracksPropertyFast, &enumerateKeyframeTracksProperties},
         {ComponentType::TranslateTracksComponent, &findComponentPtr<TranslateTracksComponent>, &resolveTranslateTracksPropertyFast, &enumerateTranslateTracksProperties},
@@ -3098,7 +3098,7 @@ namespace {
     };
 
     // The Unity component checkbox: "enabled" of every component that has one, shared
-    // here instead of repeated in each table (Occluder2D lists its own)
+    // here instead of repeated in each table (ShadowCaster2D lists its own)
     using EnabledRefGetter = bool* (*)(void*);
 
     template<typename Component>
@@ -3114,15 +3114,15 @@ namespace {
             case ComponentType::TilemapComponent: return &getEnabledRef<TilemapComponent>;
             case ComponentType::TerrainComponent: return &getEnabledRef<TerrainComponent>;
             case ComponentType::PointsComponent: return &getEnabledRef<PointsComponent>;
-            case ComponentType::LinesComponent: return &getEnabledRef<LinesComponent>;
-            case ComponentType::ParticlesComponent: return &getEnabledRef<ParticlesComponent>;
+            case ComponentType::LineRendererComponent: return &getEnabledRef<LineRendererComponent>;
+            case ComponentType::ParticleSystemComponent: return &getEnabledRef<ParticleSystemComponent>;
             case ComponentType::InstancedMeshComponent: return &getEnabledRef<InstancedMeshComponent>;
             case ComponentType::LightComponent: return &getEnabledRef<LightComponent>;
             case ComponentType::Light2DComponent: return &getEnabledRef<Light2DComponent>;
             case ComponentType::CameraComponent: return &getEnabledRef<CameraComponent>;
-            case ComponentType::SoundComponent: return &getEnabledRef<SoundComponent>;
-            case ComponentType::Body2DComponent: return &getEnabledRef<Body2DComponent>;
-            case ComponentType::Body3DComponent: return &getEnabledRef<Body3DComponent>;
+            case ComponentType::AudioSourceComponent: return &getEnabledRef<AudioSourceComponent>;
+            case ComponentType::Rigidbody2DComponent: return &getEnabledRef<Rigidbody2DComponent>;
+            case ComponentType::RigidbodyComponent: return &getEnabledRef<RigidbodyComponent>;
             case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
@@ -3215,26 +3215,26 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
 
     if(component == ComponentType::ActionComponent){
         name = "ActionComponent";
-    }else if(component == ComponentType::AlphaActionComponent){
-        name = "AlphaActionComponent";
+    }else if(component == ComponentType::AlphaTweenComponent){
+        name = "AlphaTweenComponent";
     }else if(component == ComponentType::AnimationComponent){
         name = "AnimationComponent";
-    }else if(component == ComponentType::SoundComponent){
-        name = "SoundComponent";
-    }else if(component == ComponentType::Body2DComponent){
-        name = "Body2DComponent";
-    }else if(component == ComponentType::Body3DComponent){
-        name = "Body3DComponent";
+    }else if(component == ComponentType::AudioSourceComponent){
+        name = "AudioSourceComponent";
+    }else if(component == ComponentType::Rigidbody2DComponent){
+        name = "Rigidbody2DComponent";
+    }else if(component == ComponentType::RigidbodyComponent){
+        name = "RigidbodyComponent";
     }else if(component == ComponentType::BoneComponent){
         name = "BoneComponent";
-    }else if(component == ComponentType::BundleComponent){
-        name = "BundleComponent";
+    }else if(component == ComponentType::PrefabComponent){
+        name = "PrefabComponent";
     }else if(component == ComponentType::ButtonComponent){
         name = "ButtonComponent";
     }else if(component == ComponentType::CameraComponent){
         name = "CameraComponent";
-    }else if(component == ComponentType::ColorActionComponent){
-        name = "ColorActionComponent";
+    }else if(component == ComponentType::ColorTweenComponent){
+        name = "ColorTweenComponent";
     }else if(component == ComponentType::FogComponent){
         name = "FogComponent";
     }else if(component == ComponentType::MirrorComponent){
@@ -3243,8 +3243,8 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
         name = "ReflectionProbeComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
-    }else if(component == ComponentType::Occluder2DComponent){
-        name = "Occluder2DComponent";
+    }else if(component == ComponentType::ShadowCaster2DComponent){
+        name = "ShadowCaster2DComponent";
     }else if(component == ComponentType::ImageComponent){
         name = "ImageComponent";
     }else if(component == ComponentType::InstancedMeshComponent){
@@ -3257,8 +3257,8 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
         name = "KeyframeTracksComponent";
     }else if(component == ComponentType::LightComponent){
         name = "LightComponent";
-    }else if(component == ComponentType::LinesComponent){
-        name = "LinesComponent";
+    }else if(component == ComponentType::LineRendererComponent){
+        name = "LineRendererComponent";
     }else if(component == ComponentType::MeshComponent){
         name = "MeshComponent";
     }else if(component == ComponentType::MeshPolygonComponent){
@@ -3269,30 +3269,30 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
         name = "MorphTracksComponent";
     }else if(component == ComponentType::PanelComponent){
         name = "PanelComponent";
-    }else if(component == ComponentType::ParticlesComponent){
-        name = "ParticlesComponent";
+    }else if(component == ComponentType::ParticleSystemComponent){
+        name = "ParticleSystemComponent";
     }else if(component == ComponentType::PointsComponent){
         name = "PointsComponent";
     }else if(component == ComponentType::PolygonComponent){
         name = "PolygonComponent";
-    }else if(component == ComponentType::PositionActionComponent){
-        name = "PositionActionComponent";
+    }else if(component == ComponentType::PositionTweenComponent){
+        name = "PositionTweenComponent";
     }else if(component == ComponentType::ProgressbarComponent){
         name = "ProgressbarComponent";
     }else if(component == ComponentType::RotateTracksComponent){
         name = "RotateTracksComponent";
-    }else if(component == ComponentType::RotationActionComponent){
-        name = "RotationActionComponent";
-    }else if(component == ComponentType::ScaleActionComponent){
-        name = "ScaleActionComponent";
+    }else if(component == ComponentType::RotationTweenComponent){
+        name = "RotationTweenComponent";
+    }else if(component == ComponentType::ScaleTweenComponent){
+        name = "ScaleTweenComponent";
     }else if(component == ComponentType::ScaleTracksComponent){
         name = "ScaleTracksComponent";
     }else if(component == ComponentType::ScriptComponent){
         name = "ScriptComponent";
     }else if(component == ComponentType::ScrollbarComponent){
         name = "ScrollbarComponent";
-    }else if(component == ComponentType::SkyComponent){
-        name = "SkyComponent";
+    }else if(component == ComponentType::SkyboxComponent){
+        name = "SkyboxComponent";
     }else if(component == ComponentType::SpriteAnimationComponent){
         name = "SpriteAnimationComponent";
     }else if(component == ComponentType::SpriteComponent){
@@ -3301,23 +3301,23 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
         name = "TerrainComponent";
     }else if(component == ComponentType::TextComponent){
         name = "TextComponent";
-    }else if(component == ComponentType::TextEditComponent){
-        name = "TextEditComponent";
+    }else if(component == ComponentType::InputFieldComponent){
+        name = "InputFieldComponent";
     }else if(component == ComponentType::TilemapComponent){
         name = "TilemapComponent";
 
-    }else if(component == ComponentType::TimedActionComponent){
-        name = "TimedActionComponent";
+    }else if(component == ComponentType::TweenComponent){
+        name = "TweenComponent";
     }else if(component == ComponentType::Transform){
         name = "Transform";
     }else if(component == ComponentType::TranslateTracksComponent){
         name = "TranslateTracksComponent";
     }else if(component == ComponentType::UIComponent){
         name = "UIComponent";
-    }else if(component == ComponentType::UIContainerComponent){
-        name = "UIContainerComponent";
-    }else if(component == ComponentType::UILayoutComponent){
-        name = "UILayoutComponent";
+    }else if(component == ComponentType::LayoutGroupComponent){
+        name = "LayoutGroupComponent";
+    }else if(component == ComponentType::RectTransformComponent){
+        name = "RectTransformComponent";
     }else{
         return "";
     }
@@ -3334,26 +3334,26 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::Transform: return "Transform";
         case ComponentType::ScriptComponent: return "Script";
         case ComponentType::MeshComponent: return "Mesh Renderer";
-        case ComponentType::LinesComponent: return "Line Renderer";
+        case ComponentType::LineRendererComponent: return "Line Renderer";
         case ComponentType::LightComponent: return "Light";
         case ComponentType::TerrainComponent: return "Terrain";
         case ComponentType::PointsComponent: return "Point Renderer";
-        case ComponentType::SkyComponent: return "Skybox";
+        case ComponentType::SkyboxComponent: return "Skybox";
         case ComponentType::ModelComponent: return "Model";
         case ComponentType::UIComponent: return "Canvas Renderer";
-        case ComponentType::UILayoutComponent: return "Rect Transform";
+        case ComponentType::RectTransformComponent: return "Rect Transform";
         case ComponentType::ActionComponent: return "Action";
-        case ComponentType::TimedActionComponent: return "Tween";
-        case ComponentType::AlphaActionComponent: return "Alpha Tween";
+        case ComponentType::TweenComponent: return "Tween";
+        case ComponentType::AlphaTweenComponent: return "Alpha Tween";
         case ComponentType::AnimationComponent: return "Animation";
-        case ComponentType::SoundComponent: return "Audio Source";
-        case ComponentType::Body2DComponent: return "Rigidbody 2D";
-        case ComponentType::Body3DComponent: return "Rigidbody";
+        case ComponentType::AudioSourceComponent: return "Audio Source";
+        case ComponentType::Rigidbody2DComponent: return "Rigidbody 2D";
+        case ComponentType::RigidbodyComponent: return "Rigidbody";
         case ComponentType::BoneComponent: return "Bone";
-        case ComponentType::BundleComponent: return "Prefab";
+        case ComponentType::PrefabComponent: return "Prefab";
         case ComponentType::ButtonComponent: return "Button";
         case ComponentType::CameraComponent: return "Camera";
-        case ComponentType::ColorActionComponent: return "Color Tween";
+        case ComponentType::ColorTweenComponent: return "Color Tween";
         case ComponentType::FogComponent: return "Fog";
         case ComponentType::ImageComponent: return "Image";
         case ComponentType::InstancedMeshComponent: return "Mesh Instancing";
@@ -3363,25 +3363,25 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::MeshPolygonComponent: return "Polygon Mesh";
         case ComponentType::MorphTracksComponent: return "Morph Tracks";
         case ComponentType::PanelComponent: return "Panel";
-        case ComponentType::ParticlesComponent: return "Particle System";
+        case ComponentType::ParticleSystemComponent: return "Particle System";
         case ComponentType::PolygonComponent: return "Polygon";
-        case ComponentType::PositionActionComponent: return "Position Tween";
+        case ComponentType::PositionTweenComponent: return "Position Tween";
         case ComponentType::ProgressbarComponent: return "Progress Bar";
         case ComponentType::RotateTracksComponent: return "Rotation Tracks";
-        case ComponentType::RotationActionComponent: return "Rotation Tween";
-        case ComponentType::ScaleActionComponent: return "Scale Tween";
+        case ComponentType::RotationTweenComponent: return "Rotation Tween";
+        case ComponentType::ScaleTweenComponent: return "Scale Tween";
         case ComponentType::ScaleTracksComponent: return "Scale Tracks";
         case ComponentType::ScrollbarComponent: return "Scrollbar";
         case ComponentType::SpriteAnimationComponent: return "Sprite Animation";
         case ComponentType::SpriteComponent: return "Sprite Renderer";
         case ComponentType::TextComponent: return "Text";
-        case ComponentType::TextEditComponent: return "Input Field";
+        case ComponentType::InputFieldComponent: return "Input Field";
         case ComponentType::TilemapComponent: return "Tilemap";
         case ComponentType::TranslateTracksComponent: return "Position Tracks";
-        case ComponentType::UIContainerComponent: return "Layout Group";
+        case ComponentType::LayoutGroupComponent: return "Layout Group";
         case ComponentType::MirrorComponent: return "Mirror";
         case ComponentType::Light2DComponent: return "Light 2D";
-        case ComponentType::Occluder2DComponent: return "Shadow Caster 2D";
+        case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
     }
     return getComponentName(component);
@@ -3392,26 +3392,26 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::Transform: return ICON_FA_UP_DOWN_LEFT_RIGHT;
         case ComponentType::ScriptComponent: return ICON_FA_CODE;
         case ComponentType::MeshComponent: return ICON_FA_SHAPES;
-        case ComponentType::LinesComponent: return ICON_FA_GRIP_LINES;
+        case ComponentType::LineRendererComponent: return ICON_FA_GRIP_LINES;
         case ComponentType::LightComponent: return ICON_FA_LIGHTBULB;
         case ComponentType::TerrainComponent: return ICON_FA_MOUNTAIN;
         case ComponentType::PointsComponent: return ICON_FA_BRAILLE;
-        case ComponentType::SkyComponent: return ICON_FA_CLOUD_SUN;
+        case ComponentType::SkyboxComponent: return ICON_FA_CLOUD_SUN;
         case ComponentType::ModelComponent: return ICON_FA_CUBES;
         case ComponentType::UIComponent: return ICON_FA_PAINTBRUSH;
-        case ComponentType::UILayoutComponent: return ICON_FA_VECTOR_SQUARE;
+        case ComponentType::RectTransformComponent: return ICON_FA_VECTOR_SQUARE;
         case ComponentType::ActionComponent: return ICON_FA_PLAY;
-        case ComponentType::TimedActionComponent: return ICON_FA_CLOCK;
-        case ComponentType::AlphaActionComponent: return ICON_FA_EYE;
+        case ComponentType::TweenComponent: return ICON_FA_CLOCK;
+        case ComponentType::AlphaTweenComponent: return ICON_FA_EYE;
         case ComponentType::AnimationComponent: return ICON_FA_FILM;
-        case ComponentType::SoundComponent: return ICON_FA_VOLUME_HIGH;
-        case ComponentType::Body2DComponent: return ICON_FA_CIRCLE;
-        case ComponentType::Body3DComponent: return ICON_FA_CUBE;
+        case ComponentType::AudioSourceComponent: return ICON_FA_VOLUME_HIGH;
+        case ComponentType::Rigidbody2DComponent: return ICON_FA_CIRCLE;
+        case ComponentType::RigidbodyComponent: return ICON_FA_CUBE;
         case ComponentType::BoneComponent: return ICON_FA_BONE;
-        case ComponentType::BundleComponent: return ICON_FA_CUBE;
+        case ComponentType::PrefabComponent: return ICON_FA_CUBE;
         case ComponentType::ButtonComponent: return ICON_FA_SQUARE_CHECK;
         case ComponentType::CameraComponent: return ICON_FA_VIDEO;
-        case ComponentType::ColorActionComponent: return ICON_FA_PALETTE;
+        case ComponentType::ColorTweenComponent: return ICON_FA_PALETTE;
         case ComponentType::FogComponent: return ICON_FA_SMOG;
         case ComponentType::ImageComponent: return ICON_FA_IMAGE;
         case ComponentType::InstancedMeshComponent: return ICON_FA_CLONE;
@@ -3421,32 +3421,32 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::MeshPolygonComponent: return ICON_FA_DRAW_POLYGON;
         case ComponentType::MorphTracksComponent: return ICON_FA_FACE_SMILE;
         case ComponentType::PanelComponent: return ICON_FA_WINDOW_MAXIMIZE;
-        case ComponentType::ParticlesComponent: return ICON_FA_FIRE;
+        case ComponentType::ParticleSystemComponent: return ICON_FA_FIRE;
         case ComponentType::PolygonComponent: return ICON_FA_DRAW_POLYGON;
-        case ComponentType::PositionActionComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
+        case ComponentType::PositionTweenComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
         case ComponentType::ProgressbarComponent: return ICON_FA_BARS_PROGRESS;
         case ComponentType::RotateTracksComponent: return ICON_FA_CIRCLE_NOTCH;
-        case ComponentType::RotationActionComponent: return ICON_FA_ROTATE;
-        case ComponentType::ScaleActionComponent: return ICON_FA_EXPAND;
+        case ComponentType::RotationTweenComponent: return ICON_FA_ROTATE;
+        case ComponentType::ScaleTweenComponent: return ICON_FA_EXPAND;
         case ComponentType::ScaleTracksComponent: return ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
         case ComponentType::ScrollbarComponent: return ICON_FA_ARROWS_UP_DOWN;
         case ComponentType::SpriteAnimationComponent: return ICON_FA_FILM;
         case ComponentType::SpriteComponent: return ICON_FA_IMAGE;
         case ComponentType::TextComponent: return ICON_FA_FONT;
-        case ComponentType::TextEditComponent: return ICON_FA_KEYBOARD;
+        case ComponentType::InputFieldComponent: return ICON_FA_KEYBOARD;
         case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
         case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
-        case ComponentType::UIContainerComponent: return ICON_FA_TABLE_CELLS;
+        case ComponentType::LayoutGroupComponent: return ICON_FA_TABLE_CELLS;
         case ComponentType::MirrorComponent: return ICON_FA_CLONE;
         case ComponentType::Light2DComponent: return ICON_FA_LIGHTBULB;
-        case ComponentType::Occluder2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
+        case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
 
 bool editor::Catalog::hasEnabledProperty(ComponentType component){
-    return component == ComponentType::Occluder2DComponent || findEnabledGetter(component) != nullptr;
+    return component == ComponentType::ShadowCaster2DComponent || findEnabledGetter(component) != nullptr;
 }
 
 ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, ComponentType compType) {
@@ -3458,30 +3458,30 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<MeshComponent>();
         case ComponentType::UIComponent:
             return registry->getComponentId<UIComponent>();
-        case ComponentType::UILayoutComponent:
-            return registry->getComponentId<UILayoutComponent>();
+        case ComponentType::RectTransformComponent:
+            return registry->getComponentId<RectTransformComponent>();
         case ComponentType::ActionComponent:
             return registry->getComponentId<ActionComponent>();
-        case ComponentType::AlphaActionComponent:
-            return registry->getComponentId<AlphaActionComponent>();
+        case ComponentType::AlphaTweenComponent:
+            return registry->getComponentId<AlphaTweenComponent>();
         case ComponentType::AnimationComponent:
             return registry->getComponentId<AnimationComponent>();
-        case ComponentType::SoundComponent:
-            return registry->getComponentId<SoundComponent>();
-        case ComponentType::Body2DComponent:
-            return registry->getComponentId<Body2DComponent>();
-        case ComponentType::Body3DComponent:
-            return registry->getComponentId<Body3DComponent>();
+        case ComponentType::AudioSourceComponent:
+            return registry->getComponentId<AudioSourceComponent>();
+        case ComponentType::Rigidbody2DComponent:
+            return registry->getComponentId<Rigidbody2DComponent>();
+        case ComponentType::RigidbodyComponent:
+            return registry->getComponentId<RigidbodyComponent>();
         case ComponentType::BoneComponent:
             return registry->getComponentId<BoneComponent>();
-        case ComponentType::BundleComponent:
-            return registry->getComponentId<BundleComponent>();
+        case ComponentType::PrefabComponent:
+            return registry->getComponentId<PrefabComponent>();
         case ComponentType::ButtonComponent:
             return registry->getComponentId<ButtonComponent>();
         case ComponentType::CameraComponent:
             return registry->getComponentId<CameraComponent>();
-        case ComponentType::ColorActionComponent:
-            return registry->getComponentId<ColorActionComponent>();
+        case ComponentType::ColorTweenComponent:
+            return registry->getComponentId<ColorTweenComponent>();
         case ComponentType::FogComponent:
             return registry->getComponentId<FogComponent>();
         case ComponentType::MirrorComponent:
@@ -3490,8 +3490,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<ReflectionProbeComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
-        case ComponentType::Occluder2DComponent:
-            return registry->getComponentId<Occluder2DComponent>();
+        case ComponentType::ShadowCaster2DComponent:
+            return registry->getComponentId<ShadowCaster2DComponent>();
         case ComponentType::ImageComponent:
             return registry->getComponentId<ImageComponent>();
         case ComponentType::InstancedMeshComponent:
@@ -3504,8 +3504,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<KeyframeTracksComponent>();
         case ComponentType::LightComponent:
             return registry->getComponentId<LightComponent>();
-        case ComponentType::LinesComponent:
-            return registry->getComponentId<LinesComponent>();
+        case ComponentType::LineRendererComponent:
+            return registry->getComponentId<LineRendererComponent>();
         case ComponentType::MeshPolygonComponent:
             return registry->getComponentId<MeshPolygonComponent>();
         case ComponentType::ModelComponent:
@@ -3514,30 +3514,30 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<MorphTracksComponent>();
         case ComponentType::PanelComponent:
             return registry->getComponentId<PanelComponent>();
-        case ComponentType::ParticlesComponent:
-            return registry->getComponentId<ParticlesComponent>();
+        case ComponentType::ParticleSystemComponent:
+            return registry->getComponentId<ParticleSystemComponent>();
         case ComponentType::PointsComponent:
             return registry->getComponentId<PointsComponent>();
         case ComponentType::PolygonComponent:
             return registry->getComponentId<PolygonComponent>();
-        case ComponentType::PositionActionComponent:
-            return registry->getComponentId<PositionActionComponent>();
+        case ComponentType::PositionTweenComponent:
+            return registry->getComponentId<PositionTweenComponent>();
         case ComponentType::ProgressbarComponent:
             return registry->getComponentId<ProgressbarComponent>();
         case ComponentType::RotateTracksComponent:
             return registry->getComponentId<RotateTracksComponent>();
-        case ComponentType::RotationActionComponent:
-            return registry->getComponentId<RotationActionComponent>();
-        case ComponentType::ScaleActionComponent:
-            return registry->getComponentId<ScaleActionComponent>();
+        case ComponentType::RotationTweenComponent:
+            return registry->getComponentId<RotationTweenComponent>();
+        case ComponentType::ScaleTweenComponent:
+            return registry->getComponentId<ScaleTweenComponent>();
         case ComponentType::ScaleTracksComponent:
             return registry->getComponentId<ScaleTracksComponent>();
         case ComponentType::ScriptComponent:
             return registry->getComponentId<ScriptComponent>();
         case ComponentType::ScrollbarComponent:
             return registry->getComponentId<ScrollbarComponent>();
-        case ComponentType::SkyComponent:
-            return registry->getComponentId<SkyComponent>();
+        case ComponentType::SkyboxComponent:
+            return registry->getComponentId<SkyboxComponent>();
         case ComponentType::SpriteAnimationComponent:
             return registry->getComponentId<SpriteAnimationComponent>();
         case ComponentType::SpriteComponent:
@@ -3546,16 +3546,16 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<TerrainComponent>();
         case ComponentType::TextComponent:
             return registry->getComponentId<TextComponent>();
-        case ComponentType::TextEditComponent:
-            return registry->getComponentId<TextEditComponent>();
+        case ComponentType::InputFieldComponent:
+            return registry->getComponentId<InputFieldComponent>();
         case ComponentType::TilemapComponent:
             return registry->getComponentId<TilemapComponent>();
-        case ComponentType::TimedActionComponent:
-            return registry->getComponentId<TimedActionComponent>();
+        case ComponentType::TweenComponent:
+            return registry->getComponentId<TweenComponent>();
         case ComponentType::TranslateTracksComponent:
             return registry->getComponentId<TranslateTracksComponent>();
-        case ComponentType::UIContainerComponent:
-            return registry->getComponentId<UIContainerComponent>();
+        case ComponentType::LayoutGroupComponent:
+            return registry->getComponentId<LayoutGroupComponent>();
         default:
             return 0;
     }
@@ -3566,26 +3566,26 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
 
     if(normalizedName == "action"){
         return ComponentType::ActionComponent;
-    }else if(normalizedName == "alphaaction"){
-        return ComponentType::AlphaActionComponent;
+    }else if(normalizedName == "alphatween"){
+        return ComponentType::AlphaTweenComponent;
     }else if(normalizedName == "animation"){
         return ComponentType::AnimationComponent;
-    }else if(normalizedName == "audio"){
-        return ComponentType::SoundComponent;
-    }else if(normalizedName == "body2d"){
-        return ComponentType::Body2DComponent;
-    }else if(normalizedName == "body3d"){
-        return ComponentType::Body3DComponent;
+    }else if(normalizedName == "audiosource"){
+        return ComponentType::AudioSourceComponent;
+    }else if(normalizedName == "rigidbody2d"){
+        return ComponentType::Rigidbody2DComponent;
+    }else if(normalizedName == "rigidbody"){
+        return ComponentType::RigidbodyComponent;
     }else if(normalizedName == "bone"){
         return ComponentType::BoneComponent;
-    }else if(normalizedName == "bundle"){
-        return ComponentType::BundleComponent;
+    }else if(normalizedName == "prefab"){
+        return ComponentType::PrefabComponent;
     }else if(normalizedName == "button"){
         return ComponentType::ButtonComponent;
     }else if(normalizedName == "camera"){
         return ComponentType::CameraComponent;
-    }else if(normalizedName == "coloraction"){
-        return ComponentType::ColorActionComponent;
+    }else if(normalizedName == "colortween"){
+        return ComponentType::ColorTweenComponent;
     }else if(normalizedName == "fog"){
         return ComponentType::FogComponent;
     }else if(normalizedName == "mirror"){
@@ -3594,8 +3594,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::ReflectionProbeComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
-    }else if(normalizedName == "occluder2d"){
-        return ComponentType::Occluder2DComponent;
+    }else if(normalizedName == "shadowcaster2d"){
+        return ComponentType::ShadowCaster2DComponent;
     }else if(normalizedName == "image"){
         return ComponentType::ImageComponent;
     }else if(normalizedName == "instancedmesh"){
@@ -3608,8 +3608,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::KeyframeTracksComponent;
     }else if(normalizedName == "light"){
         return ComponentType::LightComponent;
-    }else if(normalizedName == "lines"){
-        return ComponentType::LinesComponent;
+    }else if(normalizedName == "linerenderer"){
+        return ComponentType::LineRendererComponent;
     }else if(normalizedName == "mesh"){
         return ComponentType::MeshComponent;
     }else if(normalizedName == "meshpolygon"){
@@ -3620,30 +3620,30 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::MorphTracksComponent;
     }else if(normalizedName == "panel"){
         return ComponentType::PanelComponent;
-    }else if(normalizedName == "particles"){
-        return ComponentType::ParticlesComponent;
+    }else if(normalizedName == "particlesystem"){
+        return ComponentType::ParticleSystemComponent;
     }else if(normalizedName == "points"){
         return ComponentType::PointsComponent;
     }else if(normalizedName == "polygon"){
         return ComponentType::PolygonComponent;
-    }else if(normalizedName == "positionaction"){
-        return ComponentType::PositionActionComponent;
+    }else if(normalizedName == "positiontween"){
+        return ComponentType::PositionTweenComponent;
     }else if(normalizedName == "progressbar"){
         return ComponentType::ProgressbarComponent;
     }else if(normalizedName == "rotatetracks"){
         return ComponentType::RotateTracksComponent;
-    }else if(normalizedName == "rotationaction"){
-        return ComponentType::RotationActionComponent;
-    }else if(normalizedName == "scaleaction"){
-        return ComponentType::ScaleActionComponent;
+    }else if(normalizedName == "rotationtween"){
+        return ComponentType::RotationTweenComponent;
+    }else if(normalizedName == "scaletween"){
+        return ComponentType::ScaleTweenComponent;
     }else if(normalizedName == "scaletracks"){
         return ComponentType::ScaleTracksComponent;
     }else if(normalizedName == "script"){
         return ComponentType::ScriptComponent;
     }else if(normalizedName == "scrollbar"){
         return ComponentType::ScrollbarComponent;
-    }else if(normalizedName == "sky"){
-        return ComponentType::SkyComponent;
+    }else if(normalizedName == "skybox"){
+        return ComponentType::SkyboxComponent;
     }else if(normalizedName == "spriteanimation"){
         return ComponentType::SpriteAnimationComponent;
     }else if(normalizedName == "sprite"){
@@ -3652,22 +3652,22 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::TerrainComponent;
     }else if(normalizedName == "text"){
         return ComponentType::TextComponent;
-    }else if(normalizedName == "textedit"){
-        return ComponentType::TextEditComponent;
+    }else if(normalizedName == "inputfield"){
+        return ComponentType::InputFieldComponent;
     }else if(normalizedName == "tilemap"){
         return ComponentType::TilemapComponent;
-    }else if(normalizedName == "timedaction"){
-        return ComponentType::TimedActionComponent;
+    }else if(normalizedName == "tween"){
+        return ComponentType::TweenComponent;
     }else if(normalizedName == "transform"){
         return ComponentType::Transform;
     }else if(normalizedName == "translatetracks"){
         return ComponentType::TranslateTracksComponent;
     }else if(normalizedName == "ui"){
         return ComponentType::UIComponent;
-    }else if(normalizedName == "uicontainer"){
-        return ComponentType::UIContainerComponent;
-    }else if(normalizedName == "uilayout"){
-        return ComponentType::UILayoutComponent;
+    }else if(normalizedName == "layoutgroup"){
+        return ComponentType::LayoutGroupComponent;
+    }else if(normalizedName == "recttransform"){
+        return ComponentType::RectTransformComponent;
     }
 
     throw std::invalid_argument("Unknown component type: " + componentName);
@@ -3720,26 +3720,26 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<ActionComponent>(entity)){
         ret.push_back(ComponentType::ActionComponent);
     }
-    if (registry->findComponent<AlphaActionComponent>(entity)){
-        ret.push_back(ComponentType::AlphaActionComponent);
+    if (registry->findComponent<AlphaTweenComponent>(entity)){
+        ret.push_back(ComponentType::AlphaTweenComponent);
     }
     if (registry->findComponent<AnimationComponent>(entity)){
         ret.push_back(ComponentType::AnimationComponent);
     }
-    if (registry->findComponent<SoundComponent>(entity)){
-        ret.push_back(ComponentType::SoundComponent);
+    if (registry->findComponent<AudioSourceComponent>(entity)){
+        ret.push_back(ComponentType::AudioSourceComponent);
     }
-    if (registry->findComponent<Body2DComponent>(entity)){
-        ret.push_back(ComponentType::Body2DComponent);
+    if (registry->findComponent<Rigidbody2DComponent>(entity)){
+        ret.push_back(ComponentType::Rigidbody2DComponent);
     }
-    if (registry->findComponent<Body3DComponent>(entity)){
-        ret.push_back(ComponentType::Body3DComponent);
+    if (registry->findComponent<RigidbodyComponent>(entity)){
+        ret.push_back(ComponentType::RigidbodyComponent);
     }
     if (registry->findComponent<BoneComponent>(entity)){
         ret.push_back(ComponentType::BoneComponent);
     }
-    if (registry->findComponent<BundleComponent>(entity)){
-        ret.push_back(ComponentType::BundleComponent);
+    if (registry->findComponent<PrefabComponent>(entity)){
+        ret.push_back(ComponentType::PrefabComponent);
     }
     if (registry->findComponent<ButtonComponent>(entity)){
         ret.push_back(ComponentType::ButtonComponent);
@@ -3747,8 +3747,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<CameraComponent>(entity)){
         ret.push_back(ComponentType::CameraComponent);
     }
-    if (registry->findComponent<ColorActionComponent>(entity)){
-        ret.push_back(ComponentType::ColorActionComponent);
+    if (registry->findComponent<ColorTweenComponent>(entity)){
+        ret.push_back(ComponentType::ColorTweenComponent);
     }
     if (registry->findComponent<FogComponent>(entity)){
         ret.push_back(ComponentType::FogComponent);
@@ -3762,8 +3762,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<Light2DComponent>(entity)){
         ret.push_back(ComponentType::Light2DComponent);
     }
-    if (registry->findComponent<Occluder2DComponent>(entity)){
-        ret.push_back(ComponentType::Occluder2DComponent);
+    if (registry->findComponent<ShadowCaster2DComponent>(entity)){
+        ret.push_back(ComponentType::ShadowCaster2DComponent);
     }
     if (registry->findComponent<ImageComponent>(entity)){
         ret.push_back(ComponentType::ImageComponent);
@@ -3783,8 +3783,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<LightComponent>(entity)){
         ret.push_back(ComponentType::LightComponent);
     }
-    if (registry->findComponent<LinesComponent>(entity)){
-        ret.push_back(ComponentType::LinesComponent);
+    if (registry->findComponent<LineRendererComponent>(entity)){
+        ret.push_back(ComponentType::LineRendererComponent);
     }
     if (registry->findComponent<MeshComponent>(entity)){
         ret.push_back(ComponentType::MeshComponent);
@@ -3801,8 +3801,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<PanelComponent>(entity)){
         ret.push_back(ComponentType::PanelComponent);
     }
-    if (registry->findComponent<ParticlesComponent>(entity)){
-        ret.push_back(ComponentType::ParticlesComponent);
+    if (registry->findComponent<ParticleSystemComponent>(entity)){
+        ret.push_back(ComponentType::ParticleSystemComponent);
     }
     if (registry->findComponent<PointsComponent>(entity)){
         ret.push_back(ComponentType::PointsComponent);
@@ -3810,8 +3810,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<PolygonComponent>(entity)){
         ret.push_back(ComponentType::PolygonComponent);
     }
-    if (registry->findComponent<PositionActionComponent>(entity)){
-        ret.push_back(ComponentType::PositionActionComponent);
+    if (registry->findComponent<PositionTweenComponent>(entity)){
+        ret.push_back(ComponentType::PositionTweenComponent);
     }
     if (registry->findComponent<ProgressbarComponent>(entity)){
         ret.push_back(ComponentType::ProgressbarComponent);
@@ -3819,11 +3819,11 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<RotateTracksComponent>(entity)){
         ret.push_back(ComponentType::RotateTracksComponent);
     }
-    if (registry->findComponent<RotationActionComponent>(entity)){
-        ret.push_back(ComponentType::RotationActionComponent);
+    if (registry->findComponent<RotationTweenComponent>(entity)){
+        ret.push_back(ComponentType::RotationTweenComponent);
     }
-    if (registry->findComponent<ScaleActionComponent>(entity)){
-        ret.push_back(ComponentType::ScaleActionComponent);
+    if (registry->findComponent<ScaleTweenComponent>(entity)){
+        ret.push_back(ComponentType::ScaleTweenComponent);
     }
     if (registry->findComponent<ScaleTracksComponent>(entity)){
         ret.push_back(ComponentType::ScaleTracksComponent);
@@ -3834,8 +3834,8 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<ScrollbarComponent>(entity)){
         ret.push_back(ComponentType::ScrollbarComponent);
     }
-    if (registry->findComponent<SkyComponent>(entity)){
-        ret.push_back(ComponentType::SkyComponent);
+    if (registry->findComponent<SkyboxComponent>(entity)){
+        ret.push_back(ComponentType::SkyboxComponent);
     }
     if (registry->findComponent<SpriteAnimationComponent>(entity)){
         ret.push_back(ComponentType::SpriteAnimationComponent);
@@ -3849,14 +3849,14 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<TextComponent>(entity)){
         ret.push_back(ComponentType::TextComponent);
     }
-    if (registry->findComponent<TextEditComponent>(entity)){
-        ret.push_back(ComponentType::TextEditComponent);
+    if (registry->findComponent<InputFieldComponent>(entity)){
+        ret.push_back(ComponentType::InputFieldComponent);
     }
     if (registry->findComponent<TilemapComponent>(entity)){
         ret.push_back(ComponentType::TilemapComponent);
     }
-    if (registry->findComponent<TimedActionComponent>(entity)){
-        ret.push_back(ComponentType::TimedActionComponent);
+    if (registry->findComponent<TweenComponent>(entity)){
+        ret.push_back(ComponentType::TweenComponent);
     }
     if (registry->findComponent<Transform>(entity)){
         ret.push_back(ComponentType::Transform);
@@ -3867,11 +3867,11 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     if (registry->findComponent<UIComponent>(entity)){
         ret.push_back(ComponentType::UIComponent);
     }
-    if (registry->findComponent<UIContainerComponent>(entity)){
-        ret.push_back(ComponentType::UIContainerComponent);
+    if (registry->findComponent<LayoutGroupComponent>(entity)){
+        ret.push_back(ComponentType::LayoutGroupComponent);
     }
-    if (registry->findComponent<UILayoutComponent>(entity)){
-        ret.push_back(ComponentType::UILayoutComponent);
+    if (registry->findComponent<RectTransformComponent>(entity)){
+        ret.push_back(ComponentType::RectTransformComponent);
     }
 
     return ret;
@@ -4035,14 +4035,14 @@ std::vector<const CustomUniformBlock*> editor::Catalog::getShaderUniformBlocks(E
                 blocks.push_back(&points->customFSParams);
             }
             break;
-        case ComponentType::LinesComponent:
-            if (LinesComponent* lines = registry->findComponent<LinesComponent>(entity)) {
+        case ComponentType::LineRendererComponent:
+            if (LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)) {
                 blocks.push_back(&lines->customVSParams);
                 blocks.push_back(&lines->customFSParams);
             }
             break;
-        case ComponentType::SkyComponent:
-            if (SkyComponent* sky = registry->findComponent<SkyComponent>(entity)) {
+        case ComponentType::SkyboxComponent:
+            if (SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)) {
                 blocks.push_back(&sky->customVSParams);
                 blocks.push_back(&sky->customFSParams);
             }
@@ -4097,12 +4097,12 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity))
                 return failed(points->customShader, ShaderType::POINTS, points->loaded, points->needReload, points->customShaderId);
             break;
-        case ComponentType::LinesComponent:
-            if (LinesComponent* lines = scene->findComponent<LinesComponent>(entity))
+        case ComponentType::LineRendererComponent:
+            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
                 return failed(lines->customShader, ShaderType::LINES, lines->loaded, lines->needReload, lines->customShaderId);
             break;
-        case ComponentType::SkyComponent:
-            if (SkyComponent* sky = scene->findComponent<SkyComponent>(entity))
+        case ComponentType::SkyboxComponent:
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
                 return failed(sky->customShader, ShaderType::SKYBOX, sky->loaded, sky->needReload, sky->customShaderId);
             break;
         default:
@@ -4178,8 +4178,8 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         }
     }
     if (updateFlags & (UpdateFlags_Layout_Sizes | UpdateFlags_Layout_Anchors)){
-        // May be requested even if not have UILayoutComponent
-        if (UILayoutComponent* layout = registry->findComponent<UILayoutComponent>(entity)){
+        // May be requested even if not have RectTransformComponent
+        if (RectTransformComponent* layout = registry->findComponent<RectTransformComponent>(entity)){
             if (updateFlags & UpdateFlags_Layout_Sizes)
                 layout->needUpdateSizes = true;
             if ((updateFlags & UpdateFlags_Layout_Anchors) && layout->usingAnchors)
@@ -4187,7 +4187,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         }
     }
     if (updateFlags & (UpdateFlags_Sky | UpdateFlags_Sky_Texture)){
-        if (SkyComponent* sky = registry->findComponent<SkyComponent>(entity)){
+        if (SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
             if (updateFlags & UpdateFlags_Sky_Texture)
                 sky->needUpdateTexture = true;
             if (updateFlags & UpdateFlags_Sky)
@@ -4214,15 +4214,15 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (MeshComponent* m = registry->findComponent<MeshComponent>(entity)) m->needReload = true;
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needReload = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needReload = true;
-        if (LinesComponent* l = registry->findComponent<LinesComponent>(entity)) l->needReload = true;
-        if (SkyComponent* s = registry->findComponent<SkyComponent>(entity)) s->needReload = true;
+        if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needReload = true;
+        if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needReload = true;
     }
     if (updateFlags & UpdateFlags_Shader_Uniforms){
         if (MeshComponent* m = registry->findComponent<MeshComponent>(entity)) m->needUpdateShaderUniforms = true;
         if (UIComponent* u = registry->findComponent<UIComponent>(entity)) u->needUpdateShaderUniforms = true;
         if (PointsComponent* p = registry->findComponent<PointsComponent>(entity)) p->needUpdateShaderUniforms = true;
-        if (LinesComponent* l = registry->findComponent<LinesComponent>(entity)) l->needUpdateShaderUniforms = true;
-        if (SkyComponent* s = registry->findComponent<SkyComponent>(entity)) s->needUpdateShaderUniforms = true;
+        if (LineRendererComponent* l = registry->findComponent<LineRendererComponent>(entity)) l->needUpdateShaderUniforms = true;
+        if (SkyboxComponent* s = registry->findComponent<SkyboxComponent>(entity)) s->needUpdateShaderUniforms = true;
     }
     if (updateFlags & UpdateFlags_Sprite){
         if (SpriteComponent* sprite = registry->findComponent<SpriteComponent>(entity)){
@@ -4244,16 +4244,16 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
                 text->needReloadAtlas = true;
         }
     }
-    if (updateFlags & UpdateFlags_Body2D){
-        if (Body2DComponent* body = registry->findComponent<Body2DComponent>(entity)){
+    if (updateFlags & UpdateFlags_Rigidbody2D){
+        if (Rigidbody2DComponent* body = registry->findComponent<Rigidbody2DComponent>(entity)){
             body->needReloadBody = true;
-            body->needUpdateShapes = true;
+            body->needUpdateColliders = true;
         }
     }
-    if (updateFlags & UpdateFlags_Body3D){
-        if (Body3DComponent* body = registry->findComponent<Body3DComponent>(entity)){
+    if (updateFlags & UpdateFlags_Rigidbody){
+        if (RigidbodyComponent* body = registry->findComponent<RigidbodyComponent>(entity)){
             body->needReloadBody = true;
-            body->needUpdateShapes = true;
+            body->needUpdateColliders = true;
         }
     }
     if (updateFlags & UpdateFlags_Joint2D){
@@ -4300,7 +4300,7 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         }
     }
     if (updateFlags & (UpdateFlags_Lines | UpdateFlags_Lines_Reload)){
-        if (LinesComponent* lines = registry->findComponent<LinesComponent>(entity)){
+        if (LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
             bool needsLargerBuffer = lines->lines.size() > lines->maxLines;
             if (needsLargerBuffer){
                 lines->maxLines = static_cast<unsigned int>(lines->lines.size());
@@ -4313,8 +4313,8 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
-    if (updateFlags & UpdateFlags_Sound){
-        if (SoundComponent* audio = registry->findComponent<SoundComponent>(entity)){
+    if (updateFlags & UpdateFlags_AudioSource){
+        if (AudioSourceComponent* audio = registry->findComponent<AudioSourceComponent>(entity)){
             audio->needUpdate = true;
         }
     }
@@ -4363,9 +4363,9 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::TextEditComponent: {
-            YAML::Node encoded = Stream::encodeTextEditComponent(sourceRegistry->getComponent<TextEditComponent>(sourceEntity));
-            targetRegistry->getComponent<TextEditComponent>(targetEntity) = Stream::decodeTextEditComponent(encoded);
+        case ComponentType::InputFieldComponent: {
+            YAML::Node encoded = Stream::encodeInputFieldComponent(sourceRegistry->getComponent<InputFieldComponent>(sourceEntity));
+            targetRegistry->getComponent<InputFieldComponent>(targetEntity) = Stream::decodeInputFieldComponent(encoded);
             break;
         }
 
@@ -4375,21 +4375,21 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::BundleComponent: {
-            YAML::Node encoded = Stream::encodeBundleComponent(sourceRegistry->getComponent<BundleComponent>(sourceEntity));
-            targetRegistry->getComponent<BundleComponent>(targetEntity) = Stream::decodeBundleComponent(encoded);
+        case ComponentType::PrefabComponent: {
+            YAML::Node encoded = Stream::encodePrefabComponent(sourceRegistry->getComponent<PrefabComponent>(sourceEntity));
+            targetRegistry->getComponent<PrefabComponent>(targetEntity) = Stream::decodePrefabComponent(encoded);
             break;
         }
 
-        case ComponentType::UILayoutComponent: {
-            YAML::Node encoded = Stream::encodeUILayoutComponent(sourceRegistry->getComponent<UILayoutComponent>(sourceEntity));
-            targetRegistry->getComponent<UILayoutComponent>(targetEntity) = Stream::decodeUILayoutComponent(encoded);
+        case ComponentType::RectTransformComponent: {
+            YAML::Node encoded = Stream::encodeRectTransformComponent(sourceRegistry->getComponent<RectTransformComponent>(sourceEntity));
+            targetRegistry->getComponent<RectTransformComponent>(targetEntity) = Stream::decodeRectTransformComponent(encoded);
             break;
         }
 
-        case ComponentType::UIContainerComponent: {
-            YAML::Node encoded = Stream::encodeUIContainerComponent(sourceRegistry->getComponent<UIContainerComponent>(sourceEntity));
-            targetRegistry->getComponent<UIContainerComponent>(targetEntity) = Stream::decodeUIContainerComponent(encoded);
+        case ComponentType::LayoutGroupComponent: {
+            YAML::Node encoded = Stream::encodeLayoutGroupComponent(sourceRegistry->getComponent<LayoutGroupComponent>(sourceEntity));
+            targetRegistry->getComponent<LayoutGroupComponent>(targetEntity) = Stream::decodeLayoutGroupComponent(encoded);
             break;
         }
 
@@ -4429,9 +4429,9 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::LinesComponent: {
-            YAML::Node encoded = Stream::encodeLinesComponent(sourceRegistry->getComponent<LinesComponent>(sourceEntity));
-            targetRegistry->getComponent<LinesComponent>(targetEntity) = Stream::decodeLinesComponent(encoded);
+        case ComponentType::LineRendererComponent: {
+            YAML::Node encoded = Stream::encodeLineRendererComponent(sourceRegistry->getComponent<LineRendererComponent>(sourceEntity));
+            targetRegistry->getComponent<LineRendererComponent>(targetEntity) = Stream::decodeLineRendererComponent(encoded);
             break;
         }
 
@@ -4471,9 +4471,9 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::Occluder2DComponent: {
-            YAML::Node encoded = Stream::encodeOccluder2DComponent(sourceRegistry->getComponent<Occluder2DComponent>(sourceEntity));
-            targetRegistry->getComponent<Occluder2DComponent>(targetEntity) = Stream::decodeOccluder2DComponent(encoded);
+        case ComponentType::ShadowCaster2DComponent: {
+            YAML::Node encoded = Stream::encodeShadowCaster2DComponent(sourceRegistry->getComponent<ShadowCaster2DComponent>(sourceEntity));
+            targetRegistry->getComponent<ShadowCaster2DComponent>(targetEntity) = Stream::decodeShadowCaster2DComponent(encoded);
             break;
         }
 
@@ -4483,15 +4483,15 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::SoundComponent: {
-            YAML::Node encoded = Stream::encodeSoundComponent(sourceRegistry->getComponent<SoundComponent>(sourceEntity));
-            targetRegistry->getComponent<SoundComponent>(targetEntity) = Stream::decodeSoundComponent(encoded);
+        case ComponentType::AudioSourceComponent: {
+            YAML::Node encoded = Stream::encodeAudioSourceComponent(sourceRegistry->getComponent<AudioSourceComponent>(sourceEntity));
+            targetRegistry->getComponent<AudioSourceComponent>(targetEntity) = Stream::decodeAudioSourceComponent(encoded);
             break;
         }
 
-        case ComponentType::SkyComponent: {
-            YAML::Node encoded = Stream::encodeSkyComponent(sourceRegistry->getComponent<SkyComponent>(sourceEntity));
-            targetRegistry->getComponent<SkyComponent>(targetEntity) = Stream::decodeSkyComponent(encoded);
+        case ComponentType::SkyboxComponent: {
+            YAML::Node encoded = Stream::encodeSkyboxComponent(sourceRegistry->getComponent<SkyboxComponent>(sourceEntity));
+            targetRegistry->getComponent<SkyboxComponent>(targetEntity) = Stream::decodeSkyboxComponent(encoded);
             break;
         }
 
@@ -4549,45 +4549,45 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
-        case ComponentType::TimedActionComponent: {
-            YAML::Node encoded = Stream::encodeTimedActionComponent(sourceRegistry->getComponent<TimedActionComponent>(sourceEntity));
-            targetRegistry->getComponent<TimedActionComponent>(targetEntity) = Stream::decodeTimedActionComponent(encoded);
+        case ComponentType::TweenComponent: {
+            YAML::Node encoded = Stream::encodeTweenComponent(sourceRegistry->getComponent<TweenComponent>(sourceEntity));
+            targetRegistry->getComponent<TweenComponent>(targetEntity) = Stream::decodeTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::PositionActionComponent: {
-            YAML::Node encoded = Stream::encodePositionActionComponent(sourceRegistry->getComponent<PositionActionComponent>(sourceEntity));
-            targetRegistry->getComponent<PositionActionComponent>(targetEntity) = Stream::decodePositionActionComponent(encoded);
+        case ComponentType::PositionTweenComponent: {
+            YAML::Node encoded = Stream::encodePositionTweenComponent(sourceRegistry->getComponent<PositionTweenComponent>(sourceEntity));
+            targetRegistry->getComponent<PositionTweenComponent>(targetEntity) = Stream::decodePositionTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::RotationActionComponent: {
-            YAML::Node encoded = Stream::encodeRotationActionComponent(sourceRegistry->getComponent<RotationActionComponent>(sourceEntity));
-            targetRegistry->getComponent<RotationActionComponent>(targetEntity) = Stream::decodeRotationActionComponent(encoded);
+        case ComponentType::RotationTweenComponent: {
+            YAML::Node encoded = Stream::encodeRotationTweenComponent(sourceRegistry->getComponent<RotationTweenComponent>(sourceEntity));
+            targetRegistry->getComponent<RotationTweenComponent>(targetEntity) = Stream::decodeRotationTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::ScaleActionComponent: {
-            YAML::Node encoded = Stream::encodeScaleActionComponent(sourceRegistry->getComponent<ScaleActionComponent>(sourceEntity));
-            targetRegistry->getComponent<ScaleActionComponent>(targetEntity) = Stream::decodeScaleActionComponent(encoded);
+        case ComponentType::ScaleTweenComponent: {
+            YAML::Node encoded = Stream::encodeScaleTweenComponent(sourceRegistry->getComponent<ScaleTweenComponent>(sourceEntity));
+            targetRegistry->getComponent<ScaleTweenComponent>(targetEntity) = Stream::decodeScaleTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::ColorActionComponent: {
-            YAML::Node encoded = Stream::encodeColorActionComponent(sourceRegistry->getComponent<ColorActionComponent>(sourceEntity));
-            targetRegistry->getComponent<ColorActionComponent>(targetEntity) = Stream::decodeColorActionComponent(encoded);
+        case ComponentType::ColorTweenComponent: {
+            YAML::Node encoded = Stream::encodeColorTweenComponent(sourceRegistry->getComponent<ColorTweenComponent>(sourceEntity));
+            targetRegistry->getComponent<ColorTweenComponent>(targetEntity) = Stream::decodeColorTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::AlphaActionComponent: {
-            YAML::Node encoded = Stream::encodeAlphaActionComponent(sourceRegistry->getComponent<AlphaActionComponent>(sourceEntity));
-            targetRegistry->getComponent<AlphaActionComponent>(targetEntity) = Stream::decodeAlphaActionComponent(encoded);
+        case ComponentType::AlphaTweenComponent: {
+            YAML::Node encoded = Stream::encodeAlphaTweenComponent(sourceRegistry->getComponent<AlphaTweenComponent>(sourceEntity));
+            targetRegistry->getComponent<AlphaTweenComponent>(targetEntity) = Stream::decodeAlphaTweenComponent(encoded);
             break;
         }
 
-        case ComponentType::ParticlesComponent: {
-            YAML::Node encoded = Stream::encodeParticlesComponent(sourceRegistry->getComponent<ParticlesComponent>(sourceEntity));
-            targetRegistry->getComponent<ParticlesComponent>(targetEntity) = Stream::decodeParticlesComponent(encoded);
+        case ComponentType::ParticleSystemComponent: {
+            YAML::Node encoded = Stream::encodeParticleSystemComponent(sourceRegistry->getComponent<ParticleSystemComponent>(sourceEntity));
+            targetRegistry->getComponent<ParticleSystemComponent>(targetEntity) = Stream::decodeParticleSystemComponent(encoded);
             break;
         }
 

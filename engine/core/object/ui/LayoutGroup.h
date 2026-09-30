@@ -1,21 +1,21 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef CONTAINER_H
-#define CONTAINER_H
+#ifndef LAYOUT_GROUP_H
+#define LAYOUT_GROUP_H
 
-#include "UILayout.h"
+#include "RectTransform.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API Container: public UILayout{
+    class JASPERENGINE_API LayoutGroup: public RectTransform{
 
     public:
-        Container(Scene* scene);
-        Container(Scene* scene, Entity entity);
-        virtual ~Container();
+        LayoutGroup(Scene* scene);
+        LayoutGroup(Scene* scene, Entity entity);
+        virtual ~LayoutGroup();
         
-        void setType(ContainerType type);
-        ContainerType getType() const;
+        void setType(LayoutGroupType type);
+        LayoutGroupType getType() const;
         void setUseAllWrapSpace(bool useAllWrapSpace);
         bool isUseAllWrapSpace() const;
 
@@ -35,4 +35,4 @@ namespace jasperengine{
     };
 }
 
-#endif //CONTAINER_H
+#endif //LAYOUT_GROUP_H

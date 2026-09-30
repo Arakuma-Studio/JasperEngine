@@ -1,28 +1,28 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "ColorAction.h"
+#include "ColorTween.h"
 #include "util/Color.h"
 
 using namespace jasperengine;
 
-ColorAction::ColorAction(Scene* scene): TimedAction(scene){
-    addComponent<ColorActionComponent>();
+ColorTween::ColorTween(Scene* scene): Tween(scene){
+    addComponent<ColorTweenComponent>();
 }
 
-ColorAction::ColorAction(Scene* scene, Entity entity): TimedAction(scene, entity){
+ColorTween::ColorTween(Scene* scene, Entity entity): Tween(scene, entity){
 
 }
 
-void ColorAction::setAction(Vector3 startColor, Vector3 endColor, float duration, bool loop){
-    TimedAction::setAction(duration, loop);
+void ColorTween::setAction(Vector3 startColor, Vector3 endColor, float duration, bool loop){
+    Tween::setAction(duration, loop);
 
-    ColorActionComponent& colorAction = getComponent<ColorActionComponent>();
+    ColorTweenComponent& colorTween = getComponent<ColorTweenComponent>();
 
-    colorAction.startColor = startColor;
-    colorAction.endColor = endColor;
+    colorTween.startColor = startColor;
+    colorTween.endColor = endColor;
 }
 
-void ColorAction::setAction(Vector4 startColor, Vector4 endColor, float duration, bool loop){
+void ColorTween::setAction(Vector4 startColor, Vector4 endColor, float duration, bool loop){
     setAction(Vector3(startColor.x, startColor.y, startColor.z), Vector3(endColor.x, endColor.y, endColor.z), duration, loop);
 }

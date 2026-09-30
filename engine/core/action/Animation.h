@@ -43,9 +43,9 @@ namespace jasperengine{
         void setDuration(const float &duration);
 
         void addActionFrame(float startTime, float duration, Entity action, Entity target);
-        void addActionFrame(float startTime, Entity timedaction, Entity target);
+        void addActionFrame(float startTime, Entity tween, Entity target);
         void addActionFrame(float startTime, float duration, Entity action);
-        void addActionFrame(float startTime, Entity timedaction);
+        void addActionFrame(float startTime, Entity tween);
 
         size_t getActionFrameSize() const;
         ActionFrame& getActionFrame(unsigned int index);

@@ -1,18 +1,18 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef SHAPE_H
-#define SHAPE_H
+#ifndef PRIMITIVE_H
+#define PRIMITIVE_H
 
 #include "Mesh.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Shape: public Mesh{
+    class JASPERENGINE_API Primitive: public Mesh{
     public:
-        Shape(Scene* scene);
-        Shape(Scene* scene, Entity entity);
-        virtual ~Shape();
+        Primitive(Scene* scene);
+        Primitive(Scene* scene, Entity entity);
+        virtual ~Primitive();
 
         void createPlane(float width, float depth);
         void createPlane(float width, float depth, unsigned int tiles);
@@ -41,4 +41,4 @@ namespace jasperengine{
     };
 }
 
-#endif //SHAPE_H
+#endif //PRIMITIVE_H

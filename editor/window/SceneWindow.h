@@ -55,7 +55,7 @@ namespace jasperengine::editor {
 
         std::map<uint32_t, bool> hasNotification;
 
-        // Entity children hidden below a collapsed Structure node select an ancestor
+        // Entity children hidden below a collapsed Hierarchy node select an ancestor
         // when picked in the viewport. Each maps to its nearest collapsed ancestor.
         std::unordered_map<uint32_t, std::unordered_map<Entity, Entity>> structureSelectionParents;
 

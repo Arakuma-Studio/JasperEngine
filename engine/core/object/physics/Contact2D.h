@@ -5,7 +5,7 @@
 #define CONTACT2D_H
 
 #include "Entity.h"
-#include "Body2D.h"
+#include "Rigidbody2D.h"
 #include "Manifold2D.h"
 
 #include "box2d/box2d.h"
@@ -29,12 +29,12 @@ namespace jasperengine{
         Manifold2D getManifold() const;
 
         Entity getBodyEntityA() const;
-        Body2D getBodyA() const;
-        size_t getShapeIndexA() const; // fixture in Box2D
+        Rigidbody2D getBodyA() const;
+        size_t getColliderIndexA() const; // fixture in Box2D
 
         Entity getBodyEntityB() const;
-        Body2D getBodyB() const;
-        size_t getShapeIndexB() const; // fixture in Box2D
+        Rigidbody2D getBodyB() const;
+        size_t getColliderIndexB() const; // fixture in Box2D
     };
 
 }

@@ -4,12 +4,12 @@
 #ifndef TEXT_H
 #define TEXT_H
 
-#include "UILayout.h"
+#include "RectTransform.h"
 
 namespace jasperengine{
     class JASPERENGINE_API STBText;
 
-    class JASPERENGINE_API Text: public UILayout{
+    class JASPERENGINE_API Text: public RectTransform{
 
     public:
         Text(Scene* scene);

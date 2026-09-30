@@ -11,21 +11,21 @@
 
 using namespace jasperengine;
 
-void LuaScript::setObject(const std::string& global, Object* object){
+void LuaScript::setGameObject(const std::string& global, GameObject* object){
     lua_State *L = LuaBinding::getLuaState();
 
-    if (!luabridge::push<Object*>(L, object))
+    if (!luabridge::push<GameObject*>(L, object))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 
     lua_setglobal(L, global.c_str());
 }
 
-Object* LuaScript::getObject(const std::string& global){
+GameObject* LuaScript::getGameObject(const std::string& global){
     lua_State *L = LuaBinding::getLuaState();
 
     lua_getglobal(L, global.c_str());
 
-    auto result = luabridge::get<Object*>(L, -1);
+    auto result = luabridge::get<GameObject*>(L, -1);
     if (! result)
         throw result.error();
 

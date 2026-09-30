@@ -8,16 +8,16 @@
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
-#include "component/SkyComponent.h"
+#include "component/SkyboxComponent.h"
 #include "component/ReflectionProbeComponent.h"
-#include "component/UILayoutComponent.h"
+#include "component/RectTransformComponent.h"
 #include "component/UIComponent.h"
 #include "component/ImageComponent.h"
 #include "component/CameraComponent.h"
 #include "component/LightComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/PointsComponent.h"
-#include "component/LinesComponent.h"
+#include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
@@ -366,25 +366,25 @@ namespace jasperengine{
 		bool hasShadowPointAtlas;
 
 		// 1D polar shadow atlas for 2D lights: width x MAX_LIGHTS_2D, one row per
-		// shadow-casting Light2D. Occluder2D segments of the whole scene are merged
+		// shadow-casting Light2D. ShadowCaster2D segments of the whole scene are merged
 		// into one world-space line-list buffer and drawn once per light row.
 		FramebufferRender shadow2DAtlasFramebuffer;
 		CameraRender shadow2DAtlasPassRender;
 		unsigned int shadow2DAtlasWidth;
 		bool hasShadow2DAtlas;
 
-		bool occluder2DLoaded;
-		ExternalBuffer occluder2DBuffer;
-		std::vector<float> occluder2DSegments; // 4 floats per vertex: endpoint xy + other-endpoint xy
-		ObjectRender occluder2DRender;
+		bool shadowCaster2DLoaded;
+		ExternalBuffer shadowCaster2DBuffer;
+		std::vector<float> shadowCaster2DSegments; // 4 floats per vertex: endpoint xy + other-endpoint xy
+		ObjectRender shadowCaster2DRender;
 		std::shared_ptr<ShaderRender> shadow2DShader;
 		int shadow2DSlotParams;
-		unsigned int occluder2DBufferCapacity; // in vertices
-		unsigned int occluder2DVertexCount;    // vertices built this frame
+		unsigned int shadowCaster2DBufferCapacity; // in vertices
+		unsigned int shadowCaster2DVertexCount;    // vertices built this frame
 		// sokol allows one sg_update_buffer per buffer per frame, but the same scene
 		// can be drawn twice in a frame (e.g. open as a tab AND layered as a child
 		// scene), so the upload is flagged in update() and consumed by the first draw
-		bool occluder2DNeedUpdateBuffer;
+		bool shadowCaster2DNeedUpdateBuffer;
 
 		bool needUpdateShadowBindings;
 
@@ -513,12 +513,12 @@ namespace jasperengine{
 		void processLights2D();
 		bool ensureShadow2DAtlas(unsigned int width);
 		void loadShadow2DTexture(ShaderData& shaderData, ObjectRender& render, bool receiveShadows2D);
-		unsigned int buildOccluder2DSegments();
-		bool loadOccluder2DPass(unsigned int vertexCapacity);
-		void destroyOccluder2DPass();
+		unsigned int buildShadowCaster2DSegments();
+		bool loadShadowCaster2DPass(unsigned int vertexCapacity);
+		void destroyShadowCaster2DPass();
 		bool loadAndProcessFog();
-		void releaseSkyEnvironment(SkyComponent& sky);
-		void updateSkyEnvironment(SkyComponent& sky);
+		void releaseSkyEnvironment(SkyboxComponent& sky);
+		void updateSkyEnvironment(SkyboxComponent& sky);
 		void updateReflectionProbes(double dt);
 		void renderReflectionProbeCapture();
 		void releaseReflectionProbeMaps(ReflectionProbeRuntime& runtime);
@@ -568,7 +568,7 @@ namespace jasperengine{
 		bool updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh);
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
-		Rect getScissorRect(UILayoutComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
+		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
 
 		// mesh LOD
 		struct LodAttribute{
@@ -668,16 +668,16 @@ namespace jasperengine{
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);
 
-		bool drawLines(LinesComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType);
-		void destroyLines(Entity entity, LinesComponent& lines);
+		bool drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType);
+		void destroyLines(Entity entity, LineRendererComponent& lines);
 
-		bool drawSky(SkyComponent& sky, PipelineType pipType);
-		void destroySky(Entity entity, SkyComponent& sky);
+		bool drawSky(SkyboxComponent& sky, PipelineType pipType);
+		void destroySky(Entity entity, SkyboxComponent& sky);
 
 		void destroyLight(LightComponent& light);
 		void destroyCamera(CameraComponent& camera, bool entityDestroyed);
 		
-		void updateSkyViewProjection(SkyComponent& sky, CameraComponent& camera);
+		void updateSkyViewProjection(SkyboxComponent& sky, CameraComponent& camera);
 		void updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, int viewIndex);
@@ -715,9 +715,9 @@ namespace jasperengine{
 
 		bool loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
 		bool loadPoints(Entity entity, PointsComponent& points, uint16_t pipelines);
-		bool loadLines(Entity entity, LinesComponent& lines, uint16_t pipelines);
+		bool loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines);
 		bool loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bool isText);
-		bool loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines);
+		bool loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelines);
 
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform, Entity entity);

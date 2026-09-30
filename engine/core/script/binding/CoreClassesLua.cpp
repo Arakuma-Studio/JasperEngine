@@ -12,16 +12,16 @@
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"
-#include "BundleManager.h"
+#include "PrefabManager.h"
 #include "Input.h"
 #include "System.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "Body2D.h"
+#include "Rigidbody2D.h"
 #include "Contact2D.h"
 #include "Manifold2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "Body3D.h"
+#include "Rigidbody.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
 #endif
@@ -361,24 +361,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<BundleManager>("BundleManager")
+        .beginClass<PrefabManager>("PrefabManager")
         // Lua reads a number as a string too, so the id and entity overloads have to be
         // offered before the ones taking a name
-        .addStaticFunction("createBundle",
-            luabridge::overload<uint32_t, Scene*>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, Scene*, Entity>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, Scene*, const std::string&>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, const EntityHandle&>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, Scene*>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, Scene*, Entity>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, Scene*, const std::string&>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, const EntityHandle&>(&BundleManager::createBundle))
-        .addStaticFunction("destroyBundle", &BundleManager::destroyBundle)
-        .addStaticFunction("getBundleId", &BundleManager::getBundleId)
-        .addStaticFunction("getBundleName", &BundleManager::getBundleName)
-        .addStaticFunction("getBundleNames", &BundleManager::getBundleNames)
-        .addStaticProperty("bundleCount", &BundleManager::getBundleCount)
-        .addStaticFunction("clearAll", &BundleManager::clearAll)
+        .addStaticFunction("createPrefab",
+            luabridge::overload<uint32_t, Scene*>(&PrefabManager::createPrefab),
+            luabridge::overload<uint32_t, Scene*, Entity>(&PrefabManager::createPrefab),
+            luabridge::overload<uint32_t, Scene*, const std::string&>(&PrefabManager::createPrefab),
+            luabridge::overload<uint32_t, const EntityHandle&>(&PrefabManager::createPrefab),
+            luabridge::overload<const std::string&, Scene*>(&PrefabManager::createPrefab),
+            luabridge::overload<const std::string&, Scene*, Entity>(&PrefabManager::createPrefab),
+            luabridge::overload<const std::string&, Scene*, const std::string&>(&PrefabManager::createPrefab),
+            luabridge::overload<const std::string&, const EntityHandle&>(&PrefabManager::createPrefab))
+        .addStaticFunction("destroyPrefab", &PrefabManager::destroyPrefab)
+        .addStaticFunction("getPrefabId", &PrefabManager::getPrefabId)
+        .addStaticFunction("getPrefabName", &PrefabManager::getPrefabName)
+        .addStaticFunction("getPrefabNames", &PrefabManager::getPrefabNames)
+        .addStaticProperty("prefabCount", &PrefabManager::getPrefabCount)
+        .addStaticFunction("clearAll", &PrefabManager::clearAll)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -467,61 +467,61 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>>("FunctionSubscribe_V_B2ULB2UL")
-        .addFunction("__call", &FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>::call)
-        .addFunction("call", &FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long)>::add)
+        .beginClass<FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>>("FunctionSubscribe_V_B2ULB2UL")
+        .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)>>("FunctionSubscribe_V_B2ULB2ULV2V2F")
-        .addFunction("__call", &FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)>::call)
-        .addFunction("call", &FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Body2D, unsigned long, Body2D, unsigned long, Vector2, Vector2, float)>::add)
+        .beginClass<FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>>("FunctionSubscribe_V_B2ULB2ULV2V2F")
+        .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)>>("FunctionSubscribe_B_B2ULB2UL")
-        .addFunction("__call", &FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)>::call)
-        .addFunction("call", &FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long)>::add)
+        .beginClass<FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>>("FunctionSubscribe_B_B2ULB2UL")
+        .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
+        .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)>>("FunctionSubscribe_B_B2ULB2ULM2")
-        .addFunction("__call", &FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)>::call)
-        .addFunction("call", &FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Body2D, unsigned long, Body2D, unsigned long, Manifold2D)>::add)
+        .beginClass<FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>>("FunctionSubscribe_B_B2ULB2ULM2")
+        .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
+        .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::add)
         .endClass();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(Body3D)>>("FunctionSubscribe_V_B3")
-        .addFunction("__call", &FunctionSubscribe<void(Body3D)>::call)
-        .addFunction("call", &FunctionSubscribe<void(Body3D)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(Body3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Body3D)>::add)
+        .beginClass<FunctionSubscribe<void(Rigidbody)>>("FunctionSubscribe_V_B3")
+        .addFunction("__call", &FunctionSubscribe<void(Rigidbody)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Rigidbody)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(Body3D, Body3D, Contact3D)>>("FunctionSubscribe_V_B3B3C3")
-        .addFunction("__call", &FunctionSubscribe<void(Body3D, Body3D, Contact3D)>::call)
-        .addFunction("call", &FunctionSubscribe<void(Body3D, Body3D, Contact3D)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(Body3D, Body3D, Contact3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Body3D, Body3D, Contact3D)>::add)
+        .beginClass<FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>>("FunctionSubscribe_V_B3B3C3")
+        .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)>>("FunctionSubscribe_V_B3B3ULUL")
-        .addFunction("__call", &FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)>::call)
-        .addFunction("call", &FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Body3D, Body3D, unsigned long, unsigned long)>::add)
+        .beginClass<FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>>("FunctionSubscribe_V_B3B3ULUL")
+        .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)>>("FunctionSubscribe_B_B3B3V3CR3")
-        .addFunction("__call", &FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)>::call)
-        .addFunction("call", &FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Body3D, Body3D, Vector3, CollideShapeResult3D)>::add)
+        .beginClass<FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>>("FunctionSubscribe_B_B3B3V3CR3")
+        .addFunction("__call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
+        .addFunction("call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::add)
         .endClass();
 #endif
 

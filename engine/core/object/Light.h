@@ -4,11 +4,11 @@
 #ifndef LIGHT_H
 #define LIGHT_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Light: public Object{
+    class JASPERENGINE_API Light: public GameObject{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Light is skipped by its system

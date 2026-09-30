@@ -28,7 +28,7 @@ namespace jasperengine::editor {
     // The Console. Unity-style: a toolbar (Clear, Collapse, Clear on Play,
     // Error Pause, search, Log/Warning/Error counters that filter), one row per
     // message, and a details pane with the full text of the selected message.
-    class OutputWindow {
+    class ConsoleWindow {
     private:
         // Severity buckets the counters and filters work on. Info and Success
         // are "Log"; Build (compiler/shader output) folds into Log as well.
@@ -94,7 +94,7 @@ namespace jasperengine::editor {
     public:
         static constexpr const char* WINDOW_NAME = "Console";
 
-        OutputWindow();
+        ConsoleWindow();
         void clear();
         void addLog(LogType type, const char* fmt, ...);
         void addLog(LogType type, const std::string& message);

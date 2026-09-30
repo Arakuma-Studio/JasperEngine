@@ -9,7 +9,7 @@
 
 namespace jasperengine::editor::LineDrawUtils{
 
-    inline void addCircle2D(Lines* lines, const Vector3& center, float radius, const Vector4& color, int segments = 20){
+    inline void addCircle2D(LineRenderer* lines, const Vector3& center, float radius, const Vector4& color, int segments = 20){
         if (radius <= 0.0f) return;
         for (int i = 0; i < segments; i++){
             float a0 = (2.0f * M_PI * i) / segments;
@@ -20,7 +20,7 @@ namespace jasperengine::editor::LineDrawUtils{
         }
     }
 
-    inline void addArc2D(Lines* lines, const Vector3& center, float radius, float startAngle, float endAngle, const Vector4& color, int segments = 12){
+    inline void addArc2D(LineRenderer* lines, const Vector3& center, float radius, float startAngle, float endAngle, const Vector4& color, int segments = 12){
         if (radius <= 0.0f) return;
         for (int i = 0; i < segments; i++){
             float t0 = (float)i / (float)segments;
@@ -44,7 +44,7 @@ namespace jasperengine::editor::LineDrawUtils{
         return std::make_tuple(n, right, forward);
     }
 
-    inline void addRing3D(Lines* lines, const Vector3& center, const Vector3& axis, float radius, const Vector4& color, int segments = 24){
+    inline void addRing3D(LineRenderer* lines, const Vector3& center, const Vector3& axis, float radius, const Vector4& color, int segments = 24){
         if (radius <= 0.0f) return;
         auto [n, right, forward] = makeBasis(axis);
         (void)n;
@@ -57,7 +57,7 @@ namespace jasperengine::editor::LineDrawUtils{
         }
     }
 
-    inline void addArc3D(Lines* lines, const Vector3& center, const Vector3& axis, const Vector3& fromDir, float angleStart, float angleEnd, float radius, const Vector4& color, int segments = 14){
+    inline void addArc3D(LineRenderer* lines, const Vector3& center, const Vector3& axis, const Vector3& fromDir, float angleStart, float angleEnd, float radius, const Vector4& color, int segments = 14){
         if (radius <= 0.0f) return;
         Vector3 base = fromDir.length() > 0.0001f ? fromDir.normalized() : Vector3(1.0f, 0.0f, 0.0f);
         Vector3 n = axis.length() > 0.0001f ? axis.normalized() : Vector3(0.0f, 1.0f, 0.0f);

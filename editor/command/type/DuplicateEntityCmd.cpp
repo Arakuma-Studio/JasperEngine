@@ -51,13 +51,13 @@ bool editor::DuplicateEntityCmd::execute(){
     }
 
     // Encode then decode to create duplicates.
-    // Bundle members (non-root) are skipped by the encoder when project context is set,
+    // Prefab members (non-root) are skipped by the encoder when project context is set,
     // so encode them without project context to treat as plain entities.
-    // They become bundle local entities automatically at save time.
+    // They become prefab local entities automatically at save time.
     auto encodeEntityLocal = [&](Entity e) {
-        bool isBundleMember = !project->findEntityBundlePathFor(sceneId, e).empty()
-                              && !scene->findComponent<BundleComponent>(e);
-        return Stream::encodeEntity(e, scene, isBundleMember ? nullptr : project, isBundleMember ? nullptr : sceneProject);
+        bool isPrefabMember = !project->findPrefabPathFor(sceneId, e).empty()
+                              && !scene->findComponent<PrefabComponent>(e);
+        return Stream::encodeEntity(e, scene, isPrefabMember ? nullptr : project, isPrefabMember ? nullptr : sceneProject);
     };
 
     // A model's animation and track entities have no Transform, so the encoder never reaches
@@ -71,7 +71,7 @@ bool editor::DuplicateEntityCmd::execute(){
     if (encodedRoots.size() == 1) {
         encoded = encodeEntityLocal(encodedRoots[0]);
     } else {
-        encoded["type"] = "EntityBundle";
+        encoded["type"] = "Prefab";
         YAML::Node membersNode(YAML::NodeType::Sequence);
         for (Entity entity : encodedRoots) {
             membersNode.push_back(encodeEntityLocal(entity));

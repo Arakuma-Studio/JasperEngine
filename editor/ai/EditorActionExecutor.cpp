@@ -18,8 +18,8 @@
 #include "util/ProjectUtils.h"
 #include "util/FileUtils.h"
 #include "util/ScriptParser.h"
-#include "component/Body2DComponent.h"
-#include "component/Body3DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TerrainComponent.h"
@@ -28,12 +28,12 @@
 #include "component/CameraComponent.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/AddComponentCmd.h"
-#include "command/type/AddEntityToBundleCmd.h"
-#include "command/type/ComponentToBundleLocalCmd.h"
-#include "command/type/ComponentToBundleSharedCmd.h"
+#include "command/type/AddEntityToPrefabCmd.h"
+#include "command/type/ComponentToPrefabLocalCmd.h"
+#include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/type/CreateDirCmd.h"
-#include "command/type/CreateEntityBundleCmd.h"
+#include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreateMaterialFileCmd.h"
 #include "command/type/ForkShaderCmd.h"
@@ -41,7 +41,7 @@
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/EntityNameCmd.h"
-#include "command/type/ImportEntityBundleCmd.h"
+#include "command/type/ImportPrefabCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -50,7 +50,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "command/type/RemoveComponentCmd.h"
-#include "command/type/RemoveEntityFromBundleCmd.h"
+#include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/SceneNameCmd.h"
 #include "command/type/ScenePropertyCmd.h"
@@ -63,10 +63,10 @@
 #include "component/TilemapComponent.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
-#include "util/ShapeParameters.h"
+#include "util/PrimitiveParameters.h"
 #include "texture/Texture.h"
 #include "util/Util.h"
-#include "window/ResourcesWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -442,53 +442,53 @@ bool parseBodyType(const std::string& value, BodyType& out) {
     return false;
 }
 
-bool parseBody3DMotionQuality(const std::string& value, Body3DMotionQuality& out) {
+bool parseRigidbodyMotionQuality(const std::string& value, RigidbodyMotionQuality& out) {
     const std::string token = lower(value);
     if (token == "discrete") {
-        out = Body3DMotionQuality::DISCRETE;
+        out = RigidbodyMotionQuality::DISCRETE;
         return true;
     }
     if (token == "linear_cast") {
-        out = Body3DMotionQuality::LINEAR_CAST;
+        out = RigidbodyMotionQuality::LINEAR_CAST;
         return true;
     }
     return false;
 }
 
-bool parseBodyShape3DType(const std::string& value, Shape3DType& out) {
+bool parseBodyCollider3DType(const std::string& value, Collider3DType& out) {
     const std::string token = lower(value);
     if (token == "box") {
-        out = Shape3DType::BOX;
+        out = Collider3DType::BOX;
         return true;
     }
     if (token == "sphere") {
-        out = Shape3DType::SPHERE;
+        out = Collider3DType::SPHERE;
         return true;
     }
     if (token == "capsule") {
-        out = Shape3DType::CAPSULE;
+        out = Collider3DType::CAPSULE;
         return true;
     }
     if (token == "tapered_capsule") {
-        out = Shape3DType::TAPERED_CAPSULE;
+        out = Collider3DType::TAPERED_CAPSULE;
         return true;
     }
     if (token == "cylinder") {
-        out = Shape3DType::CYLINDER;
+        out = Collider3DType::CYLINDER;
         return true;
     }
     if (token == "convex_hull") {
-        out = Shape3DType::CONVEX_HULL;
+        out = Collider3DType::CONVEX_HULL;
         return true;
     }
     if (token == "mesh") {
-        out = Shape3DType::MESH;
+        out = Collider3DType::MESH;
         return true;
     }
     return false;
 }
 
-// How PhysicsSystem scales a collision shape: boxes per axis, round shapes by one aggregate
+// How PhysicsSystem scales a collider: boxes per axis, round shapes by one aggregate
 // factor. Mirrored here so a fitted shape lands on the dimensions the body is actually built with.
 Vector3 absScale(const Vector3& scale) {
     return Vector3(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
@@ -503,8 +503,8 @@ float maxScaleXYZ(const Vector3& scale) {
 }
 
 // convex_hull and mesh derive their geometry from a mesh instead of from dimensions
-bool isMeshDerivedShape3DType(Shape3DType type) {
-    return type == Shape3DType::CONVEX_HULL || type == Shape3DType::MESH;
+bool isMeshDerivedCollider3DType(Collider3DType type) {
+    return type == Collider3DType::CONVEX_HULL || type == Collider3DType::MESH;
 }
 
 // A mesh with no geometry still has an AABB, it just has no size. A plane is legitimately flat on
@@ -519,7 +519,7 @@ constexpr float kMinFittedScaledSize = 0.2f;
 
 // Size a primitive shape to the mesh's measured local bounds, and centre it on them so
 // off-origin geometry lines up. Sizes stay local because PhysicsSystem applies the scale.
-bool fitShapeToMeshBounds(const AABB& aabb, const Vector3& entityScale, Shape3D& shape) {
+bool fitShapeToMeshBounds(const AABB& aabb, const Vector3& entityScale, Collider3D& shape) {
     if (!hasMeasurableBounds(aabb)) {
         return false;
     }
@@ -544,26 +544,26 @@ bool fitShapeToMeshBounds(const AABB& aabb, const Vector3& entityScale, Shape3D&
     const float radialWorld = std::max(worldHalf.x, worldHalf.z);
 
     switch (shape.type) {
-        case Shape3DType::BOX:
+        case Collider3DType::BOX:
             shape.width = size.x;
             shape.height = size.y;
             shape.depth = size.z;
             break;
-        case Shape3DType::SPHERE:
+        case Collider3DType::SPHERE:
             shape.radius = toLocal(std::max(worldHalf.x, std::max(worldHalf.y, worldHalf.z)),
                                    maxScaleXYZ(scale));
             break;
-        case Shape3DType::CYLINDER:
+        case Collider3DType::CYLINDER:
             shape.radius = toLocal(radialWorld, maxScaleXZ(scale));
             shape.halfHeight = half.y;
             break;
-        case Shape3DType::CAPSULE:
+        case Collider3DType::CAPSULE:
             // total height is 2 * (halfHeight + radius), so the caps come out of the measured
             // height; a mesh no taller than it is wide leaves none and Jolt makes it a sphere
             shape.radius = toLocal(radialWorld, maxScaleXZ(scale));
             shape.halfHeight = toLocal(std::max(0.0f, worldHalf.y - radialWorld), scale.y);
             break;
-        case Shape3DType::TAPERED_CAPSULE:
+        case Collider3DType::TAPERED_CAPSULE:
             shape.topRadius = toLocal(radialWorld, maxScaleXZ(scale));
             shape.bottomRadius = shape.topRadius;
             shape.halfHeight = toLocal(std::max(0.0f, worldHalf.y - radialWorld), scale.y);
@@ -606,32 +606,32 @@ bool readNonNegativeFloat(const Json& arguments, const char* field, float& targe
     return true;
 }
 
-bool parseShape2DType(const std::string& value, Shape2DType& out) {
+bool parseCollider2DType(const std::string& value, Collider2DType& out) {
     const std::string token = lower(value);
     if (token == "box" || token == "polygon") {
-        out = Shape2DType::POLYGON;
+        out = Collider2DType::POLYGON;
         return true;
     }
     if (token == "circle") {
-        out = Shape2DType::CIRCLE;
+        out = Collider2DType::CIRCLE;
         return true;
     }
     if (token == "capsule") {
-        out = Shape2DType::CAPSULE;
+        out = Collider2DType::CAPSULE;
         return true;
     }
     if (token == "segment") {
-        out = Shape2DType::SEGMENT;
+        out = Collider2DType::SEGMENT;
         return true;
     }
     if (token == "chain") {
-        out = Shape2DType::CHAIN;
+        out = Collider2DType::CHAIN;
         return true;
     }
     return false;
 }
 
-bool parseVector2Array(const Json& value, HybridArray<Vector2, MAX_SHAPE_POINTS_2D>& out,
+bool parseVector2Array(const Json& value, HybridArray<Vector2, MAX_COLLIDER_POINTS_2D>& out,
                        uint8_t& count, std::string& error) {
     if (!value.is_array()) {
         error = "points must be an array of Vector2 objects.";
@@ -762,7 +762,7 @@ bool parseComponentType(const std::string& name, ComponentType& out) {
 bool parseEntityType(const std::string& typeName, EntityCreationType& type) {
     static const std::unordered_map<std::string, EntityCreationType> map = {
         {"empty", EntityCreationType::EMPTY},
-        {"object", EntityCreationType::OBJECT},
+        {"gameobject", EntityCreationType::GAMEOBJECT},
         {"box", EntityCreationType::BOX},
         {"plane", EntityCreationType::PLANE},
         {"wall", EntityCreationType::WALL},
@@ -778,35 +778,35 @@ bool parseEntityType(const std::string& typeName, EntityCreationType& type) {
         {"button", EntityCreationType::BUTTON},
         {"scrollbar", EntityCreationType::SCROLLBAR},
         {"progressbar", EntityCreationType::PROGRESSBAR},
-        {"textedit", EntityCreationType::TEXTEDIT},
+        {"input_field", EntityCreationType::INPUT_FIELD},
         {"panel", EntityCreationType::PANEL},
         {"polygon", EntityCreationType::POLYGON},
-        {"container", EntityCreationType::CONTAINER},
+        {"layout_group", EntityCreationType::LAYOUT_GROUP},
         {"camera", EntityCreationType::CAMERA},
         {"point_light", EntityCreationType::POINT_LIGHT},
         {"directional_light", EntityCreationType::DIRECTIONAL_LIGHT},
         {"spot_light", EntityCreationType::SPOT_LIGHT},
         {"light_2d", EntityCreationType::POINT_LIGHT_2D},
-        {"occluder_2d", EntityCreationType::OCCLUDER_2D},
+        {"shadow_caster_2d", EntityCreationType::SHADOW_CASTER_2D},
         {"joint2d", EntityCreationType::JOINT2D},
         {"joint3d", EntityCreationType::JOINT3D},
-        {"body2d", EntityCreationType::BODY2D},
-        {"body3d", EntityCreationType::BODY3D},
-        {"sky", EntityCreationType::SKY},
+        {"rigidbody2d", EntityCreationType::RIGIDBODY2D},
+        {"rigidbody", EntityCreationType::RIGIDBODY},
+        {"skybox", EntityCreationType::SKYBOX},
         {"fog", EntityCreationType::FOG},
-        {"sound", EntityCreationType::SOUND},
-        {"sound_3d", EntityCreationType::SOUND_3D},
+        {"audio_source", EntityCreationType::AUDIO_SOURCE},
+        {"audio_source_3d", EntityCreationType::AUDIO_SOURCE_3D},
         {"animation", EntityCreationType::ANIMATION},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION},
-        {"position_action", EntityCreationType::POSITION_ACTION},
-        {"rotation_action", EntityCreationType::ROTATION_ACTION},
-        {"scale_action", EntityCreationType::SCALE_ACTION},
-        {"color_action", EntityCreationType::COLOR_ACTION},
-        {"alpha_action", EntityCreationType::ALPHA_ACTION},
+        {"position_tween", EntityCreationType::POSITION_TWEEN},
+        {"rotation_tween", EntityCreationType::ROTATION_TWEEN},
+        {"scale_tween", EntityCreationType::SCALE_TWEEN},
+        {"color_tween", EntityCreationType::COLOR_TWEEN},
+        {"alpha_tween", EntityCreationType::ALPHA_TWEEN},
         {"model", EntityCreationType::MODEL},
-        {"particles", EntityCreationType::PARTICLES},
+        {"particle_system", EntityCreationType::PARTICLE_SYSTEM},
         {"points", EntityCreationType::POINTS},
-        {"lines", EntityCreationType::LINES},
+        {"line_renderer", EntityCreationType::LINE_RENDERER},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON},
         {"terrain", EntityCreationType::TERRAIN},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE}
@@ -829,8 +829,8 @@ bool shaderTypeForComponent(ComponentType component, ShaderType& out) {
         case ComponentType::MeshComponent:   out = ShaderType::MESH;   return true;
         case ComponentType::UIComponent:     out = ShaderType::UI;     return true;
         case ComponentType::PointsComponent: out = ShaderType::POINTS; return true;
-        case ComponentType::LinesComponent:  out = ShaderType::LINES;  return true;
-        case ComponentType::SkyComponent:    out = ShaderType::SKYBOX; return true;
+        case ComponentType::LineRendererComponent:  out = ShaderType::LINES;  return true;
+        case ComponentType::SkyboxComponent:    out = ShaderType::SKYBOX; return true;
         default: return false;
     }
 }
@@ -864,8 +864,8 @@ const char* scenePropertyNameForShaderType(ShaderType type) {
 // Picks the entity's first renderable component that supports custom shaders.
 bool detectForkableComponent(EntityRegistry* registry, Entity entity, ComponentType& component, ShaderType& shaderType) {
     for (ComponentType candidate : {ComponentType::MeshComponent, ComponentType::UIComponent,
-                                    ComponentType::PointsComponent, ComponentType::LinesComponent,
-                                    ComponentType::SkyComponent}) {
+                                    ComponentType::PointsComponent, ComponentType::LineRendererComponent,
+                                    ComponentType::SkyboxComponent}) {
         if (hasComponent(registry, entity, candidate)) {
             component = candidate;
             shaderTypeForComponent(candidate, shaderType);
@@ -1032,15 +1032,15 @@ std::string jasperengineLuaScriptGuide(const std::string& className) {
            "Editor-exposed properties go in the properties array as { name = \"speed\", displayName = \"Speed\", type = \"float\", default = 5.0 } "
            "(type strings: bool, int, float, string, vector2, vector3, vector4, color3, color4, entity); at runtime read/write them as self.<name>, e.g. self.speed. "
            "The engine injects self.scene and self.entity; self.entity is the GameObject's numeric Entity id, not a wrapper you can call methods on. For an existing cube or other primitive mesh, "
-           "use local shape = Shape(self.scene, self.entity); shape:setColor(1.0, 0.0, 0.0, 1.0). "
-           "There is no Transform (or other component) global in Lua: to read or move a GameObject, wrap it with local obj = Object(self.scene, self.entity) "
-           "then use obj.position / obj:setPosition(...) and similar (check the Object binding via read_engine_source for exact members). "
+           "use local shape = Primitive(self.scene, self.entity); shape:setColor(1.0, 0.0, 0.0, 1.0). "
+           "There is no Transform (or other component) global in Lua: to read or move a GameObject, wrap it with local obj = GameObject(self.scene, self.entity) "
+           "then use obj.position / obj:setPosition(...) and similar (check the GameObject binding via read_engine_source for exact members). "
            "For keyboard/mouse input use the Input class (Input.isKeyPressed(Input.KEY_LEFT), etc.). Scale continuous direct non-physics movement by Engine.deltatime, but never multiply physics forces or torques by delta time; "
            "gamepads use Input.isGamepadButtonPressed(gamepad, Input.GAMEPAD_BUTTON_A) and Input.getGamepadAxis(gamepad, Input.GAMEPAD_AXIS_LEFT_X); gamepad ids are sparse, so iterate connected pads by dense index with local id = Input.getGamepadId(i) for i in 0..Input.numGamepads()-1 rather than assuming ids are 0..n-1. "
            "Choose the update callback by timing domain. Variable-frame UI, camera, animation, and direct non-physics movement use RegisterEngineEvent(self, \"onUpdate\") and " + className + ":onUpdate(). Continuously applied Rigidbody forces or torques MUST use RegisterEngineEvent(self, \"onFixedUpdate\") and " + className + ":onFixedUpdate(), because each physics world accumulates force calls until its next fixed step, so putting them in onUpdate makes effective force depend on render FPS; velocity control and physics-driving input polling belong there too. "
-           "Inside onFixedUpdate a Rigidbody must be moved through the body itself, never by writing the GameObject's transform: the body is synced from the transform before the step and written back after it, so such a write is silently discarded. The bindings expose these as properties, not methods: body.position and body.rotation on Body3D, body.position and body.angle on Body2D. GameObjects with no Rigidbody have no such restriction. "
-           "The force calls differ by Rigidbody type and are not interchangeable: Body3D uses body:applyForce(force) for a centre force, body:applyForce(force, point), and body:applyTorque(torque), and has NO applyForceToCenter; Body2D uses body:applyForceToCenter(force, wake), body:applyForce(force, point, wake) with no single-argument form, and body:applyTorque(torque, wake). "
-           "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration instead of guessing a magnitude, reading the mass as the Lua PROPERTY body.mass on Body3D (Body2D uses the method body:getMass() instead), and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force. "
+           "Inside onFixedUpdate a Rigidbody must be moved through the body itself, never by writing the GameObject's transform: the body is synced from the transform before the step and written back after it, so such a write is silently discarded. The bindings expose these as properties, not methods: body.position and body.rotation on Rigidbody, body.position and body.angle on Rigidbody2D. GameObjects with no Rigidbody have no such restriction. "
+           "The force calls differ by Rigidbody type and are not interchangeable: Rigidbody uses body:applyForce(force) for a centre force, body:applyForce(force, point), and body:applyTorque(torque), and has NO applyForceToCenter; Rigidbody2D uses body:applyForceToCenter(force, wake), body:applyForce(force, point, wake) with no single-argument form, and body:applyTorque(torque, wake). "
+           "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration instead of guessing a magnitude, reading the mass as the Lua PROPERTY body.mass on Rigidbody (Rigidbody2D uses the method body:getMass() instead), and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force. "
            "valid event names: onUpdate, onFixedUpdate, onDraw, onMouseDown, onMouseUp, onMouseMove, onKeyDown, onKeyUp, onTouchStart, onTouchMove, onTouchEnd, "
            "onGamepadConnect, onGamepadDisconnect, onGamepadButtonDown, onGamepadButtonUp, onGamepadAxisMove. "
            "For component/UI events use the global RegisterEvent(self, eventObject, \"method\"), getting the event object from a wrapper, e.g. local b = Button(self.scene, self.entity); RegisterEvent(self, b:getButtonComponent().onPress, \"onPress\"). "
@@ -1050,7 +1050,7 @@ std::string jasperengineLuaScriptGuide(const std::string& className) {
            "For a third-person/orbit camera, place it with spherical coordinates around the target: local p, y = math.rad(pitch), math.rad(yaw); local offset = Vector3(math.cos(p)*math.sin(y), math.sin(p), math.cos(p)*math.cos(y)); cam:setPosition(target + offset * distance); cam.target = target -- a positive pitch then puts the camera ABOVE the target. Never compute the position as target - forward*distance from a rotated forward vector; rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target. "
            "To print or log, use Log.print(\"text \" .. tostring(value)) (Log.warn/Log.error for severity), not bare print(). "
            "Use ONLY APIs that actually exist in the JasperEngine source: search_engine_api is a quick index, and search_engine_source/read_engine_source read the real Lua bindings "
-           "(e.g. core/script/binding/CoreClassesLua.cpp, ObjectClassesLua.cpp). Confirm exact names there before writing them; if a symbol is not in that source it does not exist, so never invent APIs or borrow them from other engines.";
+           "(e.g. core/script/binding/CoreClassesLua.cpp, GameObjectClassesLua.cpp). Confirm exact names there before writing them; if a symbol is not in that source it does not exist, so never invent APIs or borrow them from other engines.";
 }
 
 std::string jasperengineCppScriptGuide(bool cppSubclass, const std::string& parentClass) {
@@ -1064,17 +1064,17 @@ std::string jasperengineCppScriptGuide(bool cppSubclass, const std::string& pare
               << "Use REGISTER_ENGINE_EVENT(onUpdate) and void onUpdate() for variable-frame logic, or "
               << "REGISTER_ENGINE_EVENT(onFixedUpdate) and void onFixedUpdate() for physics-step logic; "
               << "pair the chosen event with the matching UNREGISTER_ENGINE_EVENT in the destructor. "
-              << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as Object(getScene(), getEntity()) to control the GameObject.";
+              << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as GameObject(getScene(), getEntity()) to control the GameObject.";
     } else {
         guide << "cpp_subclass inherits jasperengine::" << parentClass
               << " and calls engine methods (e.g. setColor) directly on this. "
               << "Register variable-frame callbacks with REGISTER_ENGINE_EVENT(onUpdate), or physics-step callbacks with REGISTER_ENGINE_EVENT(onFixedUpdate), and unregister the matching event in the destructor. "
-              << "For mesh/cube color on a Mesh GameObject, prefer cpp_subclass extending Mesh (or Shape), not ScriptBase.";
+              << "For mesh/cube color on a Mesh GameObject, prefer cpp_subclass extending Mesh (or Primitive), not ScriptBase.";
     }
-    guide << " Continuous Rigidbody (Body2D/Body3D) forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
-          << "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force (Body3D::setMass writes only the live body and is lost on reload). "
+    guide << " Continuous Rigidbody (Rigidbody2D/Rigidbody) forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
+          << "A dynamic Rigidbody's mass comes from its Collider and the Collider's density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the Collider density or shrink the Collider rather than inflating the force (Rigidbody::setMass writes only the live body and is lost on reload). "
           << "Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the JasperEngine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
-          << "Verified GameObject-control recipe: on an Object wrapper (Object obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). Object has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
+          << "Verified GameObject-control recipe: on a GameObject wrapper (GameObject obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). GameObject has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
           << "Angle arguments are in the engine's default unit, DEGREES unless Engine::setUseDegrees(false) was called: Quaternion(angle, axis), Quaternion::fromEulerAngles, Camera::rotateView and friends all run their angle through Angle::defaultToRad, so do not pass radians to them. Include \"Angle.h\" and convert with Angle::degToDefault/Angle::radToDefault; std::sin/std::cos always need radians, so feed them Angle::defaultToRad(angle). "
           << "Camera orientation comes from its target, not its rotation: CameraComponent.useTarget defaults to true and Camera::setTarget re-enables it, so while it is on the view matrix is lookAt(position, target, up) and calling setRotation() on the camera GameObject has no effect on the view (call cam.disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). For a third-person/orbit camera, place the camera with spherical coordinates around the target: float p = Angle::defaultToRad(pitch), y = Angle::defaultToRad(yaw); Vector3 offset(cosf(p)*sinf(y), sinf(p), cosf(p)*cosf(y)); cam.setPosition(target + offset*distance); cam.setTarget(target); -- a positive pitch then places the camera ABOVE the target, and the horizontal movement basis is forward = Vector3(-sinf(y), 0, -cosf(y)), right = Vector3(cosf(y), 0, -sinf(y)). Never derive the camera position as target - forward*distance from a rotated forward vector: rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target, forcing a bogus negative pitch to compensate. "
           << "To print or log, include \"Log.h\" and call Log::print(\"pos %f %f %f\", p.x, p.y, p.z) (Log::warn/Log::error for severity); Engine has no log method, and do not use printf or std::cout. "
@@ -1097,13 +1097,13 @@ std::string validateJasperEngineLuaScriptContent(const std::string& content) {
         {"script:new", "JasperEngine Lua scripts do not derive from Script:new(). Return a plain module table instead."},
         {"on_start", "JasperEngine Lua scripts use init() for startup, not on_start()."},
         {"on_scene_start", "JasperEngine Lua scripts use init() for startup, not on_scene_start()."},
-        {"self.entity:", "self.entity is the GameObject's numeric Entity id, not a wrapper you can call methods on. Wrap it with a runtime class such as Shape(self.scene, self.entity)."},
+        {"self.entity:", "self.entity is the GameObject's numeric Entity id, not a wrapper you can call methods on. Wrap it with a runtime class such as Primitive(self.scene, self.entity)."},
         {"self.entity.", "self.entity is the GameObject's numeric Entity id, not a wrapper. Pass it to runtime wrappers; do not access methods/properties on it."},
         {"get_entity", "JasperEngine Lua scripts receive self.entity directly; there is no get_entity() helper."},
         {"getentity", "JasperEngine Lua scripts receive self.entity directly; there is no getEntity() helper."},
         {"get_component", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not get_component()."},
         {"getcomponent", "JasperEngine Lua scripts should use runtime wrappers returned by search_engine_api, not getComponent()."},
-        {"transform(self", "There is no Transform global in JasperEngine Lua; components are not constructed like Transform(self.scene, self.entity). To read or move a GameObject use local obj = Object(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
+        {"transform(self", "There is no Transform global in JasperEngine Lua; components are not constructed like Transform(self.scene, self.entity). To read or move a GameObject use local obj = GameObject(self.scene, self.entity); read obj.position and write obj:setPosition(x, y, z)."},
         {"set_property", "JasperEngine Lua scripts should call runtime APIs, not editor-style set_property()."},
         {"setproperty", "JasperEngine Lua scripts should call runtime APIs, not editor-style setProperty()."},
         {"vector4.new", "JasperEngine Lua constructors use Vector4(...), not Vector4.new(...)."},
@@ -1122,7 +1122,7 @@ std::string validateJasperEngineLuaScriptContent(const std::string& content) {
     }
 
     if (luaCallbackContainsContinuousPhysicsMutation(content, "onupdate")) {
-        return "Continuous Rigidbody (Body2D/Body3D) forces and torques must run in onFixedUpdate, not onUpdate. "
+        return "Continuous Rigidbody (Rigidbody2D/Rigidbody) forces and torques must run in onFixedUpdate, not onUpdate. "
                "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
                "force depend on render FPS. RegisterEngineEvent(self, \"onFixedUpdate\"), move the physics code "
                "to the matching :onFixedUpdate() callback, and do not multiply force or torque by Engine.deltatime.";
@@ -1161,7 +1161,7 @@ std::string validateJasperEngineCppScriptContent(const std::string& content) {
     }
 
     if (cppCallbackContainsContinuousPhysicsMutation(compactContent, "onupdate")) {
-        return "Continuous Rigidbody (Body2D/Body3D) forces and torques must run in onFixedUpdate, not onUpdate. "
+        return "Continuous Rigidbody (Rigidbody2D/Rigidbody) forces and torques must run in onFixedUpdate, not onUpdate. "
                "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
                "force depend on render FPS. Register and implement onFixedUpdate, unregister the matching event "
                "in the destructor, and do not multiply force or torque by Engine::getDeltatime().";
@@ -1673,7 +1673,7 @@ bool parseGeometryType(const std::string& name, int& out) {
     return true;
 }
 
-bool parseGeometryTypeValue(const Json& args, ShapeParameters& shape, std::string& error) {
+bool parseGeometryTypeValue(const Json& args, PrimitiveParameters& shape, std::string& error) {
     if (!args.contains("geometry_type")) return true;
 
     int geometryType = shape.geometryType;
@@ -1713,7 +1713,7 @@ unsigned int clampedUIntArg(const Json& args, const char* key, unsigned int curr
     return static_cast<unsigned int>(value);
 }
 
-void applyShapeParameters(const Json& args, ShapeParameters& shape) {
+void applyPrimitiveParameters(const Json& args, PrimitiveParameters& shape) {
     constexpr float kMinSize = 0.1f;
     constexpr float kMaxSize = 100.0f;
     constexpr unsigned int kMaxSegments = 100;
@@ -1747,7 +1747,7 @@ void applyShapeParameters(const Json& args, ShapeParameters& shape) {
     shape.torusRings = clampedUIntArg(args, "torus_rings", shape.torusRings, 3, kMaxSegments);
 }
 
-void updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const ShapeParameters& shapeParams) {
+void updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const PrimitiveParameters& shapeParams) {
     switch (shapeParams.geometryType) {
         case 0:
             meshSys->createPlane(meshComp, shapeParams.planeWidth, shapeParams.planeDepth, shapeParams.planeTiles);
@@ -1840,13 +1840,13 @@ bool writeWholeFile(const fs::path& path, const std::string& content) {
     return static_cast<bool>(out);
 }
 
-void refreshMaterialEdit(Project* project, ResourcesWindow* resourcesWindow, const fs::path& fullPath) {
+void refreshMaterialEdit(Project* project, ProjectWindow* projectWindow, const fs::path& fullPath) {
     if (project) {
         project->refreshLinkedMaterials(true);
     }
-    if (resourcesWindow) {
-        resourcesWindow->notifyResourceFileChanged(fullPath);
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->notifyResourceFileChanged(fullPath);
+        projectWindow->refreshCurrentDirectory();
     }
 }
 
@@ -1871,10 +1871,10 @@ bool normalizeMaterialPayload(const fs::path& rel, const std::string& content,
 
 class ReplaceMaterialFileCmd : public Command {
 public:
-    ReplaceMaterialFileCmd(Project* project, ResourcesWindow* resourcesWindow,
+    ReplaceMaterialFileCmd(Project* project, ProjectWindow* projectWindow,
                            fs::path fullPath, std::string newContent)
         : project(project)
-        , resourcesWindow(resourcesWindow)
+        , projectWindow(projectWindow)
         , fullPath(std::move(fullPath))
         , newContent(std::move(newContent)) {}
 
@@ -1891,7 +1891,7 @@ public:
             return false;
         }
 
-        refreshMaterialEdit(project, resourcesWindow, fullPath);
+        refreshMaterialEdit(project, projectWindow, fullPath);
         return true;
     }
 
@@ -1902,7 +1902,7 @@ public:
             std::error_code ec;
             fs::remove(fullPath, ec);
         }
-        refreshMaterialEdit(project, resourcesWindow, fullPath);
+        refreshMaterialEdit(project, projectWindow, fullPath);
     }
 
     bool mergeWith(Command*) override {
@@ -1911,7 +1911,7 @@ public:
 
 private:
     Project* project;
-    ResourcesWindow* resourcesWindow;
+    ProjectWindow* projectWindow;
     fs::path fullPath;
     std::string newContent;
     std::string oldContent;
@@ -1999,9 +1999,9 @@ private:
 
 } // namespace
 
-EditorActionExecutor::EditorActionExecutor(Project* project, ResourcesWindow* resourcesWindow, const HttpClient* httpClient)
+EditorActionExecutor::EditorActionExecutor(Project* project, ProjectWindow* projectWindow, const HttpClient* httpClient)
     : project(project)
-    , resourcesWindow(resourcesWindow)
+    , projectWindow(projectWindow)
     , httpClient(httpClient) {
 }
 
@@ -2053,8 +2053,8 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "select_entities") return selectEntities(arguments);
     if (name == "add_component") return addComponent(arguments);
     if (name == "remove_component") return removeComponent(arguments);
-    if (name == "add_body3d_shape") return addBody3DShape(arguments);
-    if (name == "add_body2d_shape") return addBody2DShape(arguments);
+    if (name == "add_rigidbody_collider") return addRigidbodyCollider(arguments);
+    if (name == "add_rigidbody2d_collider") return addRigidbody2DCollider(arguments);
     if (name == "set_component_property") return setComponentProperty(arguments);
     if (name == "set_texture_settings") return setTextureSettings(arguments);
     if (name == "add_project_scene") return addProjectScene(arguments);
@@ -2088,13 +2088,13 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "set_project_script_dirs") return setProjectScriptDirs(arguments);
     if (name == "set_project_cxx_standard") return setProjectCxxStandard(arguments);
     if (name == "update_project_build_file") return updateProjectBuildFile(arguments);
-    if (name == "create_bundle_from_entity") return createBundleFromEntity(arguments);
-    if (name == "import_bundle_instance") return importBundleInstance(arguments);
-    if (name == "add_entity_to_bundle") return addEntityToBundle(arguments);
-    if (name == "remove_entity_from_bundle") return removeEntityFromBundle(arguments);
-    if (name == "make_bundle_component_unique") return makeBundleComponentUnique(arguments);
-    if (name == "revert_bundle_component") return revertBundleComponent(arguments);
-    if (name == "set_standalone_bundle") return setStandaloneBundle(arguments);
+    if (name == "create_prefab_from_entity") return createPrefabFromEntity(arguments);
+    if (name == "import_prefab_instance") return importPrefabInstance(arguments);
+    if (name == "add_entity_to_prefab") return addEntityToPrefab(arguments);
+    if (name == "remove_entity_from_prefab") return removeEntityFromPrefab(arguments);
+    if (name == "make_prefab_component_unique") return makePrefabComponentUnique(arguments);
+    if (name == "revert_prefab_component") return revertPrefabComponent(arguments);
+    if (name == "set_standalone_prefab") return setStandalonePrefab(arguments);
     if (name == "export_project") return exportProject(arguments, cancel);
     if (name == "generate_shaders") return generateShaders(arguments, cancel);
     if (name == "fork_shader") return forkShader(arguments);
@@ -2142,9 +2142,9 @@ ActionResult EditorActionExecutor::getProjectSummary() {
         data["script_dirs"].push_back(scriptDir.generic_string());
     }
     data["cxx_standard"] = project->getCxxStandard();
-    data["standalone_bundles"] = Json::array();
-    for (const fs::path& bundlePath : project->getStandaloneBundles()) {
-        data["standalone_bundles"].push_back(bundlePath.generic_string());
+    data["standalone_prefabs"] = Json::array();
+    for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
+        data["standalone_prefabs"].push_back(prefabPath.generic_string());
     }
     data["scenes"] = Json::array();
     for (const auto& scene : project->getScenes()) {
@@ -2249,7 +2249,7 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
         {"entity_id", entity},
         {"name", sceneProject->scene->getEntityName(entity)},
         {"selected", project->isSelectedEntity(sceneId, entity)},
-        {"in_bundle", project->isEntityInBundle(sceneId, entity)}
+        {"in_prefab", project->isEntityInPrefab(sceneId, entity)}
     };
 
     Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
@@ -2576,7 +2576,7 @@ ActionResult EditorActionExecutor::removeComponent(const Json& arguments) {
     return okResult("Removed component through the command history.");
 }
 
-ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
+ActionResult EditorActionExecutor::addRigidbodyCollider(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -2584,18 +2584,18 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
-    Shape3D shape;
-    if (!parseBodyShape3DType(arguments.value("shape_type", ""), shape.type)) {
+    Collider3D shape;
+    if (!parseBodyCollider3DType(arguments.value("shape_type", ""), shape.type)) {
         return failResult("Unsupported shape_type. Use box, sphere, capsule, tapered_capsule, cylinder, convex_hull, or mesh.");
     }
 
     MeshComponent* meshComp = sceneProject->scene->findComponent<MeshComponent>(entity);
 
-    if (isMeshDerivedShape3DType(shape.type)) {
+    if (isMeshDerivedCollider3DType(shape.type)) {
         if (!meshComp) {
             return failResult("convex_hull and mesh Colliders derive their geometry from the GameObject's mesh.");
         }
-        shape.source = Shape3DSource::ENTITY_MESH;
+        shape.source = Collider3DSource::ENTITY_MESH;
         shape.sourceEntity = entity;
     }
 
@@ -2607,7 +2607,7 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
     }
 
     bool fitted = false;
-    if (arguments.value("fit_to_mesh", true) && !isMeshDerivedShape3DType(shape.type)) {
+    if (arguments.value("fit_to_mesh", true) && !isMeshDerivedCollider3DType(shape.type)) {
         Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
         fitted = meshComp && transform && fitShapeToMeshBounds(meshComp->aabb, transform->worldScale, shape);
         if (!fitted && fitExplicit) {
@@ -2641,44 +2641,44 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
         }
     }
 
-    Body3DMotionQuality requestedMotionQuality = Body3DMotionQuality::DISCRETE;
+    RigidbodyMotionQuality requestedMotionQuality = RigidbodyMotionQuality::DISCRETE;
     if (arguments.contains("motion_quality")) {
         if (!arguments["motion_quality"].is_string() ||
-            !parseBody3DMotionQuality(arguments["motion_quality"].get<std::string>(), requestedMotionQuality)) {
+            !parseRigidbodyMotionQuality(arguments["motion_quality"].get<std::string>(), requestedMotionQuality)) {
             return failResult("motion_quality must be discrete or linear_cast.");
         }
     }
 
-    Body3DComponent* body = sceneProject->scene->findComponent<Body3DComponent>(entity);
-    const size_t shapeIndex = body ? body->numShapes : 0;
+    RigidbodyComponent* body = sceneProject->scene->findComponent<RigidbodyComponent>(entity);
+    const size_t colliderIndex = body ? body->numColliders : 0;
 
     auto* multiCmd = new MultiPropertyCmd();
     if (!body) {
-        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::Body3DComponent));
+        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::RigidbodyComponent));
     }
     if (arguments.contains("body_type")) {
-        multiCmd->addPropertyCmd<BodyType>(project, sceneId, entity, ComponentType::Body3DComponent,
+        multiCmd->addPropertyCmd<BodyType>(project, sceneId, entity, ComponentType::RigidbodyComponent,
                                            "type", requestedBodyType);
     }
     if (arguments.contains("motion_quality")) {
-        multiCmd->addPropertyCmd<Body3DMotionQuality>(project, sceneId, entity, ComponentType::Body3DComponent,
+        multiCmd->addPropertyCmd<RigidbodyMotionQuality>(project, sceneId, entity, ComponentType::RigidbodyComponent,
                                                        "motionQuality", requestedMotionQuality);
     }
-    multiCmd->addPropertyCmd<Shape3D>(project, sceneId, entity, ComponentType::Body3DComponent,
-                                      "shapes[" + std::to_string(shapeIndex) + "]", shape);
-    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::Body3DComponent,
-                                     "numShapes", shapeIndex + 1);
+    multiCmd->addPropertyCmd<Collider3D>(project, sceneId, entity, ComponentType::RigidbodyComponent,
+                                      "colliders[" + std::to_string(colliderIndex) + "]", shape);
+    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::RigidbodyComponent,
+                                     "numColliders", colliderIndex + 1);
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
 
     // fitted_to_mesh is the one result the caller cannot infer from its own arguments
-    return okResult("Added a Collider to the Rigidbody (Body3DComponent) through the command history.",
+    return okResult("Added a Collider to the Rigidbody (RigidbodyComponent) through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity},
-                         {"body_added", body == nullptr}, {"shape_index", shapeIndex},
+                         {"body_added", body == nullptr}, {"shape_index", colliderIndex},
                          {"shape_type", arguments.value("shape_type", "")},
                          {"fitted_to_mesh", fitted}});
 }
 
-ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
+ActionResult EditorActionExecutor::addRigidbody2DCollider(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -2687,8 +2687,8 @@ ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     const std::string shapeName = lower(arguments.value("shape_type", ""));
-    Shape2D shape;
-    if (!parseShape2DType(shapeName, shape.type)) {
+    Collider2D shape;
+    if (!parseCollider2DType(shapeName, shape.type)) {
         return failResult("Unsupported shape_type. Use box, circle, capsule, segment, polygon, or chain.");
     }
 
@@ -2759,26 +2759,26 @@ ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
         }
     }
 
-    Body2DComponent* body = sceneProject->scene->findComponent<Body2DComponent>(entity);
-    const size_t shapeIndex = body ? body->numShapes : 0;
+    Rigidbody2DComponent* body = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity);
+    const size_t colliderIndex = body ? body->numColliders : 0;
 
     auto* multiCmd = new MultiPropertyCmd();
     if (!body) {
-        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::Body2DComponent));
+        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::Rigidbody2DComponent));
     }
     if (arguments.contains("body_type")) {
-        multiCmd->addPropertyCmd<BodyType>(project, sceneId, entity, ComponentType::Body2DComponent,
+        multiCmd->addPropertyCmd<BodyType>(project, sceneId, entity, ComponentType::Rigidbody2DComponent,
                                            "type", requestedBodyType);
     }
-    multiCmd->addPropertyCmd<Shape2D>(project, sceneId, entity, ComponentType::Body2DComponent,
-                                      "shapes[" + std::to_string(shapeIndex) + "]", shape);
-    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::Body2DComponent,
-                                     "numShapes", shapeIndex + 1);
+    multiCmd->addPropertyCmd<Collider2D>(project, sceneId, entity, ComponentType::Rigidbody2DComponent,
+                                      "colliders[" + std::to_string(colliderIndex) + "]", shape);
+    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::Rigidbody2DComponent,
+                                     "numColliders", colliderIndex + 1);
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
 
-    return okResult("Added a Collider 2D to the Rigidbody 2D (Body2DComponent) through the command history.",
+    return okResult("Added a Collider 2D to the Rigidbody 2D (Rigidbody2DComponent) through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity},
-                         {"body_added", body == nullptr}, {"shape_index", shapeIndex},
+                         {"body_added", body == nullptr}, {"shape_index", colliderIndex},
                          {"shape_type", shapeName}});
 }
 
@@ -3151,7 +3151,7 @@ ActionResult EditorActionExecutor::createFolder(const Json& arguments) {
         return failResult("Folder name must be a single safe path segment.");
     }
     project->getProjectCommandHistory()->addCommandNoMerge(new CreateDirCmd(name, parentFull.string()));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Created folder through the project command history.");
 }
 
@@ -3168,7 +3168,7 @@ ActionResult EditorActionExecutor::renameResource(const Json& arguments) {
     fs::path full = project->getProjectPath() / rel;
     project->getProjectCommandHistory()->addCommandNoMerge(
         new RenameFileCmd(project, rel.filename().string(), newName, full.parent_path().string()));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Renamed asset through the project command history.");
 }
 
@@ -3183,7 +3183,7 @@ ActionResult EditorActionExecutor::deleteResource(const Json& arguments) {
     fs::path full = project->getProjectPath() / rel;
     project->getProjectCommandHistory()->addCommandNoMerge(
         new DeleteFileCmd(project, std::vector<fs::path>{full}, project->getProjectPath()));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Deleted asset through the project command history.");
 }
 
@@ -3203,7 +3203,7 @@ ActionResult EditorActionExecutor::importResourceFile(const Json& arguments) {
 
     project->getProjectCommandHistory()->addCommandNoMerge(
         new CopyFileCmd(project, std::vector<std::string>{source.string()}, targetFull.string(), true));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Imported asset file through the project command history.");
 }
 
@@ -3284,7 +3284,7 @@ ActionResult EditorActionExecutor::createMaterialFile(const Json& arguments) {
     MaterialPayload sourceMaterial{0x4D54524C, sceneId, entity, submeshIndex};
     project->getProjectCommandHistory()->addCommandNoMerge(
         new CreateMaterialFileCmd(project, targetFull, payload.data(), payload.size(), &sourceMaterial));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Created material file through the project command history.");
 }
 
@@ -3450,7 +3450,7 @@ ActionResult EditorActionExecutor::createTerrainBlendmap(const Json& arguments) 
     CommandHandle::get(sceneId)->addCommandNoMerge(
         new PropertyCmd<std::vector<Texture>>(project, sceneId, entity, ComponentType::TerrainComponent,
                                               "blendMaps", blendMaps, onChanged));
-    if (resourcesWindow) resourcesWindow->requestThumbnailGeneration(generated.fullPath, true);
+    if (projectWindow) projectWindow->requestThumbnailGeneration(generated.fullPath, true);
     return okResult("Created terrain blendmap through the command history.",
                     Json{{"path", generated.relativePath}, {"resolution", resolution}});
 }
@@ -3462,23 +3462,23 @@ ActionResult EditorActionExecutor::addTerrainCollision(const Json& arguments) {
     Entity entity = resolveTerrainEntity(project, sceneProject, arguments);
     if (entity == NULL_ENTITY) return failResult("Terrain GameObject not found.");
 
-    Body3DComponent* body = sceneProject->scene->findComponent<Body3DComponent>(entity);
-    const size_t shapeIdx = body ? body->numShapes : 0;
+    RigidbodyComponent* body = sceneProject->scene->findComponent<RigidbodyComponent>(entity);
+    const size_t shapeIdx = body ? body->numColliders : 0;
 
-    Shape3D shape;
-    shape.type = Shape3DType::HEIGHTFIELD;
-    shape.source = Shape3DSource::ENTITY_HEIGHTFIELD;
+    Collider3D shape;
+    shape.type = Collider3DType::HEIGHTFIELD;
+    shape.source = Collider3DSource::ENTITY_HEIGHTFIELD;
     shape.sourceEntity = entity;
     shape.samplesSize = 256;
 
     auto* multiCmd = new MultiPropertyCmd();
     if (!body) {
-        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::Body3DComponent));
+        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::RigidbodyComponent));
     }
-    multiCmd->addPropertyCmd<Shape3D>(project, sceneId, entity, ComponentType::Body3DComponent,
-                                      "shapes[" + std::to_string(shapeIdx) + "]", shape);
-    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::Body3DComponent,
-                                     "numShapes", shapeIdx + 1);
+    multiCmd->addPropertyCmd<Collider3D>(project, sceneId, entity, ComponentType::RigidbodyComponent,
+                                      "colliders[" + std::to_string(shapeIdx) + "]", shape);
+    multiCmd->addPropertyCmd<size_t>(project, sceneId, entity, ComponentType::RigidbodyComponent,
+                                     "numColliders", shapeIdx + 1);
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
     return okResult("Added terrain heightfield collision through the command history.");
 }
@@ -3543,7 +3543,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         if (!h || !c) return failResult("Failed to create C++ script files.");
         h << "#pragma once\n\n";
         if (cppSubclass) {
-            h << "#include \"Shape.h\"\n";
+            h << "#include \"Primitive.h\"\n";
             h << "#include \"" << parentClass << ".h\"\n";
         } else {
             h << "#include \"ScriptBase.h\"\n";
@@ -3580,7 +3580,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
     }
     ActionResult attached = attachScript(attachArgs);
     if (!attached.success) return attached;
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     Json data = {
         {"path", attachArgs["path"]},
         {"header_path", attachArgs.value("header_path", "")},
@@ -3592,7 +3592,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         data["lua_startup_method"] = "init";
         data["lua_runtime_context"] = Json{{"scene", "self.scene"}, {"entity", "self.entity"}};
         data["lua_cube_color_example"] =
-            "local shape = Shape(self.scene, self.entity)\n"
+            "local shape = Primitive(self.scene, self.entity)\n"
             "shape:setColor(1.0, 0.0, 0.0, 1.0)";
         data["next_step"] =
             "If the user asked for behavior, call search_engine_api for required runtime wrappers/methods, then update_script_file with complete Lua contents.";
@@ -3839,8 +3839,8 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
         }
     }
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
     }
     Out::info("AI updated script file: %s", relString.c_str());
 
@@ -3900,8 +3900,8 @@ ActionResult EditorActionExecutor::createSourceFile(const Json& arguments) {
         return failResult("Failed to write source file.");
     }
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
     }
     Out::info("AI created source file: %s", rel.generic_string().c_str());
 
@@ -4035,8 +4035,8 @@ ActionResult EditorActionExecutor::updateProjectBuildFile(const Json& arguments)
         return failResult("Failed to write ProjectBuild.cmake.");
     }
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
     }
     Out::info("AI updated ProjectBuild.cmake");
 
@@ -4052,7 +4052,7 @@ ActionResult EditorActionExecutor::updateProjectBuildFile(const Json& arguments)
                          {"next_step", verifyStep}});
 }
 
-ActionResult EditorActionExecutor::createBundleFromEntity(const Json& arguments) {
+ActionResult EditorActionExecutor::createPrefabFromEntity(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -4060,29 +4060,29 @@ ActionResult EditorActionExecutor::createBundleFromEntity(const Json& arguments)
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
 
     std::string error;
-    fs::path bundleRel;
-    if (!safeRelativePath(project, arguments, "bundle_path", bundleRel, error, false)) return failResult(error);
-    if (!Util::isBundleFile(bundleRel.string())) return failResult("bundle_path must end with .bundle.");
-    if (fs::exists(project->getProjectPath() / bundleRel)) return failResult("Prefab (.bundle) file already exists.");
+    fs::path prefabRel;
+    if (!safeRelativePath(project, arguments, "prefab_path", prefabRel, error, false)) return failResult(error);
+    if (!Util::isPrefabFile(prefabRel.string())) return failResult("prefab_path must end with .prefab.");
+    if (fs::exists(project->getProjectPath() / prefabRel)) return failResult("Prefab (.prefab) file already exists.");
 
     YAML::Node node = Stream::encodeEntitySelection(std::vector<Entity>{entity}, sceneProject->scene, project, sceneProject);
     if (!node || !node.IsMap()) return failResult("Failed to encode GameObject selection.");
-    fs::create_directories((project->getProjectPath() / bundleRel).parent_path());
+    fs::create_directories((project->getProjectPath() / prefabRel).parent_path());
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new CreateEntityBundleCmd(project, sceneId, bundleRel, node));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, sceneId, prefabRel, node));
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Created Prefab from GameObject through the command history.");
 }
 
-ActionResult EditorActionExecutor::importBundleInstance(const Json& arguments) {
+ActionResult EditorActionExecutor::importPrefabInstance(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
 
     std::string error;
-    fs::path bundleRel;
-    if (!safeRelativePath(project, arguments, "bundle_path", bundleRel, error, true)) return failResult(error);
-    if (!Util::isBundleFile(bundleRel.string())) return failResult("bundle_path must point to a .bundle file.");
+    fs::path prefabRel;
+    if (!safeRelativePath(project, arguments, "prefab_path", prefabRel, error, true)) return failResult(error);
+    if (!Util::isPrefabFile(prefabRel.string())) return failResult("prefab_path must point to a .prefab file.");
 
     Entity parent = NULL_ENTITY;
     if (arguments.contains("parent_id")) {
@@ -4090,41 +4090,41 @@ ActionResult EditorActionExecutor::importBundleInstance(const Json& arguments) {
         if (parent == NULL_ENTITY) return failResult("Parent GameObject not found.");
     }
 
-    auto* cmd = new ImportEntityBundleCmd(project, sceneId, bundleRel, parent, true);
+    auto* cmd = new ImportPrefabCmd(project, sceneId, prefabRel, parent, true);
     CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
     Json imported = Json::array();
     for (Entity importedEntity : cmd->getImportedEntities()) imported.push_back(importedEntity);
     return okResult("Instantiated Prefab through the command history.", Json{{"imported_entities", imported}});
 }
 
-ActionResult EditorActionExecutor::addEntityToBundle(const Json& arguments) {
+ActionResult EditorActionExecutor::addEntityToPrefab(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
-    Entity bundleRoot = resolveEntityByKeys(sceneProject, arguments, "bundle_root_id", "bundle_root_name");
-    if (bundleRoot == NULL_ENTITY) return failResult("Prefab instance root GameObject not found.");
+    Entity prefabRoot = resolveEntityByKeys(sceneProject, arguments, "prefab_root_id", "prefab_root_name");
+    if (prefabRoot == NULL_ENTITY) return failResult("Prefab instance root GameObject not found.");
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, entity, bundleRoot));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToPrefabCmd(project, sceneId, entity, prefabRoot));
     return okResult("Added GameObject to Prefab through the command history.");
 }
 
-ActionResult EditorActionExecutor::removeEntityFromBundle(const Json& arguments) {
+ActionResult EditorActionExecutor::removeEntityFromPrefab(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
-    if (!project->isEntityInBundle(sceneId, entity)) return failResult("GameObject is not part of a Prefab.");
+    if (!project->isEntityInPrefab(sceneId, entity)) return failResult("GameObject is not part of a Prefab.");
 
     Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
     Entity parent = transform ? transform->parent : NULL_ENTITY;
-    CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, entity, parent));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromPrefabCmd(project, sceneId, entity, parent));
     return okResult("Removed GameObject from Prefab through the command history.");
 }
 
-ActionResult EditorActionExecutor::makeBundleComponentUnique(const Json& arguments) {
+ActionResult EditorActionExecutor::makePrefabComponentUnique(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -4133,11 +4133,11 @@ ActionResult EditorActionExecutor::makeBundleComponentUnique(const Json& argumen
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToBundleLocalCmd(project, sceneId, entity, component));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToPrefabLocalCmd(project, sceneId, entity, component));
     return okResult("Made Prefab component a local override through the command history.");
 }
 
-ActionResult EditorActionExecutor::revertBundleComponent(const Json& arguments) {
+ActionResult EditorActionExecutor::revertPrefabComponent(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -4146,44 +4146,44 @@ ActionResult EditorActionExecutor::revertBundleComponent(const Json& arguments) 
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToBundleSharedCmd(project, sceneId, entity, component));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToPrefabSharedCmd(project, sceneId, entity, component));
     return okResult("Reverted Prefab component override through the command history.");
 }
 
-ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
+ActionResult EditorActionExecutor::setStandalonePrefab(const Json& arguments) {
     std::string error;
-    fs::path bundleRel;
-    if (!safeRelativePath(project, arguments, "bundle_path", bundleRel, error, true)) return failResult(error);
-    if (!Util::isBundleFile(bundleRel.string())) return failResult("bundle_path must point to a .bundle file.");
+    fs::path prefabRel;
+    if (!safeRelativePath(project, arguments, "prefab_path", prefabRel, error, true)) return failResult(error);
+    if (!Util::isPrefabFile(prefabRel.string())) return failResult("prefab_path must point to a .prefab file.");
 
     if (arguments.contains("standalone") && !arguments["standalone"].is_boolean()) {
         return failResult("standalone must be a boolean.");
     }
     const bool standalone = arguments.value("standalone", true);
 
-    const EntityBundle* bundle = project->getEntityBundle(bundleRel);
-    if (standalone && bundle && !bundle->instances.empty()) {
+    const Prefab* prefab = project->getPrefab(prefabRel);
+    if (standalone && prefab && !prefab->instances.empty()) {
         return failResult("Prefab is instantiated in a scene and is already built, it does not need to be standalone.");
     }
 
-    std::vector<fs::path> bundlePaths = project->getStandaloneBundles();
-    auto it = std::find(bundlePaths.begin(), bundlePaths.end(), bundleRel);
-    const bool listed = it != bundlePaths.end();
+    std::vector<fs::path> prefabPaths = project->getStandalonePrefabs();
+    auto it = std::find(prefabPaths.begin(), prefabPaths.end(), prefabRel);
+    const bool listed = it != prefabPaths.end();
 
     if (standalone == listed) {
         return okResult(listed ? "Prefab is already standalone." : "Prefab is not standalone.");
     }
 
     if (standalone) {
-        bundlePaths.push_back(bundleRel);
+        prefabPaths.push_back(prefabRel);
     } else {
-        bundlePaths.erase(it);
+        prefabPaths.erase(it);
     }
 
-    project->setStandaloneBundles(std::move(bundlePaths));
+    project->setStandalonePrefabs(std::move(prefabPaths));
     project->saveProjectFile();
     return okResult(standalone ? "Added the Prefab to the standalone Prefabs." : "Removed the Prefab from the standalone Prefabs.",
-        Json{{"bundle_path", bundleRel.generic_string()}, {"standalone", standalone}});
+        Json{{"prefab_path", prefabRel.generic_string()}, {"standalone", standalone}});
 }
 
 ActionResult EditorActionExecutor::exportProject(const Json& arguments, const std::atomic<bool>* cancel) {
@@ -4312,8 +4312,8 @@ ActionResult EditorActionExecutor::forkShader(const Json& arguments) {
             return failResult("Shader fork did not write its source files.");
         }
 
-        if (resourcesWindow) {
-            resourcesWindow->refreshCurrentDirectory();
+        if (projectWindow) {
+            projectWindow->refreshCurrentDirectory();
         }
         Out::info("AI forked scene default shader: %s", base.c_str());
 
@@ -4367,8 +4367,8 @@ ActionResult EditorActionExecutor::forkShader(const Json& arguments) {
         return failResult("Shader fork did not write its source files.");
     }
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
     }
     Out::info("AI forked shader: %s", base.c_str());
 
@@ -4662,8 +4662,8 @@ ActionResult EditorActionExecutor::writeShaderFile(const Json& arguments) {
     // viewport recompiles them; mirrors CodeEditor saving a .vert/.frag/.glsl.
     project->invalidateCustomShaders();
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
     }
     Out::info("AI wrote shader file: %s", rel.generic_string().c_str());
 
@@ -4787,8 +4787,8 @@ ActionResult EditorActionExecutor::importProjectModel(const Json& arguments) {
     CommandHandle::get(sceneId)->addCommandNoMerge(
         new ModelLoadCmd(project, sceneId, entityName, position, assetPathFromAi(project, relPath)));
 
-    if (resourcesWindow) {
-        resourcesWindow->requestThumbnailGeneration(fullPath, false);
+    if (projectWindow) {
+        projectWindow->requestThumbnailGeneration(fullPath, false);
     }
 
     return okResult("Imported project model through ModelLoadCmd.");
@@ -4920,9 +4920,9 @@ ActionResult EditorActionExecutor::downloadCuratedAsset(const Json& arguments, c
     std::ofstream out(attributionPath);
     out << YAML::Dump(root);
 
-    if (resourcesWindow) {
-        resourcesWindow->refreshCurrentDirectory();
-        resourcesWindow->requestThumbnailGeneration(importedFile, true);
+    if (projectWindow) {
+        projectWindow->refreshCurrentDirectory();
+        projectWindow->requestThumbnailGeneration(importedFile, true);
     }
 
     Json data = {
@@ -5200,12 +5200,12 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
 
     MeshComponent meshComp = sceneProject->scene->getComponent<MeshComponent>(entity);
 
-    ShapeParameters shapeParams;
+    PrimitiveParameters shapeParams;
     std::string geometryError;
     if (!parseGeometryTypeValue(arguments, shapeParams, geometryError)) {
         return failResult(geometryError);
     }
-    applyShapeParameters(arguments, shapeParams);
+    applyPrimitiveParameters(arguments, shapeParams);
 
     std::shared_ptr<MeshSystem> meshSys = sceneProject->scene->getSystem<MeshSystem>();
     if (!meshSys) return failResult("Mesh system is unavailable.");
@@ -5272,7 +5272,7 @@ ActionResult EditorActionExecutor::copyResource(const Json& arguments) {
 
     project->getProjectCommandHistory()->addCommandNoMerge(
         new CopyFileCmd(project, std::vector<std::string>{sourceFull.string()}, targetFull.string(), true));
-    if (resourcesWindow) resourcesWindow->refreshCurrentDirectory();
+    if (projectWindow) projectWindow->refreshCurrentDirectory();
     return okResult("Copied asset through the project command history.",
                     Json{{"source_path", sourceRel.generic_string()},
                          {"target_dir", targetRel.generic_string()}});
@@ -5300,7 +5300,7 @@ ActionResult EditorActionExecutor::updateMaterialFile(const Json& arguments) {
     }
 
     project->getProjectCommandHistory()->addCommandNoMerge(
-        new ReplaceMaterialFileCmd(project, resourcesWindow, fullPath, normalizedContent));
+        new ReplaceMaterialFileCmd(project, projectWindow, fullPath, normalizedContent));
 
     std::string writtenContent;
     if (!readWholeFile(fullPath, writtenContent) || writtenContent != normalizedContent) {

@@ -5,11 +5,11 @@
 
 using namespace jasperengine;
 
-ReflectionProbe::ReflectionProbe(Scene* scene): Object(scene){
+ReflectionProbe::ReflectionProbe(Scene* scene): GameObject(scene){
     addComponent<ReflectionProbeComponent>();
 }
 
-ReflectionProbe::ReflectionProbe(Scene* scene, Entity entity): Object(scene, entity){
+ReflectionProbe::ReflectionProbe(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 ReflectionProbe::~ReflectionProbe(){

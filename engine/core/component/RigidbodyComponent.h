@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef BODY3D_COMPONENT_H
-#define BODY3D_COMPONENT_H
+#ifndef RIGIDBODY_COMPONENT_H
+#define RIGIDBODY_COMPONENT_H
 
 #include "Engine.h"
 #include "ecs/Entity.h"
@@ -18,7 +18,7 @@
 
 namespace jasperengine{
 
-    enum class Shape3DType{
+    enum class Collider3DType{
         SPHERE,
         BOX,
         CAPSULE,
@@ -29,7 +29,7 @@ namespace jasperengine{
         HEIGHTFIELD
     };
 
-    enum class Shape3DSource{
+    enum class Collider3DSource{
         NONE,
         RAW_VERTICES,
         RAW_MESH,
@@ -37,30 +37,30 @@ namespace jasperengine{
         ENTITY_HEIGHTFIELD
     };
 
-    enum class Body3DMotionQuality{
+    enum class RigidbodyMotionQuality{
         DISCRETE,
         LINEAR_CAST
     };
 
     // Same bits as JPH::EAllowedDOFs, so the backend takes them with a plain cast.
-    enum Body3DAllowedDOFFlags : uint8_t {
-        Body3DAllowedDOF_TranslationX = 1 << 0,
-        Body3DAllowedDOF_TranslationY = 1 << 1,
-        Body3DAllowedDOF_TranslationZ = 1 << 2,
-        Body3DAllowedDOF_RotationX    = 1 << 3,
-        Body3DAllowedDOF_RotationY    = 1 << 4,
-        Body3DAllowedDOF_RotationZ    = 1 << 5,
-        Body3DAllowedDOF_All          = 0x3F
+    enum RigidbodyAllowedDOFFlags : uint8_t {
+        RigidbodyAllowedDOF_TranslationX = 1 << 0,
+        RigidbodyAllowedDOF_TranslationY = 1 << 1,
+        RigidbodyAllowedDOF_TranslationZ = 1 << 2,
+        RigidbodyAllowedDOF_RotationX    = 1 << 3,
+        RigidbodyAllowedDOF_RotationY    = 1 << 4,
+        RigidbodyAllowedDOF_RotationZ    = 1 << 5,
+        RigidbodyAllowedDOF_All          = 0x3F
     };
 
-    struct JASPERENGINE_API Shape3D{
+    struct JASPERENGINE_API Collider3D{
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::ShapeRefC shape = NULL;
 #endif
         Vector3 position = Vector3::ZERO;
         Quaternion rotation = Quaternion::IDENTITY;
 
-        Shape3DType type = Shape3DType::SPHERE;
+        Collider3DType type = Collider3DType::SPHERE;
 
         float width = 1.0f;
         float height = 1.0f;
@@ -71,20 +71,20 @@ namespace jasperengine{
         float topRadius = 0.5f;
         float bottomRadius = 0.5f;
         // kg/m3: mass = scaled volume * density (radius-1 sphere is ~4189 kg).
-        // Shape2D::density is area-based and defaults to 1.
+        // Collider2D::density is area-based and defaults to 1.
         float density = 1000.0f;
 
-        Shape3DSource source = Shape3DSource::NONE;
+        Collider3DSource source = Collider3DSource::NONE;
         Entity sourceEntity = NULL_ENTITY;
         unsigned int samplesSize = 0;
 
-        HybridArray<Vector3, MAX_SHAPE_VERTICES_3D> vertices;
+        HybridArray<Vector3, MAX_COLLIDER_VERTICES_3D> vertices;
         uint16_t numVertices = 0;
-        HybridArray<uint16_t, MAX_SHAPE_INDICES_3D> indices;
+        HybridArray<uint16_t, MAX_COLLIDER_INDICES_3D> indices;
         uint16_t numIndices = 0;
     };
 
-    struct Body3DComponent{
+    struct RigidbodyComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
@@ -92,20 +92,20 @@ namespace jasperengine{
         JPH::BodyID body;
 #endif
 
-        HybridArray<Shape3D, MAX_SHAPES_3D> shapes;
-        size_t numShapes = 0;
+        HybridArray<Collider3D, MAX_COLLIDERS_3D> colliders;
+        size_t numColliders = 0;
 
         bool needReloadBody = true;
-        bool needUpdateShapes = true;
+        bool needUpdateColliders = true;
 
         bool overrideMassProperties = false;
         Vector3 solidBoxSize;
         float solidBoxDensity;
         
         BodyType type = BodyType::STATIC;
-        Body3DMotionQuality motionQuality = Body3DMotionQuality::DISCRETE;
+        RigidbodyMotionQuality motionQuality = RigidbodyMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
-        uint8_t allowedDOFs = Body3DAllowedDOF_All;
+        uint8_t allowedDOFs = RigidbodyAllowedDOF_All;
         bool sensor = false;
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;
@@ -113,4 +113,4 @@ namespace jasperengine{
 
 }
 
-#endif //BODY3D_COMPONENT_H
+#endif //RIGIDBODY_COMPONENT_H

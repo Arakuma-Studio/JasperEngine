@@ -3,7 +3,7 @@
 
 #include "Panel.h"
 
-#include "component/UIContainerComponent.h"
+#include "component/LayoutGroupComponent.h"
 #include "component/TextComponent.h"
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
@@ -48,7 +48,7 @@ bool Panel::hasHeaderContainer() const{
     }
 
     Signature signature = scene->getSignature(panelcomp.headercontainer);
-    return signature.test(scene->getComponentId<UIContainerComponent>());
+    return signature.test(scene->getComponentId<LayoutGroupComponent>());
 }
 
 bool Panel::hasHeader() const{
@@ -71,13 +71,13 @@ Image Panel::getHeaderImageObject() const{
     return Image(scene, panelcomp.headerimage);
 }
 
-Container Panel::getHeaderContainerObject() const{
+LayoutGroup Panel::getHeaderContainerObject() const{
     const PanelComponent& panelcomp = getComponent<PanelComponent>();
     if (!hasHeaderContainer()){
-        return Container(scene, NULL_ENTITY);
+        return LayoutGroup(scene, NULL_ENTITY);
     }
 
-    return Container(scene, panelcomp.headercontainer);
+    return LayoutGroup(scene, panelcomp.headercontainer);
 }
 
 Text Panel::getHeaderTextObject() const{
@@ -114,7 +114,7 @@ std::string Panel::getTitle() const{
 void Panel::setTitleAnchorPreset(AnchorPreset titleAnchorPreset){
     ensureHeader();
     PanelComponent& panelcomp = getComponent<PanelComponent>();
-    UILayoutComponent& titlelayout = scene->getComponent<UILayoutComponent>(panelcomp.headertext);
+    RectTransformComponent& titlelayout = scene->getComponent<RectTransformComponent>(panelcomp.headertext);
 
     titlelayout.anchorPreset = titleAnchorPreset;
     panelcomp.needUpdatePanel = true;
@@ -127,7 +127,7 @@ AnchorPreset Panel::getTitleAnchorPreset() const{
         return panelcomp.titleAnchorPreset;
     }
 
-    UILayoutComponent& titlelayout = scene->getComponent<UILayoutComponent>(panelcomp.headertext);
+    RectTransformComponent& titlelayout = scene->getComponent<RectTransformComponent>(panelcomp.headertext);
 
     return titlelayout.anchorPreset;
 }

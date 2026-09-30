@@ -331,10 +331,10 @@ void editor::ModelLoadCmd::finalizeLoad(){
 
     sceneProject->isModified = true;
 
-    if (project->isEntityInBundle(sceneId, entity)){
+    if (project->isEntityInPrefab(sceneId, entity)){
         std::vector<std::string> properties = {"filename"};
         if (mergeStaticMeshesChanged) properties.push_back("mergeStaticMeshes");
-        project->bundlePropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
+        project->prefabPropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
     }
 }
 
@@ -408,7 +408,7 @@ bool editor::ModelLoadCmd::execute(){
 
     // This is an import option for the current model asset, not an entity-wide preference.
     // A regular file assignment therefore returns to the default hierarchy behavior; the
-    // explicit Structure action is the only path that opts a model into static merging.
+    // explicit Hierarchy action is the only path that opts a model into static merging.
     const bool requestedMergeStaticMeshes = hasMergeStaticMeshesOverride
         ? mergeStaticMeshesOverride
         : false;
@@ -543,10 +543,10 @@ void editor::ModelLoadCmd::undo(){
 
     sceneProject->isModified = wasModified;
 
-    if (project->isEntityInBundle(sceneId, entity)){
+    if (project->isEntityInPrefab(sceneId, entity)){
         std::vector<std::string> properties = {"filename"};
         if (mergeStaticMeshesChanged) properties.push_back("mergeStaticMeshes");
-        project->bundlePropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
+        project->prefabPropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
     }
 
     if (createEntityCmd) {

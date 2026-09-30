@@ -491,7 +491,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     // Backend translation units define a static `App` instance that registers
     // itself as the active EditorHost before main(). The export subcommand must
     // override that and use the headless default host so project loading does
-    // not touch GUI-only windows like ResourcesWindow.
+    // not touch GUI-only windows like ProjectWindow.
     EditorHostOverrideGuard hostOverride(nullptr);
 
     const std::string commandName = getCommandName(executableName);
@@ -509,7 +509,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
         return 0;
     }
 
-    Out::setOutputWindow(nullptr);
+    Out::setConsoleWindow(nullptr);
     AppSettings::initialize();
 
     Project project;
@@ -582,7 +582,7 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
         return 0;
     }
 
-    Out::setOutputWindow(nullptr);
+    Out::setConsoleWindow(nullptr);
 
     Project project;
     auto platform = std::make_unique<Platform>(&project);

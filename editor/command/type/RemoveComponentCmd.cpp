@@ -70,29 +70,29 @@ bool editor::RemoveComponentCmd::execute() {
             };
 
             for (const RemoveComponentData& entityData : entities) {
-                fs::path bundlePath = project->findEntityBundlePathFor(sceneId, entityData.entity);
-                EntityBundle* bundle = project->getEntityBundle(bundlePath);
-                bool sharedComponent = bundle &&
-                    !bundle->hasComponentOverride(sceneId, entityData.entity, componentType);
+                fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
+                Prefab* prefab = project->getPrefab(prefabPath);
+                bool sharedComponent = prefab &&
+                    !prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
                 if (!sharedComponent) {
                     addOwner(sceneId, entityData.entity);
                     continue;
                 }
 
-                Entity registryEntity = bundle->getRegistryEntity(sceneId, entityData.entity);
+                Entity registryEntity = prefab->getRegistryEntity(sceneId, entityData.entity);
                 if (registryEntity == NULL_ENTITY) {
                     continue;
                 }
-                for (const auto& [otherSceneId, instances] : bundle->instances) {
+                for (const auto& [otherSceneId, instances] : prefab->instances) {
                     SceneProject* otherScene = project->getScene(otherSceneId);
                     if (!otherScene || !otherScene->scene) {
                         continue;
                     }
-                    for (const EntityBundle::Instance& instance : instances) {
-                        Entity otherOwner = bundle->getLocalEntity(
+                    for (const Prefab::Instance& instance : instances) {
+                        Entity otherOwner = prefab->getLocalEntity(
                             otherSceneId, instance.instanceId, registryEntity);
                         if (otherOwner != NULL_ENTITY &&
-                            !bundle->hasComponentOverride(otherSceneId, otherOwner, componentType)) {
+                            !prefab->hasComponentOverride(otherSceneId, otherOwner, componentType)) {
                             addOwner(otherSceneId, otherOwner);
                         }
                     }
@@ -126,12 +126,12 @@ bool editor::RemoveComponentCmd::execute() {
                             continue;
                         }
 
-                        fs::path targetBundlePath = project->findEntityBundlePathFor(ownerSceneId, target);
-                        EntityBundle* targetBundle = project->getEntityBundle(targetBundlePath);
-                        Entity registryTarget = targetBundle ?
-                            targetBundle->getRegistryEntity(ownerSceneId, target) : NULL_ENTITY;
+                        fs::path targetPrefabPath = project->findPrefabPathFor(ownerSceneId, target);
+                        Prefab* targetPrefab = project->getPrefab(targetPrefabPath);
+                        Entity registryTarget = targetPrefab ?
+                            targetPrefab->getRegistryEntity(ownerSceneId, target) : NULL_ENTITY;
                         if (registryTarget != NULL_ENTITY) {
-                            if (sharedTargets.insert({targetBundlePath, registryTarget}).second) {
+                            if (sharedTargets.insert({targetPrefabPath, registryTarget}).second) {
                                 targetsByScene[ownerSceneId].push_back(target);
                             }
                         } else if (localTargets.insert({ownerSceneId, target}).second) {
@@ -156,26 +156,26 @@ bool editor::RemoveComponentCmd::execute() {
 
         for (RemoveComponentData& entityData : entities){
 
-            fs::path bundlePath = project->findEntityBundlePathFor(sceneId, entityData.entity);
-            EntityBundle* bundle = project->getEntityBundle(bundlePath);
+            fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
+            Prefab* prefab = project->getPrefab(prefabPath);
 
-            if (bundle && componentType == ComponentType::Transform){
-                Out::error("Cannot remove Transform component from bundle entity '%s' in scene '%s'", scene->getEntityName(entityData.entity).c_str(), sceneProject->name.c_str());
+            if (prefab && componentType == ComponentType::Transform){
+                Out::error("Cannot remove Transform component from prefab entity '%s' in scene '%s'", scene->getEntityName(entityData.entity).c_str(), sceneProject->name.c_str());
                 continue;
             }
 
-            if (bundle && !bundle->hasComponentOverride(sceneId, entityData.entity, componentType)){
+            if (prefab && !prefab->hasComponentOverride(sceneId, entityData.entity, componentType)){
 
-                entityData.recovery = project->removeComponentFromBundle(sceneId, entityData.entity, componentType);
+                entityData.recovery = project->removeComponentFromPrefab(sceneId, entityData.entity, componentType);
 
             }else{
 
                 entityData.oldComponent = ProjectUtils::removeEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, true);
 
-                if (bundle){
-                    entityData.hasOverride = bundle->hasComponentOverride(sceneId, entityData.entity, componentType);
+                if (prefab){
+                    entityData.hasOverride = prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
                     if (entityData.hasOverride){
-                        bundle->clearComponentOverride(sceneId, entityData.entity, componentType);
+                        prefab->clearComponentOverride(sceneId, entityData.entity, componentType);
                     }
                 }
 
@@ -202,18 +202,18 @@ void editor::RemoveComponentCmd::undo() {
         for (RemoveComponentData& entityData : entities){
             if (entityData.recovery.size() > 0){
 
-                project->addComponentToBundle(sceneId, entityData.entity, componentType, entityData.recovery, true);
+                project->addComponentToPrefab(sceneId, entityData.entity, componentType, entityData.recovery, true);
 
             }else{
 
                 ProjectUtils::addEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, entityData.oldComponent);
 
                 if (entityData.hasOverride){
-                    fs::path bundlePath = project->findEntityBundlePathFor(sceneId, entityData.entity);
-                    EntityBundle* bundle = project->getEntityBundle(bundlePath);
+                    fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
+                    Prefab* prefab = project->getPrefab(prefabPath);
 
-                    if (bundle){
-                        bundle->setComponentOverride(sceneId, entityData.entity, componentType);
+                    if (prefab){
+                        prefab->setComponentOverride(sceneId, entityData.entity, componentType);
                     }
                 }
 

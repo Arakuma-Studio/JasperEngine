@@ -29,9 +29,9 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::Button, "Button", ICON_FA_SQUARE_CHECK, "ButtonComponent.h", "ButtonComponent", "REGISTER_BUTTON_EVENT", "Button"},
         {S::Scrollbar, "Scrollbar", ICON_FA_ARROWS_UP_DOWN, "ScrollbarComponent.h", "ScrollbarComponent", "REGISTER_SCROLLBAR_EVENT", "Scrollbar"},
         {S::Panel, "Panel", ICON_FA_WINDOW_MAXIMIZE, "PanelComponent.h", "PanelComponent", "REGISTER_PANEL_EVENT", "Panel"},
-        {S::TextEdit, "Text Edit", ICON_FA_KEYBOARD, "TextEditComponent.h", "TextEditComponent", "REGISTER_COMPONENT_EVENT", "TextEdit"},
+        {S::InputField, "Input Field", ICON_FA_KEYBOARD, "InputFieldComponent.h", "InputFieldComponent", "REGISTER_COMPONENT_EVENT", "InputField"},
         {S::Action, "Action", ICON_FA_PLAY, "ActionComponent.h", "ActionComponent", "REGISTER_COMPONENT_EVENT", "Action"},
-        {S::Sound, "Sound", ICON_FA_VOLUME_HIGH, "SoundComponent.h", "SoundComponent", "REGISTER_COMPONENT_EVENT", "Sound"},
+        {S::AudioSource, "AudioSource", ICON_FA_VOLUME_HIGH, "AudioSourceComponent.h", "AudioSourceComponent", "REGISTER_COMPONENT_EVENT", "AudioSource"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -45,9 +45,9 @@ const std::vector<ScriptEvent>& eventList() {
     static const std::vector<ScriptEventParam> mouseButton = {{"int", "button"}, {"float", "x"}, {"float", "y"}, {"int", "mods"}};
     static const std::vector<ScriptEventParam> touch = {{"int", "pointer"}, {"float", "x"}, {"float", "y"}};
     static const std::vector<ScriptEventParam> gamepadButton = {{"int", "gamepad"}, {"int", "button"}};
-    static const std::vector<ScriptEventParam> contact2D = {{"Body2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Body2D", "bodyB"}, {"unsigned long", "shapeB"}};
-    static const std::vector<ScriptEventParam> sensor2D = {{"Body2D", "sensorBody"}, {"unsigned long", "sensorShape"}, {"Body2D", "visitorBody"}, {"unsigned long", "visitorShape"}};
-    static const std::vector<ScriptEventParam> contact3D = {{"Body3D", "bodyA"}, {"Body3D", "bodyB"}, {"Contact3D", "contact"}};
+    static const std::vector<ScriptEventParam> contact2D = {{"Rigidbody2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Rigidbody2D", "bodyB"}, {"unsigned long", "shapeB"}};
+    static const std::vector<ScriptEventParam> sensor2D = {{"Rigidbody2D", "sensorBody"}, {"unsigned long", "sensorShape"}, {"Rigidbody2D", "visitorBody"}, {"unsigned long", "visitorShape"}};
+    static const std::vector<ScriptEventParam> contact3D = {{"Rigidbody", "bodyA"}, {"Rigidbody", "bodyB"}, {"Contact3D", "contact"}};
 
     static const std::vector<ScriptEvent> events = {
         {S::Engine, "onUpdate", "Frame", "Every frame, with a variable time step", {}},
@@ -102,38 +102,38 @@ const std::vector<ScriptEvent>& eventList() {
         {S::Panel, "onMove", nullptr, "The panel is moved", {}},
         {S::Panel, "onResize", nullptr, "The panel is resized", {{"int", "width"}, {"int", "height"}}},
 
-        {S::TextEdit, "onChange", nullptr, "The text changes", {}},
-        {S::TextEdit, "onSubmit", nullptr, "Enter is pressed", {}},
+        {S::InputField, "onChange", nullptr, "The text changes", {}},
+        {S::InputField, "onSubmit", nullptr, "Enter is pressed", {}},
 
         {S::Action, "onStart", nullptr, "The action starts", {}},
         {S::Action, "onPause", nullptr, "The action is paused", {}},
         {S::Action, "onStop", nullptr, "The action stops", {}},
         {S::Action, "onStep", nullptr, "Every update while the action runs", {}},
 
-        {S::Sound, "onStart", nullptr, "The Audio Source starts playing", {}},
-        {S::Sound, "onPause", nullptr, "The Audio Source is paused", {}},
-        {S::Sound, "onStop", nullptr, "The Audio Source stops", {}},
+        {S::AudioSource, "onStart", nullptr, "The Audio Source starts playing", {}},
+        {S::AudioSource, "onPause", nullptr, "The Audio Source is paused", {}},
+        {S::AudioSource, "onStop", nullptr, "The Audio Source stops", {}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "hitContact2D", "Contacts", "Any two Rigidbody 2Ds hit each other, needs Hit Events on a Collider 2D",
-         {{"Body2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Body2D", "bodyB"}, {"unsigned long", "shapeB"},
+         {{"Rigidbody2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Rigidbody2D", "bodyB"}, {"unsigned long", "shapeB"},
           {"Vector2", "point"}, {"Vector2", "normal"}, {"float", "speed"}}},
         {S::Physics2D, "beginSensorContact2D", "Sensors", "A Collider 2D enters any sensor", sensor2D},
         {S::Physics2D, "endSensorContact2D", "Sensors", "A Collider 2D leaves any sensor", sensor2D},
         {S::Physics2D, "preSolve2D", "Filters", "Before any contact is solved, return false to disable it",
-         {{"Body2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Body2D", "bodyB"}, {"unsigned long", "shapeB"},
+         {{"Rigidbody2D", "bodyA"}, {"unsigned long", "shapeA"}, {"Rigidbody2D", "bodyB"}, {"unsigned long", "shapeB"},
           {"Manifold2D", "manifold"}}, true},
         {S::Physics2D, "shouldCollide2D", "Filters", "Whether any two Collider 2Ds collide, return false to skip them", contact2D, true},
 
         {S::Physics3D, "onContactAdded3D", "Contacts", "Any two Rigidbodies start touching", contact3D},
         {S::Physics3D, "onContactPersisted3D", "Contacts", "Any two Rigidbodies keep touching", contact3D},
         {S::Physics3D, "onContactRemoved3D", "Contacts", "Any two Rigidbodies stop touching",
-         {{"Body3D", "bodyA"}, {"Body3D", "bodyB"}, {"unsigned long", "shapeA"}, {"unsigned long", "shapeB"}}},
-        {S::Physics3D, "onBodyActivated3D", "Rigidbodies", "Any Rigidbody wakes up", {{"Body3D", "body"}}},
-        {S::Physics3D, "onBodyDeactivated3D", "Rigidbodies", "Any Rigidbody goes to sleep", {{"Body3D", "body"}}},
+         {{"Rigidbody", "bodyA"}, {"Rigidbody", "bodyB"}, {"unsigned long", "shapeA"}, {"unsigned long", "shapeB"}}},
+        {S::Physics3D, "onBodyActivated3D", "Rigidbodies", "Any Rigidbody wakes up", {{"Rigidbody", "body"}}},
+        {S::Physics3D, "onBodyDeactivated3D", "Rigidbodies", "Any Rigidbody goes to sleep", {{"Rigidbody", "body"}}},
         {S::Physics3D, "shouldCollide3D", "Filters", "Whether any two Rigidbodies collide, return false to skip them",
-         {{"Body3D", "bodyA"}, {"Body3D", "bodyB"}, {"Vector3", "baseOffset"}, {"CollideShapeResult3D", "result"}}, true},
+         {{"Rigidbody", "bodyA"}, {"Rigidbody", "bodyB"}, {"Vector3", "baseOffset"}, {"CollideShapeResult3D", "result"}}, true},
     };
     return events;
 }
@@ -482,17 +482,17 @@ std::vector<std::string> callArguments(const Document& doc, size_t paren) {
     return {};
 }
 
-struct TextEdit {
+struct InputField {
     size_t document = 0;
     size_t offset = 0;
     size_t erase = 0;
     std::string text;
 };
 
-void applyEdits(std::vector<std::string>& texts, std::vector<TextEdit> edits) {
+void applyEdits(std::vector<std::string>& texts, std::vector<InputField> edits) {
     // Back to front, so the offsets of the others stay valid
-    std::sort(edits.begin(), edits.end(), [](const TextEdit& a, const TextEdit& b) { return a.offset > b.offset; });
-    for (const TextEdit& edit : edits) {
+    std::sort(edits.begin(), edits.end(), [](const InputField& a, const InputField& b) { return a.offset > b.offset; });
+    for (const InputField& edit : edits) {
         texts[edit.document].replace(edit.offset, edit.erase, edit.text);
     }
 }
@@ -505,12 +505,12 @@ size_t bodyCaret(const std::string& text, size_t open, size_t close) {
 
 // Adds a statement after the last one of the body starting with 'prefix', else first.
 // 'open' is the '{' of a C++ body or the ')' closing the Lua function parameters.
-TextEdit bodyInsertion(const Document& doc, size_t open, size_t close, const std::string& prefix, const std::string& statement) {
+InputField bodyInsertion(const Document& doc, size_t open, size_t close, const std::string& prefix, const std::string& statement) {
     const std::string& text = *doc.text;
     const std::string& masked = doc.masked;
     const std::string outerIndent = indentOf(text, open);
 
-    TextEdit edit;
+    InputField edit;
     edit.document = doc.index;
 
     // A one-line body is spread over lines
@@ -598,7 +598,7 @@ std::string handlerName(const ScriptEvent& event, bool lua, const std::vector<Re
     const std::string name = "on" + action;
     if (!registered.count(name) && findEvent(S::Engine, name, lua) < 0) return name;
 
-    // onSoundPause, onTextEditChange
+    // onSoundPause, onInputFieldChange
     const std::string component = sourceInfo(event.source).component;
     const std::string base = "on" + component.substr(0, component.find("Component")) + action;
     std::string unique = base;
@@ -933,7 +933,7 @@ std::string cppRegistration(const ScriptEvent& event, const std::string& method,
 }
 
 // After the last member of the last public section
-TextEdit memberInsertion(const Document& doc, const CppClass& cls, const ScriptEvent& event, const std::string& signature, bool define) {
+InputField memberInsertion(const Document& doc, const CppClass& cls, const ScriptEvent& event, const std::string& signature, bool define) {
     const std::string& text = *doc.text;
     const std::string& m = doc.masked;
     const int memberDepth = doc.depth[cls.open + 1];
@@ -964,7 +964,7 @@ TextEdit memberInsertion(const Document& doc, const CppClass& cls, const ScriptE
     std::string indent = classIndent + indentUnit;
     bool blankLine = false;
 
-    TextEdit edit;
+    InputField edit;
     edit.document = doc.index;
 
     const size_t last = prevNonSpace(m, section.end);
@@ -992,14 +992,14 @@ TextEdit memberInsertion(const Document& doc, const CppClass& cls, const ScriptE
 }
 
 // After the last method defined next to the constructor
-TextEdit definitionInsertion(const CppScript& script, const ScriptEvent& event, const std::string& method) {
+InputField definitionInsertion(const CppScript& script, const ScriptEvent& event, const std::string& method) {
     const Document& doc = script.docs[script.constructor.document];
     size_t lastClose = script.constructor.close;
     for (const CppFunction& function : outOfClassFunctions(doc, script.className)) {
         if (function.close != npos) lastClose = std::max(lastClose, function.close);
     }
 
-    TextEdit edit;
+    InputField edit;
     edit.document = doc.index;
     edit.offset = lineEnd(*doc.text, lastClose);
     edit.text = "\n\n" + cppSignature(event, script.className + "::" + method, !usesJasperEngineNamespace(doc)) + " {\n" +
@@ -1215,7 +1215,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     const std::string method = handlerName(event, true, registrations, methods);
     const std::string statement = luaRegistration(event, method);
 
-    std::vector<TextEdit> edits;
+    std::vector<InputField> edits;
     std::string functions;
     if (const LuaMethod* init = findLuaMethod(script, "init")) {
         edits.push_back(bodyInsertion(script.doc, init->paramsClose, init->end, "Register", statement));
@@ -1228,7 +1228,7 @@ ScriptEventChange ScriptEvents::addLua(const std::string& text, size_t eventInde
     }
     if (!functions.empty()) {
         // Before "return Name"
-        TextEdit edit;
+        InputField edit;
         edit.offset = script.moduleReturn;
         const bool afterBlankLine = edit.offset == 0 || restOfLineBlank(text, lineStart(text, edit.offset - 1));
         edit.text = (afterBlankLine ? "" : "\n") + functions;
@@ -1277,7 +1277,7 @@ ScriptEventChange ScriptEvents::addCpp(const std::vector<std::string>& documents
     const ScriptEventSourceInfo& source = sourceInfo(event.source);
     const std::string method = handlerName(event, false, registrations, cppMemberNames(script));
     const Document& classDoc = script.docs[script.cls.document];
-    std::vector<TextEdit> edits;
+    std::vector<InputField> edits;
 
     // The physics types are used in the declaration, the other headers only by the macros
     size_t includeAt = includeOffset(classDoc, source.include);

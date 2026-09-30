@@ -9,12 +9,12 @@
 
 using namespace jasperengine;
 
-Image::Image(Scene* scene): UILayout(scene){
+Image::Image(Scene* scene): RectTransform(scene){
     addComponent<UIComponent>();
     addComponent<ImageComponent>();
 }
 
-Image::Image(Scene* scene, Entity entity): UILayout(scene, entity){
+Image::Image(Scene* scene, Entity entity): RectTransform(scene, entity){
 }
 
 Image::~Image(){
@@ -23,7 +23,7 @@ Image::~Image(){
 bool Image::createImage(){
     ImageComponent& img = getComponent<ImageComponent>();
     UIComponent& ui = getComponent<UIComponent>();
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return scene->getSystem<UISystem>()->createOrUpdateImage(img, ui, layout);
 }

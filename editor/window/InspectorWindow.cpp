@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Properties.h"
+#include "InspectorWindow.h"
 #include "SceneWindow.h"
 
 #include "imgui_internal.h"
@@ -25,34 +25,34 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/RemoveComponentCmd.h"
-#include "command/type/ComponentToBundleSharedCmd.h"
-#include "command/type/ComponentToBundleLocalCmd.h"
+#include "command/type/ComponentToPrefabSharedCmd.h"
+#include "command/type/ComponentToPrefabLocalCmd.h"
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
-#include "window/ResourcesWindow.h"
-#include "window/Structure.h"
+#include "window/ProjectWindow.h"
+#include "window/HierarchyWindow.h"
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "Widgets.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
-#include "component/AlphaActionComponent.h"
+#include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
-#include "component/ColorActionComponent.h"
+#include "component/ColorTweenComponent.h"
 #include "component/KeyframeTracksComponent.h"
-#include "component/PositionActionComponent.h"
+#include "component/PositionTweenComponent.h"
 #include "component/RotateTracksComponent.h"
-#include "component/RotationActionComponent.h"
-#include "component/ScaleActionComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTweenComponent.h"
 #include "component/ScaleTracksComponent.h"
-#include "component/TimedActionComponent.h"
+#include "component/TweenComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MorphTracksComponent.h"
-#include "component/ParticlesComponent.h"
-#include "component/LinesComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/LineRendererComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/MeshPolygonComponent.h"
@@ -100,8 +100,8 @@ static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType
     if (componentType == editor::ComponentType::UIComponent) {
         scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
     }
-    if (componentType == editor::ComponentType::SkyComponent) {
-        scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+    if (componentType == editor::ComponentType::SkyboxComponent) {
+        scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
     }
 }
 
@@ -157,9 +157,9 @@ static std::vector<editor::EnumEntry> entriesLightType = {
     { (int)LightType::SPOT, "Spot" }
 };
 
-static std::vector<editor::EnumEntry> entriesOccluder2DShape = {
-    { (int)Occluder2DShape::AUTO_QUAD, "Auto Quad" },
-    { (int)Occluder2DShape::POLYGON, "Polygon" }
+static std::vector<editor::EnumEntry> entriesShadowCaster2DShape = {
+    { (int)ShadowCaster2DShape::AUTO_QUAD, "Auto Quad" },
+    { (int)ShadowCaster2DShape::POLYGON, "Polygon" }
 };
 
 static std::vector<editor::EnumEntry> entriesFogType = {
@@ -223,16 +223,16 @@ static std::vector<editor::EnumEntry> entriesEmitterShape = {
 };
 
 static std::vector<editor::EnumEntry> entriesAudioAttenuation = {
-    { (int)SoundAttenuation::NO_ATTENUATION, "No Attenuation" },
-    { (int)SoundAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
-    { (int)SoundAttenuation::LINEAR_DISTANCE, "Linear Distance" },
-    { (int)SoundAttenuation::EXPONENTIAL_DISTANCE, "Exponential Distance" }
+    { (int)AudioSourceAttenuation::NO_ATTENUATION, "No Attenuation" },
+    { (int)AudioSourceAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
+    { (int)AudioSourceAttenuation::LINEAR_DISTANCE, "Linear Distance" },
+    { (int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "Exponential Distance" }
 };
 
 static std::vector<editor::EnumEntry> entriesAudioState = {
-    { (int)SoundState::Playing, "Playing" },
-    { (int)SoundState::Paused, "Paused" },
-    { (int)SoundState::Stopped, "Stopped" }
+    { (int)AudioSourceState::Playing, "Playing" },
+    { (int)AudioSourceState::Paused, "Paused" },
+    { (int)AudioSourceState::Stopped, "Stopped" }
 };
 
 static std::vector<editor::EnumEntry> entriesBodyType = {
@@ -241,50 +241,50 @@ static std::vector<editor::EnumEntry> entriesBodyType = {
     { (int)BodyType::DYNAMIC, "Dynamic" }
 };
 
-static std::vector<editor::EnumEntry> entriesBody3DMotionQuality = {
-    { (int)Body3DMotionQuality::DISCRETE, "Discrete" },
-    { (int)Body3DMotionQuality::LINEAR_CAST, "Linear Cast" }
+static std::vector<editor::EnumEntry> entriesRigidbodyMotionQuality = {
+    { (int)RigidbodyMotionQuality::DISCRETE, "Discrete" },
+    { (int)RigidbodyMotionQuality::LINEAR_CAST, "Linear Cast" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape2DType = {
-    { (int)Shape2DType::POLYGON, "Polygon" },
-    { (int)Shape2DType::CIRCLE, "Circle" },
-    { (int)Shape2DType::CAPSULE, "Capsule" },
-    { (int)Shape2DType::SEGMENT, "Segment" },
-    { (int)Shape2DType::CHAIN, "Chain" }
+static std::vector<editor::EnumEntry> entriesCollider2DType = {
+    { (int)Collider2DType::POLYGON, "Polygon" },
+    { (int)Collider2DType::CIRCLE, "Circle" },
+    { (int)Collider2DType::CAPSULE, "Capsule" },
+    { (int)Collider2DType::SEGMENT, "Segment" },
+    { (int)Collider2DType::CHAIN, "Chain" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape3DType = {
-    { (int)Shape3DType::BOX, "Box" },
-    { (int)Shape3DType::SPHERE, "Sphere" },
-    { (int)Shape3DType::CAPSULE, "Capsule" },
-    { (int)Shape3DType::TAPERED_CAPSULE, "Tapered Capsule" },
-    { (int)Shape3DType::CYLINDER, "Cylinder" },
-    { (int)Shape3DType::CONVEX_HULL, "Convex Hull" },
-    { (int)Shape3DType::MESH, "Mesh" },
-    { (int)Shape3DType::HEIGHTFIELD, "Heightfield" }
+static std::vector<editor::EnumEntry> entriesCollider3DType = {
+    { (int)Collider3DType::BOX, "Box" },
+    { (int)Collider3DType::SPHERE, "Sphere" },
+    { (int)Collider3DType::CAPSULE, "Capsule" },
+    { (int)Collider3DType::TAPERED_CAPSULE, "Tapered Capsule" },
+    { (int)Collider3DType::CYLINDER, "Cylinder" },
+    { (int)Collider3DType::CONVEX_HULL, "Convex Hull" },
+    { (int)Collider3DType::MESH, "Mesh" },
+    { (int)Collider3DType::HEIGHTFIELD, "Heightfield" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape3DSource = {
-    { (int)Shape3DSource::NONE, "None" },
-    { (int)Shape3DSource::RAW_VERTICES, "Raw Vertices" },
-    { (int)Shape3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" },
-    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
+static std::vector<editor::EnumEntry> entriesCollider3DSource = {
+    { (int)Collider3DSource::NONE, "None" },
+    { (int)Collider3DSource::RAW_VERTICES, "Raw Vertices" },
+    { (int)Collider3DSource::RAW_MESH, "Raw Mesh" },
+    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" },
+    { (int)Collider3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape3DSourceConvexHull = {
-    { (int)Shape3DSource::RAW_VERTICES, "Raw Vertices" },
-    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" }
+static std::vector<editor::EnumEntry> entriesCollider3DSourceConvexHull = {
+    { (int)Collider3DSource::RAW_VERTICES, "Raw Vertices" },
+    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape3DSourceMesh = {
-    { (int)Shape3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" }
+static std::vector<editor::EnumEntry> entriesCollider3DSourceMesh = {
+    { (int)Collider3DSource::RAW_MESH, "Raw Mesh" },
+    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" }
 };
 
-static std::vector<editor::EnumEntry> entriesShape3DSourceHeightfield = {
-    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
+static std::vector<editor::EnumEntry> entriesCollider3DSourceHeightfield = {
+    { (int)Collider3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
 };
 
 static std::vector<editor::EnumEntry> entriesJoint2DType = {
@@ -359,7 +359,7 @@ static std::vector<editor::EnumEntry> entriesEaseType = {
     { (int)EaseType::CUSTOM, "Custom" }
 };
 
-std::vector<editor::Properties::DirtyMaterialEntry> editor::Properties::dirtyMaterials;
+std::vector<editor::InspectorWindow::DirtyMaterialEntry> editor::InspectorWindow::dirtyMaterials;
 
 static bool isLastHeaderRowClicked() {
     ImVec2 min = ImGui::GetItemRectMin();
@@ -369,7 +369,7 @@ static bool isLastHeaderRowClicked() {
     return ImGui::IsMouseHoveringRect(min, max) && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 }
 
-void editor::Properties::markMaterialDirty(unsigned int sceneId, Entity entity, int submeshIndex, const std::string& relativePath) {
+void editor::InspectorWindow::markMaterialDirty(unsigned int sceneId, Entity entity, int submeshIndex, const std::string& relativePath) {
     for (auto& entry : dirtyMaterials) {
         if (entry.sceneId == sceneId && entry.entity == entity && entry.submeshIndex == submeshIndex) {
             entry.timer = 0.0f;
@@ -381,7 +381,7 @@ void editor::Properties::markMaterialDirty(unsigned int sceneId, Entity entity, 
     dirtyMaterials.push_back({sceneId, entity, submeshIndex, relativePath, 0.0f});
 }
 
-void editor::Properties::writeDirtyMaterial(const DirtyMaterialEntry& entry) {
+void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry) {
     SceneProject* sp = project->getScene(entry.sceneId);
     if (!sp || !sp->scene) {
         return;
@@ -405,8 +405,8 @@ void editor::Properties::writeDirtyMaterial(const DirtyMaterialEntry& entry) {
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
             project->refreshLinkedMaterials(true);
 
-            if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
-                resourcesWindow->notifyResourceFileChanged(absolutePath);
+            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+                projectWindow->notifyResourceFileChanged(absolutePath);
             }
         }
     } catch (const std::exception& e) {
@@ -414,7 +414,7 @@ void editor::Properties::writeDirtyMaterial(const DirtyMaterialEntry& entry) {
     }
 }
 
-void editor::Properties::flushDirtyMaterials(float deltaTime) {
+void editor::InspectorWindow::flushDirtyMaterials(float deltaTime) {
     if (dirtyMaterials.empty()) {
         return;
     }
@@ -434,7 +434,7 @@ void editor::Properties::flushDirtyMaterials(float deltaTime) {
 }
 
 // The scene is about to go away, so write its pending edits without waiting out the debounce
-void editor::Properties::flushDirtyMaterialsForScene(uint32_t sceneId) {
+void editor::InspectorWindow::flushDirtyMaterialsForScene(uint32_t sceneId) {
     auto it = dirtyMaterials.begin();
     while (it != dirtyMaterials.end()) {
         if (it->sceneId != sceneId) {
@@ -449,7 +449,7 @@ void editor::Properties::flushDirtyMaterialsForScene(uint32_t sceneId) {
 }
 
 template<typename T>
-void editor::Properties::drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth, float minValue, float maxValue, const std::string& help) {
+void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth, float minValue, float maxValue, const std::string& help) {
     T value = Catalog::getSceneProperty<T>(sceneProject->scene, propertyName);
     bool changed = false;
 
@@ -593,11 +593,11 @@ void editor::Properties::drawScenePropertyRow(SceneProject* sceneProject, const 
     }
 }
 
-editor::Properties::SoundPreviewRuntime& editor::Properties::soundPreview() {
+editor::InspectorWindow::SoundPreviewRuntime& editor::InspectorWindow::soundPreview() {
     return soundPreviewRuntime;
 }
 
-bool editor::Properties::ensureSoundPreviewInitialized() {
+bool editor::InspectorWindow::ensureSoundPreviewInitialized() {
     SoundPreviewRuntime& ap = soundPreview();
     if (!AudioSystem::init()) {
         ap.error = "Failed to initialize audio preview output.";
@@ -607,7 +607,7 @@ bool editor::Properties::ensureSoundPreviewInitialized() {
     return true;
 }
 
-void editor::Properties::stopSoundPreview(bool unload) {
+void editor::InspectorWindow::stopSoundPreview(bool unload) {
     SoundPreviewRuntime& ap = soundPreview();
     if (ap.handle != 0) {
         AudioSystem::getSoloud().stop(ap.handle);
@@ -627,11 +627,11 @@ void editor::Properties::stopSoundPreview(bool unload) {
     }
 }
 
-std::filesystem::path editor::Properties::resolveSoundPreviewPath(const std::string& filename) {
+std::filesystem::path editor::InspectorWindow::resolveSoundPreviewPath(const std::string& filename) {
     return project->resolveAssetPath(filename);
 }
 
-void editor::Properties::applySoundPreviewSettings(const SoundComponent& audio) {
+void editor::InspectorWindow::applySoundPreviewSettings(const AudioSourceComponent& audio) {
     SoundPreviewRuntime& ap = soundPreview();
     if (!ap.active || ap.handle == 0) {
         return;
@@ -648,7 +648,7 @@ void editor::Properties::applySoundPreviewSettings(const SoundComponent& audio) 
     soloud.setInaudibleBehavior(ap.handle, audio.inaudibleBehaviorMustTick, audio.inaudibleBehaviorKill);
 }
 
-bool editor::Properties::loadSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio) {
+bool editor::InspectorWindow::loadSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio) {
     SoundPreviewRuntime& ap = soundPreview();
     if (audio.filename.empty()) {
         ap.error = "Select an audio clip before previewing.";
@@ -684,7 +684,7 @@ bool editor::Properties::loadSoundPreview(SceneProject* sceneProject, Entity ent
     return true;
 }
 
-bool editor::Properties::startSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio) {
+bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio) {
     if (!loadSoundPreview(sceneProject, entity, audio)) {
         return false;
     }
@@ -711,7 +711,7 @@ bool editor::Properties::startSoundPreview(SceneProject* sceneProject, Entity en
     return true;
 }
 
-void editor::Properties::pauseSoundPreview() {
+void editor::InspectorWindow::pauseSoundPreview() {
     SoundPreviewRuntime& ap = soundPreview();
     if (!ap.active || ap.handle == 0) {
         return;
@@ -721,7 +721,7 @@ void editor::Properties::pauseSoundPreview() {
     ap.playing = false;
 }
 
-bool editor::Properties::seekSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio, double time) {
+bool editor::InspectorWindow::seekSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio, double time) {
     if (!loadSoundPreview(sceneProject, entity, audio)) {
         return false;
     }
@@ -754,7 +754,7 @@ bool editor::Properties::seekSoundPreview(SceneProject* sceneProject, Entity ent
     return true;
 }
 
-void editor::Properties::updateSoundPreview(const SoundComponent& audio) {
+void editor::InspectorWindow::updateSoundPreview(const AudioSourceComponent& audio) {
     SoundPreviewRuntime& ap = soundPreview();
     if (!ap.active || ap.handle == 0) {
         return;
@@ -770,7 +770,7 @@ void editor::Properties::updateSoundPreview(const SoundComponent& audio) {
     ap.time = soloud.getStreamTime(ap.handle);
 }
 
-std::string editor::Properties::formatPropertyLabelValue(const PropertyData& prop) {
+std::string editor::InspectorWindow::formatPropertyLabelValue(const PropertyData& prop) {
     if (!prop.ref) {
         return "-";
     }
@@ -810,7 +810,7 @@ std::string editor::Properties::formatPropertyLabelValue(const PropertyData& pro
     }
 }
 
-editor::Properties::Properties(Project* project){
+editor::InspectorWindow::InspectorWindow(Project* project){
     this->project = project;
     this->sceneWindow = nullptr;
     this->cmd = nullptr;
@@ -820,11 +820,11 @@ editor::Properties::Properties(Project* project){
     this->finishProperty = false;
 }
 
-void editor::Properties::setSceneWindow(SceneWindow* sceneWindow){
+void editor::InspectorWindow::setSceneWindow(SceneWindow* sceneWindow){
     this->sceneWindow = sceneWindow;
 }
 
-void editor::Properties::setOpen(bool open){
+void editor::InspectorWindow::setOpen(bool open){
     if (open){
         if (!windowOpen){
             focusRequested = true;
@@ -843,7 +843,7 @@ void editor::Properties::setOpen(bool open){
 }
 
 // F2: edit the name of what the window shows — a single entity, or the main scene
-void editor::Properties::focusNameInput(){
+void editor::InspectorWindow::focusNameInput(){
     uint32_t sceneId = project->getSelectedSceneForProperties();
     if (!project->getScene(sceneId)) sceneId = project->getSelectedSceneId();
     if (!project->getScene(sceneId)) return;
@@ -857,18 +857,18 @@ void editor::Properties::focusNameInput(){
     nameFocusFrames = 3; // the field activates a frame after SetKeyboardFocusHere
 }
 
-void editor::Properties::requestAddComponent(){
+void editor::InspectorWindow::requestAddComponent(){
     setOpen(true);
     focusRequested = true;
     addComponentRequested = true;
 }
 
-void editor::Properties::stopTransientPreviews() {
+void editor::InspectorWindow::stopTransientPreviews() {
     stopSoundPreview();
     stopActionPreviewIfActive();
 }
 
-void editor::Properties::clearSceneState(uint32_t sceneId) {
+void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
         actionPreviewStates.clear();
@@ -889,11 +889,11 @@ void editor::Properties::clearSceneState(uint32_t sceneId) {
         dirtyMaterials.end());
 }
 
-bool editor::Properties::isOpen() const{
+bool editor::InspectorWindow::isOpen() const{
     return windowOpen;
 }
 
-editor::RowPropertyType editor::Properties::scriptPropertyTypeToRowPropertyType(ScriptPropertyType scriptType){
+editor::RowPropertyType editor::InspectorWindow::scriptPropertyTypeToRowPropertyType(ScriptPropertyType scriptType){
     switch (scriptType) {
         case jasperengine::ScriptPropertyType::Bool: return RowPropertyType::Bool;
         case jasperengine::ScriptPropertyType::Int: return RowPropertyType::Int;
@@ -909,7 +909,7 @@ editor::RowPropertyType editor::Properties::scriptPropertyTypeToRowPropertyType(
     }
 }
 
-std::string editor::Properties::replaceNumberedBrackets(const std::string& input) {
+std::string editor::InspectorWindow::replaceNumberedBrackets(const std::string& input) {
     std::string result = input;
     size_t pos = 0;
 
@@ -926,7 +926,7 @@ std::string editor::Properties::replaceNumberedBrackets(const std::string& input
     return result;
 }
 
-Vector3 editor::Properties::roundZero(const Vector3& val, const float threshold) const{
+Vector3 editor::InspectorWindow::roundZero(const Vector3& val, const float threshold) const{
     return Vector3(
         (fabs(val.x) < threshold) ? 0.0f : val.x,
         (fabs(val.y) < threshold) ? 0.0f : val.y,
@@ -934,12 +934,12 @@ Vector3 editor::Properties::roundZero(const Vector3& val, const float threshold)
     );
 }
 
-float editor::Properties::snapDisplayedAngle(float angle, float threshold) const{
+float editor::InspectorWindow::snapDisplayedAngle(float angle, float threshold) const{
     float rounded = std::round(angle);
     return (std::fabs(angle - rounded) <= threshold) ? rounded : angle;
 }
 
-Vector3 editor::Properties::getDisplayedEulerAngles(const Quaternion& value, const RotationOrder& order, float zeroThreshold) const{
+Vector3 editor::InspectorWindow::getDisplayedEulerAngles(const Quaternion& value, const RotationOrder& order, float zeroThreshold) const{
     constexpr float displaySnapThreshold = 0.05f;
 
     Vector3 euler = roundZero(Quaternion(value).normalize().getEulerAngles(order), zeroThreshold);
@@ -950,7 +950,7 @@ Vector3 editor::Properties::getDisplayedEulerAngles(const Quaternion& value, con
     return euler;
 }
 
-bool editor::Properties::compareVectorFloat(const float* a, const float* b, size_t elements, const float threshold){
+bool editor::InspectorWindow::compareVectorFloat(const float* a, const float* b, size_t elements, const float threshold){
     for (size_t i = 0; i < elements; ++i) {
         if (fabs(a[i] - b[i]) > threshold) {
             return true;
@@ -959,13 +959,13 @@ bool editor::Properties::compareVectorFloat(const float* a, const float* b, size
     return false;
 }
 
-float editor::Properties::getLabelSize(std::string label, bool addRotateIconSpace){
+float editor::InspectorWindow::getLabelSize(std::string label, bool addRotateIconSpace){
     float iconSize = ImGui::CalcTextSize(ICON_FA_ROTATE_LEFT).x;
     float labelSize = ImGui::CalcTextSize(label.c_str()).x;
     return labelSize + (addRotateIconSpace ? iconSize : iconSize / 2.0f);
 }
 
-void editor::Properties::helpMarker(std::string desc) {
+void editor::InspectorWindow::helpMarker(std::string desc) {
     ImGui::TextDisabled("(?)");
     if (ImGui::BeginItemTooltip())
     {
@@ -976,7 +976,7 @@ void editor::Properties::helpMarker(std::string desc) {
     }
 }
 
-Texture* editor::Properties::findThumbnail(const std::string& path) {
+Texture* editor::InspectorWindow::findThumbnail(const std::string& path) {
     if (path.empty()) return nullptr;
 
     std::filesystem::path texPath = project->resolveAssetPath(path);
@@ -1010,13 +1010,13 @@ Texture* editor::Properties::findThumbnail(const std::string& path) {
     }
 
     // Thumbnail missing or failed to load — request generation for all file types
-    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
-        resourcesWindow->requestThumbnailGeneration(texPath, thumbnailExists);
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+        projectWindow->requestThumbnailGeneration(texPath, thumbnailExists);
     }
     return nullptr;
 }
 
-void editor::Properties::drawImageWithBorderAndRounding(Texture* texture, const ImVec2& size, float rounding, ImU32 border_col, float border_thickness, bool flipY) {
+void editor::InspectorWindow::drawImageWithBorderAndRounding(Texture* texture, const ImVec2& size, float rounding, ImU32 border_col, float border_thickness, bool flipY) {
     if (!texture) return;
 
     ImTextureID tex_id = Backend::getImGuiTexture(texture->getRender());
@@ -1072,7 +1072,7 @@ void editor::Properties::drawImageWithBorderAndRounding(Texture* texture, const 
 }
 
 
-void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1138,7 +1138,7 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
-                        ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                        ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                         hasFontDrag.erase(slotId);
                         originalFont.erase(slotId);
                     }
@@ -1165,7 +1165,7 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
 }
 
 // The Catalog property is the whole array, so a slot edit commits a modified copy of it
-void editor::Properties::setFontSlot(ComponentType cpType, const std::string& id, size_t slot, const std::string& path, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+void editor::InspectorWindow::setFontSlot(ComponentType cpType, const std::string& id, size_t slot, const std::string& path, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     for (Entity& entity : entities){
         FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
         if (!valueRef || (*valueRef)[slot] == path)
@@ -1180,7 +1180,7 @@ void editor::Properties::setFontSlot(ComponentType cpType, const std::string& id
     }
 }
 
-void editor::Properties::drawFontSlot(ComponentType cpType, const std::string& id, size_t slot, bool dif, const FontArray& value, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged, float width, const std::function<void(const ImVec2&)>& extraButton){
+void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::string& id, size_t slot, bool dif, const FontArray& value, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged, float width, const std::function<void(const ImVec2&)>& extraButton){
     ImGui::BeginGroup();
     ImGui::PushID(("font_" + id + "_" + std::to_string(slot)).c_str());
 
@@ -1283,7 +1283,7 @@ void editor::Properties::drawFontSlot(ComponentType cpType, const std::string& i
     dragDropResourcesFont(cpType, id, slot, sceneProject, entities, cpType);
 }
 
-void editor::Properties::drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+void editor::InspectorWindow::drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     const float slotWidth = 16 * ImGui::GetFontSize();
     const float labelWidth = getLabelSize("Fallback 1");
 
@@ -1329,7 +1329,7 @@ void editor::Properties::drawFontFallbacksPopup(const char* popupId, ComponentTy
 }
 
 
-void editor::Properties::applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     Scene* scene = sceneProject->scene;
     CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
     if (!camera)
@@ -1360,7 +1360,7 @@ void editor::Properties::applyCameraTexture(Entity cameraEntity, ComponentType c
 // change commits a PropertyCmd that copies the current per-entity Texture and mutates only
 // the chosen field, then invalidates the cached GPU texture so the new sampler is rebuilt on
 // the next getRender().
-void editor::Properties::drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     ImGui::SetNextWindowSizeConstraints(ImVec2(19 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::BeginPopup(popupId))
         return;
@@ -1537,7 +1537,7 @@ void editor::Properties::drawTextureSettingsPopup(const char* popupId, Component
     ImGui::EndPopup();
 }
 
-void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1596,7 +1596,7 @@ void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::str
                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
-                        ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                        ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                         hasTextureDrag.erase(id);
                         originalTex.erase(id);
                     }
@@ -1611,7 +1611,7 @@ void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::str
             if (sameScene && sceneProject->scene->findComponent<CameraComponent>(entityPayload->entity)) {
                 applyCameraTexture(entityPayload->entity, cpType, id, sceneProject, entities, nullptr);
                 finishProperty = true;
-                ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
             }
         }
         ImGui::EndDragDropTarget();
@@ -1640,7 +1640,7 @@ void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::str
     }
 }
 
-void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1676,8 +1676,8 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
                                 if (componentType == ComponentType::UIComponent){
                                     sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                                 }
-                                if (componentType == ComponentType::SkyComponent){
-                                    sceneProject->scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+                                if (componentType == ComponentType::SkyboxComponent){
+                                    sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
                                 }
                             }
                         }
@@ -1705,7 +1705,7 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
-                        ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                        ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                         hasTextureDrag.erase(dragId);
                         originalTex.erase(dragId);
                     }
@@ -1728,8 +1728,8 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
                     if (componentType == ComponentType::UIComponent){
                         sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                     }
-                    if (componentType == ComponentType::SkyComponent){
-                        sceneProject->scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+                    if (componentType == ComponentType::SkyboxComponent){
+                        sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
                     }
                 }
             }
@@ -1740,7 +1740,7 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
     }
 }
 
-void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesTextureCubeSingleFile(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1776,8 +1776,8 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
                                 if (componentType == ComponentType::UIComponent){
                                     sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                                 }
-                                if (componentType == ComponentType::SkyComponent){
-                                    sceneProject->scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+                                if (componentType == ComponentType::SkyboxComponent){
+                                    sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
                                 }
                             }
                         }
@@ -1805,7 +1805,7 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
-                        ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                        ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                         hasTextureDrag.erase(dragId);
                         originalTex.erase(dragId);
                     }
@@ -1828,8 +1828,8 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
                     if (componentType == ComponentType::UIComponent){
                         sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                     }
-                    if (componentType == ComponentType::SkyComponent){
-                        sceneProject->scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+                    if (componentType == ComponentType::SkyboxComponent){
+                        sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
                     }
                 }
             }
@@ -1840,14 +1840,14 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
     }
 }
 
-void editor::Properties::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly) {
+void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool& headerOpen, bool readOnly) {
     if (ImGui::BeginPopup(popupId)) {
         ImGui::TextDisabled("%s", Catalog::getComponentDisplayName(cpType).c_str());
         ImGui::Separator();
 
         ImGui::BeginDisabled(readOnly); // disable all actions while playing
 
-        bool canRemove = !(cpType == ComponentType::Transform && isBundle);
+        bool canRemove = !(cpType == ComponentType::Transform && isPrefab);
         if (ImGui::MenuItem("Remove Component", nullptr, false, canRemove)) {
             for (Entity& entity : entities){
                 cmd = new RemoveComponentCmd(project, sceneProject->id, entity, cpType);
@@ -1858,12 +1858,12 @@ void editor::Properties::handleComponentMenu(const char* popupId, SceneProject* 
             headerOpen = false;
         }
 
-        if (isBundle){
+        if (isPrefab){
             ImGui::Separator();
-            if (isBundleOverridden) {
+            if (isPrefabOverridden) {
                 if (ImGui::MenuItem("Revert Prefab Component")) {
                     for (Entity& entity : entities){
-                        cmd = new ComponentToBundleSharedCmd(project, sceneProject->id, entity, cpType);
+                        cmd = new ComponentToPrefabSharedCmd(project, sceneProject->id, entity, cpType);
                         CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                     }
                     cmd->setNoMerge();
@@ -1873,7 +1873,7 @@ void editor::Properties::handleComponentMenu(const char* popupId, SceneProject* 
             } else {
                 if (ImGui::MenuItem("Unpack Component")) {
                     for (Entity& entity : entities){
-                        cmd = new ComponentToBundleLocalCmd(project, sceneProject->id, entity, cpType);
+                        cmd = new ComponentToPrefabLocalCmd(project, sceneProject->id, entity, cpType);
                         CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                     }
                     cmd->setNoMerge();
@@ -1888,13 +1888,13 @@ void editor::Properties::handleComponentMenu(const char* popupId, SceneProject* 
     }
 }
 
-bool editor::Properties::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
+bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
     return std::find(existingComponents.begin(), existingComponents.end(), cpType) == existingComponents.end();
 }
 
-// Prefab (bundle) text color, as in the Hierarchy
+// Prefab (prefab) text color, as in the Hierarchy
 static const ImVec4 prefabTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
 
 // Unity draws component names bold; a second pass one pixel over thickens the regular font
@@ -1908,7 +1908,7 @@ static std::string layerDisplayName(int layer){
     return name.empty() ? "Layer " + std::to_string(layer) : name;
 }
 
-void editor::Properties::drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly){
+void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly){
     Scene* scene = sceneProject->scene;
     const ImGuiStyle& style = ImGui::GetStyle();
     const bool single = entities.size() == 1;
@@ -1920,7 +1920,7 @@ void editor::Properties::drawGameObjectHeader(SceneProject* sceneProject, const 
             activeMixed = true;
         }
     }
-    const bool isPrefab = !project->findEntityBundlePathFor(sceneProject->id, entities[0]).empty();
+    const bool isPrefab = !project->findPrefabPathFor(sceneProject->id, entities[0]).empty();
 
     ImGui::PushID("gameobject_header");
 
@@ -1982,7 +1982,7 @@ void editor::Properties::drawGameObjectHeader(SceneProject* sceneProject, const 
     ImGui::PopID();
 }
 
-void editor::Properties::drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
+void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
     Scene* scene = sceneProject->scene;
 
     std::string tag = scene->getEntityTag(entities[0]);
@@ -2047,7 +2047,7 @@ void editor::Properties::drawTagCombo(SceneProject* sceneProject, const std::vec
     }
 }
 
-void editor::Properties::drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
+void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
     Scene* scene = sceneProject->scene;
 
     int layer = scene->getEntityLayer(entities[0]);
@@ -2091,10 +2091,10 @@ void editor::Properties::drawLayerCombo(SceneProject* sceneProject, const std::v
     ImGui::EndDisabled();
 }
 
-bool editor::Properties::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool readOnly){
+bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool readOnly){
     Scene* scene = sceneProject->scene;
     const ImGuiStyle& style = ImGui::GetStyle();
-    const bool fromBundle = isBundle && !isBundleOverridden;
+    const bool fromPrefab = isPrefab && !isPrefabOverridden;
     const std::string displayName = Catalog::getComponentDisplayName(cpType);
 
     // component checkbox over the selection, mixed when the entities disagree
@@ -2139,7 +2139,7 @@ bool editor::Properties::drawComponentHeader(SceneProject* sceneProject, const s
     // past the foldout arrow CollapsingHeader draws at the frame padding
     float x = headerMin.x + style.FramePadding.x + fontSize + style.ItemInnerSpacing.x;
 
-    const ImU32 textColor = fromBundle ? ImGui::GetColorU32(prefabTextColor) : ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 textColor = fromPrefab ? ImGui::GetColorU32(prefabTextColor) : ImGui::GetColorU32(ImGuiCol_Text);
 
     const char* icon = Catalog::getComponentIcon(cpType);
     const float iconBox = fontSize * 1.25f;
@@ -2187,9 +2187,9 @@ bool editor::Properties::drawComponentHeader(SceneProject* sceneProject, const s
     if (menuClicked || rightClicked){
         ImGui::OpenPopup(popupId);
     }
-    handleComponentMenu(popupId, sceneProject, entities, cpType, isBundle, isBundleOverridden, open, readOnly);
+    handleComponentMenu(popupId, sceneProject, entities, cpType, isPrefab, isPrefabOverridden, open, readOnly);
 
-    if (fromBundle && headerHovered){
+    if (fromPrefab && headerHovered){
         ImGui::BeginTooltip();
         ImGui::TextColored(prefabTextColor, ICON_FA_CUBE " Prefab Component");
         ImGui::TextUnformatted("This component comes from the Prefab.");
@@ -2202,7 +2202,7 @@ bool editor::Properties::drawComponentHeader(SceneProject* sceneProject, const s
     return open;
 }
 
-void editor::Properties::drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen){
+void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen){
     const ImGuiStyle& style = ImGui::GetStyle();
 
     ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
@@ -2252,7 +2252,7 @@ void editor::Properties::drawAddComponentButton(SceneProject* sceneProject, cons
     componentAddDialog.show();
 }
 
-void editor::Properties::openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities){
+void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities){
     Entity firstEntity = entities.empty() ? NULL_ENTITY : entities[0];
     std::string defaultName = "NewScript";
     if (firstEntity != NULL_ENTITY) {
@@ -2324,7 +2324,7 @@ void editor::Properties::openNewScriptDialog(SceneProject* sceneProject, const s
     );
 }
 
-Texture editor::Properties::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL){
+Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL){
     MaterialRender& materialRender = materialRenders[id];
 
     auto texPending = [](const Texture& t) {
@@ -2350,7 +2350,7 @@ Texture editor::Properties::getMaterialPreview(const Material& material, const s
     return materialRender.getTexture();
 }
 
-Texture editor::Properties::getDirectionPreview(const Vector3& direction, const std::string id){
+Texture editor::InspectorWindow::getDirectionPreview(const Vector3& direction, const std::string id){
     DirectionRender& directionRender = directionRenders[id];
 
     if ((directionRender.getDirection() != direction) || !directionRender.getFramebuffer()->isCreated()){
@@ -2363,7 +2363,7 @@ Texture editor::Properties::getDirectionPreview(const Vector3& direction, const 
     return directionRender.getTexture();
 }
 
-bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& rect, const ImVec2& size, const char* itemId){
+bool editor::InspectorWindow::drawSpriteFramePreview(Texture* texture, const Rect& rect, const ImVec2& size, const char* itemId){
     if (!texture || texture->empty() || !texture->getRender()) {
         return false;
     }
@@ -2412,7 +2412,7 @@ bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& re
     return true;
 }
 
-void editor::Properties::updateShapePreview(const ShapeParameters& shapeParams){
+void editor::InspectorWindow::updateShapePreview(const PrimitiveParameters& shapeParams){
     ImVec4 frameBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
     std::shared_ptr<jasperengine::MeshSystem> meshSys = shapePreviewRender.getScene()->getSystem<MeshSystem>();
 
@@ -2426,7 +2426,7 @@ void editor::Properties::updateShapePreview(const ShapeParameters& shapeParams){
     Engine::executeSceneOnce(shapePreviewRender.getScene());
 }
 
-void editor::Properties::updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const ShapeParameters& shapeParams){
+void editor::InspectorWindow::updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const PrimitiveParameters& shapeParams){
     switch (shapeParams.geometryType) {
         case 0: // Plane
             meshSys->createPlane(meshComp, shapeParams.planeWidth, shapeParams.planeDepth, shapeParams.planeTiles);
@@ -2452,7 +2452,7 @@ void editor::Properties::updateMeshShape(MeshComponent& meshComp, MeshSystem* me
     }
 }
 
-void editor::Properties::drawNinePatchesPreview(const ImageComponent& img, Texture* texture, Texture* thumbTexture, const ImVec2& size){
+void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, Texture* texture, Texture* thumbTexture, const ImVec2& size){
     float availWidth = ImGui::GetContentRegionAvail().x;
 
     // Calculate display size based on input parameter or default to texture size
@@ -2534,7 +2534,7 @@ void editor::Properties::drawNinePatchesPreview(const ImageComponent& img, Textu
     );
 }
 
-void editor::Properties::syncSubSelection(SceneProject* sceneProject, Entity entity, int tileIndex, int instanceIndex) {
+void editor::InspectorWindow::syncSubSelection(SceneProject* sceneProject, Entity entity, int tileIndex, int instanceIndex) {
     if (!sceneProject) {
         return;
     }
@@ -2561,7 +2561,7 @@ void editor::Properties::syncSubSelection(SceneProject* sceneProject, Entity ent
 }
 
 
-void editor::Properties::beginTable(ComponentType cpType, float firstColSize, std::string nameAddon){
+void editor::InspectorWindow::beginTable(ComponentType cpType, float firstColSize, std::string nameAddon){
     ImGui::PushItemWidth(-1);
     if (!nameAddon.empty()){
         nameAddon = "_"+nameAddon;
@@ -2579,11 +2579,11 @@ void editor::Properties::beginTable(ComponentType cpType, float firstColSize, st
 
 }
 
-void editor::Properties::endTable(){
+void editor::InspectorWindow::endTable(){
     ImGui::EndTable();
 }
 
-bool editor::Properties::drawSummaryAddButton(const std::string& label, float trailingReservedWidth, bool enabled, const char* disabledTooltip) {
+bool editor::InspectorWindow::drawSummaryAddButton(const std::string& label, float trailingReservedWidth, bool enabled, const char* disabledTooltip) {
     ImGui::SameLine();
     float buttonWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - trailingReservedWidth);
 
@@ -2604,7 +2604,7 @@ bool editor::Properties::drawSummaryAddButton(const std::string& label, float tr
     return clicked;
 }
 
-editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup(
+editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityPickerPopup(
         const std::string& popupId, const Signature& filter,
         SceneProject* owningScene, bool includeChildScenes,
         Entity currentValue, uint32_t currentValueSceneId,
@@ -2673,7 +2673,7 @@ editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup
 
                 anyVisible = true;
                 bool isSelected = (e == currentValue && storedSceneId == currentValueSceneId);
-                std::string eicon = Structure::getObjectIcon(sp->scene->getSignature(e), sp->scene);
+                std::string eicon = HierarchyWindow::getObjectIcon(sp->scene->getSignature(e), sp->scene);
                 std::string selId = "##ep_ent_" + std::to_string(storedSceneId) + "_" + std::to_string(e);
 
                 if (ImGui::Selectable(selId.c_str(), isSelected)) {
@@ -2698,7 +2698,7 @@ editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup
     return result;
 }
 
-bool editor::Properties::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child){
+bool editor::InspectorWindow::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child){
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
     ImGui::TableNextRow();
     if (child){
@@ -2727,7 +2727,7 @@ bool editor::Properties::propertyHeader(std::string label, float secondColSize, 
     return button;
 }
 
-bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings){
+bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings){
     bool result = true;
 
     // Script properties and submesh fields are per entity, a selection may not share all of them
@@ -4844,7 +4844,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                                     }
 
                                     cachedMatDropPath.clear();
-                                    ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                                    ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                                 }
                             } catch (const std::exception& e) {
                                 Out::error("Error loading material file '%s': %s", droppedRelativePath.c_str(), e.what());
@@ -4897,7 +4897,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                                 }
 
                                 cachedMatDropPath.clear();
-                                ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                                ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                             }
                         }
                     }
@@ -5100,7 +5100,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
             for (Entity& entity : entities){
-                // Write entity and sceneId as one command so bundle propagation sees the
+                // Write entity and sceneId as one command so prefab propagation sees the
                 // complete reference (a split write would propagate a stale sceneId).
                 cmd = new PropertyCmd<EntityReference>(project, sceneProject->id, entity, cpType, id, EntityReference{*defVal, 0}, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5268,7 +5268,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
     return result;
 }
 
-bool editor::Properties::propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings) {
+bool editor::InspectorWindow::propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings) {
     auto onValueChanged = settings.onValueChanged;
     settings.onValueChanged = [this, sceneProject, entities, cpType, autoId, onValueChanged]() {
         if (onValueChanged) {
@@ -5343,19 +5343,19 @@ bool editor::Properties::propertyRowWithAutoButton(RowPropertyType propType, Com
     return rowChanged;
 }
 
-void editor::Properties::setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames) {
+void editor::InspectorWindow::setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames) {
     editor::PropertyCmd<std::vector<int>>* frameCmd = new editor::PropertyCmd<std::vector<int>>(project, sceneProject->id, entity, cpType, propertyId, frames);
     frameCmd->setNoMerge();
     CommandHandle::get(project->getSelectedSceneId())->addCommand(frameCmd);
 }
 
-void editor::Properties::setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts) {
+void editor::InspectorWindow::setParticleBursts(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<ParticleBurst>& bursts) {
     editor::PropertyCmd<std::vector<ParticleBurst>>* burstCmd = new editor::PropertyCmd<std::vector<ParticleBurst>>(project, sceneProject->id, entity, cpType, "bursts", bursts);
     burstCmd->setNoMerge();
     CommandHandle::get(project->getSelectedSceneId())->addCommand(burstCmd);
 }
 
-void editor::Properties::setParticleColorGradient(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ParticleColorGradient& gradient) {
+void editor::InspectorWindow::setParticleColorGradient(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ParticleColorGradient& gradient) {
     ParticleColorGradient normalizedGradient = gradient;
     normalizedGradient.normalize();
     editor::PropertyCmd<ParticleColorGradient>* gradCmd = new editor::PropertyCmd<ParticleColorGradient>(project, sceneProject->id, entity, cpType, "colorGradient", normalizedGradient);
@@ -5363,7 +5363,7 @@ void editor::Properties::setParticleColorGradient(ComponentType cpType, ScenePro
     CommandHandle::get(project->getSelectedSceneId())->addCommand(gradCmd);
 }
 
-void editor::Properties::drawParticleFrameList(ComponentType cpType, const std::string& propertyId, const std::string& tableId, SceneProject* sceneProject, const std::vector<Entity>& entities) {
+void editor::InspectorWindow::drawParticleFrameList(ComponentType cpType, const std::string& propertyId, const std::string& tableId, SceneProject* sceneProject, const std::vector<Entity>& entities) {
     if (entities.size() != 1) {
         ImGui::TextDisabled("Select a single GameObject to edit sprite frames");
         return;
@@ -5433,7 +5433,7 @@ void editor::Properties::drawParticleFrameList(ComponentType cpType, const std::
     endTable();
 }
 
-void editor::Properties::drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     // Add this code to calculate appropriate step size based on selected scene
     RowSettings settingsPos;
     if (sceneProject && sceneProject->sceneRender) {
@@ -5482,7 +5482,7 @@ void editor::Properties::drawTransform(ComponentType cpType, SceneProject* scene
     endTable();
 }
 
-void editor::Properties::commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd){
+void editor::InspectorWindow::commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd){
     if (!forkCmd->isValid()) {
         std::string error = forkCmd->getError();
         Backend::getApp().registerAlert("Error", error.empty() ? "Could not prepare the shader fork." : error);
@@ -5503,11 +5503,11 @@ void editor::Properties::commitShaderFork(uint32_t sceneId, std::unique_ptr<Fork
         codeEditor->openFile(vert.string(), true);
         codeEditor->openFile(frag.string(), true);
     }
-    if (ResourcesWindow* resources = Backend::getApp().getResourcesWindow())
+    if (ProjectWindow* resources = Backend::getApp().getProjectWindow())
         resources->refreshCurrentDirectory();
 }
 
-void editor::Properties::drawCustomShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, std::vector<Entity> entities){
     // The custom shader is per-component. The fork dialog chooses its project-relative
     // destination; engine includes still resolve through the embedded library unless the
     // user creates private copies. Shown only for a single selection.
@@ -5546,7 +5546,7 @@ void editor::Properties::drawCustomShaderRow(ComponentType cpType, ShaderType sh
     endTable();
 }
 
-void editor::Properties::drawComponentShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, Entity entity, const char* propertyName, const std::string& idSuffix){
+void editor::InspectorWindow::drawComponentShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, Entity entity, const char* propertyName, const std::string& idSuffix){
     const std::string currentShader = *Catalog::getPropertyRef<std::string>(sceneProject->scene, entity, cpType, propertyName);
 
     auto setShader = [&](const std::string& value) {
@@ -5582,7 +5582,7 @@ void editor::Properties::drawComponentShaderRow(ComponentType cpType, ShaderType
     drawShaderRowContents(shaderType, currentShader, setShader, onFork, idSuffix);
 }
 
-editor::Properties::ShaderUniformRows editor::Properties::resolveShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity){
     ShaderUniformRows rows;
     Scene* scene = sceneProject->scene;
 
@@ -5606,7 +5606,7 @@ editor::Properties::ShaderUniformRows editor::Properties::resolveShaderUniformRo
     return rows;
 }
 
-void editor::Properties::drawShaderUniformWarnings(const std::vector<std::string>& warnings){
+void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::string>& warnings){
     for (const std::string& warning : warnings) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
@@ -5616,7 +5616,7 @@ void editor::Properties::drawShaderUniformWarnings(const std::vector<std::string
     }
 }
 
-bool editor::Properties::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue){
+bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue){
     const std::string& name = uniform.name;
 
     ImGui::TableNextRow();
@@ -5677,7 +5677,7 @@ bool editor::Properties::drawShaderUniformRow(const ShaderUniform& uniform, cons
     return changed;
 }
 
-void editor::Properties::drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows){
+void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows){
     if (rows.buildFailed) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
@@ -5710,7 +5710,7 @@ void editor::Properties::drawShaderUniformRows(ComponentType cpType, SceneProjec
     drawShaderUniformWarnings(rows.warnings);
 }
 
-void editor::Properties::drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label){
+void editor::InspectorWindow::drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label){
     // Scene default shader: used by every component of this type whose customShader is
     // empty (priority: component shader > scene default > built-in).
     const std::string currentShader = Catalog::getSceneProperty<std::string>(sceneProject->scene, scenePropertyName);
@@ -5749,7 +5749,7 @@ void editor::Properties::drawSceneShaderRow(SceneProject* sceneProject, ShaderTy
     drawShaderRowContents(shaderType, currentShader, setShader, onFork, scenePropertyName);
 }
 
-editor::Properties::PostProcessShader editor::Properties::resolvePostProcessShader(const PostProcessPass& pass){
+editor::InspectorWindow::PostProcessShader editor::InspectorWindow::resolvePostProcessShader(const PostProcessPass& pass){
     PostProcessShader resolved;
 
     uint16_t customId = ShaderPool::registerCustomShader(pass.shader);
@@ -5764,7 +5764,7 @@ editor::Properties::PostProcessShader editor::Properties::resolvePostProcessShad
 }
 
 // widest uniform name the pass declares, so the rows are not truncated to "Shader"
-float editor::Properties::getPostProcessLabelSize(const PostProcessShader& resolved){
+float editor::InspectorWindow::getPostProcessLabelSize(const PostProcessShader& resolved){
     // no reset arrow on these rows, so they only need getLabelSize's half-icon padding
     float width = getLabelSize("Shader", false);
     for (const ShaderUniform& uniform : resolved.block.members)
@@ -5773,7 +5773,7 @@ float editor::Properties::getPostProcessLabelSize(const PostProcessShader& resol
     return width;
 }
 
-void editor::Properties::drawPostProcessUniforms(uint32_t sceneId, const std::vector<PostProcessPass>& passes, size_t index,
+void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const std::vector<PostProcessPass>& passes, size_t index,
                                                 const PostProcessShader& resolved){
     if (resolved.buildFailed || !resolved.shader || !resolved.shader->isCreated()){
         if (!passes[index].shader.empty()){
@@ -5800,7 +5800,7 @@ void editor::Properties::drawPostProcessUniforms(uint32_t sceneId, const std::ve
     drawShaderUniformWarnings(Catalog::getShaderUniformWarnings({&resolved.block}));
 }
 
-void editor::Properties::drawScenePostProcess(SceneProject* sceneProject){
+void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
     const std::vector<PostProcessPass> passes = Catalog::getSceneProperty<std::vector<PostProcessPass>>(sceneProject->scene, "post_process");
     uint32_t sceneId = sceneProject->id;
 
@@ -5935,7 +5935,7 @@ void editor::Properties::drawScenePostProcess(SceneProject* sceneProject){
     }
 }
 
-void editor::Properties::drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
+void editor::InspectorWindow::drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
                                                const std::function<void(const std::string&)>& setShader,
                                                const std::function<void()>& onFork,
                                                const std::string& idSuffix){
@@ -6050,7 +6050,7 @@ void editor::Properties::drawShaderRowContents(ShaderType shaderType, const std:
 // can use differently-named files). Applying stores the result via Util::makeCustomShader,
 // collapsing to the shared-base shorthand when both files share a <base>.vert/.frag.
 // popupName must be unique within the window (several shader rows can share it).
-void editor::Properties::drawShaderFilesPopup(const std::string& popupName, const std::function<void(const std::string&)>& setShader, const std::string& currentVert, const std::string& currentFrag){
+void editor::InspectorWindow::drawShaderFilesPopup(const std::string& popupName, const std::function<void(const std::string&)>& setShader, const std::string& currentVert, const std::string& currentFrag){
     const std::filesystem::path projectPath = project->getProjectPath();
 
     ImGui::SetNextWindowSizeConstraints(ImVec2(25 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
@@ -6155,11 +6155,11 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
     ImGui::EndPopup();
 }
 
-void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Receive Shadows"));
 
     // Static variables for shape parameters
-    static ShapeParameters shapeParams;
+    static PrimitiveParameters shapeParams;
 
     // Add New Geometry property row
     propertyHeader("Geometry");
@@ -6571,7 +6571,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     }
 }
 
-void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Model File"));
 
     propertyHeader("Model File");
@@ -6666,7 +6666,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
                             } else {
                                 Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                             }
-                            ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                            ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                         }
                     }
                 }
@@ -6777,7 +6777,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
     endTable();
 }
 
-void editor::Properties::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Texture"));
     propertyRow(RowPropertyType::Color4L, cpType, "color", "Color", sceneProject, entities);
     propertyRow(RowPropertyType::Texture, cpType, "texture", "Texture", sceneProject, entities);
@@ -6786,7 +6786,7 @@ void editor::Properties::drawUIComponent(ComponentType cpType, SceneProject* sce
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
 }
 
-void editor::Properties::drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
         for (const Entity& entity : entities){
@@ -6810,7 +6810,7 @@ void editor::Properties::drawButtonComponent(ComponentType cpType, SceneProject*
     endTable();
 }
 
-void editor::Properties::drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     static std::vector<editor::EnumEntry> entriesScrollbarType = {
         { (int)ScrollbarType::VERTICAL, "Vertical" },
         { (int)ScrollbarType::HORIZONTAL, "Horizontal" }
@@ -6855,7 +6855,7 @@ void editor::Properties::drawScrollbarComponent(ComponentType cpType, SceneProje
     endTable();
 }
 
-void editor::Properties::drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     static std::vector<editor::EnumEntry> entriesProgressbarType = {
         { (int)ProgressbarType::VERTICAL, "Vertical" },
         { (int)ProgressbarType::HORIZONTAL, "Horizontal" }
@@ -6899,12 +6899,12 @@ void editor::Properties::drawProgressbarComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::drawTextEditComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
         for (const Entity& entity : entities){
-            if (TextEditComponent* textedit = sceneProject->scene->findComponent<TextEditComponent>(entity)){
-                textedit->needUpdateTextEdit = true;
+            if (InputFieldComponent* inputfield = sceneProject->scene->findComponent<InputFieldComponent>(entity)){
+                inputfield->needUpdateInputField = true;
             }
         }
     };
@@ -6926,12 +6926,12 @@ void editor::Properties::drawTextEditComponent(ComponentType cpType, SceneProjec
     endTable();
 
     ImGui::SeparatorText("Content");
-    beginTable(cpType, getLabelSize("Placeholder"), "textedit_content");
+    beginTable(cpType, getLabelSize("Placeholder"), "inputfield_content");
     propertyRow(RowPropertyType::String, cpType, "placeholder", "Placeholder", sceneProject, entities, settings);
     endTable();
 
     ImGui::SeparatorText("Cursor");
-    beginTable(cpType, getLabelSize("Cursor Width"), "textedit_cursor");
+    beginTable(cpType, getLabelSize("Cursor Width"), "inputfield_cursor");
     propertyRow(RowPropertyType::Float, cpType, "cursorBlink", "Blink", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Float, cpType, "cursorWidth", "Width", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Color4L, cpType, "cursorColor", "Color", sceneProject, entities, settings);
@@ -6940,24 +6940,24 @@ void editor::Properties::drawTextEditComponent(ComponentType cpType, SceneProjec
     endTable();
 
     ImGui::SeparatorText("Selection");
-    beginTable(cpType, getLabelSize("Selection Anchor"), "textedit_selection");
+    beginTable(cpType, getLabelSize("Selection Anchor"), "inputfield_selection");
     propertyRow(RowPropertyType::Int, cpType, "cursorIndex", "Cursor Index", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "selectionAnchor", "Selection Anchor", sceneProject, entities, settingsInt);
     endTable();
 
     if (entities.size() == 1){
-        TextEditComponent* textedit = sceneProject->scene->findComponent<TextEditComponent>(entities[0]);
-        if (textedit){
-            beginTable(cpType, getLabelSize("Password Char"), "textedit_password_char");
+        InputFieldComponent* inputfield = sceneProject->scene->findComponent<InputFieldComponent>(entities[0]);
+        if (inputfield){
+            beginTable(cpType, getLabelSize("Password Char"), "inputfield_password_char");
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted("Password Char");
             ImGui::TableSetColumnIndex(1);
-            char passwordCharBuffer[2] = { textedit->passwordChar ? textedit->passwordChar : '*', '\0' };
+            char passwordCharBuffer[2] = { inputfield->passwordChar ? inputfield->passwordChar : '*', '\0' };
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputText("##textedit_password_char", passwordCharBuffer, sizeof(passwordCharBuffer))){
-                textedit->passwordChar = passwordCharBuffer[0] ? passwordCharBuffer[0] : '*';
+            if (ImGui::InputText("##inputfield_password_char", passwordCharBuffer, sizeof(passwordCharBuffer))){
+                inputfield->passwordChar = passwordCharBuffer[0] ? passwordCharBuffer[0] : '*';
                 settings.onValueChanged();
             }
             endTable();
@@ -6965,7 +6965,7 @@ void editor::Properties::drawTextEditComponent(ComponentType cpType, SceneProjec
     }
 }
 
-void editor::Properties::drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
         for (const Entity& entity : entities){
@@ -7012,7 +7012,7 @@ void editor::Properties::drawPanelComponent(ComponentType cpType, SceneProject* 
     endTable();
 }
 
-void editor::Properties::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -7042,7 +7042,7 @@ void editor::Properties::drawTextComponent(ComponentType cpType, SceneProject* s
     endTable();
 }
 
-void editor::Properties::drawUILayoutComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -7074,7 +7074,7 @@ void editor::Properties::drawUILayoutComponent(ComponentType cpType, SceneProjec
     bool showAnchorProperties = true;
     bool disableAnchorDetails = false;
     for (const Entity& entity : entities){
-        const UILayoutComponent& layout = sceneProject->scene->getComponent<UILayoutComponent>(entity);
+        const RectTransformComponent& layout = sceneProject->scene->getComponent<RectTransformComponent>(entity);
         if (layout.usingAnchors){
             showAnchorProperties = false;
         }
@@ -7103,16 +7103,16 @@ void editor::Properties::drawUILayoutComponent(ComponentType cpType, SceneProjec
     endTable();
 }
 
-void editor::Properties::drawUIContainerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    static std::vector<editor::EnumEntry> entriesContainerType = {
-        { (int)ContainerType::VERTICAL, "Vertical" },
-        { (int)ContainerType::HORIZONTAL, "Horizontal" },
-        { (int)ContainerType::VERTICAL_WRAP, "Vertical Wrap" },
-        { (int)ContainerType::HORIZONTAL_WRAP, "Horizontal Wrap" }
+void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesLayoutGroupType = {
+        { (int)LayoutGroupType::VERTICAL, "Vertical" },
+        { (int)LayoutGroupType::HORIZONTAL, "Horizontal" },
+        { (int)LayoutGroupType::VERTICAL_WRAP, "Vertical Wrap" },
+        { (int)LayoutGroupType::HORIZONTAL_WRAP, "Horizontal Wrap" }
     };
 
-    RowSettings settingsContainerType;
-    settingsContainerType.enumEntries = &entriesContainerType;
+    RowSettings settingsLayoutGroupType;
+    settingsLayoutGroupType.enumEntries = &entriesLayoutGroupType;
 
     RowSettings settingsCellSize;
     settingsCellSize.stepSize = 1.0f;
@@ -7125,13 +7125,13 @@ void editor::Properties::drawUIContainerComponent(ComponentType cpType, ScenePro
     settingsLayout.stepSize = 1.0f;
     settingsLayout.secondColSize = 6 * ImGui::GetFontSize();
 
-    unsigned int numBoxes = sceneProject->scene->getComponent<UIContainerComponent>(entities[0]).numBoxes;
+    unsigned int numBoxes = sceneProject->scene->getComponent<LayoutGroupComponent>(entities[0]).numBoxes;
     for (Entity& entity : entities){
-        numBoxes = std::min(numBoxes, sceneProject->scene->getComponent<UIContainerComponent>(entity).numBoxes);
+        numBoxes = std::min(numBoxes, sceneProject->scene->getComponent<LayoutGroupComponent>(entity).numBoxes);
     }
 
     beginTable(cpType, getLabelSize("Num Boxes"));
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsContainerType);
+    propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsLayoutGroupType);
     propertyRow(RowPropertyType::Label, cpType, "numBoxes", "Num Boxes", sceneProject, entities, settingsLayout);
 
     ImGui::SameLine();
@@ -7167,8 +7167,8 @@ void editor::Properties::drawUIContainerComponent(ComponentType cpType, ScenePro
 
     bool showWrapSettings = false;
     for (const Entity& entity : entities){
-        const UIContainerComponent& container = sceneProject->scene->getComponent<UIContainerComponent>(entity);
-        if (container.type == ContainerType::VERTICAL_WRAP || container.type == ContainerType::HORIZONTAL_WRAP){
+        const LayoutGroupComponent& container = sceneProject->scene->getComponent<LayoutGroupComponent>(entity);
+        if (container.type == LayoutGroupType::VERTICAL_WRAP || container.type == LayoutGroupType::HORIZONTAL_WRAP){
             showWrapSettings = true;
         }
     }
@@ -7184,7 +7184,7 @@ void editor::Properties::drawUIContainerComponent(ComponentType cpType, ScenePro
 
 }
 
-void editor::Properties::drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ImGui::SeparatorText("Nine-patch rect");
 
     if (entities.size() == 1) {
@@ -7216,7 +7216,7 @@ void editor::Properties::drawImageComponent(ComponentType cpType, SceneProject* 
     endTable();
 }
 
-void editor::Properties::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -7525,7 +7525,7 @@ void editor::Properties::drawSpriteComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
     CameraComponent& camera = scene->getComponent<CameraComponent>(entities[0]);
 
@@ -7617,7 +7617,7 @@ void editor::Properties::drawCameraComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings compactSettings;
     compactSettings.secondColSize = 7 * ImGui::GetFontSize();
 
@@ -7631,7 +7631,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
     if (entities.size() == 1) {
         Entity entity = entities[0];
-        SoundComponent& audio = sceneProject->scene->getComponent<SoundComponent>(entity);
+        AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
         auto setAudioFilename = [&](const std::filesystem::path& selectedPath) -> bool {
             std::filesystem::path assetsPath = std::filesystem::absolute(project->getAssetsPath()).lexically_normal();
@@ -7711,7 +7711,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
                         std::filesystem::path relative = std::filesystem::relative(std::filesystem::absolute(filePath), std::filesystem::absolute(project->getAssetsPath()), errorCode);
                         if (!errorCode && Util::isAudioFile(relative.generic_string()) && payload->IsDelivery()) {
                             if (setAudioFilename(droppedPath)) {
-                                ImGui::SetWindowFocus(Properties::WINDOW_NAME);
+                                ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
                             }
                         }
                     }
@@ -7743,7 +7743,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
     if (entities.size() == 1) {
         Entity entity = entities[0];
-        SoundComponent& audio = sceneProject->scene->getComponent<SoundComponent>(entity);
+        AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
         SoundPreviewRuntime& ap = soundPreview();
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
@@ -7873,7 +7873,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
     endTable();
 
     if (show3DSettings){
-        ImGui::SeparatorText("3D Sound Settings");
+        ImGui::SeparatorText("3D Audio Source Settings");
 
         beginTable(cpType, getLabelSize("Max Distance"), "audio_3d_settings");
 
@@ -7890,7 +7890,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
 }
 
-void editor::Properties::drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -8382,7 +8382,7 @@ void editor::Properties::drawTilemapComponent(ComponentType cpType, SceneProject
     }
 }
 
-void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
 
     RowSettings textureSettings;
@@ -8505,7 +8505,7 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     }
 }
 
-void editor::Properties::drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     LightComponent& light = sceneProject->scene->getComponent<LightComponent>(entities[0]);
 
     RowSettings settingsFloat;
@@ -8588,7 +8588,7 @@ void editor::Properties::drawLightComponent(ComponentType cpType, SceneProject* 
     endTable();
 }
 
-void editor::Properties::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -8621,22 +8621,22 @@ void editor::Properties::drawLight2DComponent(ComponentType cpType, SceneProject
     endTable();
 }
 
-void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Occluder2DComponent& occluder = sceneProject->scene->getComponent<Occluder2DComponent>(entities[0]);
+void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    ShadowCaster2DComponent& occluder = sceneProject->scene->getComponent<ShadowCaster2DComponent>(entities[0]);
 
     RowSettings settingsShape;
-    settingsShape.enumEntries = &entriesOccluder2DShape;
+    settingsShape.enumEntries = &entriesShadowCaster2DShape;
     settingsShape.help = "Auto Quad derives the outline from this GameObject's mesh bounds; Polygon uses the point list below (local space).";
 
     beginTable(cpType, getLabelSize("Enabled"));
     propertyRow(RowPropertyType::Enum, cpType, "shape", "Outline", sceneProject, entities, settingsShape);
-    if (occluder.shape == Occluder2DShape::POLYGON){
+    if (occluder.shape == ShadowCaster2DShape::POLYGON){
         propertyRow(RowPropertyType::Bool, cpType, "closed", "Closed", sceneProject, entities);
     }
     propertyRow(RowPropertyType::Bool, cpType, "enabled", "Enabled", sceneProject, entities);
     endTable();
 
-    if (occluder.shape == Occluder2DShape::POLYGON && entities.size() == 1){
+    if (occluder.shape == ShadowCaster2DShape::POLYGON && entities.size() == 1){
         Entity entity = entities[0];
 
         Command* pointsCmd = nullptr;
@@ -8657,7 +8657,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
             selectedPoint = sceneProject->sceneRender->getSelectedOccluderPointIndex();
         }
 
-        beginTable(cpType, getLabelSize(ICON_FA_CARET_RIGHT " Point 000"), "occluder2d_points_table");
+        beginTable(cpType, getLabelSize(ICON_FA_CARET_RIGHT " Point 000"), "shadowcaster2d_points_table");
         for (size_t i = 0; i < occluder.points.size(); i++){
             bool pointSelected = ((int)i == selectedPoint);
 
@@ -8673,7 +8673,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
             float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
             float value[2] = {occluder.points[i].x, occluder.points[i].y};
             ImGui::SetNextItemWidth(std::max(0.0f, ImGui::GetContentRegionAvail().x - deleteButtonWidth - ImGui::GetStyle().ItemSpacing.x));
-            if (ImGui::DragFloat2("##occluder2d_point", value, 1.0f, 0.0f, 0.0f, "%.2f")){
+            if (ImGui::DragFloat2("##shadowcaster2d_point", value, 1.0f, 0.0f, 0.0f, "%.2f")){
                 std::vector<Vector2> newPoints = occluder.points;
                 newPoints[i] = Vector2(value[0], value[1]);
                 setPoints(newPoints, true);
@@ -8688,7 +8688,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
             ImGui::SameLine();
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-            if (ImGui::Button(ICON_FA_TRASH_CAN "##occluder2d_point_delete")){
+            if (ImGui::Button(ICON_FA_TRASH_CAN "##shadowcaster2d_point_delete")){
                 std::vector<Vector2> newPoints = occluder.points;
                 newPoints.erase(newPoints.begin() + static_cast<std::ptrdiff_t>(i));
                 if (sceneProject->sceneRender && (int)i <= selectedPoint){
@@ -8704,7 +8704,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
         }
         endTable();
 
-        if (ImGui::Button(ICON_FA_PLUS " Add Point##occluder2d", ImVec2(std::max(0.0f, ImGui::GetContentRegionAvail().x), 0))){
+        if (ImGui::Button(ICON_FA_PLUS " Add Point##shadowcaster2d", ImVec2(std::max(0.0f, ImGui::GetContentRegionAvail().x), 0))){
             std::vector<Vector2> newPoints = occluder.points;
             if (newPoints.size() >= 2){
                 // continue the outline: offset from the last edge so the new point is visible
@@ -8722,7 +8722,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
     }
 }
 
-void editor::Properties::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     FogComponent& fog = sceneProject->scene->getComponent<FogComponent>(entities[0]);
 
     RowSettings settingsFogType;
@@ -8747,7 +8747,7 @@ void editor::Properties::drawFogComponent(ComponentType cpType, SceneProject* sc
     endTable();
 }
 
-void editor::Properties::drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings normalSettings;
     normalSettings.help = "Reflecting surface normal in local space (the mirror plane is this normal at the entity's position). Flip its sign if the reflection clips the wrong side. The reflection camera is created automatically.";
 
@@ -8756,7 +8756,7 @@ void editor::Properties::drawMirrorComponent(ComponentType cpType, SceneProject*
     endTable();
 }
 
-void editor::Properties::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ReflectionProbeComponent& probe = sceneProject->scene->getComponent<ReflectionProbeComponent>(entities[0]);
 
     RowSettings modeSettings;
@@ -8821,7 +8821,7 @@ void editor::Properties::drawReflectionProbeComponent(ComponentType cpType, Scen
     }
 }
 
-void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.empty()) return;
 
     ScriptComponent& firstScriptComp = sceneProject->scene->getComponent<ScriptComponent>(entities[0]);
@@ -9370,7 +9370,7 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawSkyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Default sky"), "default_sky");
 
     bool allDefault = true;
@@ -9421,7 +9421,7 @@ void editor::Properties::drawSkyComponent(ComponentType cpType, SceneProject* sc
     endTable();
 }
 
-void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsUInt;
     settingsUInt.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -9460,7 +9460,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
         ImGui::TextWrapped(
             ICON_FA_TRIANGLE_EXCLAMATION
             " Instances will not render: this model stores its geometry in child mesh GameObjects. "
-            "Right-click the model in Structure and choose 'Merge static model'.");
+            "Right-click the model in the Hierarchy and choose 'Merge static model'.");
         ImGui::PopStyleColor();
     }
 
@@ -9580,7 +9580,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
     }
 }
 
-void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -9599,7 +9599,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
     // Bursts (single-entity editor; vector edits are not multi-entity safe)
     if (entities.size() == 1) {
         Scene* burstScene = sceneProject->scene;
-        ParticlesComponent* bp = burstScene ? burstScene->findComponent<ParticlesComponent>(entities[0]) : nullptr;
+        ParticleSystemComponent* bp = burstScene ? burstScene->findComponent<ParticleSystemComponent>(entities[0]) : nullptr;
         if (bp) {
             Entity entity = entities[0];
             PropertyData burstProp = Catalog::getProperty(sceneProject->scene, entity, cpType, "bursts");
@@ -9705,7 +9705,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
 
         ParticleEmitterShape shownShape = ParticleEmitterShape::Box;
         if (!entities.empty()) {
-            ParticlesComponent* sp = sceneProject->scene->findComponent<ParticlesComponent>(entities[0]);
+            ParticleSystemComponent* sp = sceneProject->scene->findComponent<ParticleSystemComponent>(entities[0]);
             if (sp) shownShape = sp->positionInitializer.shape;
         }
 
@@ -9823,7 +9823,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
 
         if (entities.size() == 1) {
             Scene* gradScene = sceneProject->scene;
-            ParticlesComponent* gp = gradScene ? gradScene->findComponent<ParticlesComponent>(entities[0]) : nullptr;
+            ParticleSystemComponent* gp = gradScene ? gradScene->findComponent<ParticleSystemComponent>(entities[0]) : nullptr;
             if (gp) {
                 Entity entity = entities[0];
                 PropertyData gradProp = Catalog::getProperty(sceneProject->scene, entity, cpType, "colorGradient");
@@ -9963,7 +9963,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
     ImGui::Unindent(subsectionIndent);
 }
 
-void editor::Properties::drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -10097,7 +10097,7 @@ void editor::Properties::drawPointsComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
@@ -10114,7 +10114,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
     }
 
     Entity entity = entities[0];
-    LinesComponent& lines = sceneProject->scene->getComponent<LinesComponent>(entity);
+    LineRendererComponent& lines = sceneProject->scene->getComponent<LineRendererComponent>(entity);
 
     ImGui::SeparatorText("Lines");
 
@@ -10125,7 +10125,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
     if (drawSummaryAddButton(ICON_FA_PLUS " Add Line##lines_add", linesArrowWidth)) {
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
         for (const Entity& selectedEntity : entities) {
-            if (LinesComponent* linesComp = sceneProject->scene->findComponent<LinesComponent>(selectedEntity)) {
+            if (LineRendererComponent* linesComp = sceneProject->scene->findComponent<LineRendererComponent>(selectedEntity)) {
                 std::vector<LineData> newLines = linesComp->lines;
                 LineData newLine;
                 if (!newLines.empty()) {
@@ -10197,7 +10197,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
         if (ImGui::Button(ICON_FA_TRASH_CAN "##delete_line", deleteButtonSize)) {
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
             for (const Entity& selectedEntity : entities) {
-                if (LinesComponent* linesComp = sceneProject->scene->findComponent<LinesComponent>(selectedEntity)) {
+                if (LineRendererComponent* linesComp = sceneProject->scene->findComponent<LineRendererComponent>(selectedEntity)) {
                     if (i < linesComp->lines.size()) {
                         std::vector<LineData> newLines = linesComp->lines;
                         newLines.erase(newLines.begin() + (long int)i);
@@ -10236,7 +10236,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
     }
 }
 
-void editor::Properties::drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.size() != 1) {
         ImGui::SeparatorText("Vertices");
         ImGui::TextDisabled("Select a single GameObject to edit polygon vertices");
@@ -10361,7 +10361,7 @@ void editor::Properties::drawPolygonComponent(ComponentType cpType, SceneProject
     }
 }
 
-void editor::Properties::drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Flip Y"));
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     endTable();
@@ -10501,8 +10501,8 @@ void editor::Properties::drawMeshPolygonComponent(ComponentType cpType, ScenePro
     }
 }
 
-void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Body2DComponent& body = sceneProject->scene->getComponent<Body2DComponent>(entities[0]);
+void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Rigidbody2DComponent& body = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
 
     auto getSizeForShape = [sceneProject](Entity entity, float defaultSize = 100.0f) -> Vector2 {
         float width = defaultSize;
@@ -10515,7 +10515,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             if (spriteComp->height > 0){
                 height = (float)spriteComp->height;
             }
-        }else if (UILayoutComponent* layoutComp = sceneProject->scene->findComponent<UILayoutComponent>(entity)){
+        }else if (RectTransformComponent* layoutComp = sceneProject->scene->findComponent<RectTransformComponent>(entity)){
             if (layoutComp->width > 0){
                 width = (float)layoutComp->width;
             }
@@ -10535,23 +10535,23 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
     endTable();
 
     ImGui::SeparatorText("Colliders");
-    ImGui::Text("Colliders: %zu", body.numShapes);
+    ImGui::Text("Colliders: %zu", body.numColliders);
 
-    static int createShape2DType = (int)Shape2DType::POLYGON;
-    const char* createShape2DLabel = "Polygon";
-    for (const EnumEntry& entry : entriesShape2DType){
-        if (entry.value == createShape2DType){
-            createShape2DLabel = entry.name;
+    static int createCollider2DType = (int)Collider2DType::POLYGON;
+    const char* createCollider2DLabel = "Polygon";
+    for (const EnumEntry& entry : entriesCollider2DType){
+        if (entry.value == createCollider2DType){
+            createCollider2DLabel = entry.name;
             break;
         }
     }
 
     ImGui::SetNextItemWidth(9 * ImGui::GetFontSize());
-    if (ImGui::BeginCombo("##shape2d_create_type", createShape2DLabel)){
-        for (const EnumEntry& entry : entriesShape2DType){
-            bool selected = (createShape2DType == entry.value);
+    if (ImGui::BeginCombo("##shape2d_create_type", createCollider2DLabel)){
+        for (const EnumEntry& entry : entriesCollider2DType){
+            bool selected = (createCollider2DType == entry.value);
             if (ImGui::Selectable(entry.name, selected)){
-                createShape2DType = entry.value;
+                createCollider2DType = entry.value;
             }
             if (selected){
                 ImGui::SetItemDefaultFocus();
@@ -10560,17 +10560,17 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add Collider##body2d")){
+    if (ImGui::Button("Add Collider##rigidbody2d")){
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
         for (Entity entity : entities){
-            if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
+            if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
 
-                Shape2D shape;
-                shape.type = (Shape2DType)createShape2DType;
+                Collider2D shape;
+                shape.type = (Collider2DType)createCollider2DType;
 
                 switch (shape.type){
-                case Shape2DType::POLYGON:
+                case Collider2DType::POLYGON:
                 {
                     Vector2 layoutSize = getSizeForShape(entity, 0.0f);
 
@@ -10599,20 +10599,20 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
 
                     break;
                 }
-                case Shape2DType::CIRCLE:
+                case Collider2DType::CIRCLE:
                     shape.pointA = Vector2::ZERO;
                     shape.radius = 0.5f;
                     break;
-                case Shape2DType::CAPSULE:
+                case Collider2DType::CAPSULE:
                     shape.pointA = Vector2(0.0f, -0.5f);
                     shape.pointB = Vector2(0.0f, 0.5f);
                     shape.radius = 0.5f;
                     break;
-                case Shape2DType::SEGMENT:
+                case Collider2DType::SEGMENT:
                     shape.pointA = Vector2(-1.0f, 0.0f);
                     shape.pointB = Vector2(1.0f, 0.0f);
                     break;
-                case Shape2DType::CHAIN:
+                case Collider2DType::CHAIN:
                     shape.numVertices = 4;
                     shape.vertices[0] = Vector2(-0.5f, -0.5f);
                     shape.vertices[1] = Vector2(0.5f, -0.5f);
@@ -10621,9 +10621,9 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                     break;
                 }
 
-                size_t shapeIdx = bodyComp->numShapes;
-                multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(shapeIdx) + "]", shape);
-                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numShapes", shapeIdx + 1);
+                size_t shapeIdx = bodyComp->numColliders;
+                multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(shapeIdx) + "]", shape);
+                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", shapeIdx + 1);
             }
         }
 
@@ -10631,19 +10631,19 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
     }
 
-    size_t numShapes = body.numShapes;
+    size_t numColliders = body.numColliders;
     for (Entity entity : entities){
-        numShapes = std::min(numShapes, sceneProject->scene->getComponent<Body2DComponent>(entity).numShapes);
+        numColliders = std::min(numColliders, sceneProject->scene->getComponent<Rigidbody2DComponent>(entity).numColliders);
     }
 
     RowSettings settingsShapeType;
-    settingsShapeType.enumEntries = &entriesShape2DType;
+    settingsShapeType.enumEntries = &entriesCollider2DType;
 
     RowSettings settingsShapeValue;
 
-    for (size_t s = 0; s < numShapes; s++){
-        Body2DComponent& bodyRef = sceneProject->scene->getComponent<Body2DComponent>(entities[0]);
-        Shape2D& shape = bodyRef.shapes[s];
+    for (size_t s = 0; s < numColliders; s++){
+        Rigidbody2DComponent& bodyRef = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
+        Collider2D& shape = bodyRef.colliders[s];
 
         ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
@@ -10651,17 +10651,17 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
             for (Entity entity : entities){
-                if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                    if (s >= bodyComp->numShapes){
+                if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                    if (s >= bodyComp->numColliders){
                         continue;
                     }
 
-                    for (size_t i = s + 1; i < bodyComp->numShapes; i++){
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(i - 1) + "]", bodyComp->shapes[i]);
+                    for (size_t i = s + 1; i < bodyComp->numColliders; i++){
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i - 1) + "]", bodyComp->colliders[i]);
                     }
 
-                    multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(bodyComp->numShapes - 1) + "]", Shape2D());
-                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numShapes", bodyComp->numShapes - 1);
+                    multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(bodyComp->numColliders - 1) + "]", Collider2D());
+                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", bodyComp->numColliders - 1);
                 }
             }
 
@@ -10672,25 +10672,25 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         }
         ImGui::PopID();
 
-        std::string shapeKey = "shapes[" + std::to_string(s) + "]";
+        std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Enable Hit Events"), "body2d_shape");
+        beginTable(cpType, getLabelSize("Enable Hit Events"), "rigidbody2d_collider");
         propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".type", "Type", sceneProject, entities, settingsShapeType);
 
         RowSettings settingsFloat;
         //settingsFloat.stepSize = 0.1f;
         settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
-        if (shape.type == Shape2DType::POLYGON){
+        if (shape.type == Collider2DType::POLYGON){
             propertyHeader("Vertices");
             ImGui::Text("%d", shape.numVertices);
             ImGui::SameLine();
             if (ImGui::Button("Add Vertex")){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
+                        Collider2D shapeValue = bodyComp->colliders[s];
 
                         const uint8_t oldCount = shapeValue.numVertices;
                         if (oldCount >= 2){
@@ -10701,7 +10701,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                             shapeValue.vertices[oldCount] = Vector2::ZERO;
                         }
                         shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10731,10 +10731,10 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                 if (ImGui::Button(removeVertexId.c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
-                        if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                            if (s >= bodyComp->numShapes) continue;
+                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                            if (s >= bodyComp->numColliders) continue;
 
-                            Shape2D shapeValue = bodyComp->shapes[s];
+                            Collider2D shapeValue = bodyComp->colliders[s];
                             if (v >= shapeValue.numVertices) continue;
 
                             for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
@@ -10742,7 +10742,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                             }
                             shapeValue.numVertices -= 1;
 
-                            multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
 
@@ -10767,17 +10767,17 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             }
 
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Shape2DType::CIRCLE){
+        }else if (shape.type == Collider2DType::CIRCLE){
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center", sceneProject, entities);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Shape2DType::CAPSULE){
+        }else if (shape.type == Collider2DType::CAPSULE){
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center A", sceneProject, entities);
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Center B", sceneProject, entities);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Shape2DType::SEGMENT){
+        }else if (shape.type == Collider2DType::SEGMENT){
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Point A", sceneProject, entities);
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Point B", sceneProject, entities);
-        }else if (shape.type == Shape2DType::CHAIN){
+        }else if (shape.type == Collider2DType::CHAIN){
             RowSettings loopSettings;
             loopSettings.help = "An open chain doesn't collide on its first and last edges";
             propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".loop", "Loop", sceneProject, entities, loopSettings);
@@ -10786,12 +10786,12 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             if (ImGui::Button("Reverse")){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
+                        Collider2D shapeValue = bodyComp->colliders[s];
 
                         std::reverse(shapeValue.vertices.data(), shapeValue.vertices.data() + shapeValue.numVertices);
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10807,9 +10807,9 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             if (ImGui::Button("Add Vertex")){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
+                        Collider2D shapeValue = bodyComp->colliders[s];
 
                         const uint8_t oldCount = shapeValue.numVertices;
                         if (oldCount >= 2){
@@ -10820,7 +10820,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                             shapeValue.vertices[oldCount] = Vector2::ZERO;
                         }
                         shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10850,10 +10850,10 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                 if (ImGui::Button(removeVertexId.c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
-                        if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                            if (s >= bodyComp->numShapes) continue;
+                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                            if (s >= bodyComp->numColliders) continue;
 
-                            Shape2D shapeValue = bodyComp->shapes[s];
+                            Collider2D shapeValue = bodyComp->colliders[s];
                             if (v >= shapeValue.numVertices) continue;
 
                             for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
@@ -10861,7 +10861,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                             }
                             shapeValue.numVertices -= 1;
 
-                            multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
 
@@ -10886,12 +10886,12 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             }
         }
 
-        if (shape.type != Shape2DType::SEGMENT && shape.type != Shape2DType::CHAIN){
+        if (shape.type != Collider2DType::SEGMENT && shape.type != Collider2DType::CHAIN){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".density", "Density", sceneProject, entities, settingsFloat);
         }
         propertyRow(RowPropertyType::Float, cpType, shapeKey + ".friction", "Friction", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, shapeKey + ".restitution", "Restitution", sceneProject, entities, settingsFloat);
-        if (shape.type != Shape2DType::CHAIN){
+        if (shape.type != Collider2DType::CHAIN){
             RowSettings sensorSettings;
             sensorSettings.help = "Overlap only: never collides and always reports its sensor events";
             propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensor", "Sensor", sceneProject, entities, sensorSettings);
@@ -10902,17 +10902,17 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                 propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensorEvents", "Sensor Events", sceneProject, entities);
             }
         }
-        if (shape.type == Shape2DType::POLYGON){
+        if (shape.type == Collider2DType::POLYGON){
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
             propertyHeader("Reset Collider");
             ImGui::PopStyleColor();
             if (ImGui::SmallButton(("Box##shape_preset_box_" + std::to_string(s)).c_str())){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
 
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                        Collider2D shapeValue = bodyComp->colliders[s];
                         Vector2 layoutSize = getSizeForShape(entity);
 
                         shapeValue.numVertices = 4;
@@ -10924,7 +10924,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                         shapeValue.vertices[2] = Vector2(layoutSize.x, layoutSize.y);
                         shapeValue.vertices[3] = Vector2(0.0f, layoutSize.y);
 
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10933,10 +10933,10 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             if (ImGui::SmallButton(("Centered Box##shape_preset_centered_box_" + std::to_string(s)).c_str())){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
 
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                        Collider2D shapeValue = bodyComp->colliders[s];
                         Vector2 layoutSize = getSizeForShape(entity);
                         const float halfW = layoutSize.x * 0.5f;
                         const float halfH = layoutSize.y * 0.5f;
@@ -10950,7 +10950,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                         shapeValue.vertices[2] = Vector2(halfW, halfH);
                         shapeValue.vertices[3] = Vector2(-halfW, halfH);
 
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10959,10 +10959,10 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             if (ImGui::SmallButton(("Rounded Box##shape_preset_rounded_box_" + std::to_string(s)).c_str())){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                 for (Entity entity : entities){
-                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
-                        if (s >= bodyComp->numShapes) continue;
+                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
+                        if (s >= bodyComp->numColliders) continue;
 
-                        Shape2D shapeValue = bodyComp->shapes[s];
+                        Collider2D shapeValue = bodyComp->colliders[s];
                         Vector2 layoutSize = getSizeForShape(entity);
                         const float halfW = layoutSize.x * 0.5f;
                         const float halfH = layoutSize.y * 0.5f;
@@ -10976,7 +10976,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
                         shapeValue.vertices[2] = Vector2(halfW, halfH);
                         shapeValue.vertices[3] = Vector2(-halfW, halfH);
 
-                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                     }
                 }
                 multiCmd->setNoMerge();
@@ -10987,14 +10987,14 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Body3DComponent& body = sceneProject->scene->getComponent<Body3DComponent>(entities[0]);
+void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    RigidbodyComponent& body = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]);
 
     RowSettings settingsBodyType;
     settingsBodyType.enumEntries = &entriesBodyType;
 
     RowSettings settingsMotionQuality;
-    settingsMotionQuality.enumEntries = &entriesBody3DMotionQuality;
+    settingsMotionQuality.enumEntries = &entriesRigidbodyMotionQuality;
 
     RowSettings settingsBodyValue;
 
@@ -11012,23 +11012,23 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
     endTable();
 
     ImGui::SeparatorText("Colliders");
-    ImGui::Text("Colliders: %zu", body.numShapes);
+    ImGui::Text("Colliders: %zu", body.numColliders);
 
-    static int createShape3DType = (int)Shape3DType::BOX;
-    const char* createShape3DLabel = "Unknown";
-    for (const EnumEntry& entry : entriesShape3DType){
-        if (entry.value == createShape3DType){
-            createShape3DLabel = entry.name;
+    static int createCollider3DType = (int)Collider3DType::BOX;
+    const char* createCollider3DLabel = "Unknown";
+    for (const EnumEntry& entry : entriesCollider3DType){
+        if (entry.value == createCollider3DType){
+            createCollider3DLabel = entry.name;
             break;
         }
     }
 
     ImGui::SetNextItemWidth(9 * ImGui::GetFontSize());
-    if (ImGui::BeginCombo("##shape3d_create_type", createShape3DLabel)){
-        for (const EnumEntry& entry : entriesShape3DType){
-            bool selected = (createShape3DType == entry.value);
+    if (ImGui::BeginCombo("##shape3d_create_type", createCollider3DLabel)){
+        for (const EnumEntry& entry : entriesCollider3DType){
+            bool selected = (createCollider3DType == entry.value);
             if (ImGui::Selectable(entry.name, selected)){
-                createShape3DType = entry.value;
+                createCollider3DType = entry.value;
             }
             if (selected){
                 ImGui::SetItemDefaultFocus();
@@ -11037,35 +11037,35 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add Collider##body3d")){
+    if (ImGui::Button("Add Collider##rigidbody")){
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
         for (Entity entity : entities){
-            if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
+            if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
 
-                Shape3D shape;
-                shape.type = (Shape3DType)createShape3DType;
-                if (shape.type == Shape3DType::MESH){
-                    shape.source = Shape3DSource::ENTITY_MESH;
+                Collider3D shape;
+                shape.type = (Collider3DType)createCollider3DType;
+                if (shape.type == Collider3DType::MESH){
+                    shape.source = Collider3DSource::ENTITY_MESH;
                     if (sceneProject->scene->findComponent<MeshComponent>(entity)){
                         shape.sourceEntity = entity;
                     }
-                }else if (shape.type == Shape3DType::CONVEX_HULL){
-                    shape.source = Shape3DSource::ENTITY_MESH;
+                }else if (shape.type == Collider3DType::CONVEX_HULL){
+                    shape.source = Collider3DSource::ENTITY_MESH;
                     if (sceneProject->scene->findComponent<MeshComponent>(entity)){
                         shape.sourceEntity = entity;
                     }
-                }else if (shape.type == Shape3DType::HEIGHTFIELD){
-                    shape.source = Shape3DSource::ENTITY_HEIGHTFIELD;
+                }else if (shape.type == Collider3DType::HEIGHTFIELD){
+                    shape.source = Collider3DSource::ENTITY_HEIGHTFIELD;
                     shape.samplesSize = 256;
                     if (sceneProject->scene->findComponent<TerrainComponent>(entity)){
                         shape.sourceEntity = entity;
                     }
                 }
 
-                size_t shapeIdx = bodyComp->numShapes;
-                multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(shapeIdx) + "]", shape);
-                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numShapes", shapeIdx + 1);
+                size_t shapeIdx = bodyComp->numColliders;
+                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(shapeIdx) + "]", shape);
+                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", shapeIdx + 1);
             }
         }
 
@@ -11073,47 +11073,47 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
     }
 
-    size_t numShapes = body.numShapes;
+    size_t numColliders = body.numColliders;
     for (Entity entity : entities){
-        numShapes = std::min(numShapes, sceneProject->scene->getComponent<Body3DComponent>(entity).numShapes);
+        numColliders = std::min(numColliders, sceneProject->scene->getComponent<RigidbodyComponent>(entity).numColliders);
     }
 
     RowSettings settingsShapeSourceConvexHull;
-    settingsShapeSourceConvexHull.enumEntries = &entriesShape3DSourceConvexHull;
+    settingsShapeSourceConvexHull.enumEntries = &entriesCollider3DSourceConvexHull;
 
     RowSettings settingsShapeSourceMesh;
-    settingsShapeSourceMesh.enumEntries = &entriesShape3DSourceMesh;
+    settingsShapeSourceMesh.enumEntries = &entriesCollider3DSourceMesh;
 
     RowSettings settingsShapeSourceHeightfield;
-    settingsShapeSourceHeightfield.enumEntries = &entriesShape3DSourceHeightfield;
+    settingsShapeSourceHeightfield.enumEntries = &entriesCollider3DSourceHeightfield;
 
     RowSettings settingsShapeValue;
 
-    auto normalizeShape3DSource = [](Shape3DType type, Shape3DSource source) {
-        if (type == Shape3DType::CONVEX_HULL){
-            if (source != Shape3DSource::RAW_VERTICES && source != Shape3DSource::ENTITY_MESH){
-                return Shape3DSource::RAW_VERTICES;
+    auto normalizeCollider3DSource = [](Collider3DType type, Collider3DSource source) {
+        if (type == Collider3DType::CONVEX_HULL){
+            if (source != Collider3DSource::RAW_VERTICES && source != Collider3DSource::ENTITY_MESH){
+                return Collider3DSource::RAW_VERTICES;
             }
-        }else if (type == Shape3DType::MESH){
-            if (source != Shape3DSource::RAW_MESH && source != Shape3DSource::ENTITY_MESH){
-                return Shape3DSource::RAW_MESH;
+        }else if (type == Collider3DType::MESH){
+            if (source != Collider3DSource::RAW_MESH && source != Collider3DSource::ENTITY_MESH){
+                return Collider3DSource::RAW_MESH;
             }
-        }else if (type == Shape3DType::HEIGHTFIELD){
-            if (source != Shape3DSource::ENTITY_HEIGHTFIELD){
-                return Shape3DSource::ENTITY_HEIGHTFIELD;
+        }else if (type == Collider3DType::HEIGHTFIELD){
+            if (source != Collider3DSource::ENTITY_HEIGHTFIELD){
+                return Collider3DSource::ENTITY_HEIGHTFIELD;
             }
         }
 
         return source;
     };
 
-    for (size_t s = 0; s < numShapes; s++){
-        Body3DComponent& bodyRef = sceneProject->scene->getComponent<Body3DComponent>(entities[0]);
-        Shape3D& shape = bodyRef.shapes[s];
+    for (size_t s = 0; s < numColliders; s++){
+        RigidbodyComponent& bodyRef = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]);
+        Collider3D& shape = bodyRef.colliders[s];
         Transform* bodyTransform = sceneProject->scene->findComponent<Transform>(entities[0]);
         const Vector3 bodyScale = bodyTransform ? bodyTransform->scale : Vector3::UNIT_SCALE;
         const float physicsOffset = (shape.position * bodyScale).length();
-        const bool suspiciousSingleShapeOffset = bodyRef.numShapes == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
+        const bool suspiciousSingleShapeOffset = bodyRef.numColliders == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
 
         ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
@@ -11121,17 +11121,17 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
             for (Entity entity : entities){
-                if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                    if (s >= bodyComp->numShapes){
+                if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                    if (s >= bodyComp->numColliders){
                         continue;
                     }
 
-                    for (size_t i = s + 1; i < bodyComp->numShapes; i++){
-                        multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(i - 1) + "]", bodyComp->shapes[i]);
+                    for (size_t i = s + 1; i < bodyComp->numColliders; i++){
+                        multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i - 1) + "]", bodyComp->colliders[i]);
                     }
 
-                    multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, "shapes[" + std::to_string(bodyComp->numShapes - 1) + "]", Shape3D());
-                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numShapes", bodyComp->numShapes - 1);
+                    multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(bodyComp->numColliders - 1) + "]", Collider3D());
+                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", bodyComp->numColliders - 1);
                 }
             }
 
@@ -11142,9 +11142,9 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         }
         ImGui::PopID();
 
-        std::string shapeKey = "shapes[" + std::to_string(s) + "]";
+        std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
-        beginTable(cpType, getLabelSize("Bottom Radius"), "body3d_shape");
+        beginTable(cpType, getLabelSize("Bottom Radius"), "rigidbody_collider");
 
         PropertyData shapeTypeProp = Catalog::getProperty(sceneProject->scene, entities[0], cpType, shapeKey + ".type");
         int* shapeTypeDef = static_cast<int*>(shapeTypeProp.def);
@@ -11163,8 +11163,8 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         }
 
         int shapeTypeItemCurrent = 0;
-        for (size_t i = 0; i < entriesShape3DType.size(); ++i) {
-            if (entriesShape3DType[i].value == shapeTypeValue) {
+        for (size_t i = 0; i < entriesCollider3DType.size(); ++i) {
+            if (entriesCollider3DType[i].value == shapeTypeValue) {
                 shapeTypeItemCurrent = static_cast<int>(i);
                 break;
             }
@@ -11173,8 +11173,8 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         int shapeTypeItemDefault = shapeTypeItemCurrent;
         bool shapeTypeDefChanged = false;
         if (shapeTypeDef){
-            for (size_t i = 0; i < entriesShape3DType.size(); ++i) {
-                if (entriesShape3DType[i].value == *shapeTypeDef) {
+            for (size_t i = 0; i < entriesCollider3DType.size(); ++i) {
+                if (entriesCollider3DType[i].value == *shapeTypeDef) {
                     shapeTypeItemDefault = static_cast<int>(i);
                     break;
                 }
@@ -11184,19 +11184,19 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
 
         if (propertyHeader("Type", -1, shapeTypeDefChanged, false)){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-            Shape3DType resetType = static_cast<Shape3DType>(entriesShape3DType[shapeTypeItemDefault].value);
+            Collider3DType resetType = static_cast<Collider3DType>(entriesCollider3DType[shapeTypeItemDefault].value);
 
             for (Entity entity : entities){
-                if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                    if (s >= bodyComp->numShapes) continue;
+                if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                    if (s >= bodyComp->numColliders) continue;
 
                     multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".type", (int)resetType);
 
-                    Shape3DSource normalizedSource = normalizeShape3DSource(resetType, bodyComp->shapes[s].source);
-                    if (normalizedSource != bodyComp->shapes[s].source){
+                    Collider3DSource normalizedSource = normalizeCollider3DSource(resetType, bodyComp->colliders[s].source);
+                    if (normalizedSource != bodyComp->colliders[s].source){
                         multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".source", (int)normalizedSource);
                     }
-                    if (bodyComp->shapes[s].sourceEntity == NULL_ENTITY && normalizedSource != Shape3DSource::NONE){
+                    if (bodyComp->colliders[s].sourceEntity == NULL_ENTITY && normalizedSource != Collider3DSource::NONE){
                         multiCmd->addPropertyCmd<Entity>(project, sceneProject->id, entity, cpType, shapeKey + ".sourceEntity", entity);
                     }
                 }
@@ -11207,27 +11207,27 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         }
 
         std::vector<const char*> shapeTypeNames;
-        for (const auto& entry : entriesShape3DType) {
+        for (const auto& entry : entriesCollider3DType) {
             shapeTypeNames.push_back(entry.name);
         }
 
         if (shapeTypeMixed)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         if (ImGui::Combo(("##combo_" + shapeKey + ".type").c_str(), &shapeTypeItemCurrent, shapeTypeNames.data(), static_cast<int>(shapeTypeNames.size()))) {
-            Shape3DType newShapeType = static_cast<Shape3DType>(entriesShape3DType[shapeTypeItemCurrent].value);
+            Collider3DType newShapeType = static_cast<Collider3DType>(entriesCollider3DType[shapeTypeItemCurrent].value);
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
             for (Entity entity : entities){
-                if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                    if (s >= bodyComp->numShapes) continue;
+                if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                    if (s >= bodyComp->numColliders) continue;
 
                     multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".type", (int)newShapeType);
 
-                    Shape3DSource normalizedSource = normalizeShape3DSource(newShapeType, bodyComp->shapes[s].source);
-                    if (normalizedSource != bodyComp->shapes[s].source){
+                    Collider3DSource normalizedSource = normalizeCollider3DSource(newShapeType, bodyComp->colliders[s].source);
+                    if (normalizedSource != bodyComp->colliders[s].source){
                         multiCmd->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, shapeKey + ".source", (int)normalizedSource);
                     }
-                    if (bodyComp->shapes[s].sourceEntity == NULL_ENTITY && normalizedSource != Shape3DSource::NONE){
+                    if (bodyComp->colliders[s].sourceEntity == NULL_ENTITY && normalizedSource != Collider3DSource::NONE){
                         multiCmd->addPropertyCmd<Entity>(project, sceneProject->id, entity, cpType, shapeKey + ".sourceEntity", entity);
                     }
                 }
@@ -11239,9 +11239,9 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         if (shapeTypeMixed)
             ImGui::PopStyleColor();
 
-        Shape3DType shapeTypeUI = sceneProject->scene->getComponent<Body3DComponent>(entities[0]).shapes[s].type;
-        Shape3DSource shapeSourceUI = sceneProject->scene->getComponent<Body3DComponent>(entities[0]).shapes[s].source;
-        Shape3DSource normalizedSourceUI = normalizeShape3DSource(shapeTypeUI, shapeSourceUI);
+        Collider3DType shapeTypeUI = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]).colliders[s].type;
+        Collider3DSource shapeSourceUI = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]).colliders[s].source;
+        Collider3DSource normalizedSourceUI = normalizeCollider3DSource(shapeTypeUI, shapeSourceUI);
 
         propertyRow(RowPropertyType::Vector3, cpType, shapeKey + ".position", "Position", sceneProject, entities, settingsShapeValue);
 
@@ -11260,8 +11260,8 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
                 for (Entity entity : entities){
-                    if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                        if (s >= bodyComp->numShapes){
+                    if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                        if (s >= bodyComp->numColliders){
                             continue;
                         }
 
@@ -11276,35 +11276,35 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
 
         propertyRow(RowPropertyType::Quat, cpType, shapeKey + ".rotation", "Rotation", sceneProject, entities, settingsShapeValue);
 
-        if (shape.type == Shape3DType::BOX){
+        if (shape.type == Collider3DType::BOX){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".width", "Width", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".height", "Height", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".depth", "Depth", sceneProject, entities, settingsShapeValue);
-        }else if (shape.type == Shape3DType::SPHERE){
+        }else if (shape.type == Collider3DType::SPHERE){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsShapeValue);
-        }else if (shape.type == Shape3DType::CAPSULE || shape.type == Shape3DType::CYLINDER){
+        }else if (shape.type == Collider3DType::CAPSULE || shape.type == Collider3DType::CYLINDER){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsShapeValue);
-        }else if (shape.type == Shape3DType::TAPERED_CAPSULE){
+        }else if (shape.type == Collider3DType::TAPERED_CAPSULE){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".halfHeight", "Half Height", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".topRadius", "Top Radius", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".bottomRadius", "Bottom Radius", sceneProject, entities, settingsShapeValue);
         }
 
-        if (shapeTypeUI == Shape3DType::CONVEX_HULL){
+        if (shapeTypeUI == Collider3DType::CONVEX_HULL){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceConvexHull);
-            if (normalizedSourceUI == Shape3DSource::ENTITY_MESH){
+            if (normalizedSourceUI == Collider3DSource::ENTITY_MESH){
                 propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
-            }else if (normalizedSourceUI == Shape3DSource::RAW_VERTICES){
+            }else if (normalizedSourceUI == Collider3DSource::RAW_VERTICES){
                 propertyHeader("Vertices");
                 ImGui::Text("%d", shape.numVertices);
                 ImGui::SameLine();
                 if (ImGui::Button(("Add Vertex##convex_" + std::to_string(s)).c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
-                        if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                            if (s >= bodyComp->numShapes) continue;
-                            Shape3D shapeValue = bodyComp->shapes[s];
+                        if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                            if (s >= bodyComp->numColliders) continue;
+                            Collider3D shapeValue = bodyComp->colliders[s];
                             const uint16_t oldCount = shapeValue.numVertices;
                             if (oldCount >= 2){
                                 shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
@@ -11314,7 +11314,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                                 shapeValue.vertices[oldCount] = Vector3::ZERO;
                             }
                             shapeValue.numVertices = oldCount + 1;
-                            multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                            multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
                     multiCmd->setNoMerge();
@@ -11341,15 +11341,15 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                     if (ImGui::Button(removeVertexId.c_str())){
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
-                            if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                                if (s >= bodyComp->numShapes) continue;
-                                Shape3D shapeValue = bodyComp->shapes[s];
+                            if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                                if (s >= bodyComp->numColliders) continue;
+                                Collider3D shapeValue = bodyComp->colliders[s];
                                 if (v >= shapeValue.numVertices) continue;
                                 for (int vi = v; vi < shapeValue.numVertices - 1; vi++){
                                     shapeValue.vertices[vi] = shapeValue.vertices[vi + 1];
                                 }
                                 shapeValue.numVertices--;
-                                multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
                         multiCmd->setNoMerge();
@@ -11362,11 +11362,11 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                     }
                 }
             }
-        }else if (shapeTypeUI == Shape3DType::MESH){
+        }else if (shapeTypeUI == Collider3DType::MESH){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceMesh);
-            if (normalizedSourceUI == Shape3DSource::ENTITY_MESH){
+            if (normalizedSourceUI == Collider3DSource::ENTITY_MESH){
                 propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
-            }else if (normalizedSourceUI == Shape3DSource::RAW_MESH){
+            }else if (normalizedSourceUI == Collider3DSource::RAW_MESH){
                 // Vertices
                 propertyHeader("Vertices");
                 ImGui::Text("%d", shape.numVertices);
@@ -11374,9 +11374,9 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                 if (ImGui::Button(("Add Vertex##mesh_" + std::to_string(s)).c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
-                        if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                            if (s >= bodyComp->numShapes) continue;
-                            Shape3D shapeValue = bodyComp->shapes[s];
+                        if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                            if (s >= bodyComp->numColliders) continue;
+                            Collider3D shapeValue = bodyComp->colliders[s];
                             const uint16_t oldCount = shapeValue.numVertices;
                             if (oldCount >= 2){
                                 shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
@@ -11386,7 +11386,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                                 shapeValue.vertices[oldCount] = Vector3::ZERO;
                             }
                             shapeValue.numVertices = oldCount + 1;
-                            multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                            multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
                     multiCmd->setNoMerge();
@@ -11413,15 +11413,15 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                     if (ImGui::Button(removeVertexId.c_str())){
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
-                            if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                                if (s >= bodyComp->numShapes) continue;
-                                Shape3D shapeValue = bodyComp->shapes[s];
+                            if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                                if (s >= bodyComp->numColliders) continue;
+                                Collider3D shapeValue = bodyComp->colliders[s];
                                 if (v >= shapeValue.numVertices) continue;
                                 for (int vi = v; vi < shapeValue.numVertices - 1; vi++){
                                     shapeValue.vertices[vi] = shapeValue.vertices[vi + 1];
                                 }
                                 shapeValue.numVertices--;
-                                multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
                         multiCmd->setNoMerge();
@@ -11442,15 +11442,15 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                 if (ImGui::Button(("Add Triangle##mesh_tri_" + std::to_string(s)).c_str())){
                     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                     for (Entity entity : entities){
-                        if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                            if (s >= bodyComp->numShapes) continue;
-                            Shape3D shapeValue = bodyComp->shapes[s];
+                        if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                            if (s >= bodyComp->numColliders) continue;
+                            Collider3D shapeValue = bodyComp->colliders[s];
                             const uint16_t idx = shapeValue.numIndices;
                             shapeValue.indices[idx] = 0;
                             shapeValue.indices[idx + 1] = (shapeValue.numVertices > 1) ? (uint16_t)1 : (uint16_t)0;
                             shapeValue.indices[idx + 2] = (shapeValue.numVertices > 2) ? (uint16_t)2 : (uint16_t)0;
                             shapeValue.numIndices = idx + 3;
-                            multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                            multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                         }
                     }
                     multiCmd->setNoMerge();
@@ -11472,14 +11472,14 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                         }
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
-                            if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                                if (s >= bodyComp->numShapes) continue;
-                                Shape3D shapeValue = bodyComp->shapes[s];
+                            if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                                if (s >= bodyComp->numColliders) continue;
+                                Collider3D shapeValue = bodyComp->colliders[s];
                                 if (baseIdx + 2 >= shapeValue.numIndices) continue;
                                 shapeValue.indices[baseIdx] = (uint16_t)triIndices[0];
                                 shapeValue.indices[baseIdx + 1] = (uint16_t)triIndices[1];
                                 shapeValue.indices[baseIdx + 2] = (uint16_t)triIndices[2];
-                                multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
                         multiCmd->setNoMerge();
@@ -11493,15 +11493,15 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                     if (ImGui::Button(removeTriId.c_str())){
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         for (Entity entity : entities){
-                            if (Body3DComponent* bodyComp = sceneProject->scene->findComponent<Body3DComponent>(entity)){
-                                if (s >= bodyComp->numShapes) continue;
-                                Shape3D shapeValue = bodyComp->shapes[s];
+                            if (RigidbodyComponent* bodyComp = sceneProject->scene->findComponent<RigidbodyComponent>(entity)){
+                                if (s >= bodyComp->numColliders) continue;
+                                Collider3D shapeValue = bodyComp->colliders[s];
                                 if (baseIdx + 2 >= shapeValue.numIndices) continue;
                                 for (int ii = baseIdx; ii < shapeValue.numIndices - 3; ii++){
                                     shapeValue.indices[ii] = shapeValue.indices[ii + 3];
                                 }
                                 shapeValue.numIndices -= 3;
-                                multiCmd->addPropertyCmd<Shape3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                                multiCmd->addPropertyCmd<Collider3D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
                             }
                         }
                         multiCmd->setNoMerge();
@@ -11514,9 +11514,9 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
                     }
                 }
             }
-        }else if (shapeTypeUI == Shape3DType::HEIGHTFIELD){
+        }else if (shapeTypeUI == Collider3DType::HEIGHTFIELD){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceHeightfield);
-            if (normalizedSourceUI == Shape3DSource::ENTITY_HEIGHTFIELD){
+            if (normalizedSourceUI == Collider3DSource::ENTITY_HEIGHTFIELD){
                 propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }
             propertyRow(RowPropertyType::UInt, cpType, shapeKey + ".samplesSize", "Samples Size", sceneProject, entities, settingsShapeValue);
@@ -11527,7 +11527,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
     }
 }
 
-void editor::Properties::drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint2DComponent& joint = sceneProject->scene->getComponent<Joint2DComponent>(entities[0]);
 
     auto markJoint2DDirty = [sceneProject, entities](){
@@ -11544,7 +11544,7 @@ void editor::Properties::drawJoint2DComponent(ComponentType cpType, SceneProject
 
     RowSettings settingsJointValue;
     settingsJointValue.onValueChanged = markJoint2DDirty;
-    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<Body2DComponent>());
+    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<Rigidbody2DComponent>());
 
     beginTable(cpType, getLabelSize("Joint Type"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
@@ -11588,7 +11588,7 @@ void editor::Properties::drawJoint2DComponent(ComponentType cpType, SceneProject
     endTable();
 }
 
-void editor::Properties::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint3DComponent& joint = sceneProject->scene->getComponent<Joint3DComponent>(entities[0]);
 
     auto markJoint3DDirty = [sceneProject, entities](){
@@ -11605,7 +11605,7 @@ void editor::Properties::drawJoint3DComponent(ComponentType cpType, SceneProject
 
     RowSettings settingsJointValue;
     settingsJointValue.onValueChanged = markJoint3DDirty;
-    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<Body3DComponent>());
+    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<RigidbodyComponent>());
 
     beginTable(cpType, getLabelSize("Joint Type"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
@@ -11797,7 +11797,7 @@ void editor::Properties::drawJoint3DComponent(ComponentType cpType, SceneProject
     endTable();
 }
 
-void editor::Properties::startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject) {
+void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject) {
     if (actionPreviewing) return;
 
     ActionComponent* actionComp = scene->findComponent<ActionComponent>(entity);
@@ -11850,7 +11850,7 @@ void editor::Properties::startActionPreview(Entity entity, Scene* scene, ScenePr
     actionPreviewing = true;
 }
 
-void editor::Properties::stopActionPreviewIfActive() {
+void editor::InspectorWindow::stopActionPreviewIfActive() {
     if (!actionPreviewing) {
         return;
     }
@@ -11868,11 +11868,11 @@ void editor::Properties::stopActionPreviewIfActive() {
     actionPreviewSceneId = 0;
 }
 
-void editor::Properties::updateParticlePreviewSnapshot(YAML::Node& components, const ParticlesComponent& particles) {
-    const std::string componentName = Catalog::getComponentName(ComponentType::ParticlesComponent, true);
+void editor::InspectorWindow::updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles) {
+    const std::string componentName = Catalog::getComponentName(ComponentType::ParticleSystemComponent, true);
 
     // Full re-encode so any future fields are automatically preserved.
-    YAML::Node encoded = Stream::encodeParticlesComponent(particles);
+    YAML::Node encoded = Stream::encodeParticleSystemComponent(particles);
 
     // "emitter" is mutated by the runtime (forced true on actionStart, forced false when a
     // non-looping system runs out). Restoring the live runtime value would silently switch
@@ -11885,7 +11885,7 @@ void editor::Properties::updateParticlePreviewSnapshot(YAML::Node& components, c
     components[componentName] = encoded;
 }
 
-void editor::Properties::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
+void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
     // Update snapshots with current user-editable config values before restoring
@@ -11893,25 +11893,25 @@ void editor::Properties::stopActionPreview(Scene* scene, SceneProject* sceneProj
         if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
             continue;
         }
-        if (auto* comp = scene->findComponent<TimedActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::TimedActionComponent, true)] = Stream::encodeTimedActionComponent(*comp);
+        if (auto* comp = scene->findComponent<TweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::TweenComponent, true)] = Stream::encodeTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<PositionActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::PositionActionComponent, true)] = Stream::encodePositionActionComponent(*comp);
+        if (auto* comp = scene->findComponent<PositionTweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::PositionTweenComponent, true)] = Stream::encodePositionTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<RotationActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::RotationActionComponent, true)] = Stream::encodeRotationActionComponent(*comp);
+        if (auto* comp = scene->findComponent<RotationTweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::RotationTweenComponent, true)] = Stream::encodeRotationTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<ScaleActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ScaleActionComponent, true)] = Stream::encodeScaleActionComponent(*comp);
+        if (auto* comp = scene->findComponent<ScaleTweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::ScaleTweenComponent, true)] = Stream::encodeScaleTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<ColorActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ColorActionComponent, true)] = Stream::encodeColorActionComponent(*comp);
+        if (auto* comp = scene->findComponent<ColorTweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::ColorTweenComponent, true)] = Stream::encodeColorTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<AlphaActionComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::AlphaActionComponent, true)] = Stream::encodeAlphaActionComponent(*comp);
+        if (auto* comp = scene->findComponent<AlphaTweenComponent>(state.entity)) {
+            state.components[Catalog::getComponentName(ComponentType::AlphaTweenComponent, true)] = Stream::encodeAlphaTweenComponent(*comp);
         }
-        if (auto* comp = scene->findComponent<ParticlesComponent>(state.entity)) {
+        if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
             updateParticlePreviewSnapshot(state.components, *comp);
         }
     }
@@ -11938,7 +11938,7 @@ void editor::Properties::stopActionPreview(Scene* scene, SceneProject* sceneProj
     }
 }
 
-void editor::Properties::drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsState;
     settingsState.enumEntries = &entriesActionState;
 
@@ -12149,7 +12149,7 @@ void editor::Properties::drawActionComponent(ComponentType cpType, SceneProject*
     ImGui::EndDisabled();
 }
 
-void editor::Properties::drawTimedActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Duration"));
     propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
@@ -12157,7 +12157,7 @@ void editor::Properties::drawTimedActionComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::drawPositionActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
     beginTable(cpType, getLabelSize("Start position"));
@@ -12225,7 +12225,7 @@ void editor::Properties::drawPositionActionComponent(ComponentType cpType, Scene
     endTable();
 }
 
-void editor::Properties::drawRotationActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
     beginTable(cpType, getLabelSize("Start rotation"));
@@ -12291,7 +12291,7 @@ void editor::Properties::drawRotationActionComponent(ComponentType cpType, Scene
     endTable();
 }
 
-void editor::Properties::drawScaleActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawScaleTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
     beginTable(cpType, getLabelSize("Start scale"));
@@ -12356,7 +12356,7 @@ void editor::Properties::drawScaleActionComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::drawColorActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawColorTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
     beginTable(cpType, getLabelSize("Start color"));
@@ -12440,7 +12440,7 @@ void editor::Properties::drawColorActionComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::drawAlphaActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawAlphaTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
     beginTable(cpType, getLabelSize("Start alpha"));
@@ -12523,7 +12523,7 @@ void editor::Properties::drawAlphaActionComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::drawSpriteAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Interval index"));
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
     propertyRow(RowPropertyType::Label, cpType, "frameIndex", "Frame index", sceneProject, entities);
@@ -12796,7 +12796,7 @@ void editor::Properties::drawSpriteAnimationComponent(ComponentType cpType, Scen
     }
 }
 
-void editor::Properties::drawAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Owned actions"));
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
     propertyRow(RowPropertyType::Float, cpType, "duration", "Duration", sceneProject, entities);
@@ -13002,14 +13002,14 @@ void editor::Properties::drawAnimationComponent(ComponentType cpType, SceneProje
     }
 }
 
-void editor::Properties::drawBundleComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawPrefabComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Path"));
     propertyRow(RowPropertyType::Label, cpType, "name", "Name", sceneProject, entities);
     propertyRow(RowPropertyType::Label, cpType, "path", "Path", sceneProject, entities);
     endTable();
 }
 
-void editor::Properties::drawBoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawBoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsModel;
     settingsModel.entityFilter.set(sceneProject->scene->getComponentId<ModelComponent>());
     beginTable(cpType, getLabelSize("Bind Rotation"));
@@ -13021,7 +13021,7 @@ void editor::Properties::drawBoneComponent(ComponentType cpType, SceneProject* s
     endTable();
 }
 
-void editor::Properties::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     KeyframeTracksComponent& comp = sceneProject->scene->getComponent<KeyframeTracksComponent>(entities[0]);
 
     beginTable(cpType, getLabelSize("Interpolation"));
@@ -13246,7 +13246,7 @@ void editor::Properties::drawKeyframeTracksComponent(ComponentType cpType, Scene
 }
 
 template<typename Component, typename ValueType>
-void editor::Properties::drawTrackValues(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, RowPropertyType rowType, const ValueType& defaultNewValue, const char* idPrefix, std::vector<ValueType> Component::*memberPtr, const char* propertyName,
+void editor::InspectorWindow::drawTrackValues(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, RowPropertyType rowType, const ValueType& defaultNewValue, const char* idPrefix, std::vector<ValueType> Component::*memberPtr, const char* propertyName,
                                          const std::function<void(MultiPropertyCmd*, Entity, Component*, size_t)>& onRemoveValue,
                                          const std::function<void(MultiPropertyCmd*, Entity, Component*)>& onAddValue){
     Component& comp = sceneProject->scene->getComponent<Component>(entities[0]);
@@ -13398,22 +13398,22 @@ static auto tangentCallbacks(editor::Project* project, editor::SceneProject* sce
     return std::make_pair(onRemove, onAdd);
 }
 
-void editor::Properties::drawTranslateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawTranslateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     auto [onRemove, onAdd] = tangentCallbacks<TranslateTracksComponent>(project, sceneProject, cpType, Vector3::ZERO);
     drawTrackValues<TranslateTracksComponent, Vector3>(cpType, sceneProject, entities, RowPropertyType::Vector3, Vector3::ZERO, "translate", &TranslateTracksComponent::values, "values", onRemove, onAdd);
 }
 
-void editor::Properties::drawRotateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawRotateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     auto [onRemove, onAdd] = tangentCallbacks<RotateTracksComponent>(project, sceneProject, cpType, Quaternion(0.0f, 0.0f, 0.0f, 0.0f));
     drawTrackValues<RotateTracksComponent, Quaternion>(cpType, sceneProject, entities, RowPropertyType::Quat, Quaternion::IDENTITY, "rotate", &RotateTracksComponent::values, "values", onRemove, onAdd);
 }
 
-void editor::Properties::drawScaleTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawScaleTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     auto [onRemove, onAdd] = tangentCallbacks<ScaleTracksComponent>(project, sceneProject, cpType, Vector3::ZERO);
     drawTrackValues<ScaleTracksComponent, Vector3>(cpType, sceneProject, entities, RowPropertyType::Vector3, Vector3(1.0f, 1.0f, 1.0f), "scale", &ScaleTracksComponent::values, "values", onRemove, onAdd);
 }
 
-void editor::Properties::drawMorphTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawMorphTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     MorphTracksComponent& comp = sceneProject->scene->getComponent<MorphTracksComponent>(entities[0]);
 
     float firstColSize = getLabelSize("Value 000");
@@ -13533,7 +13533,7 @@ void editor::Properties::drawMorphTracksComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
-void editor::Properties::show(){
+void editor::InspectorWindow::show(){
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
@@ -13548,7 +13548,7 @@ void editor::Properties::show(){
 
     bool wasOpen = windowOpen;
 
-    if (!ImGui::Begin(Properties::WINDOW_NAME, &windowOpen)) {
+    if (!ImGui::Begin(InspectorWindow::WINDOW_NAME, &windowOpen)) {
         ImGui::End();
         if (wasOpen && !windowOpen) {
             setOpen(false);
@@ -13586,7 +13586,7 @@ void editor::Properties::show(){
     if (entities.size() > 0){
 
         // to change component view order, need change ComponentType
-        std::filesystem::path bundlePath;
+        std::filesystem::path prefabPath;
         std::string names;
         bool isFirstEntity = true;
         for (Entity& entity : entities){
@@ -13596,11 +13596,11 @@ void editor::Properties::show(){
                 std::sort(newComponents.begin(), newComponents.end());
             }
 
-            std::filesystem::path newBundlePath = project->findEntityBundlePathFor(sceneProject->id, entity);
+            std::filesystem::path newPrefabPath = project->findPrefabPathFor(sceneProject->id, entity);
 
             if (isFirstEntity) {
                 components = newComponents;
-                bundlePath = newBundlePath;
+                prefabPath = newPrefabPath;
                 isFirstEntity = false;
             } else {
                 std::vector<ComponentType> intersection;
@@ -13613,8 +13613,8 @@ void editor::Properties::show(){
 
                 components = std::move(intersection);
 
-                if (bundlePath != newBundlePath) {
-                    bundlePath.clear(); // Different bundles, so no bundle
+                if (prefabPath != newPrefabPath) {
+                    prefabPath.clear(); // Different prefabs, so no prefab
                 }
 
                 names += ", ";
@@ -13634,16 +13634,16 @@ void editor::Properties::show(){
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
 
-        bool isBundle = !bundlePath.empty();
+        bool isPrefab = !prefabPath.empty();
 
-        // Root entity of a bundle is always local, not part of the bundle template
-        if (isBundle) {
-            EntityBundle* bundle = project->getEntityBundle(bundlePath);
-            if (bundle) {
+        // Root entity of a prefab is always local, not part of the prefab template
+        if (isPrefab) {
+            Prefab* prefab = project->getPrefab(prefabPath);
+            if (prefab) {
                 for (Entity& entity : entities) {
-                    Entity root = bundle->getRootEntity(sceneProject->id, entity);
-                    if (root == entity && bundle->getRegistryEntity(sceneProject->id, entity) == NULL_ENTITY) {
-                        isBundle = false;
+                    Entity root = prefab->getRootEntity(sceneProject->id, entity);
+                    if (root == entity && prefab->getRegistryEntity(sceneProject->id, entity) == NULL_ENTITY) {
+                        isPrefab = false;
                         break;
                     }
                 }
@@ -13652,25 +13652,25 @@ void editor::Properties::show(){
 
         for (ComponentType& cpType : components){
 
-            // Check if this component is overridden for bundle entities
-            bool isBundleOverridden = false;
-            EntityBundle* entityBundle = nullptr;
-            if (isBundle) {
-                entityBundle = project->getEntityBundle(bundlePath);
-                if (entityBundle) {
+            // Check if this component is overridden for prefab entities
+            bool isPrefabOverridden = false;
+            Prefab* prefabAsset = nullptr;
+            if (isPrefab) {
+                prefabAsset = project->getPrefab(prefabPath);
+                if (prefabAsset) {
                     for (Entity& entity : entities) {
-                        if (entityBundle->hasComponentOverride(sceneProject->id, entity, cpType)) {
-                            isBundleOverridden = true;
+                        if (prefabAsset->hasComponentOverride(sceneProject->id, entity, cpType)) {
+                            isPrefabOverridden = true;
                             break;
                         }
-                        isBundleOverridden = false;
+                        isPrefabOverridden = false;
                     }
                 }
             }
 
             // Context menu and body disabled for a runtime selection
             const bool compReadOnly = isRuntimeSelection;
-            bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isBundle, isBundleOverridden, compReadOnly);
+            bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isPrefab, isPrefabOverridden, compReadOnly);
 
             if (headerOpen){
                 // Disable non-script components while playing
@@ -13690,8 +13690,8 @@ void editor::Properties::show(){
                     drawScrollbarComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ProgressbarComponent){
                     drawProgressbarComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TextEditComponent){
-                    drawTextEditComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::InputFieldComponent){
+                    drawInputFieldComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PanelComponent){
                     drawPanelComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PolygonComponent){
@@ -13700,10 +13700,10 @@ void editor::Properties::show(){
                     drawMeshPolygonComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::TextComponent){
                     drawTextComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::UILayoutComponent){
-                    drawUILayoutComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::UIContainerComponent){
-                    drawUIContainerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::RectTransformComponent){
+                    drawRectTransformComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LayoutGroupComponent){
+                    drawLayoutGroupComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ImageComponent){
                     drawImageComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::SpriteComponent){
@@ -13716,8 +13716,8 @@ void editor::Properties::show(){
                     drawLightComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Light2DComponent){
                     drawLight2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Occluder2DComponent){
-                    drawOccluder2DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::ShadowCaster2DComponent){
+                    drawShadowCaster2DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::FogComponent){
                     drawFogComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::MirrorComponent){
@@ -13726,40 +13726,40 @@ void editor::Properties::show(){
                     drawReflectionProbeComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::SoundComponent){
+                }else if (cpType == ComponentType::AudioSourceComponent){
                     drawAudioComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::SkyComponent){
-                    drawSkyComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SkyboxComponent){
+                    drawSkyboxComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ScriptComponent){
                     drawScriptComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Body2DComponent){
-                    drawBody2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Body3DComponent){
-                    drawBody3DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::Rigidbody2DComponent){
+                    drawRigidbody2DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::RigidbodyComponent){
+                    drawRigidbodyComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint2DComponent){
                     drawJoint2DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint3DComponent){
                     drawJoint3DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ActionComponent){
                     drawActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TimedActionComponent){
-                    drawTimedActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PositionActionComponent){
-                    drawPositionActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::RotationActionComponent){
-                    drawRotationActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ScaleActionComponent){
-                    drawScaleActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ColorActionComponent){
-                    drawColorActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::AlphaActionComponent){
-                    drawAlphaActionComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TweenComponent){
+                    drawTweenComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::PositionTweenComponent){
+                    drawPositionTweenComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::RotationTweenComponent){
+                    drawRotationTweenComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::ScaleTweenComponent){
+                    drawScaleTweenComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::ColorTweenComponent){
+                    drawColorTweenComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::AlphaTweenComponent){
+                    drawAlphaTweenComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::SpriteAnimationComponent){
                     drawSpriteAnimationComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AnimationComponent){
                     drawAnimationComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::BundleComponent){
-                    drawBundleComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::PrefabComponent){
+                    drawPrefabComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::BoneComponent){
                     drawBoneComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::KeyframeTracksComponent){
@@ -13772,10 +13772,10 @@ void editor::Properties::show(){
                     drawScaleTracksComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::MorphTracksComponent){
                     drawMorphTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ParticlesComponent){
-                    drawParticlesComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::LinesComponent){
-                    drawLinesComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::ParticleSystemComponent){
+                    drawParticleSystemComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LineRendererComponent){
+                    drawLineRendererComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PointsComponent){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){

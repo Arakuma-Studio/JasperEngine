@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "OutputWindow.h"
+#include "ConsoleWindow.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
@@ -95,7 +95,7 @@ std::string countLabel(size_t count) {
 
 }
 
-OutputWindow::OutputWindow() {
+ConsoleWindow::ConsoleWindow() {
     storedLogLineCount = 0;
     nextLogId = 1;
     needsRebuild = true;
@@ -122,7 +122,7 @@ OutputWindow::OutputWindow() {
     clear();
 }
 
-void OutputWindow::setOpen(bool open) {
+void ConsoleWindow::setOpen(bool open) {
     if (open) {
         if (!windowOpen) {
             focusRequested = true;
@@ -136,16 +136,16 @@ void OutputWindow::setOpen(bool open) {
     isWindowVisible = false;
 }
 
-bool OutputWindow::isOpen() const {
+bool ConsoleWindow::isOpen() const {
     return windowOpen;
 }
 
-void OutputWindow::requestFocus() {
+void ConsoleWindow::requestFocus() {
     windowOpen = true;
     focusRequested = true;
 }
 
-void OutputWindow::clear() {
+void ConsoleWindow::clear() {
     logs.clear();
     rows.clear();
     storedLogLineCount = 0;
@@ -159,7 +159,7 @@ void OutputWindow::clear() {
     autoScroll = true;
 }
 
-OutputWindow::Severity OutputWindow::severityOf(LogType type) {
+ConsoleWindow::Severity ConsoleWindow::severityOf(LogType type) {
     switch (type) {
         case LogType::Warning: return SEVERITY_WARNING;
         case LogType::Error:   return SEVERITY_ERROR;
@@ -167,7 +167,7 @@ OutputWindow::Severity OutputWindow::severityOf(LogType type) {
     }
 }
 
-size_t OutputWindow::countRawLines(const std::string& message) {
+size_t ConsoleWindow::countRawLines(const std::string& message) {
     size_t lines = 1;
     for (char c : message) {
         if (c == '\n') {
@@ -177,7 +177,7 @@ size_t OutputWindow::countRawLines(const std::string& message) {
     return lines;
 }
 
-size_t OutputWindow::trimLeadingRawLines(std::string& message, size_t linesToTrim) {
+size_t ConsoleWindow::trimLeadingRawLines(std::string& message, size_t linesToTrim) {
     size_t removed = 0;
     size_t eraseEnd = 0;
 
@@ -195,7 +195,7 @@ size_t OutputWindow::trimLeadingRawLines(std::string& message, size_t linesToTri
     return removed;
 }
 
-bool OutputWindow::enforceStoredLineLimit() {
+bool ConsoleWindow::enforceStoredLineLimit() {
     if (storedLogLineCount <= MAX_STORED_LOG_LINES) {
         return false;
     }
@@ -222,7 +222,7 @@ bool OutputWindow::enforceStoredLineLimit() {
     return true;
 }
 
-void OutputWindow::recountSeverities() {
+void ConsoleWindow::recountSeverities() {
     for (int i = 0; i < SEVERITY_COUNT; i++) {
         severityCounts[i] = 0;
     }
@@ -231,7 +231,7 @@ void OutputWindow::recountSeverities() {
     }
 }
 
-void OutputWindow::addLog(LogType type, const char* fmt, ...) {
+void ConsoleWindow::addLog(LogType type, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     char temp[4096];
@@ -241,7 +241,7 @@ void OutputWindow::addLog(LogType type, const char* fmt, ...) {
     addLog(type, std::string(temp));
 }
 
-void OutputWindow::addLog(LogType type, const std::string& message) {
+void ConsoleWindow::addLog(LogType type, const std::string& message) {
     LogData logEntry{type, message, getElapsedSeconds(), nextLogId++};
     logs.push_back(std::move(logEntry));
     storedLogLineCount += countRawLines(message);
@@ -257,7 +257,7 @@ void OutputWindow::addLog(LogType type, const std::string& message) {
     }
 }
 
-std::string OutputWindow::getRecentLogText(size_t maxEntries, bool onlyProblems) const {
+std::string ConsoleWindow::getRecentLogText(size_t maxEntries, bool onlyProblems) const {
     if (maxEntries == 0) return {};
 
     // Walk from the newest entry backwards, collecting up to maxEntries.
@@ -281,7 +281,7 @@ std::string OutputWindow::getRecentLogText(size_t maxEntries, bool onlyProblems)
     return out;
 }
 
-bool OutputWindow::getLatestLog(LogType& type, std::string& message) const {
+bool ConsoleWindow::getLatestLog(LogType& type, std::string& message) const {
     if (logs.empty()) {
         return false;
     }
@@ -290,7 +290,7 @@ bool OutputWindow::getLatestLog(LogType& type, std::string& message) const {
     return true;
 }
 
-bool OutputWindow::passTextFilter(const char* text) const {
+bool ConsoleWindow::passTextFilter(const char* text) const {
     if (!filter.IsActive())
         return true;
 
@@ -334,7 +334,7 @@ bool OutputWindow::passTextFilter(const char* text) const {
     return true;
 }
 
-void OutputWindow::rebuildRows() {
+void ConsoleWindow::rebuildRows() {
     rows.clear();
     // Collapse merges every identical message (same type and text) into the row
     // of its first occurrence, like Unity.
@@ -363,7 +363,7 @@ void OutputWindow::rebuildRows() {
     needsRebuild = false;
 }
 
-const LogData* OutputWindow::selectedLog() const {
+const LogData* ConsoleWindow::selectedLog() const {
     if (!hasSelection) return nullptr;
     for (auto it = logs.rbegin(); it != logs.rend(); ++it) {
         if (it->id == selectedLogId) return &(*it);
@@ -372,7 +372,7 @@ const LogData* OutputWindow::selectedLog() const {
     return nullptr;
 }
 
-void OutputWindow::copyAllToClipboard() const {
+void ConsoleWindow::copyAllToClipboard() const {
     std::string out;
     for (const Row& row : rows) {
         const LogData& log = logs[row.logIndex];
@@ -387,7 +387,7 @@ void OutputWindow::copyAllToClipboard() const {
     }
 }
 
-void OutputWindow::updatePlayState() {
+void ConsoleWindow::updatePlayState() {
     Project* project = Backend::getApp().getProject();
     const bool playing = project && project->isPlaySessionActive();
 
@@ -424,7 +424,7 @@ void OutputWindow::updatePlayState() {
     }
 }
 
-void OutputWindow::showToolbar() {
+void ConsoleWindow::showToolbar() {
     ImGuiStyle& style = ImGui::GetStyle();
     const float barPadY = Theme::dpi(2.0f);
     const float barPadX = Theme::dpi(4.0f);
@@ -527,7 +527,7 @@ void OutputWindow::showToolbar() {
     ImGui::Dummy(ImVec2(0.0f, 0.0f));
 }
 
-void OutputWindow::showList(float height) {
+void ConsoleWindow::showList(float height) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::BeginChild("##ConsoleList", ImVec2(0, height), ImGuiChildFlags_None, ImGuiWindowFlags_NoNav);
     ImGui::PopStyleVar();
@@ -683,7 +683,7 @@ void OutputWindow::showList(float height) {
     ImGui::EndChild();
 }
 
-void OutputWindow::showDetails() {
+void ConsoleWindow::showDetails() {
     const LogData* log = selectedLog();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::BeginChild("##ConsoleDetails", ImVec2(0, 0), ImGuiChildFlags_None);
@@ -703,7 +703,7 @@ void OutputWindow::showDetails() {
     ImGui::EndChild();
 }
 
-void OutputWindow::show() {
+void ConsoleWindow::show() {
     updatePlayState();
 
     if (!windowOpen) {
@@ -722,7 +722,7 @@ void OutputWindow::show() {
         App::pushTabNotificationStyle();
     }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    const bool visible = ImGui::Begin(OutputWindow::WINDOW_NAME, &windowOpen, hasNotification ? ImGuiWindowFlags_UnsavedDocument : 0);
+    const bool visible = ImGui::Begin(ConsoleWindow::WINDOW_NAME, &windowOpen, hasNotification ? ImGuiWindowFlags_UnsavedDocument : 0);
     ImGui::PopStyleVar();
     if (hasNotification) App::popTabNotificationStyle();
     if (!visible) {

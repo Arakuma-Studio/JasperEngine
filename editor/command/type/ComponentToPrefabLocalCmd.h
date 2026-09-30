@@ -9,7 +9,7 @@
 
 namespace jasperengine::editor {
 
-    class ComponentToBundleLocalCmd: public Command {
+    class ComponentToPrefabLocalCmd: public Command {
     private:
         Project* project;
         uint32_t sceneId;
@@ -19,7 +19,7 @@ namespace jasperengine::editor {
         bool wasModified;
 
     public:
-        ComponentToBundleLocalCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
+        ComponentToPrefabLocalCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
 
         bool execute() override;
         void undo() override;

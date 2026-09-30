@@ -30,12 +30,12 @@ bool editor::AddComponentCmd::execute() {
                 ProjectUtils::hasModelMeshChildrenWithoutRootGeometry(scene, entity)){
                 Out::warning(
                     "Instanced Mesh on '%s' will not render: this model stores its geometry in child mesh entities. "
-                    "Right-click the model in Structure and choose 'Merge static model'.",
+                    "Right-click the model in the Hierarchy and choose 'Merge static model'.",
                     scene->getEntityName(entity).c_str());
             }
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->addComponentToBundle(sceneId, entity, componentType, false);
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->addComponentToPrefab(sceneId, entity, componentType, false);
             }
         }
 
@@ -55,8 +55,8 @@ void editor::AddComponentCmd::undo() {
             // ownership configured later belongs to later commands and must not broaden undo.
             ProjectUtils::removeEntityComponent(scene, entity, componentType, sceneProject->entities);
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->removeComponentFromBundle(sceneId, entity, componentType, false, false);
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->removeComponentFromPrefab(sceneId, entity, componentType, false, false);
             }
         }
 

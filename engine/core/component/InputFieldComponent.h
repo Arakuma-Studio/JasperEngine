@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef TEXTEDIT_COMPONENT_H
-#define TEXTEDIT_COMPONENT_H
+#ifndef INPUT_FIELD_COMPONENT_H
+#define INPUT_FIELD_COMPONENT_H
 
 #include "util/FunctionSubscribe.h"
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API TextEditComponent{
+    struct JASPERENGINE_API InputFieldComponent{
         Entity text = NULL_ENTITY;
         Entity selection = NULL_ENTITY;
         Entity cursor = NULL_ENTITY;
@@ -33,9 +33,9 @@ namespace jasperengine{
         FunctionSubscribe<void()> onChange;
         FunctionSubscribe<void()> onSubmit;
 
-        bool needUpdateTextEdit = true;
+        bool needUpdateInputField = true;
     };
 
 }
 
-#endif //TEXTEDIT_COMPONENT_H
+#endif //INPUT_FIELD_COMPONENT_H

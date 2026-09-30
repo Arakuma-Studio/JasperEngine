@@ -52,10 +52,10 @@ Vector3 CollideShapeResult3D::getPenetrationAxis() const{
     return Vector3(collideShapeResult->mPenetrationAxis.GetX(), collideShapeResult->mPenetrationAxis.GetY(), collideShapeResult->mPenetrationAxis.GetZ());
 }
 
-size_t CollideShapeResult3D::getShapeIndex1() const{
+size_t CollideShapeResult3D::getColliderIndex1() const{
     return body1->GetShape()->GetSubShapeUserData(collideShapeResult->mSubShapeID1);
 }
 
-size_t CollideShapeResult3D::getShapeIndex2() const{
+size_t CollideShapeResult3D::getColliderIndex2() const{
     return body2->GetShape()->GetSubShapeUserData(collideShapeResult->mSubShapeID2);
 }

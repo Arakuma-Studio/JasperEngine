@@ -6,7 +6,7 @@
 
 #include "Image.h"
 #include "Text.h"
-#include "Container.h"
+#include "LayoutGroup.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Scrollbar: public Image{

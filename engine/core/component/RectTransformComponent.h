@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef UI_LAYOUT_COMPONENT_H
-#define UI_LAYOUT_COMPONENT_H
+#ifndef RECT_TRANSFORM_COMPONENT_H
+#define RECT_TRANSFORM_COMPONENT_H
 
 #include "util/FunctionSubscribe.h"
 #include "math/Rect.h"
@@ -32,7 +32,7 @@ namespace jasperengine{
         FULL_LAYOUT
     };
 
-    struct JASPERENGINE_API UILayoutComponent{
+    struct JASPERENGINE_API RectTransformComponent{
         // UI part
         unsigned int width = 0;
         unsigned int height = 0;
@@ -73,10 +73,10 @@ namespace jasperengine{
         return point - rotation * (scale * point);
     }
 
-    inline Vector3 getUIPivotShift(const UILayoutComponent& layout, const Quaternion& rotation, const Vector3& scale){
+    inline Vector3 getUIPivotShift(const RectTransformComponent& layout, const Quaternion& rotation, const Vector3& scale){
         return getUIPivotShift(layout.pivot, Vector2(layout.width, layout.height), rotation, scale);
     }
     
 }
 
-#endif //UI_LAYOUT_COMPONENT_H
+#endif //RECT_TRANSFORM_COMPONENT_H

@@ -59,11 +59,11 @@ float Contact3D::getPenetrationDepth() const{
     return contactManifold->mPenetrationDepth;
 }
 
-size_t Contact3D::getShapeIndex1() const{
+size_t Contact3D::getColliderIndex1() const{
     return body1->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID1);
 }
 
-size_t Contact3D::getShapeIndex2() const{
+size_t Contact3D::getColliderIndex2() const{
     return body2->GetShape()->GetSubShapeUserData(contactManifold->mSubShapeID2);
 }
 

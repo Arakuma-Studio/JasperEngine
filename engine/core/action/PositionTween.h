@@ -1,20 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef POSITIONACTION_H
-#define POSITIONACTION_H
+#ifndef POSITIONTWEEN_H
+#define POSITIONTWEEN_H
 
-#include "TimedAction.h"
+#include "Tween.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API PositionAction: public TimedAction{
+    class JASPERENGINE_API PositionTween: public Tween{
 
     public:
-        PositionAction(Scene* scene);
-        PositionAction(Scene* scene, Entity entity);
+        PositionTween(Scene* scene);
+        PositionTween(Scene* scene, Entity entity);
 
         void setAction(Vector3 startPosition, Vector3 endPosition, float duration, bool loop=false);
     };
 }
 
-#endif //POSITIONACTION_H
+#endif //POSITIONTWEEN_H

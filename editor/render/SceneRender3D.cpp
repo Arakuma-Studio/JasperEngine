@@ -248,7 +248,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     linesOffset = Vector2(0, 0);
     lastGridSpacing = 1.0f;
 
-    lines = new Lines(scene);
+    lines = new LineRenderer(scene);
 
     lightObjects.clear();
     cameraObjects.clear();
@@ -389,7 +389,7 @@ bool editor::SceneRender3D::instanciateLightObject(Entity entity){
     if (lightObjects.find(entity) == lightObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
         lightObjects[entity].icon = new Sprite(scene);
-        lightObjects[entity].lines = new Lines(scene);
+        lightObjects[entity].lines = new LineRenderer(scene);
 
         return true;
     }
@@ -401,7 +401,7 @@ bool editor::SceneRender3D::instanciateCameraObject(Entity entity){
     if (cameraObjects.find(entity) == cameraObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
         cameraObjects[entity].icon = new Sprite(scene);
-        cameraObjects[entity].lines = new Lines(scene);
+        cameraObjects[entity].lines = new LineRenderer(scene);
 
         return true;
     }
@@ -423,7 +423,7 @@ bool editor::SceneRender3D::instanciateSoundObject(Entity entity){
 bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
     if (bodyObjects.find(entity) == bodyObjects.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyObjects[entity].lines = new Lines(scene);
+        bodyObjects[entity].lines = new LineRenderer(scene);
 
         return true;
     }
@@ -434,7 +434,7 @@ bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
 bool editor::SceneRender3D::instanciateJointObject(Entity entity){
     if (jointLines.find(entity) == jointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = new Lines(scene);
+        jointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -445,7 +445,7 @@ bool editor::SceneRender3D::instanciateJointObject(Entity entity){
 bool editor::SceneRender3D::instanciateLinePointLines(Entity entity){
     if (linePointLines.find(entity) == linePointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = new Lines(scene);
+        linePointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -456,14 +456,14 @@ bool editor::SceneRender3D::instanciateLinePointLines(Entity entity){
 bool editor::SceneRender3D::instanciateReflectionProbeLines(Entity entity){
     if (reflectionProbeLines.find(entity) == reflectionProbeLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        reflectionProbeLines[entity] = new Lines(scene);
+        reflectionProbeLines[entity] = new LineRenderer(scene);
         return true;
     }
     return false;
 }
 
 void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible){
-    Lines* probeLines = reflectionProbeLines[entity];
+    LineRenderer* probeLines = reflectionProbeLines[entity];
     probeLines->clearLines();
     probeLines->setVisible(transform.visible && visible);
     if (!transform.visible || !visible) return;
@@ -508,8 +508,8 @@ void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, co
 // endpoint handles for a selected Lines entity, drawn as small 3-axis crosses
 // (orientation-independent in 3D); the sub-selected endpoint is drawn bigger
 // and in the selection color
-void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LinesComponent& lines, bool visible){
-    Lines* handlesObj = linePointLines[entity];
+void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible){
+    LineRenderer* handlesObj = linePointLines[entity];
 
     handlesObj->clearLines();
     handlesObj->setVisible(transform.visible && visible);
@@ -541,7 +541,7 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
 bool editor::SceneRender3D::instanciatePolygonPointLines(Entity entity){
     if (polygonPointLines.find(entity) == polygonPointLines.end()) {
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = new Lines(scene);
+        polygonPointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -552,7 +552,7 @@ bool editor::SceneRender3D::instanciatePolygonPointLines(Entity entity){
 // vertex handles for a selected Polygon / MeshPolygon entity, drawn as small
 // 3-axis crosses; the sub-selected vertex is drawn bigger and in the selection color
 void editor::SceneRender3D::createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible){
-    Lines* handlesObj = polygonPointLines[entity];
+    LineRenderer* handlesObj = polygonPointLines[entity];
 
     handlesObj->clearLines();
     handlesObj->setVisible(transform.visible && visible);
@@ -583,7 +583,7 @@ bool editor::SceneRender3D::instanciateTrackLines(Entity entity){
         // tools-layer scene so the path stays visible on top of scene geometry
         // (waypoints usually sit exactly on floors/meshes), like bone lines
         ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-        trackLines[entity] = new Lines(toolslayer.getScene());
+        trackLines[entity] = new LineRenderer(toolslayer.getScene());
 
         return true;
     }
@@ -595,7 +595,7 @@ bool editor::SceneRender3D::instanciateTrackLines(Entity entity){
 // values (in the action target's parent space) with small 3-axis cross handles;
 // the sub-selected point is drawn bigger and in the selection color
 void editor::SceneRender3D::createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible){
-    Lines* trackObj = trackLines[entity];
+    LineRenderer* trackObj = trackLines[entity];
 
     trackObj->clearLines();
     trackObj->setVisible(visible);
@@ -633,7 +633,7 @@ void editor::SceneRender3D::createOrUpdateTrackLines(Entity entity, const Transl
 bool editor::SceneRender3D::instanciateBoneLines(Entity entity){
     if (boneLines.find(entity) == boneLines.end()) {
         ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
-        boneLines[entity] = new Lines(toolslayer.getScene());
+        boneLines[entity] = new LineRenderer(toolslayer.getScene());
 
         return true;
     }
@@ -642,7 +642,7 @@ bool editor::SceneRender3D::instanciateBoneLines(Entity entity){
 }
 
 void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelComponent& model, bool visible, bool highlighted){
-    Lines* boneLinesObj = boneLines[entity];
+    LineRenderer* boneLinesObj = boneLines[entity];
 
     boneLinesObj->clearLines();
     boneLinesObj->setVisible(visible);
@@ -725,13 +725,13 @@ void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelCo
     }
 }
 
-void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const Body3DComponent& body, bool visible, bool highlighted) {
+void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const RigidbodyComponent& body, bool visible, bool highlighted) {
     BodyObjects& bo = bodyObjects[entity];
 
     bo.lines->clearLines();
     bo.lines->setVisible(transform.visible && visible);
 
-    if (!transform.visible || !visible || body.numShapes == 0) {
+    if (!transform.visible || !visible || body.numColliders == 0) {
         return;
     }
 
@@ -952,7 +952,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 
     // A multi-node glTF root holds no geometry of its own, so a shape sourced from it
     // reads the model's mesh-node children instead.
-    auto shapeSourceEntities = [&](const Shape3D& shapeData) {
+    auto shapeSourceEntities = [&](const Collider3D& shapeData) {
         std::vector<Entity> sources;
         Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
 
@@ -1040,7 +1040,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 
     // Placement comes from the local chain up to the body, not from the mapping matrix:
     // the two agree, but the matrix jitters in its low bits when the body itself moves.
-    auto sourceSignature = [&](const Shape3D& shapeData, const std::vector<Entity>& sources) {
+    auto sourceSignature = [&](const Collider3D& shapeData, const std::vector<Entity>& sources) {
         uint64_t hash = 1469598103934665603ull;
         auto mix = [&hash](const void* data, size_t size) {
             const unsigned char* bytes = static_cast<const unsigned char*>(data);
@@ -1098,27 +1098,27 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
         return hash;
     };
 
-    auto shapeEdgeCache = [&](size_t shapeIndex) -> BodyObjects::ShapeEdgeCache& {
-        if (bo.shapeEdgeCaches.size() != body.numShapes) {
-            bo.shapeEdgeCaches.assign(body.numShapes, BodyObjects::ShapeEdgeCache{});
+    auto shapeEdgeCache = [&](size_t colliderIndex) -> BodyObjects::ShapeEdgeCache& {
+        if (bo.shapeEdgeCaches.size() != body.numColliders) {
+            bo.shapeEdgeCaches.assign(body.numColliders, BodyObjects::ShapeEdgeCache{});
         }
-        return bo.shapeEdgeCaches[shapeIndex];
+        return bo.shapeEdgeCaches[colliderIndex];
     };
 
-    for (size_t i = 0; i < body.numShapes; i++) {
-        const Shape3D& shapeData = body.shapes[i];
+    for (size_t i = 0; i < body.numColliders; i++) {
+        const Collider3D& shapeData = body.colliders[i];
 
         Matrix4 shapeMatrix = Matrix4::translateMatrix(shapeData.position * entityScale) * shapeData.rotation.getRotationMatrix();
 
-        if (shapeData.type == Shape3DType::BOX) {
+        if (shapeData.type == Collider3DType::BOX) {
             Vector3 halfSize(shapeData.width * absScale.x * 0.5f, shapeData.height * absScale.y * 0.5f, shapeData.depth * absScale.z * 0.5f);
             addBox(shapeMatrix, -halfSize, halfSize);
             addBoxRings(shapeMatrix, -halfSize, halfSize);
             addBoxVerticals(shapeMatrix, -halfSize, halfSize);
             addBoxCaps(shapeMatrix, -halfSize, halfSize);
-        } else if (shapeData.type == Shape3DType::SPHERE) {
+        } else if (shapeData.type == Collider3DType::SPHERE) {
             addSpherePattern(shapeMatrix, shapeData.radius * maxScaleXYZ());
-        } else if (shapeData.type == Shape3DType::CAPSULE) {
+        } else if (shapeData.type == Collider3DType::CAPSULE) {
             const float halfHeight = shapeData.halfHeight * absScale.y;
             const float radius = shapeData.radius * maxScaleXZ();
             Vector3 top(0, halfHeight, 0);
@@ -1130,7 +1130,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 
             addHemisphere(shapeMatrix, top, radius, true);
             addHemisphere(shapeMatrix, bottom, radius, false);
-        } else if (shapeData.type == Shape3DType::TAPERED_CAPSULE) {
+        } else if (shapeData.type == Collider3DType::TAPERED_CAPSULE) {
             const float halfHeight = shapeData.halfHeight * absScale.y;
             const float radiusScale = maxScaleXZ();
             const float topRadius = shapeData.topRadius * radiusScale;
@@ -1142,7 +1142,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 
             addHemisphere(shapeMatrix, Vector3(0, halfHeight, 0), topRadius, true);
             addHemisphere(shapeMatrix, Vector3(0, -halfHeight, 0), bottomRadius, false);
-        } else if (shapeData.type == Shape3DType::CYLINDER) {
+        } else if (shapeData.type == Collider3DType::CYLINDER) {
             const float halfHeight = shapeData.halfHeight * absScale.y;
             const float radius = shapeData.radius * maxScaleXZ();
 
@@ -1150,8 +1150,8 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
             addCircle(shapeMatrix, Vector3(0, -halfHeight, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), radius, 20);
             addCapsuleMiddle(shapeMatrix, halfHeight, radius, radius);
             addCylinderRings(shapeMatrix, halfHeight, radius);
-        } else if (shapeData.type == Shape3DType::CONVEX_HULL) {
-            if (shapeData.source == Shape3DSource::ENTITY_MESH) {
+        } else if (shapeData.type == Collider3DType::CONVEX_HULL) {
+            if (shapeData.source == Collider3DSource::ENTITY_MESH) {
                 // Walking every source vertex and rebuilding the hull is far too heavy
                 // to repeat per frame
                 BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
@@ -1194,8 +1194,8 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
                     addTransformedLine(shapeMatrix, a, b);
                 });
             }
-        } else if (shapeData.type == Shape3DType::MESH) {
-            if (shapeData.source == Shape3DSource::ENTITY_MESH) {
+        } else if (shapeData.type == Collider3DType::MESH) {
+            if (shapeData.source == Collider3DSource::ENTITY_MESH) {
                 // Cached in body-local space, so a frame only costs two matrix
                 // transforms + addLine per edge
                 BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
@@ -1272,7 +1272,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
                     }
                 }
             }
-        } else if (shapeData.type == Shape3DType::HEIGHTFIELD) {
+        } else if (shapeData.type == Collider3DType::HEIGHTFIELD) {
             Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
             if (terrain) {
@@ -1285,7 +1285,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 }
 
 void editor::SceneRender3D::createOrUpdateJointLines(Entity entity, const Joint3DComponent& joint, bool visible, bool highlighted){
-    Lines* jointLinesObj = jointLines[entity];
+    LineRenderer* jointLinesObj = jointLines[entity];
 
     jointLinesObj->clearLines();
     jointLinesObj->setVisible(visible);
@@ -1988,7 +1988,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             }
         }
 
-        if (signature.test(scene->getComponentId<SoundComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+        if (signature.test(scene->getComponentId<AudioSourceComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentIconSounds.insert(entity);
@@ -2000,9 +2000,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             }
         }
 
-        if (signature.test(scene->getComponentId<Body3DComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+        if (signature.test(scene->getComponentId<RigidbodyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             Transform& transform = scene->getComponent<Transform>(entity);
-            Body3DComponent& body = scene->getComponent<Body3DComponent>(entity);
+            RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(entity);
 
             currentBodyObjects.insert(entity);
             instanciateBodyObject(entity);
@@ -2012,8 +2012,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             createOrUpdateBodyLines(entity, transform, body, isVisible, highlighted);
         }
 
-        if (signature.test(scene->getComponentId<LinesComponent>()) && signature.test(scene->getComponentId<Transform>())) {
-            LinesComponent& linesComp = scene->getComponent<LinesComponent>(entity);
+        if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            LineRendererComponent& linesComp = scene->getComponent<LineRendererComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentLinePoints.insert(entity);

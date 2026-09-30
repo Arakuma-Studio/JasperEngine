@@ -12,7 +12,7 @@ editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId,
     TransformCmdValue& value = props[entity];
     localMatrix.decomposeStandard(value.newPosition, value.newScale, value.newRotation);
     // the matrix origin of a pivoted UI element is not its position
-    if (UILayoutComponent* layout = project->getScene(sceneId)->scene->findComponent<UILayoutComponent>(entity)){
+    if (RectTransformComponent* layout = project->getScene(sceneId)->scene->findComponent<RectTransformComponent>(entity)){
         value.newPosition -= getUIPivotShift(*layout, value.newRotation, value.newScale);
     }
 
@@ -47,8 +47,8 @@ bool editor::ObjectTransformCmd::execute(){
 
             transform->needUpdate = true;
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->bundlePropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->prefabPropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
             }
         }
     }
@@ -71,8 +71,8 @@ void editor::ObjectTransformCmd::undo(){
 
             transform->needUpdate = true;
 
-            if (project->isEntityInBundle(sceneId, entity)){
-                project->bundlePropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->prefabPropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
             }
         }
     }

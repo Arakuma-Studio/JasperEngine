@@ -1,24 +1,24 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Object.h"
+#include "GameObject.h"
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/PhysicsSystem.h"
 
 using namespace jasperengine;
 
-Object::Object(Scene* scene): EntityHandle(scene){
+GameObject::GameObject(Scene* scene): EntityHandle(scene){
     addComponent<Transform>();
 }
 
-Object::Object(Scene* scene, Entity entity): EntityHandle(scene, entity){
+GameObject::GameObject(Scene* scene, Entity entity): EntityHandle(scene, entity){
 }
 
-Object::~Object(){
+GameObject::~GameObject(){
 }
 
-void Object::setPosition(Vector3 position){
+void GameObject::setPosition(Vector3 position){
     Transform& transform = getComponent<Transform>();
 
     if (transform.position != position){
@@ -28,25 +28,25 @@ void Object::setPosition(Vector3 position){
     }
 }
 
-void Object::setPosition(const float x, const float y, const float z){
+void GameObject::setPosition(const float x, const float y, const float z){
     setPosition(Vector3(x,y,z));
 }
 
-void Object::setPosition(const float x, const float y){
+void GameObject::setPosition(const float x, const float y){
     setPosition(Vector3(x,y,0));
 }
 
-Vector3 Object::getPosition() const{
+Vector3 GameObject::getPosition() const{
     Transform& transform = getComponent<Transform>();
     return transform.position;
 }
 
-Vector3 Object::getWorldPosition() const{
+Vector3 GameObject::getWorldPosition() const{
     Transform& transform = getComponent<Transform>();
     return transform.worldPosition;
 }
 
-void Object::setRotation(Quaternion rotation){
+void GameObject::setRotation(Quaternion rotation){
     Transform& transform = getComponent<Transform>();
 
     if (transform.rotation != rotation){
@@ -56,25 +56,25 @@ void Object::setRotation(Quaternion rotation){
     }
 }
 
-void Object::setRotation(const float xAngle, const float yAngle, const float zAngle){
+void GameObject::setRotation(const float xAngle, const float yAngle, const float zAngle){
     setRotation(Quaternion(xAngle, yAngle, zAngle));
 }
 
-Quaternion Object::getRotation() const{
+Quaternion GameObject::getRotation() const{
     Transform& transform = getComponent<Transform>();
     return transform.rotation;
 }
 
-Quaternion Object::getWorldRotation() const{
+Quaternion GameObject::getWorldRotation() const{
     Transform& transform = getComponent<Transform>();
     return transform.worldRotation;
 }
 
-void Object::setScale(const float factor){
+void GameObject::setScale(const float factor){
     setScale(Vector3(factor,factor,factor));
 }
 
-void Object::setScale(Vector3 scale){
+void GameObject::setScale(Vector3 scale){
     Transform& transform = getComponent<Transform>();
 
     if (transform.scale != scale){
@@ -84,17 +84,17 @@ void Object::setScale(Vector3 scale){
     }
 }
 
-Vector3 Object::getScale() const{
+Vector3 GameObject::getScale() const{
     Transform& transform = getComponent<Transform>();
     return transform.scale;
 }
 
-Vector3 Object::getWorldScale() const{
+Vector3 GameObject::getWorldScale() const{
     Transform& transform = getComponent<Transform>();
     return transform.worldScale;
 }
 
-void Object::setVisible(bool visible){
+void GameObject::setVisible(bool visible){
     Transform& transform = getComponent<Transform>();
     if (transform.visible != visible){
         transform.visible = visible;
@@ -102,17 +102,17 @@ void Object::setVisible(bool visible){
     }
 }
 
-bool Object::isVisible() const{
+bool GameObject::isVisible() const{
     Transform& transform = getComponent<Transform>();
     return transform.visible;
 }
 
-void Object::setVisibleOnly(bool visible){
+void GameObject::setVisibleOnly(bool visible){
     Transform& transform = getComponent<Transform>();
     transform.visible = visible;
 }
 
-void Object::setBillboard(bool billboard, bool fake, bool cylindrical){
+void GameObject::setBillboard(bool billboard, bool fake, bool cylindrical){
     Transform& transform = getComponent<Transform>();
 
     transform.billboard = billboard;
@@ -120,19 +120,19 @@ void Object::setBillboard(bool billboard, bool fake, bool cylindrical){
     transform.cylindricalBillboard = cylindrical;
 }
 
-void Object::setBillboard(bool billboard){
+void GameObject::setBillboard(bool billboard){
     Transform& transform = getComponent<Transform>();
 
     transform.billboard = billboard;
 }
 
-bool Object::isBillboard() const{
+bool GameObject::isBillboard() const{
     Transform& transform = getComponent<Transform>();
 
     return transform.billboard;
 }
 
-void Object::setBillboardRotation(Quaternion rotation){
+void GameObject::setBillboardRotation(Quaternion rotation){
     Transform& transform = getComponent<Transform>();
 
     if (transform.billboardRotation != rotation){
@@ -141,41 +141,41 @@ void Object::setBillboardRotation(Quaternion rotation){
     }
 }
 
-void Object::setBillboardRotation(const float xAngle, const float yAngle, const float zAngle){
+void GameObject::setBillboardRotation(const float xAngle, const float yAngle, const float zAngle){
     setBillboardRotation(Quaternion(xAngle, yAngle, zAngle));
 }
 
-Quaternion Object::getBillboardRotation() const{
+Quaternion GameObject::getBillboardRotation() const{
     Transform& transform = getComponent<Transform>();
 
     return transform.billboardRotation;
 }
 
-void Object::setFakeBillboard(bool fakeBillboard){
+void GameObject::setFakeBillboard(bool fakeBillboard){
     Transform& transform = getComponent<Transform>();
 
     transform.fakeBillboard = fakeBillboard;
 }
 
-bool Object::isFakeBillboard() const{
+bool GameObject::isFakeBillboard() const{
     Transform& transform = getComponent<Transform>();
 
     return transform.fakeBillboard;
 }
 
-void Object::setCylindricalBillboard(bool cylindricalBillboard){
+void GameObject::setCylindricalBillboard(bool cylindricalBillboard){
     Transform& transform = getComponent<Transform>();
 
     transform.cylindricalBillboard = cylindricalBillboard;
 }
 
-bool Object::isCylindricalBillboard() const{
+bool GameObject::isCylindricalBillboard() const{
     Transform& transform = getComponent<Transform>();
 
     return transform.cylindricalBillboard;
 }
 
-void Object::setLocalMatrix(Matrix4 localMatrix){
+void GameObject::setLocalMatrix(Matrix4 localMatrix){
     Transform& transform = getComponent<Transform>();
 
     if (transform.localMatrix != localMatrix){
@@ -183,7 +183,7 @@ void Object::setLocalMatrix(Matrix4 localMatrix){
 
         localMatrix.decompose(transform.position, transform.scale, transform.rotation);
         // the matrix origin of a pivoted UI element is not its position
-        if (UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity)){
+        if (RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity)){
             transform.position -= getUIPivotShift(*layout, transform.rotation, transform.scale);
         }
 
@@ -191,88 +191,88 @@ void Object::setLocalMatrix(Matrix4 localMatrix){
     }
 }
 
-Matrix4 Object::getLocalMatrix() const{
+Matrix4 GameObject::getLocalMatrix() const{
     Transform& transform = getComponent<Transform>();
     return transform.localMatrix;
 }
 
-Matrix4 Object::getModelMatrix() const{
+Matrix4 GameObject::getModelMatrix() const{
     Transform& transform = getComponent<Transform>();
     return transform.modelMatrix;
 }
 
-Matrix4 Object::getNormalMatrix() const{
+Matrix4 GameObject::getNormalMatrix() const{
     Transform& transform = getComponent<Transform>();
     return transform.normalMatrix;
 }
 
-void Object::addChild(Object* child){
+void GameObject::addChild(GameObject* child){
     addChild(child->entity);
 }
 
-void Object::addChild(Entity child){
+void GameObject::addChild(Entity child){
     scene->addEntityChild(this->entity, child, false);
 }
 
-void Object::removeChild(Object* child){
+void GameObject::removeChild(GameObject* child){
     removeChild(child->entity);
 }
 
-void Object::removeChild(Entity child){
+void GameObject::removeChild(Entity child){
     Transform* childTransform = scene->findComponent<Transform>(child);
     if (childTransform && childTransform->parent == this->entity){
         scene->addEntityChild(NULL_ENTITY, child, false);
     }
 }
 
-void Object::removeParent(){
+void GameObject::removeParent(){
     scene->addEntityChild(NULL_ENTITY, this->entity, false);
 }
 
-void Object::moveToTop(){
+void GameObject::moveToTop(){
     scene->moveChildToTop(this->entity);
 }
 
-void Object::moveUp(){
+void GameObject::moveUp(){
     scene->moveChildUp(this->entity);
 }
 
-void Object::moveDown(){
+void GameObject::moveDown(){
     scene->moveChildDown(this->entity);
 }
 
-void Object::moveToBottom(){
+void GameObject::moveToBottom(){
     scene->moveChildToBottom(this->entity);
 }
 
-void Object::updateTransform(){
+void GameObject::updateTransform(){
     Transform& transform = getComponent<Transform>();
 
     scene->getSystem<RenderSystem>()->updateTransform(transform, entity);
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
-Body2D Object::getBody2D(){
-    scene->getSystem<PhysicsSystem>()->createBody2D(entity);
-    return Body2D(scene, entity);
+Rigidbody2D GameObject::getRigidbody2D(){
+    scene->getSystem<PhysicsSystem>()->createRigidbody2D(entity);
+    return Rigidbody2D(scene, entity);
 }
 
-void Object::removeBody2D(){
-    scene->getSystem<PhysicsSystem>()->removeBody2D(entity);
+void GameObject::removeRigidbody2D(){
+    scene->getSystem<PhysicsSystem>()->removeRigidbody2D(entity);
 }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-Body3D Object::getBody3D(){
-    scene->getSystem<PhysicsSystem>()->createBody3D(entity);
-    return Body3D(scene, entity);
+Rigidbody GameObject::getRigidbody(){
+    scene->getSystem<PhysicsSystem>()->createRigidbody(entity);
+    return Rigidbody(scene, entity);
 }
 
-void Object::removeBody3D(){
-    scene->getSystem<PhysicsSystem>()->removeBody3D(entity);
+void GameObject::removeRigidbody(){
+    scene->getSystem<PhysicsSystem>()->removeRigidbody(entity);
 }
 #endif
 
-Ray Object::getRay(Vector3 direction){
+Ray GameObject::getRay(Vector3 direction){
     return Ray(getWorldPosition(), direction);
 }

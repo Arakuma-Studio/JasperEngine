@@ -35,7 +35,7 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         Texture getTexture();
         Scene* getScene();
-        Object* getObject();
+        GameObject* getGameObject();
     };
 
 }

@@ -12,20 +12,20 @@
 namespace jasperengine::editor {
 
 struct PanelVisibilitySettings {
-    bool structure = true;
-    bool properties = true;
-    bool resources = true;
-    bool output = true;
+    bool hierarchy = true;
+    bool inspector = true;
+    bool project = true;
+    bool console = true;
     bool animation = true;
     bool terrain = false;
     bool aiChat = true;
     bool game = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
-        return structure == other.structure
-            && properties == other.properties
-            && resources == other.resources
-            && output == other.output
+        return hierarchy == other.hierarchy
+            && inspector == other.inspector
+            && project == other.project
+            && console == other.console
             && animation == other.animation
             && terrain == other.terrain
             && aiChat == other.aiChat
@@ -97,7 +97,7 @@ private:
     // the window later moves to a monitor that changes windowUiScale.
     static float layoutUiScale;
 
-    // Resources window settings
+    // Project window settings
     static int resourcesIconSize;
     static int resourcesLayout;      // 0=AUTO, 1=GRID, 2=SPLIT_FILES_ONLY, 3=SPLIT
     static int resourcesItemViewStyle; // 0=CARD, 1=CLASSIC
@@ -169,7 +169,7 @@ public:
     static void setWindowUiScale(float scale);
     static void setLayoutUiScale(float scale);
     
-    // Resources window settings
+    // Project window settings
     static int getResourcesIconSize();
     static int getResourcesLayout();
     static int getResourcesItemViewStyle();

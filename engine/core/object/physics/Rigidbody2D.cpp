@@ -1,10 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Body2D.h"
+#include "Rigidbody2D.h"
 
-#include "object/Object.h"
-#include "component/Body2DComponent.h"
+#include "object/GameObject.h"
+#include "component/Rigidbody2DComponent.h"
 #include "subsystem/PhysicsSystem.h"
 #include "box2d/box2d.h"
 #include "object/physics/Contact2D.h"
@@ -43,57 +43,57 @@ Vector2 getB2ToVector2(b2Vec2 vec2){
     return Vector2(vec2.x, vec2.y);
 }
 
-static int appendShape2D(Body2DComponent& body){
-    if (!body.shapes.validIndex(body.numShapes)){
+static int appendCollider2D(Rigidbody2DComponent& body){
+    if (!body.colliders.validIndex(body.numColliders)){
         Log::error("Cannot add more shapes in this body");
         return -1;
     }
 
-    size_t index = body.numShapes;
-    body.shapes[index] = Shape2D();
-    body.numShapes++;
-    body.needUpdateShapes = true;
+    size_t index = body.numColliders;
+    body.colliders[index] = Collider2D();
+    body.numColliders++;
+    body.needUpdateColliders = true;
 
     return static_cast<int>(index);
 }
 
-Body2D::Body2D(Scene* scene, Entity entity): EntityHandle(scene, entity){
+Rigidbody2D::Rigidbody2D(Scene* scene, Entity entity): EntityHandle(scene, entity){
 
 }
 
-Body2D::~Body2D(){
+Rigidbody2D::~Rigidbody2D(){
 
 }
 
-Body2D::Body2D(const Body2D& rhs): EntityHandle(rhs){
+Rigidbody2D::Rigidbody2D(const Rigidbody2D& rhs): EntityHandle(rhs){
     
 }
 
-Body2D& Body2D::operator=(const Body2D& rhs){
+Rigidbody2D& Rigidbody2D::operator=(const Rigidbody2D& rhs){
     EntityHandle::operator =(rhs);
 
     return *this;
 }
 
-void Body2D::checkBody(const Body2DComponent& body) const{
+void Rigidbody2D::checkBody(const Rigidbody2DComponent& body) const{
     if (!b2Body_IsValid(body.body)){
-        Log::error("Body2D is not loaded");
-        throw std::runtime_error("Body2D is not loaded");
+        Log::error("Rigidbody2D is not loaded");
+        throw std::runtime_error("Rigidbody2D is not loaded");
     }
 }
 
-b2BodyId Body2D::getBox2DBody() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+b2BodyId Rigidbody2D::getBox2DBody() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return body.body;
 }
 
-b2ShapeId Body2D::getBox2DShape(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+b2ShapeId Rigidbody2D::getBox2DShape(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (body.shapes.validIndex(index)){
-        return body.shapes[index].shape;
+    if (body.colliders.validIndex(index)){
+        return body.colliders[index].shape;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -101,11 +101,11 @@ b2ShapeId Body2D::getBox2DShape(size_t index) const{
     return b2_nullShapeId;
 }
 
-b2ChainId Body2D::getBox2DChain(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+b2ChainId Rigidbody2D::getBox2DChain(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (body.shapes.validIndex(index)){
-        return body.shapes[index].chain;
+    if (body.colliders.validIndex(index)){
+        return body.colliders[index].chain;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -113,29 +113,29 @@ b2ChainId Body2D::getBox2DChain(size_t index) const{
     return b2_nullChainId;
 }
 
-Object Body2D::getAttachedObject(){
-    return Object(scene, entity);
+GameObject Rigidbody2D::getAttachedObject(){
+    return GameObject(scene, entity);
 }
 
-float Body2D::getPointsToMeterScale() const{
+float Rigidbody2D::getPointsToMeterScale() const{
     return scene->getSystem<PhysicsSystem>()->getPointsToMeterScale2D();
 }
 
-void Body2D::load(){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::load(){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     body.needReloadBody = true;
-    body.needUpdateShapes = true;
+    body.needUpdateColliders = true;
 
-    scene->getSystem<PhysicsSystem>()->loadBody2D(entity);
+    scene->getSystem<PhysicsSystem>()->loadRigidbody2D(entity);
 }
 
-int Body2D::createBoxShape(float width, float height){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createBoxCollider(float width, float height){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::POLYGON;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::POLYGON;
     shape.numVertices = 4;
     shape.vertices[0] = Vector2(0, 0);
     shape.vertices[1] = Vector2(width, 0);
@@ -145,17 +145,17 @@ int Body2D::createBoxShape(float width, float height){
     return index;
 }
 
-int Body2D::createCenteredBoxShape(float width, float height){
-    return createCenteredBoxShape(width, height, Vector2(0, 0), 0);
+int Rigidbody2D::createCenteredBoxCollider(float width, float height){
+    return createCenteredBoxCollider(width, height, Vector2(0, 0), 0);
 }
 
-int Body2D::createCenteredBoxShape(float width, float height, Vector2 center, float angle){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createCenteredBoxCollider(float width, float height, Vector2 center, float angle){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::POLYGON;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::POLYGON;
     shape.numVertices = 4;
 
     float halfW = width / 2.0f;
@@ -181,13 +181,13 @@ int Body2D::createCenteredBoxShape(float width, float height, Vector2 center, fl
     return index;
 }
 
-int Body2D::createRoundedBoxShape(float width, float height, float radius){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createRoundedBoxCollider(float width, float height, float radius){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::POLYGON;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::POLYGON;
     shape.radius = radius;
     shape.numVertices = 4;
 
@@ -201,13 +201,13 @@ int Body2D::createRoundedBoxShape(float width, float height, float radius){
     return index;
 }
 
-int Body2D::createPolygonShape(std::vector<Vector2> vertices){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createPolygonCollider(std::vector<Vector2> vertices){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::POLYGON;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::POLYGON;
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
@@ -221,26 +221,26 @@ int Body2D::createPolygonShape(std::vector<Vector2> vertices){
     return index;
 }
 
-int Body2D::createCircleShape(Vector2 center, float radius){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createCircleCollider(Vector2 center, float radius){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::CIRCLE;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::CIRCLE;
     shape.pointA = center;
     shape.radius = radius;
 
     return index;
 }
 
-int Body2D::createCapsuleShape(Vector2 center1, Vector2 center2, float radius){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createCapsuleCollider(Vector2 center1, Vector2 center2, float radius){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::CAPSULE;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::CAPSULE;
     shape.pointA = center1;
     shape.pointB = center2;
     shape.radius = radius;
@@ -248,26 +248,26 @@ int Body2D::createCapsuleShape(Vector2 center1, Vector2 center2, float radius){
     return index;
 }
 
-int Body2D::createSegmentShape(Vector2 point1, Vector2 point2){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createSegmentCollider(Vector2 point1, Vector2 point2){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::SEGMENT;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::SEGMENT;
     shape.pointA = point1;
     shape.pointB = point2;
 
     return index;
 }
 
-int Body2D::createChainShape(std::vector<Vector2> vertices, bool loop){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    int index = appendShape2D(body);
+int Rigidbody2D::createChainCollider(std::vector<Vector2> vertices, bool loop){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    int index = appendCollider2D(body);
     if (index < 0) return index;
 
-    Shape2D& shape = body.shapes[index];
-    shape.type = Shape2DType::CHAIN;
+    Collider2D& shape = body.colliders[index];
+    shape.type = Collider2DType::CHAIN;
     shape.loop = loop;
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
@@ -282,14 +282,14 @@ int Body2D::createChainShape(std::vector<Vector2> vertices, bool loop){
     return index;
 }
 
-void Body2D::removeAllShapes(){
-    Body2DComponent& body = getComponent<Body2DComponent>();
-    body.numShapes = 0;
-    body.needUpdateShapes = true;
+void Rigidbody2D::removeAllColliders(){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    body.numColliders = 0;
+    body.needUpdateColliders = true;
 }
 
-std::vector<Contact2D> Body2D::getBodyContacts(){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+std::vector<Contact2D> Rigidbody2D::getBodyContacts(){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
 
@@ -306,15 +306,15 @@ std::vector<Contact2D> Body2D::getBodyContacts(){
     return contacts;
 }
 
-std::vector<Contact2D> Body2D::getShapeContacts(size_t index){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+std::vector<Contact2D> Rigidbody2D::getColliderContacts(size_t index){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     std::vector<Contact2D> contacts;
 
-    if (index >= 0 && index < body.numShapes && body.shapes[index].type != Shape2DType::CHAIN){
-        int shapeContactCapacity = b2Shape_GetContactCapacity(body.shapes[index].shape);
+    if (index >= 0 && index < body.numColliders && body.colliders[index].type != Collider2DType::CHAIN){
+        int shapeContactCapacity = b2Shape_GetContactCapacity(body.colliders[index].shape);
         std::vector<b2ContactData> contactData(shapeContactCapacity);
-        int shapeContactCount = b2Shape_GetContactData(body.shapes[index].shape, &contactData.front(), shapeContactCapacity);
+        int shapeContactCount = b2Shape_GetContactData(body.colliders[index].shape, &contactData.front(), shapeContactCapacity);
 
         for (int i = 0; i < shapeContactCount; ++i){
             contacts.push_back(Contact2D(scene, contactData[i]));
@@ -326,108 +326,108 @@ std::vector<Contact2D> Body2D::getShapeContacts(size_t index){
     return contacts;
 }
 
-size_t Body2D::getNumShapes() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+size_t Rigidbody2D::getNumColliders() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    return body.numShapes;
+    return body.numColliders;
 }
 
-Shape2DType Body2D::getShapeType(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+Collider2DType Rigidbody2D::getColliderType(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].type;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].type;
     }else{
         Log::error("Cannot find shape %i of body", index);
         throw std::runtime_error("Cannot find shape");
     }
 }
 
-void Body2D::setShapeDensity(float density){
-    setShapeDensity(0, density);
+void Rigidbody2D::setColliderDensity(float density){
+    setColliderDensity(0, density);
 }
 
-void Body2D::setShapeFriction(float friction){
-    setShapeFriction(0, friction);
+void Rigidbody2D::setColliderFriction(float friction){
+    setColliderFriction(0, friction);
 }
 
-void Body2D::setShapeRestitution(float restitution){
-    setShapeRestitution(0, restitution);
+void Rigidbody2D::setColliderRestitution(float restitution){
+    setColliderRestitution(0, restitution);
 }
 
-void Body2D::setShapeDensity(size_t index, float density){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderDensity(size_t index, float density){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].density = density;
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].density = density;
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set density of chain shape %i", index);
-        }else if (b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_SetDensity(body.shapes[index].shape, density, true);
+        }else if (b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_SetDensity(body.colliders[index].shape, density, true);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapeFriction(size_t index, float friction){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderFriction(size_t index, float friction){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].friction = friction;
-        if (body.shapes[index].type != Shape2DType::CHAIN && b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_SetFriction(body.shapes[index].shape, friction);
-        }else if (b2Chain_IsValid(body.shapes[index].chain)){
-            b2Chain_SetFriction(body.shapes[index].chain, friction);
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].friction = friction;
+        if (body.colliders[index].type != Collider2DType::CHAIN && b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_SetFriction(body.colliders[index].shape, friction);
+        }else if (b2Chain_IsValid(body.colliders[index].chain)){
+            b2Chain_SetFriction(body.colliders[index].chain, friction);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapeRestitution(size_t index, float restitution){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderRestitution(size_t index, float restitution){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].restitution = restitution;
-        if (body.shapes[index].type != Shape2DType::CHAIN && b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_SetRestitution(body.shapes[index].shape, restitution);
-        }else if (b2Chain_IsValid(body.shapes[index].chain)){
-            b2Chain_SetRestitution(body.shapes[index].chain, restitution);
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].restitution = restitution;
+        if (body.colliders[index].type != Collider2DType::CHAIN && b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_SetRestitution(body.colliders[index].shape, restitution);
+        }else if (b2Chain_IsValid(body.colliders[index].chain)){
+            b2Chain_SetRestitution(body.colliders[index].chain, restitution);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapeSensor(bool sensor){
-    setShapeSensor(0, sensor);
+void Rigidbody2D::setColliderSensor(bool sensor){
+    setColliderSensor(0, sensor);
 }
 
-void Body2D::setShapeSensor(size_t index, bool sensor){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderSensor(size_t index, bool sensor){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set sensor of chain shape %i", index);
-        }else if (body.shapes[index].sensor != sensor){
-            body.shapes[index].sensor = sensor;
-            body.needUpdateShapes = true;
+        }else if (body.colliders[index].sensor != sensor){
+            body.colliders[index].sensor = sensor;
+            body.needUpdateColliders = true;
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-bool Body2D::isShapeSensor() const{
-    return isShapeSensor(0);
+bool Rigidbody2D::isColliderSensor() const{
+    return isColliderSensor(0);
 }
 
-bool Body2D::isShapeSensor(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isColliderSensor(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].sensor;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].sensor;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -435,77 +435,77 @@ bool Body2D::isShapeSensor(size_t index) const{
     return false;
 }
 
-void Body2D::setShapeEnableHitEvents(bool hitEvents){
-    setShapeEnableHitEvents(0, hitEvents);
+void Rigidbody2D::setColliderEnableHitEvents(bool hitEvents){
+    setColliderEnableHitEvents(0, hitEvents);
 }
 
-void Body2D::setShapeContactEvents(bool contactEvents){
-    setShapeContactEvents(0, contactEvents);
+void Rigidbody2D::setColliderContactEvents(bool contactEvents){
+    setColliderContactEvents(0, contactEvents);
 }
 
-void Body2D::setShapePreSolveEvents(bool preSolveEvent){
-    setShapePreSolveEvents(0, preSolveEvent);
+void Rigidbody2D::setColliderPreSolveEvents(bool preSolveEvent){
+    setColliderPreSolveEvents(0, preSolveEvent);
 }
 
-void Body2D::setShapeSensorEvents(bool sensorEvents){
-    setShapeSensorEvents(0, sensorEvents);
+void Rigidbody2D::setColliderSensorEvents(bool sensorEvents){
+    setColliderSensorEvents(0, sensorEvents);
 }
 
 
-void Body2D::setShapeEnableHitEvents(size_t index, bool hitEvents){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderEnableHitEvents(size_t index, bool hitEvents){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].enableHitEvents = hitEvents;
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].enableHitEvents = hitEvents;
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set hit events of chain shape %i", index);
-        }else if (b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_EnableHitEvents(body.shapes[index].shape, hitEvents);
+        }else if (b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_EnableHitEvents(body.colliders[index].shape, hitEvents);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapeContactEvents(size_t index, bool contactEvents){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderContactEvents(size_t index, bool contactEvents){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].contactEvents = contactEvents;
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].contactEvents = contactEvents;
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set shape contact events of chain shape %i", index);
-        }else if (b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_EnableContactEvents(body.shapes[index].shape, contactEvents);
+        }else if (b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_EnableContactEvents(body.colliders[index].shape, contactEvents);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapePreSolveEvents(size_t index, bool preSolveEvent){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderPreSolveEvents(size_t index, bool preSolveEvent){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].preSolveEvents = preSolveEvent;
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].preSolveEvents = preSolveEvent;
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set presolve events of chain shape %i", index);
-        }else if (b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_EnablePreSolveEvents(body.shapes[index].shape, preSolveEvent);
+        }else if (b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_EnablePreSolveEvents(body.colliders[index].shape, preSolveEvent);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
 }
 
-void Body2D::setShapeSensorEvents(size_t index, bool sensorEvents){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setColliderSensorEvents(size_t index, bool sensorEvents){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        body.shapes[index].sensorEvents = sensorEvents;
-        if (body.shapes[index].type == Shape2DType::CHAIN){
+    if (index >= 0 && index < body.numColliders){
+        body.colliders[index].sensorEvents = sensorEvents;
+        if (body.colliders[index].type == Collider2DType::CHAIN){
             Log::error("Cannot set sensor events of chain shape %i", index);
-        }else if (b2Shape_IsValid(body.shapes[index].shape)){
-            b2Shape_EnableSensorEvents(body.shapes[index].shape, sensorEvents || body.shapes[index].sensor);
+        }else if (b2Shape_IsValid(body.colliders[index].shape)){
+            b2Shape_EnableSensorEvents(body.colliders[index].shape, sensorEvents || body.colliders[index].sensor);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
@@ -513,24 +513,24 @@ void Body2D::setShapeSensorEvents(size_t index, bool sensorEvents){
 }
 
 
-float Body2D::getShapeDensity() const{
-    return getShapeDensity(0);
+float Rigidbody2D::getColliderDensity() const{
+    return getColliderDensity(0);
 }
 
-float Body2D::getShapeFriction() const{
-    return getShapeFriction(0);
+float Rigidbody2D::getColliderFriction() const{
+    return getColliderFriction(0);
 }
 
-float Body2D::getShapeRestitution() const{
-    return getShapeRestitution(0);
+float Rigidbody2D::getColliderRestitution() const{
+    return getColliderRestitution(0);
 }
 
 
-float Body2D::getShapeDensity(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getColliderDensity(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].density;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].density;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -538,11 +538,11 @@ float Body2D::getShapeDensity(size_t index) const{
     return -1;
 }
 
-float Body2D::getShapeFriction(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getColliderFriction(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].friction;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].friction;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -550,11 +550,11 @@ float Body2D::getShapeFriction(size_t index) const{
     return -1;
 }
 
-float Body2D::getShapeRestitution(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getColliderRestitution(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].restitution;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].restitution;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -562,27 +562,27 @@ float Body2D::getShapeRestitution(size_t index) const{
     return -1;
 }
 
-bool Body2D::isShapeEnableHitEvents() const{
-    return isShapeEnableHitEvents(0);
+bool Rigidbody2D::isColliderEnableHitEvents() const{
+    return isColliderEnableHitEvents(0);
 }
 
-bool Body2D::isShapeContactEvents() const{
-    return isShapeContactEvents(0);
+bool Rigidbody2D::isColliderContactEvents() const{
+    return isColliderContactEvents(0);
 }
 
-bool Body2D::isShapePreSolveEvents() const{
-    return isShapePreSolveEvents(0);
+bool Rigidbody2D::isColliderPreSolveEvents() const{
+    return isColliderPreSolveEvents(0);
 }
 
-bool Body2D::isShapeSensorEvents() const{
-    return isShapeSensorEvents(0);
+bool Rigidbody2D::isColliderSensorEvents() const{
+    return isColliderSensorEvents(0);
 }
 
-bool Body2D::isShapeEnableHitEvents(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isColliderEnableHitEvents(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].enableHitEvents;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].enableHitEvents;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -590,11 +590,11 @@ bool Body2D::isShapeEnableHitEvents(size_t index) const{
     return false;
 }
 
-bool Body2D::isShapeContactEvents(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isColliderContactEvents(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].contactEvents;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].contactEvents;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -602,11 +602,11 @@ bool Body2D::isShapeContactEvents(size_t index) const{
     return false;
 }
 
-bool Body2D::isShapePreSolveEvents(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isColliderPreSolveEvents(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].preSolveEvents;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].preSolveEvents;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -614,11 +614,11 @@ bool Body2D::isShapePreSolveEvents(size_t index) const{
     return false;
 }
 
-bool Body2D::isShapeSensorEvents(size_t index) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isColliderSensorEvents(size_t index) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (index >= 0 && index < body.numShapes){
-        return body.shapes[index].sensorEvents || body.shapes[index].sensor;
+    if (index >= 0 && index < body.numColliders){
+        return body.colliders[index].sensorEvents || body.colliders[index].sensor;
     }else{
         Log::error("Cannot find shape %i of body", index);
     }
@@ -626,8 +626,8 @@ bool Body2D::isShapeSensorEvents(size_t index) const{
     return false;
 }
 
-Vector2 Body2D::getPosition() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+Vector2 Rigidbody2D::getPosition() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
@@ -636,8 +636,8 @@ Vector2 Body2D::getPosition() const{
     return Vector2(position.x * pointsToMeterScale, position.y * pointsToMeterScale);
 }
 
-void Body2D::setPosition(Vector2 position){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setPosition(Vector2 position){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
@@ -645,29 +645,29 @@ void Body2D::setPosition(Vector2 position){
     b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
     b2Body_SetAwake(body.body, true);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromBody2D(entity, position, getAngle());
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, position, getAngle());
 }
 
-float Body2D::getAngle() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getAngle() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return Angle::radToDefault(b2Rot_GetAngle(b2Body_GetRotation(body.body)));
 }
 
-void Body2D::setAngle(float angle){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setAngle(float angle){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
     b2Body_SetAwake(body.body, true);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromBody2D(entity, getPosition(), angle);
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, getPosition(), angle);
 }
 
-void Body2D::setLinearVelocity(Vector2 linearVelocity){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
@@ -675,57 +675,57 @@ void Body2D::setLinearVelocity(Vector2 linearVelocity){
     b2Body_SetLinearVelocity(body.body, {linearVelocity.x / pointsToMeterScale, linearVelocity.y / pointsToMeterScale});
 }
 
-void Body2D::setAngularVelocity(float angularVelocity){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setAngularVelocity(float angularVelocity){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetAngularVelocity(body.body, angularVelocity);
 }
 
-void Body2D::setLinearDamping(float linearDamping){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setLinearDamping(float linearDamping){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetLinearDamping(body.body, linearDamping);
 }
 
-void Body2D::setAngularDamping(float angularDamping){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setAngularDamping(float angularDamping){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetAngularDamping(body.body, angularDamping);
 }
 
-void Body2D::setEnableSleep(bool enableSleep){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setEnableSleep(bool enableSleep){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_EnableSleep(body.body, enableSleep);
 }
 
-void Body2D::setAwake(bool awake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setAwake(bool awake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetAwake(body.body, awake);
 }
 
-void Body2D::setFixedRotation(bool fixedRotation){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setFixedRotation(bool fixedRotation){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetFixedRotation(body.body, fixedRotation);
 }
 
-void Body2D::setBullet(bool bullet){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setBullet(bool bullet){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetBullet(body.body, bullet);
 }
 
-void Body2D::setType(BodyType type){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setType(BodyType type){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     if (b2Body_IsValid(body.body)){
         b2Body_SetType(body.body, getBodyTypeToB2(type));
@@ -733,8 +733,8 @@ void Body2D::setType(BodyType type){
     body.type = type;
 }
 
-void Body2D::setEnabled(bool enabled){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setEnabled(bool enabled){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     // the component flag is the setting; the physics system keeps an inactive
     // GameObject's body out of the world whatever it says
@@ -748,15 +748,15 @@ void Body2D::setEnabled(bool enabled){
     }
 }
 
-void Body2D::setGravityScale(float gravityScale){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setGravityScale(float gravityScale){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_SetGravityScale(body.body, gravityScale);
 }
 
-Vector2 Body2D::getLinearVelocity() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+Vector2 Rigidbody2D::getLinearVelocity() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     float pointsToMeterScale = getPointsToMeterScale();
@@ -765,57 +765,57 @@ Vector2 Body2D::getLinearVelocity() const{
     return Vector2(vec.x * pointsToMeterScale, vec.y * pointsToMeterScale);
 }
 
-float Body2D::getAngularVelocity() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getAngularVelocity() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetAngularVelocity(body.body);
 }
 
-float Body2D::getLinearDamping() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getLinearDamping() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetLinearDamping(body.body);
 }
 
-float Body2D::getAngularDamping() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getAngularDamping() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetAngularDamping(body.body);
 }
 
-bool Body2D::isEnableSleep() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isEnableSleep() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_IsSleepEnabled(body.body);
 }
 
-bool Body2D::isAwake() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isAwake() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_IsAwake(body.body);
 }
 
-bool Body2D::isFixedRotation() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isFixedRotation() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_IsFixedRotation(body.body);
 }
 
-bool Body2D::isBullet() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isBullet() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_IsBullet(body.body);
 }
 
-BodyType Body2D::getType() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+BodyType Rigidbody2D::getType() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     if (b2Body_IsValid(body.body)){
         return getB2ToBodyType(b2Body_GetType(body.body));
@@ -823,213 +823,213 @@ BodyType Body2D::getType() const{
     return body.type;
 }
 
-bool Body2D::isEnabled() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+bool Rigidbody2D::isEnabled() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     return body.enabled;
 }
 
-float Body2D::getGravityScale() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getGravityScale() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetGravityScale(body.body);
 }
 
-void Body2D::setBitsFilter(uint16_t categoryBits, uint16_t maskBits){
+void Rigidbody2D::setBitsFilter(uint16_t categoryBits, uint16_t maskBits){
     setBitsFilter(0, categoryBits, maskBits);
 }
 
-void Body2D::setBitsFilter(size_t shapeIndex, uint16_t categoryBits, uint16_t maskBits){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setBitsFilter(size_t colliderIndex, uint16_t categoryBits, uint16_t maskBits){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (body.shapes.validIndex(shapeIndex)){
-        body.shapes[shapeIndex].categoryBits = categoryBits;
-        body.shapes[shapeIndex].maskBits = maskBits;
+    if (body.colliders.validIndex(colliderIndex)){
+        body.colliders[colliderIndex].categoryBits = categoryBits;
+        body.colliders[colliderIndex].maskBits = maskBits;
 
-        if (b2Shape_IsValid(body.shapes[shapeIndex].shape)){
-            b2Filter filter = b2Shape_GetFilter(body.shapes[shapeIndex].shape);
+        if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
+            b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
             filter.categoryBits = categoryBits;
             filter.maskBits = maskBits;
 
-            b2Shape_SetFilter(body.shapes[shapeIndex].shape, filter);
+            b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 }
 
-void Body2D::setCategoryBitsFilter(uint16_t categoryBits){
+void Rigidbody2D::setCategoryBitsFilter(uint16_t categoryBits){
     setCategoryBitsFilter(0, categoryBits);
 }
 
-void Body2D::setMaskBitsFilter(uint16_t maskBits){
+void Rigidbody2D::setMaskBitsFilter(uint16_t maskBits){
     setMaskBitsFilter(0, maskBits);
 }
 
-void Body2D::setGroupIndexFilter(int16_t groupIndex){
+void Rigidbody2D::setGroupIndexFilter(int16_t groupIndex){
     setGroupIndexFilter(0, groupIndex);
 }
 
-void Body2D::setCategoryBitsFilter(size_t shapeIndex, uint16_t categoryBits){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setCategoryBitsFilter(size_t colliderIndex, uint16_t categoryBits){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (body.shapes.validIndex(shapeIndex)){
-        body.shapes[shapeIndex].categoryBits = categoryBits;
-        if (b2Shape_IsValid(body.shapes[shapeIndex].shape)){
-            b2Filter filter = b2Shape_GetFilter(body.shapes[shapeIndex].shape);
+    if (body.colliders.validIndex(colliderIndex)){
+        body.colliders[colliderIndex].categoryBits = categoryBits;
+        if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
+            b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
 
             filter.categoryBits = categoryBits;
 
-            b2Shape_SetFilter(body.shapes[shapeIndex].shape, filter);
+            b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 }
 
-void Body2D::setMaskBitsFilter(size_t shapeIndex, uint16_t maskBits){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setMaskBitsFilter(size_t colliderIndex, uint16_t maskBits){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     
-    if (body.shapes.validIndex(shapeIndex)){
-        body.shapes[shapeIndex].maskBits = maskBits;
-        if (b2Shape_IsValid(body.shapes[shapeIndex].shape)){
-            b2Filter filter = b2Shape_GetFilter(body.shapes[shapeIndex].shape);
+    if (body.colliders.validIndex(colliderIndex)){
+        body.colliders[colliderIndex].maskBits = maskBits;
+        if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
+            b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
 
             filter.maskBits = maskBits;
 
-            b2Shape_SetFilter(body.shapes[shapeIndex].shape, filter);
+            b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 }
 
-void Body2D::setGroupIndexFilter(size_t shapeIndex, int16_t groupIndex){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::setGroupIndexFilter(size_t colliderIndex, int16_t groupIndex){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     
-    if (body.shapes.validIndex(shapeIndex)){
-        body.shapes[shapeIndex].groupIndex = groupIndex;
-        if (b2Shape_IsValid(body.shapes[shapeIndex].shape)){
-            b2Filter filter = b2Shape_GetFilter(body.shapes[shapeIndex].shape);
+    if (body.colliders.validIndex(colliderIndex)){
+        body.colliders[colliderIndex].groupIndex = groupIndex;
+        if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
+            b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
 
             filter.groupIndex = groupIndex;
 
-            b2Shape_SetFilter(body.shapes[shapeIndex].shape, filter);
+            b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 }
 
-uint16_t Body2D::getCategoryBitsFilter() const{
+uint16_t Rigidbody2D::getCategoryBitsFilter() const{
     return getCategoryBitsFilter(0);
 }
 
-uint16_t Body2D::getMaskBitsFilter() const{
+uint16_t Rigidbody2D::getMaskBitsFilter() const{
     return getMaskBitsFilter(0);
 }
 
-int16_t Body2D::getGroupIndexFilter() const{
+int16_t Rigidbody2D::getGroupIndexFilter() const{
     return getGroupIndexFilter(0);
 }
 
-uint16_t Body2D::getCategoryBitsFilter(size_t shapeIndex) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+uint16_t Rigidbody2D::getCategoryBitsFilter(size_t colliderIndex) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
-    if (body.shapes.validIndex(shapeIndex)){
-        return body.shapes[shapeIndex].categoryBits;
+    if (body.colliders.validIndex(colliderIndex)){
+        return body.colliders[colliderIndex].categoryBits;
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 
     return 0;
 }
 
-uint16_t Body2D::getMaskBitsFilter(size_t shapeIndex) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+uint16_t Rigidbody2D::getMaskBitsFilter(size_t colliderIndex) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     
-    if (body.shapes.validIndex(shapeIndex)){
-        return body.shapes[shapeIndex].maskBits;
+    if (body.colliders.validIndex(colliderIndex)){
+        return body.colliders[colliderIndex].maskBits;
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 
     return 0;
 }
 
-int16_t Body2D::getGroupIndexFilter(size_t shapeIndex) const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+int16_t Rigidbody2D::getGroupIndexFilter(size_t colliderIndex) const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     
-    if (body.shapes.validIndex(shapeIndex)){
-        return body.shapes[shapeIndex].groupIndex;
+    if (body.colliders.validIndex(colliderIndex)){
+        return body.colliders[colliderIndex].groupIndex;
     }else{
-        Log::error("Cannot find shape %i of body", shapeIndex);
+        Log::error("Cannot find shape %i of body", colliderIndex);
     }
 
     return -1;
 }
 
-float Body2D::getMass() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getMass() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetMass(body.body);
 }
 
-float Body2D::getRotationalInertia() const{
-    Body2DComponent& body = getComponent<Body2DComponent>();
+float Rigidbody2D::getRotationalInertia() const{
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     return b2Body_GetRotationalInertia(body.body);
 }
 
-void Body2D::applyMassFromShapes(){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyMassFromColliders(){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_ApplyMassFromShapes(body.body);
 }
 
-void Body2D::applyForce(const Vector2& force, const Vector2& point, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyForce(const Vector2& force, const Vector2& point, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
     b2Body_ApplyForce(body.body, {force.x, force.y}, {point.x / pointsToMeterScale, point.y / pointsToMeterScale}, wake);
 }
 
-void Body2D::applyForceToCenter(const Vector2& force, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyForceToCenter(const Vector2& force, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_ApplyForceToCenter(body.body, {force.x, force.y}, wake);
 }
 
-void Body2D::applyTorque(float torque, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyTorque(float torque, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_ApplyTorque(body.body, torque, wake);
 }
 
-void Body2D::applyLinearImpulse(const Vector2& impulse, const Vector2& point, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyLinearImpulse(const Vector2& impulse, const Vector2& point, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
     b2Body_ApplyLinearImpulse(body.body, {impulse.x, impulse.y}, {point.x / pointsToMeterScale, point.y / pointsToMeterScale}, wake);
 }
 
-void Body2D::applyLinearImpulseToCenter(const Vector2& impulse, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyLinearImpulseToCenter(const Vector2& impulse, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_ApplyLinearImpulseToCenter(body.body, {impulse.x, impulse.y}, wake);
 }
 
-void Body2D::applyAngularImpulse(float impulse, bool wake){
-    Body2DComponent& body = getComponent<Body2DComponent>();
+void Rigidbody2D::applyAngularImpulse(float impulse, bool wake){
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
     b2Body_ApplyAngularImpulse(body.body, impulse, wake);

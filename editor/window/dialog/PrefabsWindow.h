@@ -14,10 +14,10 @@ namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
 
-    // Chooses which bundles with no scene instance the project builds and registers
-    class BundlesWindow {
+    // Chooses which prefabs with no scene instance the project builds and registers
+    class PrefabsWindow {
     private:
-        struct BundleEntry {
+        struct PrefabEntry {
             fs::path path;
             std::string usedBy;  // empty when no scene instantiates it
             bool included = false;
@@ -25,14 +25,14 @@ namespace jasperengine::editor {
 
         bool m_isOpen = false;
         Project* m_project = nullptr;
-        std::vector<BundleEntry> m_entries;
+        std::vector<PrefabEntry> m_entries;
 
-        void drawBundles();
-        void applyBundles();
+        void drawPrefabs();
+        void applyPrefabs();
 
     public:
-        BundlesWindow() = default;
-        ~BundlesWindow() = default;
+        PrefabsWindow() = default;
+        ~PrefabsWindow() = default;
 
         void open(Project* project);
         void show();

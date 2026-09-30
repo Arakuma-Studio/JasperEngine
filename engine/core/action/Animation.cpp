@@ -208,17 +208,17 @@ size_t Animation::getActionFrameSize() const{
     return animation.actions.size();
 }
 
-void Animation::addActionFrame(float startTime, Entity timedaction, Entity target){
+void Animation::addActionFrame(float startTime, Entity tween, Entity target){
     // Duration <= 0 means auto: resolved from the action's own duration
-    addActionFrame(startTime, 0, timedaction, target);
+    addActionFrame(startTime, 0, tween, target);
 }
 
 void Animation::addActionFrame(float startTime, float duration, Entity action){
     addActionFrame(startTime, duration, action, getTarget());
 }
 
-void Animation::addActionFrame(float startTime, Entity timedaction){
-    addActionFrame(startTime, timedaction, getTarget());
+void Animation::addActionFrame(float startTime, Entity tween){
+    addActionFrame(startTime, tween, getTarget());
 }
 
 ActionFrame& Animation::getActionFrame(unsigned int index){

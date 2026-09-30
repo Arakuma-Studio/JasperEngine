@@ -4,13 +4,13 @@
 #ifndef MIRROR_H
 #define MIRROR_H
 
-#include "Shape.h"
+#include "Primitive.h"
 
 namespace jasperengine{
 
     // Flat mesh that reflects the scene, see MirrorComponent. createWall matches
     // the default normal, so a mirror needs no rotation.
-    class JASPERENGINE_API Mirror: public Shape{
+    class JASPERENGINE_API Mirror: public Primitive{
     public:
         Mirror(Scene* scene);
         Mirror(Scene* scene, Entity entity);

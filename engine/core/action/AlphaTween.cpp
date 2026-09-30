@@ -1,23 +1,23 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "AlphaAction.h"
+#include "AlphaTween.h"
 
 using namespace jasperengine;
 
-AlphaAction::AlphaAction(Scene* scene): TimedAction(scene){
-    addComponent<AlphaActionComponent>();
+AlphaTween::AlphaTween(Scene* scene): Tween(scene){
+    addComponent<AlphaTweenComponent>();
 }
 
-AlphaAction::AlphaAction(Scene* scene, Entity entity): TimedAction(scene, entity){
+AlphaTween::AlphaTween(Scene* scene, Entity entity): Tween(scene, entity){
 
 }
 
-void AlphaAction::setAction(float startAlpha, float endAlpha, float duration, bool loop){
-    TimedAction::setAction(duration, loop);
+void AlphaTween::setAction(float startAlpha, float endAlpha, float duration, bool loop){
+    Tween::setAction(duration, loop);
 
-    AlphaActionComponent& alphaAction = getComponent<AlphaActionComponent>();
+    AlphaTweenComponent& alphaTween = getComponent<AlphaTweenComponent>();
 
-    alphaAction.startAlpha = startAlpha;
-    alphaAction.endAlpha = endAlpha;
+    alphaTween.startAlpha = startAlpha;
+    alphaTween.endAlpha = endAlpha;
 }

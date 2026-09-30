@@ -55,14 +55,14 @@ std::string unityTypeLabel(const std::string& type) {
         {"mirror", "Mirror"}, {"sphere", "Sphere"}, {"cylinder", "Cylinder"}, {"capsule", "Capsule"},
         {"torus", "Torus"}, {"image", "Image"}, {"sprite", "Sprite"}, {"tilemap", "Tilemap"}, {"text", "Text"},
         {"button", "Button"}, {"scrollbar", "Scrollbar"}, {"progressbar", "Progress Bar"},
-        {"textedit", "Input Field"}, {"panel", "Panel"}, {"polygon", "Polygon"}, {"container", "Layout Group"},
+        {"inputfield", "Input Field"}, {"panel", "Panel"}, {"polygon", "Polygon"}, {"container", "Layout Group"},
         {"point_light", "Point Light"}, {"directional_light", "Directional Light"}, {"spot_light", "Spot Light"},
-        {"light_2d", "Light 2D"}, {"occluder_2d", "Shadow Caster 2D"}, {"joint2d", "Joint 2D"},
-        {"joint3d", "Joint"}, {"body2d", "Rigidbody 2D"}, {"body3d", "Rigidbody"}, {"sky", "Skybox"},
+        {"light_2d", "Light 2D"}, {"shadow_caster_2d", "Shadow Caster 2D"}, {"joint2d", "Joint 2D"},
+        {"joint3d", "Joint"}, {"rigidbody2d", "Rigidbody 2D"}, {"rigidbody", "Rigidbody"}, {"sky", "Skybox"},
         {"fog", "Fog"}, {"camera", "Camera"}, {"sound", "Audio Source"}, {"sound_3d", "3D Audio Source"},
         {"animation", "Animation"}, {"sprite_animation", "Sprite Animation"},
-        {"position_action", "Position Tween"}, {"rotation_action", "Rotation Tween"},
-        {"scale_action", "Scale Tween"}, {"color_action", "Color Tween"}, {"alpha_action", "Alpha Tween"},
+        {"position_tween", "Position Tween"}, {"rotation_tween", "Rotation Tween"},
+        {"scale_tween", "Scale Tween"}, {"color_tween", "Color Tween"}, {"alpha_tween", "Alpha Tween"},
         {"model", "Model"}, {"particles", "Particle System"}, {"points", "Point Sprites"},
         {"lines", "Line Renderer"}, {"mesh_polygon", "Mesh Polygon"}, {"terrain", "Terrain"},
         {"reflection_probe", "Reflection Probe"}
@@ -235,7 +235,7 @@ const std::vector<ToolDefinition>& cachedTools() {
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"name", stringSchema("GameObject display name")},
-                {"type", stringSchema("Allowed type: empty, object, box, plane, wall, mirror, sphere, cylinder, capsule, torus, image, sprite, tilemap, text, button, scrollbar, progressbar, textedit, panel, polygon, container, point_light, directional_light, spot_light, light_2d, occluder_2d, joint2d, joint3d, body2d, body3d, sky, fog, camera, sound, sound_3d, animation, sprite_animation, position_action, rotation_action, scale_action, color_action, alpha_action, model, particles, points, lines, mesh_polygon, terrain, reflection_probe. Unity names for these types: object = Create Empty (a GameObject with only a Transform), empty = a bare GameObject without a Transform (scene root only), box = Cube, textedit = Input Field, container = Layout Group, body2d = Rigidbody 2D, body3d = Rigidbody, sky = Skybox, sound/sound_3d = Audio Source (2D/3D), particles = Particle System, lines = Line Renderer, position_action/rotation_action/scale_action/color_action/alpha_action = Position/Rotation/Scale/Color/Alpha Tween. light_2d = 2D radius-falloff light (Light2DComponent); occluder_2d = Shadow Caster 2D (Occluder2DComponent).")},
+                {"type", stringSchema("Allowed type: empty, gameobject, box, plane, wall, mirror, sphere, cylinder, capsule, torus, image, sprite, tilemap, text, button, scrollbar, progressbar, input_field, panel, polygon, layout_group, point_light, directional_light, spot_light, light_2d, shadow_caster_2d, joint2d, joint3d, rigidbody2d, rigidbody, skybox, fog, camera, audio_source, audio_source_3d, animation, sprite_animation, position_tween, rotation_tween, scale_tween, color_tween, alpha_tween, model, particle_system, points, line_renderer, mesh_polygon, terrain, reflection_probe. Unity names for these types: object = Create Empty (a GameObject with only a Transform), empty = a bare GameObject without a Transform (scene root only), box = Cube, inputfield = Input Field, container = Layout Group, rigidbody2d = Rigidbody 2D, rigidbody = Rigidbody, sky = Skybox, sound/sound_3d = Audio Source (2D/3D), particles = Particle System, lines = Line Renderer, position_tween/rotation_tween/scale_tween/color_tween/alpha_tween = Position/Rotation/Scale/Color/Alpha Tween. light_2d = 2D radius-falloff light (Light2DComponent); shadow_caster_2d = Shadow Caster 2D (ShadowCaster2DComponent).")},
                 {"parent_id", integerSchema("Optional parent GameObject id for GameObjects that have a Transform")},
                 {"position", vector3Schema("Optional local position")}
             }, {"name", "type"}),
@@ -338,7 +338,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
-                {"component", stringSchema("Engine component name from list_component_types, e.g. Body2DComponent for a Rigidbody 2D or SoundComponent for an Audio Source")}
+                {"component", stringSchema("Engine component name from list_component_types, e.g. Rigidbody2DComponent for a Rigidbody 2D or AudioSourceComponent for an Audio Source")}
             }, {"component"}),
             false
         },
@@ -354,11 +354,11 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "add_body3d_shape",
-            "Add a Rigidbody (Body3DComponent) to an existing 3D GameObject when needed, then append one Collider (collision shape) to that SAME GameObject's Rigidbody. Use this for a model/mesh that needs physics or a Collider; do not create a separate Rigidbody GameObject. Existing Colliders are preserved. Sizes default to the mesh's measured bounds, which is the reliable way to match the visible geometry; only pass explicit sizes for axes that must deliberately differ from the mesh. The result reports fitted_to_mesh so you can tell a measured Collider from one left at its defaults. convex_hull is exact and cheap for boxy level geometry.",
+            "add_rigidbody_collider",
+            "Add a Rigidbody (RigidbodyComponent) to an existing 3D GameObject when needed, then append one Collider (collider) to that SAME GameObject's Rigidbody. Use this for a model/mesh that needs physics or a Collider; do not create a separate Rigidbody GameObject. Existing Colliders are preserved. Sizes default to the mesh's measured bounds, which is the reliable way to match the visible geometry; only pass explicit sizes for axes that must deliberately differ from the mesh. The result reports fitted_to_mesh so you can tell a measured Collider from one left at its defaults. convex_hull is exact and cheap for boxy level geometry.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Model or mesh GameObject id that receives the Body3DComponent")},
+                {"entity_id", integerSchema("Model or mesh GameObject id that receives the RigidbodyComponent")},
                 {"entity_name", stringSchema("Model or mesh GameObject name, used only when entity_id is omitted")},
                 {"body_type", stringSchema("Optional Rigidbody type: static, kinematic, or dynamic. A new Rigidbody defaults to static when omitted")},
                 {"motion_quality", stringSchema("Optional motion quality: discrete or linear_cast")},
@@ -378,11 +378,11 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "add_body2d_shape",
-            "Add a Rigidbody 2D (Body2DComponent) to an existing 2D GameObject when needed, then append one Collider 2D (collision shape) to that SAME GameObject's Rigidbody 2D. Use this for a sprite, tilemap, or 2D mesh that needs physics or a Collider 2D; do not create a separate Rigidbody GameObject. Existing Colliders are preserved.",
+            "add_rigidbody2d_collider",
+            "Add a Rigidbody 2D (Rigidbody2DComponent) to an existing 2D GameObject when needed, then append one Collider 2D (collider) to that SAME GameObject's Rigidbody 2D. Use this for a sprite, tilemap, or 2D mesh that needs physics or a Collider 2D; do not create a separate Rigidbody GameObject. Existing Colliders are preserved.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"entity_id", integerSchema("Sprite, tilemap, or 2D mesh GameObject id that receives the Body2DComponent")},
+                {"entity_id", integerSchema("Sprite, tilemap, or 2D mesh GameObject id that receives the Rigidbody2DComponent")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
                 {"body_type", stringSchema("Optional Rigidbody 2D type: static, kinematic, or dynamic. A new Rigidbody 2D defaults to static when omitted")},
                 {"shape_type", stringSchema("Collider 2D type: box, circle, capsule, segment (Edge Collider 2D), polygon, or chain (open or looped Edge Collider 2D)")},
@@ -674,7 +674,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_terrain_collision",
-            "Add a Rigidbody (Body3DComponent) to a terrain GameObject and configure a height-field Collider (Terrain Collider) when supported.",
+            "Add a Rigidbody (RigidbodyComponent) to a terrain GameObject and configure a height-field Collider (Terrain Collider) when supported.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Terrain GameObject id")},
@@ -740,7 +740,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_script_file",
-            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use JasperEngine table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the Rigidbody's real mass, not from a guessed magnitude: 3D mass is Collider volume * density (default density 1000 kg/m3), while 2D mass is Collider area * density (default density 1), so never carry the 3D default over to a Rigidbody 2D. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh GameObjects, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
+            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use JasperEngine table modules, not Dori.Script or editor property paths. For Mesh/Primitive color use Primitive(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the Rigidbody's real mass, not from a guessed magnitude: 3D mass is Collider volume * density (default density 1000 kg/m3), while 2D mass is Collider area * density (default density 1), so never carry the 3D default over to a Rigidbody 2D. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh GameObjects, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
             objectSchema({
                 {"path", stringSchema("Existing safe project-relative script path. Allowed extensions: .lua, .cpp, .h, .hpp")},
                 {"content", stringSchema("Complete replacement file contents")},
@@ -789,40 +789,40 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "create_bundle_from_entity",
-            "Create a Prefab (.bundle file) from a GameObject hierarchy through CreateEntityBundleCmd.",
+            "create_prefab_from_entity",
+            "Create a Prefab (.prefab file) from a GameObject hierarchy through CreatePrefabCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Root GameObject id")},
                 {"entity_name", stringSchema("Root GameObject name, used only when entity_id is omitted")},
-                {"bundle_path", stringSchema("Safe project-relative .bundle output path for the Prefab")}
-            }, {"bundle_path"}),
+                {"prefab_path", stringSchema("Safe project-relative .prefab output path for the Prefab")}
+            }, {"prefab_path"}),
             false
         },
         {
-            "import_bundle_instance",
-            "Instantiate a Prefab (.bundle file) into the scene through ImportEntityBundleCmd.",
+            "import_prefab_instance",
+            "Instantiate a Prefab (.prefab file) into the scene through ImportPrefabCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"bundle_path", stringSchema("Safe project-relative .bundle (Prefab) path")},
+                {"prefab_path", stringSchema("Safe project-relative .prefab (Prefab) path")},
                 {"parent_id", integerSchema("Optional parent GameObject id")}
-            }, {"bundle_path"}),
+            }, {"prefab_path"}),
             false
         },
         {
-            "add_entity_to_bundle",
-            "Insert a GameObject into an existing Prefab instance through AddEntityToBundleCmd.",
+            "add_entity_to_prefab",
+            "Insert a GameObject into an existing Prefab instance through AddEntityToPrefabCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
-                {"bundle_root_id", integerSchema("Prefab instance root/parent GameObject id")}
-            }, {"bundle_root_id"}),
+                {"prefab_root_id", integerSchema("Prefab instance root/parent GameObject id")}
+            }, {"prefab_root_id"}),
             false
         },
         {
-            "remove_entity_from_bundle",
-            "Remove a GameObject from the Prefab it belongs to through RemoveEntityFromBundleCmd.",
+            "remove_entity_from_prefab",
+            "Remove a GameObject from the Prefab it belongs to through RemoveEntityFromPrefabCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
@@ -831,8 +831,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "make_bundle_component_unique",
-            "Convert a component shared with the Prefab into a local override on this instance through ComponentToBundleLocalCmd.",
+            "make_prefab_component_unique",
+            "Convert a component shared with the Prefab into a local override on this instance through ComponentToPrefabLocalCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
@@ -842,8 +842,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "revert_bundle_component",
-            "Revert a local component override back to the Prefab's shared component through ComponentToBundleSharedCmd.",
+            "revert_prefab_component",
+            "Revert a local component override back to the Prefab's shared component through ComponentToPrefabSharedCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
@@ -853,12 +853,12 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "set_standalone_bundle",
-            "Add or remove a Prefab (.bundle) in the project standalone list. A Prefab no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with BundleManager. Prefabs a scene instantiates are always built and are not listed.",
+            "set_standalone_prefab",
+            "Add or remove a Prefab (.prefab) in the project standalone list. A Prefab no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with PrefabManager. Prefabs a scene instantiates are always built and are not listed.",
             objectSchema({
-                {"bundle_path", stringSchema("Safe project-relative .bundle (Prefab) path")},
+                {"prefab_path", stringSchema("Safe project-relative .prefab (Prefab) path")},
                 {"standalone", boolSchema("true to list the Prefab, false to remove it. Default true")}
-            }, {"bundle_path"}),
+            }, {"prefab_path"}),
             false
         },
         {
@@ -888,7 +888,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id. Omit both this and entity_name, and give shader_type, to fork a scene default instead")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect the GameObject's renderable component. Ignored when forking a scene default")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LineRendererComponent for a Line Renderer, SkyboxComponent for a Skybox). Omit to auto-detect the GameObject's renderable component. Ignored when forking a scene default")},
                 {"shader_type", stringSchema("mesh, ui, sky, points, or lines. Required when entity_id/entity_name are omitted, to fork a scene-wide default shader for that type; with a GameObject only depth is meaningful (fork a mesh's depth shader)")},
                 {"directory", stringSchema("Optional safe project-relative destination directory; defaults to shaders")},
                 {"fork_includes", boolSchema("Also copy the built-in transitive .glsl includes so they can be edited; this moves the fork into its own <name>/ directory")}
@@ -912,7 +912,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id of a component with a custom shader")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LineRendererComponent for a Line Renderer, SkyboxComponent for a Skybox). Omit to auto-detect")},
                 {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of a GameObject")}
             }),
             true
@@ -924,7 +924,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id of a component with a custom shader")},
                 {"entity_name", stringSchema("GameObject name, used only when entity_id is omitted")},
-                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent for a Line Renderer, SkyComponent for a Skybox). Omit to auto-detect")},
+                {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LineRendererComponent for a Line Renderer, SkyboxComponent for a Skybox). Omit to auto-detect")},
                 {"pass_index", integerSchema("Post-process pass index (0 = first pass of the scene chain), instead of a GameObject")},
                 {"name", stringSchema("Uniform member name as declared in the shader block, e.g. amplitude or tint")},
                 {"number_value", numberSchema("Value for a float or int member")},
@@ -1134,7 +1134,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_animation_action",
-            "Add a Tween (action) clip to an AnimationComponent timeline. The Tween is a GameObject with a Position/Rotation/Scale/Color/Alpha Tween component (PositionActionComponent etc.) or another action.",
+            "Add a Tween (action) clip to an AnimationComponent timeline. The Tween is a GameObject with a Position/Rotation/Scale/Color/Alpha Tween component (PositionTweenComponent etc.) or another action.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Animation GameObject id")},
@@ -1222,7 +1222,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "read_engine_source",
-            "Read a file from the authoritative JasperEngine source tree. Paths are relative to the engine/ root, e.g. core/math/Quaternion.h, core/Input.h, core/object/Object.h, or core/script/binding/CoreClassesLua.cpp. Use after search_engine_source to see full signatures and enums in context.",
+            "Read a file from the authoritative JasperEngine source tree. Paths are relative to the engine/ root, e.g. core/math/Quaternion.h, core/Input.h, core/object/GameObject.h, or core/script/binding/CoreClassesLua.cpp. Use after search_engine_source to see full signatures and enums in context.",
             objectSchema({
                 {"path", stringSchema("Engine-source-relative file path, e.g. core/math/Quaternion.h")},
                 {"start_line", integerSchema("Optional 1-based first line to return")},
@@ -1352,17 +1352,17 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         return hasEntitySelector(arguments) ? ok() : fail(name + " requires entity_id or entity_name.");
     }
     if (name == "inspect_component" || name == "add_component" || name == "remove_component" ||
-        name == "make_bundle_component_unique" || name == "revert_bundle_component") {
+        name == "make_prefab_component_unique" || name == "revert_prefab_component") {
         if (!hasEntitySelector(arguments)) return fail(name + " requires entity_id or entity_name.");
         return hasString(arguments, "component") ? ok() : fail(name + " requires component.");
     }
-    if (name == "add_body3d_shape") {
-        if (!hasEntitySelector(arguments)) return fail("add_body3d_shape requires entity_id or entity_name.");
-        return hasString(arguments, "shape_type") ? ok() : fail("add_body3d_shape requires shape_type.");
+    if (name == "add_rigidbody_collider") {
+        if (!hasEntitySelector(arguments)) return fail("add_rigidbody_collider requires entity_id or entity_name.");
+        return hasString(arguments, "shape_type") ? ok() : fail("add_rigidbody_collider requires shape_type.");
     }
-    if (name == "add_body2d_shape") {
-        if (!hasEntitySelector(arguments)) return fail("add_body2d_shape requires entity_id or entity_name.");
-        return hasString(arguments, "shape_type") ? ok() : fail("add_body2d_shape requires shape_type.");
+    if (name == "add_rigidbody2d_collider") {
+        if (!hasEntitySelector(arguments)) return fail("add_rigidbody2d_collider requires entity_id or entity_name.");
+        return hasString(arguments, "shape_type") ? ok() : fail("add_rigidbody2d_collider requires shape_type.");
     }
     if (name == "rename_entity") {
         if (!hasEntitySelector(arguments)) return fail("rename_entity requires entity_id or entity_name.");
@@ -1461,7 +1461,7 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         if (!hasEntitySelector(arguments)) return fail("link_material requires entity_id or entity_name.");
         return hasString(arguments, "material_path") ? ok() : fail("link_material requires material_path.");
     }
-    if (name == "unlink_material" || name == "remove_entity_from_bundle") {
+    if (name == "unlink_material" || name == "remove_entity_from_prefab") {
         return hasEntitySelector(arguments) ? ok() : fail(name + " requires entity_id or entity_name.");
     }
     if (name == "create_material_file") {
@@ -1551,19 +1551,19 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         }
         return ok();
     }
-    if (name == "create_bundle_from_entity") {
-        if (!hasString(arguments, "bundle_path")) return fail("create_bundle_from_entity requires bundle_path.");
-        return hasEntitySelector(arguments) ? ok() : fail("create_bundle_from_entity requires entity_id or entity_name.");
+    if (name == "create_prefab_from_entity") {
+        if (!hasString(arguments, "prefab_path")) return fail("create_prefab_from_entity requires prefab_path.");
+        return hasEntitySelector(arguments) ? ok() : fail("create_prefab_from_entity requires entity_id or entity_name.");
     }
-    if (name == "import_bundle_instance") {
-        return hasString(arguments, "bundle_path") ? ok() : fail("import_bundle_instance requires bundle_path.");
+    if (name == "import_prefab_instance") {
+        return hasString(arguments, "prefab_path") ? ok() : fail("import_prefab_instance requires prefab_path.");
     }
-    if (name == "add_entity_to_bundle") {
-        if (!hasEntitySelector(arguments)) return fail("add_entity_to_bundle requires entity_id or entity_name.");
-        return arguments.contains("bundle_root_id") ? ok() : fail("add_entity_to_bundle requires bundle_root_id.");
+    if (name == "add_entity_to_prefab") {
+        if (!hasEntitySelector(arguments)) return fail("add_entity_to_prefab requires entity_id or entity_name.");
+        return arguments.contains("prefab_root_id") ? ok() : fail("add_entity_to_prefab requires prefab_root_id.");
     }
-    if (name == "set_standalone_bundle") {
-        return hasString(arguments, "bundle_path") ? ok() : fail("set_standalone_bundle requires bundle_path.");
+    if (name == "set_standalone_prefab") {
+        return hasString(arguments, "prefab_path") ? ok() : fail("set_standalone_prefab requires prefab_path.");
     }
     if (name == "export_project" || name == "generate_shaders") {
         return hasString(arguments, "target_dir") ? ok() : fail(name + " requires target_dir.");
@@ -1814,10 +1814,10 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     if (name == "remove_component") {
         return "Remove " + arguments.value("component", "component");
     }
-    if (name == "add_body3d_shape") {
+    if (name == "add_rigidbody_collider") {
         return "Add " + arguments.value("shape_type", "3D") + " Collider to Rigidbody";
     }
-    if (name == "add_body2d_shape") {
+    if (name == "add_rigidbody2d_collider") {
         return "Add " + arguments.value("shape_type", "2D") + " Collider 2D to Rigidbody 2D";
     }
     if (name == "set_component_property") {
@@ -1937,26 +1937,26 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     if (name == "update_project_build_file") {
         return "Update ProjectBuild.cmake";
     }
-    if (name == "create_bundle_from_entity") {
-        return "Create Prefab " + arguments.value("bundle_path", "");
+    if (name == "create_prefab_from_entity") {
+        return "Create Prefab " + arguments.value("prefab_path", "");
     }
-    if (name == "import_bundle_instance") {
-        return "Instantiate Prefab " + arguments.value("bundle_path", "");
+    if (name == "import_prefab_instance") {
+        return "Instantiate Prefab " + arguments.value("prefab_path", "");
     }
-    if (name == "add_entity_to_bundle") {
+    if (name == "add_entity_to_prefab") {
         return "Add GameObject to Prefab";
     }
-    if (name == "remove_entity_from_bundle") {
+    if (name == "remove_entity_from_prefab") {
         return "Remove GameObject from Prefab";
     }
-    if (name == "make_bundle_component_unique") {
+    if (name == "make_prefab_component_unique") {
         return "Override Prefab component";
     }
-    if (name == "revert_bundle_component") {
+    if (name == "revert_prefab_component") {
         return "Revert Prefab component override";
     }
-    if (name == "set_standalone_bundle") {
-        return "Set standalone Prefab " + arguments.value("bundle_path", "");
+    if (name == "set_standalone_prefab") {
+        return "Set standalone Prefab " + arguments.value("prefab_path", "");
     }
     if (name == "export_project") {
         return "Build project to " + arguments.value("target_dir", "");

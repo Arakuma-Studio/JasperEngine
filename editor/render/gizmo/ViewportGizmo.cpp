@@ -13,14 +13,14 @@ using namespace jasperengine;
 editor::ViewportGizmo::ViewportGizmo(){
     scene = new Scene(EntityPool::System);
     camera = new Camera(scene);
-    mainObject = new Object(scene);
-    cube = new Shape(scene);
-    xaxis = new Shape(scene);
-    yaxis = new Shape(scene);
-    zaxis = new Shape(scene);
-    xarrow = new Shape(scene);
-    yarrow = new Shape(scene);
-    zarrow = new Shape(scene);
+    mainObject = new GameObject(scene);
+    cube = new Primitive(scene);
+    xaxis = new Primitive(scene);
+    yaxis = new Primitive(scene);
+    zaxis = new Primitive(scene);
+    xarrow = new Primitive(scene);
+    yarrow = new Primitive(scene);
+    zarrow = new Primitive(scene);
 
     scene->setBackgroundColor(0.0, 0.0, 0.0, 0.0);
     scene->setCamera(camera);
@@ -107,7 +107,7 @@ Scene* editor::ViewportGizmo::getScene(){
     return scene;
 }
 
-Object* editor::ViewportGizmo::getObject(){
+GameObject* editor::ViewportGizmo::getGameObject(){
     return mainObject;
 }
 

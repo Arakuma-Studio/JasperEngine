@@ -1,31 +1,31 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Lines.h"
+#include "LineRenderer.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 
-Lines::Lines(Scene* scene): Object(scene){
-    addComponent<LinesComponent>();
+LineRenderer::LineRenderer(Scene* scene): GameObject(scene){
+    addComponent<LineRendererComponent>();
 }
 
-Lines::Lines(Scene* scene, Entity entity): Object(scene, entity){
+LineRenderer::LineRenderer(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
-Lines::~Lines(){
+LineRenderer::~LineRenderer(){
 
 }
 
-bool Lines::load(){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+bool LineRenderer::load(){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     auto renderSystem = scene->getSystem<RenderSystem>();
     return renderSystem->loadLines(entity, linescomp, renderSystem->getScenePipelines());
 }
 
-void Lines::setMaxLines(unsigned int maxLines){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::setMaxLines(unsigned int maxLines){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     if (linescomp.maxLines != maxLines){
         linescomp.maxLines = maxLines;
@@ -34,14 +34,14 @@ void Lines::setMaxLines(unsigned int maxLines){
     }
 }
 
-unsigned int Lines::getMaxLines() const{
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+unsigned int LineRenderer::getMaxLines() const{
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     return linescomp.maxLines;
 }
 
-void Lines::addLine(LineData line){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::addLine(LineData line){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     linescomp.lines.push_back(line);
 
@@ -53,7 +53,7 @@ void Lines::addLine(LineData line){
     }
 }
 
-void Lines::addLine(Vector3 pointA, Vector3 pointB){
+void LineRenderer::addLine(Vector3 pointA, Vector3 pointB){
     LineData line = {};
 
     line.pointA = pointA;
@@ -62,7 +62,7 @@ void Lines::addLine(Vector3 pointA, Vector3 pointB){
     addLine(line);
 }
 
-void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector3 color){
+void LineRenderer::addLine(Vector3 pointA, Vector3 pointB, Vector3 color){
     LineData line = {};
 
     line.pointA = pointA;
@@ -73,7 +73,7 @@ void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector3 color){
     addLine(line);
 }
 
-void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector4 color){
+void LineRenderer::addLine(Vector3 pointA, Vector3 pointB, Vector4 color){
     LineData line = {};
 
     line.pointA = pointA;
@@ -84,7 +84,7 @@ void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector4 color){
     addLine(line);
 }
 
-void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector4 colorA, Vector4 colorB){
+void LineRenderer::addLine(Vector3 pointA, Vector3 pointB, Vector4 colorA, Vector4 colorB){
     LineData line = {};
 
     line.pointA = pointA;
@@ -95,14 +95,14 @@ void Lines::addLine(Vector3 pointA, Vector3 pointB, Vector4 colorA, Vector4 colo
     addLine(line);
 }
 
-LineData& Lines::getLine(size_t index){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+LineData& LineRenderer::getLine(size_t index){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     return linescomp.lines.at(index);
 }
 
-void Lines::updateLine(size_t index, LineData line){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::updateLine(size_t index, LineData line){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     if (linescomp.lines.at(index) != line){
         linescomp.lines.at(index) = line;
@@ -111,7 +111,7 @@ void Lines::updateLine(size_t index, LineData line){
     }
 }
 
-void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB){
+void LineRenderer::updateLine(size_t index, Vector3 pointA, Vector3 pointB){
     LineData line = getLine(index);
 
     line.pointA = pointA;
@@ -120,7 +120,7 @@ void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB){
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector3 color){
+void LineRenderer::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector3 color){
     LineData line = getLine(index);
 
     line.pointA = pointA;
@@ -131,7 +131,7 @@ void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector3 col
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 color){
+void LineRenderer::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 color){
     LineData line = getLine(index);
 
     line.pointA = pointA;
@@ -142,7 +142,7 @@ void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 col
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 colorA, Vector4 colorB){
+void LineRenderer::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 colorA, Vector4 colorB){
     LineData line = getLine(index);
 
     line.pointA = pointA;
@@ -153,7 +153,7 @@ void Lines::updateLine(size_t index, Vector3 pointA, Vector3 pointB, Vector4 col
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector3 color){
+void LineRenderer::updateLine(size_t index, Vector3 color){
     LineData line = getLine(index);
 
     line.colorA = Vector4(color, line.colorA.z);
@@ -162,7 +162,7 @@ void Lines::updateLine(size_t index, Vector3 color){
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector4 color){
+void LineRenderer::updateLine(size_t index, Vector4 color){
     LineData line = getLine(index);
 
     line.colorA = color;
@@ -171,7 +171,7 @@ void Lines::updateLine(size_t index, Vector4 color){
     updateLine(index, line);
 }
 
-void Lines::updateLine(size_t index, Vector4 colorA, Vector4 colorB){
+void LineRenderer::updateLine(size_t index, Vector4 colorA, Vector4 colorB){
     LineData line = getLine(index);
 
     line.colorA = colorA;
@@ -180,28 +180,28 @@ void Lines::updateLine(size_t index, Vector4 colorA, Vector4 colorB){
     updateLine(index, line);
 }
 
-void Lines::removeLine(size_t index){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::removeLine(size_t index){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     linescomp.lines.erase(linescomp.lines.begin() + index);
 
     linescomp.needUpdateBuffer = true;
 }
 
-void Lines::updateLines(){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::updateLines(){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     linescomp.needUpdateBuffer = true;
 }
 
-size_t Lines::getNumLines(){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+size_t LineRenderer::getNumLines(){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     return linescomp.lines.size();
 }
 
-void Lines::clearLines(){
-    LinesComponent& linescomp = getComponent<LinesComponent>();
+void LineRenderer::clearLines(){
+    LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     if (linescomp.lines.size() > 0){
         linescomp.lines.clear();
@@ -210,8 +210,8 @@ void Lines::clearLines(){
     }
 }
 
-void Lines::setCustomShader(const std::string& path){
-    LinesComponent& lines = getComponent<LinesComponent>();
+void LineRenderer::setCustomShader(const std::string& path){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     if (lines.customShader != path){
         lines.customShader = path;
@@ -220,39 +220,39 @@ void Lines::setCustomShader(const std::string& path){
     }
 }
 
-std::string Lines::getCustomShader() const{
-    LinesComponent& lines = getComponent<LinesComponent>();
+std::string LineRenderer::getCustomShader() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     return lines.customShader;
 }
 
-void Lines::setShaderUniform(const std::string& name, const Vector4& value){
-    LinesComponent& lines = getComponent<LinesComponent>();
+void LineRenderer::setShaderUniform(const std::string& name, const Vector4& value){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     if (ShaderUniforms::set(lines.shaderUniforms, name, value))
         lines.needUpdateShaderUniforms = true;
 }
 
-void Lines::setShaderUniform(const std::string& name, const Vector3& value){
+void LineRenderer::setShaderUniform(const std::string& name, const Vector3& value){
     setShaderUniform(name, Vector4(value.x, value.y, value.z, 0.0f));
 }
 
-void Lines::setShaderUniform(const std::string& name, const Vector2& value){
+void LineRenderer::setShaderUniform(const std::string& name, const Vector2& value){
     setShaderUniform(name, Vector4(value.x, value.y, 0.0f, 0.0f));
 }
 
-void Lines::setShaderUniform(const std::string& name, float value){
+void LineRenderer::setShaderUniform(const std::string& name, float value){
     setShaderUniform(name, Vector4(value, 0.0f, 0.0f, 0.0f));
 }
 
-Vector4 Lines::getShaderUniform(const std::string& name) const{
-    LinesComponent& lines = getComponent<LinesComponent>();
+Vector4 LineRenderer::getShaderUniform(const std::string& name) const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     return ShaderUniforms::get(lines.shaderUniforms, name);
 }
 
-bool Lines::removeShaderUniform(const std::string& name){
-    LinesComponent& lines = getComponent<LinesComponent>();
+bool LineRenderer::removeShaderUniform(const std::string& name){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     if (!ShaderUniforms::remove(lines.shaderUniforms, name))
         return false;
@@ -261,10 +261,10 @@ bool Lines::removeShaderUniform(const std::string& name){
     return true;
 }
 
-void Lines::setEnabled(bool enabled){
-    getComponent<LinesComponent>().enabled = enabled;
+void LineRenderer::setEnabled(bool enabled){
+    getComponent<LineRendererComponent>().enabled = enabled;
 }
 
-bool Lines::isEnabled() const{
-    return getComponent<LinesComponent>().enabled;
+bool LineRenderer::isEnabled() const{
+    return getComponent<LineRendererComponent>().enabled;
 }

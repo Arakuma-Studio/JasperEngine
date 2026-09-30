@@ -1,22 +1,22 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "RotationAction.h"
+#include "RotationTween.h"
 
 using namespace jasperengine;
 
-RotationAction::RotationAction(Scene* scene): TimedAction(scene){
-    addComponent<RotationActionComponent>();
+RotationTween::RotationTween(Scene* scene): Tween(scene){
+    addComponent<RotationTweenComponent>();
 }
 
-RotationAction::RotationAction(Scene* scene, Entity entity): TimedAction(scene, entity){
+RotationTween::RotationTween(Scene* scene, Entity entity): Tween(scene, entity){
 
 }
 
-void RotationAction::setAction(Quaternion startRotation, Quaternion endRotation, float duration, bool loop){
-    TimedAction::setAction(duration, loop);
+void RotationTween::setAction(Quaternion startRotation, Quaternion endRotation, float duration, bool loop){
+    Tween::setAction(duration, loop);
 
-    RotationActionComponent& rotAction = getComponent<RotationActionComponent>();
+    RotationTweenComponent& rotAction = getComponent<RotationTweenComponent>();
 
     rotAction.startRotation = startRotation;
     rotAction.endRotation = endRotation;

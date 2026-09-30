@@ -1,89 +1,89 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Shape.h"
+#include "Primitive.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 
-Shape::Shape(Scene* scene): Mesh(scene){
+Primitive::Primitive(Scene* scene): Mesh(scene){
 }
 
-Shape::Shape(Scene* scene, Entity entity): Mesh(scene, entity){
+Primitive::Primitive(Scene* scene, Entity entity): Mesh(scene, entity){
 }
 
-Shape::~Shape(){
+Primitive::~Primitive(){
 }
 
-void Shape::createPlane(float width, float depth){
+void Primitive::createPlane(float width, float depth){
     scene->getSystem<MeshSystem>()->createPlane(getComponent<MeshComponent>(), width, depth);
 }
 
-void Shape::createPlane(float width, float depth, unsigned int tiles){
+void Primitive::createPlane(float width, float depth, unsigned int tiles){
     scene->getSystem<MeshSystem>()->createPlane(getComponent<MeshComponent>(), width, depth, tiles);
 }
 
-void Shape::createWall(float width, float height){
+void Primitive::createWall(float width, float height){
     scene->getSystem<MeshSystem>()->createWall(getComponent<MeshComponent>(), width, height);
 }
 
-void Shape::createWall(float width, float height, unsigned int tiles){
+void Primitive::createWall(float width, float height, unsigned int tiles){
     scene->getSystem<MeshSystem>()->createWall(getComponent<MeshComponent>(), width, height, tiles);
 }
 
-void Shape::createBox(float width, float height, float depth){
+void Primitive::createBox(float width, float height, float depth){
     scene->getSystem<MeshSystem>()->createBox(getComponent<MeshComponent>(), width, height, depth);
 }
 
-void Shape::createBox(float width, float height, float depth, unsigned int tiles){
+void Primitive::createBox(float width, float height, float depth, unsigned int tiles){
     scene->getSystem<MeshSystem>()->createBox(getComponent<MeshComponent>(), width, height, depth, tiles);
 }
 
-void Shape::createSphere(float radius){
+void Primitive::createSphere(float radius){
     scene->getSystem<MeshSystem>()->createSphere(getComponent<MeshComponent>(), radius);
 }
 
-void Shape::createSphere(float radius, unsigned int slices, unsigned int stacks){
+void Primitive::createSphere(float radius, unsigned int slices, unsigned int stacks){
     scene->getSystem<MeshSystem>()->createSphere(getComponent<MeshComponent>(), radius, slices, stacks);
 }
 
-void Shape::createCylinder(float radius, float height){
+void Primitive::createCylinder(float radius, float height){
     scene->getSystem<MeshSystem>()->createCylinder(getComponent<MeshComponent>(), radius, radius, height);
 }
 
-void Shape::createCylinder(float baseRadius, float topRadius, float height){
+void Primitive::createCylinder(float baseRadius, float topRadius, float height){
     scene->getSystem<MeshSystem>()->createCylinder(getComponent<MeshComponent>(), baseRadius, topRadius, height);
 }
 
-void Shape::createCylinder(float radius, float height, unsigned int slices, unsigned int stacks){
+void Primitive::createCylinder(float radius, float height, unsigned int slices, unsigned int stacks){
     scene->getSystem<MeshSystem>()->createCylinder(getComponent<MeshComponent>(), radius, radius, height, slices, stacks);
 }
 
-void Shape::createCylinder(float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
+void Primitive::createCylinder(float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
     scene->getSystem<MeshSystem>()->createCylinder(getComponent<MeshComponent>(), baseRadius, topRadius, height, slices, stacks);
 }
 
-void Shape::createCapsule(float radius, float height){
+void Primitive::createCapsule(float radius, float height){
     scene->getSystem<MeshSystem>()->createCapsule(getComponent<MeshComponent>(), radius, radius, height);
 }
 
-void Shape::createCapsule(float baseRadius, float topRadius, float height){
+void Primitive::createCapsule(float baseRadius, float topRadius, float height){
     scene->getSystem<MeshSystem>()->createCapsule(getComponent<MeshComponent>(), baseRadius, topRadius, height);
 }
 
-void Shape::createCapsule(float radius, float height, unsigned int slices, unsigned int stacks){
+void Primitive::createCapsule(float radius, float height, unsigned int slices, unsigned int stacks){
     scene->getSystem<MeshSystem>()->createCapsule(getComponent<MeshComponent>(), radius, radius, height, slices, stacks);
 }
 
-void Shape::createCapsule(float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
+void Primitive::createCapsule(float baseRadius, float topRadius, float height, unsigned int slices, unsigned int stacks){
     scene->getSystem<MeshSystem>()->createCapsule(getComponent<MeshComponent>(), baseRadius, topRadius, height, slices, stacks);
 }
 
-void Shape::createTorus(float radius, float ringRadius){
+void Primitive::createTorus(float radius, float ringRadius){
     scene->getSystem<MeshSystem>()->createTorus(getComponent<MeshComponent>(), radius, ringRadius);
 }
 
-void Shape::createTorus(float radius, float ringRadius, unsigned int sides, unsigned int rings){
+void Primitive::createTorus(float radius, float ringRadius, unsigned int sides, unsigned int rings){
     scene->getSystem<MeshSystem>()->createTorus(getComponent<MeshComponent>(), radius, ringRadius, sides, rings);
 }

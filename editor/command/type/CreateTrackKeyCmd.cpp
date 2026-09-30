@@ -85,8 +85,8 @@ bool editor::CreateTrackKeyCmd::execute(){
     }
     *actionsRef = newActions;
     Catalog::updateEntity(scene, animEntity, prop.updateFlags);
-    if (project->isEntityInBundle(sceneId, animEntity)){
-        project->bundlePropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
+    if (project->isEntityInPrefab(sceneId, animEntity)){
+        project->prefabPropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
     }
 
     sceneProject->isModified = true;
@@ -105,8 +105,8 @@ void editor::CreateTrackKeyCmd::undo(){
         if (auto* actionsRef = static_cast<std::vector<ActionFrame>*>(prop.ref)){
             *actionsRef = oldActions;
             Catalog::updateEntity(scene, animEntity, prop.updateFlags);
-            if (project->isEntityInBundle(sceneId, animEntity)){
-                project->bundlePropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
+            if (project->isEntityInPrefab(sceneId, animEntity)){
+                project->prefabPropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
             }
         }else{
             anim->actions = oldActions;

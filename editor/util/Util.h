@@ -39,8 +39,8 @@ namespace jasperengine::editor{
              return "gltf,glb,obj";
         }
 
-        inline static std::string getBundleExtensions() {
-             return "bundle";
+        inline static std::string getPrefabExtensions() {
+             return "prefab";
         }
 
         inline static std::string getAudioExtensions() {
@@ -228,9 +228,9 @@ namespace jasperengine::editor{
             return vertPath + customShaderSeparator + fragPath;
         }
 
-        inline static bool isBundleFile(const std::string& path) {
-             static const std::unordered_set<std::string> bundleExtensions = {
-                ".bundle"
+        inline static bool isPrefabFile(const std::string& path) {
+             static const std::unordered_set<std::string> prefabExtensions = {
+                ".prefab"
             };
 
             std::string ext = std::filesystem::path(path).extension().string();
@@ -238,7 +238,7 @@ namespace jasperengine::editor{
                 ext = path;
             }
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            return bundleExtensions.find(ext) != bundleExtensions.end();
+            return prefabExtensions.find(ext) != prefabExtensions.end();
         }
 
         inline static bool isModelFile(const std::string& path) {

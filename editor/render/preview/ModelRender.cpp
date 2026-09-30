@@ -68,7 +68,7 @@ void editor::ModelRender::positionCameraForModel(){
     for (size_t i = startIndex; i <= lastIndex; i++){
         Entity entity = transforms->getEntity(i);
         
-        Object obj(scene, entity);
+        GameObject obj(scene, entity);
         obj.updateTransform();
 
         Signature signature = scene->getSignature(entity);
@@ -150,6 +150,6 @@ Scene* editor::ModelRender::getScene(){
     return scene;
 }
 
-Object* editor::ModelRender::getObject(){
+GameObject* editor::ModelRender::getGameObject(){
     return model;
 }

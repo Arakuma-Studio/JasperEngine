@@ -1,75 +1,75 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Occluder2D.h"
+#include "ShadowCaster2D.h"
 
 using namespace jasperengine;
 
-Occluder2D::Occluder2D(Scene* scene): Object(scene){
-    addComponent<Occluder2DComponent>();
+ShadowCaster2D::ShadowCaster2D(Scene* scene): GameObject(scene){
+    addComponent<ShadowCaster2DComponent>();
 }
 
-Occluder2D::Occluder2D(Scene* scene, Entity entity): Object(scene, entity){
+ShadowCaster2D::ShadowCaster2D(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
-Occluder2D::~Occluder2D(){
+ShadowCaster2D::~ShadowCaster2D(){
 }
 
-void Occluder2D::setShape(Occluder2DShape shape){
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+void ShadowCaster2D::setShape(ShadowCaster2DShape shape){
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     occluder.shape = shape;
 }
 
-Occluder2DShape Occluder2D::getShape() const{
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+ShadowCaster2DShape ShadowCaster2D::getShape() const{
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     return occluder.shape;
 }
 
-void Occluder2D::addVertex(Vector2 vertex){
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+void ShadowCaster2D::addVertex(Vector2 vertex){
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     occluder.points.push_back(vertex);
-    occluder.shape = Occluder2DShape::POLYGON;
+    occluder.shape = ShadowCaster2DShape::POLYGON;
 }
 
-void Occluder2D::addVertex(float x, float y){
+void ShadowCaster2D::addVertex(float x, float y){
     addVertex(Vector2(x, y));
 }
 
-void Occluder2D::clearVertices(){
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+void ShadowCaster2D::clearVertices(){
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     occluder.points.clear();
 }
 
-unsigned int Occluder2D::getVertexCount() const{
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+unsigned int ShadowCaster2D::getVertexCount() const{
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     return (unsigned int)occluder.points.size();
 }
 
-void Occluder2D::setClosed(bool closed){
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+void ShadowCaster2D::setClosed(bool closed){
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     occluder.closed = closed;
 }
 
-bool Occluder2D::isClosed() const{
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+bool ShadowCaster2D::isClosed() const{
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     return occluder.closed;
 }
 
-void Occluder2D::setEnabled(bool enabled){
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+void ShadowCaster2D::setEnabled(bool enabled){
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     occluder.enabled = enabled;
 }
 
-bool Occluder2D::isEnabled() const{
-    Occluder2DComponent& occluder = getComponent<Occluder2DComponent>();
+bool ShadowCaster2D::isEnabled() const{
+    ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 
     return occluder.enabled;
 }

@@ -129,7 +129,7 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
                 std::ofstream h(headerPath, std::ios::trunc);
                 if (h) {
                     h << "#pragma once\n\n";
-                    h << "#include \"Shape.h\"\n";
+                    h << "#include \"Primitive.h\"\n";
                     h << "#include \"" << parentClass << ".h\"\n";
                     h << "#include \"ScriptProperty.h\"\n\n";
                     h << "class " << classOrModuleName << " : public jasperengine::" << parentClass << " {\n";

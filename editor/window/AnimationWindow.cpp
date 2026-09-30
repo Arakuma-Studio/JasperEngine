@@ -25,12 +25,12 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/SpriteAnimationComponent.h"
-#include "component/TimedActionComponent.h"
-#include "component/PositionActionComponent.h"
-#include "component/RotationActionComponent.h"
-#include "component/ScaleActionComponent.h"
-#include "component/ColorActionComponent.h"
-#include "component/AlphaActionComponent.h"
+#include "component/TweenComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/AlphaTweenComponent.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "action/Animation.h"
@@ -286,16 +286,16 @@ std::string editor::AnimationWindow::getActionLabel(Entity actionEntity, Scene* 
         return "Keyframe Tracks";
     }
 
-    if (sig.test(scene->getComponentId<TimedActionComponent>())) {
-        if (sig.test(scene->getComponentId<PositionActionComponent>()))
+    if (sig.test(scene->getComponentId<TweenComponent>())) {
+        if (sig.test(scene->getComponentId<PositionTweenComponent>()))
             return "Position Tween";
-        if (sig.test(scene->getComponentId<RotationActionComponent>()))
+        if (sig.test(scene->getComponentId<RotationTweenComponent>()))
             return "Rotation Tween";
-        if (sig.test(scene->getComponentId<ScaleActionComponent>()))
+        if (sig.test(scene->getComponentId<ScaleTweenComponent>()))
             return "Scale Tween";
-        if (sig.test(scene->getComponentId<ColorActionComponent>()))
+        if (sig.test(scene->getComponentId<ColorTweenComponent>()))
             return "Color Tween";
-        if (sig.test(scene->getComponentId<AlphaActionComponent>()))
+        if (sig.test(scene->getComponentId<AlphaTweenComponent>()))
             return "Alpha Tween";
         return "Tween";
     }
@@ -1541,7 +1541,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
     ImGui::SameLine();
 
     // Transition preview: crossfade the playing clip into another over its Fade time
-    // (authored per-animation as "Fade time" in the Properties panel). Lets you see the
+    // (authored per-animation as "Fade time" in the Inspector panel). Lets you see the
     // blend that Model::playAnimation produces at runtime.
     ImGui::Text("Blend to:");
     ImGui::SameLine();
@@ -1689,27 +1689,27 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         }
         if (ImGui::BeginMenu(ICON_FA_BOLT "  Tweens")) {
             if (ImGui::MenuItem(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "  Position Tween")) {
-                selectedType = EntityCreationType::POSITION_ACTION;
+                selectedType = EntityCreationType::POSITION_TWEEN;
                 entityName = "Position Tween";
                 selected = true;
             }
             if (ImGui::MenuItem(ICON_FA_ROTATE "  Rotation Tween")) {
-                selectedType = EntityCreationType::ROTATION_ACTION;
+                selectedType = EntityCreationType::ROTATION_TWEEN;
                 entityName = "Rotation Tween";
                 selected = true;
             }
             if (ImGui::MenuItem(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER "  Scale Tween")) {
-                selectedType = EntityCreationType::SCALE_ACTION;
+                selectedType = EntityCreationType::SCALE_TWEEN;
                 entityName = "Scale Tween";
                 selected = true;
             }
             if (ImGui::MenuItem(ICON_FA_PALETTE "  Color Tween")) {
-                selectedType = EntityCreationType::COLOR_ACTION;
+                selectedType = EntityCreationType::COLOR_TWEEN;
                 entityName = "Color Tween";
                 selected = true;
             }
             if (ImGui::MenuItem(ICON_FA_EYE "  Alpha Tween")) {
-                selectedType = EntityCreationType::ALPHA_ACTION;
+                selectedType = EntityCreationType::ALPHA_TWEEN;
                 entityName = "Alpha Tween";
                 selected = true;
             }
@@ -1891,18 +1891,18 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             return IM_COL32(80, 190, 190, 200);  // Teal: MorphTracks
         if (sig.test(scene->getComponentId<KeyframeTracksComponent>()))
             return IM_COL32(70, 130, 180, 200);  // Steel blue: KeyframeTracks
-        if (sig.test(scene->getComponentId<TimedActionComponent>())) {
-            if (sig.test(scene->getComponentId<PositionActionComponent>()))
-                return IM_COL32(100, 180, 220, 200);  // Light blue: PositionAction
-            if (sig.test(scene->getComponentId<RotationActionComponent>()))
-                return IM_COL32(220, 160, 70, 200);   // Amber: RotationAction
-            if (sig.test(scene->getComponentId<ScaleActionComponent>()))
-                return IM_COL32(180, 100, 200, 200);  // Violet: ScaleAction
-            if (sig.test(scene->getComponentId<ColorActionComponent>()))
-                return IM_COL32(220, 120, 160, 200);  // Pink: ColorAction
-            if (sig.test(scene->getComponentId<AlphaActionComponent>()))
-                return IM_COL32(160, 200, 120, 200);  // Lime: AlphaAction
-            return IM_COL32(180, 100, 70, 200);       // Warm red: generic TimedAction
+        if (sig.test(scene->getComponentId<TweenComponent>())) {
+            if (sig.test(scene->getComponentId<PositionTweenComponent>()))
+                return IM_COL32(100, 180, 220, 200);  // Light blue: PositionTween
+            if (sig.test(scene->getComponentId<RotationTweenComponent>()))
+                return IM_COL32(220, 160, 70, 200);   // Amber: RotationTween
+            if (sig.test(scene->getComponentId<ScaleTweenComponent>()))
+                return IM_COL32(180, 100, 200, 200);  // Violet: ScaleTween
+            if (sig.test(scene->getComponentId<ColorTweenComponent>()))
+                return IM_COL32(220, 120, 160, 200);  // Pink: ColorTween
+            if (sig.test(scene->getComponentId<AlphaTweenComponent>()))
+                return IM_COL32(160, 200, 120, 200);  // Lime: AlphaTween
+            return IM_COL32(180, 100, 70, 200);       // Warm red: generic Tween
         }
         if (sig.test(scene->getComponentId<AnimationComponent>()))
             return IM_COL32(180, 170, 70, 200);  // Gold: Animation
@@ -2518,7 +2518,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         finishTimelineDrag(scene, sceneProject, true);
     }
 
-    // Accept action entities dragged from the Structure window onto the tracks area
+    // Accept action entities dragged from the Hierarchy window onto the tracks area
     if (allowSelection && allowEditing) {
         ImRect dropRect(ImVec2(canvasPos.x + labelWidth, canvasPos.y + rulerHeight),
                         ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y));

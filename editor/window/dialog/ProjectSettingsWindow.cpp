@@ -781,7 +781,7 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
     ImGui::Dummy(ImVec2(totalW, maxH));
 }
 
-// Same thumbnail flow as Properties::findThumbnail: load the ResourcesWindow-
+// Same thumbnail flow as InspectorWindow::findThumbnail: load the ProjectWindow-
 // generated thumbnail from the pool, requesting async generation when missing.
 Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     if (path.empty()) return nullptr;
@@ -823,8 +823,8 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     }
 
     // Thumbnail missing or failed to load — request generation
-    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
-        resourcesWindow->requestThumbnailGeneration(texPath, thumbnailExists);
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+        projectWindow->requestThumbnailGeneration(texPath, thumbnailExists);
     }
     return nullptr;
 }

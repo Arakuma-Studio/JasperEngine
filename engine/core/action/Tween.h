@@ -1,21 +1,21 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef TIMEDACTION_H
-#define TIMEDACTION_H
+#ifndef TWEEN_H
+#define TWEEN_H
 
 #include "Action.h"
 #include "Ease.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API TimedAction: public Action{
+    class JASPERENGINE_API Tween: public Action{
 
     protected:
         void setAction(float duration, bool loop);
 
     public:
-        TimedAction(Scene* scene);
-        TimedAction(Scene* scene, Entity entity);
+        Tween(Scene* scene);
+        Tween(Scene* scene, Entity entity);
 
         void setFunctionType(EaseType functionType);
 
@@ -30,4 +30,4 @@ namespace jasperengine{
     };
 }
 
-#endif //TIMEDACTION_H
+#endif //TWEEN_H

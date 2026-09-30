@@ -5,8 +5,8 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/Light.h"
 
 #include "yaml-cpp/yaml.h"
@@ -41,7 +41,7 @@ namespace jasperengine::editor{
         Entity getMeshEntity();
         MeshComponent& getMeshComponent();
         Scene* getScene();
-        Object* getObject();
+        GameObject* getGameObject();
     };
 
 }

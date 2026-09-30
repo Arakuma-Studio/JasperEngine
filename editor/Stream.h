@@ -58,11 +58,11 @@ namespace jasperengine::editor {
         static std::string lightStateToString(LightState state);
         static LightState stringToLightState(const std::string& str);
 
-        static std::string soundStateToString(SoundState state);
-        static SoundState stringToSoundState(const std::string& str);
+        static std::string audioSourceStateToString(AudioSourceState state);
+        static AudioSourceState stringToAudioSourceState(const std::string& str);
 
-        static std::string soundAttenuationToString(SoundAttenuation attenuation);
-        static SoundAttenuation stringToSoundAttenuation(const std::string& str);
+        static std::string audioSourceAttenuationToString(AudioSourceAttenuation attenuation);
+        static AudioSourceAttenuation stringToAudioSourceAttenuation(const std::string& str);
 
         static std::string uiEventStateToString(UIEventState state);
         static UIEventState stringToUIEventState(const std::string& str);
@@ -88,8 +88,8 @@ namespace jasperengine::editor {
         static std::string scriptTypeToString(ScriptType type);
         static ScriptType stringToScriptType(const std::string& str);
 
-        static std::string containerTypeToString(ContainerType type);
-        static ContainerType stringToContainerType(const std::string& str);
+        static std::string layoutGroupTypeToString(LayoutGroupType type);
+        static LayoutGroupType stringToLayoutGroupType(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);
@@ -179,7 +179,7 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeEntityAux(const Entity entity, const EntityRegistry* registry,
             const Project* project = nullptr, const SceneProject* sceneProject = nullptr,
-            const std::filesystem::path& bundlePathOverride = {});
+            const std::filesystem::path& prefabPathOverride = {});
 
         // GameObject state next to the name: active, tag and layer
         static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
@@ -204,7 +204,7 @@ namespace jasperengine::editor {
         static bool isGeneratedUI(const EntityRegistry* registry, Signature signature);
 
         // Scaled single-shape offset above which physics may become unstable;
-        // shared by the load-time warning and the Properties inspector warning
+        // shared by the load-time warning and the Inspector warning
         static constexpr float MAX_SINGLE_SHAPE_PHYSICS_OFFSET = 50.0f;
 
         // Public because the enum names are also the wire format of AI editor actions
@@ -250,10 +250,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeEntitySelection(const std::vector<Entity>& entities, const EntityRegistry* registry, const Project* project = nullptr, const SceneProject* sceneProject = nullptr);
         static std::vector<Entity> decodeEntitySelection(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
         static YAML::Node encodeEntity(const Entity entity, const EntityRegistry* registry, const Project* project = nullptr, const SceneProject* sceneProject = nullptr);
-        // Recovery can encode a member subtree independently of its containing bundle while
-        // still keeping active imported bundle descendants opaque.
+        // Recovery can encode a member subtree independently of its containing prefab while
+        // still keeping active imported prefab descendants opaque.
         static YAML::Node encodeEntity(const Entity entity, const EntityRegistry* registry,
-            const Project* project, const SceneProject* sceneProject, bool ignoreContainingBundle);
+            const Project* project, const SceneProject* sceneProject, bool ignoreContainingPrefab);
         // removeMissingComponents also removes the components the node does not hold, so a
         // live entity is restored exactly. Only for nodes with a full component encode.
         static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
@@ -282,17 +282,17 @@ namespace jasperengine::editor {
         static YAML::Node encodeProgressbarComponent(const ProgressbarComponent& progressbar);
         static ProgressbarComponent decodeProgressbarComponent(const YAML::Node& node, const ProgressbarComponent* oldProgressbar = nullptr);
 
-        static YAML::Node encodeTextEditComponent(const TextEditComponent& textedit);
-        static TextEditComponent decodeTextEditComponent(const YAML::Node& node, const TextEditComponent* oldTextEdit = nullptr);
+        static YAML::Node encodeInputFieldComponent(const InputFieldComponent& inputfield);
+        static InputFieldComponent decodeInputFieldComponent(const YAML::Node& node, const InputFieldComponent* oldInputField = nullptr);
 
         static YAML::Node encodePanelComponent(const PanelComponent& panel);
         static PanelComponent decodePanelComponent(const YAML::Node& node, const PanelComponent* oldPanel = nullptr);
 
-        static YAML::Node encodeUILayoutComponent(const UILayoutComponent& layout);
-        static UILayoutComponent decodeUILayoutComponent(const YAML::Node& node, const UILayoutComponent* oldLayout = nullptr);
+        static YAML::Node encodeRectTransformComponent(const RectTransformComponent& layout);
+        static RectTransformComponent decodeRectTransformComponent(const YAML::Node& node, const RectTransformComponent* oldLayout = nullptr);
 
-        static YAML::Node encodeUIContainerComponent(const UIContainerComponent& container);
-        static UIContainerComponent decodeUIContainerComponent(const YAML::Node& node, const UIContainerComponent* oldContainer = nullptr);
+        static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
+        static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
@@ -319,8 +319,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeLight2DComponent(const Light2DComponent& light);
         static Light2DComponent decodeLight2DComponent(const YAML::Node& node, const Light2DComponent* oldLight = nullptr);
 
-        static YAML::Node encodeOccluder2DComponent(const Occluder2DComponent& occluder);
-        static Occluder2DComponent decodeOccluder2DComponent(const YAML::Node& node, const Occluder2DComponent* oldOccluder = nullptr);
+        static YAML::Node encodeShadowCaster2DComponent(const ShadowCaster2DComponent& occluder);
+        static ShadowCaster2DComponent decodeShadowCaster2DComponent(const YAML::Node& node, const ShadowCaster2DComponent* oldOccluder = nullptr);
 
         static YAML::Node encodeFogComponent(const FogComponent& fog);
         static FogComponent decodeFogComponent(const YAML::Node& node, const FogComponent* oldFog = nullptr);
@@ -334,32 +334,32 @@ namespace jasperengine::editor {
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
 
-        static YAML::Node encodeSoundComponent(const SoundComponent& audio);
-        static SoundComponent decodeSoundComponent(const YAML::Node& node, const SoundComponent* oldAudio = nullptr);
+        static YAML::Node encodeAudioSourceComponent(const AudioSourceComponent& audio);
+        static AudioSourceComponent decodeAudioSourceComponent(const YAML::Node& node, const AudioSourceComponent* oldAudio = nullptr);
 
         static YAML::Node encodeScriptComponent(const ScriptComponent& script);
         static ScriptComponent decodeScriptComponent(const YAML::Node& node, const ScriptComponent* oldScript = nullptr);
 
-        static YAML::Node encodeSkyComponent(const SkyComponent& sky);
-        static SkyComponent decodeSkyComponent(const YAML::Node& node, const SkyComponent* oldSky = nullptr);
+        static YAML::Node encodeSkyboxComponent(const SkyboxComponent& sky);
+        static SkyboxComponent decodeSkyboxComponent(const YAML::Node& node, const SkyboxComponent* oldSky = nullptr);
 
         static YAML::Node encodeModelComponent(const ModelComponent& model);
         static ModelComponent decodeModelComponent(const YAML::Node& node, const ModelComponent* oldModel = nullptr);
 
-        static YAML::Node encodeBundleComponent(const BundleComponent& bundle);
-        static BundleComponent decodeBundleComponent(const YAML::Node& node, const BundleComponent* oldBundle = nullptr);
+        static YAML::Node encodePrefabComponent(const PrefabComponent& prefab);
+        static PrefabComponent decodePrefabComponent(const YAML::Node& node, const PrefabComponent* oldPrefab = nullptr);
 
         static std::string bodyTypeToString(BodyType type);
         static BodyType stringToBodyType(const std::string& str);
 
-        static std::string body3DMotionQualityToString(Body3DMotionQuality motionQuality);
-        static Body3DMotionQuality stringToBody3DMotionQuality(const std::string& str);
+        static std::string rigidbodyMotionQualityToString(RigidbodyMotionQuality motionQuality);
+        static RigidbodyMotionQuality stringToRigidbodyMotionQuality(const std::string& str);
 
-        static std::string shape2DTypeToString(Shape2DType type);
-        static Shape2DType stringToShape2DType(const std::string& str);
+        static std::string collider2DTypeToString(Collider2DType type);
+        static Collider2DType stringToCollider2DType(const std::string& str);
 
-        static std::string shape3DTypeToString(Shape3DType type);
-        static Shape3DType stringToShape3DType(const std::string& str);
+        static std::string collider3DTypeToString(Collider3DType type);
+        static Collider3DType stringToCollider3DType(const std::string& str);
 
         static std::string joint2DTypeToString(Joint2DType type);
         static Joint2DType stringToJoint2DType(const std::string& str);
@@ -367,11 +367,11 @@ namespace jasperengine::editor {
         static std::string joint3DTypeToString(Joint3DType type);
         static Joint3DType stringToJoint3DType(const std::string& str);
 
-        static YAML::Node encodeBody2DComponent(const Body2DComponent& body);
-        static Body2DComponent decodeBody2DComponent(const YAML::Node& node, const Body2DComponent* oldBody = nullptr);
+        static YAML::Node encodeRigidbody2DComponent(const Rigidbody2DComponent& body);
+        static Rigidbody2DComponent decodeRigidbody2DComponent(const YAML::Node& node, const Rigidbody2DComponent* oldBody = nullptr);
 
-        static YAML::Node encodeBody3DComponent(const Body3DComponent& body);
-        static Body3DComponent decodeBody3DComponent(const YAML::Node& node, const Body3DComponent* oldBody = nullptr, const Vector3& bodyScale = Vector3::UNIT_SCALE);
+        static YAML::Node encodeRigidbodyComponent(const RigidbodyComponent& body);
+        static RigidbodyComponent decodeRigidbodyComponent(const YAML::Node& node, const RigidbodyComponent* oldBody = nullptr, const Vector3& bodyScale = Vector3::UNIT_SCALE);
 
         static YAML::Node encodeJoint2DComponent(const Joint2DComponent& joint);
         static Joint2DComponent decodeJoint2DComponent(const YAML::Node& node, const Joint2DComponent* oldJoint = nullptr);
@@ -385,23 +385,23 @@ namespace jasperengine::editor {
         static YAML::Node encodeActionComponent(const ActionComponent& action);
         static ActionComponent decodeActionComponent(const YAML::Node& node, const ActionComponent* oldAction = nullptr);
 
-        static YAML::Node encodeTimedActionComponent(const TimedActionComponent& timed);
-        static TimedActionComponent decodeTimedActionComponent(const YAML::Node& node, const TimedActionComponent* oldTimed = nullptr);
+        static YAML::Node encodeTweenComponent(const TweenComponent& timed);
+        static TweenComponent decodeTweenComponent(const YAML::Node& node, const TweenComponent* oldTimed = nullptr);
 
-        static YAML::Node encodePositionActionComponent(const PositionActionComponent& posAction);
-        static PositionActionComponent decodePositionActionComponent(const YAML::Node& node, const PositionActionComponent* oldPosAction = nullptr);
+        static YAML::Node encodePositionTweenComponent(const PositionTweenComponent& posAction);
+        static PositionTweenComponent decodePositionTweenComponent(const YAML::Node& node, const PositionTweenComponent* oldPosAction = nullptr);
 
-        static YAML::Node encodeRotationActionComponent(const RotationActionComponent& rotAction);
-        static RotationActionComponent decodeRotationActionComponent(const YAML::Node& node, const RotationActionComponent* oldRotAction = nullptr);
+        static YAML::Node encodeRotationTweenComponent(const RotationTweenComponent& rotAction);
+        static RotationTweenComponent decodeRotationTweenComponent(const YAML::Node& node, const RotationTweenComponent* oldRotAction = nullptr);
 
-        static YAML::Node encodeScaleActionComponent(const ScaleActionComponent& scaleAction);
-        static ScaleActionComponent decodeScaleActionComponent(const YAML::Node& node, const ScaleActionComponent* oldScaleAction = nullptr);
+        static YAML::Node encodeScaleTweenComponent(const ScaleTweenComponent& scaleTween);
+        static ScaleTweenComponent decodeScaleTweenComponent(const YAML::Node& node, const ScaleTweenComponent* oldScaleTween = nullptr);
 
-        static YAML::Node encodeColorActionComponent(const ColorActionComponent& colorAction);
-        static ColorActionComponent decodeColorActionComponent(const YAML::Node& node, const ColorActionComponent* oldColorAction = nullptr);
+        static YAML::Node encodeColorTweenComponent(const ColorTweenComponent& colorTween);
+        static ColorTweenComponent decodeColorTweenComponent(const YAML::Node& node, const ColorTweenComponent* oldColorTween = nullptr);
 
-        static YAML::Node encodeAlphaActionComponent(const AlphaActionComponent& alphaAction);
-        static AlphaActionComponent decodeAlphaActionComponent(const YAML::Node& node, const AlphaActionComponent* oldAlphaAction = nullptr);
+        static YAML::Node encodeAlphaTweenComponent(const AlphaTweenComponent& alphaTween);
+        static AlphaTweenComponent decodeAlphaTweenComponent(const YAML::Node& node, const AlphaTweenComponent* oldAlphaTween = nullptr);
 
         static YAML::Node encodeSpriteAnimationComponent(const SpriteAnimationComponent& spriteanim);
         static SpriteAnimationComponent decodeSpriteAnimationComponent(const YAML::Node& node, const SpriteAnimationComponent* oldSpriteanim = nullptr);
@@ -427,8 +427,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeMorphTracksComponent(const MorphTracksComponent& tracks);
         static MorphTracksComponent decodeMorphTracksComponent(const YAML::Node& node, const MorphTracksComponent* oldTracks = nullptr);
 
-        static YAML::Node encodeParticlesComponent(const ParticlesComponent& particles);
-        static ParticlesComponent decodeParticlesComponent(const YAML::Node& node, const ParticlesComponent* oldParticles = nullptr);
+        static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
+        static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);
         static InstancedMeshComponent decodeInstancedMeshComponent(const YAML::Node& node, const InstancedMeshComponent* oldInstmesh = nullptr);
@@ -436,8 +436,8 @@ namespace jasperengine::editor {
         static YAML::Node encodePointsComponent(const PointsComponent& points);
         static PointsComponent decodePointsComponent(const YAML::Node& node, const PointsComponent* oldPoints = nullptr);
 
-        static YAML::Node encodeLinesComponent(const LinesComponent& lines);
-        static LinesComponent decodeLinesComponent(const YAML::Node& node, const LinesComponent* oldLines = nullptr);
+        static YAML::Node encodeLineRendererComponent(const LineRendererComponent& lines);
+        static LineRendererComponent decodeLineRendererComponent(const YAML::Node& node, const LineRendererComponent* oldLines = nullptr);
 
         static YAML::Node encodePolygonComponent(const PolygonComponent& polygon);
         static PolygonComponent decodePolygonComponent(const YAML::Node& node, const PolygonComponent* oldPolygon = nullptr);

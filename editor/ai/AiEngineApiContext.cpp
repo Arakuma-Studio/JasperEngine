@@ -78,7 +78,7 @@ bool isSameOrBaseClass(const std::string& candidateBase,
     return false;
 }
 
-// Lua-readable member names per bound class, e.g. Object::getPosition -> Object.position.
+// Lua-readable member names per bound class, e.g. GameObject::getPosition -> GameObject.position.
 std::unordered_map<std::string, std::vector<std::string>> buildLuaMemberMap() {
     std::unordered_map<std::string, std::vector<std::string>> members;
     for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
@@ -142,13 +142,13 @@ std::string luaCallHint(const std::string& detail, const std::string& parent) {
     if (detailLower.find(":setcolor()") != std::string::npos &&
         (parentLower == "mesh" || parentLower == "shape" || parentLower == "image" ||
          parentLower == "text" || parentLower == "polygon" || parentLower == "skybox")) {
-        return "Lua: local shape = Shape(self.scene, self.entity); "
+        return "Lua: local shape = Primitive(self.scene, self.entity); "
                "shape:setColor(1.0, 0.0, 0.0, 1.0) or shape:setColor(Vector4(1.0, 0.0, 0.0, 1.0)). "
                "C++ cpp_subclass on Mesh: setColor(1.0f, 0.0f, 0.0f, 1.0f) in constructor or onUpdate; include \"Mesh.h\" (not <core/Mesh.h>) and unregister engine events in the destructor.";
     }
     if (parentLower == "shape" && detailLower.find(":setcolor()") == std::string::npos &&
         detailLower.find("shape") != std::string::npos && detailLower.find("constructor") != std::string::npos) {
-        return "Construct with Shape(self.scene, self.entity) for an existing GameObject.";
+        return "Construct with Primitive(self.scene, self.entity) for an existing GameObject.";
     }
     return {};
 }
@@ -375,9 +375,9 @@ Json AiEngineApiContext::search(const std::string& query,
         {"query", query},
         {"parent", parentFilter},
         {"results", results},
-        {"detail_format", "detail reads Parent<sep>name(params) -> ReturnType, and the separator tells you which languages can call it. ':' (kind 'Method') is a Lua-bound instance method, callable from BOTH Lua and C++. '.' is a static method (kind 'Function') or a bound property/constant (kind 'Property'/'Constant'/'Event'), also available in both. '::' (kind 'CppMethod') is a public C++ method that LuaBridge does NOT bind: it exists for C++ scripts only and calling it from Lua raises \"attempt to call a nil value\" -- such entries carry lua_callable=false and a lua_note naming the bound property to use instead. The part after '->' is the C++ return type (absent when it returns void), and param entries are 'Type name'. A property whose detail ends in '(copy)', e.g. 'Object.position -> Vector3 (copy)', returns a copy of that type. For kind 'Macro' (C++ script macros like DPROPERTY and REGISTER_*/UNREGISTER_* event subscriptions), 'LuaGlobal' (global Lua helpers like RegisterEngineEvent/RegisterEvent), and 'LuaScript' (Lua script-table conventions), the detail is the usage description; follow it verbatim."},
+        {"detail_format", "detail reads Parent<sep>name(params) -> ReturnType, and the separator tells you which languages can call it. ':' (kind 'Method') is a Lua-bound instance method, callable from BOTH Lua and C++. '.' is a static method (kind 'Function') or a bound property/constant (kind 'Property'/'Constant'/'Event'), also available in both. '::' (kind 'CppMethod') is a public C++ method that LuaBridge does NOT bind: it exists for C++ scripts only and calling it from Lua raises \"attempt to call a nil value\" -- such entries carry lua_callable=false and a lua_note naming the bound property to use instead. The part after '->' is the C++ return type (absent when it returns void), and param entries are 'Type name'. A property whose detail ends in '(copy)', e.g. 'GameObject.position -> Vector3 (copy)', returns a copy of that type. For kind 'Macro' (C++ script macros like DPROPERTY and REGISTER_*/UNREGISTER_* event subscriptions), 'LuaGlobal' (global Lua helpers like RegisterEngineEvent/RegisterEvent), and 'LuaScript' (Lua script-table conventions), the detail is the usage description; follow it verbatim."},
         {"language_mapping", "Lua: instance methods obj:method(args) (kind 'Method' only), static/namespaced Class.method(args), and bound properties obj.prop / Class.prop (e.g. Engine.deltatime, object.position, body.linearVelocity). Lua has no getX()/setX() shortcut: an accessor that only appears as kind 'CppMethod' is reachable in Lua through its property, so write object.position = v, not object:setPosition(v). Never write a component of a vector property in place (object.position.y = v changes only a copy); assign the whole value, object.position = Vector3(x, v, z), or use a float setter such as object:setPosition(x, v, z). C++: instance methods obj.method(args) or a bare method(args)/this->method(args) inside a cpp_subclass, static/namespaced Class::method(args) (e.g. Engine::getDeltatime()), and use the getters/setters -- the Lua property shortcut does not exist in C++."},
-        {"usage_note", "Construct wrappers with the signatures returned here, e.g. Shape(self.scene, self.entity). For color on Mesh/Shape, Lua uses setColor with RGBA floats or Vector4; C++ cpp_subclass scripts inherit Mesh and call setColor(1,0,0,1) with flat headers like \"Mesh.h\". In C++ register engine callbacks with REGISTER_ENGINE_EVENT in the constructor and unregister with UNREGISTER_ENGINE_EVENT in the destructor; in Lua register with RegisterEngineEvent(self, \"onUpdate\") in :init() with no manual unregister. Read lua_call_hint and lua_note when present; a result with lua_callable=false must never be called from a Lua script."}
+        {"usage_note", "Construct wrappers with the signatures returned here, e.g. Primitive(self.scene, self.entity). For color on Mesh/Primitive, Lua uses setColor with RGBA floats or Vector4; C++ cpp_subclass scripts inherit Mesh and call setColor(1,0,0,1) with flat headers like \"Mesh.h\". In C++ register engine callbacks with REGISTER_ENGINE_EVENT in the constructor and unregister with UNREGISTER_ENGINE_EVENT in the destructor; in Lua register with RegisterEngineEvent(self, \"onUpdate\") in :init() with no manual unregister. Read lua_call_hint and lua_note when present; a result with lua_callable=false must never be called from a Lua script."}
     };
 }
 

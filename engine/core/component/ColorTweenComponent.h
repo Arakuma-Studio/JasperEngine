@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef COLORACTION_COMPONENT_H
-#define COLORACTION_COMPONENT_H
+#ifndef COLORTWEEN_COMPONENT_H
+#define COLORTWEEN_COMPONENT_H
 
 #include "math/Vector3.h"
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API ColorActionComponent{
+    struct JASPERENGINE_API ColorTweenComponent{
         Vector3 endColor;
         Vector3 startColor;
 
@@ -17,4 +17,4 @@ namespace jasperengine{
 
 }
 
-#endif //COLORACTION_COMPONENT_H
+#endif //COLORTWEEN_COMPONENT_H

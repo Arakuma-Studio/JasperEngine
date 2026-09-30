@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef PARTICLES_COMPONENT_H
-#define PARTICLES_COMPONENT_H
+#ifndef PARTICLE_SYSTEM_COMPONENT_H
+#define PARTICLE_SYSTEM_COMPONENT_H
 
 #include "buffer/Buffer.h"
 #include "texture/Texture.h"
@@ -231,7 +231,7 @@ namespace jasperengine{
         float time = 0;
     };
 
-    struct JASPERENGINE_API ParticlesComponent{
+    struct JASPERENGINE_API ParticleSystemComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
@@ -291,4 +291,4 @@ namespace jasperengine{
     
 }
 
-#endif //PARTICLES_COMPONENT_H
+#endif //PARTICLE_SYSTEM_COMPONENT_H

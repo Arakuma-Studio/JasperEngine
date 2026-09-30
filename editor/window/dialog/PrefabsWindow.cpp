@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "BundlesWindow.h"
+#include "PrefabsWindow.h"
 #include "Theme.h"
 
 #include <algorithm>
@@ -13,32 +13,32 @@ static constexpr float dialogHeight = 420.0f;
 static constexpr float dialogButtonWidth = 120.0f;
 static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-void BundlesWindow::open(Project* project) {
+void PrefabsWindow::open(Project* project) {
     m_isOpen = true;
     m_project = project;
     m_entries.clear();
 
-    for (const fs::path& bundlePath : project->findBundleFiles()) {
-        BundleEntry entry;
-        entry.path = bundlePath;
+    for (const fs::path& prefabPath : project->findPrefabFiles()) {
+        PrefabEntry entry;
+        entry.path = prefabPath;
 
         for (const SceneProject& sceneProject : project->getScenes()) {
-            const bool usesBundle = std::any_of(sceneProject.bundles.begin(), sceneProject.bundles.end(),
-                [&](const BundleSceneInfo& info) { return info.bundlePath == bundlePath; });
-            if (usesBundle) {
+            const bool usesPrefab = std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(),
+                [&](const PrefabSceneInfo& info) { return info.prefabPath == prefabPath; });
+            if (usesPrefab) {
                 entry.usedBy += entry.usedBy.empty() ? sceneProject.name : ", " + sceneProject.name;
             }
         }
 
-        entry.included = !entry.usedBy.empty() || project->isStandaloneBundle(bundlePath);
+        entry.included = !entry.usedBy.empty() || project->isStandalonePrefab(prefabPath);
         m_entries.push_back(std::move(entry));
     }
 }
 
-void BundlesWindow::show() {
+void PrefabsWindow::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Prefabs##BundlesModal");
+    ImGui::OpenPopup("Prefabs##PrefabsModal");
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -53,17 +53,17 @@ void BundlesWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              noScrollFlags;
 
-    if (ImGui::BeginPopupModal("Prefabs##BundlesModal", &m_isOpen, flags)) {
+    if (ImGui::BeginPopupModal("Prefabs##PrefabsModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
-            drawBundles();
+            drawPrefabs();
         }
         ImGui::EndPopup();
     }
 }
 
-void BundlesWindow::drawBundles() {
+void PrefabsWindow::drawPrefabs() {
     const ImGuiStyle& style = ImGui::GetStyle();
 
     ImGui::TextWrapped("Prefabs used by a scene are always in the build. Check the others to include them too, "
@@ -73,15 +73,15 @@ void BundlesWindow::drawBundles() {
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     const float listHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    if (ImGui::BeginChild("##BundlesList", ImVec2(0, listHeight), ImGuiChildFlags_Borders)) {
+    if (ImGui::BeginChild("##PrefabsList", ImVec2(0, listHeight), ImGuiChildFlags_Borders)) {
         if (m_entries.empty()) {
             ImGui::TextDisabled("No Prefab found in this project.");
-        } else if (ImGui::BeginTable("##BundlesTable", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        } else if (ImGui::BeginTable("##PrefabsTable", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Prefab", ImGuiTableColumnFlags_WidthStretch, 0.6f);
             ImGui::TableSetupColumn("Used by", ImGuiTableColumnFlags_WidthStretch, 0.4f);
             ImGui::TableHeadersRow();
 
-            for (BundleEntry& entry : m_entries) {
+            for (PrefabEntry& entry : m_entries) {
                 const bool locked = !entry.usedBy.empty();
 
                 ImGui::TableNextRow();
@@ -114,7 +114,7 @@ void BundlesWindow::drawBundles() {
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));
 
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
-        applyBundles();
+        applyPrefabs();
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -128,21 +128,21 @@ void BundlesWindow::drawBundles() {
     }
 }
 
-void BundlesWindow::applyBundles() {
+void PrefabsWindow::applyPrefabs() {
     if (!m_project) {
         return;
     }
 
-    // Scene bundles are built through their scene, listing them would keep them after the last
+    // Scene prefabs are built through their scene, listing them would keep them after the last
     // instance is deleted
-    std::vector<fs::path> bundlePaths;
-    for (const BundleEntry& entry : m_entries) {
+    std::vector<fs::path> prefabPaths;
+    for (const PrefabEntry& entry : m_entries) {
         if (entry.included && entry.usedBy.empty()) {
-            bundlePaths.push_back(entry.path);
+            prefabPaths.push_back(entry.path);
         }
     }
 
-    m_project->setStandaloneBundles(std::move(bundlePaths));
+    m_project->setStandalonePrefabs(std::move(prefabPaths));
     m_project->saveProject();
 }
 

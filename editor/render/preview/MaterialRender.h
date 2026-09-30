@@ -5,10 +5,10 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/Light.h"
-#include "object/environment/SkyBox.h"
+#include "object/environment/Skybox.h"
 
 namespace jasperengine::editor{
 
@@ -18,9 +18,9 @@ namespace jasperengine::editor{
         Camera* camera;
 
         Light* light;
-        SkyBox* sky;
+        Skybox* sky;
 
-        Shape* sphere;
+        Primitive* sphere;
         bool receiveIBL = true;
     public:
         MaterialRender();
@@ -40,7 +40,7 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         Texture getTexture();
         Scene* getScene();
-        Object* getObject();
+        GameObject* getGameObject();
     };
 
 }

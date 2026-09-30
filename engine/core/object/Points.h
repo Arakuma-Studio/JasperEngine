@@ -4,12 +4,12 @@
 #ifndef POINTS_H
 #define POINTS_H
 
-#include "Object.h"
+#include "GameObject.h"
 #include "buffer/ExternalBuffer.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Points: public Object{
+    class JASPERENGINE_API Points: public GameObject{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Points is skipped by its system

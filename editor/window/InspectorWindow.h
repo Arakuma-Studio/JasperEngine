@@ -7,7 +7,7 @@
 #include "render/Render.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
-#include "util/ShapeParameters.h"
+#include "util/PrimitiveParameters.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -90,7 +90,7 @@ namespace jasperengine::editor{
         std::vector<Entity> excludeEntities;
     };
 
-    class Properties{
+    class InspectorWindow{
     private:
         Project* project;
         SceneWindow* sceneWindow;
@@ -198,7 +198,7 @@ namespace jasperengine::editor{
         void startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject);
         void stopActionPreview(Scene* scene, SceneProject* sceneProject);
         void stopActionPreviewIfActive();
-        void updateParticlePreviewSnapshot(YAML::Node& components, const ParticlesComponent& particles);
+        void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers
         void markMaterialDirty(unsigned int sceneId, Entity entity, int submeshIndex, const std::string& relativePath);
@@ -212,12 +212,12 @@ namespace jasperengine::editor{
         bool ensureSoundPreviewInitialized();
         void stopSoundPreview(bool unload = false);
         std::filesystem::path resolveSoundPreviewPath(const std::string& filename);
-        void applySoundPreviewSettings(const SoundComponent& audio);
-        bool loadSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio);
-        bool startSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio);
+        void applySoundPreviewSettings(const AudioSourceComponent& audio);
+        bool loadSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);
+        bool startSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);
         void pauseSoundPreview();
-        bool seekSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio, double time);
-        void updateSoundPreview(const SoundComponent& audio);
+        bool seekSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio, double time);
+        void updateSoundPreview(const AudioSourceComponent& audio);
 
         // Property label formatting
         std::string formatPropertyLabelValue(const PropertyData& prop);
@@ -268,14 +268,14 @@ namespace jasperengine::editor{
         void dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
 
         // popupId: opened by the header's right click or its kebab button
-        void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly);
+        void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool& headerOpen, bool readOnly);
 
         // Unity Inspector header: active checkbox, icon and name, then Tag and Layer
         void drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly);
         void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         void drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         // Unity component header: foldout, icon, enable checkbox, name and a kebab menu; true when open
-        bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool readOnly);
+        bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -287,8 +287,8 @@ namespace jasperengine::editor{
         Texture getDirectionPreview(const Vector3& direction, const std::string id);
         bool drawSpriteFramePreview(Texture* texture, const Rect& rect, const ImVec2& size, const char* itemId);
 
-        void updateShapePreview(const ShapeParameters& shapeParams);
-        void updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const ShapeParameters& shapeParams);
+        void updateShapePreview(const PrimitiveParameters& shapeParams);
+        void updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const PrimitiveParameters& shapeParams);
 
         void drawNinePatchesPreview(const ImageComponent& img, Texture* texture, Texture* thumbTexture, const ImVec2& size = ImVec2(0, 0));
 
@@ -370,45 +370,45 @@ namespace jasperengine::editor{
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawTextEditComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawUILayoutComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawUIContainerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawOccluder2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawSkyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawParticlesComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawLinesComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInstancedMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScriptComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawBody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawBody3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawRigidbody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawTimedActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawPositionActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawRotationActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawScaleActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawColorActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawAlphaActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawScaleTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawColorTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAlphaTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
-        void drawBundleComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPrefabComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // onRemoveValue/onAddValue let the caller add companion property commands
@@ -426,7 +426,7 @@ namespace jasperengine::editor{
     public:
         static constexpr const char* WINDOW_NAME = "Inspector";
 
-        Properties(Project* project);
+        InspectorWindow(Project* project);
 
         void setSceneWindow(SceneWindow* sceneWindow);
 

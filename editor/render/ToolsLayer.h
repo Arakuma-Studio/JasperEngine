@@ -5,8 +5,8 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/ui/Image.h"
 
 #include "RenderUtil.h"
@@ -62,7 +62,7 @@ namespace jasperengine::editor{
         Camera* getCamera();
         Scene* getScene();
 
-        Object* getGizmoObject() const;
+        GameObject* getGizmoObject() const;
         Vector3 getGizmoPosition() const;
         Quaternion getGizmoRotation() const;
 

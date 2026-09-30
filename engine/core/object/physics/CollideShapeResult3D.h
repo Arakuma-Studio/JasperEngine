@@ -5,7 +5,7 @@
 #define CollideShapeResult3D_H
 
 #include "Entity.h"
-#include "Body3D.h"
+#include "Rigidbody.h"
 
 #include "Jolt/Physics/Body/Body.h"
 
@@ -30,8 +30,8 @@ namespace jasperengine{
         Vector3 getContactPointOnA() const;
         Vector3 getContactPointOnB() const;
         Vector3 getPenetrationAxis() const;
-        size_t getShapeIndex1() const;
-        size_t getShapeIndex2() const;
+        size_t getColliderIndex1() const;
+        size_t getColliderIndex2() const;
     };
 }
 

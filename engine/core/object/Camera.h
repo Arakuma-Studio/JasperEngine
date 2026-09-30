@@ -4,13 +4,13 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
-#include "Object.h"
+#include "GameObject.h"
 #include "component/CameraComponent.h"
 #include "math/Ray.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Camera: public Object{
+    class JASPERENGINE_API Camera: public GameObject{
 
     private:
         static constexpr float ELEVATION_DOT_LIMIT = 0.9998477f; // sin(89 degrees)

@@ -6,11 +6,11 @@
 
 using namespace jasperengine;
 
-Points::Points(Scene* scene): Object(scene){
+Points::Points(Scene* scene): GameObject(scene){
     addComponent<PointsComponent>();
 }
 
-Points::Points(Scene* scene, Entity entity): Object(scene, entity){
+Points::Points(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 Points::~Points(){

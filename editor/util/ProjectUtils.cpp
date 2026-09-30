@@ -25,29 +25,29 @@
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
-#include "component/SkyComponent.h"
+#include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
 #include "component/LightComponent.h"
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/PointsComponent.h"
-#include "component/LinesComponent.h"
+#include "component/LineRendererComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/SoundComponent.h"
-#include "component/UIContainerComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/LayoutGroupComponent.h"
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
-#include "component/TextEditComponent.h"
+#include "component/InputFieldComponent.h"
 #include "component/ImageComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/MeshPolygonComponent.h"
-#include "component/Body2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
-#include "component/Body3DComponent.h"
+#include "component/RigidbodyComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 
@@ -57,9 +57,9 @@
 #include "command/type/PropertyCmd.h"
 
 #include "EntityHandle.h"
-#include "Object.h"
+#include "GameObject.h"
 #include "Mesh.h"
-#include "Shape.h"
+#include "Primitive.h"
 #include "Model.h"
 #include "Points.h"
 #include "Sprite.h"
@@ -584,9 +584,9 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
         }
     }
 
-    if (parentSignature.test(scene->getComponentId<TextEditComponent>())){
-        TextEditComponent& textedit = scene->getComponent<TextEditComponent>(parent);
-        if (textedit.text == entity || textedit.selection == entity || textedit.cursor == entity){
+    if (parentSignature.test(scene->getComponentId<InputFieldComponent>())){
+        InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(parent);
+        if (inputfield.text == entity || inputfield.selection == entity || inputfield.cursor == entity){
             return parent;
         }
     }
@@ -868,11 +868,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<UIComponent>(entity, Stream::decodeUIComponent(componentNode));
             }
             break;
-        case ComponentType::UILayoutComponent:
+        case ComponentType::RectTransformComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<UILayoutComponent>(entity, {});
+                registry->addComponent<RectTransformComponent>(entity, {});
             }else{
-                registry->addComponent<UILayoutComponent>(entity, Stream::decodeUILayoutComponent(componentNode));
+                registry->addComponent<RectTransformComponent>(entity, Stream::decodeRectTransformComponent(componentNode));
             }
             break;
         case ComponentType::ActionComponent:
@@ -882,11 +882,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<ActionComponent>(entity, Stream::decodeActionComponent(componentNode));
             }
             break;
-        case ComponentType::AlphaActionComponent:
+        case ComponentType::AlphaTweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<AlphaActionComponent>(entity, {});
+                registry->addComponent<AlphaTweenComponent>(entity, {});
             }else{
-                registry->addComponent<AlphaActionComponent>(entity, Stream::decodeAlphaActionComponent(componentNode));
+                registry->addComponent<AlphaTweenComponent>(entity, Stream::decodeAlphaTweenComponent(componentNode));
             }
             break;
         case ComponentType::AnimationComponent:
@@ -896,27 +896,27 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<AnimationComponent>(entity, Stream::decodeAnimationComponent(componentNode));
             }
             break;
-        case ComponentType::SoundComponent:
+        case ComponentType::AudioSourceComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<SoundComponent>(entity, {});
+                registry->addComponent<AudioSourceComponent>(entity, {});
             }else{
-                registry->addComponent<SoundComponent>(entity, Stream::decodeSoundComponent(componentNode));
+                registry->addComponent<AudioSourceComponent>(entity, Stream::decodeAudioSourceComponent(componentNode));
             }
             break;
-        case ComponentType::Body2DComponent:
+        case ComponentType::Rigidbody2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<Body2DComponent>(entity, {});
+                registry->addComponent<Rigidbody2DComponent>(entity, {});
             }else{
-                registry->addComponent<Body2DComponent>(entity, Stream::decodeBody2DComponent(componentNode));
+                registry->addComponent<Rigidbody2DComponent>(entity, Stream::decodeRigidbody2DComponent(componentNode));
             }
             break;
-        case ComponentType::Body3DComponent:
+        case ComponentType::RigidbodyComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<Body3DComponent>(entity, {});
+                registry->addComponent<RigidbodyComponent>(entity, {});
             }else{
                 Transform* bodyTransform = registry->findComponent<Transform>(entity);
                 const Vector3 bodyScale = bodyTransform ? bodyTransform->scale : Vector3::UNIT_SCALE;
-                registry->addComponent<Body3DComponent>(entity, Stream::decodeBody3DComponent(componentNode, nullptr, bodyScale));
+                registry->addComponent<RigidbodyComponent>(entity, Stream::decodeRigidbodyComponent(componentNode, nullptr, bodyScale));
             }
             break;
         case ComponentType::BoneComponent:
@@ -933,11 +933,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<ButtonComponent>(entity, Stream::decodeButtonComponent(componentNode));
             }
             break;
-        case ComponentType::BundleComponent:
+        case ComponentType::PrefabComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<BundleComponent>(entity, {});
+                registry->addComponent<PrefabComponent>(entity, {});
             }else{
-                registry->addComponent<BundleComponent>(entity, Stream::decodeBundleComponent(componentNode));
+                registry->addComponent<PrefabComponent>(entity, Stream::decodePrefabComponent(componentNode));
             }
             break;
         case ComponentType::CameraComponent:
@@ -947,11 +947,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<CameraComponent>(entity, Stream::decodeCameraComponent(componentNode));
             }
             break;
-        case ComponentType::ColorActionComponent:
+        case ComponentType::ColorTweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<ColorActionComponent>(entity, {});
+                registry->addComponent<ColorTweenComponent>(entity, {});
             }else{
-                registry->addComponent<ColorActionComponent>(entity, Stream::decodeColorActionComponent(componentNode));
+                registry->addComponent<ColorTweenComponent>(entity, Stream::decodeColorTweenComponent(componentNode));
             }
             break;
         case ComponentType::FogComponent:
@@ -982,11 +982,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<Light2DComponent>(entity, Stream::decodeLight2DComponent(componentNode));
             }
             break;
-        case ComponentType::Occluder2DComponent:
+        case ComponentType::ShadowCaster2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<Occluder2DComponent>(entity, {});
+                registry->addComponent<ShadowCaster2DComponent>(entity, {});
             }else{
-                registry->addComponent<Occluder2DComponent>(entity, Stream::decodeOccluder2DComponent(componentNode));
+                registry->addComponent<ShadowCaster2DComponent>(entity, Stream::decodeShadowCaster2DComponent(componentNode));
             }
             break;
         case ComponentType::ImageComponent:
@@ -1031,11 +1031,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LightComponent>(entity, Stream::decodeLightComponent(componentNode));
             }
             break;
-        case ComponentType::LinesComponent:
+        case ComponentType::LineRendererComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<LinesComponent>(entity, {});
+                registry->addComponent<LineRendererComponent>(entity, {});
             }else{
-                registry->addComponent<LinesComponent>(entity, Stream::decodeLinesComponent(componentNode));
+                registry->addComponent<LineRendererComponent>(entity, Stream::decodeLineRendererComponent(componentNode));
             }
             break;
         case ComponentType::MeshPolygonComponent:
@@ -1066,11 +1066,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<PanelComponent>(entity, Stream::decodePanelComponent(componentNode));
             }
             break;
-        case ComponentType::ParticlesComponent:
+        case ComponentType::ParticleSystemComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<ParticlesComponent>(entity, {});
+                registry->addComponent<ParticleSystemComponent>(entity, {});
             }else{
-                registry->addComponent<ParticlesComponent>(entity, Stream::decodeParticlesComponent(componentNode));
+                registry->addComponent<ParticleSystemComponent>(entity, Stream::decodeParticleSystemComponent(componentNode));
             }
             break;
         case ComponentType::PointsComponent:
@@ -1087,11 +1087,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<PolygonComponent>(entity, Stream::decodePolygonComponent(componentNode));
             }
             break;
-        case ComponentType::PositionActionComponent:
+        case ComponentType::PositionTweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<PositionActionComponent>(entity, {});
+                registry->addComponent<PositionTweenComponent>(entity, {});
             }else{
-                registry->addComponent<PositionActionComponent>(entity, Stream::decodePositionActionComponent(componentNode));
+                registry->addComponent<PositionTweenComponent>(entity, Stream::decodePositionTweenComponent(componentNode));
             }
             break;
         case ComponentType::ProgressbarComponent:
@@ -1108,18 +1108,18 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<RotateTracksComponent>(entity, Stream::decodeRotateTracksComponent(componentNode));
             }
             break;
-        case ComponentType::RotationActionComponent:
+        case ComponentType::RotationTweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<RotationActionComponent>(entity, {});
+                registry->addComponent<RotationTweenComponent>(entity, {});
             }else{
-                registry->addComponent<RotationActionComponent>(entity, Stream::decodeRotationActionComponent(componentNode));
+                registry->addComponent<RotationTweenComponent>(entity, Stream::decodeRotationTweenComponent(componentNode));
             }
             break;
-        case ComponentType::ScaleActionComponent:
+        case ComponentType::ScaleTweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<ScaleActionComponent>(entity, {});
+                registry->addComponent<ScaleTweenComponent>(entity, {});
             }else{
-                registry->addComponent<ScaleActionComponent>(entity, Stream::decodeScaleActionComponent(componentNode));
+                registry->addComponent<ScaleTweenComponent>(entity, Stream::decodeScaleTweenComponent(componentNode));
             }
             break;
         case ComponentType::ScaleTracksComponent:
@@ -1143,11 +1143,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<ScrollbarComponent>(entity, Stream::decodeScrollbarComponent(componentNode));
             }
             break;
-        case ComponentType::SkyComponent:
+        case ComponentType::SkyboxComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<SkyComponent>(entity, {});
+                registry->addComponent<SkyboxComponent>(entity, {});
             }else{
-                registry->addComponent<SkyComponent>(entity, Stream::decodeSkyComponent(componentNode));
+                registry->addComponent<SkyboxComponent>(entity, Stream::decodeSkyboxComponent(componentNode));
             }
             break;
         case ComponentType::SpriteAnimationComponent:
@@ -1178,11 +1178,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TextComponent>(entity, Stream::decodeTextComponent(componentNode));
             }
             break;
-        case ComponentType::TextEditComponent:
+        case ComponentType::InputFieldComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<TextEditComponent>(entity, {});
+                registry->addComponent<InputFieldComponent>(entity, {});
             }else{
-                registry->addComponent<TextEditComponent>(entity, Stream::decodeTextEditComponent(componentNode));
+                registry->addComponent<InputFieldComponent>(entity, Stream::decodeInputFieldComponent(componentNode));
             }
             break;
         case ComponentType::TilemapComponent:
@@ -1192,11 +1192,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TilemapComponent>(entity, Stream::decodeTilemapComponent(componentNode));
             }
             break;
-        case ComponentType::TimedActionComponent:
+        case ComponentType::TweenComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<TimedActionComponent>(entity, {});
+                registry->addComponent<TweenComponent>(entity, {});
             }else{
-                registry->addComponent<TimedActionComponent>(entity, Stream::decodeTimedActionComponent(componentNode));
+                registry->addComponent<TweenComponent>(entity, Stream::decodeTweenComponent(componentNode));
             }
             break;
         case ComponentType::TranslateTracksComponent:
@@ -1206,11 +1206,11 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<TranslateTracksComponent>(entity, Stream::decodeTranslateTracksComponent(componentNode));
             }
             break;
-        case ComponentType::UIContainerComponent:
+        case ComponentType::LayoutGroupComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<UIContainerComponent>(entity, {});
+                registry->addComponent<LayoutGroupComponent>(entity, {});
             }else{
-                registry->addComponent<UIContainerComponent>(entity, Stream::decodeUIContainerComponent(componentNode));
+                registry->addComponent<LayoutGroupComponent>(entity, Stream::decodeLayoutGroupComponent(componentNode));
             }
             break;
         default:
@@ -1333,11 +1333,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<UIComponent>(entity);
             break;
-        case ComponentType::UILayoutComponent:
+        case ComponentType::RectTransformComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeUILayoutComponent(registry->getComponent<UILayoutComponent>(entity));
+                oldComponent = Stream::encodeRectTransformComponent(registry->getComponent<RectTransformComponent>(entity));
             }
-            registry->removeComponent<UILayoutComponent>(entity);
+            registry->removeComponent<RectTransformComponent>(entity);
             break;
         case ComponentType::ActionComponent:
             if (encodeComponent){
@@ -1346,11 +1346,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             registry->getComponent<ActionComponent>(entity).ownedTarget = false;
             registry->removeComponent<ActionComponent>(entity);
             break;
-        case ComponentType::AlphaActionComponent:
+        case ComponentType::AlphaTweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeAlphaActionComponent(registry->getComponent<AlphaActionComponent>(entity));
+                oldComponent = Stream::encodeAlphaTweenComponent(registry->getComponent<AlphaTweenComponent>(entity));
             }
-            registry->removeComponent<AlphaActionComponent>(entity);
+            registry->removeComponent<AlphaTweenComponent>(entity);
             break;
         case ComponentType::AnimationComponent:
             if (encodeComponent){
@@ -1359,23 +1359,23 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             registry->getComponent<AnimationComponent>(entity).ownedActions = false;
             registry->removeComponent<AnimationComponent>(entity);
             break;
-        case ComponentType::SoundComponent:
+        case ComponentType::AudioSourceComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeSoundComponent(registry->getComponent<SoundComponent>(entity));
+                oldComponent = Stream::encodeAudioSourceComponent(registry->getComponent<AudioSourceComponent>(entity));
             }
-            registry->removeComponent<SoundComponent>(entity);
+            registry->removeComponent<AudioSourceComponent>(entity);
             break;
-        case ComponentType::Body2DComponent:
+        case ComponentType::Rigidbody2DComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeBody2DComponent(registry->getComponent<Body2DComponent>(entity));
+                oldComponent = Stream::encodeRigidbody2DComponent(registry->getComponent<Rigidbody2DComponent>(entity));
             }
-            registry->removeComponent<Body2DComponent>(entity);
+            registry->removeComponent<Rigidbody2DComponent>(entity);
             break;
-        case ComponentType::Body3DComponent:
+        case ComponentType::RigidbodyComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeBody3DComponent(registry->getComponent<Body3DComponent>(entity));
+                oldComponent = Stream::encodeRigidbodyComponent(registry->getComponent<RigidbodyComponent>(entity));
             }
-            registry->removeComponent<Body3DComponent>(entity);
+            registry->removeComponent<RigidbodyComponent>(entity);
             break;
         case ComponentType::BoneComponent:
             if (encodeComponent){
@@ -1389,11 +1389,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<ButtonComponent>(entity);
             break;
-        case ComponentType::BundleComponent:
+        case ComponentType::PrefabComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeBundleComponent(registry->getComponent<BundleComponent>(entity));
+                oldComponent = Stream::encodePrefabComponent(registry->getComponent<PrefabComponent>(entity));
             }
-            registry->removeComponent<BundleComponent>(entity);
+            registry->removeComponent<PrefabComponent>(entity);
             break;
         case ComponentType::CameraComponent:
             if (encodeComponent){
@@ -1401,11 +1401,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<CameraComponent>(entity);
             break;
-        case ComponentType::ColorActionComponent:
+        case ComponentType::ColorTweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeColorActionComponent(registry->getComponent<ColorActionComponent>(entity));
+                oldComponent = Stream::encodeColorTweenComponent(registry->getComponent<ColorTweenComponent>(entity));
             }
-            registry->removeComponent<ColorActionComponent>(entity);
+            registry->removeComponent<ColorTweenComponent>(entity);
             break;
         case ComponentType::FogComponent:
             if (encodeComponent){
@@ -1431,11 +1431,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<Light2DComponent>(entity);
             break;
-        case ComponentType::Occluder2DComponent:
+        case ComponentType::ShadowCaster2DComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeOccluder2DComponent(registry->getComponent<Occluder2DComponent>(entity));
+                oldComponent = Stream::encodeShadowCaster2DComponent(registry->getComponent<ShadowCaster2DComponent>(entity));
             }
-            registry->removeComponent<Occluder2DComponent>(entity);
+            registry->removeComponent<ShadowCaster2DComponent>(entity);
             break;
         case ComponentType::ImageComponent:
             if (encodeComponent){
@@ -1473,11 +1473,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<LightComponent>(entity);
             break;
-        case ComponentType::LinesComponent:
+        case ComponentType::LineRendererComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeLinesComponent(registry->getComponent<LinesComponent>(entity));
+                oldComponent = Stream::encodeLineRendererComponent(registry->getComponent<LineRendererComponent>(entity));
             }
-            registry->removeComponent<LinesComponent>(entity);
+            registry->removeComponent<LineRendererComponent>(entity);
             break;
         case ComponentType::MeshPolygonComponent:
             if (encodeComponent){
@@ -1503,11 +1503,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<PanelComponent>(entity);
             break;
-        case ComponentType::ParticlesComponent:
+        case ComponentType::ParticleSystemComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeParticlesComponent(registry->getComponent<ParticlesComponent>(entity));
+                oldComponent = Stream::encodeParticleSystemComponent(registry->getComponent<ParticleSystemComponent>(entity));
             }
-            registry->removeComponent<ParticlesComponent>(entity);
+            registry->removeComponent<ParticleSystemComponent>(entity);
             break;
         case ComponentType::PointsComponent:
             if (encodeComponent){
@@ -1521,11 +1521,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<PolygonComponent>(entity);
             break;
-        case ComponentType::PositionActionComponent:
+        case ComponentType::PositionTweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodePositionActionComponent(registry->getComponent<PositionActionComponent>(entity));
+                oldComponent = Stream::encodePositionTweenComponent(registry->getComponent<PositionTweenComponent>(entity));
             }
-            registry->removeComponent<PositionActionComponent>(entity);
+            registry->removeComponent<PositionTweenComponent>(entity);
             break;
         case ComponentType::ProgressbarComponent:
             if (encodeComponent){
@@ -1539,17 +1539,17 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<RotateTracksComponent>(entity);
             break;
-        case ComponentType::RotationActionComponent:
+        case ComponentType::RotationTweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeRotationActionComponent(registry->getComponent<RotationActionComponent>(entity));
+                oldComponent = Stream::encodeRotationTweenComponent(registry->getComponent<RotationTweenComponent>(entity));
             }
-            registry->removeComponent<RotationActionComponent>(entity);
+            registry->removeComponent<RotationTweenComponent>(entity);
             break;
-        case ComponentType::ScaleActionComponent:
+        case ComponentType::ScaleTweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeScaleActionComponent(registry->getComponent<ScaleActionComponent>(entity));
+                oldComponent = Stream::encodeScaleTweenComponent(registry->getComponent<ScaleTweenComponent>(entity));
             }
-            registry->removeComponent<ScaleActionComponent>(entity);
+            registry->removeComponent<ScaleTweenComponent>(entity);
             break;
         case ComponentType::ScaleTracksComponent:
             if (encodeComponent){
@@ -1569,11 +1569,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<ScrollbarComponent>(entity);
             break;
-        case ComponentType::SkyComponent:
+        case ComponentType::SkyboxComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeSkyComponent(registry->getComponent<SkyComponent>(entity));
+                oldComponent = Stream::encodeSkyboxComponent(registry->getComponent<SkyboxComponent>(entity));
             }
-            registry->removeComponent<SkyComponent>(entity);
+            registry->removeComponent<SkyboxComponent>(entity);
             break;
         case ComponentType::SpriteAnimationComponent:
             if (encodeComponent){
@@ -1599,11 +1599,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TextComponent>(entity);
             break;
-        case ComponentType::TextEditComponent:
+        case ComponentType::InputFieldComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeTextEditComponent(registry->getComponent<TextEditComponent>(entity));
+                oldComponent = Stream::encodeInputFieldComponent(registry->getComponent<InputFieldComponent>(entity));
             }
-            registry->removeComponent<TextEditComponent>(entity);
+            registry->removeComponent<InputFieldComponent>(entity);
             break;
         case ComponentType::TilemapComponent:
             if (encodeComponent){
@@ -1611,11 +1611,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TilemapComponent>(entity);
             break;
-        case ComponentType::TimedActionComponent:
+        case ComponentType::TweenComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeTimedActionComponent(registry->getComponent<TimedActionComponent>(entity));
+                oldComponent = Stream::encodeTweenComponent(registry->getComponent<TweenComponent>(entity));
             }
-            registry->removeComponent<TimedActionComponent>(entity);
+            registry->removeComponent<TweenComponent>(entity);
             break;
         case ComponentType::TranslateTracksComponent:
             if (encodeComponent){
@@ -1623,11 +1623,11 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<TranslateTracksComponent>(entity);
             break;
-        case ComponentType::UIContainerComponent:
+        case ComponentType::LayoutGroupComponent:
             if (encodeComponent){
-                oldComponent = Stream::encodeUIContainerComponent(registry->getComponent<UIContainerComponent>(entity));
+                oldComponent = Stream::encodeLayoutGroupComponent(registry->getComponent<LayoutGroupComponent>(entity));
             }
-            registry->removeComponent<UIContainerComponent>(entity);
+            registry->removeComponent<LayoutGroupComponent>(entity);
             break;
         default:
             break;
@@ -2006,47 +2006,47 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<TerrainComponent>()))     return meshClass("Terrain");
     if (signature.test(scene->getComponentId<SpriteComponent>()))      return meshClass("Sprite");
     if (signature.test(scene->getComponentId<PointsComponent>()))      return objectClass("Points");
-    if (signature.test(scene->getComponentId<LinesComponent>()))       return objectClass("Lines");
+    if (signature.test(scene->getComponentId<LineRendererComponent>()))       return objectClass("LineRenderer");
     if (signature.test(scene->getComponentId<PolygonComponent>()))     return objectClass("Polygon");
     if (signature.test(scene->getComponentId<MeshPolygonComponent>())) return meshClass("MeshPolygon");
     if (signature.test(scene->getComponentId<MirrorComponent>()))      return meshClass("Mirror");
     if (signature.test(scene->getComponentId<MeshComponent>()))        return meshClass("Mesh");
-    if (signature.test(scene->getComponentId<SkyComponent>()))         return handleClass("SkyBox");
+    if (signature.test(scene->getComponentId<SkyboxComponent>()))         return handleClass("Skybox");
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
-    if (signature.test(scene->getComponentId<SoundComponent>()))       return handleClass("Sound");
+    if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
     if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
     if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");
     if (signature.test(scene->getComponentId<ProgressbarComponent>())) return objectClass("Progressbar");
-    if (signature.test(scene->getComponentId<TextEditComponent>()))    return objectClass("TextEdit");
+    if (signature.test(scene->getComponentId<InputFieldComponent>()))    return objectClass("InputField");
     if (signature.test(scene->getComponentId<TextComponent>()))        return objectClass("Text");
     if (signature.test(scene->getComponentId<PanelComponent>()))       return objectClass("Panel");
     if (signature.test(scene->getComponentId<ImageComponent>()))       return objectClass("Image");
-    if (signature.test(scene->getComponentId<UIContainerComponent>())) return objectClass("Container");
-    if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("UILayout");
+    if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
+    if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
-    if (signature.test(scene->getComponentId<Occluder2DComponent>()))  return objectClass("Occluder2D");
+    if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
     if (signature.test(scene->getComponentId<CameraComponent>()))      return objectClass("Camera");
     if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return objectClass("ReflectionProbe");
-    if (signature.test(scene->getComponentId<Body2DComponent>()))      return handleClass("Body2D");
-    if (signature.test(scene->getComponentId<Body3DComponent>()))      return handleClass("Body3D");
+    if (signature.test(scene->getComponentId<Rigidbody2DComponent>()))      return handleClass("Rigidbody2D");
+    if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
     if (signature.test(scene->getComponentId<Joint3DComponent>()))     return handleClass("Joint3D");
-    if (signature.test(scene->getComponentId<AlphaActionComponent>())) return handleClass("AlphaAction");
-    if (signature.test(scene->getComponentId<ColorActionComponent>())) return handleClass("ColorAction");
-    if (signature.test(scene->getComponentId<PositionActionComponent>())) return handleClass("PositionAction");
-    if (signature.test(scene->getComponentId<RotationActionComponent>())) return handleClass("RotationAction");
-    if (signature.test(scene->getComponentId<ScaleActionComponent>())) return handleClass("ScaleAction");
-    if (signature.test(scene->getComponentId<TimedActionComponent>())) return handleClass("TimedAction");
+    if (signature.test(scene->getComponentId<AlphaTweenComponent>())) return handleClass("AlphaTween");
+    if (signature.test(scene->getComponentId<ColorTweenComponent>())) return handleClass("ColorTween");
+    if (signature.test(scene->getComponentId<PositionTweenComponent>())) return handleClass("PositionTween");
+    if (signature.test(scene->getComponentId<RotationTweenComponent>())) return handleClass("RotationTween");
+    if (signature.test(scene->getComponentId<ScaleTweenComponent>())) return handleClass("ScaleTween");
+    if (signature.test(scene->getComponentId<TweenComponent>())) return handleClass("Tween");
     if (signature.test(scene->getComponentId<AnimationComponent>()))   return handleClass("Animation");
     if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return handleClass("SpriteAnimation");
     if (signature.test(scene->getComponentId<MorphTracksComponent>())) return handleClass("MorphTracks");
     if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
-    if (signature.test(scene->getComponentId<ParticlesComponent>()))   return handleClass("Particles");
+    if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return handleClass("ParticleSystem");
     if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
-    if (signature.test(scene->getComponentId<Transform>()))            return objectClass("Object");
+    if (signature.test(scene->getComponentId<Transform>()))            return objectClass("GameObject");
 
     // generic engine type for entities with no recognized component: valid as a
     // C++ pointer type (jasperengine::EntityHandle*) and known to the Lua dispatcher

@@ -543,7 +543,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
-    ${EDITOR_DIR}/util/EntityBundle.cpp
+    ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
@@ -557,14 +557,14 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
 
-    ${EDITOR_DIR}/window/Properties.cpp
-    ${EDITOR_DIR}/window/OutputWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp
-    ${EDITOR_DIR}/window/Structure.cpp
-    ${EDITOR_DIR}/window/ResourcesWindow.cpp
+    ${EDITOR_DIR}/window/HierarchyWindow.cpp
+    ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
@@ -580,7 +580,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/ExportWindow.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
-    ${EDITOR_DIR}/window/dialog/BundlesWindow.cpp
+    ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/dialog/AiSettingsWindow.cpp
@@ -619,9 +619,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/SetChildSceneStartActiveCmd.cpp
     ${EDITOR_DIR}/command/type/EntityNameCmd.cpp
-    ${EDITOR_DIR}/command/type/ImportEntityBundleCmd.cpp
-    ${EDITOR_DIR}/command/type/RemoveEntityFromBundleCmd.cpp
-    ${EDITOR_DIR}/command/type/AddEntityToBundleCmd.cpp
+    ${EDITOR_DIR}/command/type/ImportPrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/RemoveEntityFromPrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/AddEntityToPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/MeshChangeCmd.cpp
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
@@ -633,9 +633,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
-    ${EDITOR_DIR}/command/type/CreateEntityBundleCmd.cpp
-    ${EDITOR_DIR}/command/type/ComponentToBundleLocalCmd.cpp
-    ${EDITOR_DIR}/command/type/ComponentToBundleSharedCmd.cpp
+    ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/ComponentToPrefabLocalCmd.cpp
+    ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
 

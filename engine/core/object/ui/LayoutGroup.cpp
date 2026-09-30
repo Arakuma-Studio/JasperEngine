@@ -1,73 +1,73 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Container.h"
+#include "LayoutGroup.h"
 
 #include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
 
-Container::Container(Scene* scene): UILayout(scene){
-    addComponent<UIContainerComponent>();
+LayoutGroup::LayoutGroup(Scene* scene): RectTransform(scene){
+    addComponent<LayoutGroupComponent>();
 }
 
-Container::Container(Scene* scene, Entity entity): UILayout(scene, entity){
+LayoutGroup::LayoutGroup(Scene* scene, Entity entity): RectTransform(scene, entity){
 }
 
-Container::~Container(){
+LayoutGroup::~LayoutGroup(){
 }
 
-void Container::setType(ContainerType type){
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+void LayoutGroup::setType(LayoutGroupType type){
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     container.type = type;
 }
 
-ContainerType Container::getType() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+LayoutGroupType LayoutGroup::getType() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     return container.type;
 }
 
-void Container::setUseAllWrapSpace(bool useAllWrapSpace){
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+void LayoutGroup::setUseAllWrapSpace(bool useAllWrapSpace){
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     container.useAllWrapSpace = useAllWrapSpace;
 }
 
-bool Container::isUseAllWrapSpace() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+bool LayoutGroup::isUseAllWrapSpace() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     return container.useAllWrapSpace;
 }
 
-void Container::setWrapCellWidth(unsigned int width){
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+void LayoutGroup::setWrapCellWidth(unsigned int width){
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     container.wrapCellWidth = width;
 }
 
-unsigned int Container::getWrapCellWidth() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+unsigned int LayoutGroup::getWrapCellWidth() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     return container.wrapCellWidth;
 }
 
-void Container::setWrapCellHeight(unsigned int height){
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+void LayoutGroup::setWrapCellHeight(unsigned int height){
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     container.wrapCellHeight = height;
 }
 
-unsigned int Container::getWrapCellHeight() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+unsigned int LayoutGroup::getWrapCellHeight() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     return container.wrapCellHeight;
 }
 
-unsigned int Container::getContentWidth() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+unsigned int LayoutGroup::getContentWidth() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     float maxX = 0.0f;
     for (int b = 0; b < container.numBoxes; b++){
@@ -79,8 +79,8 @@ unsigned int Container::getContentWidth() const{
     return static_cast<unsigned int>(std::ceil(maxX));
 }
 
-unsigned int Container::getContentHeight() const{
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+unsigned int LayoutGroup::getContentHeight() const{
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
     float maxY = 0.0f;
     for (int b = 0; b < container.numBoxes; b++){
@@ -92,20 +92,20 @@ unsigned int Container::getContentHeight() const{
     return static_cast<unsigned int>(std::ceil(maxY));
 }
 
-void Container::resize(){
+void LayoutGroup::resize(){
     setSize(0, 0);
 }
 
-void Container::setBoxExpand(bool expand){
-    UIContainerComponent& container = getComponent<UIContainerComponent>();
+void LayoutGroup::setBoxExpand(bool expand){
+    LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
     for (int b = 0; b < MAX_CONTAINER_BOXES; b++){
         container.boxes[b].expand = expand;
     }
 }
 
-void Container::setBoxExpand(size_t id, bool expand){
+void LayoutGroup::setBoxExpand(size_t id, bool expand){
     if (id >= 0 && id < MAX_CONTAINER_BOXES){
-        UIContainerComponent& container = getComponent<UIContainerComponent>();
+        LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
         container.boxes[id].expand = expand;
     }else{
@@ -113,9 +113,9 @@ void Container::setBoxExpand(size_t id, bool expand){
     }
 }
 
-bool Container::isBoxExpand(size_t id) const{
+bool LayoutGroup::isBoxExpand(size_t id) const{
     if (id >= 0 && id < MAX_CONTAINER_BOXES){
-        UIContainerComponent& container = getComponent<UIContainerComponent>();
+        LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
         return container.boxes[id].expand;
     }else{

@@ -7,12 +7,12 @@
 #include "util/FunctionSubscribe.h"
 #include "util/StringUtils.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "object/physics/Body2D.h"
+#include "object/physics/Rigidbody2D.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Manifold2D.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "object/physics/Body3D.h"
+#include "object/physics/Rigidbody.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/CollideShapeResult3D.h"
 #endif
@@ -143,8 +143,8 @@ void LuaFunctionBase::push_value(lua_State *vm, Vector3 o){
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void LuaFunctionBase::push_value(lua_State *vm, Body2D o){
-    if (!luabridge::push<Body2D>(vm, o))
+void LuaFunctionBase::push_value(lua_State *vm, Rigidbody2D o){
+    if (!luabridge::push<Rigidbody2D>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
@@ -160,8 +160,8 @@ void LuaFunctionBase::push_value(lua_State *vm, Contact2D o){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void LuaFunctionBase::push_value(lua_State *vm, Body3D o){
-    if (!luabridge::push<Body3D>(vm, o))
+void LuaFunctionBase::push_value(lua_State *vm, Rigidbody o){
+    if (!luabridge::push<Rigidbody>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 

@@ -11,7 +11,7 @@ namespace jasperengine::editor {
 
     class CodeEditor;
     class ImageViewerWindow;
-    class Properties;
+    class InspectorWindow;
 
     class EditorHost {
     public:
@@ -42,7 +42,7 @@ namespace jasperengine::editor {
         virtual void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr);
         virtual void registerProjectSaveDialog(std::function<void()> callback = nullptr);
 
-        virtual Properties* getPropertiesWindow() const;
+        virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;
         virtual ImageViewerWindow* getImageViewerWindow() const;
     };

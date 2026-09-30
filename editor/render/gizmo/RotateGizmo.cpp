@@ -20,7 +20,7 @@ const Vector3 editor::RotateGizmo::yaxisColorHightlight = Vector3(0.7, 0.9, 0.7)
 const Vector3 editor::RotateGizmo::zaxisColorHightlight = Vector3(0.7, 0.7, 0.9);
 const float editor::RotateGizmo::circleAlpha = 0.6;
 
-editor::RotateGizmo::RotateGizmo(Scene* scene, bool use2DGizmo): Object(scene){
+editor::RotateGizmo::RotateGizmo(Scene* scene, bool use2DGizmo): GameObject(scene){
     float mainRadius = 0.02;
     float axisRadius = 0.05;
     float torusHeight = 2;
@@ -28,15 +28,15 @@ editor::RotateGizmo::RotateGizmo(Scene* scene, bool use2DGizmo): Object(scene){
 
     this->use2DGizmo = use2DGizmo;
 
-    maincircle = new Shape(scene);
-    line = new Lines(scene); // not a direct child of the gizmo to keep invisible if parent set visible to true
+    maincircle = new Primitive(scene);
+    line = new LineRenderer(scene); // not a direct child of the gizmo to keep invisible if parent set visible to true
 
     // For 2D gizmo, we only need the z-circle for rotation
     if (!use2DGizmo) {
-        xcircle = new Shape(scene);
-        ycircle = new Shape(scene);
+        xcircle = new Primitive(scene);
+        ycircle = new Primitive(scene);
     }
-    zcircle = new Shape(scene);
+    zcircle = new Primitive(scene);
 
     line->addLine(Vector3::ZERO, Vector3::ZERO, Vector4(lineColor, 1.0));
     line->setVisible(false);

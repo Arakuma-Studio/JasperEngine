@@ -1,18 +1,18 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef SCALEACTION_COMPONENT_H
-#define SCALEACTION_COMPONENT_H
+#ifndef SCALETWEEN_COMPONENT_H
+#define SCALETWEEN_COMPONENT_H
 
 #include "math/Vector3.h"
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API ScaleActionComponent{
+    struct JASPERENGINE_API ScaleTweenComponent{
         Vector3 endScale = Vector3::UNIT_SCALE;
         Vector3 startScale = Vector3::UNIT_SCALE;
     };
 
 }
 
-#endif //SCALEACTION_COMPONENT_H
+#endif //SCALETWEEN_COMPONENT_H

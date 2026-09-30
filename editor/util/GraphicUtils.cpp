@@ -70,7 +70,7 @@
 
 using namespace jasperengine;
 
-Vector2 editor::GraphicUtils::getUILayoutCenter(Scene* scene, Entity entity, const UILayoutComponent& layout) {
+Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout) {
     Vector2 center = Vector2(0, 0);
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<TextComponent>())) {

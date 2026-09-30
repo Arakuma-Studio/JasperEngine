@@ -1,47 +1,47 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "ComponentToBundleSharedCmd.h"
+#include "ComponentToPrefabSharedCmd.h"
 
 #include "Stream.h"
 
 using namespace jasperengine;
 
-editor::ComponentToBundleSharedCmd::ComponentToBundleSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
+editor::ComponentToPrefabSharedCmd::ComponentToPrefabSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
     this->project = project;
     this->sceneId = sceneId;
     this->componentType = componentType;
 
-    ComponentToBundleSharedData entityData;
+    ComponentToPrefabSharedData entityData;
     entityData.entity = entity;
     entities.push_back(entityData);
 
     this->wasModified = project->getScene(sceneId)->isModified;
 }
 
-bool editor::ComponentToBundleSharedCmd::execute() {
+bool editor::ComponentToPrefabSharedCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
 
-    for (ComponentToBundleSharedData& entityData : entities){
+    for (ComponentToPrefabSharedData& entityData : entities){
 
-        fs::path filepath = project->findEntityBundlePathFor(sceneId, entityData.entity);
+        fs::path filepath = project->findPrefabPathFor(sceneId, entityData.entity);
         if (sceneProject && !filepath.empty()) {
-            EntityBundle* bundle = project->getEntityBundle(filepath);
+            Prefab* prefab = project->getPrefab(filepath);
 
             Signature signature = Catalog::componentTypeToSignature(sceneProject->scene, componentType);
             entityData.recovery = Stream::encodeComponents(entityData.entity, sceneProject->scene, signature);
 
-            if (!bundle->hasComponentOverride(sceneId, entityData.entity, componentType)){
+            if (!prefab->hasComponentOverride(sceneId, entityData.entity, componentType)){
                 return false;
             }
 
-            // Clear the override and copy values from the bundle registry
-            bundle->clearComponentOverride(sceneProject->id, entityData.entity, componentType);
+            // Clear the override and copy values from the prefab registry
+            prefab->clearComponentOverride(sceneProject->id, entityData.entity, componentType);
 
-            Entity registryEntity = bundle->getRegistryEntity(sceneId, entityData.entity);
-            Catalog::copyComponent(bundle->registry.get(), registryEntity, sceneProject->scene, entityData.entity, componentType);
+            Entity registryEntity = prefab->getRegistryEntity(sceneId, entityData.entity);
+            Catalog::copyComponent(prefab->registry.get(), registryEntity, sceneProject->scene, entityData.entity, componentType);
             std::unordered_map<Entity, Entity> registryToLocal;
-            if (const EntityBundle::Instance* instance = bundle->getInstance(sceneId, entityData.entity)) {
+            if (const Prefab::Instance* instance = prefab->getInstance(sceneId, entityData.entity)) {
                 for (const auto& member : instance->members) {
                     registryToLocal[member.registryEntity] = member.localEntity;
                 }
@@ -56,16 +56,16 @@ bool editor::ComponentToBundleSharedCmd::execute() {
     return true;
 }
 
-void editor::ComponentToBundleSharedCmd::undo() {
+void editor::ComponentToPrefabSharedCmd::undo() {
     SceneProject* sceneProject = project->getScene(sceneId);
 
-    for (ComponentToBundleSharedData& entityData : entities){
+    for (ComponentToPrefabSharedData& entityData : entities){
 
-        fs::path filepath = project->findEntityBundlePathFor(sceneId, entityData.entity);
+        fs::path filepath = project->findPrefabPathFor(sceneId, entityData.entity);
         if (sceneProject && !filepath.empty()) {
-            EntityBundle* bundle = project->getEntityBundle(filepath);
+            Prefab* prefab = project->getPrefab(filepath);
 
-            bundle->setComponentOverride(sceneProject->id, entityData.entity, componentType);
+            prefab->setComponentOverride(sceneProject->id, entityData.entity, componentType);
 
             Entity parent = NULL_ENTITY;
             if (componentType == ComponentType::Transform){
@@ -80,12 +80,12 @@ void editor::ComponentToBundleSharedCmd::undo() {
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ComponentToBundleSharedCmd::mergeWith(Command* otherCommand){
-    ComponentToBundleSharedCmd* otherCmd = dynamic_cast<ComponentToBundleSharedCmd*>(otherCommand);
+bool editor::ComponentToPrefabSharedCmd::mergeWith(Command* otherCommand){
+    ComponentToPrefabSharedCmd* otherCmd = dynamic_cast<ComponentToPrefabSharedCmd*>(otherCommand);
     if (otherCmd != nullptr){
         if (sceneId == otherCmd->sceneId){
 
-            for (ComponentToBundleSharedData& otherEntityData :  otherCmd->entities){
+            for (ComponentToPrefabSharedData& otherEntityData :  otherCmd->entities){
                 entities.push_back(otherEntityData);
             }
 

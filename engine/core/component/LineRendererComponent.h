@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef LINES_COMPONENT_H
-#define LINES_COMPONENT_H
+#ifndef LINE_RENDERER_COMPONENT_H
+#define LINE_RENDERER_COMPONENT_H
 
 #include "buffer/Buffer.h"
 #include "shader/ShaderUniforms.h"
@@ -30,7 +30,7 @@ namespace jasperengine{
         }
     };
 
-    struct JASPERENGINE_API LinesComponent{
+    struct JASPERENGINE_API LineRendererComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
@@ -63,4 +63,4 @@ namespace jasperengine{
     
 }
 
-#endif //LINES_COMPONENT_H
+#endif //LINE_RENDERER_COMPONENT_H

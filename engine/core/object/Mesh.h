@@ -4,13 +4,13 @@
 #ifndef MESH_H
 #define MESH_H
 
-#include "Object.h"
+#include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Mesh: public Object{
+    class JASPERENGINE_API Mesh: public GameObject{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Mesh is skipped by its system

@@ -50,7 +50,7 @@ bool Action::getOwnedTarget() const{
     return action.ownedTarget;
 }
 
-void Action::setTarget(Object* target){
+void Action::setTarget(GameObject* target){
     setTarget(target->getEntity());
 }
 

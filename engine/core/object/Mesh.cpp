@@ -11,11 +11,11 @@
 
 using namespace jasperengine;
 
-Mesh::Mesh(Scene* scene): Object(scene){
+Mesh::Mesh(Scene* scene): GameObject(scene){
     addComponent<MeshComponent>();
 }
 
-Mesh::Mesh(Scene* scene, Entity entity): Object(scene, entity){
+Mesh::Mesh(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 Mesh::~Mesh(){

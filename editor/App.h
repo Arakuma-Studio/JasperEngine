@@ -9,11 +9,11 @@
 #include "PlatformMenu.h"
 #include "Project.h"
 
-#include "window/Properties.h"
-#include "window/Structure.h"
-#include "window/OutputWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ConsoleWindow.h"
 #include "window/SceneWindow.h"
-#include "window/ResourcesWindow.h"
+#include "window/ProjectWindow.h"
 #include "window/ImageViewerWindow.h"
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
@@ -30,7 +30,7 @@
 #include "window/dialog/ExportWindow.h"
 #include "window/dialog/EditorSettingsWindow.h"
 #include "window/dialog/ProjectSettingsWindow.h"
-#include "window/dialog/BundlesWindow.h"
+#include "window/dialog/PrefabsWindow.h"
 #include "window/dialog/AboutWindow.h"
 #include "window/dialog/ScenesWindow.h"
 
@@ -130,12 +130,12 @@ namespace jasperengine::editor{
 
         static ImFont* codeFont;
 
-        Structure* structureWindow;
-        Properties* propertiesWindow;
-        OutputWindow* outputWindow;
+        HierarchyWindow* hierarchyWindow;
+        InspectorWindow* inspectorWindow;
+        ConsoleWindow* consoleWindow;
         SceneWindow* sceneWindow;
         CodeEditor* codeEditor;
-        ResourcesWindow* resourcesWindow;
+        ProjectWindow* projectWindow;
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
@@ -173,7 +173,7 @@ namespace jasperengine::editor{
         ExportWindow exportWindow;
         EditorSettingsWindow editorSettingsWindow;
         ProjectSettingsWindow projectSettingsWindow;
-        BundlesWindow bundlesWindow;
+        PrefabsWindow prefabsWindow;
         AboutWindow aboutWindow;
         ScenesWindow scenesWindow;
 
@@ -189,7 +189,7 @@ namespace jasperengine::editor{
 
         enum class LastFocusedWindow {
             None,
-            AnySceneWindow, // Represents any of the scene-related windows (Scene, Properties, Structure)
+            AnySceneWindow, // Represents any of the scene-related windows (Scene, Properties, Hierarchy)
             Resources,
             Code,
             AI
@@ -328,12 +328,12 @@ namespace jasperengine::editor{
         Project* getProject();
         const Project* getProject() const;
 
-        Properties* getPropertiesWindow() const override;
+        InspectorWindow* getInspectorWindow() const override;
         CodeEditor* getCodeEditor() const override;
         ImageViewerWindow* getImageViewerWindow() const override;
-        ResourcesWindow* getResourcesWindow() const;
+        ProjectWindow* getProjectWindow() const;
         AnimationWindow* getAnimationWindow() const;
-        Structure* getStructureWindow() const;
+        HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

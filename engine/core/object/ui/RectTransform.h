@@ -1,22 +1,22 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef UILAYOUT_H
-#define UILAYOUT_H
+#ifndef RECTTRANSFORM_H
+#define RECTTRANSFORM_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API UILayout: public Object{
+    class JASPERENGINE_API RectTransform: public GameObject{
 
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled UI is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
-        UILayout(Scene* scene);
-        UILayout(Scene* scene, Entity entity);
-        virtual ~UILayout();
+        RectTransform(Scene* scene);
+        RectTransform(Scene* scene, Entity entity);
+        virtual ~RectTransform();
 
         void setSize(unsigned int width, unsigned int height);
         void setWidth(unsigned int width);
@@ -69,4 +69,4 @@ namespace jasperengine{
     };
 }
 
-#endif //UILAYOUT_H
+#endif //RECTTRANSFORM_H

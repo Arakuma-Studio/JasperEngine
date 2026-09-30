@@ -1,23 +1,23 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef PARTICLES_H
-#define PARTICLES_H
+#ifndef PARTICLE_SYSTEM_H
+#define PARTICLE_SYSTEM_H
 
 #include "Action.h"
-#include "component/ParticlesComponent.h"
+#include "component/ParticleSystemComponent.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Particles: public Action{
+    class JASPERENGINE_API ParticleSystem: public Action{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Particles is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
-        Particles(Scene* scene);
-        Particles(Scene* scene, Entity entity);
-        virtual ~Particles();
+        ParticleSystem(Scene* scene);
+        ParticleSystem(Scene* scene, Entity entity);
+        virtual ~ParticleSystem();
 
         void reset();
 
@@ -125,4 +125,4 @@ namespace jasperengine{
     };
 }
 
-#endif //PARTICLES_H
+#endif //PARTICLE_SYSTEM_H

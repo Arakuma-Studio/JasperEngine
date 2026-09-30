@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef UI_CONTAINER_COMPONENT_H
-#define UI_CONTAINER_COMPONENT_H
+#ifndef LAYOUT_GROUP_COMPONENT_H
+#define LAYOUT_GROUP_COMPONENT_H
 
 #define MAX_CONTAINER_BOXES 30
 
@@ -11,7 +11,7 @@
 
 namespace jasperengine{
 
-    enum class ContainerType{
+    enum class LayoutGroupType{
         VERTICAL,
         HORIZONTAL,
         VERTICAL_WRAP,
@@ -24,8 +24,8 @@ namespace jasperengine{
         bool expand = true;
     };
 
-    struct JASPERENGINE_API UIContainerComponent{
-        ContainerType type = ContainerType::VERTICAL;
+    struct JASPERENGINE_API LayoutGroupComponent{
+        LayoutGroupType type = LayoutGroupType::VERTICAL;
         bool useAllWrapSpace = false;
 
         unsigned int wrapCellWidth = 0;  // 0 = auto (use maxWidth from children)
@@ -48,4 +48,4 @@ namespace jasperengine{
     
 }
 
-#endif //UI_CONTAINER_COMPONENT_H
+#endif //LAYOUT_GROUP_COMPONENT_H

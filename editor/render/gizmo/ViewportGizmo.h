@@ -5,8 +5,8 @@
 
 #include "Scene.h"
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "math/Vector3.h"
 
 namespace jasperengine::editor{
@@ -26,15 +26,15 @@ namespace jasperengine::editor{
         Scene* scene;
         Camera* camera;
 
-        Object* mainObject;
+        GameObject* mainObject;
 
-        Shape* cube;
-        Shape* xaxis;
-        Shape* yaxis;
-        Shape* zaxis;
-        Shape* xarrow;
-        Shape* yarrow;
-        Shape* zarrow;
+        Primitive* cube;
+        Primitive* xaxis;
+        Primitive* yaxis;
+        Primitive* zaxis;
+        Primitive* xarrow;
+        Primitive* yarrow;
+        Primitive* zarrow;
     public:
         ViewportGizmo();
         virtual ~ViewportGizmo();
@@ -47,7 +47,7 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         TextureRender& getTexture();
         Scene* getScene();
-        Object* getObject();
+        GameObject* getGameObject();
     };
 
 }

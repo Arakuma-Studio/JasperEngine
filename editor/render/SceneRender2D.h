@@ -13,20 +13,20 @@ namespace jasperengine::editor{
 
     class SceneRender2D: public SceneRender{
     private:
-        Lines* lines;
-        Lines* gridLines;
-        std::map<Entity, Lines*> containerLines;
-        std::map<Entity, Lines*> bodyLines;
-        std::map<Entity, Lines*> jointLines;
-        std::map<Entity, Lines*> light2DLines;
-        std::map<Entity, Lines*> occluder2DLines;
-        std::map<Entity, Lines*> linePointLines;
-        std::map<Entity, Lines*> polygonPointLines;
-        std::map<Entity, Lines*> trackLines;
+        LineRenderer* lines;
+        LineRenderer* gridLines;
+        std::map<Entity, LineRenderer*> containerLines;
+        std::map<Entity, LineRenderer*> bodyLines;
+        std::map<Entity, LineRenderer*> jointLines;
+        std::map<Entity, LineRenderer*> light2DLines;
+        std::map<Entity, LineRenderer*> shadowCaster2DLines;
+        std::map<Entity, LineRenderer*> linePointLines;
+        std::map<Entity, LineRenderer*> polygonPointLines;
+        std::map<Entity, LineRenderer*> trackLines;
         std::map<Entity, CameraObjects> cameraObjects;
         std::map<Entity, SoundObjects> soundObjects;
         std::map<Entity, Light2DObjects> light2DObjects;
-        Lines* tileLines = nullptr;
+        LineRenderer* tileLines = nullptr;
         bool isUI;
         int viewportWidth;
         int viewportHeight;
@@ -37,15 +37,15 @@ namespace jasperengine::editor{
         bool instanciateBodyLines(Entity entity);
         bool instanciateJointLines(Entity entity);
         bool instanciateLight2DLines(Entity entity);
-        bool instanciateOccluder2DLines(Entity entity);
+        bool instanciateShadowCaster2DLines(Entity entity);
         bool instanciateLinePointLines(Entity entity);
         bool instanciatePolygonPointLines(Entity entity);
-        void addPointHandle(Lines* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
-        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Body2DComponent& body, bool visible, bool highlighted);
+        void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
+        void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted);
-        void createOrUpdateOccluder2DLines(Entity entity, const Transform& transform, const Occluder2DComponent& occluder, bool visible, bool highlighted);
-        void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LinesComponent& lines, bool visible);
+        void createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted);
+        void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);
         bool instanciateTrackLines(Entity entity);
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);

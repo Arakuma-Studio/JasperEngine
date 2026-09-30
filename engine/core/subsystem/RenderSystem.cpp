@@ -294,11 +294,11 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
 
     shadow2DAtlasWidth = 0;
     hasShadow2DAtlas = false;
-    occluder2DLoaded = false;
+    shadowCaster2DLoaded = false;
     shadow2DSlotParams = -1;
-    occluder2DBufferCapacity = 0;
-    occluder2DVertexCount = 0;
-    occluder2DNeedUpdateBuffer = false;
+    shadowCaster2DBufferCapacity = 0;
+    shadowCaster2DVertexCount = 0;
+    shadowCaster2DNeedUpdateBuffer = false;
     hasReflectionProbes = false;
     capturingReflectionProbe = false;
 }
@@ -366,7 +366,7 @@ void RenderSystem::destroy(){
     shadow2DAtlasFramebuffer.destroyFramebuffer();
     shadow2DAtlasWidth = 0;
     hasShadow2DAtlas = false;
-    destroyOccluder2DPass();
+    destroyShadowCaster2DPass();
     if (spotMaskAtlasCreated){
         spotMaskAtlas.destroyTexture();
         spotMaskAtlasCreated = false;
@@ -374,9 +374,9 @@ void RenderSystem::destroy(){
     spotMaskAtlasPixels.clear();
     spotMaskAtlasEntries.fill({});
 
-    auto skys = scene->getComponentArray<SkyComponent>();
+    auto skys = scene->getComponentArray<SkyboxComponent>();
     if (skys->size() > 0){
-        SkyComponent& sky = skys->getComponentFromIndex(0);
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
         Entity entity = skys->getEntity(0);
         if (sky.loaded){
             if (reloadView){
@@ -425,8 +425,8 @@ void RenderSystem::destroy(){
                 if (reloadView) points.needReload = true;
                 destroyPoints(entity, points);
             }
-        }else if (signature.test(scene->getComponentId<LinesComponent>())){
-            LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+        }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+            LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
             if (lines.loaded){
                 if (reloadView) lines.needReload = true;
                 destroyLines(entity, lines);
@@ -952,9 +952,9 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
 
     fs_lighting.envColor = Vector4(1.0, 1.0, 1.0, 0.0);
     if (hasIBL){
-        auto skys = scene->getComponentArray<SkyComponent>();
+        auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
-            SkyComponent& sky = skys->getComponentFromIndex(0);
+            SkyboxComponent& sky = skys->getComponentFromIndex(0);
             Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
             fs_lighting.envColor = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
         }
@@ -988,7 +988,7 @@ bool RenderSystem::loadLights2D(){
     hasShadows2D = false;
 
     auto lights2d = scene->getComponentArray<Light2DComponent>();
-    auto occluders = scene->getComponentArray<Occluder2DComponent>();
+    auto occluders = scene->getComponentArray<ShadowCaster2DComponent>();
 
     bool anyOccluder = false;
     for (int i = 0; i < occluders->size(); i++){
@@ -1135,7 +1135,7 @@ bool RenderSystem::loadAndProcessFog(){
 }
 
 // pooled maps stay alive in TexturePool for reuse; only unpooled ones are destroyed
-void RenderSystem::releaseSkyEnvironment(SkyComponent& sky){
+void RenderSystem::releaseSkyEnvironment(SkyboxComponent& sky){
     if (sky.irradianceMap && sky.irradianceMap.use_count() == 1){
         sky.irradianceMap->destroyTexture();
     }
@@ -1149,7 +1149,7 @@ void RenderSystem::releaseSkyEnvironment(SkyComponent& sky){
 
 // generates (or regenerates) the IBL environment maps from the sky texture,
 // must run while the texture pixels are still on CPU (before the sky GPU upload)
-void RenderSystem::updateSkyEnvironment(SkyComponent& sky){
+void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
     if (!sky.needUpdateEnvironment)
         return;
 
@@ -1549,9 +1549,9 @@ void RenderSystem::renderReflectionProbeCapture(){
     runtime.capturePass.setClearColor(probe->includeSky ? scene->getBackgroundColor() : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     runtime.capturePass.startRenderPass(&runtime.captureFramebuffer, (size_t)face);
 
-    auto skys = scene->getComponentArray<SkyComponent>();
+    auto skys = scene->getComponentArray<SkyboxComponent>();
     if (probe->includeSky && skys->size() > 0){
-        SkyComponent& sky = skys->getComponentFromIndex(0);
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
         if (sky.visible){
             updateSkyViewProjection(sky, captureCamera);
             drawSky(sky, PIP_RTT_INVERT);
@@ -1945,18 +1945,18 @@ void RenderSystem::loadShadow2DTexture(ShaderData& shaderData, ObjectRender& ren
     }
 }
 
-// Merges every enabled Occluder2D into occluder2DSegments as a world-space line
+// Merges every enabled ShadowCaster2D into shadowCaster2DSegments as a world-space line
 // list: each vertex carries its own endpoint (POSITION) plus the segment's other
 // endpoint (TEXCOORD1), which the shadow2d vertex shader needs to unwrap segments
 // crossing the polar seam. Returns the vertex count.
-unsigned int RenderSystem::buildOccluder2DSegments(){
-    occluder2DSegments.clear();
+unsigned int RenderSystem::buildShadowCaster2DSegments(){
+    shadowCaster2DSegments.clear();
 
-    auto occluders = scene->getComponentArray<Occluder2DComponent>();
+    auto occluders = scene->getComponentArray<ShadowCaster2DComponent>();
 
     std::vector<Vector2> worldPoints;
     for (int i = 0; i < occluders->size(); i++){
-        Occluder2DComponent& occluder = occluders->getComponentFromIndex(i);
+        ShadowCaster2DComponent& occluder = occluders->getComponentFromIndex(i);
         if (!occluder.enabled){
             continue;
         }
@@ -1969,7 +1969,7 @@ unsigned int RenderSystem::buildOccluder2DSegments(){
         worldPoints.clear();
         bool closed = true;
 
-        if (occluder.shape == Occluder2DShape::AUTO_QUAD){
+        if (occluder.shape == ShadowCaster2DShape::AUTO_QUAD){
             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (!mesh || mesh->aabb == AABB::ZERO){
                 continue;
@@ -2000,28 +2000,28 @@ unsigned int RenderSystem::buildOccluder2DSegments(){
             const Vector2& a = worldPoints[s];
             const Vector2& b = worldPoints[(s + 1) % numPoints];
 
-            occluder2DSegments.push_back(a.x);
-            occluder2DSegments.push_back(a.y);
-            occluder2DSegments.push_back(b.x);
-            occluder2DSegments.push_back(b.y);
+            shadowCaster2DSegments.push_back(a.x);
+            shadowCaster2DSegments.push_back(a.y);
+            shadowCaster2DSegments.push_back(b.x);
+            shadowCaster2DSegments.push_back(b.y);
 
-            occluder2DSegments.push_back(b.x);
-            occluder2DSegments.push_back(b.y);
-            occluder2DSegments.push_back(a.x);
-            occluder2DSegments.push_back(a.y);
+            shadowCaster2DSegments.push_back(b.x);
+            shadowCaster2DSegments.push_back(b.y);
+            shadowCaster2DSegments.push_back(a.x);
+            shadowCaster2DSegments.push_back(a.y);
         }
     }
 
-    return (unsigned int)(occluder2DSegments.size() / 4);
+    return (unsigned int)(shadowCaster2DSegments.size() / 4);
 }
 
-bool RenderSystem::loadOccluder2DPass(unsigned int vertexCapacity){
+bool RenderSystem::loadShadowCaster2DPass(unsigned int vertexCapacity){
     if (!Engine::isViewLoaded())
         return false;
 
-    destroyOccluder2DPass(); // also called when growing the buffer capacity
+    destroyShadowCaster2DPass(); // also called when growing the buffer capacity
 
-    ObjectRender& render = occluder2DRender;
+    ObjectRender& render = shadowCaster2DRender;
 
     render.beginLoad(PrimitiveType::LINES);
 
@@ -2033,33 +2033,33 @@ bool RenderSystem::loadOccluder2DPass(unsigned int vertexCapacity){
 
     shadow2DSlotParams = shaderData.getUniformBlockIndex(UniformBlockType::SHADOW2D_VS_PARAMS);
 
-    occluder2DBuffer.clear();
-    occluder2DBuffer.addAttribute(AttributeType::POSITION, 2, 0);
-    occluder2DBuffer.addAttribute(AttributeType::TEXCOORD1, 2, 2 * sizeof(float));
-    occluder2DBuffer.setStride(4 * sizeof(float));
-    occluder2DBuffer.setRenderAttributes(true);
-    occluder2DBuffer.setUsage(BufferUsage::STREAM);
+    shadowCaster2DBuffer.clear();
+    shadowCaster2DBuffer.addAttribute(AttributeType::POSITION, 2, 0);
+    shadowCaster2DBuffer.addAttribute(AttributeType::TEXCOORD1, 2, 2 * sizeof(float));
+    shadowCaster2DBuffer.setStride(4 * sizeof(float));
+    shadowCaster2DBuffer.setRenderAttributes(true);
+    shadowCaster2DBuffer.setUsage(BufferUsage::STREAM);
 
-    size_t bufferSize = vertexCapacity * occluder2DBuffer.getStride();
+    size_t bufferSize = vertexCapacity * shadowCaster2DBuffer.getStride();
     if (bufferSize == 0)
         return false;
 
-    occluder2DBuffer.getRender()->createBuffer(bufferSize, occluder2DBuffer.getData(), occluder2DBuffer.getType(), occluder2DBuffer.getUsage());
-    for (auto const &attr : occluder2DBuffer.getAttributes()) {
-        render.addAttribute(shaderData.getAttrIndex(attr.first), occluder2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), occluder2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+    shadowCaster2DBuffer.getRender()->createBuffer(bufferSize, shadowCaster2DBuffer.getData(), shadowCaster2DBuffer.getType(), shadowCaster2DBuffer.getUsage());
+    for (auto const &attr : shadowCaster2DBuffer.getAttributes()) {
+        render.addAttribute(shaderData.getAttrIndex(attr.first), shadowCaster2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), shadowCaster2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
     }
 
     if (!render.endLoad(PIP_DEPTH, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
-    occluder2DBufferCapacity = vertexCapacity;
-    occluder2DLoaded = true;
+    shadowCaster2DBufferCapacity = vertexCapacity;
+    shadowCaster2DLoaded = true;
     return true;
 }
 
-void RenderSystem::destroyOccluder2DPass(){
-    if (!occluder2DLoaded)
+void RenderSystem::destroyShadowCaster2DPass(){
+    if (!shadowCaster2DLoaded)
         return;
 
     if (shadow2DShader){
@@ -2067,14 +2067,14 @@ void RenderSystem::destroyOccluder2DPass(){
         ShaderPool::remove(ShaderType::SHADOW2D, 0);
     }
 
-    occluder2DRender.destroy();
+    shadowCaster2DRender.destroy();
 
-    occluder2DBuffer.clearAll();
-    occluder2DBuffer.getRender()->destroyBuffer();
+    shadowCaster2DBuffer.clearAll();
+    shadowCaster2DBuffer.getRender()->destroyBuffer();
 
     shadow2DSlotParams = -1;
-    occluder2DBufferCapacity = 0;
-    occluder2DLoaded = false;
+    shadowCaster2DBufferCapacity = 0;
+    shadowCaster2DLoaded = false;
 }
 
 bool RenderSystem::loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render){
@@ -2957,11 +2957,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         loadShadow2DTexture(shaderData, mesh.submeshes[i].render, p_shadows2d);
 
         if (p_ibl){
-            auto skyArray = scene->getComponentArray<SkyComponent>();
+            auto skyArray = scene->getComponentArray<SkyboxComponent>();
             TextureRender* irradiance = &emptyCubeBlack;
             TextureRender* prefiltered = &emptyCubeBlack;
             if (skyArray->size() > 0){
-                SkyComponent& sky = skyArray->getComponentFromIndex(0);
+                SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
                 if (sky.irradianceMap && sky.prefilteredMap){
                     irradiance = sky.irradianceMap.get();
                     prefiltered = sky.prefilteredMap.get();
@@ -4744,9 +4744,9 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     fs_composite.envColor = Vector4(0.0, 0.0, 0.0, 0.0);
     TextureRender* prefilteredTexture = &emptyCubeBlack;
     {
-        auto skys = scene->getComponentArray<SkyComponent>();
+        auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
-            SkyComponent& sky = skys->getComponentFromIndex(0);
+            SkyboxComponent& sky = skys->getComponentFromIndex(0);
             if (sky.prefilteredMap){
                 prefilteredTexture = sky.prefilteredMap.get();
                 Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
@@ -5521,7 +5521,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     return true;
 }
 
-bool RenderSystem::loadLines(Entity entity, LinesComponent& lines, uint16_t pipelines){
+bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5708,7 +5708,7 @@ void RenderSystem::destroyPoints(Entity entity, PointsComponent& points){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::drawLines(LinesComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType){
+bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType){
     if (lines.loaded && lines.lines.size() > 0){
 
         if (lines.needUpdateBuffer){
@@ -5732,7 +5732,7 @@ bool RenderSystem::drawLines(LinesComponent& lines, Transform& transform, Transf
     return true;
 }
 
-void RenderSystem::destroyLines(Entity entity, LinesComponent& lines){
+void RenderSystem::destroyLines(Entity entity, LineRendererComponent& lines){
     if (!lines.loaded)
         return;
 
@@ -5761,7 +5761,7 @@ void RenderSystem::destroyLines(Entity entity, LinesComponent& lines){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines){
+bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;	
@@ -5871,7 +5871,7 @@ bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines)
     return true;
 }
 
-bool RenderSystem::drawSky(SkyComponent& sky, PipelineType pipType){
+bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType){
     if (sky.loaded){
 
         if (sky.needUpdateTexture || sky.texture.isFramebufferOutdated()){
@@ -5899,7 +5899,7 @@ bool RenderSystem::drawSky(SkyComponent& sky, PipelineType pipType){
     return true;
 }
 
-void RenderSystem::destroySky(Entity entity, SkyComponent& sky){
+void RenderSystem::destroySky(Entity entity, SkyboxComponent& sky){
     if (!sky.loaded)
         return;
 
@@ -5966,7 +5966,7 @@ static Rect intersectScissor(const Rect& rect, const Rect& bounds){
     return Rect(left, bottom, right - left, top - bottom);
 }
 
-Rect RenderSystem::getScissorRect(UILayoutComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport){
+Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport){
     // the scissor is in the pass target pixels, so it follows the viewport the color pass
     // applied: offscreen targets start at (0,0), a swapchain keeps the letterbox offset
     float viewX = passViewport.getX();
@@ -6042,7 +6042,7 @@ Rect RenderSystem::getScissorRect(UILayoutComponent& layout, ImageComponent& img
 void RenderSystem::updateTransform(Transform& transform, Entity entity){
     // UI grows around its pivot, so its origin, the top-left corner, moves
     Vector3 origin = transform.position;
-    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
     if (layout && layout->pivot != Vector2(0, 0)){
         origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
     }
@@ -6300,7 +6300,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
     }
 }
 
-void RenderSystem::updateSkyViewProjection(SkyComponent& sky, CameraComponent& camera){
+void RenderSystem::updateSkyViewProjection(SkyboxComponent& sky, CameraComponent& camera){
     Matrix4 skyViewMatrix = camera.viewMatrix;
 
     skyViewMatrix.set(3,0,0);
@@ -6591,9 +6591,9 @@ void RenderSystem::needReloadPoints() {
 }
 
 void RenderSystem::needReloadLines() {
-    auto linesArray = scene->getComponentArray<LinesComponent>();
+    auto linesArray = scene->getComponentArray<LineRendererComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
-        LinesComponent& lines = linesArray->getComponentFromIndex(i);
+        LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         lines.needReload = true;
     }
 }
@@ -6615,9 +6615,9 @@ void RenderSystem::needReloadUIs() {
 }
 
 void RenderSystem::needReloadSky() {
-    auto skyArray = scene->getComponentArray<SkyComponent>();
+    auto skyArray = scene->getComponentArray<SkyboxComponent>();
     for (int i = 0; i < skyArray->size(); i++) {
-        SkyComponent& sky = skyArray->getComponentFromIndex(i);
+        SkyboxComponent& sky = skyArray->getComponentFromIndex(i);
         sky.needReload = true;
     }
 }
@@ -6665,19 +6665,19 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         count(points.loaded);
     }
 
-    // Check LinesComponents
-    auto linesArray = scene->getComponentArray<LinesComponent>();
+    // Check LineRendererComponents
+    auto linesArray = scene->getComponentArray<LineRendererComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
-        const LinesComponent& lines = linesArray->getComponentFromIndex(i);
+        const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
         if (!lines.lines.empty())
             count(lines.loaded);
     }
 
-    // Check SkyComponents
-    auto skyArray = scene->getComponentArray<SkyComponent>();
+    // Check SkyboxComponents
+    auto skyArray = scene->getComponentArray<SkyboxComponent>();
     for (int i = 0; i < skyArray->size(); i++) {
-        const SkyComponent& sky = skyArray->getComponentFromIndex(i);
+        const SkyboxComponent& sky = skyArray->getComponentFromIndex(i);
         count(sky.loaded);
     }
 }
@@ -7082,13 +7082,13 @@ void RenderSystem::changeLoaded(void* data){
 
         points.loaded = true;
 
-    }else if (signature.test(scene->getComponentId<LinesComponent>())){
-        LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+    }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+        LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
 
         lines.loaded = true;
 
-    }else if (signature.test(scene->getComponentId<SkyComponent>())){
-        SkyComponent& sky = scene->getComponent<SkyComponent>(entity);
+    }else if (signature.test(scene->getComponentId<SkyboxComponent>())){
+        SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
 
         sky.loaded = true;
     }
@@ -7122,14 +7122,14 @@ void RenderSystem::changeDestroy(void* data){
         points.loaded = false;
         points.loadCalled = false;
 
-    }else if (signature.test(scene->getComponentId<LinesComponent>())){
-        LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+    }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+        LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
 
         lines.loaded = false;
         lines.loadCalled = false;
 
-    }else if (signature.test(scene->getComponentId<SkyComponent>())){
-        SkyComponent& sky = scene->getComponent<SkyComponent>(entity);
+    }else if (signature.test(scene->getComponentId<SkyboxComponent>())){
+        SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
 
         sky.loaded = false;
         sky.loadCalled = false;
@@ -7182,9 +7182,9 @@ bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
            !isComponentDisabled<TilemapComponent>(scene, entity, signature) &&
            !isComponentDisabled<TerrainComponent>(scene, entity, signature) &&
            !isComponentDisabled<InstancedMeshComponent>(scene, entity, signature) &&
-           !isComponentDisabled<ParticlesComponent>(scene, entity, signature) &&
+           !isComponentDisabled<ParticleSystemComponent>(scene, entity, signature) &&
            !isComponentDisabled<PointsComponent>(scene, entity, signature) &&
-           !isComponentDisabled<LinesComponent>(scene, entity, signature) &&
+           !isComponentDisabled<LineRendererComponent>(scene, entity, signature) &&
            !isComponentDisabled<UIComponent>(scene, entity, signature);
 }
 
@@ -7573,10 +7573,10 @@ void RenderSystem::update(double dt){
     loadLights2D();
     loadAndProcessFog();
 
-    auto skys = scene->getComponentArray<SkyComponent>();
+    auto skys = scene->getComponentArray<SkyboxComponent>();
     bool newHasIBL = false;
     if (skys->size() > 0){
-        SkyComponent& sky = skys->getComponentFromIndex(0);
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
         Entity entity = skys->getEntity(0);
         if (mainCamera.needUpdate || sky.needUpdateSky){
             if (!hasMultipleCameras){
@@ -7881,8 +7881,8 @@ void RenderSystem::update(double dt){
             if (points.loaded){
                 points.needUpdate = false;
             }
-        }else if (signature.test(scene->getComponentId<LinesComponent>())){
-            LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+        }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+            LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
             if (lines.loaded && lines.needReload){
                 destroyLines(entity, lines);
             }
@@ -7918,8 +7918,8 @@ void RenderSystem::update(double dt){
                 updateTerrain(terrain, transform, mainCamera, mainCameraTransform, 0);
             }
             
-            if (signature.test(scene->getComponentId<SoundComponent>())){
-                SoundComponent& audio = scene->getComponent<SoundComponent>(entity);
+            if (signature.test(scene->getComponentId<AudioSourceComponent>())){
+                AudioSourceComponent& audio = scene->getComponent<AudioSourceComponent>(entity);
 
                 audio.needUpdate = true;
             }
@@ -7989,11 +7989,11 @@ void RenderSystem::update(double dt){
     // final here); draw() uploads it at most once, even when the same scene is
     // drawn multiple times per frame (e.g. open as a tab AND layered as a child scene)
     if (hasShadows2D && hasShadow2DAtlas){
-        occluder2DVertexCount = buildOccluder2DSegments();
-        occluder2DNeedUpdateBuffer = (occluder2DVertexCount > 0);
+        shadowCaster2DVertexCount = buildShadowCaster2DSegments();
+        shadowCaster2DNeedUpdateBuffer = (shadowCaster2DVertexCount > 0);
     }else{
-        occluder2DVertexCount = 0;
-        occluder2DNeedUpdateBuffer = false;
+        shadowCaster2DVertexCount = 0;
+        shadowCaster2DNeedUpdateBuffer = false;
     }
 }
 
@@ -8161,20 +8161,20 @@ void RenderSystem::draw(){
 
     //---------2D light shadow pass (1D polar rows)----------
     if (hasShadows2D && hasShadow2DAtlas){
-        if (occluder2DVertexCount > 0 && (!occluder2DLoaded || occluder2DVertexCount > occluder2DBufferCapacity)){
-            unsigned int capacity = std::max(occluder2DVertexCount * 2u, 256u);
-            loadOccluder2DPass(capacity);
+        if (shadowCaster2DVertexCount > 0 && (!shadowCaster2DLoaded || shadowCaster2DVertexCount > shadowCaster2DBufferCapacity)){
+            unsigned int capacity = std::max(shadowCaster2DVertexCount * 2u, 256u);
+            loadShadowCaster2DPass(capacity);
         }
 
-        bool drawSegments = occluder2DLoaded && occluder2DVertexCount > 0;
+        bool drawSegments = shadowCaster2DLoaded && shadowCaster2DVertexCount > 0;
 
-        if (drawSegments && occluder2DNeedUpdateBuffer){
+        if (drawSegments && shadowCaster2DNeedUpdateBuffer){
             // occluders are world-space and can move every frame: re-upload the merged
             // segment buffer (built in update(), at most once per frame — sokol allows
             // a single sg_update_buffer per buffer and frame)
-            occluder2DBuffer.setData((unsigned char*)occluder2DSegments.data(), occluder2DSegments.size() * sizeof(float));
-            occluder2DBuffer.getRender()->updateBuffer(occluder2DBuffer.getSize(), occluder2DBuffer.getData());
-            occluder2DNeedUpdateBuffer = false;
+            shadowCaster2DBuffer.setData((unsigned char*)shadowCaster2DSegments.data(), shadowCaster2DSegments.size() * sizeof(float));
+            shadowCaster2DBuffer.getRender()->updateBuffer(shadowCaster2DBuffer.getSize(), shadowCaster2DBuffer.getData());
+            shadowCaster2DNeedUpdateBuffer = false;
         }
 
         // rows are rendered (or at least cleared) every frame even with zero
@@ -8207,7 +8207,7 @@ void RenderSystem::draw(){
             shadow2DAtlasPassRender.applyScissor(rowRect);
             atlasRowWritten = true;
 
-            if (drawSegments && occluder2DRender.beginDraw(PIP_DEPTH)){
+            if (drawSegments && shadowCaster2DRender.beginDraw(PIP_DEPTH)){
                 vs_shadow2d_t shadow2dParams;
                 shadow2dParams.lightPos_range = Vector4(
                     lightTransform->worldPosition.x, lightTransform->worldPosition.y,
@@ -8217,8 +8217,8 @@ void RenderSystem::draw(){
                 // theta = +-pi seam rasterize on both ends of the row
                 for (int k = -1; k <= 1; k++){
                     shadow2dParams.offset = Vector4(2.0f * (float)k, 0.0f, 0.0f, 0.0f);
-                    occluder2DRender.applyUniformBlock(shadow2DSlotParams, sizeof(vs_shadow2d_t), &shadow2dParams);
-                    occluder2DRender.draw(0, occluder2DVertexCount, 1);
+                    shadowCaster2DRender.applyUniformBlock(shadow2DSlotParams, sizeof(vs_shadow2d_t), &shadow2dParams);
+                    shadowCaster2DRender.draw(0, shadowCaster2DVertexCount, 1);
                 }
             }
 
@@ -8493,9 +8493,9 @@ void RenderSystem::draw(){
         }
 
         //---------Draw sky----------
-        auto skys = scene->getComponentArray<SkyComponent>();
+        auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
-            SkyComponent& sky = skys->getComponentFromIndex(0);
+            SkyboxComponent& sky = skys->getComponentFromIndex(0);
             Entity entity = skys->getEntity(0);
             if (sky.visible){
                 if (hasMultipleCameras || hasReflectionProbes){
@@ -8534,16 +8534,16 @@ void RenderSystem::draw(){
             const bool renderActive = isRenderActive(entity, signature);
 
             // apply scissor on UI
-            if (signature.test(scene->getComponentId<UILayoutComponent>())){
-                UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+            if (signature.test(scene->getComponentId<RectTransformComponent>())){
+                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
 
                 Rect parentScissor;
                 bool parentScissorActive = false;
 
                 if (transform.parent != NULL_ENTITY){
                     Signature parentSignature = scene->getSignature(transform.parent);
-                    if (parentSignature.test(scene->getComponentId<UILayoutComponent>())){
-                        UILayoutComponent& parentLayout = scene->getComponent<UILayoutComponent>(transform.parent);
+                    if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
+                        RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
 
                         parentScissorActive = parentLayout.scissorActive;
                         parentScissor = parentLayout.scissor;
@@ -8641,8 +8641,8 @@ void RenderSystem::draw(){
                     }
                 }
 
-            }else if (signature.test(scene->getComponentId<LinesComponent>())){
-                LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+            }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
 
                 if (transform.visible && renderActive)
                     drawLines(lines, transform, cameraTransform, colorPip);
@@ -8756,11 +8756,11 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<PointsComponent>()) {
         PointsComponent& points = scene->getComponent<PointsComponent>(entity);
         destroyPoints(entity, points);
-    } else if (componentId == scene->getComponentId<LinesComponent>()) {
-        LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+    } else if (componentId == scene->getComponentId<LineRendererComponent>()) {
+        LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
         destroyLines(entity, lines);
-    } else if (componentId == scene->getComponentId<SkyComponent>()) {
-        SkyComponent& sky = scene->getComponent<SkyComponent>(entity);
+    } else if (componentId == scene->getComponentId<SkyboxComponent>()) {
+        SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
         destroySky(entity, sky);
     } else if (componentId == scene->getComponentId<CameraComponent>()) {
         CameraComponent& camera = scene->getComponent<CameraComponent>(entity);

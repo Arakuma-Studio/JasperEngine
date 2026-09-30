@@ -5,7 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
-#include "util/ShapeParameters.h"
+#include "util/PrimitiveParameters.h"
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor{

@@ -37,7 +37,7 @@ const Vector4 GAUGE_LABEL_COLOR(0.94, 0.95, 0.96, 1.0);
 const Vector4 GAUGE_DISTANCE_FILL_COLOR(0.50, 0.66, 0.90, 1.0);
 const Vector4 GAUGE_SPEED_FILL_COLOR(0.95, 0.72, 0.35, 1.0);
 
-void placeAtLeftCenter(UILayout* element, float x, float centerY){
+void placeAtLeftCenter(RectTransform* element, float x, float centerY){
     element->setAnchorPreset(AnchorPreset::CENTER_LEFT);
     element->setPositionOffset(Vector2(x, centerY));
 }
@@ -94,7 +94,7 @@ editor::UILayer::UILayer(bool enable3DOverlays){
     scene = new Scene(EntityPool::System);
     camera = new Camera(scene);
 
-    selectionRect = new Object(scene);
+    selectionRect = new GameObject(scene);
     upRect = new Polygon(scene);
     bottomRect = new Polygon(scene);
     leftRect = new Polygon(scene);

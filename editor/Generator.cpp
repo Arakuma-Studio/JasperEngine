@@ -810,7 +810,7 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
     return cmakeContent;
 }
 
-void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
+void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
@@ -827,8 +827,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
             factorySources += "    " + internalPathStr + "/generated/" + filename + "\n";
         }
     }
-    for (const auto& bundle : bundles) {
-        std::string filename = Factory::bundleToFileName(bundle.bundlePath) + ".cpp";
+    for (const auto& prefab : prefabs) {
+        std::string filename = Factory::prefabToFileName(prefab.prefabPath) + ".cpp";
         if (addedFactorySources.insert(filename).second) {
             factorySources += "    " + internalPathStr + "/generated/" + filename + "\n";
         }
@@ -938,7 +938,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})\n";
     cmakeContent += "set(INTERNAL_DIR ${PROJECT_ROOT}/.jasperengine)\n\n";
     cmakeContent += "# JasperEngine runtime API headers for this project come from ${INTERNAL_DIR}/engine-api.\n";
-    cmakeContent += "# Full engine + editor source (including YAML serialization for *.scene/*.bundle/project.yaml): https://github.com/JasperRaccoon/JasperEngine\n\n";
+    cmakeContent += "# Full engine + editor source (including YAML serialization for *.scene/*.prefab/project.yaml): https://github.com/JasperRaccoon/JasperEngine\n\n";
 
     cmakeContent += "set(JASPERENGINE_API_DIR " + engineApiPathStr + ")\n\n";
 
@@ -1202,17 +1202,17 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "- Full engine **and editor** source (upstream): https://github.com/JasperRaccoon/JasperEngine\n\n";
     agentsContent += "Use the local API snapshot first for runtime API details. For upstream source, use the tag or commit matching the editor version above; do not assume the latest upstream code matches this project. If the version is unknown or cannot be matched, report that limitation before relying on upstream behavior.\n\n";
     agentsContent += "The local paths above contain only the runtime engine API (what user code links against).\n";
-    agentsContent += "They do **not** include the editor itself. To understand the YAML schema of `*.scene`, `*.bundle`, and `project.yaml`, or how the generator/factory produces C++, consult the upstream repository — specifically the `editor/` directory.\n\n";
+    agentsContent += "They do **not** include the editor itself. To understand the YAML schema of `*.scene`, `*.prefab`, and `project.yaml`, or how the generator/factory produces C++, consult the upstream repository — specifically the `editor/` directory.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "These files are produced by the editor when a scene is played/run and are intended for **local development and testing**. Project export/distribution uses a separate pipeline and does not reuse these files. Do not edit them manually — they will be overwritten on the next generation:\n\n";
     agentsContent += "- `CMakeLists.txt` (project root)\n";
     agentsContent += "- `" + relativeInternalPath.generic_string() + "/LocalPaths.cmake` (paths belonging to this machine, included by `CMakeLists.txt`)\n";
     agentsContent += "- `" + relativeInternalPath.generic_string() + "/scene_scripts.cpp`\n";
-    agentsContent += "- `" + relativeInternalPath.generic_string() + "/generated/` (scene factories, bundle factories, `main.cpp`)\n";
+    agentsContent += "- `" + relativeInternalPath.generic_string() + "/generated/` (scene factories, prefab factories, `main.cpp`)\n";
     agentsContent += "- `" + engineApiRelativePath.generic_string() + "/` (engine API snapshot copied from the editor)\n\n";
 
     agentsContent += "## Version control\n\n";
-    agentsContent += "`project.yaml`, `*.scene`, `*.bundle`, `ProjectBuild.cmake`, `AGENTS.md` and the assets describe the game and are meant to be committed. "
+    agentsContent += "`project.yaml`, `*.scene`, `*.prefab`, `ProjectBuild.cmake`, `AGENTS.md` and the assets describe the game and are meant to be committed. "
                      "Everything under `" + relativeInternalPath.generic_string() + "/` is not: it holds the engine API snapshot and generated C++, the build settings for this machine "
                      "(`user/build.yaml`), this developer's editor layout and viewport cameras (`user/workspace.yaml`), and whatever the game writes through `data://` during Play (`user/rundata/`). "
                      "The editor regenerates all of it when the project is opened or built.\n\n";
@@ -1226,8 +1226,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "target_link_libraries(${JASPERENGINE_TARGET} PRIVATE mylib)\n";
     agentsContent += "```\n\n";
     agentsContent += "## Regenerating C++ code\n\n";
-    agentsContent += "The generated C++ sources (scene factories, script bindings) are derived from `*.scene`, `*.bundle`, and `project.yaml` files.\n";
-    agentsContent += "After changing any `*.scene`, `*.bundle`, or `project.yaml` file, regenerate through JasperEngine Editor by playing/running the scene before validating the resulting build. This refreshes the generated sources, including `" + relativeInternalPath.generic_string() + "/generated/` and script bindings. If editor access is unavailable, report that regeneration and runtime validation remain pending.\n\n";
+    agentsContent += "The generated C++ sources (scene factories, script bindings) are derived from `*.scene`, `*.prefab`, and `project.yaml` files.\n";
+    agentsContent += "After changing any `*.scene`, `*.prefab`, or `project.yaml` file, regenerate through JasperEngine Editor by playing/running the scene before validating the resulting build. This refreshes the generated sources, including `" + relativeInternalPath.generic_string() + "/generated/` and script bindings. If editor access is unavailable, report that regeneration and runtime validation remain pending.\n\n";
     agentsContent += "## C++ Scripts\n\n";
     agentsContent += "User C++ script files (`.h`/`.cpp`) can be placed anywhere in the project outside of `" + relativeInternalPath.generic_string() + "/`.\n";
     agentsContent += "Each script class must inherit from `jasperengine::Script`; ordinary helper classes and source files do not need to. "
@@ -1239,17 +1239,17 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "The C++ language standard is Project Settings > Build > C++ Standard (`cxxStandard` in `project.yaml`): "
                      + editor::cxxStandardList() + ". Play and export both build with it; do not edit `CMAKE_CXX_STANDARD` in the generated CMakeLists.txt.\n";
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
-    agentsContent += "## BundleManager API\n\n";
-    agentsContent += "`registerBundle` factories return `bool`. Void-returning factories still register and are treated as success. "
-                     "Every createBundle call creates its own instance root, so a bundle can be spawned repeatedly; the third argument is the entity the new root is parented to. "
-                     "Entity IDs are scene-local, so parent by name with `createBundle(name, scene, parentName)` to resolve it in that scene.\n";
-    agentsContent += "A spawned instance root is named after its .bundle file, extension and directories dropped: `EnemyShip` for `enemies/EnemyShip.bundle`, which createBundle still spawns by the full `enemies/EnemyShip`. "
-                     "It carries a `BundleComponent` too, while an instance placed in a scene keeps the name the scene gave it. The bundle's own entities hang under the root, the same in the editor and in an exported build. "
+    agentsContent += "## PrefabManager API\n\n";
+    agentsContent += "`registerPrefab` factories return `bool`. Void-returning factories still register and are treated as success. "
+                     "Every createPrefab call creates its own instance root, so a prefab can be spawned repeatedly; the third argument is the entity the new root is parented to. "
+                     "Entity IDs are scene-local, so parent by name with `createPrefab(name, scene, parentName)` to resolve it in that scene.\n";
+    agentsContent += "A spawned instance root is named after its .prefab file, extension and directories dropped: `EnemyShip` for `enemies/EnemyShip.prefab`, which createPrefab still spawns by the full `enemies/EnemyShip`. "
+                     "It carries a `PrefabComponent` too, while an instance placed in a scene keeps the name the scene gave it. The prefab's own entities hang under the root, the same in the editor and in an exported build. "
                      "Reach an entity inside an instance with `scene->findEntity(name, root)`, which is also what tells two instances apart when they share a name.\n";
-    agentsContent += "Each bundle header also declares `build_bundle_<name>(scene, root, members)`, the same factory appending the entities it creates to `members` in a fixed order; "
-                     "generated scene sources address instance entities through it, since their ids only exist at runtime. Register and spawn with `create_bundle_<name>`.\n";
-    agentsContent += "Only bundles a scene instantiates and the ones listed under `standaloneBundles` in `project.yaml` are built and registered. "
-                     "A bundle spawned by script alone must be in that list (JasperEngine Editor: Project > Bundles), otherwise `createBundle` reports it as not found.\n\n";
+    agentsContent += "Each prefab header also declares `build_prefab_<name>(scene, root, members)`, the same factory appending the entities it creates to `members` in a fixed order; "
+                     "generated scene sources address instance entities through it, since their ids only exist at runtime. Register and spawn with `create_prefab_<name>`.\n";
+    agentsContent += "Only prefabs a scene instantiates and the ones listed under `standalonePrefabs` in `project.yaml` are built and registered. "
+                     "A prefab spawned by script alone must be in that list (JasperEngine Editor: Project > Prefabs), otherwise `createPrefab` reports it as not found.\n\n";
     agentsContent += "## Build modes\n\n";
     agentsContent += "- **Editor mode** (`JASPERENGINE_EDITOR_PLUGIN=ON`): builds as a shared library; `main.cpp` and Factory-generated scene sources are excluded. Used by the editor to hot-reload the project.\n";
     agentsContent += "- **Standalone mode** (`JASPERENGINE_EDITOR_PLUGIN=OFF`, default): builds as an executable; includes `main.cpp` and all Factory sources. This standalone build is for local testing only — production distribution uses the editor's separate export pipeline.\n";
@@ -1288,44 +1288,44 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     FileUtils::writeIfChanged(agentsFile, agentsContent);
 }
 
-std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(const std::map<fs::path, EntityBundle>& entityBundles, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath) {
+std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath) {
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
-    std::vector<BundleInstanceInfo> bundleInstances;
+    std::vector<PrefabInstanceInfo> prefabInstances;
 
-    // members plus every nested subtree, what build_bundle_* appends for that bundle
+    // members plus every nested subtree, what build_prefab_* appends for that prefab
     std::map<fs::path, size_t> subtreeSizes;
     auto subtreeSize = [&](auto&& self, const fs::path& path) -> size_t {
-        auto it = entityBundles.find(path);
-        if (it == entityBundles.end() || !it->second.registry) return 0;
+        auto it = prefabAssets.find(path);
+        if (it == prefabAssets.end() || !it->second.registry) return 0;
         auto sizeIt = subtreeSizes.find(path);
         if (sizeIt != subtreeSizes.end()) return sizeIt->second;
         subtreeSizes[path] = 0; // also stops a cycle
         EntityRegistry* registry = it->second.registry.get();
         size_t total = 0;
-        for (Entity member : Factory::getBundleMemberEntities(registry, it->second.registryEntities)) {
+        for (Entity member : Factory::getPrefabMemberEntities(registry, it->second.registryEntities)) {
             total++;
-            BundleComponent* bc = registry->findComponent<BundleComponent>(member);
+            PrefabComponent* bc = registry->findComponent<PrefabComponent>(member);
             if (bc && !bc->path.empty()) total += self(self, bc->path);
         }
         subtreeSizes[path] = total;
         return total;
     };
 
-    for (const auto& [bundlePath, bundle] : entityBundles) {
-        auto sceneIt = bundle.instances.find(sceneId);
-        if (sceneIt != bundle.instances.end()) {
+    for (const auto& [prefabPath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt != prefab.instances.end()) {
             for (const auto& instance : sceneIt->second) {
-                BundleInstanceInfo info;
-                info.bundlePath = bundlePath;
+                PrefabInstanceInfo info;
+                info.prefabPath = prefabPath;
                 info.rootEntity = instance.rootEntity;
                 for (const auto& member : instance.members) {
                     info.memberEntities.insert(member.localEntity);
                 }
-                if (bundle.registry) {
-                    for (Entity regEntity : Factory::getBundleMemberEntities(bundle.registry.get(), bundle.registryEntities)) {
-                        info.orderedMembers.push_back(bundle.getLocalEntity(sceneId, instance.instanceId, regEntity));
-                        BundleComponent* bc = bundle.registry->findComponent<BundleComponent>(regEntity);
+                if (prefab.registry) {
+                    for (Entity regEntity : Factory::getPrefabMemberEntities(prefab.registry.get(), prefab.registryEntities)) {
+                        info.orderedMembers.push_back(prefab.getLocalEntity(sceneId, instance.instanceId, regEntity));
+                        PrefabComponent* bc = prefab.registry->findComponent<PrefabComponent>(regEntity);
                         info.nestedSizes.push_back((bc && !bc->path.empty()) ? subtreeSize(subtreeSize, bc->path) : 0);
                     }
                 }
@@ -1333,7 +1333,7 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
                 // Build override info from instance overrides
                 if (!instance.overrides.empty()) {
                     for (const auto& [sceneEntity, bitmask] : instance.overrides) {
-                        BundleOverrideInfo ovr;
+                        PrefabOverrideInfo ovr;
                         ovr.sceneEntity = sceneEntity;
 
                         // Decode bitmask to ComponentType list
@@ -1349,32 +1349,32 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
                     }
                 }
 
-                bundleInstances.push_back(std::move(info));
+                prefabInstances.push_back(std::move(info));
             }
         }
 
-        if (!bundle.registry) {
+        if (!prefab.registry) {
             continue;
         }
 
-        // Write bundle .h and .cpp files
-        std::string headerContent = Factory::createBundleHeader(bundlePath);
-        std::string sourceContent = Factory::createBundle(bundlePath, bundle.registry.get(), bundle.registryEntities, projectPath, generatedPath);
+        // Write prefab .h and .cpp files
+        std::string headerContent = Factory::createPrefabHeader(prefabPath);
+        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath);
 
-        std::string bundleFileName = Factory::bundleToFileName(bundlePath);
-        FileUtils::writeIfChanged(generatedPath / (bundleFileName + ".h"), headerContent);
-        FileUtils::writeIfChanged(generatedPath / (bundleFileName + ".cpp"), sourceContent);
+        std::string prefabFileName = Factory::prefabToFileName(prefabPath);
+        FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".h"), headerContent);
+        FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".cpp"), sourceContent);
     }
 
-    return bundleInstances;
+    return prefabInstances;
 }
 
-void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<BundleInstanceInfo>& bundleInstances, const SceneResources& resources){
+void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::string sceneIdStr = Factory::toIdentifier(sceneName);
 
-    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, bundleInstances, resources);
+    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
 
     std::string filename = sceneIdStr + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
@@ -1403,7 +1403,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -1420,12 +1420,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "// This file is auto-generated by JasperEngine Editor. Do not edit manually.\n\n";
     mainContent += "#include \"JasperEngine.h\"\n";
 
-    // Include bundle headers (contain declarations for bundle creation functions)
-    for (const auto& bundleData : bundles) {
-        std::string headerName = Factory::bundleToFileName(bundleData.bundlePath) + ".h";
+    // Include prefab headers (contain declarations for prefab creation functions)
+    for (const auto& prefabData : prefabs) {
+        std::string headerName = Factory::prefabToFileName(prefabData.prefabPath) + ".h";
         mainContent += "#include \"" + headerName + "\"\n";
     }
-    if (!bundles.empty()) {
+    if (!prefabs.empty()) {
         mainContent += "\n";
     }
 
@@ -1581,14 +1581,14 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     mainContent += "\n";
 
-    // Register all bundles with BundleManager
-    for (size_t i = 0; i < bundles.size(); i++) {
-        fs::path noExt = bundles[i].bundlePath;
+    // Register all prefabs with PrefabManager
+    for (size_t i = 0; i < prefabs.size(); i++) {
+        fs::path noExt = prefabs[i].prefabPath;
         noExt.replace_extension();
-        std::string bundleName = noExt.generic_string();
-        mainContent += "    BundleManager::registerBundle(" + std::to_string(i + 1) + ", \"" + bundleName + "\", " + bundles[i].functionName + ");\n";
+        std::string prefabName = noExt.generic_string();
+        mainContent += "    PrefabManager::registerPrefab(" + std::to_string(i + 1) + ", \"" + prefabName + "\", " + prefabs[i].functionName + ");\n";
     }
-    if (!bundles.empty()) {
+    if (!prefabs.empty()) {
         mainContent += "\n";
     }
 
@@ -1628,7 +1628,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const fs::path mainFile = generatedPath / "main.cpp";
     FileUtils::writeIfChanged(mainFile, mainContent);
 
-    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
+    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
@@ -1663,7 +1663,7 @@ std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
 
     if (fs::is_directory(candidate, ec)) {
         // A pick can land on the install root, its bin directory or the macOS
-        // bundle, all of which the user thinks of as "CMake".
+        // prefab, all of which the user thinks of as "CMake".
         const fs::path insideDir[] = {
             candidate / exeName,
             candidate / "bin" / exeName,

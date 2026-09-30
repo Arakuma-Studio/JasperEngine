@@ -4,13 +4,13 @@
 #ifndef LUA_H
 #define LUA_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine {
     class LuaScript {
     public:
-        static void setObject(const std::string& global, Object* object);
-        static Object* getObject(const std::string& global);
+        static void setGameObject(const std::string& global, GameObject* object);
+        static GameObject* getGameObject(const std::string& global);
     };
 
 }

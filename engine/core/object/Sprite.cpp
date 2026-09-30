@@ -3,7 +3,7 @@
 
 #include "Sprite.h"
 
-#include "component/Occluder2DComponent.h"
+#include "component/ShadowCaster2DComponent.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -43,17 +43,17 @@ bool Sprite::createSprite(){
     return scene->getSystem<MeshSystem>()->createOrUpdateSprite(spritecomp, mesh);
 }
 
-Occluder2D Sprite::getOccluder2D(){
-    if (!scene->findComponent<Occluder2DComponent>(entity)){
-        addComponent<Occluder2DComponent>();
+ShadowCaster2D Sprite::getShadowCaster2D(){
+    if (!scene->findComponent<ShadowCaster2DComponent>(entity)){
+        addComponent<ShadowCaster2DComponent>();
     }
 
-    return Occluder2D(scene, entity);
+    return ShadowCaster2D(scene, entity);
 }
 
-void Sprite::removeOccluder2D(){
-    if (scene->findComponent<Occluder2DComponent>(entity)){
-        removeComponent<Occluder2DComponent>();
+void Sprite::removeShadowCaster2D(){
+    if (scene->findComponent<ShadowCaster2DComponent>(entity)){
+        removeComponent<ShadowCaster2DComponent>();
     }
 }
 

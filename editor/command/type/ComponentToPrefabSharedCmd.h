@@ -9,23 +9,23 @@
 
 namespace jasperengine::editor {
 
-    struct ComponentToBundleSharedData {
+    struct ComponentToPrefabSharedData {
         Entity entity;
         YAML::Node recovery;
     };
 
-    class ComponentToBundleSharedCmd: public Command {
+    class ComponentToPrefabSharedCmd: public Command {
     private:
         Project* project;
         uint32_t sceneId;
         ComponentType componentType;
 
-        std::vector<ComponentToBundleSharedData> entities;
+        std::vector<ComponentToPrefabSharedData> entities;
 
         bool wasModified;
 
     public:
-        ComponentToBundleSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
+        ComponentToPrefabSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
 
         bool execute() override;
         void undo() override;

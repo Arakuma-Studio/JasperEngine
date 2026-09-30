@@ -1,21 +1,21 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef OCCLUDER2D_H
-#define OCCLUDER2D_H
+#ifndef SHADOWCASTER2D_H
+#define SHADOWCASTER2D_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Occluder2D: public Object{
+    class JASPERENGINE_API ShadowCaster2D: public GameObject{
     public:
-        Occluder2D(Scene* scene);
-        Occluder2D(Scene* scene, Entity entity);
-        virtual ~Occluder2D();
+        ShadowCaster2D(Scene* scene);
+        ShadowCaster2D(Scene* scene, Entity entity);
+        virtual ~ShadowCaster2D();
 
-        void setShape(Occluder2DShape shape);
-        Occluder2DShape getShape() const;
+        void setShape(ShadowCaster2DShape shape);
+        ShadowCaster2DShape getShape() const;
 
         void addVertex(Vector2 vertex);
         void addVertex(float x, float y);
@@ -31,4 +31,4 @@ namespace jasperengine{
 
 }
 
-#endif //OCCLUDER2D_H
+#endif //SHADOWCASTER2D_H

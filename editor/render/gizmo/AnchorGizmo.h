@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "object/ui/Polygon.h"
 #include "math/Rect.h"
 
 namespace jasperengine::editor{
 
-    class AnchorGizmo: public Object{
+    class AnchorGizmo: public GameObject{
     private:
-        Object* center;
+        GameObject* center;
         Polygon* points[4];
 
         Rect area;

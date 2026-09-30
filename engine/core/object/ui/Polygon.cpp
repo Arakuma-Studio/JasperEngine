@@ -10,12 +10,12 @@
 
 using namespace jasperengine;
 
-Polygon::Polygon(Scene* scene): UILayout(scene){
+Polygon::Polygon(Scene* scene): RectTransform(scene){
     addComponent<UIComponent>();
     addComponent<PolygonComponent>();
 }
 
-Polygon::Polygon(Scene* scene, Entity entity): UILayout(scene, entity){
+Polygon::Polygon(Scene* scene, Entity entity): RectTransform(scene, entity){
 }
 
 Polygon::~Polygon(){
@@ -24,7 +24,7 @@ Polygon::~Polygon(){
 bool Polygon::createPolygon(){
     PolygonComponent& pcomp = getComponent<PolygonComponent>();
     UIComponent& ui = getComponent<UIComponent>();
-    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+    RectTransformComponent& layout = getComponent<RectTransformComponent>();
 
     return scene->getSystem<UISystem>()->createOrUpdatePolygon(pcomp, ui, layout);
 }

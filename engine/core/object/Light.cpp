@@ -10,11 +10,11 @@
 
 using namespace jasperengine;
 
-Light::Light(Scene* scene): Object(scene){
+Light::Light(Scene* scene): GameObject(scene){
     addComponent<LightComponent>();
 }
 
-Light::Light(Scene* scene, Entity entity): Object(scene, entity){
+Light::Light(Scene* scene, Entity entity): GameObject(scene, entity){
 }
 
 Light::~Light(){

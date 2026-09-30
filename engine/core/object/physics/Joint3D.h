@@ -41,4 +41,4 @@ namespace jasperengine{
     };
 }
 
-#endif //BODY3D_H
+#endif //RIGIDBODY_H

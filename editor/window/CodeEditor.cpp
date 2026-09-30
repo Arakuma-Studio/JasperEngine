@@ -329,7 +329,7 @@ void parseCppSymbols(const std::string& content, std::unordered_set<std::string>
             if (pos == std::string::npos) continue;
 
             // An export macro can precede the name, so it is the last word before the
-            // base list: "class JASPERENGINE_API Mesh : public Object"
+            // base list: "class JASPERENGINE_API Mesh : public GameObject"
             size_t bodyStart = line.find_first_of(":{;", pos + std::strlen(keyword));
             // "friend class jasperengine::Scene;" qualifies the name, it opens no base list
             while (bodyStart != std::string::npos && line.compare(bodyStart, 2, "::") == 0) {

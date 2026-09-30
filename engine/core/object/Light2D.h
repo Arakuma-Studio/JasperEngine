@@ -4,11 +4,11 @@
 #ifndef LIGHT2D_H
 #define LIGHT2D_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Light2D: public Object{
+    class JASPERENGINE_API Light2D: public GameObject{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Light2D is skipped by its system

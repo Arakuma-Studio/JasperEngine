@@ -5,7 +5,7 @@
 #define ACTION_H
 
 #include "object/EntityHandle.h"
-#include "object/Object.h"
+#include "object/GameObject.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Action: public EntityHandle{
@@ -21,7 +21,7 @@ namespace jasperengine{
         void setOwnedTarget(bool ownedTarget);
         bool getOwnedTarget() const;
 
-        void setTarget(Object* target);
+        void setTarget(GameObject* target);
         void setTarget(Entity target);
         Entity getTarget() const;
 

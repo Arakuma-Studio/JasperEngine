@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "BundleManager.h"
+#include "PrefabManager.h"
 #include "Scene.h"
 #include "EntityHandle.h"
 #include "Log.h"
@@ -11,8 +11,8 @@
 
 using namespace jasperengine;
 
-std::vector<BundleManager::BundleEntry> BundleManager::entries;
-std::vector<BundleManager::BundleInstance> BundleManager::instances;
+std::vector<PrefabManager::PrefabEntry> PrefabManager::entries;
+std::vector<PrefabManager::PrefabInstance> PrefabManager::instances;
 
 namespace {
 
@@ -33,7 +33,7 @@ void rollbackSpawnedEntities(Scene* scene, const std::unordered_set<Entity>& bef
 
 }
 
-BundleManager::BundleEntry* BundleManager::findEntry(uint32_t id) {
+PrefabManager::PrefabEntry* PrefabManager::findEntry(uint32_t id) {
     for (auto& entry : entries) {
         if (entry.id == id)
             return &entry;
@@ -41,7 +41,7 @@ BundleManager::BundleEntry* BundleManager::findEntry(uint32_t id) {
     return nullptr;
 }
 
-BundleManager::BundleEntry* BundleManager::findEntry(const std::string& name) {
+PrefabManager::PrefabEntry* PrefabManager::findEntry(const std::string& name) {
     for (auto& entry : entries) {
         if (entry.name == name)
             return &entry;
@@ -49,8 +49,8 @@ BundleManager::BundleEntry* BundleManager::findEntry(const std::string& name) {
     return nullptr;
 }
 
-void BundleManager::registerBundle(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer) {
-    if (BundleEntry* entry = findEntry(id)) {
+void PrefabManager::registerPrefab(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer) {
+    if (PrefabEntry* entry = findEntry(id)) {
         entry->name = name;
         entry->factory = std::move(factory);
         entry->destroyer = std::move(destroyer);
@@ -59,70 +59,70 @@ void BundleManager::registerBundle(uint32_t id, const std::string& name, std::fu
     entries.push_back({id, name, std::move(factory), std::move(destroyer)});
 }
 
-Entity BundleManager::createBundle(const std::string& name, Scene* scene) {
-    return createBundle(name, scene, NULL_ENTITY);
+Entity PrefabManager::createPrefab(const std::string& name, Scene* scene) {
+    return createPrefab(name, scene, NULL_ENTITY);
 }
 
-Entity BundleManager::createBundle(uint32_t id, Scene* scene) {
+Entity PrefabManager::createPrefab(uint32_t id, Scene* scene) {
     return instantiate(id, scene, NULL_ENTITY);
 }
 
-Entity BundleManager::createBundle(const std::string& name, Scene* scene, const std::string& parentName) {
-    BundleEntry* entry = findEntry(name);
+Entity PrefabManager::createPrefab(const std::string& name, Scene* scene, const std::string& parentName) {
+    PrefabEntry* entry = findEntry(name);
     if (!entry) {
-        Log::error("BundleManager: bundle '%s' not found", name.c_str());
+        Log::error("PrefabManager: prefab '%s' not found", name.c_str());
         return NULL_ENTITY;
     }
-    return createBundle(entry->id, scene, parentName);
+    return createPrefab(entry->id, scene, parentName);
 }
 
-Entity BundleManager::createBundle(uint32_t id, Scene* scene, const std::string& parentName) {
+Entity PrefabManager::createPrefab(uint32_t id, Scene* scene, const std::string& parentName) {
     if (!scene) {
-        Log::error("BundleManager: scene is null");
+        Log::error("PrefabManager: scene is null");
         return NULL_ENTITY;
     }
     Entity parent = scene->findEntity(parentName);
     if (parent == NULL_ENTITY) {
-        Log::error("BundleManager: parent entity '%s' not found in the given scene", parentName.c_str());
+        Log::error("PrefabManager: parent entity '%s' not found in the given scene", parentName.c_str());
         return NULL_ENTITY;
     }
     return instantiate(id, scene, parent);
 }
 
-Entity BundleManager::createBundle(const std::string& name, Scene* scene, Entity parent) {
-    BundleEntry* entry = findEntry(name);
+Entity PrefabManager::createPrefab(const std::string& name, Scene* scene, Entity parent) {
+    PrefabEntry* entry = findEntry(name);
     if (!entry) {
-        Log::error("BundleManager: bundle '%s' not found", name.c_str());
+        Log::error("PrefabManager: prefab '%s' not found", name.c_str());
         return NULL_ENTITY;
     }
     return instantiate(entry->id, scene, parent);
 }
 
-Entity BundleManager::createBundle(uint32_t id, Scene* scene, Entity parent) {
+Entity PrefabManager::createPrefab(uint32_t id, Scene* scene, Entity parent) {
     return instantiate(id, scene, parent);
 }
 
-Entity BundleManager::createBundle(const std::string& name, const EntityHandle& parent) {
-    return createBundle(name, parent.getScene(), parent.getEntity());
+Entity PrefabManager::createPrefab(const std::string& name, const EntityHandle& parent) {
+    return createPrefab(name, parent.getScene(), parent.getEntity());
 }
 
-Entity BundleManager::createBundle(uint32_t id, const EntityHandle& parent) {
+Entity PrefabManager::createPrefab(uint32_t id, const EntityHandle& parent) {
     return instantiate(id, parent.getScene(), parent.getEntity());
 }
 
-Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
+Entity PrefabManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
     if (!scene) {
-        Log::error("BundleManager: scene is null");
+        Log::error("PrefabManager: scene is null");
         return NULL_ENTITY;
     }
     if (parent != NULL_ENTITY && !scene->isEntityCreated(parent)) {
-        Log::error("BundleManager: parent entity %u does not exist in the given scene", parent);
+        Log::error("PrefabManager: parent entity %u does not exist in the given scene", parent);
         return NULL_ENTITY;
     }
 
-    BundleEntry* entry = findEntry(id);
+    PrefabEntry* entry = findEntry(id);
     if (!entry) {
-        Log::error("BundleManager: bundle id %u not found", id);
+        Log::error("PrefabManager: prefab id %u not found", id);
         return NULL_ENTITY;
     }
 
@@ -135,13 +135,13 @@ Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
     try {
         ok = entry->factory && entry->factory(scene, root);
     } catch (const std::exception& e) {
-        Log::error("BundleManager: factory for bundle id %u threw an exception: %s", id, e.what());
+        Log::error("PrefabManager: factory for prefab id %u threw an exception: %s", id, e.what());
     } catch (...) {
-        Log::error("BundleManager: factory for bundle id %u threw an exception", id);
+        Log::error("PrefabManager: factory for prefab id %u threw an exception", id);
     }
 
     if (!ok) {
-        Log::error("BundleManager: factory failed for bundle id %u", id);
+        Log::error("PrefabManager: factory failed for prefab id %u", id);
         rollbackSpawnedEntities(scene, beforeSet, root);
         return NULL_ENTITY;
     }
@@ -150,10 +150,10 @@ Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
     if (parent != NULL_ENTITY)
         scene->addEntityChild(parent, root, false);
 
-    BundleInstance instance;
+    PrefabInstance instance;
     instance.rootEntity = root;
     instance.scene = scene;
-    instance.bundleId = id;
+    instance.prefabId = id;
     instance.entities.push_back(root);
     for (Entity e : scene->getEntityList()) {
         if (e != root && beforeSet.find(e) == beforeSet.end())
@@ -164,13 +164,13 @@ Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
     return root;
 }
 
-bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
+bool PrefabManager::destroyPrefab(Scene* scene, Entity rootEntity) {
     for (auto it = instances.begin(); it != instances.end(); ++it) {
         if (it->scene == scene && it->rootEntity == rootEntity) {
-            uint32_t bundleId = it->bundleId;
+            uint32_t prefabId = it->prefabId;
 
             for (auto& entry : entries) {
-                if (entry.id == bundleId && entry.destroyer) {
+                if (entry.id == prefabId && entry.destroyer) {
                     bool result = entry.destroyer(scene, rootEntity);
                     instances.erase(it);
                     return result;
@@ -185,21 +185,21 @@ bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
             return true;
         }
     }
-    Log::error("BundleManager: bundle instance with root %u not found in scene", rootEntity);
+    Log::error("PrefabManager: prefab instance with root %u not found in scene", rootEntity);
     return false;
 }
 
-uint32_t BundleManager::getBundleId(const std::string& name) {
-    BundleEntry* entry = findEntry(name);
+uint32_t PrefabManager::getPrefabId(const std::string& name) {
+    PrefabEntry* entry = findEntry(name);
     return entry ? entry->id : 0;
 }
 
-std::string BundleManager::getBundleName(uint32_t id) {
-    BundleEntry* entry = findEntry(id);
+std::string PrefabManager::getPrefabName(uint32_t id) {
+    PrefabEntry* entry = findEntry(id);
     return entry ? entry->name : "";
 }
 
-std::vector<std::string> BundleManager::getBundleNames() {
+std::vector<std::string> PrefabManager::getPrefabNames() {
     std::vector<std::string> names;
     names.reserve(entries.size());
     for (const auto& entry : entries)
@@ -207,21 +207,21 @@ std::vector<std::string> BundleManager::getBundleNames() {
     return names;
 }
 
-int BundleManager::getBundleCount() {
+int PrefabManager::getPrefabCount() {
     return (int)entries.size();
 }
 
-void BundleManager::destroyAllInstances(Scene* scene) {
+void PrefabManager::destroyAllInstances(Scene* scene) {
     std::vector<Entity> roots;
     for (const auto& inst : instances) {
         if (inst.scene == scene)
             roots.push_back(inst.rootEntity);
     }
     for (Entity root : roots)
-        destroyBundle(scene, root);
+        destroyPrefab(scene, root);
 }
 
-void BundleManager::clearAll() {
+void PrefabManager::clearAll() {
     entries.clear();
     instances.clear();
 }

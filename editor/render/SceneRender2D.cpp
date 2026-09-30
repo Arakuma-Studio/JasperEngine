@@ -29,11 +29,11 @@ editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned 
     camera->slideUp(-50);
 
     scene->setDefaultEntityPool(EntityPool::System);
-    lines = new Lines(scene);
-    gridLines = new Lines(scene);
+    lines = new LineRenderer(scene);
+    gridLines = new LineRenderer(scene);
     gridLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     gridLines->setVisible(false);
-    tileLines = new Lines(scene);
+    tileLines = new LineRenderer(scene);
     tileLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     tileLines->setVisible(false);
     scene->setDefaultEntityPool(EntityPool::User);
@@ -66,10 +66,10 @@ editor::SceneRender2D::~SceneRender2D(){
     }
     light2DLines.clear();
 
-    for (auto& pair : occluder2DLines) {
+    for (auto& pair : shadowCaster2DLines) {
         delete pair.second;
     }
-    occluder2DLines.clear();
+    shadowCaster2DLines.clear();
 
     for (auto& pair : linePointLines) {
         delete pair.second;
@@ -109,7 +109,7 @@ editor::SceneRender2D::~SceneRender2D(){
 bool editor::SceneRender2D::instanciateBodyLines(Entity entity){
     if (bodyLines.find(entity) == bodyLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyLines[entity] = new Lines(scene);
+        bodyLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -120,7 +120,7 @@ bool editor::SceneRender2D::instanciateBodyLines(Entity entity){
 bool editor::SceneRender2D::instanciateJointLines(Entity entity){
     if (jointLines.find(entity) == jointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = new Lines(scene);
+        jointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -131,7 +131,7 @@ bool editor::SceneRender2D::instanciateJointLines(Entity entity){
 bool editor::SceneRender2D::instanciateLight2DLines(Entity entity){
     if (light2DLines.find(entity) == light2DLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        light2DLines[entity] = new Lines(scene);
+        light2DLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -139,10 +139,10 @@ bool editor::SceneRender2D::instanciateLight2DLines(Entity entity){
     return false;
 }
 
-bool editor::SceneRender2D::instanciateOccluder2DLines(Entity entity){
-    if (occluder2DLines.find(entity) == occluder2DLines.end()){
+bool editor::SceneRender2D::instanciateShadowCaster2DLines(Entity entity){
+    if (shadowCaster2DLines.find(entity) == shadowCaster2DLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        occluder2DLines[entity] = new Lines(scene);
+        shadowCaster2DLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -153,7 +153,7 @@ bool editor::SceneRender2D::instanciateOccluder2DLines(Entity entity){
 bool editor::SceneRender2D::instanciateLinePointLines(Entity entity){
     if (linePointLines.find(entity) == linePointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = new Lines(scene);
+        linePointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -164,7 +164,7 @@ bool editor::SceneRender2D::instanciateLinePointLines(Entity entity){
 bool editor::SceneRender2D::instanciatePolygonPointLines(Entity entity){
     if (polygonPointLines.find(entity) == polygonPointLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = new Lines(scene);
+        polygonPointLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -173,7 +173,7 @@ bool editor::SceneRender2D::instanciatePolygonPointLines(Entity entity){
 }
 
 // square marker for an editable point (occluder polygon points, line endpoints)
-void editor::SceneRender2D::addPointHandle(Lines* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color){
+void editor::SceneRender2D::addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color){
     linesObj->addLine(worldPoint + Vector3(-halfSize, -halfSize, 0.0f), worldPoint + Vector3(halfSize, -halfSize, 0.0f), color);
     linesObj->addLine(worldPoint + Vector3(halfSize, -halfSize, 0.0f), worldPoint + Vector3(halfSize, halfSize, 0.0f), color);
     linesObj->addLine(worldPoint + Vector3(halfSize, halfSize, 0.0f), worldPoint + Vector3(-halfSize, halfSize, 0.0f), color);
@@ -181,7 +181,7 @@ void editor::SceneRender2D::addPointHandle(Lines* linesObj, const Vector3& world
 }
 
 void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted){
-    Lines* lightLinesObj = light2DLines[entity];
+    LineRenderer* lightLinesObj = light2DLines[entity];
 
     lightLinesObj->clearLines();
     lightLinesObj->setVisible(transform.visible && visible);
@@ -203,8 +203,8 @@ void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Tran
     lightLinesObj->addLine(center + Vector3(0.0f, -markSize, 0.0f), center + Vector3(0.0f, markSize, 0.0f), lightColor);
 }
 
-void editor::SceneRender2D::createOrUpdateOccluder2DLines(Entity entity, const Transform& transform, const Occluder2DComponent& occluder, bool visible, bool highlighted){
-    Lines* occluderLinesObj = occluder2DLines[entity];
+void editor::SceneRender2D::createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted){
+    LineRenderer* occluderLinesObj = shadowCaster2DLines[entity];
 
     occluderLinesObj->clearLines();
     occluderLinesObj->setVisible(transform.visible && visible && occluder.enabled);
@@ -222,7 +222,7 @@ void editor::SceneRender2D::createOrUpdateOccluder2DLines(Entity entity, const T
     std::vector<Vector2> points;
     bool closed = true;
 
-    if (occluder.shape == Occluder2DShape::AUTO_QUAD){
+    if (occluder.shape == ShadowCaster2DShape::AUTO_QUAD){
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (!mesh || mesh->aabb == AABB::ZERO){
             return;
@@ -255,7 +255,7 @@ void editor::SceneRender2D::createOrUpdateOccluder2DLines(Entity entity, const T
 
     // point handles (visual markers for the editable polygon points); the
     // sub-selected point is drawn bigger and in the selection color
-    if (highlighted && occluder.shape == Occluder2DShape::POLYGON){
+    if (highlighted && occluder.shape == ShadowCaster2DShape::POLYGON){
         const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
         bool hasPointSelection = (getSelectedOccluderPointEntity() == entity);
 
@@ -271,8 +271,8 @@ void editor::SceneRender2D::createOrUpdateOccluder2DLines(Entity entity, const T
 // endpoint handles for a selected Lines entity (the lines themselves are the
 // entity's own rendered geometry); the sub-selected endpoint is drawn bigger
 // and in the selection color
-void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LinesComponent& lines, bool visible){
-    Lines* handlesObj = linePointLines[entity];
+void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible){
+    LineRenderer* handlesObj = linePointLines[entity];
 
     handlesObj->clearLines();
     handlesObj->setVisible(transform.visible && visible);
@@ -301,7 +301,7 @@ void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Tr
 bool editor::SceneRender2D::instanciateTrackLines(Entity entity){
     if (trackLines.find(entity) == trackLines.end()){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        trackLines[entity] = new Lines(scene);
+        trackLines[entity] = new LineRenderer(scene);
 
         return true;
     }
@@ -313,7 +313,7 @@ bool editor::SceneRender2D::instanciateTrackLines(Entity entity){
 // values (in the action target's parent space) with square point handles; the
 // sub-selected point is drawn bigger and in the selection color
 void editor::SceneRender2D::createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible){
-    Lines* trackObj = trackLines[entity];
+    LineRenderer* trackObj = trackLines[entity];
 
     trackObj->clearLines();
     trackObj->setVisible(visible);
@@ -348,7 +348,7 @@ void editor::SceneRender2D::createOrUpdateTrackLines(Entity entity, const Transl
 // vertex handles for a selected Polygon / MeshPolygon entity; the sub-selected
 // vertex is drawn bigger and in the selection color
 void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible){
-    Lines* handlesObj = polygonPointLines[entity];
+    LineRenderer* handlesObj = polygonPointLines[entity];
 
     handlesObj->clearLines();
     handlesObj->setVisible(transform.visible && visible);
@@ -371,13 +371,13 @@ void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const
     }
 }
 
-void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const Body2DComponent& body, bool visible, bool highlighted){
-    Lines* bodyLinesObj = bodyLines[entity];
+void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted){
+    LineRenderer* bodyLinesObj = bodyLines[entity];
 
     bodyLinesObj->clearLines();
     bodyLinesObj->setVisible(transform.visible && visible);
 
-    if (!transform.visible || !visible || body.numShapes == 0){
+    if (!transform.visible || !visible || body.numColliders == 0){
         return;
     }
 
@@ -478,8 +478,8 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
         addArc(Vector2(x0 + r, y1 - r), r, 0.5f * M_PI, M_PI, 8);
     };
 
-    for (size_t i = 0; i < body.numShapes; i++){
-        const Shape2D& shape = body.shapes[i];
+    for (size_t i = 0; i < body.numColliders; i++){
+        const Collider2D& shape = body.colliders[i];
         bodyColor = shape.sensor ? sensorColor : solidColor;
 
         auto addPolygonEdges = [&](){
@@ -490,7 +490,7 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
             }
         };
 
-        if (shape.type == Shape2DType::POLYGON){
+        if (shape.type == Collider2DType::POLYGON){
             if (shape.numVertices >= 3){
                 if (shape.radius > 0.0f && shape.numVertices == 4){
                     Vector2 minPt = scaledPoint(shape.vertices[0]);
@@ -522,9 +522,9 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
                 bodyLinesObj->addLine(toWorld(p2), toWorld(p3), bodyColor);
                 bodyLinesObj->addLine(toWorld(p3), toWorld(p0), bodyColor);
             }
-        }else if (shape.type == Shape2DType::CIRCLE){
+        }else if (shape.type == Collider2DType::CIRCLE){
             addCircle(scaledPoint(shape.pointA), scaledRadius(shape.radius), 24);
-        }else if (shape.type == Shape2DType::CAPSULE){
+        }else if (shape.type == Collider2DType::CAPSULE){
             Vector2 pointA = scaledPoint(shape.pointA);
             Vector2 pointB = scaledPoint(shape.pointB);
             float radius = scaledRadius(shape.radius);
@@ -553,9 +553,9 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
             float baseAngle = std::atan2(axis.y, axis.x);
             addArc(pointA, radius, baseAngle + 0.5f * M_PI, baseAngle + 1.5f * M_PI, 12);
             addArc(pointB, radius, baseAngle - 0.5f * M_PI, baseAngle + 0.5f * M_PI, 12);
-        }else if (shape.type == Shape2DType::SEGMENT){
+        }else if (shape.type == Collider2DType::SEGMENT){
             bodyLinesObj->addLine(toWorld(scaledPoint(shape.pointA)), toWorld(scaledPoint(shape.pointB)), bodyColor);
-        }else if (shape.type == Shape2DType::CHAIN){
+        }else if (shape.type == Collider2DType::CHAIN){
             if (shape.numVertices >= 2){
                 for (size_t j = 0; j < shape.numVertices - 1; j++){
                     bodyLinesObj->addLine(toWorld(scaledPoint(shape.vertices[j])), toWorld(scaledPoint(shape.vertices[j + 1])), bodyColor);
@@ -591,7 +591,7 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
 }
 
 void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted){
-    Lines* jointLinesObj = jointLines[entity];
+    LineRenderer* jointLinesObj = jointLines[entity];
 
     jointLinesObj->clearLines();
     jointLinesObj->setVisible(visible);
@@ -834,7 +834,7 @@ void editor::SceneRender2D::hideAllGizmos(){
     for (auto& pair : light2DLines) {
         pair.second->setVisible(false);
     }
-    for (auto& pair : occluder2DLines) {
+    for (auto& pair : shadowCaster2DLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : linePointLines) {
@@ -950,23 +950,23 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentSounds;
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<UIContainerComponent>()) && 
+        if (signature.test(scene->getComponentId<LayoutGroupComponent>()) && 
             signature.test(scene->getComponentId<Transform>()) && 
-            signature.test(scene->getComponentId<UILayoutComponent>())){
+            signature.test(scene->getComponentId<RectTransformComponent>())){
 
             currentContainers.insert(entity);
 
             if (containerLines.find(entity) == containerLines.end()){
                 ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-                containerLines[entity] = new Lines(scene);
+                containerLines[entity] = new LineRenderer(scene);
             }
 
-            Lines* containerLinesObj = containerLines[entity];
+            LineRenderer* containerLinesObj = containerLines[entity];
             containerLinesObj->clearLines();
 
             Transform& transform = scene->getComponent<Transform>(entity);
-            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
-            UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+            LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
 
             if (transform.visible && !displaySettings.hideContainerGuides){
                 containerLinesObj->setVisible(true);
@@ -1008,8 +1008,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             }
         }
 
-        if (signature.test(scene->getComponentId<Body2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
-            Body2DComponent& body = scene->getComponent<Body2DComponent>(entity);
+        if (signature.test(scene->getComponentId<Rigidbody2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentBodies.insert(entity);
@@ -1047,19 +1047,19 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             lo.icon->setVisible(transform.visible);
         }
 
-        if (signature.test(scene->getComponentId<Occluder2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
-            Occluder2DComponent& occluder2d = scene->getComponent<Occluder2DComponent>(entity);
+        if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            ShadowCaster2DComponent& shadowcaster2d = scene->getComponent<ShadowCaster2DComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentOccluders2D.insert(entity);
-            instanciateOccluder2DLines(entity);
+            instanciateShadowCaster2DLines(entity);
             bool highlighted = isDescendantSelected(entity);
 
-            createOrUpdateOccluder2DLines(entity, transform, occluder2d, highlighted, highlighted);
+            createOrUpdateShadowCaster2DLines(entity, transform, shadowcaster2d, highlighted, highlighted);
         }
 
-        if (signature.test(scene->getComponentId<LinesComponent>()) && signature.test(scene->getComponentId<Transform>())){
-            LinesComponent& linesComp = scene->getComponent<LinesComponent>(entity);
+        if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            LineRendererComponent& linesComp = scene->getComponent<LineRendererComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentLinePoints.insert(entity);
@@ -1126,7 +1126,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                 if (cameraObjects.find(entity) == cameraObjects.end()){
                     ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
                     cameraObjects[entity].icon = new Sprite(toolslayer.getScene());
-                    cameraObjects[entity].lines = new Lines(toolslayer.getScene());
+                    cameraObjects[entity].lines = new LineRenderer(toolslayer.getScene());
                     newCamera = true;
                 }
 
@@ -1163,7 +1163,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             }
         }
 
-        if (signature.test(scene->getComponentId<SoundComponent>()) && signature.test(scene->getComponentId<Transform>())){
+        if (signature.test(scene->getComponentId<AudioSourceComponent>()) && signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentSounds.insert(entity);
@@ -1276,13 +1276,13 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
-    auto itOccluder2D = occluder2DLines.begin();
-    while (itOccluder2D != occluder2DLines.end()) {
-        if (currentOccluders2D.find(itOccluder2D->first) == currentOccluders2D.end()) {
-            delete itOccluder2D->second;
-            itOccluder2D = occluder2DLines.erase(itOccluder2D);
+    auto itShadowCaster2D = shadowCaster2DLines.begin();
+    while (itShadowCaster2D != shadowCaster2DLines.end()) {
+        if (currentOccluders2D.find(itShadowCaster2D->first) == currentOccluders2D.end()) {
+            delete itShadowCaster2D->second;
+            itShadowCaster2D = shadowCaster2DLines.erase(itShadowCaster2D);
         } else {
-            ++itOccluder2D;
+            ++itShadowCaster2D;
         }
     }
 

@@ -4,10 +4,10 @@
 #ifndef IMAGE_H
 #define IMAGE_H
 
-#include "UILayout.h"
+#include "RectTransform.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API Image: public UILayout{
+    class JASPERENGINE_API Image: public RectTransform{
     public:
         Image(Scene* scene);
         Image(Scene* scene, Entity entity);

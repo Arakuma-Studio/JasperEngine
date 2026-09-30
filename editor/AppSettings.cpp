@@ -212,8 +212,8 @@ bool AppSettings::loadSettings() {
         }
         
         // Load resources window settings
-        if (settingsData["resources_window"]) {
-            auto resNode = settingsData["resources_window"];
+        if (settingsData["project_window"]) {
+            auto resNode = settingsData["project_window"];
             if (resNode["icon_size"]) {
                 resourcesIconSize = resNode["icon_size"].as<int>();
             }
@@ -247,10 +247,10 @@ bool AppSettings::loadSettings() {
             }
             if (editorNode["panels"]) {
                 auto panelsNode = editorNode["panels"];
-                if (panelsNode["structure"]) panelVisibility.structure = panelsNode["structure"].as<bool>();
-                if (panelsNode["properties"]) panelVisibility.properties = panelsNode["properties"].as<bool>();
-                if (panelsNode["resources"]) panelVisibility.resources = panelsNode["resources"].as<bool>();
-                if (panelsNode["output"]) panelVisibility.output = panelsNode["output"].as<bool>();
+                if (panelsNode["hierarchy"]) panelVisibility.hierarchy = panelsNode["hierarchy"].as<bool>();
+                if (panelsNode["inspector"]) panelVisibility.inspector = panelsNode["inspector"].as<bool>();
+                if (panelsNode["project"]) panelVisibility.project = panelsNode["project"].as<bool>();
+                if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["ai_chat"]) panelVisibility.aiChat = panelsNode["ai_chat"].as<bool>();
@@ -371,13 +371,13 @@ bool AppSettings::saveSettings() {
         }
         settingsData["window"] = windowNode;
         
-        // Resources window settings
+        // Project window settings
         YAML::Node resNode;
         resNode["icon_size"] = resourcesIconSize;
         resNode["layout"] = resourcesLayout;
         resNode["item_view_style"] = resourcesItemViewStyle;
         resNode["left_panel_width"] = resourcesLeftPanelWidth;
-        settingsData["resources_window"] = resNode;
+        settingsData["project_window"] = resNode;
 
         // Code editor settings
         YAML::Node codeNode;
@@ -389,10 +389,10 @@ bool AppSettings::saveSettings() {
         editorNode["multi_viewport"] = multiViewportEnabled;
         editorNode["vsync"] = editorVSyncEnabled;
         YAML::Node panelsNode;
-        panelsNode["structure"] = panelVisibility.structure;
-        panelsNode["properties"] = panelVisibility.properties;
-        panelsNode["resources"] = panelVisibility.resources;
-        panelsNode["output"] = panelVisibility.output;
+        panelsNode["hierarchy"] = panelVisibility.hierarchy;
+        panelsNode["inspector"] = panelVisibility.inspector;
+        panelsNode["project"] = panelVisibility.project;
+        panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["ai_chat"] = panelVisibility.aiChat;

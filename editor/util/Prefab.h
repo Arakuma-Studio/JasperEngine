@@ -14,7 +14,7 @@
 
 namespace jasperengine::editor {
 
-class EntityBundle {
+class Prefab {
 public:
     struct EntityMember {
         Entity localEntity;     // Entity in the scene

@@ -4,11 +4,11 @@
 #ifndef BONE_H
 #define BONE_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Bone: public Object{
+    class JASPERENGINE_API Bone: public GameObject{
     public:
         Bone(Scene* scene, Entity entity);
         virtual ~Bone();

@@ -12,8 +12,8 @@ editor::MaterialRender::MaterialRender(){
     scene = new Scene(EntityPool::System);
     camera = new Camera(scene);
     light = new Light(scene);
-    sky = new SkyBox(scene);
-    sphere = new Shape(scene);
+    sky = new Skybox(scene);
+    sphere = new Primitive(scene);
 
     scene->setBackgroundColor(0.0, 0.0, 0.0, 0.0);
     scene->setCamera(camera);
@@ -23,7 +23,7 @@ editor::MaterialRender::MaterialRender(){
 
     // interior environment used only as IBL light source; kept invisible so the
     // thumbnail keeps a transparent background (clean sphere icon on drag and drop)
-    SkyComponent& skyComp = sky->getComponent<SkyComponent>();
+    SkyboxComponent& skyComp = sky->getComponent<SkyboxComponent>();
     skyComp.visible = false;
     skyComp.texture.setCubeDatas("preview|environment",
         TextureData((unsigned char*)preview_env_pz, preview_env_pz_len),  // front (+Z)
@@ -85,6 +85,6 @@ Scene* editor::MaterialRender::getScene(){
     return scene;
 }
 
-Object* editor::MaterialRender::getObject(){
+GameObject* editor::MaterialRender::getGameObject(){
     return sphere;
 }

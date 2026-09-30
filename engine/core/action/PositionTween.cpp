@@ -1,22 +1,22 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "PositionAction.h"
+#include "PositionTween.h"
 
 using namespace jasperengine;
 
-PositionAction::PositionAction(Scene* scene): TimedAction(scene){
-    addComponent<PositionActionComponent>();
+PositionTween::PositionTween(Scene* scene): Tween(scene){
+    addComponent<PositionTweenComponent>();
 }
 
-PositionAction::PositionAction(Scene* scene, Entity entity): TimedAction(scene, entity){
+PositionTween::PositionTween(Scene* scene, Entity entity): Tween(scene, entity){
 
 }
 
-void PositionAction::setAction(Vector3 startPosition, Vector3 endPosition, float duration, bool loop){
-    TimedAction::setAction(duration, loop);
+void PositionTween::setAction(Vector3 startPosition, Vector3 endPosition, float duration, bool loop){
+    Tween::setAction(duration, loop);
 
-    PositionActionComponent& posAction = getComponent<PositionActionComponent>();
+    PositionTweenComponent& posAction = getComponent<PositionTweenComponent>();
 
     posAction.startPosition = startPosition;
     posAction.endPosition = endPosition;

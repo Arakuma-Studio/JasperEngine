@@ -19,17 +19,17 @@ namespace jasperengine::editor{
     struct TreeNode {
         std::string icon;
         std::string name;
-        std::filesystem::path bundleFilepath;
-        std::filesystem::path nestedBundleFilepath;
+        std::filesystem::path prefabFilepath;
+        std::filesystem::path nestedPrefabFilepath;
         bool isScene = false;
         bool isChildScene = false;
-        bool isBundle = false;
-        bool isBundleRoot = false;
-        bool hasBundleParent = false;
-        bool isParentBundle = false;
+        bool isPrefab = false;
+        bool isPrefabRoot = false;
+        bool hasPrefabParent = false;
+        bool isParentPrefab = false;
         bool isMainCamera = false;
         bool hasScript = false;
-        bool hasChildScript = false;        // Bundle roots only
+        bool hasChildScript = false;        // Prefab roots only
         bool isBone = false;
         bool isLocked = false;
         bool isPlayCreated = false;         // Made by the running scene, gone again on Stop
@@ -61,7 +61,7 @@ namespace jasperengine::editor{
     // the Hierarchy "+" dropdown and the Hierarchy right-click Create items are all
     // built from this single table, so they cannot drift apart.
     struct CreateMenuEntry {
-        const char* submenu;            // nullptr = top level, otherwise "3D Object", "Light", ...
+        const char* submenu;            // nullptr = top level, otherwise "3D GameObject", "Light", ...
         const char* label;
         const char* icon;
         EntityCreationType type;
@@ -77,7 +77,7 @@ namespace jasperengine::editor{
         Entity entity = NULL_ENTITY;
     };
 
-    class Structure{
+    class HierarchyWindow{
     private:
 
         Project* project;
@@ -136,7 +136,7 @@ namespace jasperengine::editor{
         int renameMissedFrames = 0;     // frames the renamed row was not drawn
         bool windowFocused = false;
 
-        void showCreateMenuItems(bool atRoot, Entity parent, bool addToBundle);
+        void showCreateMenuItems(bool atRoot, Entity parent, bool addToPrefab);
         void showSceneMenu(SceneProject* sceneProject);
         void showPrefabMenu(const TreeNode& node);
         void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);
@@ -157,8 +157,8 @@ namespace jasperengine::editor{
         void showAddChildSceneMenu();
 
         std::vector<char> buildEntityPayload(const TreeNode& node);
-        std::filesystem::path getBundleSaveDirectory() const;
-        void saveNodeAsBundle(const TreeNode& node);
+        std::filesystem::path getPrefabSaveDirectory() const;
+        void saveNodeAsPrefab(const TreeNode& node);
 
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
@@ -174,14 +174,14 @@ namespace jasperengine::editor{
         static const std::vector<CreateMenuEntry>& getCreateMenuEntries();
         static bool isCreateEntryAvailable(const CreateMenuEntry& entry, SceneType sceneType);
         // Creates the entry in the selected scene; parent NULL_ENTITY = scene root
-        void createGameObject(const CreateMenuEntry& entry, Entity parent = NULL_ENTITY, bool addToBundle = false);
+        void createGameObject(const CreateMenuEntry& entry, Entity parent = NULL_ENTITY, bool addToPrefab = false);
         // The single selected GameObject if it can take children, or NULL_ENTITY
         Entity getSelectedParentForCreate() const;
         // Inline rename (F2) of the single selected GameObject; false if there is nothing to rename
         bool renameSelected();
         bool isFocused() const;
 
-        Structure(Project* project, SceneWindow* sceneWindow);
+        HierarchyWindow(Project* project, SceneWindow* sceneWindow);
 
         void show();
         void revealEntity(uint32_t sceneId, Entity entity);

@@ -1,23 +1,23 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "ScaleAction.h"
+#include "ScaleTween.h"
 
 using namespace jasperengine;
 
-ScaleAction::ScaleAction(Scene* scene): TimedAction(scene){
-    addComponent<ScaleActionComponent>();
+ScaleTween::ScaleTween(Scene* scene): Tween(scene){
+    addComponent<ScaleTweenComponent>();
 }
 
-ScaleAction::ScaleAction(Scene* scene, Entity entity): TimedAction(scene, entity){
+ScaleTween::ScaleTween(Scene* scene, Entity entity): Tween(scene, entity){
 
 }
 
-void ScaleAction::setAction(Vector3 startScale, Vector3 endScale, float duration, bool loop){
-    TimedAction::setAction(duration, loop);
+void ScaleTween::setAction(Vector3 startScale, Vector3 endScale, float duration, bool loop){
+    Tween::setAction(duration, loop);
 
-    ScaleActionComponent& scaleAction = getComponent<ScaleActionComponent>();
+    ScaleTweenComponent& scaleTween = getComponent<ScaleTweenComponent>();
 
-    scaleAction.startScale = startScale;
-    scaleAction.endScale = endScale;
+    scaleTween.startScale = startScale;
+    scaleTween.endScale = endScale;
 }

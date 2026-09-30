@@ -135,7 +135,7 @@ ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string&
 
     // If it's a pointer type, store the type name without * and return Pointer
     if (isPointer) {
-        ptrTypeName = bareType; // Store "Mesh", "Object", etc. (without *)
+        ptrTypeName = bareType; // Store "Mesh", "GameObject", etc. (without *)
         return ScriptPropertyType::EntityReference;
     }
 

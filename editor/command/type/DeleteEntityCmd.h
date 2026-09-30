@@ -24,10 +24,10 @@ namespace jasperengine::editor{
 
         YAML::Node data;
 
-        // Track if entity was part of a bundle
-        NodeRecovery recoveryBundleData;
-        bool isBundleRoot = false;
-        std::filesystem::path bundlePath;
+        // Track if entity was part of a prefab
+        NodeRecovery recoveryPrefabData;
+        bool isPrefabRoot = false;
+        std::filesystem::path prefabPath;
     };
 
     class DeleteEntityCmd: public Command{
@@ -38,10 +38,10 @@ namespace jasperengine::editor{
     friend class RemoveComponentCmd;
 
     private:
-        struct BundleInstanceSnapshot {
+        struct PrefabInstanceSnapshot {
             std::filesystem::path path;
             Entity rootEntity = NULL_ENTITY;
-            std::vector<EntityBundle::EntityMember> members;
+            std::vector<Prefab::EntityMember> members;
         };
 
         Project* project;
@@ -55,7 +55,7 @@ namespace jasperengine::editor{
         std::vector<Entity> survivingEntities;
 
         std::vector<DeleteEntityData> entities;
-        std::vector<BundleInstanceSnapshot> bundleInstanceSnapshots;
+        std::vector<PrefabInstanceSnapshot> prefabInstanceSnapshots;
 
         bool wasModified;
 

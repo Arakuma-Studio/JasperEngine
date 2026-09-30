@@ -13,6 +13,6 @@ namespace jasperengine::editor {
     public:
         static bool saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY = false, std::function<void()> onComplete = nullptr);
 
-        static Vector2 getUILayoutCenter(Scene* scene, Entity entity, const UILayoutComponent& layout);
+        static Vector2 getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout);
     };
 }

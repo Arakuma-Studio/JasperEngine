@@ -1,11 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "EntityBundle.h"
+#include "Prefab.h"
 
 namespace jasperengine::editor {
 
-uint32_t EntityBundle::getInstanceId(uint32_t sceneId, Entity entity) const {
+uint32_t Prefab::getInstanceId(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -24,7 +24,7 @@ uint32_t EntityBundle::getInstanceId(uint32_t sceneId, Entity entity) const {
 	return 0;
 }
 
-Entity EntityBundle::getRegistryEntity(uint32_t sceneId, Entity entity) const {
+Entity Prefab::getRegistryEntity(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -39,7 +39,7 @@ Entity EntityBundle::getRegistryEntity(uint32_t sceneId, Entity entity) const {
 	return NULL_ENTITY;
 }
 
-Entity EntityBundle::getLocalEntity(uint32_t sceneId, uint32_t instanceId, Entity registryEntity) const {
+Entity Prefab::getLocalEntity(uint32_t sceneId, uint32_t instanceId, Entity registryEntity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -55,7 +55,7 @@ Entity EntityBundle::getLocalEntity(uint32_t sceneId, uint32_t instanceId, Entit
 	return NULL_ENTITY;
 }
 
-Entity EntityBundle::getRootEntity(uint32_t sceneId, Entity entity) const {
+Entity Prefab::getRootEntity(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -73,13 +73,13 @@ Entity EntityBundle::getRootEntity(uint32_t sceneId, Entity entity) const {
 
 	return NULL_ENTITY;
 }
-bool EntityBundle::hasInstances(uint32_t sceneId) const {
+bool Prefab::hasInstances(uint32_t sceneId) const {
 	auto it = instances.find(sceneId);
 	return it != instances.end() && !it->second.empty();
 }
 
 
-std::vector<Entity> EntityBundle::getAllEntities(uint32_t sceneId, uint32_t instanceId) const {
+std::vector<Entity> Prefab::getAllEntities(uint32_t sceneId, uint32_t instanceId) const {
 	auto it = instances.find(sceneId);
 	if (it == instances.end()) return {};
 	for (const auto& instance : it->second) {
@@ -96,7 +96,7 @@ std::vector<Entity> EntityBundle::getAllEntities(uint32_t sceneId, uint32_t inst
 	return {};
 }
 
-bool EntityBundle::containsEntity(uint32_t sceneId, Entity entity) const {
+bool Prefab::containsEntity(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -113,7 +113,7 @@ bool EntityBundle::containsEntity(uint32_t sceneId, Entity entity) const {
 	return false;
 }
 
-EntityBundle::Instance* EntityBundle::getInstance(uint32_t sceneId, Entity entity) {
+Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (auto& instance : it->second) {
@@ -130,7 +130,7 @@ EntityBundle::Instance* EntityBundle::getInstance(uint32_t sceneId, Entity entit
 	return nullptr;
 }
 
-const EntityBundle::Instance* EntityBundle::getInstance(uint32_t sceneId, Entity entity) const {
+const Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -147,7 +147,7 @@ const EntityBundle::Instance* EntityBundle::getInstance(uint32_t sceneId, Entity
 	return nullptr;
 }
 
-EntityBundle::Instance* EntityBundle::getInstanceById(uint32_t sceneId, uint32_t instanceId) {
+Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t instanceId) {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (auto& instance : it->second) {
@@ -159,7 +159,7 @@ EntityBundle::Instance* EntityBundle::getInstanceById(uint32_t sceneId, uint32_t
 	return nullptr;
 }
 
-const EntityBundle::Instance* EntityBundle::getInstanceById(uint32_t sceneId, uint32_t instanceId) const {
+const Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t instanceId) const {
 	auto it = instances.find(sceneId);
 	if (it != instances.end()) {
 		for (const auto& instance : it->second) {
@@ -171,7 +171,7 @@ const EntityBundle::Instance* EntityBundle::getInstanceById(uint32_t sceneId, ui
 	return nullptr;
 }
 
-void EntityBundle::setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
+void Prefab::setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
 	Instance* instance = getInstance(sceneId, entity);
 	if (instance) {
 		uint64_t bit = 1ULL << static_cast<int>(componentType);
@@ -179,7 +179,7 @@ void EntityBundle::setComponentOverride(uint32_t sceneId, Entity entity, Compone
 	}
 }
 
-void EntityBundle::clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
+void Prefab::clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
 	Instance* instance = getInstance(sceneId, entity);
 	if (instance) {
 		auto entityIt = instance->overrides.find(entity);
@@ -193,7 +193,7 @@ void EntityBundle::clearComponentOverride(uint32_t sceneId, Entity entity, Compo
 	}
 }
 
-bool EntityBundle::hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const {
+bool Prefab::hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const {
 	const Instance* instance = getInstance(sceneId, entity);
 	if (instance) {
 		auto entityIt = instance->overrides.find(entity);

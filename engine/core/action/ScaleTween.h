@@ -1,20 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef SCALEACTION_H
-#define SCALEACTION_H
+#ifndef SCALETWEEN_H
+#define SCALETWEEN_H
 
-#include "TimedAction.h"
+#include "Tween.h"
 
 namespace jasperengine{
-    class JASPERENGINE_API ScaleAction: public TimedAction{
+    class JASPERENGINE_API ScaleTween: public Tween{
 
     public:
-        ScaleAction(Scene* scene);
-        ScaleAction(Scene* scene, Entity entity);
+        ScaleTween(Scene* scene);
+        ScaleTween(Scene* scene, Entity entity);
 
         void setAction(Vector3 startScale, Vector3 endScale, float duration, bool loop=false);
     };
 }
 
-#endif //SCALEACTION_H
+#endif //SCALETWEEN_H

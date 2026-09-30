@@ -5,7 +5,7 @@
 
 namespace jasperengine::editor{
     
-    struct ShapeParameters{
+    struct PrimitiveParameters{
         int geometryType = 0;
         float planeWidth = 10.0f, planeDepth = 10.0f;
         unsigned int planeTiles = 1;

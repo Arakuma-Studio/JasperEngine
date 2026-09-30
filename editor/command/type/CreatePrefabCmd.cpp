@@ -1,22 +1,22 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "CreateEntityBundleCmd.h"
+#include "CreatePrefabCmd.h"
 #include "editor/Out.h"
 #include "Stream.h"
 
 using namespace jasperengine;
 
-editor::CreateEntityBundleCmd::CreateEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& bundleNode){
+editor::CreatePrefabCmd::CreatePrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& prefabNode){
     this->project = project;
     this->sceneId = sceneId;
     this->filepath = filepath;
     this->wasModified = project->getScene(sceneId)->isModified;
     this->wasSuccessful = false;
-    this->bundleNode = bundleNode;
+    this->prefabNode = prefabNode;
 }
 
-bool editor::CreateEntityBundleCmd::execute(){
+bool editor::CreatePrefabCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     if (!sceneProject){
@@ -25,13 +25,13 @@ bool editor::CreateEntityBundleCmd::execute(){
     }
 
     if (!filepath.is_relative()) {
-        editor::Out::error("EntityBundle filepath must be relative: %s", filepath.string().c_str());
+        editor::Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return false;
     }
 
     // Check if a shared group already exists at this path
-    if (project->getEntityBundle(filepath)) {
-        editor::Out::error("EntityBundle already exists at %s", filepath.string().c_str());
+    if (project->getPrefab(filepath)) {
+        editor::Out::error("Prefab already exists at %s", filepath.string().c_str());
         return false;
     }
 
@@ -40,17 +40,17 @@ bool editor::CreateEntityBundleCmd::execute(){
 
 
     // Mark the entity as shared (this will also save it to disk)
-    wasSuccessful = project->createEntityBundle(sceneId, filepath, bundleNode);
+    wasSuccessful = project->createPrefab(sceneId, filepath, prefabNode);
 
     if (wasSuccessful) {
-        editor::Out::info("Created EntityBundle at '%s'", filepath.string().c_str());
+        editor::Out::info("Created Prefab at '%s'", filepath.string().c_str());
         return true;
     }
 
     return false;
 }
 
-void editor::CreateEntityBundleCmd::undo(){
+void editor::CreatePrefabCmd::undo(){
     if (!wasSuccessful) {
         return;
     }
@@ -71,8 +71,8 @@ void editor::CreateEntityBundleCmd::undo(){
         editor::Out::warning("Failed to remove shared entity file: %s", e.what());
     }
 
-    // Remove the bundle and its scene root entities
-    project->removeEntityBundle(filepath);
+    // Remove the prefab and its scene root entities
+    project->removePrefab(filepath);
 
     // Restore previous selection
     if (!lastSelected.empty()) {
@@ -85,7 +85,7 @@ void editor::CreateEntityBundleCmd::undo(){
     //editor::Out::info("Unmarked entity '%s' from shared group at '%s'", sceneProject->scene->getEntityName(entity).c_str(), filepath.string().c_str());
 }
 
-bool editor::CreateEntityBundleCmd::mergeWith(editor::Command* otherCommand){
-    // Create EntityBundle commands typically don't merge with each other
+bool editor::CreatePrefabCmd::mergeWith(editor::Command* otherCommand){
+    // Create Prefab commands typically don't merge with each other
     return false;
 }

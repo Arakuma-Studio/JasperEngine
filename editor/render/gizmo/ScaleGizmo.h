@@ -4,28 +4,28 @@
 #pragma once
 
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/ui/Image.h"
 
 #include "render/RenderUtil.h"
 
 namespace jasperengine::editor{
 
-    class ScaleGizmo: public Object{
+    class ScaleGizmo: public GameObject{
     private:
         bool use2DGizmo;
 
-        Shape* centerbox;
-        Shape* xaxis;
-        Shape* yaxis;
-        Shape* zaxis;
-        Shape* xbox;
-        Shape* ybox;
-        Shape* zbox;
-        Shape* xyrect;
-        Shape* xzrect;
-        Shape* yzrect;
+        Primitive* centerbox;
+        Primitive* xaxis;
+        Primitive* yaxis;
+        Primitive* zaxis;
+        Primitive* xbox;
+        Primitive* ybox;
+        Primitive* zbox;
+        Primitive* xyrect;
+        Primitive* xzrect;
+        Primitive* yzrect;
 
         static const Vector3 centerColor;
         static const Vector3 xaxisColor;

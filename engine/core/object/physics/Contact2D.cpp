@@ -41,11 +41,11 @@ Entity Contact2D::getBodyEntityA() const{
     return reinterpret_cast<uintptr_t>(b2Body_GetUserData(b2Shape_GetBody(contact.shapeIdA)));
 }
 
-Body2D Contact2D::getBodyA() const{
-    return Body2D(scene, getBodyEntityA());
+Rigidbody2D Contact2D::getBodyA() const{
+    return Rigidbody2D(scene, getBodyEntityA());
 }
 
-size_t Contact2D::getShapeIndexA() const{
+size_t Contact2D::getColliderIndexA() const{
     return reinterpret_cast<size_t>(b2Shape_GetUserData(contact.shapeIdA));
 }
 
@@ -53,10 +53,10 @@ Entity Contact2D::getBodyEntityB() const{
     return reinterpret_cast<uintptr_t>(b2Body_GetUserData(b2Shape_GetBody(contact.shapeIdB)));
 }
 
-Body2D Contact2D::getBodyB() const{
-    return Body2D(scene, getBodyEntityB());
+Rigidbody2D Contact2D::getBodyB() const{
+    return Rigidbody2D(scene, getBodyEntityB());
 }
 
-size_t Contact2D::getShapeIndexB() const{
+size_t Contact2D::getColliderIndexB() const{
     return reinterpret_cast<size_t>(b2Shape_GetUserData(contact.shapeIdB));
 }

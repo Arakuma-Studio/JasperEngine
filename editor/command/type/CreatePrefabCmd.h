@@ -14,13 +14,13 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor{
 
-    class CreateEntityBundleCmd: public Command{
+    class CreatePrefabCmd: public Command{
 
     private:
         Project* project;
         uint32_t sceneId;
         fs::path filepath;
-        YAML::Node bundleNode; // Optional: if provided, use this instead of encoding
+        YAML::Node prefabNode; // Optional: if provided, use this instead of encoding
 
         // For undo
         bool wasModified;
@@ -29,7 +29,7 @@ namespace jasperengine::editor{
         bool wasSuccessful;
 
     public:
-        CreateEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& bundleNode);
+        CreatePrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& prefabNode);
 
         bool execute() override;
         void undo() override;

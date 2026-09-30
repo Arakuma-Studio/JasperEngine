@@ -55,7 +55,7 @@ bool editor::CopyFileCmd::execute(){
                         if (project) {
                             project->remapMaterialFilePath(sourceFs, destFs);
                             project->remapSceneFilePath(sourceFs, destFs);
-                            project->remapEntityBundleFilePath(sourceFs, destFs);
+                            project->remapPrefabFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
                             project->remapAssetFilePath(sourceFs, destFs);
                             project->remapShaderFilePath(sourceFs, destFs);
@@ -73,8 +73,8 @@ bool editor::CopyFileCmd::execute(){
                             if (Util::isSceneFile(extension)) {
                                 project->remapSceneFilePath(sourceFs, destFs);
                             }
-                            if (Util::isBundleFile(extension)) {
-                                project->remapEntityBundleFilePath(sourceFs, destFs);
+                            if (Util::isPrefabFile(extension)) {
+                                project->remapPrefabFilePath(sourceFs, destFs);
                             }
                             if (Util::isScriptFile(extension)) {
                                 project->remapScriptFilePath(sourceFs, destFs);
@@ -125,7 +125,7 @@ void editor::CopyFileCmd::undo(){
                         if (project) {
                             project->remapMaterialFilePath(sourceFs, destFs);
                             project->remapSceneFilePath(sourceFs, destFs);
-                            project->remapEntityBundleFilePath(sourceFs, destFs);
+                            project->remapPrefabFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
                             project->remapAssetFilePath(sourceFs, destFs);
                             project->remapShaderFilePath(sourceFs, destFs);
@@ -143,8 +143,8 @@ void editor::CopyFileCmd::undo(){
                             if (Util::isSceneFile(extension)) {
                                 project->remapSceneFilePath(sourceFs, destFs);
                             }
-                            if (Util::isBundleFile(extension)) {
-                                project->remapEntityBundleFilePath(sourceFs, destFs);
+                            if (Util::isPrefabFile(extension)) {
+                                project->remapPrefabFilePath(sourceFs, destFs);
                             }
                             if (Util::isScriptFile(extension)) {
                                 project->remapScriptFilePath(sourceFs, destFs);

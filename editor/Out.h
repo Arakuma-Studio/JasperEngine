@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "window/OutputWindow.h"
+#include "window/ConsoleWindow.h"
 #include <filesystem>
 #include <iosfwd>
 #include <string>
@@ -12,7 +12,7 @@
 namespace jasperengine::editor {
     class Out {
     private:
-        static OutputWindow* outputWindow;
+        static ConsoleWindow* consoleWindow;
         static void logMessage(LogType type, const std::string& message, const char* fallbackPrefix, std::ostream& fallbackStream);
 
         // Helper method for formatting with no arguments
@@ -42,10 +42,10 @@ namespace jasperengine::editor {
         }
 
     public:
-        static void setOutputWindow(OutputWindow* outputWindow);
-        static OutputWindow* getOutputWindow();
+        static void setConsoleWindow(ConsoleWindow* consoleWindow);
+        static ConsoleWindow* getConsoleWindow();
 
-        // Mirrors every message to a file, from any thread. The Output window dies with
+        // Mirrors every message to a file, from any thread. The Console window dies with
         // the process, this is what is left after a crash.
         static void setLogFile(const std::filesystem::path& path);
 

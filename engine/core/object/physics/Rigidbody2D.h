@@ -1,108 +1,108 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef BODY2D_H
-#define BODY2D_H
+#ifndef RIGIDBODY2D_H
+#define RIGIDBODY2D_H
 
 #ifndef JASPERENGINE_PHYSICS_2D
-#error "Body2D needs 2D Physics, enabled in Project Settings > Build"
+#error "Rigidbody2D needs 2D Physics, enabled in Project Settings > Build"
 #endif
 
 #include "EntityHandle.h"
 #include "math/Vector2.h"
-#include "component/Body2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
 
 
 namespace jasperengine{
 
     class Contact2D;
-    class Object;
+    class GameObject;
 
-    class JASPERENGINE_API Body2D: public EntityHandle{
+    class JASPERENGINE_API Rigidbody2D: public EntityHandle{
     protected:
-        void checkBody(const Body2DComponent& body) const;
+        void checkBody(const Rigidbody2DComponent& body) const;
 
     public:
-        Body2D(Scene* scene, Entity entity);
-        virtual ~Body2D();
+        Rigidbody2D(Scene* scene, Entity entity);
+        virtual ~Rigidbody2D();
 
-        Body2D(const Body2D& rhs);
-        Body2D& operator=(const Body2D& rhs);
+        Rigidbody2D(const Rigidbody2D& rhs);
+        Rigidbody2D& operator=(const Rigidbody2D& rhs);
 
         b2BodyId getBox2DBody() const;
         b2ShapeId getBox2DShape(size_t index) const;
         b2ChainId getBox2DChain(size_t index) const;
 
-        Object getAttachedObject();
+        GameObject getAttachedObject();
 
         float getPointsToMeterScale() const;
 
         void load();
 
-        int createBoxShape(float width, float height);
-        int createCenteredBoxShape(float width, float height);
-        int createCenteredBoxShape(float width, float height, Vector2 center, float angle);
-        int createRoundedBoxShape(float width, float height, float radius);
-        int createPolygonShape(std::vector<Vector2> vertices);
-        int createCircleShape(Vector2 center, float radius);
-        int createCapsuleShape(Vector2 center1, Vector2 center2, float radius);
-        int createSegmentShape(Vector2 point1, Vector2 point2);
+        int createBoxCollider(float width, float height);
+        int createCenteredBoxCollider(float width, float height);
+        int createCenteredBoxCollider(float width, float height, Vector2 center, float angle);
+        int createRoundedBoxCollider(float width, float height, float radius);
+        int createPolygonCollider(std::vector<Vector2> vertices);
+        int createCircleCollider(Vector2 center, float radius);
+        int createCapsuleCollider(Vector2 center1, Vector2 center2, float radius);
+        int createSegmentCollider(Vector2 point1, Vector2 point2);
         // one-sided: counter-clockwise collides outside, clockwise inside
-        int createChainShape(std::vector<Vector2> vertices, bool loop);
+        int createChainCollider(std::vector<Vector2> vertices, bool loop);
 
-        void removeAllShapes();
+        void removeAllColliders();
 
         std::vector<Contact2D> getBodyContacts();
-        std::vector<Contact2D> getShapeContacts(size_t index);
+        std::vector<Contact2D> getColliderContacts(size_t index);
 
-        size_t getNumShapes() const;
-        Shape2DType getShapeType(size_t index) const;
+        size_t getNumColliders() const;
+        Collider2DType getColliderType(size_t index) const;
 
-        void setShapeDensity(float density);
-        void setShapeFriction(float friction);
-        void setShapeRestitution(float restitution);
+        void setColliderDensity(float density);
+        void setColliderFriction(float friction);
+        void setColliderRestitution(float restitution);
 
-        void setShapeDensity(size_t index, float density);
-        void setShapeFriction(size_t index, float friction);
-        void setShapeRestitution(size_t index, float restitution);
+        void setColliderDensity(size_t index, float density);
+        void setColliderFriction(size_t index, float friction);
+        void setColliderRestitution(size_t index, float restitution);
 
         // no live toggle in Box2D, shapes are rebuilt on the next step
-        void setShapeSensor(bool sensor);
-        void setShapeSensor(size_t index, bool sensor);
+        void setColliderSensor(bool sensor);
+        void setColliderSensor(size_t index, bool sensor);
 
-        bool isShapeSensor() const;
-        bool isShapeSensor(size_t index) const;
+        bool isColliderSensor() const;
+        bool isColliderSensor(size_t index) const;
 
-        void setShapeEnableHitEvents(bool hitEvents);
-        void setShapeContactEvents(bool contactEvents);
-        void setShapePreSolveEvents(bool preSolveEvent);
-        void setShapeSensorEvents(bool sensorEvents);
+        void setColliderEnableHitEvents(bool hitEvents);
+        void setColliderContactEvents(bool contactEvents);
+        void setColliderPreSolveEvents(bool preSolveEvent);
+        void setColliderSensorEvents(bool sensorEvents);
 
-        void setShapeEnableHitEvents(size_t index, bool hitEvents);
-        void setShapeContactEvents(size_t index, bool contactEvents);
-        void setShapePreSolveEvents(size_t index, bool preSolveEvent);
-        void setShapeSensorEvents(size_t index, bool sensorEvents);
+        void setColliderEnableHitEvents(size_t index, bool hitEvents);
+        void setColliderContactEvents(size_t index, bool contactEvents);
+        void setColliderPreSolveEvents(size_t index, bool preSolveEvent);
+        void setColliderSensorEvents(size_t index, bool sensorEvents);
 
-        float getShapeDensity() const;
-        float getShapeFriction() const;
-        float getShapeRestitution() const;
+        float getColliderDensity() const;
+        float getColliderFriction() const;
+        float getColliderRestitution() const;
 
-        float getShapeDensity(size_t index) const;
-        float getShapeFriction(size_t index) const;
-        float getShapeRestitution(size_t index) const;
+        float getColliderDensity(size_t index) const;
+        float getColliderFriction(size_t index) const;
+        float getColliderRestitution(size_t index) const;
 
-        bool isShapeEnableHitEvents() const;
-        bool isShapeContactEvents() const;
-        bool isShapePreSolveEvents() const;
-        bool isShapeSensorEvents() const;
+        bool isColliderEnableHitEvents() const;
+        bool isColliderContactEvents() const;
+        bool isColliderPreSolveEvents() const;
+        bool isColliderSensorEvents() const;
 
-        bool isShapeEnableHitEvents(size_t index) const;
-        bool isShapeContactEvents(size_t index) const;
-        bool isShapePreSolveEvents(size_t index) const;
-        bool isShapeSensorEvents(size_t index) const;
+        bool isColliderEnableHitEvents(size_t index) const;
+        bool isColliderContactEvents(size_t index) const;
+        bool isColliderPreSolveEvents(size_t index) const;
+        bool isColliderSensorEvents(size_t index) const;
 
         // Body pose in world space. The transform only reaches the body between fixed
-        // steps, so place a body from onFixedUpdate with these instead of Object.
+        // steps, so place a body from onFixedUpdate with these instead of GameObject.
         void setPosition(Vector2 position);
         void setAngle(float angle);
         void setLinearVelocity(Vector2 linearVelocity);
@@ -132,31 +132,31 @@ namespace jasperengine{
         float getGravityScale() const;
 
         void setBitsFilter(uint16_t categoryBits, uint16_t maskBits);
-        void setBitsFilter(size_t shapeIndex, uint16_t categoryBits, uint16_t maskBits);
+        void setBitsFilter(size_t colliderIndex, uint16_t categoryBits, uint16_t maskBits);
 
         void setCategoryBitsFilter(uint16_t categoryBits);
         void setMaskBitsFilter(uint16_t maskBits);
         void setGroupIndexFilter(int16_t groupIndex);
 
-        void setCategoryBitsFilter(size_t shapeIndex, uint16_t categoryBits);
-        void setMaskBitsFilter(size_t shapeIndex, uint16_t maskBits);
-        void setGroupIndexFilter(size_t shapeIndex, int16_t groupIndex);
+        void setCategoryBitsFilter(size_t colliderIndex, uint16_t categoryBits);
+        void setMaskBitsFilter(size_t colliderIndex, uint16_t maskBits);
+        void setGroupIndexFilter(size_t colliderIndex, int16_t groupIndex);
 
         uint16_t getCategoryBitsFilter() const;
         uint16_t getMaskBitsFilter() const;
         int16_t getGroupIndexFilter() const;
 
-        uint16_t getCategoryBitsFilter(size_t shapeIndex) const;
-        uint16_t getMaskBitsFilter(size_t shapeIndex) const;
-        int16_t getGroupIndexFilter(size_t shapeIndex) const;
+        uint16_t getCategoryBitsFilter(size_t colliderIndex) const;
+        uint16_t getMaskBitsFilter(size_t colliderIndex) const;
+        int16_t getGroupIndexFilter(size_t colliderIndex) const;
 
         float getMass() const;
         float getRotationalInertia() const;
 
-        void applyMassFromShapes();
+        void applyMassFromColliders();
 
         // Cleared by each fixed step: apply from onFixedUpdate, unscaled by dt.
-        // Center force needs applyForceToCenter (Body3D is the reverse).
+        // Center force needs applyForceToCenter (Rigidbody is the reverse).
         void applyForce(const Vector2& force, const Vector2& point, bool wake);
         void applyForceToCenter(const Vector2& force, bool wake);
         void applyTorque(float torque, bool wake);
@@ -166,4 +166,4 @@ namespace jasperengine{
     };
 }
 
-#endif //BODY2D_H
+#endif //RIGIDBODY2D_H

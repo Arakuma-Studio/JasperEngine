@@ -24,8 +24,8 @@ bool editor::MeshChangeCmd::execute(){
 
     sceneProject->isModified = true;
 
-    if (project->isEntityInBundle(sceneId, entity)){
-        project->bundlePropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
+    if (project->isEntityInPrefab(sceneId, entity)){
+        project->prefabPropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
     }
 
     return true;
@@ -38,8 +38,8 @@ void editor::MeshChangeCmd::undo(){
 
     sceneProject->isModified = wasModified;
 
-    if (project->isEntityInBundle(sceneId, entity)){
-        project->bundlePropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
+    if (project->isEntityInPrefab(sceneId, entity)){
+        project->prefabPropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
     }
 }
 

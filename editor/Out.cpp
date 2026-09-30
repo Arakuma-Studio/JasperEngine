@@ -13,7 +13,7 @@
 
 using namespace jasperengine::editor;
 
-OutputWindow* Out::outputWindow = nullptr;
+ConsoleWindow* Out::consoleWindow = nullptr;
 
 namespace {
 
@@ -94,7 +94,7 @@ void Out::logMessage(LogType type, const std::string& message, const char* fallb
     // Before the hop to the main thread, so a worker's last message still reaches the file.
     writeToLogFile(type, message);
 
-    if (OutputWindow* window = Out::getOutputWindow()) {
+    if (ConsoleWindow* window = Out::getConsoleWindow()) {
         EditorHost& host = getEditorHost();
         if (host.isMainThread()) {
             window->addLog(type, message);
@@ -102,7 +102,7 @@ void Out::logMessage(LogType type, const std::string& message, const char* fallb
         }
 
         host.enqueueMainThreadTask([type, message]() {
-            if (OutputWindow* window = Out::getOutputWindow()) {
+            if (ConsoleWindow* window = Out::getConsoleWindow()) {
                 window->addLog(type, message);
             }
         });
@@ -111,16 +111,16 @@ void Out::logMessage(LogType type, const std::string& message, const char* fallb
     }
 }
 
-void Out::setOutputWindow(OutputWindow* outputWindow) {
-    Out::outputWindow = outputWindow;
+void Out::setConsoleWindow(ConsoleWindow* consoleWindow) {
+    Out::consoleWindow = consoleWindow;
 }
 
-OutputWindow* Out::getOutputWindow() {
-    return outputWindow;
+ConsoleWindow* Out::getConsoleWindow() {
+    return consoleWindow;
 }
 
 std::string Out::getRecentLog(size_t maxEntries, bool onlyProblems) {
-    if (OutputWindow* window = getOutputWindow()) {
+    if (ConsoleWindow* window = getConsoleWindow()) {
         return window->getRecentLogText(maxEntries, onlyProblems);
     }
     return {};

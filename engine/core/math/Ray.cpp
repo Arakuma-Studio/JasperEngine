@@ -6,11 +6,11 @@
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "object/physics/Body2D.h"
+#include "object/physics/Rigidbody2D.h"
 #include "util/Box2DAux.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "object/physics/Body3D.h"
+#include "object/physics/Rigidbody.h"
 #include "util/JoltPhysicsAux.h"
 #endif
 #include <algorithm>
@@ -323,8 +323,8 @@ RayReturn Ray::intersects(const Sphere& sphere) const{
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
-RayReturn Ray::intersects(const Body2D& body) const{
-    Body2DComponent& bodycomp = body.getComponent<Body2DComponent>();
+RayReturn Ray::intersects(const Rigidbody2D& body) const{
+    Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
     float ptmScale = body.getPointsToMeterScale();
 
@@ -341,7 +341,7 @@ RayReturn Ray::intersects(const Body2D& body) const{
     float closestFraction = FLT_MAX;
     b2Vec2 intersectionPoint = {0, 0};
     b2Vec2 intersectionNormal = {0, 0};
-    size_t shapeIndex = 0;
+    size_t colliderIndex = 0;
     for (int i = 0; i < returnCount; ++i){
         b2ShapeId shapeid = shapeIds[i];
         const b2RayCastInput rayCastInput = {bOrigin, translation, 1.0};
@@ -351,7 +351,7 @@ RayReturn Ray::intersects(const Body2D& body) const{
             closestFraction = castOutput.fraction;
             intersectionPoint = castOutput.point;
             intersectionNormal = castOutput.normal;
-            shapeIndex = reinterpret_cast<size_t>(b2Shape_GetUserData(shapeid));
+            colliderIndex = reinterpret_cast<size_t>(b2Shape_GetUserData(shapeid));
         }
     }
 
@@ -359,14 +359,14 @@ RayReturn Ray::intersects(const Body2D& body) const{
         Vector3 point = Vector3(intersectionPoint.x * ptmScale, intersectionPoint.y * ptmScale, 0);
         Vector3 normal = Vector3(intersectionNormal.x, intersectionNormal.y, 0);
 
-        return {true, closestFraction, point, normal, body.getEntity(), shapeIndex};
+        return {true, closestFraction, point, normal, body.getEntity(), colliderIndex};
     }
 
     return NO_HIT;
 }
 
-RayReturn Ray::intersects(const Body2D& body, size_t shape) const{
-    Body2DComponent& bodycomp = body.getComponent<Body2DComponent>();
+RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
+    Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
     float ptmScale = body.getPointsToMeterScale();
 
@@ -376,7 +376,7 @@ RayReturn Ray::intersects(const Body2D& body, size_t shape) const{
 
     b2Vec2 translation = b2Sub(bEnd, bOrigin);
 
-    b2ShapeId shapeid = bodycomp.shapes[shape].shape;
+    b2ShapeId shapeid = bodycomp.colliders[shape].shape;
     const b2RayCastInput rayCastInput = {bOrigin, translation, 1.0};
     b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
 
@@ -392,8 +392,8 @@ RayReturn Ray::intersects(const Body2D& body, size_t shape) const{
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-RayReturn Ray::intersects(const Body3D& body) const{
-    Body3DComponent& bodycomp = body.getComponent<Body3DComponent>();
+RayReturn Ray::intersects(const Rigidbody& body) const{
+    RigidbodyComponent& bodycomp = body.getComponent<RigidbodyComponent>();
     std::shared_ptr<PhysicsSystem> physicsSystem = body.getScene()->getSystem<PhysicsSystem>();
 
     if (!bodycomp.body.IsInvalid()){
@@ -406,26 +406,26 @@ RayReturn Ray::intersects(const Body3D& body) const{
         if (shapeRef->CastRay(ray, id_creator, hit)){
             JPH::Vec3 normal = shapeRef->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
 
-            size_t shapeIndex = shapeRef->GetSubShapeUserData(hit.mSubShapeID2);
+            size_t colliderIndex = shapeRef->GetSubShapeUserData(hit.mSubShapeID2);
 
-            return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), shapeIndex};
+            return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), colliderIndex};
         }
     }
 
     return NO_HIT;
 }
 
-RayReturn Ray::intersects(const Body3D& body, size_t shape) const{
-    Body3DComponent& bodycomp = body.getComponent<Body3DComponent>();
+RayReturn Ray::intersects(const Rigidbody& body, size_t shape) const{
+    RigidbodyComponent& bodycomp = body.getComponent<RigidbodyComponent>();
 
     if (!bodycomp.body.IsInvalid()){
         JPH::RayCast ray(JPH::Vec3(origin.x, origin.y, origin.z), JPH::Vec3(direction.x, direction.y, direction.z));
         JPH::SubShapeIDCreator id_creator;
         JPH::RayCastResult hit;
 
-        if (shape < bodycomp.numShapes){
-            if (bodycomp.shapes[shape].shape->CastRay(ray, id_creator, hit)){
-                JPH::Vec3 normal = bodycomp.shapes[shape].shape->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
+        if (shape < bodycomp.numColliders){
+            if (bodycomp.colliders[shape].shape->CastRay(ray, id_creator, hit)){
+                JPH::Vec3 normal = bodycomp.colliders[shape].shape->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
 
                 return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), shape};
             }
@@ -522,14 +522,14 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
         b2Vec2 intersectionPoint = {0, 0};
         b2Vec2 intersectionNormal = {0, 0};
         Entity entity = NULL_ENTITY;
-        size_t shapeIndex = 0;
+        size_t colliderIndex = 0;
         for (size_t i = 0; i < outputs.size(); i++){
                 if ( outputs[i].fraction < closestFraction ) {
                     closestFraction = outputs[i].fraction;
                     intersectionPoint = outputs[i].point;
                     intersectionNormal = outputs[i].normal;
                     entity = reinterpret_cast<uintptr_t>(b2Body_GetUserData(outputs[i].bodyId));
-                    shapeIndex = reinterpret_cast<size_t>(b2Shape_GetUserData(outputs[i].shapeId));
+                    colliderIndex = reinterpret_cast<size_t>(b2Shape_GetUserData(outputs[i].shapeId));
                 }
         }
 
@@ -537,7 +537,7 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
             Vector3 point = Vector3(intersectionPoint.x * ptmScale, intersectionPoint.y * ptmScale, 0);
             Vector3 normal = Vector3(intersectionNormal.x, intersectionNormal.y, 0);
 
-            return {true, closestFraction, point, normal, entity, shapeIndex};
+            return {true, closestFraction, point, normal, entity, colliderIndex};
         }
 
     }
@@ -558,16 +558,16 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
             if (physicsSystem->getNarrowPhaseQuery3D().CastRay(JPH::RRayCast(ray), hit, { }, JPH::DefaultObjectLayerFilter(JPH::ObjectLayerPairFilterMask(), objectLayer), OnlyStaticBodyFilter(onlyStatic, ignoreEntities))){
                 JPH::Vec3 normal;
                 Entity entity = NULL_ENTITY;
-                size_t shapeIndex = 0;
+                size_t colliderIndex = 0;
                 JPH::BodyLockRead lock(physicsSystem->getBodyLockInterface3D(), hit.mBodyID);
                 if (lock.Succeeded()){
                     const JPH::Body &hit_body = lock.GetBody();
                     normal = hit_body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
                     entity = hit_body.GetUserData();
-                    shapeIndex = hit_body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
+                    colliderIndex = hit_body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
                 }
 
-                return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, shapeIndex};
+                return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};
             }
         }
 
@@ -617,17 +617,17 @@ RayReturn Ray::intersects(Scene* scene, uint8_t broadPhaseLayer3D, uint16_t cate
         if (physicsSystem->getNarrowPhaseQuery3D().CastRay(JPH::RRayCast(ray), hit, JPH::SpecifiedBroadPhaseLayerFilter(JPH::BroadPhaseLayer(broadPhaseLayer3D)), JPH::DefaultObjectLayerFilter(JPH::ObjectLayerPairFilterMask(), objectLayer), OnlyStaticBodyFilter(false, ignoreEntities))){
             JPH::Vec3 normal;
             Entity entity = NULL_ENTITY;
-            size_t shapeIndex = 0;
+            size_t colliderIndex = 0;
 
             JPH::BodyLockRead lock(physicsSystem->getBodyLockInterface3D(), hit.mBodyID);
             if (lock.Succeeded()){
                 const JPH::Body &hit_body = lock.GetBody();
                 normal = hit_body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
                 entity = hit_body.GetUserData();
-                shapeIndex = hit_body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
+                colliderIndex = hit_body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
             }
 
-            return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, shapeIndex};
+            return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), entity, colliderIndex};
         }
     }
 

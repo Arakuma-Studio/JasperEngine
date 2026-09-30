@@ -207,7 +207,7 @@ Scene* editor::ToolsLayer::getScene(){
     return scene;
 }
 
-Object* editor::ToolsLayer::getGizmoObject() const{
+GameObject* editor::ToolsLayer::getGizmoObject() const{
     if (gizmoSelected == GizmoSelected::TRANSLATE){
         return tGizmo;
     }

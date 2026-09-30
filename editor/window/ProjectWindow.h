@@ -33,7 +33,7 @@ namespace jasperengine::editor {
         IMAGE,
         MATERIAL,
         SCENE,
-        BUNDLE,
+        PREFAB,
         MODEL,
         SOURCE,
         HEADER,
@@ -68,7 +68,7 @@ namespace jasperengine::editor {
         bool failed = false;
     };
 
-    class ResourcesWindow {
+    class ProjectWindow {
     private:
         Project* project;
         CodeEditor* codeEditor;
@@ -119,7 +119,7 @@ namespace jasperengine::editor {
         std::string lastSelectedFile;
         std::unordered_set<std::string> selectedFiles;
         std::string hoveredFile;
-        std::unordered_set<std::string> projectFiles;  // project-relative scene and built bundle paths
+        std::unordered_set<std::string> projectFiles;  // project-relative scene and built prefab paths
         bool ctrlPressed;
         bool shiftPressed;
 
@@ -190,7 +190,7 @@ namespace jasperengine::editor {
         std::mutex completedThumbnailMutex;
         std::queue<ThumbnailRequest> completedThumbnailQueue;
 
-        // Add these to the private section of the ResourcesWindow class
+        // Add these to the private section of the ProjectWindow class
         fs::path pendingMaterialPath;
         bool hasPendingMaterialRender = false; // guarded by thumbnailMutex
         uint64_t pendingMaterialGeneration = 0; // guarded by thumbnailMutex
@@ -244,8 +244,8 @@ namespace jasperengine::editor {
     public:
         static constexpr const char* WINDOW_NAME = "Project";
 
-        ResourcesWindow(Project* project, CodeEditor* codeEditor, ImageViewerWindow* imageViewerWindow);
-        ~ResourcesWindow();
+        ProjectWindow(Project* project, CodeEditor* codeEditor, ImageViewerWindow* imageViewerWindow);
+        ~ProjectWindow();
 
         bool isFocused() const;
 

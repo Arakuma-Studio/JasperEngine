@@ -57,7 +57,7 @@ bool isEngineApiConstructorSymbol(const EngineAPISymbol& sym) {
            detail.rfind(name + "(", 0) == 0;
 }
 
-// Class details name their base as "class Mesh : Object"
+// Class details name their base as "class Mesh : GameObject"
 std::string baseClassFromDetail(const std::string& detail) {
     size_t colonPos = detail.find(" : ");
     if (colonPos == std::string::npos) return "";
@@ -3811,7 +3811,7 @@ void CustomTextEditor::renderFindDialog(const ImVec2& editorPos, const ImVec2& e
         float findInputStartX = ImGui::GetCursorPosX();
         ImGui::BeginGroup();
 
-        // Use UIUtils::searchInput for consistent look with Output window
+        // Use UIUtils::searchInput for consistent look with Console window
         if (UIUtils::searchInput("##FindInput", "Find...", findInputBuffer, sizeof(findInputBuffer), false, &findCaseSensitive, inputWidth)) {
             if (strcmp(searchText.c_str(), findInputBuffer) != 0) {
                 SetSearchText(findInputBuffer);

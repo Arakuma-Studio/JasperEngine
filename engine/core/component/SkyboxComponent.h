@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef SKY_COMPONENT_H
-#define SKY_COMPONENT_H
+#ifndef SKYBOX_COMPONENT_H
+#define SKYBOX_COMPONENT_H
 
 #include "buffer/Buffer.h"
 #include "texture/Texture.h"
@@ -11,7 +11,7 @@
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API SkyComponent{
+    struct JASPERENGINE_API SkyboxComponent{
         bool loaded = false;
         bool loadCalled = false;
 
@@ -54,4 +54,4 @@ namespace jasperengine{
     
 }
 
-#endif //SKY_COMPONENT_H
+#endif //SKYBOX_COMPONENT_H

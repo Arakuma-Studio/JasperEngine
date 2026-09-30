@@ -15,9 +15,9 @@ namespace jasperengine::editor {
         Button,
         Scrollbar,
         Panel,
-        TextEdit,
+        InputField,
         Action,
-        Sound,
+        AudioSource,
         Physics2D,
         Physics3D
     };

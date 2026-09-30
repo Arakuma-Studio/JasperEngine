@@ -50,24 +50,24 @@ namespace jasperengine::editor{
         uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
     };
 
-    // Component types the Structure tree reads nothing from: it caches names, signature
-    // icons, hierarchy and bundle/lock state, not component values. Opt-out list, so
+    // Component types the Hierarchy tree reads nothing from: it caches names, signature
+    // icons, hierarchy and prefab/lock state, not component values. Opt-out list, so
     // anything unlisted stays structural.
     inline bool isNonStructuralProperty(ComponentType type, const std::string& propertyName){
         switch (type){
             // Geometry and sub-selection payloads, dragged continuously in the viewport.
             case ComponentType::InstancedMeshComponent:
             case ComponentType::TilemapComponent:
-            case ComponentType::LinesComponent:
+            case ComponentType::LineRendererComponent:
             case ComponentType::PointsComponent:
             case ComponentType::PolygonComponent:
             case ComponentType::MeshPolygonComponent:
-            case ComponentType::Occluder2DComponent:
+            case ComponentType::ShadowCaster2DComponent:
             case ComponentType::TranslateTracksComponent:
             case ComponentType::RotateTracksComponent:
             case ComponentType::ScaleTracksComponent:
             // Sizes written by the UI resize drag.
-            case ComponentType::UILayoutComponent:
+            case ComponentType::RectTransformComponent:
             case ComponentType::SpriteComponent:
             case ComponentType::TextComponent:
                 return true;
@@ -141,8 +141,8 @@ namespace jasperengine::editor{
 
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-                if (project->isEntityInBundle(sceneId, entity)){
-                    project->bundlePropertyChanged(sceneId, entity, type, {propertyName});
+                if (project->isEntityInPrefab(sceneId, entity)){
+                    project->prefabPropertyChanged(sceneId, entity, type, {propertyName});
                 }
             }
 
@@ -183,8 +183,8 @@ namespace jasperengine::editor{
 
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-                if (project->isEntityInBundle(sceneId, entity)){
-                    project->bundlePropertyChanged(sceneId, entity, type, {propertyName});
+                if (project->isEntityInPrefab(sceneId, entity)){
+                    project->prefabPropertyChanged(sceneId, entity, type, {propertyName});
                 }
             }
 

@@ -1,22 +1,22 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef LINES_H
-#define LINES_H
+#ifndef LINE_RENDERER_H
+#define LINE_RENDERER_H
 
-#include "Object.h"
+#include "GameObject.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API Lines: public Object{
+    class JASPERENGINE_API LineRenderer: public GameObject{
     public:
 
         // component checkbox (Unity Behaviour.enabled): a disabled Lines is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
-        Lines(Scene* scene);
-        Lines(Scene* scene, Entity entity);
-        virtual ~Lines();
+        LineRenderer(Scene* scene);
+        LineRenderer(Scene* scene, Entity entity);
+        virtual ~LineRenderer();
 
         bool load();
 
@@ -59,4 +59,4 @@ namespace jasperengine{
     };
 }
 
-#endif //LINES_H
+#endif //LINE_RENDERER_H

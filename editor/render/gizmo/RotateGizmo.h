@@ -4,25 +4,25 @@
 #pragma once
 
 #include "object/Camera.h"
-#include "object/Object.h"
-#include "object/Shape.h"
+#include "object/GameObject.h"
+#include "object/Primitive.h"
 #include "object/ui/Image.h"
-#include "object/Lines.h"
+#include "object/LineRenderer.h"
 
 #include "render/RenderUtil.h"
 
 namespace jasperengine::editor{
 
-    class RotateGizmo: public Object{
+    class RotateGizmo: public GameObject{
     private:
         bool use2DGizmo;
 
-        Shape* maincircle;
-        Shape* xcircle;
-        Shape* ycircle;
-        Shape* zcircle;
+        Primitive* maincircle;
+        Primitive* xcircle;
+        Primitive* ycircle;
+        Primitive* zcircle;
 
-        Lines* line;
+        LineRenderer* line;
 
         std::vector<AABB> xcircleAABBs;
         std::vector<AABB> ycircleAABBs;

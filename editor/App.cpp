@@ -93,28 +93,28 @@ ImFont* editor::App::codeFont = nullptr;
 
 editor::App::App(){
     mainThreadId = std::this_thread::get_id();
-    propertiesWindow = new Properties(&project);
-    outputWindow = new OutputWindow();
+    inspectorWindow = new InspectorWindow(&project);
+    consoleWindow = new ConsoleWindow();
     playInput = new PlayInput(&project);
     sceneWindow = new SceneWindow(&project, playInput);
     gameWindow = new GameWindow(&project, playInput);
     mainToolbar = new MainToolbar(&project);
-    propertiesWindow->setSceneWindow(sceneWindow);
-    structureWindow = new Structure(&project, sceneWindow);
+    inspectorWindow->setSceneWindow(sceneWindow);
+    hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
     imageViewerWindow = new ImageViewerWindow(&project);
-    resourcesWindow = new ResourcesWindow(&project, codeEditor, imageViewerWindow);
+    projectWindow = new ProjectWindow(&project, codeEditor, imageViewerWindow);
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
-    aiChatWindow = new AiChatWindow(&project, resourcesWindow);
+    aiChatWindow = new AiChatWindow(&project, projectWindow);
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
 
     lastFocusedWindow = LastFocusedWindow::None;
 
-    Out::setOutputWindow(outputWindow);
+    Out::setConsoleWindow(consoleWindow);
 
     isDroppedExternalPaths = false;
 
@@ -225,10 +225,10 @@ enum class AppMenuCommand : uint32_t {
     DeleteSelection,
     RenameSelection,
     FrameSelected,
-    ToggleStructure,
-    ToggleProperties,
-    ToggleResources,
-    ToggleOutput,
+    ToggleHierarchy,
+    ToggleInspector,
+    ToggleProject,
+    ToggleConsole,
     ToggleAnimation,
     ToggleTerrain,
     ToggleAiChat,
@@ -239,13 +239,13 @@ enum class AppMenuCommand : uint32_t {
     ResetLayout,
     ProjectSettings,
     ProjectScenes,
-    ProjectBundles,
+    ProjectPrefabs,
     ClearTrash,
     TogglePlay,
     TogglePause,
     StopScene,
     RemoveScene,
-    CreateGameObject,     // payload: index into Structure::getCreateMenuEntries()
+    CreateGameObject,     // payload: index into HierarchyWindow::getCreateMenuEntries()
     CreateEmptyChild,
     AddComponent,
     AssetsCreateFolder,
@@ -331,16 +331,16 @@ std::string windowMenuLabel(const char* windowName) {
     return label;
 }
 
-// GameObject menu from the Hierarchy's create table (Structure::getCreateMenuEntries),
+// GameObject menu from the Hierarchy's create table (HierarchyWindow::getCreateMenuEntries),
 // in the same order and grouping the Hierarchy's own menus use.
 std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene,
                                                           bool canCreate,
                                                           bool canCreateChild) {
-    using editor::Structure;
+    using editor::HierarchyWindow;
     using editor::CreateMenuEntry;
-    const auto& entries = Structure::getCreateMenuEntries();
+    const auto& entries = HierarchyWindow::getCreateMenuEntries();
     auto offered = [scene](const CreateMenuEntry& entry) {
-        return !scene || Structure::isCreateEntryAvailable(entry, scene->sceneType);
+        return !scene || HierarchyWindow::isCreateEntryAvailable(entry, scene->sceneType);
     };
     auto entryItem = [&](size_t index) {
         const CreateMenuEntry& entry = entries[index];
@@ -361,7 +361,7 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             lastKind = 0;
             items.push_back(entryItem(i));
             // Unity lists Create Empty Child right under Create Empty
-            if (entry.type == editor::EntityCreationType::OBJECT) {
+            if (entry.type == editor::EntityCreationType::GAMEOBJECT) {
                 items.push_back(menuShortcut(AppMenuCommand::CreateEmptyChild, "Create Empty Child",
                                              "Alt+Shift+N", canCreateChild));
             }
@@ -430,11 +430,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     const bool canFrame = sceneContext && selectedCount > 0 && selectedScene->sceneType == SceneType::SCENE_3D;
     const bool canRename = sceneContext && selectedCount == 1;
     const bool canCreate = hasSelectedScene && selectedScene->scene;
-    const bool canCreateChild = canCreate && structureWindow->getSelectedParentForCreate() != NULL_ENTITY;
+    const bool canCreateChild = canCreate && hierarchyWindow->getSelectedParentForCreate() != NULL_ENTITY;
     const bool canAddComponent = hasSelectedScene && selectedCount > 0 && !isProjectBusy;
 
-    const bool assetSelected = resourcesWindow->hasAssetSelection();
-    const bool singleAsset = resourcesWindow->hasSingleAssetSelection();
+    const bool assetSelected = projectWindow->hasAssetSelection();
+    const bool singleAsset = projectWindow->hasSingleAssetSelection();
 
     std::vector<PlatformMenuItem> recentItems;
     std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
@@ -519,7 +519,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
-        menuCommand(AppMenuCommand::ProjectBundles, "Prefabs..."),
+        menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
         menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
     }));
 
@@ -534,10 +534,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("General", {
             menuShortcut(AppMenuCommand::FocusScene, "Scene", "Ctrl+1", hasSelectedScene),
             menuShortcut(AppMenuCommand::FocusGame, "Game", "Ctrl+2"),
-            menuShortcut(AppMenuCommand::ToggleProperties, windowMenuLabel(Properties::WINDOW_NAME), "Ctrl+3"),
-            menuShortcut(AppMenuCommand::ToggleStructure, windowMenuLabel(Structure::WINDOW_NAME), "Ctrl+4"),
-            menuShortcut(AppMenuCommand::ToggleResources, windowMenuLabel(ResourcesWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleOutput, windowMenuLabel(OutputWindow::WINDOW_NAME), "Ctrl+Shift+C")
+            menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
+            menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
+            menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
+            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
@@ -651,7 +651,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::Undo:
             if (lastFocusedWindow == LastFocusedWindow::Resources) {
                 project.getProjectCommandHistory()->undo();
-                resourcesWindow->refreshCurrentDirectory();
+                projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
                 codeEditor->undoLastFocused();
             } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
@@ -661,7 +661,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::Redo:
             if (lastFocusedWindow == LastFocusedWindow::Resources) {
                 project.getProjectCommandHistory()->redo();
-                resourcesWindow->refreshCurrentDirectory();
+                projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
                 codeEditor->redoLastFocused();
             } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
@@ -669,24 +669,24 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::RenameSelection:
-            if (!structureWindow->renameSelected()) propertiesWindow->focusNameInput();
+            if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
             break;
         case AppMenuCommand::FrameSelected:
             if (SceneProject* scene = project.getSelectedScene()) {
                 sceneWindow->focusOnEntities(scene, project.getSelectedEntities(scene->id));
             }
             break;
-        case AppMenuCommand::ToggleStructure:
-            showEditorWindow(structureWindow);
+        case AppMenuCommand::ToggleHierarchy:
+            showEditorWindow(hierarchyWindow);
             break;
-        case AppMenuCommand::ToggleProperties:
-            showEditorWindow(propertiesWindow);
+        case AppMenuCommand::ToggleInspector:
+            showEditorWindow(inspectorWindow);
             break;
-        case AppMenuCommand::ToggleResources:
-            showEditorWindow(resourcesWindow);
+        case AppMenuCommand::ToggleProject:
+            showEditorWindow(projectWindow);
             break;
-        case AppMenuCommand::ToggleOutput:
-            showEditorWindow(outputWindow);
+        case AppMenuCommand::ToggleConsole:
+            showEditorWindow(consoleWindow);
             break;
         case AppMenuCommand::ToggleAnimation:
             showEditorWindow(animationWindow);
@@ -727,10 +727,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::ResetLayout:
-            structureWindow->setOpen(true);
-            propertiesWindow->setOpen(true);
-            resourcesWindow->setOpen(true);
-            outputWindow->setOpen(true);
+            hierarchyWindow->setOpen(true);
+            inspectorWindow->setOpen(true);
+            projectWindow->setOpen(true);
+            consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
             terrainEditWindow->setOpen(false);
             aiChatWindow->setOpen(true);
@@ -747,8 +747,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             if (!project.isAnyScenePlaying())
                 scenesWindow.open(&project);
             break;
-        case AppMenuCommand::ProjectBundles:
-            bundlesWindow.open(&project);
+        case AppMenuCommand::ProjectPrefabs:
+            prefabsWindow.open(&project);
             break;
         case AppMenuCommand::ClearTrash: {
             if (project.isAnyScenePlaying()) return;
@@ -784,22 +784,22 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::CreateGameObject: {
-            const auto& entries = Structure::getCreateMenuEntries();
+            const auto& entries = HierarchyWindow::getCreateMenuEntries();
             const size_t index = command.payload.empty() ? entries.size()
                 : static_cast<size_t>(std::strtoul(command.payload.c_str(), nullptr, 10));
             SceneProject* scene = project.getSelectedScene();
             if (index < entries.size() && scene && scene->scene &&
-                Structure::isCreateEntryAvailable(entries[index], scene->sceneType)) {
-                structureWindow->createGameObject(entries[index], NULL_ENTITY);
+                HierarchyWindow::isCreateEntryAvailable(entries[index], scene->sceneType)) {
+                hierarchyWindow->createGameObject(entries[index], NULL_ENTITY);
             }
             break;
         }
         case AppMenuCommand::CreateEmptyChild: {
-            const Entity parent = structureWindow->getSelectedParentForCreate();
+            const Entity parent = hierarchyWindow->getSelectedParentForCreate();
             if (parent == NULL_ENTITY) break;
-            for (const CreateMenuEntry& entry : Structure::getCreateMenuEntries()) {
-                if (entry.type == EntityCreationType::OBJECT) {
-                    structureWindow->createGameObject(entry, parent);
+            for (const CreateMenuEntry& entry : HierarchyWindow::getCreateMenuEntries()) {
+                if (entry.type == EntityCreationType::GAMEOBJECT) {
+                    hierarchyWindow->createGameObject(entry, parent);
                     break;
                 }
             }
@@ -808,35 +808,35 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AddComponent: {
             SceneProject* scene = project.getSelectedScene();
             if (scene && !project.isAnyScenePlaying() && !project.getSelectedEntities(scene->id).empty())
-                propertiesWindow->requestAddComponent();
+                inspectorWindow->requestAddComponent();
             break;
         }
         case AppMenuCommand::AssetsCreateFolder:
-            resourcesWindow->assetsCreateFolder();
+            projectWindow->assetsCreateFolder();
             break;
         case AppMenuCommand::AssetsCreateLuaScript:
-            resourcesWindow->assetsCreateScript(true);
+            projectWindow->assetsCreateScript(true);
             break;
         case AppMenuCommand::AssetsCreateCppScript:
-            resourcesWindow->assetsCreateScript(false);
+            projectWindow->assetsCreateScript(false);
             break;
         case AppMenuCommand::AssetsShowInFileManager:
-            resourcesWindow->assetsShowInFileManager();
+            projectWindow->assetsShowInFileManager();
             break;
         case AppMenuCommand::AssetsOpen:
-            resourcesWindow->assetsOpenSelected();
+            projectWindow->assetsOpenSelected();
             break;
         case AppMenuCommand::AssetsRename:
-            resourcesWindow->assetsRenameSelected();
+            projectWindow->assetsRenameSelected();
             break;
         case AppMenuCommand::AssetsDelete:
-            resourcesWindow->assetsDeleteSelected();
+            projectWindow->assetsDeleteSelected();
             break;
         case AppMenuCommand::AssetsImport:
-            resourcesWindow->assetsImport();
+            projectWindow->assetsImport();
             break;
         case AppMenuCommand::AssetsRefresh:
-            resourcesWindow->assetsRefresh();
+            projectWindow->assetsRefresh();
             break;
         case AppMenuCommand::About:
             aboutWindow.open();
@@ -1033,7 +1033,7 @@ void editor::App::showFooter(){
         // Left side: the newest Console message; a click brings up the Console.
         LogType latestType = LogType::Info;
         std::string latestMessage;
-        if (outputWindow && outputWindow->getLatestLog(latestType, latestMessage)) {
+        if (consoleWindow && consoleWindow->getLatestLog(latestType, latestMessage)) {
             const size_t lineEnd = latestMessage.find_first_of("\r\n");
             if (lineEnd != std::string::npos) latestMessage.resize(lineEnd);
 
@@ -1058,7 +1058,7 @@ void editor::App::showFooter(){
             ImGui::InvisibleButton("##FooterConsole", ImVec2(maxWidth, ImGui::GetTextLineHeight()));
             const bool hovered = ImGui::IsItemHovered();
             if (ImGui::IsItemClicked()) {
-                outputWindow->requestFocus();
+                consoleWindow->requestFocus();
             }
             if (hovered) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -1246,7 +1246,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
     ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
-    ImGui::DockBuilderDockWindow(Properties::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(AiChatWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
 
@@ -1254,15 +1254,15 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
     ImGui::DockBuilderSetNodeSize(dock_id_middle_bottom, ImVec2(viewport.x - rightWidth, bottomHeight));
     ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
-    ImGui::DockBuilderDockWindow(ResourcesWindow::WINDOW_NAME, dock_id_middle_bottom);
-    ImGui::DockBuilderDockWindow(OutputWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
     ImGui::DockBuilderSetNodeSize(dock_id_left_top, ImVec2(leftWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
-    ImGui::DockBuilderDockWindow(Structure::WINDOW_NAME, dock_id_left_top);
+    ImGui::DockBuilderDockWindow(HierarchyWindow::WINDOW_NAME, dock_id_left_top);
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
@@ -1275,11 +1275,11 @@ void editor::App::buildDefaultLayout(){
             window->DockOrder = order;
         }
     };
-    stampPanelDockOrder(Properties::WINDOW_NAME, 0);
+    stampPanelDockOrder(InspectorWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(AiChatWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(TerrainEditWindow::WINDOW_NAME, 2);
-    stampPanelDockOrder(ResourcesWindow::WINDOW_NAME, 0);
-    stampPanelDockOrder(OutputWindow::WINDOW_NAME, 1);
+    stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
+    stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
@@ -1758,7 +1758,7 @@ void editor::App::show(){
     }
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        if (resourcesWindow->isFocused()) {
+        if (projectWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -1804,9 +1804,9 @@ void editor::App::show(){
             };
             if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
             if (chord(true, true, false, ImGuiKey_N)) {
-                const auto& entries = Structure::getCreateMenuEntries();
+                const auto& entries = HierarchyWindow::getCreateMenuEntries();
                 for (size_t i = 0; i < entries.size(); i++) {
-                    if (entries[i].type == EntityCreationType::OBJECT) {
+                    if (entries[i].type == EntityCreationType::GAMEOBJECT) {
                         run(AppMenuCommand::CreateGameObject, std::to_string(i));
                         break;
                     }
@@ -1816,11 +1816,11 @@ void editor::App::show(){
             if (chord(true, true, false, ImGuiKey_A)) run(AppMenuCommand::AddComponent);
             if (chord(true, false, false, ImGuiKey_1)) run(AppMenuCommand::FocusScene);
             if (chord(true, false, false, ImGuiKey_2)) run(AppMenuCommand::FocusGame);
-            if (chord(true, false, false, ImGuiKey_3)) run(AppMenuCommand::ToggleProperties);
-            if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleStructure);
-            if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleResources);
+            if (chord(true, false, false, ImGuiKey_3)) run(AppMenuCommand::ToggleInspector);
+            if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleHierarchy);
+            if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleProject);
             if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
-            if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleOutput);
+            if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleConsole);
         }
     }
 
@@ -1837,7 +1837,7 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !resourcesWindow->isFocused() && !codeEditor->isFocused() && !aiChatWindow->isFocused()){
+    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused() && !aiChatWindow->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic:
@@ -1854,24 +1854,24 @@ void editor::App::show(){
 
         // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
         if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
-            if (!(structureWindow->isFocused() && structureWindow->renameSelected())) propertiesWindow->focusNameInput();
+            if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
         }
 
         // Frame Selected (Edit menu): the Scene view handles F itself while it has focus
         if (!io.WantTextInput && !io.KeyCtrl && !io.KeyShift && !io.KeyAlt &&
-            structureWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+            hierarchyWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
             executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::FrameSelected), {}});
         }
     }
 
-    if (!popupOpen && resourcesWindow->isFocused()) {
+    if (!popupOpen && projectWindow->isFocused()) {
         if (isUndo) {
             project.getProjectCommandHistory()->undo();
-            resourcesWindow->refreshCurrentDirectory();
+            projectWindow->refreshCurrentDirectory();
         }
         if (isRedo) {
             project.getProjectCommandHistory()->redo();
-            resourcesWindow->refreshCurrentDirectory();
+            projectWindow->refreshCurrentDirectory();
         }
     }
 
@@ -1906,20 +1906,20 @@ void editor::App::show(){
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();
-    bundlesWindow.show();
+    prefabsWindow.show();
     scenesWindow.show();
 
     if (!saveDialogInProgress && !sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen() && !saveDialogQueue.empty()) {
         processNextSaveDialog();
     }
 
-    structureWindow->show();
-    resourcesWindow->show();
+    hierarchyWindow->show();
+    projectWindow->show();
     imageViewerWindow->show();
-    outputWindow->show();
+    consoleWindow->show();
     animationWindow->show();
     terrainEditWindow->show();
-    propertiesWindow->show();
+    inspectorWindow->show();
     aiChatWindow->show();
     codeEditor->show();
     // Before the Scene views: they ask it whether it hosts the running game
@@ -2201,7 +2201,7 @@ void editor::App::engineRender(){
 
     // Redraw the selected scene only when it changed (needUpdateRender) or while a
     // continuous state (play/load/preview/thumbnail) is active, so the loop can idle.
-    const bool thumbnailsPending = resourcesWindow && resourcesWindow->hasPendingThumbnailWork();
+    const bool thumbnailsPending = projectWindow && projectWindow->hasPendingThumbnailWork();
 
     // Drop targets preview a dragged resource directly, with no command to flag the scene.
     const ImGuiPayload* dragPayload = ImGui::GetDragDropPayload();
@@ -2371,8 +2371,8 @@ void editor::App::engineRender(){
                 project.endStepFrame(sceneProject.id);
             }
 
-            resourcesWindow->processMaterialThumbnails();
-            resourcesWindow->processModelThumbnails();
+            projectWindow->processMaterialThumbnails();
+            projectWindow->processModelThumbnails();
 
             // Only a real draw counts as activity, or the loop never idles.
             renderedSceneThisFrame = true;
@@ -2698,8 +2698,8 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         sceneWindow->clearSceneState(sceneId);
     }
 
-    if (propertiesWindow) {
-        propertiesWindow->clearSceneState(sceneId);
+    if (inspectorWindow) {
+        inspectorWindow->clearSceneState(sceneId);
     }
 
     if (animationWindow) {
@@ -2713,7 +2713,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 
 void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
-    resourcesWindow->cancelThumbnailWork();
+    projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
     MeshSystem::cancelAllAsyncModelLoads();
@@ -2721,7 +2721,7 @@ void editor::App::prepareForProjectSwitch() {
     Engine::removeAllScenes();
     Engine::setFramebuffer(nullptr);
     codeEditor->closeAll();
-    outputWindow->clear();
+    consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
     dockspaceNeedsRebuild = true;
@@ -2765,11 +2765,11 @@ void editor::App::handleExternalDrop(const std::vector<std::string>& paths) {
 }
 
 void editor::App::handleExternalDragEnter() {
-    resourcesWindow->handleExternalDragEnter();
+    projectWindow->handleExternalDragEnter();
 }
 
 void editor::App::handleExternalDragLeave() {
-    resourcesWindow->handleExternalDragLeave();
+    projectWindow->handleExternalDragLeave();
 }
 
 void editor::App::resetLastActivatedScene(){
@@ -2787,18 +2787,18 @@ void editor::App::updateResourcesPath(){
 
     if (isInitialized){
         if (projectPathChanged) {
-            resourcesWindow->notifyProjectPathChange();
+            projectWindow->notifyProjectPathChange();
         } else {
-            resourcesWindow->refreshCurrentDirectory();
+            projectWindow->refreshCurrentDirectory();
         }
     }
 
-    // Initial project loading happens before the Resources window is initialized,
+    // Initial project loading happens before the Project window is initialized,
     // but prepareForProjectSwitch() still suspends its worker.
-    resourcesWindow->resumeThumbnailWork();
+    projectWindow->resumeThumbnailWork();
 
     lastResourcesProjectPath = currentProjectPath;
-    resourcesWindow->cleanupThumbnails();
+    projectWindow->cleanupThumbnails();
 }
 
 void editor::App::requestDockspaceRebuild() {
@@ -2814,14 +2814,14 @@ void editor::App::stopTransientPreviews() {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
     }
-    if (propertiesWindow) {
-        propertiesWindow->stopTransientPreviews();
+    if (inspectorWindow) {
+        inspectorWindow->stopTransientPreviews();
     }
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
-    if (propertiesWindow) {
-        propertiesWindow->flushDirtyMaterialsForScene(sceneId);
+    if (inspectorWindow) {
+        inspectorWindow->flushDirtyMaterialsForScene(sceneId);
     }
 }
 
@@ -3021,8 +3021,8 @@ const editor::Project* editor::App::getProject() const{
     return &project;
 }
 
-editor::Properties* editor::App::getPropertiesWindow() const{
-    return propertiesWindow;
+editor::InspectorWindow* editor::App::getInspectorWindow() const{
+    return inspectorWindow;
 }
 
 editor::CodeEditor* editor::App::getCodeEditor() const{
@@ -3033,8 +3033,8 @@ editor::ImageViewerWindow* editor::App::getImageViewerWindow() const{
     return imageViewerWindow;
 }
 
-editor::ResourcesWindow* editor::App::getResourcesWindow() const{
-    return resourcesWindow;
+editor::ProjectWindow* editor::App::getProjectWindow() const{
+    return projectWindow;
 }
 
 bool editor::App::popSaveDialogQueueItem() {
@@ -3055,8 +3055,8 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
 
-editor::Structure* editor::App::getStructureWindow() const{
-    return structureWindow;
+editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
+    return hierarchyWindow;
 }
 
 editor::GameWindow* editor::App::getGameWindow() const{
@@ -3100,8 +3100,8 @@ void editor::App::processNextSaveDialog() {
         // Set default filename
         std::string defaultName = sceneProject->name + ".scene";
         fs::path initialDirectory = project.getProjectPath();
-        if (resourcesWindow) {
-            fs::path resourcesPath = resourcesWindow->getCurrentPath();
+        if (projectWindow) {
+            fs::path resourcesPath = projectWindow->getCurrentPath();
             if (!resourcesPath.empty()) {
                 initialDirectory = resourcesPath;
             }
@@ -3241,10 +3241,10 @@ void editor::App::initializeSettings() {
 
 void editor::App::applyPanelVisibilitySettings() {
     const PanelVisibilitySettings visibility = AppSettings::getPanelVisibility();
-    structureWindow->setOpen(visibility.structure);
-    propertiesWindow->setOpen(visibility.properties);
-    resourcesWindow->setOpen(visibility.resources);
-    outputWindow->setOpen(visibility.output);
+    hierarchyWindow->setOpen(visibility.hierarchy);
+    inspectorWindow->setOpen(visibility.inspector);
+    projectWindow->setOpen(visibility.project);
+    consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     terrainEditWindow->setOpen(visibility.terrain);
     aiChatWindow->setOpen(visibility.aiChat);
@@ -3253,10 +3253,10 @@ void editor::App::applyPanelVisibilitySettings() {
 
 void editor::App::persistPanelVisibilitySettings() {
     PanelVisibilitySettings visibility;
-    visibility.structure = structureWindow->isOpen();
-    visibility.properties = propertiesWindow->isOpen();
-    visibility.resources = resourcesWindow->isOpen();
-    visibility.output = outputWindow->isOpen();
+    visibility.hierarchy = hierarchyWindow->isOpen();
+    visibility.inspector = inspectorWindow->isOpen();
+    visibility.project = projectWindow->isOpen();
+    visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.aiChat = aiChatWindow->isOpen();

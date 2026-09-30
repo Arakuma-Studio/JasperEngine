@@ -4,12 +4,12 @@
 #ifndef REFLECTIONPROBE_H
 #define REFLECTIONPROBE_H
 
-#include "object/Object.h"
+#include "object/GameObject.h"
 #include "component/ReflectionProbeComponent.h"
 
 namespace jasperengine{
 
-    class JASPERENGINE_API ReflectionProbe: public Object{
+    class JASPERENGINE_API ReflectionProbe: public GameObject{
 
     private:
         // capture-affecting change: restart any in-flight six-face job so no

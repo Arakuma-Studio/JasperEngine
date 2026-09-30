@@ -9,14 +9,14 @@ const float editor::Object2DGizmo::rectSize = 0.20;
 const float editor::Object2DGizmo::sizeOffset = 0.1;
 const float editor::Object2DGizmo::crossSize = 0.5f;
 
-editor::Object2DGizmo::Object2DGizmo(Scene* scene): Object(scene){
+editor::Object2DGizmo::Object2DGizmo(Scene* scene): GameObject(scene){
     width = 0.0;
     height = 0.0;
     showRects = true;
     showCross = false;
 
-    center = new Object(scene);
-    lines = new Lines(scene);
+    center = new GameObject(scene);
+    lines = new LineRenderer(scene);
     lines->setVisible(false);
 
     for (int i = 0; i < 8; i++){

@@ -1,14 +1,14 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef ROTATIONACTION_COMPONENT_H
-#define ROTATIONACTION_COMPONENT_H
+#ifndef ROTATIONTWEEN_COMPONENT_H
+#define ROTATIONTWEEN_COMPONENT_H
 
 #include "math/Quaternion.h"
 
 namespace jasperengine{
 
-    struct JASPERENGINE_API RotationActionComponent{
+    struct JASPERENGINE_API RotationTweenComponent{
         Quaternion endRotation;
         Quaternion startRotation;
 
@@ -17,4 +17,4 @@ namespace jasperengine{
 
 }
 
-#endif //ROTATIONACTION_COMPONENT_H
+#endif //ROTATIONTWEEN_COMPONENT_H

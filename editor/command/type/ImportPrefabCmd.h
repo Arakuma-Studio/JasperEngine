@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor{
 
-    class ImportEntityBundleCmd: public Command{
+    class ImportPrefabCmd: public Command{
 
     private:
         Project* project;
@@ -28,7 +28,7 @@ namespace jasperengine::editor{
         Entity rootEntity;
         std::vector<Entity> lastSelected;
         bool wasModified;
-        bool addedToParentBundle;
+        bool addedToParentPrefab;
 
         bool quiet = false;
         bool hasPlacement = false;
@@ -37,7 +37,7 @@ namespace jasperengine::editor{
         Vector3 placementScale = Vector3::UNIT_SCALE;
 
     public:
-        ImportEntityBundleCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent = NULL_ENTITY, bool needSaveScene = true);
+        ImportPrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent = NULL_ENTITY, bool needSaveScene = true);
 
         bool execute() override;
         void undo() override;

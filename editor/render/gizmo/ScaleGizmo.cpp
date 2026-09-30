@@ -16,7 +16,7 @@ const Vector3 editor::ScaleGizmo::yaxisColorHightlight = Vector3(0.7, 0.9, 0.7);
 const Vector3 editor::ScaleGizmo::zaxisColorHightlight = Vector3(0.7, 0.7, 0.9);
 const float editor::ScaleGizmo::rectAlpha = 0.6;
 
-editor::ScaleGizmo::ScaleGizmo(Scene* scene, bool use2DGizmo): Object(scene){
+editor::ScaleGizmo::ScaleGizmo(Scene* scene, bool use2DGizmo): GameObject(scene){
     float cylinderRadius = 0.05;
     float cylinderHeight = 2;
     float centerSize = 0.3;
@@ -24,19 +24,19 @@ editor::ScaleGizmo::ScaleGizmo(Scene* scene, bool use2DGizmo): Object(scene){
 
     this->use2DGizmo = use2DGizmo;
 
-    centerbox = new Shape(scene);
-    xaxis = new Shape(scene);
-    xbox = new Shape(scene);
+    centerbox = new Primitive(scene);
+    xaxis = new Primitive(scene);
+    xbox = new Primitive(scene);
 
-    yaxis = new Shape(scene);
-    ybox = new Shape(scene);
+    yaxis = new Primitive(scene);
+    ybox = new Primitive(scene);
 
     if (!use2DGizmo){
-        zaxis = new Shape(scene);
-        zbox = new Shape(scene);
-        xyrect = new Shape(scene);
-        xzrect = new Shape(scene);
-        yzrect = new Shape(scene);
+        zaxis = new Primitive(scene);
+        zbox = new Primitive(scene);
+        xyrect = new Primitive(scene);
+        xzrect = new Primitive(scene);
+        yzrect = new Primitive(scene);
     }
     
     centerbox->createBox(centerSize, centerSize, centerSize);

@@ -1,30 +1,30 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Particles.h"
+#include "ParticleSystem.h"
 
 #include "subsystem/ActionSystem.h"
 
 using namespace jasperengine;
 
-Particles::Particles(Scene* scene): Action(scene){
-    addComponent<ParticlesComponent>();
+ParticleSystem::ParticleSystem(Scene* scene): Action(scene){
+    addComponent<ParticleSystemComponent>();
 }
 
-Particles::Particles(Scene* scene, Entity entity): Action(scene, entity){
-
-}
-
-Particles::~Particles(){
+ParticleSystem::ParticleSystem(Scene* scene, Entity entity): Action(scene, entity){
 
 }
 
-void Particles::reset(){
+ParticleSystem::~ParticleSystem(){
+
+}
+
+void ParticleSystem::reset(){
     scene->getSystem<ActionSystem>()->particleActionReset(getEntity());
 }
 
-void Particles::setMaxParticles(unsigned int maxParticles){
-    ParticlesComponent& particomp = getComponent<ParticlesComponent>();
+void ParticleSystem::setMaxParticles(unsigned int maxParticles){
+    ParticleSystemComponent& particomp = getComponent<ParticleSystemComponent>();
 
     if (particomp.maxParticles != maxParticles){
         particomp.maxParticles = maxParticles;
@@ -33,157 +33,157 @@ void Particles::setMaxParticles(unsigned int maxParticles){
     }
 }
 
-unsigned int Particles::getMaxParticles() const{
-    ParticlesComponent& particomp = getComponent<ParticlesComponent>();
+unsigned int ParticleSystem::getMaxParticles() const{
+    ParticleSystemComponent& particomp = getComponent<ParticleSystemComponent>();
 
     return particomp.maxParticles;
 }
 
-void Particles::setRate(int rate){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setRate(int rate){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     
     partAnim.rate = rate;
 }
 
-int Particles::getRate() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+int ParticleSystem::getRate() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     
     return partAnim.rate;
 }
 
-void Particles::setEmitter(bool emitter){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setEmitter(bool emitter){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.emitter = emitter;
 }
 
-bool Particles::isEmitter() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+bool ParticleSystem::isEmitter() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     return partAnim.emitter;
 }
 
-void Particles::setLoop(bool loop){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setLoop(bool loop){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.loop = loop;
 }
 
-bool Particles::isLoop() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+bool ParticleSystem::isLoop() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     return partAnim.loop;
 }
 
-void Particles::setLocalSpace(bool localSpace){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setLocalSpace(bool localSpace){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.localSpace = localSpace;
 }
 
-bool Particles::isLocalSpace() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+bool ParticleSystem::isLocalSpace() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     return partAnim.localSpace;
 }
 
-void Particles::setMaxPerUpdate(int maxPerUpdate){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setMaxPerUpdate(int maxPerUpdate){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     
     partAnim.maxPerUpdate = maxPerUpdate;
 }
 
-int Particles::getMaxPerUpdate() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+int ParticleSystem::getMaxPerUpdate() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
     
     return partAnim.maxPerUpdate;
 }
 
-void Particles::setLifeInitializer(float life){
+void ParticleSystem::setLifeInitializer(float life){
     setLifeInitializer(life, life);
 }
 
-void Particles::setLifeInitializer(float minLife, float maxLife){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setLifeInitializer(float minLife, float maxLife){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.lifeInitializer.minLife = minLife;
     partAnim.lifeInitializer.maxLife = maxLife;
 }
 
-void Particles::setPositionInitializer(Vector3 position){
+void ParticleSystem::setPositionInitializer(Vector3 position){
     setPositionInitializer(position, position);
 }
 
-void Particles::setPositionInitializer(Vector3 minPosition, Vector3 maxPosition){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setPositionInitializer(Vector3 minPosition, Vector3 maxPosition){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = ParticleEmitterShape::Box;
     partAnim.positionInitializer.minPosition = minPosition;
     partAnim.positionInitializer.maxPosition = maxPosition;
 }
 
-void Particles::setPositionInitializerShape(ParticleEmitterShape shape){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setPositionInitializerShape(ParticleEmitterShape shape){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = shape;
 }
 
-ParticleEmitterShape Particles::getPositionInitializerShape() const{
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+ParticleEmitterShape ParticleSystem::getPositionInitializerShape() const{
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     return partAnim.positionInitializer.shape;
 }
 
-void Particles::setSpherePositionInitializer(float radius){
+void ParticleSystem::setSpherePositionInitializer(float radius){
     setSpherePositionInitializer(radius, 0.0f);
 }
 
-void Particles::setSpherePositionInitializer(float radius, float innerRadius){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setSpherePositionInitializer(float radius, float innerRadius){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = ParticleEmitterShape::Sphere;
     partAnim.positionInitializer.radius = radius;
     partAnim.positionInitializer.innerRadius = innerRadius;
 }
 
-void Particles::setHemispherePositionInitializer(float radius){
+void ParticleSystem::setHemispherePositionInitializer(float radius){
     setHemispherePositionInitializer(radius, 0.0f);
 }
 
-void Particles::setHemispherePositionInitializer(float radius, float innerRadius){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setHemispherePositionInitializer(float radius, float innerRadius){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = ParticleEmitterShape::Hemisphere;
     partAnim.positionInitializer.radius = radius;
     partAnim.positionInitializer.innerRadius = innerRadius;
 }
 
-void Particles::setCirclePositionInitializer(float radius){
+void ParticleSystem::setCirclePositionInitializer(float radius){
     setCirclePositionInitializer(radius, 0.0f);
 }
 
-void Particles::setCirclePositionInitializer(float radius, float innerRadius){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setCirclePositionInitializer(float radius, float innerRadius){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = ParticleEmitterShape::Circle;
     partAnim.positionInitializer.radius = radius;
     partAnim.positionInitializer.innerRadius = innerRadius;
 }
 
-void Particles::setConePositionInitializer(float angle, float height){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setConePositionInitializer(float angle, float height){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionInitializer.shape = ParticleEmitterShape::Cone;
     partAnim.positionInitializer.coneAngle = angle;
     partAnim.positionInitializer.coneHeight = height;
 }
 
-void Particles::addBurst(float time, int count){
+void ParticleSystem::addBurst(float time, int count){
     addBurst(time, count, count);
 }
 
-void Particles::addBurst(float time, int minCount, int maxCount){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::addBurst(float time, int minCount, int maxCount){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     ParticleBurst burst;
     burst.time = time;
@@ -193,30 +193,30 @@ void Particles::addBurst(float time, int minCount, int maxCount){
     partAnim.currentBurst = 0;
 }
 
-void Particles::setBursts(std::vector<ParticleBurst> bursts){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setBursts(std::vector<ParticleBurst> bursts){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.bursts = bursts;
     partAnim.currentBurst = 0;
 }
 
-void Particles::clearBursts(){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::clearBursts(){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.bursts.clear();
     partAnim.currentBurst = 0;
 }
 
-void Particles::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition){
+void ParticleSystem::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition){
     setPositionModifier(fromTime, toTime, fromPosition, toPosition, EaseType::LINEAR);
 }
 
-void Particles::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition, EaseType functionType){
+void ParticleSystem::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition, EaseType functionType){
     setPositionModifier(fromTime, toTime, fromPosition, toPosition, Ease(functionType));
 }
 
-void Particles::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setPositionModifier(float fromTime, float toTime, Vector3 fromPosition, Vector3 toPosition, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.positionModifier.fromTime = fromTime;
     partAnim.positionModifier.toTime = toTime;
@@ -225,27 +225,27 @@ void Particles::setPositionModifier(float fromTime, float toTime, Vector3 fromPo
     partAnim.positionModifier.function = function;
 }
 
-void Particles::setVelocityInitializer(Vector3 velocity){
+void ParticleSystem::setVelocityInitializer(Vector3 velocity){
     setVelocityInitializer(velocity, velocity);
 }
 
-void Particles::setVelocityInitializer(Vector3 minVelocity, Vector3 maxVelocity){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setVelocityInitializer(Vector3 minVelocity, Vector3 maxVelocity){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.velocityInitializer.minVelocity = minVelocity;
     partAnim.velocityInitializer.maxVelocity = maxVelocity;
 }
 
-void Particles::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity){
+void ParticleSystem::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity){
     setVelocityModifier(fromTime, toTime, fromVelocity, toVelocity, EaseType::LINEAR);
 }
 
-void Particles::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity, EaseType functionType){
+void ParticleSystem::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity, EaseType functionType){
     setVelocityModifier(fromTime, toTime, fromVelocity, toVelocity, Ease(functionType));
 }
 
-void Particles::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setVelocityModifier(float fromTime, float toTime, Vector3 fromVelocity, Vector3 toVelocity, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.velocityModifier.fromTime = fromTime;
     partAnim.velocityModifier.toTime = toTime;
@@ -254,27 +254,27 @@ void Particles::setVelocityModifier(float fromTime, float toTime, Vector3 fromVe
     partAnim.velocityModifier.function = function;
 }
 
-void Particles::setAccelerationInitializer(Vector3 acceleration){
+void ParticleSystem::setAccelerationInitializer(Vector3 acceleration){
     setAccelerationInitializer(acceleration, acceleration);
 }
 
-void Particles::setAccelerationInitializer(Vector3 minAcceleration, Vector3 maxAcceleration){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setAccelerationInitializer(Vector3 minAcceleration, Vector3 maxAcceleration){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.accelerationInitializer.minAcceleration = minAcceleration;
     partAnim.accelerationInitializer.maxAcceleration = maxAcceleration;
 }
 
-void Particles::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration){
+void ParticleSystem::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration){
     setAccelerationModifier(fromTime, toTime, fromAcceleration, toAcceleration, EaseType::LINEAR);
 }
 
-void Particles::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration, EaseType functionType){
+void ParticleSystem::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration, EaseType functionType){
     setAccelerationModifier(fromTime, toTime, fromAcceleration, toAcceleration, Ease(functionType));
 }
 
-void Particles::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setAccelerationModifier(float fromTime, float toTime, Vector3 fromAcceleration, Vector3 toAcceleration, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.accelerationModifier.fromTime = fromTime;
     partAnim.accelerationModifier.toTime = toTime;
@@ -283,27 +283,27 @@ void Particles::setAccelerationModifier(float fromTime, float toTime, Vector3 fr
     partAnim.accelerationModifier.function = function;
 }
 
-void Particles::setColorInitializer(Vector3 color){
+void ParticleSystem::setColorInitializer(Vector3 color){
     setColorInitializer(color, color);
 }
 
-void Particles::setColorInitializer(Vector3 minColor, Vector3 maxColor){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setColorInitializer(Vector3 minColor, Vector3 maxColor){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.colorInitializer.minColor = minColor;
     partAnim.colorInitializer.maxColor = maxColor;
 }
 
-void Particles::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor){
+void ParticleSystem::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor){
     setColorModifier(fromTime, toTime, fromColor, toColor, EaseType::LINEAR);
 }
 
-void Particles::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor, EaseType functionType){
+void ParticleSystem::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor, EaseType functionType){
     setColorModifier(fromTime, toTime, fromColor, toColor, Ease(functionType));
 }
 
-void Particles::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setColorModifier(float fromTime, float toTime, Vector3 fromColor, Vector3 toColor, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.colorModifier.fromTime = fromTime;
     partAnim.colorModifier.toTime = toTime;
@@ -312,8 +312,8 @@ void Particles::setColorModifier(float fromTime, float toTime, Vector3 fromColor
     partAnim.colorModifier.function = function;
 }
 
-void Particles::addColorGradientStop(float time, Vector3 color){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::addColorGradientStop(float time, Vector3 color){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     ParticleColorGradientStop stop;
     stop.time = time;
@@ -322,46 +322,46 @@ void Particles::addColorGradientStop(float time, Vector3 color){
     partAnim.colorGradient.normalize();
 }
 
-void Particles::setColorGradient(std::vector<ParticleColorGradientStop> stops){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setColorGradient(std::vector<ParticleColorGradientStop> stops){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.colorGradient.stops = stops;
     partAnim.colorGradient.normalize();
 }
 
-void Particles::clearColorGradient(){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::clearColorGradient(){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.colorGradient.stops.clear();
 }
 
-void Particles::setColorGradientUseSRGB(bool useSRGB){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setColorGradientUseSRGB(bool useSRGB){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.colorGradient.useSRGB = useSRGB;
 }
 
-void Particles::setAlphaInitializer(float alpha){
+void ParticleSystem::setAlphaInitializer(float alpha){
     setAlphaInitializer(alpha, alpha);
 }
 
-void Particles::setAlphaInitializer(float minAlpha, float maxAlpha){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setAlphaInitializer(float minAlpha, float maxAlpha){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.alphaInitializer.minAlpha = minAlpha;
     partAnim.alphaInitializer.maxAlpha = maxAlpha;
 }
 
-void Particles::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha){
+void ParticleSystem::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha){
     setAlphaModifier(fromTime, toTime, fromAlpha, toAlpha, EaseType::LINEAR);
 }
 
-void Particles::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha, EaseType functionType){
+void ParticleSystem::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha, EaseType functionType){
     setAlphaModifier(fromTime, toTime, fromAlpha, toAlpha, Ease(functionType));
 }
 
-void Particles::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setAlphaModifier(float fromTime, float toTime, float fromAlpha, float toAlpha, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.alphaModifier.fromTime = fromTime;
     partAnim.alphaModifier.toTime = toTime;
@@ -370,27 +370,27 @@ void Particles::setAlphaModifier(float fromTime, float toTime, float fromAlpha, 
     partAnim.alphaModifier.function = function;
 }
 
-void Particles::setSizeInitializer(float size){
+void ParticleSystem::setSizeInitializer(float size){
     setSizeInitializer(size, size);
 }
 
-void Particles::setSizeInitializer(float minSize, float maxSize){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setSizeInitializer(float minSize, float maxSize){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.sizeInitializer.minSize = minSize;
     partAnim.sizeInitializer.maxSize = maxSize;
 }
 
-void Particles::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize){
+void ParticleSystem::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize){
     setSizeModifier(fromTime, toTime, fromSize, toSize, EaseType::LINEAR);
 }
 
-void Particles::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize, EaseType functionType){
+void ParticleSystem::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize, EaseType functionType){
     setSizeModifier(fromTime, toTime, fromSize, toSize, Ease(functionType));
 }
 
-void Particles::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setSizeModifier(float fromTime, float toTime, float fromSize, float toSize, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.sizeModifier.fromTime = fromTime;
     partAnim.sizeModifier.toTime = toTime;
@@ -399,15 +399,15 @@ void Particles::setSizeModifier(float fromTime, float toTime, float fromSize, fl
     partAnim.sizeModifier.function = function;
 }
 
-void Particles::setSpriteIntializer(std::vector<int> frames){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setSpriteIntializer(std::vector<int> frames){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.spriteInitializer.frames = frames;
 }
 
-void Particles::setSpriteIntializer(int minFrame, int maxFrame){
+void ParticleSystem::setSpriteIntializer(int minFrame, int maxFrame){
     if (minFrame <= maxFrame){
-        ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+        ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
         partAnim.spriteInitializer.frames.clear();
         for (int i = minFrame; i <= maxFrame; i++){
             partAnim.spriteInitializer.frames.push_back(i);
@@ -415,16 +415,16 @@ void Particles::setSpriteIntializer(int minFrame, int maxFrame){
     }
 }
 
-void Particles::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames){
+void ParticleSystem::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames){
     setSpriteModifier(fromTime, toTime, frames, EaseType::LINEAR);
 }
 
-void Particles::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames, EaseType functionType){
+void ParticleSystem::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames, EaseType functionType){
     setSpriteModifier(fromTime, toTime, frames, Ease(functionType));
 }
 
-void Particles::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setSpriteModifier(float fromTime, float toTime, std::vector<int> frames, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.spriteModifier.fromTime = fromTime;
     partAnim.spriteModifier.toTime = toTime;
@@ -432,42 +432,42 @@ void Particles::setSpriteModifier(float fromTime, float toTime, std::vector<int>
     partAnim.spriteModifier.function = function;
 }
 
-void Particles::setRotationInitializer(Quaternion rotation){
+void ParticleSystem::setRotationInitializer(Quaternion rotation){
     setRotationInitializer(rotation, rotation);
 }
 
-void Particles::setRotationInitializer(float rotation){
+void ParticleSystem::setRotationInitializer(float rotation){
     setRotationInitializer(rotation, rotation);
 }
 
-void Particles::setRotationInitializer(Quaternion minRotation, Quaternion maxRotation){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setRotationInitializer(Quaternion minRotation, Quaternion maxRotation){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.rotationInitializer.minRotation = minRotation;
     partAnim.rotationInitializer.maxRotation = maxRotation;
 }
 
-void Particles::setRotationInitializer(float minRotation, float maxRotation){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setRotationInitializer(float minRotation, float maxRotation){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.rotationInitializer.minRotation = Quaternion(0, 0, minRotation);
     partAnim.rotationInitializer.maxRotation = Quaternion(0, 0, maxRotation);
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation){
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation){
     setRotationModifier(fromTime, toTime, fromRotation, toRotation, EaseType::LINEAR);
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation){
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation){
     setRotationModifier(fromTime, toTime, fromRotation, toRotation, EaseType::LINEAR);
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation, EaseType functionType){
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation, EaseType functionType){
     setRotationModifier(fromTime, toTime, fromRotation, toRotation, Ease(functionType));
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, float fromRotation, float toRotation, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.rotationModifier.fromTime = fromTime;
     partAnim.rotationModifier.toTime = toTime;
@@ -476,12 +476,12 @@ void Particles::setRotationModifier(float fromTime, float toTime, float fromRota
     partAnim.rotationModifier.function = function;
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation, EaseType functionType){
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation, EaseType functionType){
     setRotationModifier(fromTime, toTime, fromRotation, toRotation, Ease(functionType));
 }
 
-void Particles::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setRotationModifier(float fromTime, float toTime, Quaternion fromRotation, Quaternion toRotation, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.rotationModifier.fromTime = fromTime;
     partAnim.rotationModifier.toTime = toTime;
@@ -490,42 +490,42 @@ void Particles::setRotationModifier(float fromTime, float toTime, Quaternion fro
     partAnim.rotationModifier.function = function;
 }
 
-void Particles::setScaleInitializer(float scale){
+void ParticleSystem::setScaleInitializer(float scale){
     setScaleInitializer(scale, scale);
 }
 
-void Particles::setScaleInitializer(Vector3 scale){
+void ParticleSystem::setScaleInitializer(Vector3 scale){
     setScaleInitializer(scale, scale);
 }
 
-void Particles::setScaleInitializer(float minScale, float maxScale){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setScaleInitializer(float minScale, float maxScale){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.scaleInitializer.minScale = Vector3(minScale, minScale, minScale);
     partAnim.scaleInitializer.maxScale = Vector3(maxScale, maxScale, maxScale);
 }
 
-void Particles::setScaleInitializer(Vector3 minScale, Vector3 maxScale){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setScaleInitializer(Vector3 minScale, Vector3 maxScale){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.scaleInitializer.minScale = minScale;
     partAnim.scaleInitializer.maxScale = maxScale;
 }
 
-void Particles::setScaleModifier(float fromTime, float toTime, float fromScale, float toScale){
+void ParticleSystem::setScaleModifier(float fromTime, float toTime, float fromScale, float toScale){
     setScaleModifier(fromTime, toTime, Vector3(fromScale, fromScale, fromScale), Vector3(toScale, toScale, toScale), EaseType::LINEAR);
 }
 
-void Particles::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale){
+void ParticleSystem::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale){
     setScaleModifier(fromTime, toTime, fromScale, toScale, EaseType::LINEAR);
 }
 
-void Particles::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale, EaseType functionType){
+void ParticleSystem::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale, EaseType functionType){
     setScaleModifier(fromTime, toTime, fromScale, toScale, Ease(functionType));
 }
 
-void Particles::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale, Ease function){
-    ParticlesComponent& partAnim = getComponent<ParticlesComponent>();
+void ParticleSystem::setScaleModifier(float fromTime, float toTime, Vector3 fromScale, Vector3 toScale, Ease function){
+    ParticleSystemComponent& partAnim = getComponent<ParticleSystemComponent>();
 
     partAnim.scaleModifier.fromTime = fromTime;
     partAnim.scaleModifier.toTime = toTime;
@@ -534,10 +534,10 @@ void Particles::setScaleModifier(float fromTime, float toTime, Vector3 fromScale
     partAnim.scaleModifier.function = function;
 }
 
-void Particles::setEnabled(bool enabled){
-    getComponent<ParticlesComponent>().enabled = enabled;
+void ParticleSystem::setEnabled(bool enabled){
+    getComponent<ParticleSystemComponent>().enabled = enabled;
 }
 
-bool Particles::isEnabled() const{
-    return getComponent<ParticlesComponent>().enabled;
+bool ParticleSystem::isEnabled() const{
+    return getComponent<ParticleSystemComponent>().enabled;
 }

@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef BODY2D_COMPONENT_H
-#define BODY2D_COMPONENT_H
+#ifndef RIGIDBODY2D_COMPONENT_H
+#define RIGIDBODY2D_COMPONENT_H
 
 #include "Engine.h"
 #include "math/Vector2.h"
@@ -13,7 +13,7 @@
 
 namespace jasperengine{
 
-    enum class Shape2DType{
+    enum class Collider2DType{
         POLYGON,
         CIRCLE,
         CAPSULE,
@@ -21,24 +21,24 @@ namespace jasperengine{
         CHAIN // chain is a different type in Box2D 3.x
     };
 
-    struct JASPERENGINE_API Shape2D{
+    struct JASPERENGINE_API Collider2D{
 #ifdef JASPERENGINE_PHYSICS_2D
         b2ShapeId shape = b2_nullShapeId;
         b2ChainId chain = b2_nullChainId;
 #endif
 
-        Shape2DType type = Shape2DType::POLYGON;
+        Collider2DType type = Collider2DType::POLYGON;
 
         Vector2 pointA = Vector2::ZERO;
         Vector2 pointB = Vector2::ZERO;
         float radius = 0.0f;
 
-        HybridArray<Vector2, MAX_SHAPE_POINTS_2D> vertices;
+        HybridArray<Vector2, MAX_COLLIDER_POINTS_2D> vertices;
         uint8_t numVertices = 0;
         bool loop = false;
 
         // mass = area * density, in metres after pointsToMeterScale2D.
-        // Shape3D::density is volume-based and defaults to 1000.
+        // Collider3D::density is volume-based and defaults to 1000.
         float density = 1.0f;
         float friction = 0.6f;
         float restitution = 0.0f;
@@ -56,7 +56,7 @@ namespace jasperengine{
         int16_t groupIndex = 0;
     };
 
-    struct Body2DComponent{
+    struct Rigidbody2DComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
@@ -64,11 +64,11 @@ namespace jasperengine{
         b2BodyId body = b2_nullBodyId;
 #endif
 
-        HybridArray<Shape2D, MAX_SHAPES_2D> shapes;
-        size_t numShapes = 0;
+        HybridArray<Collider2D, MAX_COLLIDERS_2D> colliders;
+        size_t numColliders = 0;
 
         bool needReloadBody = true;
-        bool needUpdateShapes = true;
+        bool needUpdateColliders = true;
 
         BodyType type = BodyType::STATIC;
         bool newBody = true;
@@ -77,4 +77,4 @@ namespace jasperengine{
 
 }
 
-#endif //BODY2D_COMPONENT_H
+#endif //RIGIDBODY2D_COMPONENT_H

@@ -916,9 +916,9 @@ void appendMarkdownParagraphs(const std::string& content, ImU32 textColor, ImU32
 
 } // namespace
 
-AiChatWindow::AiChatWindow(Project* project, ResourcesWindow* resourcesWindow)
+AiChatWindow::AiChatWindow(Project* project, ProjectWindow* projectWindow)
     : project(project)
-    , resourcesWindow(resourcesWindow)
+    , projectWindow(projectWindow)
     , conversationStore(project) {
     service.setSettings(AppSettings::getAiSettings());
     prefetchModels();
@@ -1310,7 +1310,7 @@ void AiChatWindow::drawTranscript(float height) {
     }
 
     // Tighten transcript line spacing only; keep default ItemSpacing for the
-    // right-click menu (same pattern as OutputWindow).
+    // right-click menu (same pattern as ConsoleWindow).
     const ImGuiStyle& style = ImGui::GetStyle();
     const float transcriptLineSpacing = std::max(2.0f, style.ItemSpacing.y * 0.4f);
     transcript.draw("##AiTranscript", ImVec2(0, height), paragraphs, scrollToBottom,
@@ -1812,7 +1812,7 @@ void AiChatWindow::collectMentionCandidates(std::vector<MentionItem>& out) const
                 Util::isLuaFile(pathStr) || Util::isImageFile(pathStr) ||
                 Util::isMaterialFile(pathStr) || Util::isModelFile(pathStr) ||
                 Util::isShaderFile(pathStr) || Util::isAudioFile(pathStr) ||
-                Util::isFontFile(pathStr) || Util::isBundleFile(pathStr);
+                Util::isFontFile(pathStr) || Util::isPrefabFile(pathStr);
             if (!useful) {
                 continue;
             }
@@ -2708,7 +2708,7 @@ void AiChatWindow::submitMessage() {
 }
 
 void AiChatWindow::executeProposal(uint64_t proposalId) {
-    ai::EditorActionExecutor executor(project, resourcesWindow, &service.getHttpClient());
+    ai::EditorActionExecutor executor(project, projectWindow, &service.getHttpClient());
     service.executeProposal(proposalId, executor);
     scrollToBottom = true;
 }

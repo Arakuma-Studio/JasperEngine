@@ -45,11 +45,11 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
 
     this->zoom = 1.0f;
 
-    selLines = new Lines(scene);
+    selLines = new LineRenderer(scene);
     selLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     selLines->setVisible(false);
 
-    terrainBrushLines = new Lines(scene);
+    terrainBrushLines = new LineRenderer(scene);
     terrainBrushLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     terrainBrushLines->setVisible(false);
 
@@ -79,10 +79,10 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
             return mesh.worldAABB;
         }
     }else if (signature.test(scene->getComponentId<UIComponent>())){
-        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){
-            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
                 AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                 if (local){
                     return aabb;
@@ -102,10 +102,10 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
         }else{
             return ui.worldAABB;
         }
-    }else if (signature.test(scene->getComponentId<UILayoutComponent>())){
-        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+    }else if (signature.test(scene->getComponentId<RectTransformComponent>())){
+        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
         if (layout.width > 0 && layout.height > 0){
-            Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+            Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
             AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
             if (local){
                 return aabb;
@@ -120,7 +120,7 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
     }else if ((signature.test(scene->getComponentId<CameraComponent>()) ||
                signature.test(scene->getComponentId<LightComponent>()) ||
                signature.test(scene->getComponentId<Light2DComponent>()) ||
-               signature.test(scene->getComponentId<SoundComponent>())) && signature.test(scene->getComponentId<Transform>())){
+               signature.test(scene->getComponentId<AudioSourceComponent>())) && signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
         float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
@@ -133,14 +133,14 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
         }else{
             return transform.modelMatrix * aabb;
         }
-    }else if (signature.test(scene->getComponentId<Occluder2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
-        Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+    }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
+        ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
         Transform& transform = scene->getComponent<Transform>(entity);
 
         // hug the polygon points; the entity origin is only the fallback when
         // there is nothing else to bound
         AABB aabb(Vector3(0, 0, -1), Vector3(0, 0, 1));
-        if (occluder.shape == Occluder2DShape::POLYGON && occluder.points.size() > 0){
+        if (occluder.shape == ShadowCaster2DShape::POLYGON && occluder.points.size() > 0){
             aabb.setNull();
             for (const Vector2& point : occluder.points){
                 aabb.merge(Vector3(point.x, point.y, 0.0f));
@@ -155,7 +155,7 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
         }else{
             return transform.modelMatrix * aabb;
         }
-    }else if ((signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LinesComponent>())) && signature.test(scene->getComponentId<Transform>())){
+    }else if ((signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())) && signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         AABB aabb(Vector3::ZERO, Vector3::ZERO);
 
@@ -168,8 +168,8 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
             }
         }
 
-        if (signature.test(scene->getComponentId<LinesComponent>())){
-            LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+        if (signature.test(scene->getComponentId<LineRendererComponent>())){
+            LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
             for (const LineData& line : lines.lines){
                 aabb.merge(line.pointA);
                 aabb.merge(line.pointB);
@@ -299,10 +299,10 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                               : modelMatrix * meshAABB.getOBB();
             }
         }else if (signature.test(scene->getComponentId<UIComponent>())){
-            if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){
-                UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+            if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
+                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
                 if (layout.width > 0 && layout.height > 0){
-                    Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+                    Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
                     AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                     if (local){
                         return aabb.getOBB();
@@ -320,10 +320,10 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, ui.aabb)
                               : modelMatrix * ui.aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<UILayoutComponent>())){
-            UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+        }else if (signature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getUILayoutCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
                 AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                 if (local){
                     return aabb.getOBB();
@@ -335,7 +335,7 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
         }else if (signature.test(scene->getComponentId<CameraComponent>()) ||
                    signature.test(scene->getComponentId<LightComponent>()) ||
                    signature.test(scene->getComponentId<Light2DComponent>()) ||
-                   signature.test(scene->getComponentId<SoundComponent>())){
+                   signature.test(scene->getComponentId<AudioSourceComponent>())){
             CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
             float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
             AABB aabb = (sceneCamera.type == CameraType::CAMERA_ORTHO)
@@ -347,13 +347,13 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, aabb)
                               : modelMatrix * aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){
-            Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+        }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
+            ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
 
             // hug the polygon points; the entity origin is only the fallback when
             // there is nothing else to bound
             AABB aabb(Vector3(0, 0, -1), Vector3(0, 0, 1));
-            if (occluder.shape == Occluder2DShape::POLYGON && occluder.points.size() > 0){
+            if (occluder.shape == ShadowCaster2DShape::POLYGON && occluder.points.size() > 0){
                 aabb.setNull();
                 for (const Vector2& point : occluder.points){
                     aabb.merge(Vector3(point.x, point.y, 0.0f));
@@ -369,7 +369,7 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, aabb)
                           : modelMatrix * aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LinesComponent>())){
+        }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())){
             AABB aabb(Vector3::ZERO, Vector3::ZERO);
 
             if (signature.test(scene->getComponentId<PointsComponent>())){
@@ -381,8 +381,8 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 }
             }
 
-            if (signature.test(scene->getComponentId<LinesComponent>())){
-                LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+            if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
                 for (const LineData& line : lines.lines){
                     aabb.merge(line.pointA);
                     aabb.merge(line.pointB);
@@ -613,7 +613,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
             if (selEntities.size() == 1){
                 Entity entity = selEntities[0];
-                if (UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity)){
+                if (RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity)){
                     if (layout->usingAnchors){
                         showAnchorGizmo = true;
                     }
@@ -660,11 +660,11 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             Signature signature = scene->getSignature(selEntities[0]);
             bool isCamera = signature.test(scene->getComponentId<CameraComponent>());
             bool isInstancedMesh = signature.test(scene->getComponentId<InstancedMeshComponent>());
-            bool canResize2D = signature.test(scene->getComponentId<UILayoutComponent>())
+            bool canResize2D = signature.test(scene->getComponentId<RectTransformComponent>())
                 || signature.test(scene->getComponentId<SpriteComponent>())
                 || (signature.test(scene->getComponentId<TilemapComponent>()) && selectedTileIndex >= 0);
 
-            showCross = signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LinesComponent>());
+            showCross = signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>());
 
             // a selected occluder / polygon / track point is a size-less target: show the move cross
             if (selectedOccluderPointIndex >= 0 && selEntities[0] == selectedOccluderPointEntity){
@@ -910,8 +910,8 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
                 objectSizeOffset[entity] = Vector2(tilemap.width, tilemap.height);
             }
-            if (signature.test(scene->getComponentId<UILayoutComponent>())){
-                UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+            if (signature.test(scene->getComponentId<RectTransformComponent>())){
+                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
                 objectSizeOffset[entity] = Vector2(layout.width, layout.height);
             }
         }
@@ -1244,7 +1244,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
                         // move the selected line endpoint instead of the entity (the
                         // gizmo sits on the point, so newPos is its new world position)
-                        LinesComponent* linesComp = scene->findComponent<LinesComponent>(entity);
+                        LineRendererComponent* linesComp = scene->findComponent<LineRendererComponent>(entity);
                         Transform* lineTransform = scene->findComponent<Transform>(entity);
                         int lineIndex = selectedLinePointIndex / 2;
                         if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()){
@@ -1253,7 +1253,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
                             lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
-                                ComponentType::LinesComponent, pointProp, newLocalPos);
+                                ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else if (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity){
                         // move the selected polygon vertex instead of the entity
@@ -1334,7 +1334,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 if (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
                     // Handle occluder polygon point sub-selection drag
                     if (selectedOccluderPointIndex >= 0 && entity == selectedOccluderPointEntity){
-                        Occluder2DComponent* occluder = scene->findComponent<Occluder2DComponent>(entity);
+                        ShadowCaster2DComponent* occluder = scene->findComponent<ShadowCaster2DComponent>(entity);
                         Transform* occTransform = scene->findComponent<Transform>(entity);
                         if (occluder && occTransform && selectedOccluderPointIndex < (int)occluder->points.size()
                             && toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
@@ -1356,12 +1356,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             newPoints[selectedOccluderPointIndex] = Vector2(newLocalPos.x, newLocalPos.y);
 
                             lastCommand = new PropertyCmd<std::vector<Vector2>>(project, sceneProject->id, entity,
-                                ComponentType::Occluder2DComponent, "points", newPoints);
+                                ComponentType::ShadowCaster2DComponent, "points", newPoints);
                         }
                     }else
                     // Handle line endpoint sub-selection drag
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
-                        LinesComponent* linesComp = scene->findComponent<LinesComponent>(entity);
+                        LineRendererComponent* linesComp = scene->findComponent<LineRendererComponent>(entity);
                         Transform* lineTransform = scene->findComponent<Transform>(entity);
                         int lineIndex = selectedLinePointIndex / 2;
                         if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()
@@ -1387,7 +1387,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
                             lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
-                                ComponentType::LinesComponent, pointProp, newLocalPos);
+                                ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else
                     // Handle polygon/mesh-polygon vertex sub-selection drag
@@ -1602,7 +1602,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     // Original entity-level OBJECT2D handling
                     bool isSprite = scene->getComponentArray<SpriteComponent>()->hasEntity(entity);
                     bool isTilemap = scene->getComponentArray<TilemapComponent>()->hasEntity(entity);
-                    bool isLayout = scene->getComponentArray<UILayoutComponent>()->hasEntity(entity);
+                    bool isLayout = scene->getComponentArray<RectTransformComponent>()->hasEntity(entity);
                     bool isText = scene->getComponentArray<TextComponent>()->hasEntity(entity);
 
                     Gizmo2DSideSelected side = toolslayer.getGizmo2DSideSelected();
@@ -1685,7 +1685,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                     if (isLayout){
                         // the matrix origin of a pivoted UI element is not its position
-                        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+                        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
                         pos -= getUIPivotShift(layout.pivot, size, transform->rotation, transform->scale);
                     }
 
@@ -1705,8 +1705,8 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (side != Gizmo2DSideSelected::NONE){
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         if (isLayout){
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::UILayoutComponent, "width", static_cast<unsigned int>(size.x));
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::UILayoutComponent, "height", static_cast<unsigned int>(size.y));
+                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::RectTransformComponent, "width", static_cast<unsigned int>(size.x));
+                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::RectTransformComponent, "height", static_cast<unsigned int>(size.y));
                             if (isText){
                                 if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::PX || 
                                     side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY || 
@@ -1951,13 +1951,13 @@ void editor::SceneRender::clearOccluderPointSelection(){
 // Returns the polygon point under the mouse (-1 when none). Only POLYGON
 // occluders have editable points.
 int editor::SceneRender::hitTestOccluderPoint(Entity entity, float x, float y){
-    if (!scene->getComponentArray<Occluder2DComponent>()->hasEntity(entity)) return -1;
+    if (!scene->getComponentArray<ShadowCaster2DComponent>()->hasEntity(entity)) return -1;
     if (!scene->getComponentArray<Transform>()->hasEntity(entity)) return -1;
 
-    Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+    ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
-    if (occluder.shape != Occluder2DShape::POLYGON) return -1;
+    if (occluder.shape != ShadowCaster2DShape::POLYGON) return -1;
 
     Ray ray = camera->screenToRay(x, y);
     RayReturn rr = ray.intersects(Plane(Vector3(0, 0, 1), transform.worldPosition));
@@ -1980,13 +1980,13 @@ int editor::SceneRender::hitTestOccluderPoint(Entity entity, float x, float y){
 }
 
 OBB editor::SceneRender::getOccluderPointOBB(Entity entity, int pointIndex){
-    if (!scene->getComponentArray<Occluder2DComponent>()->hasEntity(entity)) return OBB();
+    if (!scene->getComponentArray<ShadowCaster2DComponent>()->hasEntity(entity)) return OBB();
     if (!scene->getComponentArray<Transform>()->hasEntity(entity)) return OBB();
 
-    Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
+    ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
-    if (occluder.shape != Occluder2DShape::POLYGON) return OBB();
+    if (occluder.shape != ShadowCaster2DShape::POLYGON) return OBB();
     if (pointIndex < 0 || pointIndex >= (int)occluder.points.size()) return OBB();
 
     Vector3 worldPoint = transform.modelMatrix * Vector3(occluder.points[pointIndex].x, occluder.points[pointIndex].y, 0.0f);
@@ -2012,10 +2012,10 @@ float editor::SceneRender::getPointHandleHalfSize(const Vector3& worldPoint){
 // Returns the line endpoint under the mouse (-1 when none), flattened as
 // lineIndex * 2 + endpoint (0 = pointA, 1 = pointB).
 int editor::SceneRender::hitTestLinePoint(Entity entity, float x, float y){
-    if (!scene->getComponentArray<LinesComponent>()->hasEntity(entity)) return -1;
+    if (!scene->getComponentArray<LineRendererComponent>()->hasEntity(entity)) return -1;
     if (!scene->getComponentArray<Transform>()->hasEntity(entity)) return -1;
 
-    LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+    LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
     Ray ray = camera->screenToRay(x, y);
@@ -2043,10 +2043,10 @@ int editor::SceneRender::hitTestLinePoint(Entity entity, float x, float y){
 }
 
 OBB editor::SceneRender::getLinePointOBB(Entity entity, int pointIndex){
-    if (!scene->getComponentArray<LinesComponent>()->hasEntity(entity)) return OBB();
+    if (!scene->getComponentArray<LineRendererComponent>()->hasEntity(entity)) return OBB();
     if (!scene->getComponentArray<Transform>()->hasEntity(entity)) return OBB();
 
-    LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
+    LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
 
     int lineIndex = pointIndex / 2;
@@ -2396,7 +2396,7 @@ void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraCom
     drawCameraFrustumLines(co.lines, cameraComponent, isMainCamera, fixedSizeFrustum);
 }
 
-void editor::SceneRender::drawCameraFrustumLines(Lines* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum){
+void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum){
     lines->clearLines();
 
     if (cameraComponent.type == CameraType::CAMERA_UI){

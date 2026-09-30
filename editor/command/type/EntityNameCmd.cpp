@@ -22,8 +22,8 @@ bool editor::EntityNameCmd::execute(){
     oldName = sceneProject->scene->getEntityName(entity);
     wasModified = project->getScene(sceneId)->isModified;
 
-    if (project->isEntityInBundle(sceneId, entity)){
-        project->bundleNameChanged(sceneId, entity, newName, false);
+    if (project->isEntityInPrefab(sceneId, entity)){
+        project->prefabNameChanged(sceneId, entity, newName, false);
     }
     sceneProject->scene->setEntityName(entity, newName);
 
@@ -38,8 +38,8 @@ void editor::EntityNameCmd::undo(){
         return;
     }
 
-    if (project->isEntityInBundle(sceneId, entity)){
-        project->bundleNameChanged(sceneId, entity, oldName, false);
+    if (project->isEntityInPrefab(sceneId, entity)){
+        project->prefabNameChanged(sceneId, entity, oldName, false);
     }
     sceneProject->scene->setEntityName(entity, oldName);
 
