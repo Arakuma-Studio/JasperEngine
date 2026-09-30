@@ -8749,7 +8749,7 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
 
 void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings normalSettings;
-    normalSettings.help = "Reflecting surface normal in local space (the mirror plane is this normal at the entity's position). Flip its sign if the reflection clips the wrong side. The reflection camera is created automatically.";
+    normalSettings.help = "Reflecting surface normal in local space (the mirror plane is this normal at the GameObject's position). Flip its sign if the reflection clips the wrong side. The reflection camera is created automatically.";
 
     beginTable(cpType, getLabelSize("Normal"));
     propertyRow(RowPropertyType::Direction, cpType, "normal", "Normal", sceneProject, entities, normalSettings);
@@ -8768,7 +8768,7 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
     RowSettings floatSettings;
     floatSettings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings boxOffsetSettings;
-    boxOffsetSettings.help = "Moves the influence box in local space; the cubemap is still captured at the entity origin. Large offsets can increase box-projection distortion near the volume edges.";
+    boxOffsetSettings.help = "Moves the influence box in local space; the cubemap is still captured at the GameObject's origin. Large offsets can increase box-projection distortion near the volume edges.";
     RowSettings blendSettings = floatSettings;
     blendSettings.help = "Runtime blending is limited to the influence box's smallest world-space half-extent. The authored value is preserved so later box or scale changes can restore it.";
 

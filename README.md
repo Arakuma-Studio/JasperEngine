@@ -8,23 +8,26 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 
 **Editor**
 
-- Build 2D and 3D scenes with sprites, tilemaps, models, cameras, lights, and reusable entities
-- Edit component properties, project resources, animations, bones, and terrain without leaving the editor
+- A Unity-style editor: Hierarchy, Inspector, Project, Console, and separate Scene and Game views, with Unity's menus, toolbar, and shortcuts
+- Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
+- Edit components, assets, animations, bones, and terrain without leaving the editor
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
-- Run the game in play mode, then export it as a standalone CMake project, a desktop binary, or a web build
+- Play the game in the Game view, then build it from Build Settings as a standalone CMake project, a desktop binary, or a web build
 
 **Engine**
 
 - Shared ECS runtime for 2D and 3D scenes, with scene layers and serialization
-- Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and occluder shadows
+- Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
 - GLTF and OBJ models with skeletal animation, morph targets, and mesh instancing
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
-- Keyframe tracks, runtime actions with easing, crossfade blending, and sprite-sheet animation
+- Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
-- UI toolkit with anchors, containers, text, images, buttons, scrollbars, and other widgets
-- Box2D and Jolt Physics for 2D/3D bodies, shapes, and joints
+- UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
+- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints
 - Spatial 3D audio and multithreaded asynchronous resource loading
+
+Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
 
 ## Platform support
 

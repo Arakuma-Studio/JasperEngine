@@ -204,7 +204,7 @@ bool editor::Generator::resolveDefaultKit(std::string& cCompiler, std::string& c
         }
         return true;
     }
-    Out::error("No compatible C++ build toolchain was found for this editor. Select an available compiler in Editor Settings > Desktop.");
+    Out::error("No compatible C++ build toolchain was found for this editor. Select an available compiler in Preferences > External Tools.");
     return false;
 }
 
@@ -323,7 +323,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     if (generator.empty() && (!cCompiler.empty() || !cxxCompiler.empty())) {
         const char* envGenerator = std::getenv("CMAKE_GENERATOR");
         if (!envGenerator || !*envGenerator) {
-            Out::error("The selected compiler '%s' cannot be used with the default Visual Studio generator. Install Ninja (https://ninja-build.org), add it to PATH and re-select the compiler in Editor Settings, or switch to the MSVC compiler.",
+            Out::error("The selected compiler '%s' cannot be used with the default Visual Studio generator. Install Ninja (https://ninja-build.org), add it to PATH and re-select the compiler in Preferences > External Tools, or switch to the MSVC compiler.",
                 (!cxxCompiler.empty() ? cxxCompiler : cCompiler).c_str());
             return false;
         }
@@ -799,11 +799,11 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
     cmakeContent += "        message(FATAL_ERROR \"This JasperEngine Editor requires MinGW/GNU C++ plugins. Use the same MinGW toolchain that built the editor and engine.\")\n";
 #else
     cmakeContent += "    if(NOT WIN32 OR NOT (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL \"MSVC\"))\n";
-    cmakeContent += "        message(FATAL_ERROR \"This JasperEngine Editor requires MSVC-compatible C++ plugins. MSYS2/MinGW GCC cannot link its engine library. Select an MSVC-compatible compiler in Editor Settings > Desktop, or rebuild the editor and engine with your MinGW toolchain.\")\n";
+    cmakeContent += "        message(FATAL_ERROR \"This JasperEngine Editor requires MSVC-compatible C++ plugins. MSYS2/MinGW GCC cannot link its engine library. Select an MSVC-compatible compiler in Preferences > External Tools, or rebuild the editor and engine with your MinGW toolchain.\")\n";
 #endif
     cmakeContent += "    endif()\n";
     cmakeContent += "    if(NOT CMAKE_SIZEOF_VOID_P EQUAL " + std::to_string(sizeof(void*)) + ")\n";
-    cmakeContent += "        message(FATAL_ERROR \"C++ plugins must match this JasperEngine Editor's " + std::to_string(sizeof(void*) * 8) + "-bit architecture. Select a matching compiler in Editor Settings > Desktop.\")\n";
+    cmakeContent += "        message(FATAL_ERROR \"C++ plugins must match this JasperEngine Editor's " + std::to_string(sizeof(void*) * 8) + "-bit architecture. Select a matching compiler in Preferences > External Tools.\")\n";
     cmakeContent += "    endif()\n";
     cmakeContent += "endif()\n\n";
 #endif
@@ -1961,14 +1961,14 @@ std::string editor::Generator::checkBuildTools(bool requireEditorCompatibility, 
 
     const CMakeInfo cmakeInfo = detectCMake();
     if (!cmakeInfo.error.empty()) {
-        missing += "- CMake: " + cmakeInfo.error + ". Choose it again in Editor Settings > Desktop.\n";
+        missing += "- CMake: " + cmakeInfo.error + ". Choose it again in Preferences > External Tools.\n";
     } else if (!cmakeInfo.found) {
 #ifdef _WIN32
         missing += "- CMake: not found. Download from https://cmake.org/download/ and ensure it is added to PATH during installation.\n";
 #elif defined(__APPLE__)
-        missing += "- CMake: not found. Install with: brew install cmake, or choose an existing install in Editor Settings > Desktop.\n";
+        missing += "- CMake: not found. Install with: brew install cmake, or choose an existing install in Preferences > External Tools.\n";
 #else
-        missing += "- CMake: not found. Install with: sudo apt install cmake (Debian/Ubuntu) or sudo dnf install cmake (Fedora), or choose an existing install in Editor Settings > Desktop.\n";
+        missing += "- CMake: not found. Install with: sudo apt install cmake (Debian/Ubuntu) or sudo dnf install cmake (Fedora), or choose an existing install in Preferences > External Tools.\n";
 #endif
     }
 
@@ -1983,7 +1983,7 @@ std::string editor::Generator::checkBuildTools(bool requireEditorCompatibility, 
             Out::info("Default compiler resolved to: %s", chosen->displayName.c_str());
         }
         if (!hasCompiler) {
-            missing += "- C++ toolchain compatible with this editor: not found. Select an available compiler in Editor Settings > Desktop.\n";
+            missing += "- C++ toolchain compatible with this editor: not found. Select an available compiler in Preferences > External Tools.\n";
             for (const auto& kit : kits) {
                 missing += "  " + kit.displayName + ": " + kit.unavailableReason + "\n";
             }

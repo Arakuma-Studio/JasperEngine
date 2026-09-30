@@ -457,27 +457,27 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
     using T = EntityCreationType;
     // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, shortcut
     static const std::vector<CreateMenuEntry> entries = {
-        {nullptr, "Create Empty", ICON_FA_CUBE, T::OBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
+        {nullptr, "Create Empty", ICON_FA_CUBE, T::GAMEOBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
         {nullptr, "Create Empty (No Transform)", ICON_FA_CIRCLE_DOT, T::EMPTY, "GameObject", CREATE_IN_ALL, false, true},
 
-        {"3D GameObject", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
-        {"3D GameObject", "Sphere", ICON_FA_CIRCLE, T::SPHERE, "Sphere", CREATE_IN_3D},
-        {"3D GameObject", "Capsule", ICON_FA_CAPSULES, T::CAPSULE, "Capsule", CREATE_IN_3D},
-        {"3D GameObject", "Cylinder", ICON_FA_DATABASE, T::CYLINDER, "Cylinder", CREATE_IN_3D},
-        {"3D GameObject", "Plane", ICON_FA_SQUARE, T::PLANE, "Plane", CREATE_IN_3D},
-        {"3D GameObject", "Quad", ICON_FA_SQUARE_FULL, T::WALL, "Quad", CREATE_IN_3D},
-        {"3D GameObject", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
-        {"3D GameObject", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
-        {"3D GameObject", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
-        {"3D GameObject", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+        {"3D Object", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
+        {"3D Object", "Sphere", ICON_FA_CIRCLE, T::SPHERE, "Sphere", CREATE_IN_3D},
+        {"3D Object", "Capsule", ICON_FA_CAPSULES, T::CAPSULE, "Capsule", CREATE_IN_3D},
+        {"3D Object", "Cylinder", ICON_FA_DATABASE, T::CYLINDER, "Cylinder", CREATE_IN_3D},
+        {"3D Object", "Plane", ICON_FA_SQUARE, T::PLANE, "Plane", CREATE_IN_3D},
+        {"3D Object", "Quad", ICON_FA_SQUARE_FULL, T::WALL, "Quad", CREATE_IN_3D},
+        {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
+        {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
+        {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
 
-        {"2D GameObject", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
-        {"2D GameObject", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
-        {"2D GameObject", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
-        {"2D GameObject", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
+        {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
+        {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
+        {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
+        {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
 
-        {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLES, "Particle System", CREATE_IN_WORLD},
-        {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINES, "Line", CREATE_IN_WORLD},
+        {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
+        {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
@@ -486,8 +486,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Light", "Light 2D", ICON_FA_LIGHTBULB, T::POINT_LIGHT_2D, "Light 2D", CREATE_IN_2D},
         {"Light", "Reflection Probe", ICON_FA_BULLSEYE, T::REFLECTION_PROBE, "Reflection Probe", CREATE_IN_3D, true},
 
-        {"Audio", "Audio Source", ICON_FA_FILE_AUDIO, T::SOUND, "Audio Source", CREATE_IN_ALL},
-        {"Audio", "Audio Source 3D", ICON_FA_VOLUME_HIGH, T::SOUND_3D, "Audio Source 3D", CREATE_IN_WORLD},
+        {"Audio", "Audio Source", ICON_FA_FILE_AUDIO, T::AUDIO_SOURCE, "Audio Source", CREATE_IN_ALL},
+        {"Audio", "Audio Source 3D", ICON_FA_VOLUME_HIGH, T::AUDIO_SOURCE_3D, "Audio Source 3D", CREATE_IN_WORLD},
 
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
@@ -497,14 +497,14 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
-        {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::CONTAINER, "Layout Group", CREATE_IN_ALL, true},
+        {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::LAYOUT_GROUP, "Layout Group", CREATE_IN_ALL, true},
 
         {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY, "Rigidbody", CREATE_IN_3D},
         {"Physics", "Joint", ICON_FA_LINK, T::JOINT3D, "Joint", CREATE_IN_3D},
         {"Physics", "Rigidbody 2D", ICON_FA_WEIGHT_HANGING, T::RIGIDBODY2D, "Rigidbody 2D", CREATE_IN_2D, true},
         {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
 
-        {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKY, "Skybox", CREATE_IN_3D},
+        {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKYBOX, "Skybox", CREATE_IN_3D},
         {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
 
         {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_TWEEN, "Position Tween", CREATE_IN_ALL},
@@ -569,8 +569,8 @@ Entity editor::HierarchyWindow::getSelectedParentForCreate() const{
 
 static const char* createSubmenuIcon(const char* submenu){
     const std::string name = submenu;
-    if (name == "3D GameObject") return ICON_FA_CUBE;
-    if (name == "2D GameObject") return ICON_FA_IMAGE;
+    if (name == "3D Object") return ICON_FA_CUBE;
+    if (name == "2D Object") return ICON_FA_IMAGE;
     if (name == "Effects") return ICON_FA_FIRE;
     if (name == "Light") return ICON_FA_LIGHTBULB;
     if (name == "Audio") return ICON_FA_VOLUME_HIGH;

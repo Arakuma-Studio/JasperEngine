@@ -61,7 +61,7 @@ namespace jasperengine::editor{
     // the Hierarchy "+" dropdown and the Hierarchy right-click Create items are all
     // built from this single table, so they cannot drift apart.
     struct CreateMenuEntry {
-        const char* submenu;            // nullptr = top level, otherwise "3D GameObject", "Light", ...
+        const char* submenu;            // nullptr = top level, otherwise "3D Object", "Light", ...
         const char* label;
         const char* icon;
         EntityCreationType type;

@@ -16,8 +16,19 @@ Projects made before the rename are migrated once with
 | Inspector window | Properties window |
 | Project window | Resources window |
 | Console window | Output window |
+| Game view (Window > General > Game) | none: play ran inside the scene tab |
+| Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
+| GameObject | Entity / Object |
+| Create Empty / Create Empty (No Transform) | Empty object / Empty entity |
+| Active, Tag, Layer, component Enabled checkbox | none (new) |
 | Prefab | Entity bundle (`.bundle` file) |
-| Prefabs window (Project > Prefabs) | Bundles window (Project > Bundles) |
+| Assets > Prefabs... | Project > Bundles... |
+| Assets > Scenes in Build... | Project > Manage Scenes... |
+| File > Build Settings... | File > Export Project... |
+| Edit > Preferences... | Edit > Editor Settings... |
+| Edit > Project Settings... | Project > Project Settings... |
+| Window menu | View menu |
+| GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
 
 ## Scripting API (Lua and C++)
 

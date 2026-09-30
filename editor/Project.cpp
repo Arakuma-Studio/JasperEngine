@@ -2794,7 +2794,7 @@ uint32_t editor::Project::createNewSceneInternal(std::string sceneName, SceneTyp
         data.scene->setGlobalIllumination(0.2);
         data.scene->setBackgroundColor(Vector4(0.25, 0.45, 0.65, 1.0));
 
-        CreateEntityCmd sunCreator(this, data.id, "Sun", EntityCreationType::DIRECTIONAL_LIGHT);
+        CreateEntityCmd sunCreator(this, data.id, "Directional Light", EntityCreationType::DIRECTIONAL_LIGHT);
         sunCreator.addProperty<Vector3>(ComponentType::Transform, "position", Vector3(0.0f, 10.0f, 0.0f));
         sunCreator.addProperty<float>(ComponentType::LightComponent, "intensity", 4.0f);
         sunCreator.addProperty<Vector3>(ComponentType::LightComponent, "direction", Vector3(-0.2f, -0.5f, 0.3f));
@@ -2802,7 +2802,7 @@ uint32_t editor::Project::createNewSceneInternal(std::string sceneName, SceneTyp
         sunCreator.addProperty<float>(ComponentType::LightComponent, "range", 100);
         sunCreator.execute();
 
-        CreateEntityCmd skyCreator(this, data.id, "Sky", EntityCreationType::SKYBOX);
+        CreateEntityCmd skyCreator(this, data.id, "Skybox", EntityCreationType::SKYBOX);
         Texture defaultSky;
         ProjectUtils::setDefaultSkyTexture(defaultSky);
         skyCreator.addProperty<Texture>(ComponentType::SkyboxComponent, "texture", defaultSky);

@@ -493,7 +493,8 @@ add(
 # Classes named with generic words: code only, so the English words in comments
 # and UI strings stay.
 add(
-    Rule("Object", B + r"(?<!JPH::)(?<!/)Object" + E + r"(?!/)(?! ids)(?! files)(?! form)(?! code)",
+    # "2D Object"/"3D Object" are Unity's own GameObject menu names
+    Rule("Object", B + r"(?<!JPH::)(?<!/)(?<!2D )(?<!3D )Object" + E + r"(?!/)(?! ids)(?! files)(?! form)(?! code)",
          "GameObject", "CMS"),
     Rule("Shape", B + r"(?<!JPH::)(?<!/)Shape" + E + r"(?!/)(?!::Release)", "Primitive", "CM"),
     Rule("Sound", B + r"(?<!ResourceType::)Sound" + E, "AudioSource", "C",
