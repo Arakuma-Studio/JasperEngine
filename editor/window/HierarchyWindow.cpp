@@ -18,6 +18,7 @@
 #include "command/type/SceneNameCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "util/EntityClipboard.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
@@ -1801,13 +1802,38 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
 
             bool entityDeleted = false;
-            if (ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
+
+            // Unity's clipboard group, on the whole selection like the items below
+            if (ImGui::IsWindowAppearing()) {
+                EntityClipboard::refresh();
+            }
+            const bool canPaste = EntityClipboard::hasGameObjects(project) && !node.isPlayCreated;
+            auto copyTargets = [&]() {
+                return project->isSelectedEntity(sceneId, node.id) ?
+                    EntityClipboard::getCopyableSelection(project, sceneId) : std::vector<Entity>{node.id};
+            };
+            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", "Ctrl+X", false, !node.isLocked)) {
+                EntityClipboard::cutGameObjects(project, sceneId, copyTargets());
+                entityDeleted = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", "Ctrl+C", false, !node.isLocked)) {
+                EntityClipboard::copyGameObjects(project, sceneId, copyTargets());
+            }
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, canPaste && !entityDeleted)) {
+                EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::After, node.id);
+            }
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", "Ctrl+Shift+V", false, canPaste && node.hasTransform && !entityDeleted)) {
+                EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::Into, node.id);
+            }
+            ImGui::Separator();
+
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
                 beginRename(RenameTarget::Entity, sceneId, node.id, node.name);
             }
-            if (ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
                 CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
-            if (ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
                 Command* lastCmd = nullptr;
                 for (Entity entity : targets) {
                     lastCmd = new DeleteEntityCmd(project, sceneId, entity);
@@ -2640,8 +2666,15 @@ void editor::HierarchyWindow::show(){
         ImGui::OpenPopup("EmptySpaceContextMenu");
     }
 
-    // Empty space context menu: create at the scene root
+    // Empty space context menu: paste and create at the scene root
     if (ImGui::BeginPopup("EmptySpaceContextMenu")) {
+        if (ImGui::IsWindowAppearing()) {
+            EntityClipboard::refresh();
+        }
+        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, EntityClipboard::hasGameObjects(project))) {
+            EntityClipboard::pasteGameObjects(project, sceneProject->id, EntityClipboard::Placement::Root, NULL_ENTITY);
+        }
+        ImGui::Separator();
         showCreateMenuItems(true, NULL_ENTITY, false);
         ImGui::EndPopup();
     }

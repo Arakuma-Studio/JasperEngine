@@ -28,6 +28,8 @@
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentToPrefabLocalCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "command/type/ComponentValuesCmd.h"
+#include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
@@ -1843,10 +1845,33 @@ void editor::InspectorWindow::dragDropResourcesTextureCubeSingleFile(ComponentTy
 
 void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool& headerOpen, bool readOnly) {
     if (ImGui::BeginPopup(popupId)) {
+        // Paste reflects what another editor instance copied
+        if (ImGui::IsWindowAppearing()) {
+            EntityClipboard::refresh();
+        }
         ImGui::TextDisabled("%s", Catalog::getComponentDisplayName(cpType).c_str());
         ImGui::Separator();
 
         ImGui::BeginDisabled(readOnly); // disable all actions while playing
+
+        auto addMenuCommand = [this](Command* command) {
+            if (command) {
+                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(command);
+            }
+        };
+        auto reasonTooltip = [](bool enabled, const std::string& reason) {
+            if (!enabled && !reason.empty()) {
+                ImGui::SetItemTooltip("%s", reason.c_str());
+            }
+        };
+
+        std::string reason;
+        const bool canReset = ComponentValuesCmd::canReset(project, sceneProject->id, entities, cpType, &reason);
+        if (ImGui::MenuItem("Reset", nullptr, false, canReset)) {
+            addMenuCommand(ComponentValuesCmd::buildReset(project, sceneProject->id, entities, cpType));
+        }
+        reasonTooltip(canReset, reason);
+        ImGui::Separator();
 
         bool canRemove = !(cpType == ComponentType::Transform && isPrefab);
         if (ImGui::MenuItem("Remove Component", nullptr, false, canRemove)) {
@@ -1858,6 +1883,38 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
 
             headerOpen = false;
         }
+
+        ImGui::EndDisabled();
+
+        // Copying only reads, so a running scene's values can be copied to paste after Stop
+        const bool canCopy = cpType != ComponentType::PrefabComponent && !entities.empty();
+        if (ImGui::MenuItem("Copy Component", nullptr, false, canCopy)) {
+            EntityClipboard::copyComponent(project, sceneProject->id, entities.front(), cpType);
+        }
+
+        ImGui::BeginDisabled(readOnly);
+
+        std::shared_ptr<const ComponentClip> copied = EntityClipboard::peekComponent(project);
+        reason.clear();
+        const bool canPasteNew = ComponentValuesCmd::canPasteAsNew(project, sceneProject->id, entities, copied.get(), &reason);
+        if (ImGui::MenuItem("Paste Component As New", nullptr, false, canPasteNew)) {
+            if (std::shared_ptr<const ComponentClip> clip = EntityClipboard::readComponent(project)) {
+                addMenuCommand(ComponentValuesCmd::buildPasteAsNew(project, sceneProject->id, entities, clip));
+            }
+        }
+        if (canPasteNew) {
+            ImGui::SetItemTooltip("Adds the copied %s", Catalog::getComponentDisplayName(copied->type).c_str());
+        }
+        reasonTooltip(canPasteNew, reason);
+
+        reason.clear();
+        const bool canPasteValues = ComponentValuesCmd::canPasteValues(project, sceneProject->id, entities, cpType, copied.get(), &reason);
+        if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPasteValues)) {
+            if (std::shared_ptr<const ComponentClip> clip = EntityClipboard::readComponent(project)) {
+                addMenuCommand(ComponentValuesCmd::buildPasteValues(project, sceneProject->id, entities, cpType, clip));
+            }
+        }
+        reasonTooltip(canPasteValues, reason);
 
         if (isPrefab){
             ImGui::Separator();

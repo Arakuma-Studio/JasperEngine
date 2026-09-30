@@ -64,6 +64,9 @@ public:
 
     void show();
     bool isOpen() const { return m_isOpen; }
+
+    // The popup offers this component type: what Add Component, and so Paste Component As New, can add
+    static bool isListed(ComponentType type);
     void close() { m_isOpen = false; }
 };
 

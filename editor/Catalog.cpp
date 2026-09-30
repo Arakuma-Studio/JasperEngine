@@ -4,6 +4,7 @@
 #include "Catalog.h"
 
 #include "Stream.h"
+#include "util/EntityClipboard.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
@@ -4595,6 +4596,19 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             targetRegistry->getComponent<ParticleSystemComponent>(targetEntity) = Stream::decodeParticleSystemComponent(encoded);
             break;
         }
+
+        // Written over the live component, so a live instance keeps its runtime state (an
+        // instanced mesh keeps its vertex layout, a body its physics handle)
+        case ComponentType::PointsComponent:
+        case ComponentType::ActionComponent:
+        case ComponentType::AnimationComponent:
+        case ComponentType::SpriteAnimationComponent:
+        case ComponentType::Rigidbody2DComponent:
+        case ComponentType::RigidbodyComponent:
+        case ComponentType::InstancedMeshComponent:
+            EntityClipboard::applyComponentValue(targetRegistry, targetEntity, compType,
+                EntityClipboard::encodeComponent(sourceRegistry, sourceEntity, compType));
+            break;
 
         default:
             printf("WARNING: Unsupported component type for copying: %s\n", getComponentName(compType).c_str());

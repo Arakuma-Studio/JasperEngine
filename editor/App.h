@@ -203,6 +203,15 @@ namespace jasperengine::editor{
         bool canEditSelection(bool duplicate);
         void deleteSelection();
         void duplicateSelection();
+        // Edit menu Select All / Cut / Copy / Paste of GameObjects (see EntityClipboard)
+        bool isSceneEditContext() const;
+        bool canSelectAll();
+        bool canCutSelection();
+        bool canCopySelection();
+        bool canPasteSelection(bool asChild);
+        void selectAll();
+        void copySelection(bool cut);
+        void pasteSelection(bool asChild);
 
         PlatformMenuModel buildMenuModel();
         void executeMenuCommand(const PlatformMenuCommand& command);
