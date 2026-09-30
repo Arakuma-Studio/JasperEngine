@@ -1,7 +1,7 @@
 # JasperEngine: Fork and Rebrand of Doriax — Design
 
 Date: 2026-09-30
-Status: Draft, awaiting review
+Status: Implemented (see "Implementation notes" at the end)
 
 ## 1. Intent
 
@@ -111,7 +111,7 @@ Directories are renamed deepest first.
   - Binary files
   - Third-party trees `libs/`, `engine/libs/` and `shadercompiler/libs/`, **except** the three files that reference Doriax: `engine/libs/sokol/sokol.cpp`, `engine/libs/sokol/sokol_app.h` and `engine/libs/harfbuzz/CMakeLists.txt`
 - **Kept as-is:** per-file copyright headers (`// (c) Eduardo Doria and contributors`, SPDX lines). The general rules cannot match "Doria " anyway.
-- **Allowlist for `--check`:** `LICENSE`, `NOTICE.md`, and the attribution line in `README.md` and the About window source.
+- **Allowlist for `--check`:** `LICENSE`, `NOTICE.md`, `README.md`, `tools/rebrand.py`, `docs/superpowers/`, and any line containing "Based on Doriax" (the About window credit).
 
 ### 3.4 Known consequence
 
@@ -162,7 +162,7 @@ Before any rename, unmodified Doriax (commit 1) must build for Linux, Web and An
 
 1. `tools/rebrand.py --check` exits 0.
 2. The Linux engine and `jasperengine-editor` build with no errors.
-3. `jasperengine-editor export --project engine/project --out <tmp>` succeeds. The exported CMake project builds, and the game runs under Xvfb for at least 5 s without crashing.
+3. `tools/smoke-test.sh <editor-project>` passes: `jasperengine-editor export` succeeds (`engine/project` is not an editor project, so the fixture is Doriax's public Tappy Plane sample, cloned outside the repo). The exported CMake project builds, and the game runs under Xvfb for at least 5 s without crashing.
 4. The Web build is served locally, loads in headless Chromium, and renders a frame. Console errors are reviewed.
 5. The Android APK builds.
 6. Screenshots of the editor (title and logo visible), the exported Linux game and the Web game are shared with the owner.
@@ -205,8 +205,8 @@ All checks in 5.3 pass, and one full-matrix run on the PR into `main` is green o
 | # | Commit |
 |---|---|
 | 1 | Merge Doriax history; tag `doriax-base` |
-| 2 | Docker images and `tools/build.sh`; baseline verified |
-| 3 | `tools/rebrand.py` (not yet applied) |
+| 2 | Docker images, `tools/build.sh`, `tools/smoke-test.sh`; baseline verified |
+| 3 | Remove Nix, container recipes and FUNDING.yml (moved ahead of the rename so it does not touch files being deleted); add `tools/rebrand.py` |
 | 4 | Rebrand: path renames only |
 | 5 | Rebrand: content rewrite |
 | 6 | Placeholder art and art script |
@@ -225,3 +225,17 @@ The owner is asked before the first push of `rebrand` and before opening the PR.
 - Code signing and notarization.
 - Migrating existing Doriax projects.
 - Running the Android build on a device or emulator. Running Windows and macOS builds beyond CI compilation; CI only proves they compile and package.
+
+## 8. Implementation notes
+
+Differences from the plan above, discovered while implementing:
+
+- **Headless editor:** the editor's file-dialog library needs a D-Bus session. The Linux image generates `/etc/machine-id`, and the smoke test runs the editor under `dbus-run-session` with the host's `/etc/passwd` mounted read-only.
+- **Exporter path bug (upstream):** `export --project` with a relative path resolves scene files twice (`project/project/...`). The smoke test passes absolute paths. It is not fixed in engine code in this milestone.
+- **Extra rename rule:** a bare `org.doriax` id (the metainfo developer id) maps to `com.jaspergameengine`.
+- **Metainfo:** the upstream screenshot entries were removed, and the developer is JasperDev.
+- **Windows CI:** the editor and both engine builds share one job (as macOS does), to avoid paying for Windows setup three times.
+- **Removed as part of Nix:** `misc/containers/` (its images were built by the Nix workflow).
+- **Version string:** `git describe` only matches `v[0-9]*` tags (CMake and CI). Otherwise the `doriax-base` tag named every build, e.g. "doriax-base-11-g8be898d9". Until the first `v*` tag, builds show the commit hash.
+- **Web check:** the bare engine sample stops at startup for lack of precompiled shaders, which only the editor's export generates. The browser check therefore uses the web export of the fixture project (`export --backend opengles`, then `emcmake`), which runs.
+- **Linux image:** includes `xdotool`, used to open menus for screenshots.

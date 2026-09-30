@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(jasperengine-editor)
 
-# Same as CI (.github/workflows/cmake.yml): git describe --tags --always --dirty.
+# Same as CI (.github/workflows/ci.yml): git describe --tags --match 'v[0-9]*' --always --dirty.
+# Only version tags count, so the doriax-base fork-point tag never names a build.
 # CI passes JASPERENGINE_EDITOR_VERSION explicitly; local builds ask git here.
 if(NOT JASPERENGINE_EDITOR_VERSION)
     find_package(Git QUIET)
     if(GIT_FOUND)
         execute_process(
-            COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
+            COMMAND ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --always --dirty
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             OUTPUT_VARIABLE JASPERENGINE_EDITOR_VERSION
             OUTPUT_STRIP_TRAILING_WHITESPACE

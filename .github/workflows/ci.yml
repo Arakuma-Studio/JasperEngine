@@ -80,7 +80,7 @@ jobs:
           max-size: 2G
 
       - name: Set version
-        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
       - name: Build editor
         run: |
@@ -301,7 +301,7 @@ jobs:
           variant: ccache
 
       - name: Set version
-        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
       - name: Build editor
         run: |
@@ -356,7 +356,7 @@ jobs:
           max-size: 2G
 
       - name: Set version
-        run: echo "JASPERENGINE_VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+        run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
       - name: Build editor
         run: |

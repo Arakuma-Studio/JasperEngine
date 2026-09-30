@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libdbus-1-dev libcurl4-openssl-dev \
         ccache \
         # Headless runs: virtual X server, Mesa software GL, screenshots.
-        xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus \
+        xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus xdotool \
     # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
     && wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
         | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg \
