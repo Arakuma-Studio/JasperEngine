@@ -3086,24 +3086,26 @@ YAML::Node editor::Stream::encodeEntity(const Entity entity, const EntityRegistr
                 hasCurrentEntity = !sceneProject ||
                     std::find(sceneProject->entities.begin(), sceneProject->entities.end(), currentEntity) != sceneProject->entities.end();
                 if (hasCurrentEntity) {
+                    // Past the branch: stop before encoding an entity outside it
+                    auto parentIt = entityNodes.find(transform.parent);
+                    if (parentIt == entityNodes.end()) {
+                        break; // No more childs
+                    }
+                    YAML::Node& parentNode = parentIt->second;
+
                     fs::path currentPrefabPath = importedPrefabPath(currentEntity);
                     YAML::Node& currentNode = entityNodes[currentEntity];
                     currentNode = ignoreContainingPrefab && currentPrefabPath.empty() ?
                         encodeEntityAux(currentEntity, registry) :
                         encodeEntityAux(currentEntity, registry, project, sceneProject, currentPrefabPath);
 
-                    if (entityNodes.find(transform.parent) != entityNodes.end()) {
-                        YAML::Node& parentNode = entityNodes[transform.parent];
-                        if (!parentNode["children"]) {
-                            parentNode["children"] = YAML::Node();
-                        }
-                        parentNode["children"].push_back(currentNode);
-                        if (project && registry->getSignature(currentEntity).test(registry->getComponentId<PrefabComponent>()) &&
-                            (!sceneProject || !currentPrefabPath.empty())) {
-                            skippedPrefabBranch.insert(currentEntity);
-                        }
-                    } else {
-                        break; // No more childs
+                    if (!parentNode["children"]) {
+                        parentNode["children"] = YAML::Node();
+                    }
+                    parentNode["children"].push_back(currentNode);
+                    if (project && registry->getSignature(currentEntity).test(registry->getComponentId<PrefabComponent>()) &&
+                        (!sceneProject || !currentPrefabPath.empty())) {
+                        skippedPrefabBranch.insert(currentEntity);
                     }
                 }
             }

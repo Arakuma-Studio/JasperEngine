@@ -75,7 +75,6 @@ namespace jasperengine {
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
 
-        void sortComponentsByTransform(Signature entitySignature);
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         void changeTransformChildren(Entity entity);
 
@@ -103,6 +102,11 @@ namespace jasperengine {
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 
         void moveChildToIndex(Entity entity, size_t index); // for internal/editor use
+        // Reorders the component arrays kept in Transform order (meshes, UI, ...) that the
+        // signature holds, after the Transform array itself was reordered. For internal/editor
+        // use: moving a block of branches directly in the Transform array needs one call,
+        // where moveChildToIndex re-sorts once per branch.
+        void sortComponentsByTransform(Signature entitySignature);
 
         void moveChildToTop(Entity entity);
         void moveChildUp(Entity entity);
