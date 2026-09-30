@@ -9,6 +9,7 @@
 #include <cctype>
 #include <filesystem>
 #include <sstream>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -45,6 +46,29 @@ Json objectSchemaFromProperties(Json properties, std::initializer_list<const cha
         {"properties", std::move(properties)},
         {"required", req}
     };
+}
+
+// Unity's name for a create_entity type, for the approval card.
+std::string unityTypeLabel(const std::string& type) {
+    static const std::unordered_map<std::string, std::string> labels = {
+        {"empty", "Empty"}, {"object", "Empty"}, {"box", "Cube"}, {"plane", "Plane"}, {"wall", "Wall"},
+        {"mirror", "Mirror"}, {"sphere", "Sphere"}, {"cylinder", "Cylinder"}, {"capsule", "Capsule"},
+        {"torus", "Torus"}, {"image", "Image"}, {"sprite", "Sprite"}, {"tilemap", "Tilemap"}, {"text", "Text"},
+        {"button", "Button"}, {"scrollbar", "Scrollbar"}, {"progressbar", "Progress Bar"},
+        {"textedit", "Input Field"}, {"panel", "Panel"}, {"polygon", "Polygon"}, {"container", "Layout Group"},
+        {"point_light", "Point Light"}, {"directional_light", "Directional Light"}, {"spot_light", "Spot Light"},
+        {"light_2d", "Light 2D"}, {"occluder_2d", "Shadow Caster 2D"}, {"joint2d", "Joint 2D"},
+        {"joint3d", "Joint"}, {"body2d", "Rigidbody 2D"}, {"body3d", "Rigidbody"}, {"sky", "Skybox"},
+        {"fog", "Fog"}, {"camera", "Camera"}, {"sound", "Audio Source"}, {"sound_3d", "3D Audio Source"},
+        {"animation", "Animation"}, {"sprite_animation", "Sprite Animation"},
+        {"position_action", "Position Tween"}, {"rotation_action", "Rotation Tween"},
+        {"scale_action", "Scale Tween"}, {"color_action", "Color Tween"}, {"alpha_action", "Alpha Tween"},
+        {"model", "Model"}, {"particles", "Particle System"}, {"points", "Point Sprites"},
+        {"lines", "Line Renderer"}, {"mesh_polygon", "Mesh Polygon"}, {"terrain", "Terrain"},
+        {"reflection_probe", "Reflection Probe"}
+    };
+    const auto it = labels.find(type);
+    return it != labels.end() ? it->second : type;
 }
 
 Json stringSchema(const std::string& description) {
@@ -1754,7 +1778,7 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Read Console log";
     }
     if (name == "create_entity") {
-        out << "Create " << arguments.value("type", "empty")
+        out << "Create " << unityTypeLabel(arguments.value("type", "empty"))
             << " GameObject \"" << arguments.value("name", "GameObject") << "\"";
         return out.str();
     }
