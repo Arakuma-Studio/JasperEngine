@@ -18,6 +18,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/EntityNameCmd.h"
+#include "command/type/EntityStateCmd.h"
 #include "command/type/SceneNameCmd.h"
 #include "command/type/MeshChangeCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -268,22 +269,22 @@ static std::vector<editor::EnumEntry> entriesShape3DSource = {
     { (int)Shape3DSource::NONE, "None" },
     { (int)Shape3DSource::RAW_VERTICES, "Raw Vertices" },
     { (int)Shape3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Shape3DSource::ENTITY_MESH, "Entity Mesh" },
-    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "Entity Heightfield" }
+    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" },
+    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
 };
 
 static std::vector<editor::EnumEntry> entriesShape3DSourceConvexHull = {
     { (int)Shape3DSource::RAW_VERTICES, "Raw Vertices" },
-    { (int)Shape3DSource::ENTITY_MESH, "Entity Mesh" }
+    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" }
 };
 
 static std::vector<editor::EnumEntry> entriesShape3DSourceMesh = {
     { (int)Shape3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Shape3DSource::ENTITY_MESH, "Entity Mesh" }
+    { (int)Shape3DSource::ENTITY_MESH, "GameObject Mesh" }
 };
 
 static std::vector<editor::EnumEntry> entriesShape3DSourceHeightfield = {
-    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "Entity Heightfield" }
+    { (int)Shape3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
 };
 
 static std::vector<editor::EnumEntry> entriesJoint2DType = {
@@ -650,7 +651,7 @@ void editor::Properties::applySoundPreviewSettings(const SoundComponent& audio) 
 bool editor::Properties::loadSoundPreview(SceneProject* sceneProject, Entity entity, const SoundComponent& audio) {
     SoundPreviewRuntime& ap = soundPreview();
     if (audio.filename.empty()) {
-        ap.error = "Select a sound file before previewing.";
+        ap.error = "Select an audio clip before previewing.";
         return false;
     }
 
@@ -1833,36 +1834,15 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
     }
 }
 
-void editor::Properties::handleComponentMenu(SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly) {
-    if (ImGui::BeginPopupContextItem(("component_options_menu_" + std::to_string(static_cast<int>(cpType))).c_str())) {
-        ImGui::TextDisabled("Component options");
+void editor::Properties::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly) {
+    if (ImGui::BeginPopup(popupId)) {
+        ImGui::TextDisabled("%s", Catalog::getComponentDisplayName(cpType).c_str());
         ImGui::Separator();
 
         ImGui::BeginDisabled(readOnly); // disable all actions while playing
 
-        if (isBundle){
-            if (isBundleOverridden) {
-                if (ImGui::MenuItem(ICON_FA_CUBE " Revert to Bundle")) {
-                    for (Entity& entity : entities){
-                        cmd = new ComponentToBundleSharedCmd(project, sceneProject->id, entity, cpType);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                    }
-                    cmd->setNoMerge();
-                }
-
-            } else {
-                if (ImGui::MenuItem(ICON_FA_LOCK_OPEN " Make Unique")) {
-                    for (Entity& entity : entities){
-                        cmd = new ComponentToBundleLocalCmd(project, sceneProject->id, entity, cpType);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                    }
-                    cmd->setNoMerge();
-                }
-            }
-        }
-
         bool canRemove = !(cpType == ComponentType::Transform && isBundle);
-        if (ImGui::MenuItem(ICON_FA_TRASH " Remove", nullptr, false, canRemove)) {
+        if (ImGui::MenuItem("Remove Component", nullptr, false, canRemove)) {
             for (Entity& entity : entities){
                 cmd = new RemoveComponentCmd(project, sceneProject->id, entity, cpType);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -1870,6 +1850,30 @@ void editor::Properties::handleComponentMenu(SceneProject* sceneProject, std::ve
             cmd->setNoMerge();
 
             headerOpen = false;
+        }
+
+        if (isBundle){
+            ImGui::Separator();
+            if (isBundleOverridden) {
+                if (ImGui::MenuItem("Revert Prefab Component")) {
+                    for (Entity& entity : entities){
+                        cmd = new ComponentToBundleSharedCmd(project, sceneProject->id, entity, cpType);
+                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    }
+                    cmd->setNoMerge();
+                }
+                ImGui::SetItemTooltip("Discard this instance's values and follow the Prefab again");
+
+            } else {
+                if (ImGui::MenuItem("Unpack Component")) {
+                    for (Entity& entity : entities){
+                        cmd = new ComponentToBundleLocalCmd(project, sceneProject->id, entity, cpType);
+                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    }
+                    cmd->setNoMerge();
+                }
+                ImGui::SetItemTooltip("Keep this component's values on this instance instead of the Prefab");
+            }
         }
 
         ImGui::EndDisabled();
@@ -1882,6 +1886,434 @@ bool editor::Properties::canAddComponent(SceneProject* sceneProject, Entity enti
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
     return std::find(existingComponents.begin(), existingComponents.end(), cpType) == existingComponents.end();
+}
+
+// Prefab (bundle) text color, as in the Hierarchy
+static const ImVec4 prefabTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
+
+// Unity draws component names bold; a second pass one pixel over thickens the regular font
+static void addBoldText(ImDrawList* drawList, const ImVec2& pos, ImU32 color, const char* text){
+    drawList->AddText(pos, color, text);
+    drawList->AddText(ImVec2(pos.x + 1.0f, pos.y), color, text);
+}
+
+static std::string layerDisplayName(int layer){
+    std::string name = EntityRegistry::getBuiltinLayerName(layer);
+    return name.empty() ? "Layer " + std::to_string(layer) : name;
+}
+
+void editor::Properties::drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly){
+    Scene* scene = sceneProject->scene;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const bool single = entities.size() == 1;
+
+    bool active = scene->isEntityActive(entities[0]);
+    bool activeMixed = false;
+    for (Entity entity : entities){
+        if (scene->isEntityActive(entity) != active){
+            activeMixed = true;
+        }
+    }
+    const bool isPrefab = !project->findEntityBundlePathFor(sceneProject->id, entities[0]).empty();
+
+    ImGui::PushID("gameobject_header");
+
+    // Row 1: active checkbox, GameObject icon and name
+    ImGui::BeginDisabled(readOnly);
+    bool activeValue = active && !activeMixed;
+    if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+    if (ImGui::Checkbox("##active", &activeValue)){
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+            EntityStateCmd::active(project, sceneProject->id, entities, activeMixed ? true : activeValue));
+    }
+    if (activeMixed) ImGui::PopItemFlag();
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Active: an inactive GameObject and its children are not rendered, simulated or updated");
+
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+    ImGui::AlignTextToFramePadding();
+    ImVec4 iconColor = isPrefab ? prefabTextColor : style.Colors[ImGuiCol_Text];
+    if (!activeValue && !activeMixed) iconColor.w *= 0.5f;
+    ImGui::TextColored(iconColor, ICON_FA_CUBE);
+    if (isPrefab) ImGui::SetItemTooltip("Prefab instance");
+
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+    ImGui::SetNextItemWidth(-1);
+    static char nameBuffer[128];
+    strncpy(nameBuffer, single ? names.c_str() : "-", sizeof(nameBuffer) - 1);
+    nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+    ImGui::BeginDisabled(!single || readOnly);
+    if (nameFocusFrames > 0 && single) ImGui::SetKeyboardFocusHere();
+    ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+    if (ImGui::IsItemActive()) nameFocusFrames = 0;
+    ImGui::EndDisabled();
+    if (ImGui::IsItemDeactivatedAfterEdit() && single) {
+        if (nameBuffer[0] != '\0' && strcmp(nameBuffer, scene->getEntityName(entities[0]).c_str()) != 0) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new EntityNameCmd(project, sceneProject->id, entities[0], nameBuffer));
+        }
+    }
+    if (!single){
+        ImGui::SetItemTooltip("%zu GameObjects selected: %s", entities.size(), names.c_str());
+    }
+
+    // Row 2: Tag and Layer side by side
+    const float tagLabelWidth = ImGui::CalcTextSize("Tag").x;
+    const float layerLabelWidth = ImGui::CalcTextSize("Layer").x;
+    const float gap = style.ItemSpacing.x * 2.0f;
+    const float comboWidth = std::max(Theme::dpi(40.0f),
+        (ImGui::GetContentRegionAvail().x - tagLabelWidth - layerLabelWidth - style.ItemInnerSpacing.x * 2.0f - gap) * 0.5f);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Tag");
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+    drawTagCombo(sceneProject, entities, readOnly, comboWidth);
+    ImGui::SameLine(0.0f, gap);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Layer");
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+    drawLayerCombo(sceneProject, entities, readOnly, -1.0f);
+
+    ImGui::PopID();
+}
+
+void editor::Properties::drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
+    Scene* scene = sceneProject->scene;
+
+    std::string tag = scene->getEntityTag(entities[0]);
+    bool mixed = false;
+    for (Entity entity : entities){
+        if (scene->getEntityTag(entity) != tag){
+            mixed = true;
+        }
+    }
+
+    auto applyTag = [&](const std::string& newTag){
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+            EntityStateCmd::tag(project, sceneProject->id, entities, newTag));
+    };
+
+    bool openAddTag = false;
+    ImGui::SetNextItemWidth(width);
+    ImGui::BeginDisabled(readOnly);
+    if (ImGui::BeginCombo("##tag", mixed ? "-" : tag.c_str())){
+        // built-in tags, then the custom ones the scene uses
+        std::vector<std::string> tags = EntityRegistry::getBuiltinTags();
+        for (Entity entity : sceneProject->entities){
+            if (!scene->isEntityCreated(entity)) continue;
+            std::string entityTag = scene->getEntityTag(entity);
+            if (std::find(tags.begin(), tags.end(), entityTag) == tags.end()){
+                tags.push_back(entityTag);
+            }
+        }
+        for (const std::string& option : tags){
+            bool selected = !mixed && option == tag;
+            if (ImGui::Selectable(option.c_str(), selected) && !selected){
+                applyTag(option);
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::Separator();
+        if (ImGui::Selectable("Add Tag...")){
+            openAddTag = true;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+
+    if (openAddTag){
+        newTagBuffer[0] = '\0';
+        ImGui::OpenPopup("add_tag_popup");
+    }
+    if (ImGui::BeginPopup("add_tag_popup")){
+        ImGui::TextUnformatted("New Tag Name");
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(Theme::dpi(180.0f));
+        bool submit = ImGui::InputText("##new_tag", newTagBuffer, sizeof(newTagBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(newTagBuffer[0] == '\0');
+        submit = ImGui::Button("Save") || submit;
+        ImGui::EndDisabled();
+        if (submit && newTagBuffer[0] != '\0'){
+            applyTag(newTagBuffer);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void editor::Properties::drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
+    Scene* scene = sceneProject->scene;
+
+    int layer = scene->getEntityLayer(entities[0]);
+    bool mixed = false;
+    for (Entity entity : entities){
+        if (scene->getEntityLayer(entity) != layer){
+            mixed = true;
+        }
+    }
+
+    auto applyLayer = [&](int newLayer){
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+            EntityStateCmd::layer(project, sceneProject->id, entities, newLayer));
+    };
+
+    ImGui::SetNextItemWidth(width);
+    ImGui::BeginDisabled(readOnly);
+    if (ImGui::BeginCombo("##layer", mixed ? "-" : layerDisplayName(layer).c_str())){
+        for (int option = 0; option < 32; option++){
+            std::string name = EntityRegistry::getBuiltinLayerName(option);
+            if (name.empty()) continue;
+            bool selected = !mixed && option == layer;
+            if (ImGui::Selectable((std::to_string(option) + ": " + name).c_str(), selected) && !selected){
+                applyLayer(option);
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Unnamed Layers")){
+            for (int option = 0; option < 32; option++){
+                if (!EntityRegistry::getBuiltinLayerName(option).empty()) continue;
+                bool selected = !mixed && option == layer;
+                if (ImGui::MenuItem((std::to_string(option) + ": " + layerDisplayName(option)).c_str(), nullptr, selected) && !selected){
+                    applyLayer(option);
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+}
+
+bool editor::Properties::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool readOnly){
+    Scene* scene = sceneProject->scene;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const bool fromBundle = isBundle && !isBundleOverridden;
+    const std::string displayName = Catalog::getComponentDisplayName(cpType);
+
+    // component checkbox over the selection, mixed when the entities disagree
+    bool hasEnabled = false;
+    bool enabled = true;
+    bool enabledMixed = false;
+    if (Catalog::hasEnabledProperty(cpType)){
+        for (Entity entity : entities){
+            PropertyData prop = Catalog::findProperty(scene, entity, cpType, "enabled");
+            if (!prop.ref) continue;
+            bool value = *static_cast<bool*>(prop.ref);
+            if (!hasEnabled){
+                enabled = value;
+                hasEnabled = true;
+            }else if (value != enabled){
+                enabledMixed = true;
+            }
+        }
+    }
+
+    ImGui::PushID(static_cast<int>(cpType));
+
+    ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, Theme::dpi(3.0f)));
+    bool open = ImGui::CollapsingHeader("##component_header", ImGuiTreeNodeFlags_AllowOverlap);
+    ImGui::PopStyleVar();
+    const ImVec2 headerMin = ImGui::GetItemRectMin();
+    const ImVec2 headerMax = ImGui::GetItemRectMax();
+    const bool headerHovered = ImGui::IsItemHovered();
+    const bool rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    const ImVec2 afterHeader = ImGui::GetCursorScreenPos();
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    // Unity separates components with a dark line over each header
+    drawList->AddLine(headerMin, ImVec2(headerMax.x, headerMin.y), ImGui::GetColorU32(ImGuiCol_Border), Theme::dpi(1.0f));
+
+    const float height = headerMax.y - headerMin.y;
+    const float fontSize = ImGui::GetFontSize();
+    const float textY = headerMin.y + (height - fontSize) * 0.5f;
+    // past the foldout arrow CollapsingHeader draws at the frame padding
+    float x = headerMin.x + style.FramePadding.x + fontSize + style.ItemInnerSpacing.x;
+
+    const ImU32 textColor = fromBundle ? ImGui::GetColorU32(prefabTextColor) : ImGui::GetColorU32(ImGuiCol_Text);
+
+    const char* icon = Catalog::getComponentIcon(cpType);
+    const float iconBox = fontSize * 1.25f;
+    drawList->AddText(ImVec2(x + (iconBox - ImGui::CalcTextSize(icon).x) * 0.5f, textY), textColor, icon);
+    x += iconBox + style.ItemInnerSpacing.x;
+
+    if (hasEnabled){
+        const float boxPadding = Theme::dpi(1.0f);
+        const float boxSize = fontSize + boxPadding * 2.0f;
+        ImGui::SetCursorScreenPos(ImVec2(x, headerMin.y + (height - boxSize) * 0.5f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(boxPadding, boxPadding));
+        bool value = enabled && !enabledMixed;
+        ImGui::BeginDisabled(readOnly);
+        if (enabledMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+        if (ImGui::Checkbox("##enabled", &value)){
+            const bool newValue = enabledMixed ? true : value;
+            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+            for (Entity entity : entities){
+                multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entity, cpType, "enabled", newValue);
+            }
+            multiCmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        }
+        if (enabledMixed) ImGui::PopItemFlag();
+        ImGui::EndDisabled();
+        ImGui::PopStyleVar();
+        ImGui::SetItemTooltip("Enabled: a disabled %s is skipped at runtime", displayName.c_str());
+        x = ImGui::GetItemRectMax().x + style.ItemInnerSpacing.x;
+    }
+
+    addBoldText(drawList, ImVec2(x, textY), textColor, displayName.c_str());
+
+    // kebab button at the right edge, same menu as a right click on the header
+    const char* popupId = "component_menu";
+    const float buttonWidth = fontSize + style.FramePadding.x;
+    ImGui::SetCursorScreenPos(ImVec2(headerMax.x - buttonWidth - style.FramePadding.x * 0.5f, headerMin.y));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, (height - fontSize) * 0.5f));
+    bool menuClicked = ImGui::Button(ICON_FA_ELLIPSIS_VERTICAL "##component_menu_button", ImVec2(buttonWidth, height));
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(2);
+    ImGui::SetItemTooltip("Component options");
+
+    if (menuClicked || rightClicked){
+        ImGui::OpenPopup(popupId);
+    }
+    handleComponentMenu(popupId, sceneProject, entities, cpType, isBundle, isBundleOverridden, open, readOnly);
+
+    if (fromBundle && headerHovered){
+        ImGui::BeginTooltip();
+        ImGui::TextColored(prefabTextColor, ICON_FA_CUBE " Prefab Component");
+        ImGui::TextUnformatted("This component comes from the Prefab.");
+        ImGui::EndTooltip();
+    }
+
+    ImGui::SetCursorScreenPos(afterHeader);
+    ImGui::PopID();
+
+    return open;
+}
+
+void editor::Properties::drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly){
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
+
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float width = std::min(avail, Theme::dpi(230.0f));
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - width) * 0.5f);
+
+    ImGui::BeginDisabled(readOnly);
+    if (ImGui::Button("Add Component", ImVec2(width, ImGui::GetFrameHeight() + Theme::dpi(4.0f)))) {
+        componentAddDialog.open(
+            [this, sceneProject, entities](ComponentType cpType) {
+                // Add component to all selected entities
+                for (const Entity& entity : entities) {
+                    cmd = new AddComponentCmd(project, sceneProject->id, entity, cpType);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                cmd->setNoMerge();
+
+                // Mark scene as modified
+                sceneProject->isModified = true;
+            },
+            [this, sceneProject, entities](ComponentType cpType) {
+                // Check if component can be added to all selected entities
+                for (const Entity& entity : entities) {
+                    if (!canAddComponent(sceneProject, entity, cpType)) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            [](){},
+            [this, sceneProject, entities](){
+                openNewScriptDialog(sceneProject, entities);
+            },
+            ImGui::GetItemRectMin(),
+            ImGui::GetItemRectMax()
+        );
+    }
+    ImGui::EndDisabled();
+
+    ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y * 2.0f));
+
+    // the popup opens below the button
+    componentAddDialog.show();
+}
+
+void editor::Properties::openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities){
+    Entity firstEntity = entities.empty() ? NULL_ENTITY : entities[0];
+    std::string defaultName = "NewScript";
+    if (firstEntity != NULL_ENTITY) {
+        std::string entityName = sceneProject->scene->getEntityName(firstEntity);
+        if (!entityName.empty())
+            defaultName = entityName + "Script";
+    }
+    scriptCreateDialog.open(
+        sceneProject->scene,
+        firstEntity,
+        project->getProjectPath(),
+        project->getLuaPath(),
+        defaultName,
+        [this, sceneProject, entities](const std::filesystem::path& headerPath,
+                                    const std::filesystem::path& sourcePath,
+                                    const std::string& name,
+                                    ScriptType type) {
+
+            editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
+
+            for (const Entity& entity : entities) {
+                bool hasScriptComponent = false;
+                std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
+                for (ComponentType ct : existingComponents) {
+                    if (ct == ComponentType::ScriptComponent) {
+                        hasScriptComponent = true;
+                        break;
+                    }
+                }
+
+                std::vector<ScriptEntry> newScripts;
+
+                if (!hasScriptComponent) {
+                    auto addCmd = std::make_unique<editor::AddComponentCmd>(project, sceneProject->id, entity, ComponentType::ScriptComponent);
+                    multiCmd->addCommand(std::move(addCmd));
+                } else {
+                    ScriptComponent& scriptComp = sceneProject->scene->getComponent<ScriptComponent>(entity);
+                    newScripts = scriptComp.scripts;
+                }
+
+                ScriptEntry entry;
+                entry.type = type;
+                entry.enabled = true;
+
+                if (type == ScriptType::CPP) {
+                    entry.headerPath = headerPath.string();
+                    entry.path = sourcePath.string();
+                    entry.className = name;
+                } else if (type == ScriptType::LUA) {
+                    entry.headerPath.clear();
+                    entry.path = sourcePath.string();
+                    entry.className = name; // module (file base) name
+                }
+
+                newScripts.push_back(entry);
+
+                project->updateScriptProperties(sceneProject, entity, newScripts);
+
+                auto propCmd = std::make_unique<editor::PropertyCmd<std::vector<ScriptEntry>>>(
+                    project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", newScripts
+                );
+                multiCmd->addCommand(std::move(propCmd));
+            }
+
+            multiCmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        },
+        [](){}
+    );
 }
 
 Texture editor::Properties::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL){
@@ -2126,7 +2558,14 @@ void editor::Properties::beginTable(ComponentType cpType, float firstColSize, st
     if (!nameAddon.empty()){
         nameAddon = "_"+nameAddon;
     }
-    ImGui::BeginTable(("table_"+Catalog::getComponentName(cpType)+nameAddon).c_str(), 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV);
+    // Unity keeps one label width (about 40% of the Inspector) so values line up across
+    // components; a longer label still widens its own table
+    const float unityLabelWidth = ImGui::GetContentRegionAvail().x * 0.4f;
+    firstColSize = std::max(firstColSize, std::min(unityLabelWidth, Theme::dpi(180.0f)));
+    // compact rows, no column divider (the column stays resizable at its edge)
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(ImGui::GetStyle().CellPadding.x, Theme::dpi(1.0f)));
+    ImGui::BeginTable(("table_"+Catalog::getComponentName(cpType)+nameAddon).c_str(), 2, ImGuiTableFlags_Resizable);
+    ImGui::PopStyleVar();
     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, firstColSize);
     ImGui::TableSetupColumn("Value");
 
@@ -2166,7 +2605,7 @@ editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup
     EntityPickerResult result;
     if (!ImGui::BeginPopup(popupId.c_str())) return result;
 
-    ImGui::Text("Select Entity");
+    ImGui::Text("Select GameObject");
     ImGui::Separator();
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputText("##ep_search", entityPickerSearchBuffer, sizeof(entityPickerSearchBuffer));
@@ -2216,7 +2655,7 @@ editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup
                     std::find(excludeEntities.begin(), excludeEntities.end(), e) != excludeEntities.end()) continue;
 
                 std::string ename = sp->scene->getEntityName(e);
-                if (ename.empty()) ename = "Entity " + std::to_string(e);
+                if (ename.empty()) ename = "GameObject " + std::to_string(e);
 
                 if (!searchStr.empty() && !sceneMatches) {
                     std::string elow = ename;
@@ -2243,7 +2682,7 @@ editor::Properties::EntityPickerResult editor::Properties::drawEntityPickerPopup
             }
         }
 
-        if (!anyVisible) ImGui::TextDisabled("No entities found");
+        if (!anyVisible) ImGui::TextDisabled("No GameObjects found");
     }
     ImGui::EndChild();
     ImGui::EndPopup();
@@ -4510,7 +4949,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         if (newValue != NULL_ENTITY && sceneProject->scene->isEntityCreated(newValue)) {
             entityName = sceneProject->scene->getEntityName(newValue);
             if (entityName.empty()) {
-                entityName = "Entity " + std::to_string(newValue);
+                entityName = "GameObject " + std::to_string(newValue);
             }
         }
 
@@ -4543,9 +4982,9 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         if (ImGui::IsItemHovered() && !different) {
             if (newValue != NULL_ENTITY) {
-                ImGui::SetTooltip("Entity: %s (ID: %u)", entityName.c_str(), static_cast<unsigned int>(newValue));
+                ImGui::SetTooltip("GameObject: %s (ID: %u)", entityName.c_str(), static_cast<unsigned int>(newValue));
             } else {
-                ImGui::SetTooltip("Click to select entity");
+                ImGui::SetTooltip("Click to select the GameObject");
             }
         }
 
@@ -4567,7 +5006,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 bool valid = sceneProject->scene->isEntityCreated(droppedEntity) && !excluded;
 
                 if (!valid && ImGui::IsItemHovered()){
-                    ImGui::SetTooltip(excluded ? "Cannot reference this entity here" : "Invalid entity");
+                    ImGui::SetTooltip(excluded ? "Cannot reference this GameObject here" : "Invalid GameObject");
                 }
 
                 if (payload->IsDelivery() && valid) {
@@ -4598,7 +5037,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::PopStyleVar();
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Clear entity reference");
+            ImGui::SetTooltip("Clear GameObject reference");
         }
 
         ImGui::EndGroup();
@@ -4675,7 +5114,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                     resolvedScene = targetSceneProject->scene;
                     entityName = resolvedScene->getEntityName(newValue);
                     if (entityName.empty()) {
-                        entityName = "Entity " + std::to_string(newValue);
+                        entityName = "GameObject " + std::to_string(newValue);
                     }
                     sceneSuffix = " (" + targetSceneProject->name + ")";
                 }
@@ -4683,7 +5122,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 resolvedScene = sceneProject->scene;
                 entityName = resolvedScene->getEntityName(newValue);
                 if (entityName.empty()) {
-                    entityName = "Entity " + std::to_string(newValue);
+                    entityName = "GameObject " + std::to_string(newValue);
                 }
             }
         }
@@ -4696,7 +5135,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 entityName = "---";
                 sceneSuffix = "";
             } else if (invalidSelection) {
-                entityName = "Entity " + std::to_string(newValue);
+                entityName = "GameObject " + std::to_string(newValue);
                 SceneProject* storedScene = (currentSceneId != 0) ? project->getScene(currentSceneId) : sceneProject;
                 sceneSuffix = storedScene ? " (" + storedScene->name + ")" : "";
             }
@@ -4738,11 +5177,11 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                         tipSceneId = currentSceneId;
                     }
                 }
-                ImGui::SetTooltip("Entity: %s (ID: %u)\nScene: %s (ID: %u)",
+                ImGui::SetTooltip("GameObject: %s (ID: %u)\nScene: %s (ID: %u)",
                     entityName.c_str(), static_cast<unsigned int>(newValue),
                     tipSceneName.c_str(), static_cast<unsigned int>(tipSceneId));
             } else {
-                ImGui::SetTooltip("Click to select entity");
+                ImGui::SetTooltip("Click to select the GameObject");
             }
         }
 
@@ -4772,7 +5211,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 uint32_t storedSceneId = (droppedSceneId != sceneProject->id) ? droppedSceneId : 0;
 
                 if (!valid && ImGui::IsItemHovered()){
-                    ImGui::SetTooltip("Invalid entity");
+                    ImGui::SetTooltip("Invalid GameObject");
                 }
 
                 if (payload->IsDelivery() && valid) {
@@ -4803,7 +5242,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::PopStyleVar();
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Clear entity reference");
+            ImGui::SetTooltip("Clear GameObject reference");
         }
 
         ImGui::EndGroup();
@@ -4918,7 +5357,7 @@ void editor::Properties::setParticleColorGradient(ComponentType cpType, ScenePro
 
 void editor::Properties::drawParticleFrameList(ComponentType cpType, const std::string& propertyId, const std::string& tableId, SceneProject* sceneProject, const std::vector<Entity>& entities) {
     if (entities.size() != 1) {
-        ImGui::TextDisabled("Select a single entity to edit sprite frames");
+        ImGui::TextDisabled("Select a single GameObject to edit sprite frames");
         return;
     }
 
@@ -5716,7 +6155,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
 
     // Add New Geometry property row
     propertyHeader("Geometry");
-    if (ImGui::Button("Create Shape")){
+    if (ImGui::Button("Create Primitive")){
         ImGui::OpenPopup("menusettings_shape_geometry");
 
         updateShapePreview(shapeParams);
@@ -5725,7 +6164,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     // Geometry creation popup
     ImGui::SetNextWindowSizeConstraints(ImVec2(17 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
     if (ImGui::BeginPopup("menusettings_shape_geometry")){
-        ImGui::Text("Create Shape");
+        ImGui::Text("Create Primitive");
         ImGui::Separator();
 
         const char* geometryTypes[] = { "Plane", "Box", "Sphere", "Cylinder", "Capsule", "Torus", "Wall" };
@@ -5923,7 +6362,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     }
 
     RowSettings iblSettings;
-    iblSettings.help = "Light this mesh with image-based lighting, from the scene's Sky environment and from Reflection Probes. Sky lighting requires a Sky entity with a texture.";
+    iblSettings.help = "Light this mesh with image-based lighting, from the scene's Skybox environment and from Reflection Probes. Skybox lighting requires a Skybox with a texture.";
     propertyRow(RowPropertyType::Bool, cpType, "receiveIBL", "Receive IBL", sceneProject, entities, iblSettings);
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
@@ -5940,7 +6379,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     }
 
     RowSettings reflectionProbeSettings;
-    reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep an object out of its own reflection.";
+    reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
     propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Render in Probes", sceneProject, entities, reflectionProbeSettings);
 
     RowSettings transparencySettings;
@@ -6228,7 +6667,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
         }
 
     }else{
-        ImGui::TextDisabled("Select single entity");
+        ImGui::TextDisabled("Select a single GameObject");
     }
 
     propertyRow(RowPropertyType::LocalEntity, cpType, "skeleton", "Skeleton", sceneProject, entities);
@@ -6237,7 +6676,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Animations");
-        ImGui::TextDisabled("Select a single entity to edit animations");
+        ImGui::TextDisabled("Select a single GameObject to edit animations");
         return;
     }
 
@@ -6703,7 +7142,7 @@ void editor::Properties::drawUIContainerComponent(ComponentType cpType, ScenePro
 
             beginTable(cpType, getLabelSize("Rect Height"), "box_popup_" + std::to_string(b));
 
-            propertyRow(RowPropertyType::Label, cpType, "boxes["+std::to_string(b)+"].layout", "Layout Entity", sceneProject, entities, settingsLayout);
+            propertyRow(RowPropertyType::Label, cpType, "boxes["+std::to_string(b)+"].layout", "Layout GameObject", sceneProject, entities, settingsLayout);
             propertyRow(RowPropertyType::Bool, cpType, "boxes["+std::to_string(b)+"].expand", "Expand", sceneProject, entities);
 
             propertyRow(RowPropertyType::Label, cpType, "boxes["+std::to_string(b)+"].rect.x", "Rect X", sceneProject, entities, settingsRect);
@@ -6987,7 +7426,7 @@ void editor::Properties::drawSpriteComponent(ComponentType cpType, SceneProject*
                     }
                     if (ImGui::IsItemHovered()) {
                         if (!meshComp) {
-                            ImGui::SetTooltip("Sprite entity has no MeshComponent");
+                            ImGui::SetTooltip("Sprite GameObject has no Mesh Renderer");
                         } else if (meshComp->numSubmeshes == 0) {
                             ImGui::SetTooltip("Sprite mesh has no submeshes");
                         } else if (!canApplyFrame) {
@@ -7074,7 +7513,7 @@ void editor::Properties::drawSpriteComponent(ComponentType cpType, SceneProject*
         }
     } else {
         ImGui::SeparatorText("Sprite Frames");
-        ImGui::TextDisabled("Select a single entity to edit sprite frames");
+        ImGui::TextDisabled("Select a single GameObject to edit sprite frames");
     }
 }
 
@@ -7180,7 +7619,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
     RowSettings doubleSettings = floatSettings;
 
-    beginTable(cpType, getLabelSize("Sound File"));
+    beginTable(cpType, getLabelSize("Audio Clip"));
 
     if (entities.size() == 1) {
         Entity entity = entities[0];
@@ -7195,7 +7634,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
             std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
             std::string relativePath = relative.generic_string();
             if (errorCode || relative.empty() || *relative.begin() == "..") {
-                ImGui::OpenPopup("Sound Import Error");
+                ImGui::OpenPopup("Audio Import Error");
                 return false;
             }
 
@@ -7211,7 +7650,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
         std::string currentPath = audio.filename;
 
-        if (propertyHeader("Sound File", -1, !currentPath.empty())) {
+        if (propertyHeader("Audio Clip", -1, !currentPath.empty())) {
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
                 new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "filename", "")
             );
@@ -7273,7 +7712,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
             }
         }
 
-        if (ImGui::BeginPopupModal("Sound Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal("Audio Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be an audio file within the project directory.");
             ImGui::Separator();
             float buttonModalWidth = 120;
@@ -7285,7 +7724,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
             ImGui::EndPopup();
         }
     }else{
-        propertyRow(RowPropertyType::String, cpType, "filename", "Sound File", sceneProject, entities);
+        propertyRow(RowPropertyType::String, cpType, "filename", "Audio Clip", sceneProject, entities);
     }
 
     RowSettings stateSettings = compactSettings;
@@ -7321,7 +7760,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
         } else {
             if (ImGui::Button(ICON_FA_PLAY "##audio_play")) {
                 if (!startSoundPreview(sceneProject, entity, audio)) {
-                    ImGui::OpenPopup("Sound Preview Error");
+                    ImGui::OpenPopup("Audio Preview Error");
                 } else {
                     isThisPreview = true;
                 }
@@ -7358,7 +7797,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
             float clickFraction = std::clamp((mouseX - timelinePos.x) / timelineWidth, 0.0f, 1.0f);
             double seekTime = clickFraction * previewLength;
             if (!seekSoundPreview(sceneProject, entity, audio, seekTime)) {
-                ImGui::OpenPopup("Sound Preview Error");
+                ImGui::OpenPopup("Audio Preview Error");
             } else {
                 isThisPreview = true;
             }
@@ -7386,7 +7825,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
         ImGui::EndDisabled();
 
-        if (ImGui::BeginPopupModal("Sound Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal("Audio Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextWrapped("%s", ap.error.c_str());
             ImGui::Separator();
             float buttonModalWidth = 120;
@@ -7426,7 +7865,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
     endTable();
 
     if (show3DSettings){
-        ImGui::SeparatorText("3D Sound");
+        ImGui::SeparatorText("3D Sound Settings");
 
         beginTable(cpType, getLabelSize("Max Distance"), "audio_3d_settings");
 
@@ -8032,7 +8471,7 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     settingsLevels.intMin = 1;
     settingsLevels.intMax = 9;
 
-    ImGui::SeparatorText("Shape");
+    ImGui::SeparatorText("Mesh Resolution");
     beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
     propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
@@ -8179,10 +8618,10 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
 
     RowSettings settingsShape;
     settingsShape.enumEntries = &entriesOccluder2DShape;
-    settingsShape.help = "Auto Quad derives the occluder outline from this entity's mesh bounds; Polygon uses the point list below (local space).";
+    settingsShape.help = "Auto Quad derives the outline from this GameObject's mesh bounds; Polygon uses the point list below (local space).";
 
     beginTable(cpType, getLabelSize("Enabled"));
-    propertyRow(RowPropertyType::Enum, cpType, "shape", "Shape", sceneProject, entities, settingsShape);
+    propertyRow(RowPropertyType::Enum, cpType, "shape", "Outline", sceneProject, entities, settingsShape);
     if (occluder.shape == Occluder2DShape::POLYGON){
         propertyRow(RowPropertyType::Bool, cpType, "closed", "Closed", sceneProject, entities);
     }
@@ -8365,7 +8804,7 @@ void editor::Properties::drawReflectionProbeComponent(ComponentType cpType, Scen
     propertyRow(RowPropertyType::UIntSlider, cpType, "resolution", "Resolution", sceneProject, entities, resolutionSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "nearClip", "Near", sceneProject, entities, floatSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "farClip", "Far", sceneProject, entities, floatSettings);
-    propertyRow(RowPropertyType::Bool, cpType, "includeSky", "Include Sky", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "includeSky", "Include Skybox", sceneProject, entities);
     endTable();
 
     if (entities.size() == 1 && ImGui::Button(ICON_FA_ARROWS_ROTATE " Refresh Probe", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
@@ -8426,7 +8865,7 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
     if (commonIndices.empty()) {
         if (entities.size() > 1) {
-            ImGui::TextDisabled("Select a single entity to view script details");
+            ImGui::TextDisabled("Select a single GameObject to view script details");
         }
         return;
     }
@@ -8960,7 +9399,7 @@ void editor::Properties::drawSkyComponent(ComponentType cpType, SceneProject* sc
 
     drawCustomShaderRow(cpType, ShaderType::SKYBOX, sceneProject, entities);
 
-    ImGui::SeparatorText("Sky settings");
+    ImGui::SeparatorText("Skybox Settings");
 
     beginTable(cpType, getLabelSize("Rotation"), "sky_settings");
 
@@ -9000,7 +9439,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Instances");
-        ImGui::TextDisabled("Select a single entity to edit instances");
+        ImGui::TextDisabled("Select a single GameObject to edit instances");
         return;
     }
 
@@ -9012,7 +9451,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
         ImGui::TextWrapped(
             ICON_FA_TRIANGLE_EXCLAMATION
-            " Instances will not render: this model stores its geometry in child mesh entities. "
+            " Instances will not render: this model stores its geometry in child mesh GameObjects. "
             "Right-click the model in Structure and choose 'Merge static model'.");
         ImGui::PopStyleColor();
     }
@@ -9230,7 +9669,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
         }
     } else {
         ImGui::SeparatorText("Bursts");
-        ImGui::TextDisabled("Select a single entity to edit bursts");
+        ImGui::TextDisabled("Select a single GameObject to edit bursts");
     }
 
     const float subsectionIndent = 10.0f;
@@ -9254,7 +9693,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
         RowSettings settingsShape;
         settingsShape.enumEntries = &entriesEmitterShape;
         beginTable(cpType, getLabelSize("Cone Height"), "position_initializer_table");
-        propertyRow(RowPropertyType::Enum, cpType, "positionInitializer.shape", "Shape", sceneProject, entities, settingsShape);
+        propertyRow(RowPropertyType::Enum, cpType, "positionInitializer.shape", "Emitter Shape", sceneProject, entities, settingsShape);
 
         ParticleEmitterShape shownShape = ParticleEmitterShape::Box;
         if (!entities.empty()) {
@@ -9463,7 +9902,7 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
             }
         } else {
             ImGui::SeparatorText("Color Gradient");
-            ImGui::TextDisabled("Select a single entity to edit color gradient");
+            ImGui::TextDisabled("Select a single GameObject to edit color gradient");
         }
 
         ImGui::SeparatorText("Alpha");
@@ -9534,7 +9973,7 @@ void editor::Properties::drawPointsComponent(ComponentType cpType, SceneProject*
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Points");
-        ImGui::TextDisabled("Select a single entity to edit points");
+        ImGui::TextDisabled("Select a single GameObject to edit points");
         return;
     }
 
@@ -9662,7 +10101,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Lines");
-        ImGui::TextDisabled("Select a single entity to edit lines");
+        ImGui::TextDisabled("Select a single GameObject to edit lines");
         return;
     }
 
@@ -9792,7 +10231,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
 void editor::Properties::drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.size() != 1) {
         ImGui::SeparatorText("Vertices");
-        ImGui::TextDisabled("Select a single entity to edit polygon vertices");
+        ImGui::TextDisabled("Select a single GameObject to edit polygon vertices");
         return;
     }
 
@@ -9932,7 +10371,7 @@ void editor::Properties::drawMeshPolygonComponent(ComponentType cpType, ScenePro
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Vertices");
-        ImGui::TextDisabled("Select a single entity to edit mesh polygon vertices");
+        ImGui::TextDisabled("Select a single GameObject to edit mesh polygon vertices");
         return;
     }
 
@@ -10083,12 +10522,12 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
     RowSettings settingsBodyType;
     settingsBodyType.enumEntries = &entriesBodyType;
 
-    beginTable(cpType, getLabelSize("Update Shapes"));
+    beginTable(cpType, getLabelSize("Update Colliders"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     endTable();
 
-    ImGui::SeparatorText("Shapes");
-    ImGui::Text("Shapes: %zu", body.numShapes);
+    ImGui::SeparatorText("Colliders");
+    ImGui::Text("Colliders: %zu", body.numShapes);
 
     static int createShape2DType = (int)Shape2DType::POLYGON;
     const char* createShape2DLabel = "Polygon";
@@ -10113,7 +10552,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add Shape##body2d")){
+    if (ImGui::Button("Add Collider##body2d")){
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
         for (Entity entity : entities){
@@ -10198,9 +10637,9 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         Body2DComponent& bodyRef = sceneProject->scene->getComponent<Body2DComponent>(entities[0]);
         Shape2D& shape = bodyRef.shapes[s];
 
-        ImGui::SeparatorText(("Shape " + std::to_string(s + 1)).c_str());
+        ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
-        if (ImGui::Button("Remove Shape")){
+        if (ImGui::Button("Remove Collider")){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
             for (Entity entity : entities){
@@ -10457,7 +10896,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
         }
         if (shape.type == Shape2DType::POLYGON){
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
-            propertyHeader("Reset shape");
+            propertyHeader("Reset Collider");
             ImGui::PopStyleColor();
             if (ImGui::SmallButton(("Box##shape_preset_box_" + std::to_string(s)).c_str())){
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
@@ -10564,8 +11003,8 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
     }
     endTable();
 
-    ImGui::SeparatorText("Shapes");
-    ImGui::Text("Shapes: %zu", body.numShapes);
+    ImGui::SeparatorText("Colliders");
+    ImGui::Text("Colliders: %zu", body.numShapes);
 
     static int createShape3DType = (int)Shape3DType::BOX;
     const char* createShape3DLabel = "Unknown";
@@ -10590,7 +11029,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add Shape##body3d")){
+    if (ImGui::Button("Add Collider##body3d")){
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
         for (Entity entity : entities){
@@ -10668,9 +11107,9 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         const float physicsOffset = (shape.position * bodyScale).length();
         const bool suspiciousSingleShapeOffset = bodyRef.numShapes == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
 
-        ImGui::SeparatorText(("Shape " + std::to_string(s + 1)).c_str());
+        ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
-        if (ImGui::Button("Remove Shape")){
+        if (ImGui::Button("Remove Collider")){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
             for (Entity entity : entities){
@@ -10847,7 +11286,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         if (shapeTypeUI == Shape3DType::CONVEX_HULL){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceConvexHull);
             if (normalizedSourceUI == Shape3DSource::ENTITY_MESH){
-                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source Entity", sceneProject, entities, settingsShapeValue);
+                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }else if (normalizedSourceUI == Shape3DSource::RAW_VERTICES){
                 propertyHeader("Vertices");
                 ImGui::Text("%d", shape.numVertices);
@@ -10918,7 +11357,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         }else if (shapeTypeUI == Shape3DType::MESH){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceMesh);
             if (normalizedSourceUI == Shape3DSource::ENTITY_MESH){
-                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source Entity", sceneProject, entities, settingsShapeValue);
+                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }else if (normalizedSourceUI == Shape3DSource::RAW_MESH){
                 // Vertices
                 propertyHeader("Vertices");
@@ -11070,7 +11509,7 @@ void editor::Properties::drawBody3DComponent(ComponentType cpType, SceneProject*
         }else if (shapeTypeUI == Shape3DType::HEIGHTFIELD){
             propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".source", "Source", sceneProject, entities, settingsShapeSourceHeightfield);
             if (normalizedSourceUI == Shape3DSource::ENTITY_HEIGHTFIELD){
-                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source Entity", sceneProject, entities, settingsShapeValue);
+                propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".sourceEntity", "Source GameObject", sceneProject, entities, settingsShapeValue);
             }
             propertyRow(RowPropertyType::UInt, cpType, shapeKey + ".samplesSize", "Samples Size", sceneProject, entities, settingsShapeValue);
         }
@@ -11101,8 +11540,8 @@ void editor::Properties::drawJoint2DComponent(ComponentType cpType, SceneProject
 
     beginTable(cpType, getLabelSize("Joint Type"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Body A", sceneProject, entities, settingsJointValue);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Body B", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Rigidbody A", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Rigidbody B", sceneProject, entities, settingsJointValue);
 
     endTable();
 
@@ -11162,8 +11601,8 @@ void editor::Properties::drawJoint3DComponent(ComponentType cpType, SceneProject
 
     beginTable(cpType, getLabelSize("Joint Type"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Body A", sceneProject, entities, settingsJointValue);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Body B", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Rigidbody A", sceneProject, entities, settingsJointValue);
+    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Rigidbody B", sceneProject, entities, settingsJointValue);
 
     endTable();
 
@@ -12086,7 +12525,7 @@ void editor::Properties::drawSpriteAnimationComponent(ComponentType cpType, Scen
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Animation Frames");
-        ImGui::TextDisabled("Select a single entity to edit sprite animation frames");
+        ImGui::TextDisabled("Select a single GameObject to edit sprite animation frames");
         return;
     }
 
@@ -12316,13 +12755,13 @@ void editor::Properties::drawSpriteAnimationComponent(ComponentType cpType, Scen
                 ImGui::TableSetColumnIndex(0);
                 ImGui::TextDisabled("Preview");
                 ImGui::TableSetColumnIndex(1);
-                ImGui::TextDisabled("Target entity needs SpriteComponent to preview animation frames");
+                ImGui::TextDisabled("Target GameObject needs a Sprite Renderer to preview animation frames");
             } else if (!meshComp || meshComp->numSubmeshes == 0 || previewTexture.empty()) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::TextDisabled("Preview");
                 ImGui::TableSetColumnIndex(1);
-                ImGui::TextDisabled("Target entity needs MeshComponent with a valid texture for previews");
+                ImGui::TextDisabled("Target GameObject needs a Mesh Renderer with a valid texture for previews");
             } else if (!hasFrameValue) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
@@ -13182,139 +13621,9 @@ void editor::Properties::show(){
                 return std::find(authored.begin(), authored.end(), entity) == authored.end();
             });
 
-        if (entities.size() == 1){
-            ImGui::Text("Entity");
-        }else{
-            ImGui::Text("Entities (%lu)", entities.size());
-        }
-        ImGui::SetItemTooltip("%lu selected: %s", entities.size(), names.c_str());
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(-1);
-        static char nameBuffer[128];
-        strncpy(nameBuffer, names.c_str(), sizeof(nameBuffer) - 1);
-        nameBuffer[sizeof(nameBuffer) - 1] = '\0';
-        ImGui::BeginDisabled(entities.size() != 1 || isRuntimeSelection);
-        if (nameFocusFrames > 0 && entities.size() == 1) ImGui::SetKeyboardFocusHere();
-        ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
-        if (ImGui::IsItemActive()) nameFocusFrames = 0;
-        ImGui::EndDisabled();
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            if (entities.size() == 1){
-                if (nameBuffer[0] != '\0' && strcmp(nameBuffer, scene->getEntityName(entities[0]).c_str()) != 0) {
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new EntityNameCmd(project, sceneProject->id, entities[0], nameBuffer));
-                }
-            }
-        }
+        drawGameObjectHeader(sceneProject, entities, names, isRuntimeSelection);
 
-        ImGui::Separator();
-
-        float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-
-        ImGui::BeginDisabled(isRuntimeSelection);
-        if (ImGui::Button(ICON_FA_SQUARE_PLUS " New component", ImVec2(buttonWidth, 0))) {
-            componentAddDialog.open(
-                [this, sceneProject, entities](ComponentType cpType) {
-                    // Add component to all selected entities
-                    for (const Entity& entity : entities) {
-                        cmd = new AddComponentCmd(project, sceneProject->id, entity, cpType);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                    }
-                    cmd->setNoMerge();
-
-                    // Mark scene as modified
-                    sceneProject->isModified = true;
-                },
-                [this, sceneProject, entities](ComponentType cpType) {
-                    // Check if component can be added to all selected entities
-                    for (const Entity& entity : entities) {
-                        if (!canAddComponent(sceneProject, entity, cpType)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                },
-                [](){}
-            );
-        }
-
-        ImGui::SameLine();
-
-        if (ImGui::Button(ICON_FA_FILE_CIRCLE_PLUS " New Script", ImVec2(buttonWidth, 0))) {
-            Entity firstEntity = entities.empty() ? NULL_ENTITY : entities[0];
-            std::string defaultName = "NewScript";
-            if (firstEntity != NULL_ENTITY) {
-                std::string entityName = sceneProject->scene->getEntityName(firstEntity);
-                if (!entityName.empty())
-                    defaultName = entityName + "Script";
-            }
-            scriptCreateDialog.open(
-                sceneProject->scene,
-                firstEntity,
-                project->getProjectPath(),
-                project->getLuaPath(),
-                defaultName,
-                [this, sceneProject, entities](const std::filesystem::path& headerPath,
-                                            const std::filesystem::path& sourcePath,
-                                            const std::string& name,
-                                            ScriptType type) {
-
-                    editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
-
-                    for (const Entity& entity : entities) {
-                        bool hasScriptComponent = false;
-                        std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
-                        for (ComponentType ct : existingComponents) {
-                            if (ct == ComponentType::ScriptComponent) {
-                                hasScriptComponent = true;
-                                break;
-                            }
-                        }
-
-                        std::vector<ScriptEntry> newScripts;
-
-                        if (!hasScriptComponent) {
-                            auto addCmd = std::make_unique<editor::AddComponentCmd>(project, sceneProject->id, entity, ComponentType::ScriptComponent);
-                            multiCmd->addCommand(std::move(addCmd));
-                        } else {
-                            ScriptComponent& scriptComp = sceneProject->scene->getComponent<ScriptComponent>(entity);
-                            newScripts = scriptComp.scripts;
-                        }
-
-                        ScriptEntry entry;
-                        entry.type = type;
-                        entry.enabled = true;
-
-                        if (type == ScriptType::CPP) {
-                            entry.headerPath = headerPath.string();
-                            entry.path = sourcePath.string();
-                            entry.className = name;
-                        } else if (type == ScriptType::LUA) {
-                            entry.headerPath.clear();
-                            entry.path = sourcePath.string();
-                            entry.className = name; // module (file base) name
-                        }
-
-                        newScripts.push_back(entry);
-
-                        project->updateScriptProperties(sceneProject, entity, newScripts);
-
-                        auto propCmd = std::make_unique<editor::PropertyCmd<std::vector<ScriptEntry>>>(
-                            project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", newScripts
-                        );
-                        multiCmd->addCommand(std::move(propCmd));
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-                },
-                [](){}
-            );
-        }
-
-        ImGui::EndDisabled();
-
-        // Show the component add dialog
-        componentAddDialog.show();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
 
         bool isBundle = !bundlePath.empty();
 
@@ -13350,39 +13659,9 @@ void editor::Properties::show(){
                 }
             }
 
-            // Create header with appropriate styling
-            ImGui::PushID(static_cast<int>(cpType));
-
-            // Build header text with icon
-            std::string headerText;
-
-            if (isBundle && !isBundleOverridden) {
-                // Bundle components - light blue with cube icon (same as Structure window)
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
-                headerText = ICON_FA_CUBE " ";
-            }
-            headerText += Catalog::getComponentName(cpType);
-
-            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            bool headerOpen = ImGui::CollapsingHeader(headerText.c_str());
-
-            if (isBundle && !isBundleOverridden) {
-                ImGui::PopStyleColor();
-            }
-
             // Context menu and body disabled for a runtime selection
             const bool compReadOnly = isRuntimeSelection;
-            handleComponentMenu(sceneProject, entities, cpType, isBundle, isBundleOverridden, headerOpen, compReadOnly);
-
-            // Add hover tooltip for bundle components
-            if (isBundle && !isBundleOverridden && ImGui::IsItemHovered()) {
-                ImGui::BeginTooltip();
-                ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), ICON_FA_CUBE " Bundle Component");
-                ImGui::Text("This component comes from the bundle template.");
-                ImGui::EndTooltip();
-            }
-
-            ImGui::PopID();
+            bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isBundle, isBundleOverridden, compReadOnly);
 
             if (headerOpen){
                 // Disable non-script components while playing
@@ -13498,9 +13777,14 @@ void editor::Properties::show(){
             }
         }
 
+        drawAddComponentButton(sceneProject, entities, isRuntimeSelection);
+
     }else{
-        ImGui::Text("Scene");
-        ImGui::SameLine();
+        // Scene settings: same header shape as a GameObject (icon, full width name)
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(ICON_FA_DISPLAY);
+        ImGui::SetItemTooltip("Scene settings, shown while no GameObject is selected");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::SetNextItemWidth(-1);
         static char nameBuffer[128];
         strncpy(nameBuffer, sceneProject->name.c_str(), sizeof(nameBuffer) - 1);
@@ -13753,7 +14037,7 @@ void editor::Properties::show(){
                 if (sceneProject->sceneType != SceneType::SCENE_UI) {
                     drawSceneShaderRow(sceneProject, ShaderType::MESH, "default_mesh_shader", "Mesh");
                     if (sceneProject->sceneType == SceneType::SCENE_3D)
-                        drawSceneShaderRow(sceneProject, ShaderType::SKYBOX, "default_sky_shader", "Sky");
+                        drawSceneShaderRow(sceneProject, ShaderType::SKYBOX, "default_sky_shader", "Skybox");
                 }
                 drawSceneShaderRow(sceneProject, ShaderType::UI, "default_ui_shader", "UI");
                 if (sceneProject->sceneType != SceneType::SCENE_UI) {

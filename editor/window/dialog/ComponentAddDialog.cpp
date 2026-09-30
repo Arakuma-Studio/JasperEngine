@@ -4,279 +4,391 @@
 #include "ComponentAddDialog.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
+#include "Theme.h"
 #include <cctype>
+#include <cstring>
 
 namespace jasperengine {
 namespace editor {
+
+namespace {
+
+    std::string toLower(std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+        return text;
+    }
+
+    // One list row: icon, label, optional right arrow; returns true when clicked
+    bool listRow(const char* id, const char* icon, const std::string& label, bool enabled, bool highlighted, bool arrow) {
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        float width = ImGui::GetContentRegionAvail().x;
+        float height = ImGui::GetFrameHeight();
+
+        ImGui::BeginDisabled(!enabled);
+        bool clicked = ImGui::Selectable(id, highlighted, ImGuiSelectableFlags_None, ImVec2(width, height));
+        bool hovered = ImGui::IsItemHovered();
+        ImGui::EndDisabled();
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImU32 textColor = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+        float textY = pos.y + (height - ImGui::GetFontSize()) * 0.5f;
+        float iconWidth = ImGui::GetFontSize() * 1.25f;
+
+        if (icon) {
+            ImVec2 iconSize = ImGui::CalcTextSize(icon);
+            drawList->AddText(ImVec2(pos.x + style.FramePadding.x + (iconWidth - iconSize.x) * 0.5f, textY), textColor, icon);
+        }
+        drawList->AddText(ImVec2(pos.x + style.FramePadding.x + iconWidth + style.ItemInnerSpacing.x, textY), textColor, label.c_str());
+        if (arrow) {
+            ImVec2 arrowSize = ImGui::CalcTextSize(ICON_FA_CHEVRON_RIGHT);
+            drawList->AddText(ImVec2(pos.x + width - arrowSize.x - style.FramePadding.x, textY), ImGui::GetColorU32(ImGuiCol_TextDisabled), ICON_FA_CHEVRON_RIGHT);
+        }
+
+        (void)hovered;
+        return clicked && enabled;
+    }
+
+}
 
 ComponentAddDialog::ComponentAddDialog() {
     initializeCategories();
 }
 
+// Unity's Add Component menu groups; names come from Catalog::getComponentDisplayName
 void ComponentAddDialog::initializeCategories() {
     m_categories = {
-        {"Core", ICON_FA_LOCATION_CROSSHAIRS, ImVec4(0.4f, 0.8f, 0.9f, 1.0f), {
-            {ComponentType::Transform, ICON_FA_UP_DOWN_LEFT_RIGHT, "Transform", "Position, rotation, scale and hierarchy", ImVec4(0.4f, 0.8f, 0.9f, 1.0f)}
+        {"Mesh", ICON_FA_SHAPES, {
+            {ComponentType::MeshComponent, "Draws a mesh with its materials"},
+            {ComponentType::ModelComponent, "Loads a glTF or OBJ model"},
+            {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
+            {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
+            {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
         }},
-        {"Rendering", ICON_FA_CUBE, ImVec4(0.9f, 0.5f, 0.3f, 1.0f), {
-            {ComponentType::MeshComponent, ICON_FA_SHAPES, "Mesh", "3D mesh renderer", ImVec4(0.9f, 0.5f, 0.3f, 1.0f)},
-            {ComponentType::LightComponent, ICON_FA_LIGHTBULB, "Light", "Light source", ImVec4(1.0f, 0.9f, 0.3f, 1.0f)},
-            {ComponentType::CameraComponent, ICON_FA_VIDEO, "Camera", "Camera view", ImVec4(0.5f, 0.7f, 0.9f, 1.0f)},
-            {ComponentType::SkyComponent, ICON_FA_CLOUD_SUN, "Sky", "Skybox or skydome", ImVec4(0.6f, 0.8f, 1.0f, 1.0f)},
-            {ComponentType::FogComponent, ICON_FA_SMOG, "Fog", "Fog effect", ImVec4(0.7f, 0.7f, 0.8f, 1.0f)},
-            {ComponentType::MirrorComponent, ICON_FA_CLONE, "Mirror", "Planar reflection surface", ImVec4(0.6f, 0.8f, 0.9f, 1.0f)},
-            {ComponentType::ReflectionProbeComponent, ICON_FA_CUBE, "Reflection Probe", "Local static or dynamic environment reflection", ImVec4(0.45f, 0.75f, 1.0f, 1.0f)},
-            {ComponentType::ModelComponent, ICON_FA_CUBES, "Model", "3D model", ImVec4(0.8f, 0.4f, 0.4f, 1.0f)},
-            {ComponentType::TerrainComponent, ICON_FA_MOUNTAIN, "Terrain", "Terrain mesh", ImVec4(0.4f, 0.7f, 0.3f, 1.0f)},
-            {ComponentType::InstancedMeshComponent, ICON_FA_CLONE, "Instanced Mesh", "Instanced rendering", ImVec4(0.7f, 0.4f, 0.5f, 1.0f)}
+        {"Rendering", ICON_FA_CAMERA, {
+            {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
+            {ComponentType::LightComponent, "Directional, point or spot light"},
+            {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
+            {ComponentType::LinesComponent, "Draws line segments"},
+            {ComponentType::PointsComponent, "Draws a point cloud"},
+            {ComponentType::SkyComponent, "Skybox cube map and scene environment"},
+            {ComponentType::FogComponent, "Distance fog"},
+            {ComponentType::MirrorComponent, "Planar reflection surface"},
+            {ComponentType::ReflectionProbeComponent, "Local environment reflection"},
+            {ComponentType::Light2DComponent, "2D light with radius falloff"},
+            {ComponentType::Occluder2DComponent, "Casts shadows from 2D lights"},
         }},
-        {"User Interface", ICON_FA_WINDOW_RESTORE, ImVec4(0.5f, 0.3f, 0.9f, 1.0f), {
-            {ComponentType::UIComponent, ICON_FA_SQUARE, "UI Base", "Basic UI element", ImVec4(0.5f, 0.3f, 0.9f, 1.0f)},
-            {ComponentType::UILayoutComponent, ICON_FA_TABLE_CELLS, "UI Layout", "Layout container", ImVec4(0.6f, 0.4f, 0.9f, 1.0f)},
-            {ComponentType::UIContainerComponent, ICON_FA_BOX, "UI Container", "Container element", ImVec4(0.55f, 0.35f, 0.85f, 1.0f)},
-            {ComponentType::ImageComponent, ICON_FA_IMAGE, "Image", "UI image display", ImVec4(0.7f, 0.5f, 0.9f, 1.0f)},
-            {ComponentType::TextComponent, ICON_FA_FONT, "Text", "Text display", ImVec4(0.8f, 0.6f, 0.9f, 1.0f)},
-            {ComponentType::ButtonComponent, ICON_FA_SQUARE_CHECK, "Button", "Interactive button", ImVec4(0.5f, 0.7f, 0.5f, 1.0f)},
-            {ComponentType::PanelComponent, ICON_FA_WINDOW_MAXIMIZE, "Panel", "UI panel", ImVec4(0.4f, 0.5f, 0.7f, 1.0f)},
-            {ComponentType::ScrollbarComponent, ICON_FA_ARROWS_UP_DOWN, "Scrollbar", "Scroll control", ImVec4(0.6f, 0.6f, 0.7f, 1.0f)},
-            {ComponentType::ProgressbarComponent, ICON_FA_BARS_PROGRESS, "Progressbar", "Progress indicator", ImVec4(0.4f, 0.7f, 0.5f, 1.0f)},
-            {ComponentType::TextEditComponent, ICON_FA_KEYBOARD, "Text Edit", "Text input field", ImVec4(0.7f, 0.7f, 0.8f, 1.0f)}
+        {"Effects", ICON_FA_FIRE, {
+            {ComponentType::ParticlesComponent, "Emits and animates particles"},
         }},
-        {"2D Graphics", ICON_FA_LAYER_GROUP, ImVec4(0.3f, 0.8f, 0.5f, 1.0f), {
-            {ComponentType::SpriteComponent, ICON_FA_IMAGE, "Sprite", "2D sprite", ImVec4(0.3f, 0.8f, 0.5f, 1.0f)},
-            {ComponentType::Light2DComponent, ICON_FA_LIGHTBULB, "2D Light", "2D point light with radius falloff", ImVec4(1.0f, 0.9f, 0.3f, 1.0f)},
-            {ComponentType::Occluder2DComponent, ICON_FA_CIRCLE_HALF_STROKE, "2D Occluder", "Casts shadows from 2D lights", ImVec4(0.5f, 0.5f, 0.6f, 1.0f)},
-            {ComponentType::SpriteAnimationComponent, ICON_FA_FILM, "Sprite Animation", "Animated sprite", ImVec4(0.4f, 0.8f, 0.6f, 1.0f)},
-            {ComponentType::TilemapComponent, ICON_FA_BORDER_ALL, "Tilemap", "Tile-based map", ImVec4(0.5f, 0.7f, 0.6f, 1.0f)},
-            {ComponentType::PolygonComponent, ICON_FA_DRAW_POLYGON, "Polygon", "2D polygon shape", ImVec4(0.6f, 0.8f, 0.4f, 1.0f)},
-            {ComponentType::MeshPolygonComponent, ICON_FA_VECTOR_SQUARE, "Mesh Polygon", "Mesh-based polygon", ImVec4(0.5f, 0.75f, 0.45f, 1.0f)}
+        {"Physics", ICON_FA_CUBE, {
+            {ComponentType::Body3DComponent, "Rigidbody with colliders, simulated by Jolt"},
+            {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
         }},
-        {"Primitives", ICON_FA_SHAPES, ImVec4(0.7f, 0.4f, 0.7f, 1.0f), {
-            {ComponentType::PointsComponent, ICON_FA_BRAILLE, "Points", "Point cloud", ImVec4(0.8f, 0.5f, 0.8f, 1.0f)},
-            {ComponentType::LinesComponent, ICON_FA_GRIP_LINES, "Lines", "Line renderer", ImVec4(0.7f, 0.4f, 0.7f, 1.0f)},
-            {ComponentType::ParticlesComponent, ICON_FA_FIRE, "Particles", "Particle system", ImVec4(0.9f, 0.3f, 0.5f, 1.0f)}
+        {"Physics 2D", ICON_FA_CIRCLE, {
+            {ComponentType::Body2DComponent, "2D Rigidbody with colliders, simulated by Box2D"},
+            {ComponentType::Joint2DComponent, "Connects two 2D Rigidbodies"},
         }},
-        {"Physics", ICON_FA_ATOM, ImVec4(0.8f, 0.3f, 0.3f, 1.0f), {
-            {ComponentType::Body2DComponent, ICON_FA_CIRCLE, "2D Physics Body", "2D rigid body", ImVec4(0.8f, 0.3f, 0.3f, 1.0f)},
-            {ComponentType::Body3DComponent, ICON_FA_CUBE, "3D Physics Body", "3D rigid body", ImVec4(0.9f, 0.4f, 0.4f, 1.0f)},
-            {ComponentType::Joint2DComponent, ICON_FA_LINK, "2D Joint", "2D physics joint", ImVec4(0.7f, 0.5f, 0.3f, 1.0f)},
-            {ComponentType::Joint3DComponent, ICON_FA_LINK, "3D Joint", "3D physics joint", ImVec4(0.8f, 0.6f, 0.4f, 1.0f)}
+        {"Audio", ICON_FA_VOLUME_HIGH, {
+            {ComponentType::SoundComponent, "Plays an audio clip"},
         }},
-        {"Animation", ICON_FA_PLAY, ImVec4(0.9f, 0.6f, 0.2f, 1.0f), {
-            {ComponentType::AnimationComponent, ICON_FA_FILM, "Animation", "Animation player", ImVec4(0.9f, 0.6f, 0.2f, 1.0f)},
-            {ComponentType::ActionComponent, ICON_FA_PLAY, "Action", "Action sequence", ImVec4(0.8f, 0.7f, 0.3f, 1.0f)},
-            {ComponentType::TimedActionComponent, ICON_FA_CLOCK, "Timed Action", "Time-based action", ImVec4(0.85f, 0.65f, 0.25f, 1.0f)},
-            {ComponentType::AlphaActionComponent, ICON_FA_EYE, "Alpha Action", "Opacity animation", ImVec4(0.7f, 0.6f, 0.4f, 1.0f)},
-            {ComponentType::ColorActionComponent, ICON_FA_PALETTE, "Color Action", "Color animation", ImVec4(0.8f, 0.5f, 0.3f, 1.0f)},
-            {ComponentType::PositionActionComponent, ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "Position Action", "Position animation", ImVec4(0.75f, 0.7f, 0.35f, 1.0f)},
-            {ComponentType::RotationActionComponent, ICON_FA_ROTATE, "Rotation Action", "Rotation animation", ImVec4(0.85f, 0.75f, 0.3f, 1.0f)},
-            {ComponentType::ScaleActionComponent, ICON_FA_EXPAND, "Scale Action", "Scale animation", ImVec4(0.9f, 0.65f, 0.35f, 1.0f)},
-            {ComponentType::BoneComponent, ICON_FA_BONE, "Bone", "Skeletal bone", ImVec4(0.9f, 0.9f, 0.8f, 1.0f)},
-            {ComponentType::KeyframeTracksComponent, ICON_FA_KEY, "Keyframe Tracks", "Keyframe animation", ImVec4(0.8f, 0.6f, 0.3f, 1.0f)},
-            {ComponentType::MorphTracksComponent, ICON_FA_FACE_SMILE, "Morph Tracks", "Morph targets", ImVec4(0.7f, 0.65f, 0.4f, 1.0f)},
-            {ComponentType::RotateTracksComponent, ICON_FA_CIRCLE_NOTCH, "Rotate Tracks", "Rotation tracks", ImVec4(0.75f, 0.6f, 0.35f, 1.0f)},
-            {ComponentType::ScaleTracksComponent, ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, "Scale Tracks", "Scale tracks", ImVec4(0.8f, 0.55f, 0.3f, 1.0f)},
-            {ComponentType::TranslateTracksComponent, ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "Translate Tracks", "Translation tracks", ImVec4(0.85f, 0.6f, 0.25f, 1.0f)}
+        {"UI", ICON_FA_WINDOW_RESTORE, {
+            {ComponentType::UILayoutComponent, "Size, anchors and pivot of a UI element"},
+            {ComponentType::UIComponent, "Draws a UI element"},
+            {ComponentType::ImageComponent, "Displays an image"},
+            {ComponentType::TextComponent, "Displays text"},
+            {ComponentType::ButtonComponent, "Clickable button"},
+            {ComponentType::TextEditComponent, "Editable text field"},
+            {ComponentType::PanelComponent, "Movable, resizable window"},
+            {ComponentType::ScrollbarComponent, "Scroll control"},
+            {ComponentType::ProgressbarComponent, "Progress indicator"},
+            {ComponentType::UIContainerComponent, "Arranges child elements in a row, column or grid"},
+            {ComponentType::PolygonComponent, "Filled UI polygon"},
         }},
-        {"Sound & Script", ICON_FA_CODE, ImVec4(0.6f, 0.6f, 0.6f, 1.0f), {
-            {ComponentType::SoundComponent, ICON_FA_VOLUME_HIGH, "Sound", "Sound player", ImVec4(0.4f, 0.7f, 0.9f, 1.0f)},
-            {ComponentType::ScriptComponent, ICON_FA_CODE, "Script", "C++ or Lua script", ImVec4(0.7f, 0.5f, 0.8f, 1.0f)}
-        }}
+        {"Animation", ICON_FA_FILM, {
+            {ComponentType::AnimationComponent, "Plays a sequence of actions"},
+            {ComponentType::SpriteAnimationComponent, "Flips through sprite frames"},
+            {ComponentType::ActionComponent, "Start, pause and stop state of an animation step"},
+            {ComponentType::TimedActionComponent, "Duration, easing and looping of a tween"},
+            {ComponentType::PositionActionComponent, "Moves between two positions"},
+            {ComponentType::RotationActionComponent, "Rotates between two rotations"},
+            {ComponentType::ScaleActionComponent, "Scales between two sizes"},
+            {ComponentType::ColorActionComponent, "Fades between two colors"},
+            {ComponentType::AlphaActionComponent, "Fades between two opacities"},
+            {ComponentType::KeyframeTracksComponent, "Keyframe times for tracks"},
+            {ComponentType::TranslateTracksComponent, "Position keyframes"},
+            {ComponentType::RotateTracksComponent, "Rotation keyframes"},
+            {ComponentType::ScaleTracksComponent, "Scale keyframes"},
+            {ComponentType::MorphTracksComponent, "Blend shape keyframes"},
+            {ComponentType::BoneComponent, "Skeleton bone of a model"},
+        }},
+        {"Scripts", ICON_FA_CODE, {
+            {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},
+        }},
+        {"Miscellaneous", ICON_FA_PUZZLE_PIECE, {
+            {ComponentType::Transform, "Position, rotation, scale and parent"},
+        }},
     };
 }
 
 void ComponentAddDialog::open(
     std::function<void(ComponentType)> onAdd,
     std::function<bool(ComponentType)> canAddComponent,
-    std::function<void()> onCancel
+    std::function<void()> onCancel,
+    std::function<void()> onNewScript,
+    ImVec2 anchorMin,
+    ImVec2 anchorMax
 ) {
     m_isOpen = true;
     m_justOpened = true;
+    m_focusSearch = false;
     memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
-    m_hoveredIndex = -1;
+    m_category = -1;
+    m_highlighted = 0;
     m_onAdd = onAdd;
     m_canAddComponent = canAddComponent;
     m_onCancel = onCancel;
+    m_onNewScript = onNewScript;
+    m_anchorMin = anchorMin;
+    m_anchorMax = anchorMax;
+}
+
+void ComponentAddDialog::finish(bool cancelled) {
+    memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
+    m_category = -1;
+    m_highlighted = 0;
+    m_justOpened = false;
+    m_isOpen = false;
+    if (cancelled && m_onCancel) m_onCancel();
+    ImGui::CloseCurrentPopup();
 }
 
 void ComponentAddDialog::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Add new component##ComponentAddModal");
+    const char* popupId = "Add Component##ComponentAddPopup";
+    if (m_justOpened) {
+        ImGui::OpenPopup(popupId);
+    }
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(400, 0.0f), ImGuiCond_Once);
+    ImGuiStyle& style = ImGui::GetStyle();
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float width = std::max(Theme::dpi(260.0f), std::min(m_anchorMax.x - m_anchorMin.x, Theme::dpi(320.0f)));
+    const float height = Theme::dpi(340.0f);
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | 
-                             ImGuiWindowFlags_Modal;
+    // below the button like Unity, above it when the screen ends first
+    ImVec2 pos(0.5f * (m_anchorMin.x + m_anchorMax.x) - width * 0.5f, m_anchorMax.y + style.ItemSpacing.y);
+    if (m_anchorMax.x <= m_anchorMin.x) {
+        pos = ImVec2(viewport->GetCenter().x - width * 0.5f, viewport->GetCenter().y - height * 0.5f);
+    } else if (pos.y + height > viewport->WorkPos.y + viewport->WorkSize.y) {
+        pos.y = std::max(viewport->WorkPos.y, m_anchorMin.y - height - style.ItemSpacing.y);
+    }
+    pos.x = std::clamp(pos.x, viewport->WorkPos.x, viewport->WorkPos.x + std::max(0.0f, viewport->WorkSize.x - width));
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(width, height));
 
-    if (!ImGui::BeginPopupModal("Add new component##ComponentAddModal", nullptr, flags)) {
-        if (m_isOpen) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(6.0f, 6.0f)));
+    const bool visible = ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleVar();
+    if (!visible) {
+        // closed by a click outside or Escape
+        if (!m_justOpened) {
             m_isOpen = false;
             if (m_onCancel) m_onCancel();
         }
         return;
     }
 
-    // Search input
-    UIUtils::searchInput("##search", "Search components...", m_searchBuffer, sizeof(m_searchBuffer), m_justOpened);
+    // Search field, focused on open and after changing page
+    bool focusSearch = m_justOpened || m_focusSearch;
     m_justOpened = false;
+    m_focusSearch = false;
+    char previousSearch[sizeof(m_searchBuffer)];
+    memcpy(previousSearch, m_searchBuffer, sizeof(m_searchBuffer));
+    UIUtils::searchInput("##component_search", "Search", m_searchBuffer, sizeof(m_searchBuffer), focusSearch);
+    if (strcmp(previousSearch, m_searchBuffer) != 0) {
+        m_highlighted = 0;
+    }
+    const std::string search = toLower(m_searchBuffer);
+    const bool searching = !search.empty();
 
-    ImGui::Separator();
+    // Rows of the current page
+    struct Row {
+        enum Kind { Category, Component, NewScript } kind;
+        int index;          // category index
+        ComponentType type; // component rows
+        const char* description;
+        bool enabled;
+    };
+    std::vector<Row> rows;
 
-    // Filter components based on search
-    std::string searchStr(m_searchBuffer);
-    std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
+    auto canAdd = [&](ComponentType type) {
+        return !m_canAddComponent || m_canAddComponent(type);
+    };
 
-    // Scrollable component list
-    ImGui::BeginChild("ComponentList", ImVec2(0, 320), false);
-
-    int componentIndex = 0;
-    bool foundAny = false;
-
-    ImGui::Dummy(ImVec2(0, 5));
-
-    for (const auto& category : m_categories) {
-        std::vector<ComponentEntry> filteredEntries;
-
-        // Filter entries based on search and availability
-        for (const auto& entry : category.entries) {
-            // Check search match
-            std::string entryName(entry.name);
-            std::transform(entryName.begin(), entryName.end(), entryName.begin(), ::tolower);
-            if (!searchStr.empty() && entryName.find(searchStr) == std::string::npos) {
-                continue;
-            }
-
-            // Check if component can be added
-            if (m_canAddComponent && m_canAddComponent(entry.type)) {
-                filteredEntries.push_back(entry);
+    if (searching) {
+        for (int c = 0; c < (int)m_categories.size(); c++) {
+            for (const ComponentEntry& entry : m_categories[c].entries) {
+                std::string name = toLower(Catalog::getComponentDisplayName(entry.type));
+                if (name.find(search) == std::string::npos) continue;
+                if (!canAdd(entry.type)) continue;
+                rows.push_back({Row::Component, c, entry.type, entry.description, true});
             }
         }
+    } else if (m_category < 0) {
+        for (int c = 0; c < (int)m_categories.size(); c++) {
+            bool any = false;
+            for (const ComponentEntry& entry : m_categories[c].entries) {
+                if (canAdd(entry.type)) { any = true; break; }
+            }
+            rows.push_back({Row::Category, c, ComponentType::Transform, nullptr, any});
+        }
+    } else {
+        for (const ComponentEntry& entry : m_categories[m_category].entries) {
+            rows.push_back({Row::Component, m_category, entry.type, entry.description, canAdd(entry.type)});
+        }
+    }
+    if (m_onNewScript && (m_category < 0 || searching)) {
+        rows.push_back({Row::NewScript, -1, ComponentType::ScriptComponent, "Creates a C++ or Lua script and adds it", true});
+    }
 
-        if (!filteredEntries.empty()) {
-            foundAny = true;
+    // Keyboard: arrows move, Enter picks, Left/Backspace go back, Right opens
+    if (!rows.empty()) {
+        m_highlighted = std::clamp(m_highlighted, 0, (int)rows.size() - 1);
+    }
+    bool activateHighlighted = false;
+    bool goBack = false;
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+            for (int i = m_highlighted + 1; i < (int)rows.size(); i++) {
+                if (rows[i].enabled) { m_highlighted = i; m_scrollToHighlighted = true; break; }
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+            for (int i = m_highlighted - 1; i >= 0; i--) {
+                if (rows[i].enabled) { m_highlighted = i; m_scrollToHighlighted = true; break; }
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
+            activateHighlighted = true;
+        }
+        if (!searching && m_category >= 0 &&
+                (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
+            goBack = true;
+        }
+        if (!searching && m_category < 0 && ImGui::IsKeyPressed(ImGuiKey_RightArrow) &&
+                !rows.empty() && rows[m_highlighted].kind == Row::Category) {
+            activateHighlighted = true;
+        }
+    }
 
-            // Category header
-            ImGui::PushStyleColor(ImGuiCol_Text, category.color);
-            ImGui::SetCursorPosX(10);
-            ImGui::Text("%s %s", category.icon, category.name);
+    // Header: page title, with a back arrow inside a category
+    {
+        const char* title = searching ? "Search" : (m_category < 0 ? "Component" : m_categories[m_category].name);
+        ImVec2 headerMin = ImGui::GetCursorScreenPos();
+        float headerWidth = ImGui::GetContentRegionAvail().x;
+        float headerHeight = ImGui::GetFrameHeight();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRectFilled(headerMin, ImVec2(headerMin.x + headerWidth, headerMin.y + headerHeight),
+                                ImGui::GetColorU32(ImGuiCol_Header), style.FrameRounding);
+
+        if (!searching && m_category >= 0) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            if (ImGui::Button(ICON_FA_CHEVRON_LEFT "##component_back", ImVec2(headerHeight, headerHeight))) {
+                goBack = true;
+            }
             ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("Back");
+            ImGui::SetCursorScreenPos(headerMin);
+        }
+
+        ImVec2 titleSize = ImGui::CalcTextSize(title);
+        ImVec2 titlePos(headerMin.x + (headerWidth - titleSize.x) * 0.5f, headerMin.y + (headerHeight - titleSize.y) * 0.5f);
+        ImU32 titleColor = ImGui::GetColorU32(ImGuiCol_Text);
+        drawList->AddText(titlePos, titleColor, title);
+        drawList->AddText(ImVec2(titlePos.x + 1.0f, titlePos.y), titleColor, title); // bold
+        ImGui::Dummy(ImVec2(headerWidth, headerHeight));
+    }
+
+    int picked = -1;
+    ImGui::BeginChild("##component_rows", ImVec2(0, 0), ImGuiChildFlags_None);
+    for (int i = 0; i < (int)rows.size(); i++) {
+        const Row& row = rows[i];
+        ImGui::PushID(i);
+
+        if (row.kind == Row::NewScript && i > 0) {
             ImGui::Separator();
-
-            // Component entries
-            for (const auto& entry : filteredEntries) {
-                ImGui::PushID(componentIndex);
-
-                ImVec2 cursorPos = ImGui::GetCursorPos();
-
-                // Customize button colors to match your design
-                ImVec4 bgColor = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent by default
-                ImVec4 hoverColor = ImVec4(0.235f, 0.314f, 0.471f, 0.392f);  // Your hover color
-                ImVec4 activeColor = ImVec4(0.314f, 0.392f, 0.549f, 0.588f);  // Slightly brighter when clicked
-
-                ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoverColor);
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
-                ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.0f)); // Left align
-
-                // Create button with empty label (we'll draw content manually)
-                bool clicked = ImGui::Button("##component", ImVec2(ImGui::GetContentRegionAvail().x, 45));
-
-                ImGui::PopStyleVar();
-                ImGui::PopStyleColor(3);
-
-                // Check if hovered for cursor change
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-                }
-
-                // Draw icon and text on top of the button
-                ImGui::SetCursorPos(ImVec2(cursorPos.x + 20, cursorPos.y + 5));
-
-                ImGui::PushStyleColor(ImGuiCol_Text, entry.color);
-                ImGui::Text("%s", entry.icon);
-                ImGui::PopStyleColor();
-
-                ImGui::SameLine();
-                ImGui::SetCursorPosX(cursorPos.x + 50);
-
-                // Component name and description
-                ImGui::BeginGroup();
-                ImGui::Text("%s", entry.name);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3);  // Tighten spacing
-                ImGui::TextWrapped("%s", entry.description);
-                ImGui::PopStyleColor();
-                ImGui::EndGroup();
-
-                // Handle button click
-                if (clicked) {
-                    if (m_onAdd) {
-                        m_onAdd(entry.type);
-                    }
-                    
-                    // Reset state and close
-                    memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
-                    m_hoveredIndex = -1;
-                    m_justOpened = false;
-                    m_isOpen = false;
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::PopID();
-                componentIndex++;
-
-                ImGui::Dummy(ImVec2(0, 5));
-
-            }
-
         }
-    }
 
-    if (!foundAny) {
-        // No components available message
-        ImGui::Dummy(ImVec2(0, 100));
-
-        ImVec2 textSize = ImGui::CalcTextSize("No components available");
-        ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - textSize.x) * 0.5f);
-        ImGui::TextDisabled("No components available");
-
-        if (searchStr.empty()) {
-            textSize = ImGui::CalcTextSize("All components are already added");
-            ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - textSize.x) * 0.5f);
-            ImGui::TextDisabled("All components are already added");
+        const char* icon = nullptr;
+        std::string label;
+        bool arrow = false;
+        if (row.kind == Row::Category) {
+            icon = m_categories[row.index].icon;
+            label = m_categories[row.index].name;
+            arrow = true;
+        } else if (row.kind == Row::Component) {
+            icon = Catalog::getComponentIcon(row.type);
+            label = Catalog::getComponentDisplayName(row.type);
         } else {
-            textSize = ImGui::CalcTextSize("Try a different search term");
-            ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - textSize.x) * 0.5f);
-            ImGui::TextDisabled("Try a different search term");
+            icon = ICON_FA_FILE_CIRCLE_PLUS;
+            label = "New Script";
+            arrow = true;
         }
 
-        ImGui::Dummy(ImVec2(0, 100));
-    }
+        if (listRow("##row", icon, label, row.enabled, i == m_highlighted, arrow)) {
+            picked = i;
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            if (row.enabled && ImGui::GetIO().MouseDelta.x != 0.0f) m_highlighted = i;
+            if (row.kind == Row::Component && !row.enabled) {
+                ImGui::SetTooltip("Already added, or not allowed on this selection");
+            } else if (row.description) {
+                ImGui::SetTooltip("%s", row.description);
+            }
+        }
+        if (i == m_highlighted && m_scrollToHighlighted) {
+            ImGui::SetScrollHereY();
+            m_scrollToHighlighted = false;
+        }
 
+        ImGui::PopID();
+    }
+    if (rows.empty()) {
+        ImGui::Dummy(ImVec2(0, style.ItemSpacing.y * 4));
+        const char* message = "No components match the search";
+        ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(message).x) * 0.5f);
+        ImGui::TextDisabled("%s", message);
+    }
     ImGui::EndChild();
 
-    // Footer with Cancel button
-    ImGui::Separator();
-
-    float buttonWidth = 100;
-    ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - buttonWidth) * 0.5f);
-
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-    
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
-        m_hoveredIndex = -1;
-        m_justOpened = false;
-        m_isOpen = false;
-        if (m_onCancel) m_onCancel();
-        ImGui::CloseCurrentPopup();
+    if (activateHighlighted && picked < 0 && !rows.empty() && rows[m_highlighted].enabled) {
+        picked = m_highlighted;
     }
-    
-    ImGui::PopStyleColor(2);
+
+    if (goBack) {
+        m_highlighted = m_category >= 0 ? m_category : 0;
+        m_category = -1;
+        m_focusSearch = true;
+    } else if (picked >= 0) {
+        const Row row = rows[picked];
+        if (row.kind == Row::Category) {
+            m_category = row.index;
+            m_highlighted = 0;
+            for (int i = 0; i < (int)m_categories[row.index].entries.size(); i++) {
+                if (canAdd(m_categories[row.index].entries[i].type)) { m_highlighted = i; break; }
+            }
+            m_focusSearch = true;
+        } else if (row.kind == Row::Component) {
+            if (m_onAdd) m_onAdd(row.type);
+            finish(false);
+        } else {
+            std::function<void()> onNewScript = m_onNewScript;
+            finish(false);
+            if (onNewScript) onNewScript();
+        }
+    }
 
     ImGui::EndPopup();
 }
