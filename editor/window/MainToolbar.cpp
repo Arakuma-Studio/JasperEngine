@@ -191,7 +191,7 @@ void editor::MainToolbar::toggleGlobalTransform() {
 
 //=== Shortcuts ===
 
-void editor::MainToolbar::handleShortcuts() {
+void editor::MainToolbar::handleShortcuts(bool toolShortcuts) {
     ImGuiIO& io = ImGui::GetIO();
 
     // Play mode (Unity: Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P), plus F5/F6/F7
@@ -224,7 +224,7 @@ void editor::MainToolbar::handleShortcuts() {
 
     // Tools: not while typing, flying the 3D camera (RMB + WASDQE) or playing
     // with the keyboard going to the game
-    if (io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
+    if (!toolShortcuts || io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper) return;
     if (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsAnyItemActive()) return;
     if (project->isAnyScenePlaying()) {
         App& app = Backend::getApp();

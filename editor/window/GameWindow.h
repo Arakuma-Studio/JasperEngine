@@ -27,6 +27,8 @@ namespace jasperengine::editor {
         bool focused = false;
         bool cursorInView = false;
         bool hostedLastFrame = false;
+        // Frames waited for a Scene view to dock next to on first launch
+        int dockWaitFrames = 0;
 
         GameViewSettings settings;
         bool settingsLoaded = false;

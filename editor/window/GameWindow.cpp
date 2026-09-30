@@ -211,11 +211,12 @@ void editor::GameWindow::show() {
     ImGuiWindow* dockedNextToScene = nullptr;
     if (!ImGui::FindWindowByName(WINDOW_NAME) && !ImGui::FindWindowSettingsByID(ImHashStr(WINDOW_NAME))) {
         ImGuiWindow* sceneWindow = ImGui::FindWindowByName(("###Scene" + std::to_string(project->getSelectedSceneId())).c_str());
-        if (!sceneWindow || sceneWindow->DockId == 0) {
+        if (sceneWindow && sceneWindow->DockId != 0) {
+            ImGui::SetNextWindowDockID(sceneWindow->DockId, ImGuiCond_FirstUseEver);
+            dockedNextToScene = sceneWindow;
+        } else if (++dockWaitFrames < 10) {
             return;
         }
-        ImGui::SetNextWindowDockID(sceneWindow->DockId, ImGuiCond_FirstUseEver);
-        dockedNextToScene = sceneWindow;
     }
 
     const bool maximize = settings.maximizeOnPlay && sessionActive;
@@ -264,6 +265,9 @@ void editor::GameWindow::show() {
     if (!visible) {
         hostedLastFrame = false;
         if (wasVisible) playInput->release(sceneId);
+    } else if (!wasVisible) {
+        // The scene may have changed while this view was hidden
+        editPassDirty = true;
     }
 }
 

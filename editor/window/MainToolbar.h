@@ -37,8 +37,9 @@ namespace jasperengine::editor {
 
         // Draws the bar; call after the menu bar and before the dock space.
         void show();
-        // Tool and play shortcuts; call once per frame when no popup is open.
-        void handleShortcuts();
+        // Play shortcuts, and tool shortcuts when toolShortcuts (no text editor has
+        // the keyboard); call once per frame when no popup is open.
+        void handleShortcuts(bool toolShortcuts);
 
         // Play mode commands (also for the menu): Play toggles play mode on/off,
         // Pause toggles pause while in play mode, Step advances one paused frame.

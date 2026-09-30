@@ -1614,7 +1614,7 @@ void editor::App::show(){
         }
 
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts();
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !aiChatWindow->isFocused());
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
     }
 
