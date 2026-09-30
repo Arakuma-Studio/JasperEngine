@@ -1813,6 +1813,10 @@ bool editor::SceneRender::isPreviewCameraUsable(Entity entity){
 }
 
 Entity editor::SceneRender::getActiveCameraEntity(){
+    if (gameViewCameraEntity != NULL_ENTITY && isPreviewCameraUsable(gameViewCameraEntity)){
+        return gameViewCameraEntity;
+    }
+
     // isPreviewCameraActive() self-heals a stale preview entity, so this falls back
     // to the editor camera whenever the preview is no longer usable.
     if (isPreviewCameraActive()){
@@ -1864,6 +1868,28 @@ bool editor::SceneRender::isPreviewCameraActive(){
 
     previewCameraEntity = NULL_ENTITY;
     return false;
+}
+
+void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* target){
+    gameViewCameraEntity = cameraEntity;
+    hideAllGizmos();
+    syncSceneCamera();
+
+    Engine::setFramebuffer(target);
+    Engine::setScene(scene);
+
+    // Only the game's own layers: no gizmo, overlay or view-gizmo scenes
+    Engine::removeAllSceneLayers(false);
+    for (Scene* childScene : childSceneLayers) {
+        Engine::addSceneLayer(childScene);
+    }
+}
+
+void editor::SceneRender::endGameViewPass(){
+    gameViewCameraEntity = NULL_ENTITY;
+    if (!isPlaying){
+        syncSceneCamera();
+    }
 }
 
 editor::ToolsLayer* editor::SceneRender::getToolsLayer(){

@@ -26,6 +26,7 @@
 #include "EditorHost.h"
 #include "Theme.h"
 #include "Widgets.h"
+#include "window/GameWindow.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -40,8 +41,9 @@ constexpr float VIEWPORT_GIZMO_SIZE = 100.0f;
 
 }
 
-editor::SceneWindow::SceneWindow(Project* project) {
+editor::SceneWindow::SceneWindow(Project* project, PlayInput* playInput) {
     this->project = project;
+    this->playInput = playInput;
     this->mouseLeftDraggedInside = false;
     this->windowFocused = false;
 }
@@ -77,14 +79,18 @@ bool editor::SceneWindow::isFocused() const {
     return windowFocused;
 }
 
+bool editor::SceneWindow::isGameCursorInView() const {
+    return gameCursorInView;
+}
+
 void editor::SceneWindow::resetProjectState() {
-    releasePlayKeys(0);
-    releasePlayMouseButtons(0);
+    playInput->releaseAll();
     for (const auto& entry : lookActive) {
         // Only one look can be active, and endLook only rewrites keys that exist
         if (entry.second) { endLook(entry.first); break; }
     }
     windowFocused = false;
+    gameCursorInView = false;
     mouseLeftDown = false;
     mouseLeftDraggedInside = false;
     draggingMouse.clear();
@@ -104,12 +110,7 @@ void editor::SceneWindow::resetProjectState() {
 }
 
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
-    if (sceneId == playKeysSceneId) {
-        releasePlayKeys(0);
-    }
-    if (sceneId == playMouseSceneId) {
-        releasePlayMouseButtons(0);
-    }
+    playInput->release(sceneId);
     if (lookActive[sceneId]) {
         endLook(sceneId);
     }
@@ -812,111 +813,6 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
     }
 }
 
-void editor::SceneWindow::forwardPlayKeyboardInput(ImGuiIO& io, int mods){
-    for (int i = 0; i < io.InputQueueCharacters.Size; i++){
-        Engine::systemCharInput(static_cast<wchar_t>(io.InputQueueCharacters[i]));
-    }
-    io.InputQueueCharacters.resize(0);
-
-    auto forwardKeyPress = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
-        if (ImGui::IsKeyPressed(imguiKey, false)){
-            if (charInput != 0){
-                Engine::systemCharInput(charInput);
-            }
-            Engine::systemKeyDown(engineKey, false, mods);
-            playPressedKeys.insert(engineKey);
-        }else if (allowRepeat && ImGui::IsKeyPressed(imguiKey, true)){
-            if (charInput != 0){
-                Engine::systemCharInput(charInput);
-            }
-            Engine::systemKeyDown(engineKey, true, mods);
-            playPressedKeys.insert(engineKey);
-        }
-    };
-
-    auto forwardKeyRelease = [&](ImGuiKey imguiKey, int engineKey){
-        if (ImGui::IsKeyReleased(imguiKey)){
-            Engine::systemKeyUp(engineKey, false, mods);
-            playPressedKeys.erase(engineKey);
-        }
-    };
-
-    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
-        forwardKeyPress(imguiKey, engineKey, charInput, allowRepeat);
-        forwardKeyRelease(imguiKey, engineKey);
-    };
-
-    auto forwardKeyRange = [&](ImGuiKey imguiFirst, int engineFirst, int count){
-        for (int i = 0; i < count; i++){
-            forwardKey(static_cast<ImGuiKey>(static_cast<int>(imguiFirst) + i), engineFirst + i);
-        }
-    };
-
-    forwardKey(ImGuiKey_Tab, D_KEY_TAB, L'\t', false);
-    forwardKey(ImGuiKey_Backspace, D_KEY_BACKSPACE, L'\b');
-    forwardKey(ImGuiKey_Enter, D_KEY_ENTER, L'\r', false);
-    forwardKey(ImGuiKey_KeypadEnter, D_KEY_KP_ENTER, L'\r', false);
-    forwardKey(ImGuiKey_Escape, D_KEY_ESCAPE, L'\x1b', false);
-    forwardKey(ImGuiKey_Space, D_KEY_SPACE);
-    forwardKey(ImGuiKey_LeftArrow, D_KEY_LEFT);
-    forwardKey(ImGuiKey_RightArrow, D_KEY_RIGHT);
-    forwardKey(ImGuiKey_UpArrow, D_KEY_UP);
-    forwardKey(ImGuiKey_DownArrow, D_KEY_DOWN);
-    forwardKey(ImGuiKey_Insert, D_KEY_INSERT, 0, false);
-    forwardKey(ImGuiKey_Home, D_KEY_HOME, 0, false);
-    forwardKey(ImGuiKey_End, D_KEY_END, 0, false);
-    forwardKey(ImGuiKey_PageUp, D_KEY_PAGE_UP);
-    forwardKey(ImGuiKey_PageDown, D_KEY_PAGE_DOWN);
-    forwardKey(ImGuiKey_Delete, D_KEY_DELETE);
-
-    forwardKey(ImGuiKey_Apostrophe, D_KEY_APOSTROPHE);
-    forwardKey(ImGuiKey_Comma, D_KEY_COMMA);
-    forwardKey(ImGuiKey_Minus, D_KEY_MINUS);
-    forwardKey(ImGuiKey_Period, D_KEY_PERIOD);
-    forwardKey(ImGuiKey_Slash, D_KEY_SLASH);
-    forwardKey(ImGuiKey_Semicolon, D_KEY_SEMICOLON);
-    forwardKey(ImGuiKey_Equal, D_KEY_EQUAL);
-    forwardKey(ImGuiKey_LeftBracket, D_KEY_LEFT_BRACKET);
-    forwardKey(ImGuiKey_Backslash, D_KEY_BACKSLASH);
-    forwardKey(ImGuiKey_RightBracket, D_KEY_RIGHT_BRACKET);
-    forwardKey(ImGuiKey_GraveAccent, D_KEY_GRAVE_ACCENT);
-
-    forwardKey(ImGuiKey_CapsLock, D_KEY_CAPS_LOCK, 0, false);
-    forwardKey(ImGuiKey_ScrollLock, D_KEY_SCROLL_LOCK, 0, false);
-    forwardKey(ImGuiKey_NumLock, D_KEY_NUM_LOCK, 0, false);
-    forwardKey(ImGuiKey_PrintScreen, D_KEY_PRINT_SCREEN, 0, false);
-    forwardKey(ImGuiKey_Pause, D_KEY_PAUSE, 0, false);
-
-    forwardKey(ImGuiKey_LeftShift, D_KEY_LEFT_SHIFT, 0, false);
-    forwardKey(ImGuiKey_LeftCtrl, D_KEY_LEFT_CONTROL, 0, false);
-    forwardKey(ImGuiKey_LeftAlt, D_KEY_LEFT_ALT, 0, false);
-    forwardKey(ImGuiKey_LeftSuper, D_KEY_LEFT_SUPER, 0, false);
-    forwardKey(ImGuiKey_RightShift, D_KEY_RIGHT_SHIFT, 0, false);
-    forwardKey(ImGuiKey_RightCtrl, D_KEY_RIGHT_CONTROL, 0, false);
-    forwardKey(ImGuiKey_RightAlt, D_KEY_RIGHT_ALT, 0, false);
-    forwardKey(ImGuiKey_RightSuper, D_KEY_RIGHT_SUPER, 0, false);
-    forwardKey(ImGuiKey_Menu, D_KEY_MENU, 0, false);
-
-    forwardKeyRange(ImGuiKey_0, D_KEY_0, 10);
-    forwardKeyRange(ImGuiKey_A, D_KEY_A, 26);
-    forwardKeyRange(ImGuiKey_F1, D_KEY_F1, 24);
-    forwardKeyRange(ImGuiKey_Keypad0, D_KEY_KP_0, 10);
-
-    forwardKey(ImGuiKey_KeypadDecimal, D_KEY_KP_DECIMAL);
-    forwardKey(ImGuiKey_KeypadDivide, D_KEY_KP_DIVIDE);
-    forwardKey(ImGuiKey_KeypadMultiply, D_KEY_KP_MULTIPLY);
-    forwardKey(ImGuiKey_KeypadSubtract, D_KEY_KP_SUBTRACT);
-    forwardKey(ImGuiKey_KeypadAdd, D_KEY_KP_ADD);
-    forwardKey(ImGuiKey_KeypadEqual, D_KEY_KP_EQUAL);
-}
-
-void editor::SceneWindow::releasePlayKeys(int mods){
-    for (int key : playPressedKeys){
-        Engine::systemKeyUp(key, false, mods);
-    }
-    playPressedKeys.clear();
-}
-
 // Gives the cursor back and lets ImGui see the mouse again. NoMouse is global, so
 // this has to run even when the viewport that armed it is no longer drawn.
 void editor::SceneWindow::endLook(uint32_t sceneId){
@@ -925,21 +821,6 @@ void editor::SceneWindow::endLook(uint32_t sceneId){
     resyncLookDelta[sceneId] = false;
     Backend::enableMouseCursor();
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-}
-
-void editor::SceneWindow::releasePlayMouseButtons(int mods){
-    // The engine drops events outside the view rect, so keep the synthetic release inside it
-    const Rect view = Engine::getViewRect();
-    const float x = std::clamp(playMousePos.x, view.getX(), view.getX() + std::max(0.0f, view.getWidth()));
-    const float y = std::clamp(playMousePos.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight()));
-    for (int button : playPressedMouseButtons){
-        if (project->isSimulateTouch()) {
-            Engine::systemTouchEnd(0, x, y);
-        } else {
-            Engine::systemMouseUp(button, x, y, mods);
-        }
-    }
-    playPressedMouseButtons.clear();
 }
 
 void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
@@ -972,101 +853,23 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
     }
 
-    int mods = 0;
-    if (io.KeyShift) mods |= D_MODIFIER_SHIFT;
-    if (io.KeyCtrl) mods |= D_MODIFIER_CONTROL;
-    if (io.KeyAlt) mods |= D_MODIFIER_ALT;
-    if (io.KeySuper) mods |= D_MODIFIER_SUPER;
+    // The Game view owns the running game while it is shown; this view then only
+    // mirrors the game image, like a Scene view that cannot draw during play.
+    GameWindow* gameWindow = Backend::getApp().getGameWindow();
+    if (gameWindow && gameWindow->hostsScene(sceneProject->id)) {
+        return;
+    }
 
     // When scene is playing, forward mouse and keyboard events to Engine
     if (sceneProject->playState == ScenePlayState::PLAYING) {
-        // A captured cursor reports a virtual position that leaves the viewport,
-        // so the mouse follows window focus like the keyboard below.
-        const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
-        bool forwardMouse = capturedMouse
-            ? ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)
-            : isMouseInWindow;
-
-        // A drag that leaves the viewport keeps being forwarded until its button comes up
-        if (playMouseSceneId == sceneProject->id) {
-            for (int button : playPressedMouseButtons) {
-                if (ImGui::IsMouseDown(button)) {
-                    forwardMouse = true;
-                    break;
-                }
-            }
-        }
-
-        if (forwardMouse) {
-            float x = mousePos.x - windowPos.x;
-            float y = mousePos.y - windowPos.y;
-            toEngineCanvas(sceneProject->id, x, y);
-
-            // Engine::transformCoordPos maps the view rect onto the canvas and drops what
-            // falls outside, so a button released out there is still down and needs the
-            // synthetic up below. LETTERBOX insets the rect, so test it and not the widget.
-            const Rect view = Engine::getViewRect();
-            const bool accepted = capturedMouse || Engine::isAllowEventsOutCanvas() ||
-                (x >= view.getX() && x <= view.getX() + view.getWidth() &&
-                 y >= view.getY() && y <= view.getY() + view.getHeight());
-
-            if (accepted) {
-                playMouseSceneId = sceneProject->id;
-                playMousePos = ImVec2(x, y);
-            }
-
-            if (project->isSimulateTouch()) {
-                // the left button is one finger, which never hovers
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                    Engine::systemTouchStart(0, x, y);
-                    if (accepted) playPressedMouseButtons.insert(ImGuiMouseButton_Left);
-                } else if (playPressedMouseButtons.count(ImGuiMouseButton_Left) && (mouseDelta.x != 0 || mouseDelta.y != 0)) {
-                    Engine::systemTouchMove(0, x, y);
-                }
-                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && playPressedMouseButtons.count(ImGuiMouseButton_Left)) {
-                    Engine::systemTouchEnd(0, x, y);
-                    if (accepted) playPressedMouseButtons.erase(ImGuiMouseButton_Left);
-                }
-            } else {
-                Engine::systemMouseMove(x, y, mods);
-
-                if (mouseWheel != 0) {
-                    Engine::systemMouseScroll(0, mouseWheel, mods);
-                }
-
-                for (int i = 0; i < 5; i++) {
-                    if (ImGui::IsMouseClicked(i)) {
-                        Engine::systemMouseDown(i, x, y, mods);
-                        if (accepted) playPressedMouseButtons.insert(i);
-                    }
-                    if (ImGui::IsMouseReleased(i)) {
-                        Engine::systemMouseUp(i, x, y, mods);
-                        if (accepted) playPressedMouseButtons.erase(i);
-                    }
-                }
-            }
-        } else if (playMouseSceneId == sceneProject->id) {
-            releasePlayMouseButtons(mods);
-        }
-
-        // Keyboard follows window focus, not mouse hover, so held keys keep
-        // working while the mouse drifts out of the window. On focus loss the
-        // key-up events would never arrive, so release held keys explicitly.
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
-            playKeysSceneId = sceneProject->id;
-            forwardPlayKeyboardInput(io, mods);
-        } else if (playKeysSceneId == sceneProject->id) {
-            releasePlayKeys(mods);
-        }
-
+        const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
         // Keeps the editor camera off while the game owns the mouse
-        if (forwardMouse || isMouseInWindow) {
+        if (playInput->forward(sceneProject->id, windowPos, canvasEngineScale(sceneProject->id), isMouseInWindow, focused)) {
             return;
         }
     } else {
         // Play stopped or paused with input still held
-        if (playKeysSceneId == sceneProject->id) releasePlayKeys(mods);
-        if (playMouseSceneId == sceneProject->id) releasePlayMouseButtons(mods);
+        playInput->release(sceneProject->id);
     }
 
     if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->sceneRender->isPreviewCameraActive()) {
@@ -1709,23 +1512,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                 }
 
-                if (sceneProject->sceneType != SceneType::SCENE_UI){
-                    if (ImGui::IsKeyPressed(ImGuiKey_W)) {
-                        sceneProject->sceneRender->getToolsLayer()->enableTranslateGizmo();
-                    }
-
-                    if (ImGui::IsKeyPressed(ImGuiKey_E)) {
-                        sceneProject->sceneRender->getToolsLayer()->enableRotateGizmo();
-                    }
-
-                    if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-                        sceneProject->sceneRender->getToolsLayer()->enableScaleGizmo();
-                    }
-
-                    if (ImGui::IsKeyPressed(ImGuiKey_T)){
-                        sceneProject->sceneRender->changeUseGlobalTransform();
-                    }
-                }
+                // Tool shortcuts (Q/W/E/R/T, X) live in the main toolbar.
 
                 // F key: Focus camera on selected entities
                 if (sceneProject->sceneType == SceneType::SCENE_3D && ImGui::IsKeyPressed(ImGuiKey_F)) {
@@ -1889,6 +1676,182 @@ bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, f
     return true;
 }
 
+void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
+    // same table id in every section keeps the columns aligned
+    auto beginSection = [](const char* title) {
+        ImGui::SeparatorText(title);
+        if (!ImGui::BeginTable("scene_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
+            return false;
+        }
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(175.0f));
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(80.0f));
+        return true;
+    };
+
+    auto drawSettingRow = [&](const char* name, bool& value, bool disabled = false) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        if (disabled) ImGui::BeginDisabled();
+        ImGui::Text("%s", name);
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        if (disabled) ImGui::EndDisabled();
+    };
+
+    bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
+
+    if (beginSection("Overlays")) {
+        drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints, notStopped);
+        drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones, notStopped);
+        drawSettingRow(ICON_FA_CUBES " Show all rigidbodies", sceneProject.displaySettings.showAllBodies, notStopped);
+
+        drawSettingRow(ICON_FA_CAMERA " Hide camera view", sceneProject.displaySettings.hideCameraView);
+        drawSettingRow(ICON_FA_LIGHTBULB " Hide light icons", sceneProject.displaySettings.hideLightIcons, sceneProject.sceneType != SceneType::SCENE_3D);
+        drawSettingRow(ICON_FA_VOLUME_HIGH " Hide Audio Source icons", sceneProject.displaySettings.hideSoundIcons);
+
+        drawSettingRow(ICON_FA_SQUARE " Hide container guides", sceneProject.displaySettings.hideContainerGuides, sceneProject.sceneType == SceneType::SCENE_3D);
+
+        if (sceneProject.sceneType != SceneType::SCENE_3D) {
+            drawSettingRow(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Show origin axis", sceneProject.displaySettings.showOrigin);
+        }
+
+        drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
+
+        ImGui::EndTable();
+    }
+
+    if (beginSection("Rendering")) {
+        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling, notStopped);
+        }
+        drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog, notStopped);
+
+        ImGui::EndTable();
+    }
+
+    if (beginSection("Grid & snapping")) {
+        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid3D);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::DragFloat("##GridSpacing3D", &sceneProject.displaySettings.gridSpacing3D, 0.1f, 0.1f, 1000.0f, "%.1f")) {
+                sceneProject.needUpdateRender = true;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                project->saveWorkspaceFile();
+            }
+        } else {
+            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid2D);
+            if (sceneProject.displaySettings.showGrid2D) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::DragFloat("##GridSpacing2D", &sceneProject.displaySettings.gridSpacing2D, 1.0f, 1.0f, 10000.0f, "%.0f")) {
+                    sceneProject.needUpdateRender = true;
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    project->saveWorkspaceFile();
+                }
+            }
+        }
+
+        drawSettingRow(ICON_FA_MAGNET " Snap to grid", sceneProject.displaySettings.snapToGrid);
+        if (sceneProject.sceneType != SceneType::SCENE_3D) {
+            drawSettingRow(ICON_FA_BORDER_ALL " Snap tile", sceneProject.displaySettings.snapTile);
+        }
+
+        drawSettingRow(ICON_FA_ROTATE " Snap rotation", sceneProject.displaySettings.snapRotation);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("%s", ICON_FA_ROTATE " Rotation step");
+        ImGui::TableSetColumnIndex(1);
+        if (!sceneProject.displaySettings.snapRotation) ImGui::BeginDisabled();
+        ImGui::SetNextItemWidth(-1);
+        ImGui::DragFloat("##RotationSnapDegrees", &sceneProject.displaySettings.rotationSnapDegrees, 1.0f, 0.1f, 180.0f, "%.1f");
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            project->saveWorkspaceFile();
+        }
+        if (!sceneProject.displaySettings.snapRotation) ImGui::EndDisabled();
+
+        ImGui::EndTable();
+    }
+
+    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender && beginSection("Editor camera")) {
+        Camera* editorCamera = sceneProject.sceneRender->getCamera();
+
+        auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", name);
+
+            bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
+            if (defChanged) {
+                ImGui::SameLine();
+                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
+                    apply(defaultValue);
+                    sceneProject.needUpdateRender = true;
+                    project->saveWorkspaceFile();
+                }
+                ImGui::PopStyleColor(2);
+                ImGui::PopStyleVar(3);
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            float editedValue = value;
+            if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
+                apply(editedValue);
+                validate();
+                sceneProject.needUpdateRender = true;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                project->saveWorkspaceFile();
+            }
+        };
+
+        auto validateNearClip = [&]() {
+            if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
+                editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
+            }
+        };
+        auto validateFarClip = [&]() {
+            if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
+                editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
+            }
+        };
+
+        drawFloatSettingRow(
+            ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
+            editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
+            0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
+            [&](float v) { editorCamera->setNearClip(v); });
+
+        drawFloatSettingRow(
+            ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
+            editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
+            1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
+            [&](float v) { editorCamera->setFarClip(v); });
+
+        ImGui::EndTable();
+    }
+
+}
+
 void editor::SceneWindow::show() {
     for (uint32_t sceneId: closeSceneQueue){
         project->closeScene(sceneId);
@@ -1913,6 +1876,8 @@ void editor::SceneWindow::show() {
 
         const bool isRuntimeActive = sceneProject.playState == ScenePlayState::PLAYING
             || sceneProject.playState == ScenePlayState::PAUSED;
+        GameWindow* gameWindow = Backend::getApp().getGameWindow();
+        const bool gameHosted = gameWindow && gameWindow->hostsScene(sceneProject.id);
 
         if (hasNotification[sceneProject.id]) {
             App::pushTabNotificationStyle();
@@ -1924,7 +1889,7 @@ void editor::SceneWindow::show() {
 
         if (!isRuntimeActive) {
             hasNotification[sceneProject.id] = false;
-        } else if (sceneWindowVisible) {
+        } else if (sceneWindowVisible || gameHosted) {
             hasNotification[sceneProject.id] = false;
         } else {
             hasNotification[sceneProject.id] = true;
@@ -1938,355 +1903,26 @@ void editor::SceneWindow::show() {
                 project->setSelectedSceneId(sceneProject.id);
             }
 
-            bool isPlaying = (sceneProject.playState == ScenePlayState::PLAYING);
-            bool isPaused = (sceneProject.playState == ScenePlayState::PAUSED);
             bool isStopped = (sceneProject.playState == ScenePlayState::STOPPED);
-            bool isSaving = (sceneProject.playState == ScenePlayState::SAVING);
-            bool isLoading = (sceneProject.playState == ScenePlayState::LOADING);
-            bool isCancelling = (sceneProject.playState == ScenePlayState::CANCELLING);
             bool isCameraPreview = isStopped && sceneProject.sceneRender->isPreviewCameraActive();
             Entity previewCameraEntity = isCameraPreview ? sceneProject.sceneRender->getPreviewCameraEntity() : NULL_ENTITY;
             if (isCameraPreview) {
                 sceneProject.needUpdateRender = true;
             }
 
-            // Full-height toolbar vertically centered on a text-height row, overlapping the
-            // spacing above/below (same layout pattern as the code editor status row)
+            // Scene view toolbar (Unity style): view-specific controls only. Play and the
+            // transform tools live in the main toolbar. Full-height buttons vertically
+            // centered on a text-height row, overlapping the spacing above/below.
             float toolbarRowY = ImGui::GetCursorPosY();
             ImGui::SetCursorPosY(toolbarRowY - (ImGui::GetFrameHeight() - ImGui::GetTextLineHeight()) * 0.5f);
 
-            // Play button - disabled when already playing
-            ImGui::BeginDisabled(isPlaying || isSaving || isLoading || isCancelling || (isStopped && project->isAnyScenePlaying()));
-            if (ImGui::Button(ICON_FA_PLAY " Play")) {
-                if (!isPaused) {
-                    project->start(sceneProject.id);
-                }else{
-                    project->resume(sceneProject.id);
-                }
-            }
-            ImGui::EndDisabled();
-
-            // Pause/Resume button - disabled when stopped
-            ImGui::BeginDisabled(isStopped || isPaused || isSaving || isLoading || isCancelling);
-            ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_PAUSE " Pause")) {
-                project->pause(sceneProject.id);
-            }
-            ImGui::EndDisabled();
-
-            // Stop button - disabled when stopped
-            ImGui::BeginDisabled(isStopped || isSaving || isCancelling);
-            ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_STOP " Stop")) {
-                project->stop(sceneProject.id);
-            }
-            ImGui::EndDisabled();
-
-            // Touch simulation toggle - disabled while any scene plays
-            bool simulateTouch = project->isSimulateTouch();
-            ImGui::BeginDisabled(project->isAnyScenePlaying());
-            ImGui::SameLine();
-            if (simulateTouch) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
-            if (ImGui::Button(ICON_FA_MOBILE_SCREEN)) {
-                project->setSimulateTouch(!simulateTouch);
-                project->saveWorkspaceFile();
-            }
-            if (simulateTouch) ImGui::PopStyleColor();
-            ImGui::SetItemTooltip("Play as a touch device (the mouse acts as one finger)");
-            ImGui::EndDisabled();
-
-            ImGui::SameLine(0, Theme::dpi(10.0f));
-            ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
-            ImGui::SameLine(0, Theme::dpi(10.0f));
-
-            CursorSelected cursorSelected = sceneProject.sceneRender->getCursorSelected();
-
-            // While viewing through a camera the editor manipulation tools are inert
-            // (input is suppressed in sceneEventHandler and gizmos are hidden), so
-            // disable the whole select/gizmo/transform group. Closed before the Gear
-            // button, which stays usable. Nests with each button's own BeginDisabled.
-            ImGui::BeginDisabled(isCameraPreview);
-
-            ImGui::BeginDisabled(cursorSelected == CursorSelected::POINTER);
-            ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_ARROW_POINTER)) {
-                sceneProject.sceneRender->enableCursorPointer();
-            }
-            ImGui::SetItemTooltip("Select mode");
-            ImGui::EndDisabled();
-
-            ImGui::BeginDisabled(cursorSelected == CursorSelected::HAND);
-            ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_HAND)) {
-                sceneProject.sceneRender->enableCursorHand();
-            }
-            ImGui::SetItemTooltip("Pan view");
-            ImGui::EndDisabled();
-
-            ImGui::SameLine(0, Theme::dpi(10.0f));
-            ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
-
-            GizmoSelected gizmoSelected = sceneProject.sceneRender->getToolsLayer()->getGizmoSelected();
-            bool multipleEntitiesSelected = sceneProject.sceneRender->isMultipleEntitesSelected();
-
-            if (sceneProject.sceneType != SceneType::SCENE_UI){
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-
-                if (sceneProject.sceneType != SceneType::SCENE_3D){
-                    ImGui::BeginDisabled(gizmoSelected == GizmoSelected::OBJECT2D);
-                    ImGui::SameLine();
-                    if (ImGui::Button(ICON_FA_EXPAND)) {
-                        sceneProject.sceneRender->getToolsLayer()->enableObject2DGizmo();
-                    }
-                    ImGui::SetItemTooltip("2D Gizmo (Q)");
-                    ImGui::EndDisabled();
-                }
-
-                ImGui::BeginDisabled(gizmoSelected == GizmoSelected::TRANSLATE);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT)) {
-                    sceneProject.sceneRender->getToolsLayer()->enableTranslateGizmo();
-                }
-                ImGui::SetItemTooltip("Translate (W)");
-                ImGui::EndDisabled();
-
-                ImGui::BeginDisabled(gizmoSelected == GizmoSelected::ROTATE);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_ROTATE)) {
-                    sceneProject.sceneRender->getToolsLayer()->enableRotateGizmo();
-                }
-                ImGui::SetItemTooltip("Rotate (E)");
-                ImGui::EndDisabled();
-
-                ImGui::BeginDisabled(gizmoSelected == GizmoSelected::SCALE);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER)) {
-                    sceneProject.sceneRender->getToolsLayer()->enableScaleGizmo();
-                }
-                ImGui::SetItemTooltip("Scale (R)");
-                ImGui::EndDisabled();
-
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-
-                bool useGlobalTransform = sceneProject.sceneRender->isUseGlobalTransform();
-
-                ImGui::BeginDisabled(useGlobalTransform || gizmoSelected == GizmoSelected::OBJECT2D || multipleEntitiesSelected);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_GLOBE)) {
-                    sceneProject.sceneRender->setUseGlobalTransform(true);
-                }
-                ImGui::SetItemTooltip("World transform (T)");
-                ImGui::EndDisabled();
-
-                ImGui::BeginDisabled(!useGlobalTransform || gizmoSelected == GizmoSelected::OBJECT2D || multipleEntitiesSelected);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_LOCATION_DOT)) {
-                    sceneProject.sceneRender->setUseGlobalTransform(false);
-                }
-                ImGui::SetItemTooltip("Local transform (T)");
-                ImGui::EndDisabled();
-
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
-            }
-
-            // Close the select/gizmo/transform disabled group opened before the cursor buttons.
-            ImGui::EndDisabled();
-
-            {
-                std::string sceneSettingsPopupId = "SceneSettingsPopup" + std::to_string(sceneProject.id);
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_GEAR)) {
-                    ImGui::OpenPopup(sceneSettingsPopupId.c_str());
-                }
-                ImGui::SetItemTooltip("Scene display settings");
-
-                if (ImGui::BeginPopup(sceneSettingsPopupId.c_str())) {
-                    // same table id in every section keeps the columns aligned
-                    auto beginSection = [](const char* title) {
-                        ImGui::SeparatorText(title);
-                        if (!ImGui::BeginTable("scene_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
-                            return false;
-                        }
-                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(175.0f));
-                        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(80.0f));
-                        return true;
-                    };
-
-                    auto drawSettingRow = [&](const char* name, bool& value, bool disabled = false) {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetColumnIndex(0);
-                        if (disabled) ImGui::BeginDisabled();
-                        ImGui::Text("%s", name);
-                        ImGui::TableSetColumnIndex(1);
-                        if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
-                            sceneProject.needUpdateRender = true;
-                            project->saveWorkspaceFile();
-                        }
-                        if (disabled) ImGui::EndDisabled();
-                    };
-
-                    bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
-
-                    if (beginSection("Overlays")) {
-                        drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints, notStopped);
-                        drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones, notStopped);
-                        drawSettingRow(ICON_FA_CUBES " Show all bodies", sceneProject.displaySettings.showAllBodies, notStopped);
-
-                        drawSettingRow(ICON_FA_CAMERA " Hide camera view", sceneProject.displaySettings.hideCameraView);
-                        drawSettingRow(ICON_FA_LIGHTBULB " Hide light icons", sceneProject.displaySettings.hideLightIcons, sceneProject.sceneType != SceneType::SCENE_3D);
-                        drawSettingRow(ICON_FA_VOLUME_HIGH " Hide sound icons", sceneProject.displaySettings.hideSoundIcons);
-
-                        drawSettingRow(ICON_FA_SQUARE " Hide container guides", sceneProject.displaySettings.hideContainerGuides, sceneProject.sceneType == SceneType::SCENE_3D);
-
-                        if (sceneProject.sceneType != SceneType::SCENE_3D) {
-                            drawSettingRow(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Show origin axis", sceneProject.displaySettings.showOrigin);
-                        }
-
-                        drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
-
-                        ImGui::EndTable();
-                    }
-
-                    if (beginSection("Rendering")) {
-                        if (sceneProject.sceneType == SceneType::SCENE_3D) {
-                            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling, notStopped);
-                        }
-                        drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog, notStopped);
-
-                        ImGui::EndTable();
-                    }
-
-                    if (beginSection("Grid & snapping")) {
-                        if (sceneProject.sceneType == SceneType::SCENE_3D) {
-                            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid3D);
-
-                            ImGui::TableNextRow();
-                            ImGui::TableSetColumnIndex(0);
-                            ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
-                            ImGui::TableSetColumnIndex(1);
-                            ImGui::SetNextItemWidth(-1);
-                            if (ImGui::DragFloat("##GridSpacing3D", &sceneProject.displaySettings.gridSpacing3D, 0.1f, 0.1f, 1000.0f, "%.1f")) {
-                                sceneProject.needUpdateRender = true;
-                            }
-                            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                                project->saveWorkspaceFile();
-                            }
-                        } else {
-                            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid2D);
-                            if (sceneProject.displaySettings.showGrid2D) {
-                                ImGui::TableNextRow();
-                                ImGui::TableSetColumnIndex(0);
-                                ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
-                                ImGui::TableSetColumnIndex(1);
-                                ImGui::SetNextItemWidth(-1);
-                                if (ImGui::DragFloat("##GridSpacing2D", &sceneProject.displaySettings.gridSpacing2D, 1.0f, 1.0f, 10000.0f, "%.0f")) {
-                                    sceneProject.needUpdateRender = true;
-                                }
-                                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                                    project->saveWorkspaceFile();
-                                }
-                            }
-                        }
-
-                        drawSettingRow(ICON_FA_MAGNET " Snap to grid", sceneProject.displaySettings.snapToGrid);
-                        if (sceneProject.sceneType != SceneType::SCENE_3D) {
-                            drawSettingRow(ICON_FA_BORDER_ALL " Snap tile", sceneProject.displaySettings.snapTile);
-                        }
-
-                        drawSettingRow(ICON_FA_ROTATE " Snap rotation", sceneProject.displaySettings.snapRotation);
-
-                        ImGui::TableNextRow();
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("%s", ICON_FA_ROTATE " Rotation step");
-                        ImGui::TableSetColumnIndex(1);
-                        if (!sceneProject.displaySettings.snapRotation) ImGui::BeginDisabled();
-                        ImGui::SetNextItemWidth(-1);
-                        ImGui::DragFloat("##RotationSnapDegrees", &sceneProject.displaySettings.rotationSnapDegrees, 1.0f, 0.1f, 180.0f, "%.1f");
-                        if (ImGui::IsItemDeactivatedAfterEdit()) {
-                            project->saveWorkspaceFile();
-                        }
-                        if (!sceneProject.displaySettings.snapRotation) ImGui::EndDisabled();
-
-                        ImGui::EndTable();
-                    }
-
-                    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender && beginSection("Editor camera")) {
-                        Camera* editorCamera = sceneProject.sceneRender->getCamera();
-
-                        auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
-                            ImGui::TableNextRow();
-                            ImGui::TableSetColumnIndex(0);
-                            ImGui::Text("%s", name);
-
-                            bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
-                            if (defChanged) {
-                                ImGui::SameLine();
-                                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
-                                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-                                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
-                                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                                if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
-                                    apply(defaultValue);
-                                    sceneProject.needUpdateRender = true;
-                                    project->saveWorkspaceFile();
-                                }
-                                ImGui::PopStyleColor(2);
-                                ImGui::PopStyleVar(3);
-                            }
-
-                            ImGui::TableSetColumnIndex(1);
-                            ImGui::SetNextItemWidth(-1);
-                            float editedValue = value;
-                            if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
-                                apply(editedValue);
-                                validate();
-                                sceneProject.needUpdateRender = true;
-                            }
-                            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                                project->saveWorkspaceFile();
-                            }
-                        };
-
-                        auto validateNearClip = [&]() {
-                            if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
-                                editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
-                            }
-                        };
-                        auto validateFarClip = [&]() {
-                            if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
-                                editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
-                            }
-                        };
-
-                        drawFloatSettingRow(
-                            ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
-                            editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
-                            0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
-                            [&](float v) { editorCamera->setNearClip(v); });
-
-                        drawFloatSettingRow(
-                            ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
-                            editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
-                            1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
-                            [&](float v) { editorCamera->setFarClip(v); });
-
-                        ImGui::EndTable();
-                    }
-
-                    ImGui::EndPopup();
-                }
-
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
-            }
+            const char* sceneKindLabel = sceneProject.sceneType == SceneType::SCENE_3D ? "3D"
+                : (sceneProject.sceneType == SceneType::SCENE_UI ? "UI" : "2D");
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", sceneKindLabel);
+            ImGui::SetItemTooltip("%s scene", sceneKindLabel);
 
             if (isCameraPreview) {
-                ImGui::SameLine(0, Theme::dpi(10.0f));
-                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
                 ImGui::SameLine(0, Theme::dpi(10.0f));
 
                 std::string cameraName = sceneProject.scene->getEntityName(previewCameraEntity);
@@ -2306,6 +1942,26 @@ void editor::SceneWindow::show() {
             }
 
             drawParentSceneButton(sceneProject);
+
+            {
+                const std::string gizmosPopupId = "GizmosPopup" + std::to_string(sceneProject.id);
+                const std::string gizmosLabel = std::string("Gizmos ") + ICON_FA_CARET_DOWN + "##Gizmos" + std::to_string(sceneProject.id);
+                const float gizmosWidth = ImGui::CalcTextSize(gizmosLabel.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float rightX = ImGui::GetWindowContentRegionMax().x - gizmosWidth;
+                ImGui::SameLine();
+                if (rightX > ImGui::GetCursorPosX()) {
+                    ImGui::SetCursorPosX(rightX);
+                }
+                if (ImGui::Button(gizmosLabel.c_str())) {
+                    ImGui::OpenPopup(gizmosPopupId.c_str());
+                }
+                ImGui::SetItemTooltip("Overlays, grid and snapping for this Scene view");
+
+                if (ImGui::BeginPopup(gizmosPopupId.c_str())) {
+                    drawGizmosMenu(sceneProject);
+                    ImGui::EndPopup();
+                }
+            }
 
             ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
 
@@ -2351,7 +2007,9 @@ void editor::SceneWindow::show() {
                 ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());
                 ImVec2 canvasAvail = ImGui::GetContentRegionAvail();
 
-                if (isCameraPreview) {
+                if (gameHosted) {
+                    drawHostedGameImage(previewTex);
+                } else if (isCameraPreview) {
                     // Fixed-aspect cameras (autoResize == false) render distorted into the
                     // full viewport; display them at their true aspect (letterbox/pillarbox)
                     // so the preview matches the framing they'll actually render. autoResize
@@ -2434,7 +2092,7 @@ void editor::SceneWindow::show() {
                     }
                 }
 
-                if (sceneProject.playState == ScenePlayState::PLAYING && ImGui::IsWindowHovered()) {
+                if (sceneProject.playState == ScenePlayState::PLAYING && !gameHosted && ImGui::IsWindowHovered()) {
                     gameCursorInSceneRect = true;
                 }
 
@@ -2452,7 +2110,33 @@ void editor::SceneWindow::show() {
         }
     }
 
-    Backend::setGameCursorInSceneRect(gameCursorInSceneRect);
+    gameCursorInView = gameCursorInSceneRect;
+}
+
+// The running game is drawn at the Game view's size, so fit it into this view.
+void editor::SceneWindow::drawHostedGameImage(ImTextureID texture) {
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    ImVec2 canvasMin = ImGui::GetCursorScreenPos();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(canvasMin, ImVec2(canvasMin.x + avail.x, canvasMin.y + avail.y), IM_COL32(0, 0, 0, 255));
+
+    GameWindow* gameWindow = Backend::getApp().getGameWindow();
+    const float gameW = gameWindow ? (float)gameWindow->getWidth() : 0.0f;
+    const float gameH = gameWindow ? (float)gameWindow->getHeight() : 0.0f;
+    ImVec2 imageSize = avail;
+    if (gameW > 0.0f && gameH > 0.0f && avail.x > 0.0f && avail.y > 0.0f) {
+        const float fit = std::min(avail.x / gameW, avail.y / gameH);
+        imageSize = ImVec2(gameW * fit, gameH * fit);
+    }
+    ImGui::SetCursorScreenPos(ImVec2(canvasMin.x + (avail.x - imageSize.x) * 0.5f, canvasMin.y + (avail.y - imageSize.y) * 0.5f));
+    Widgets::image(texture, imageSize);
+
+    const char* note = "Running in the Game view";
+    const ImVec2 noteSize = ImGui::CalcTextSize(note);
+    const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
+    const ImVec2 noteMin(canvasMin.x + Theme::dpi(8.0f), canvasMin.y + Theme::dpi(8.0f));
+    drawList->AddRectFilled(noteMin, ImVec2(noteMin.x + noteSize.x + pad.x * 2.0f, noteMin.y + noteSize.y + pad.y * 2.0f), IM_COL32(0, 0, 0, 170), Theme::dpi(3.0f));
+    drawList->AddText(ImVec2(noteMin.x + pad.x, noteMin.y + pad.y), IM_COL32(220, 220, 220, 255), note);
 }
 
 ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {

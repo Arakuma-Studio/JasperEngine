@@ -11,6 +11,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "render/gizmo/ViewportGizmo.h"
+#include "window/PlayInput.h"
 #include <unordered_map>
 #include <set>
 
@@ -43,17 +44,9 @@ namespace jasperengine::editor {
         std::map<uint32_t, ImVec2> lookReturnPos;
         std::map<uint32_t, bool> focusCanvasOnNextFrame;
 
-        // Engine keys sent down during play but not yet released, and the
-        // scene the play session belongs to. Engine Input state is static,
-        // so a missed key-up would stay pressed into the next play session.
-        std::set<int> playPressedKeys;
-        uint32_t playKeysSceneId = 0;
-
-        // Same for mouse buttons, which stop being forwarded as soon as the
-        // pointer leaves the viewport, well before the button comes up.
-        std::set<int> playPressedMouseButtons;
-        uint32_t playMouseSceneId = 0;
-        ImVec2 playMousePos = ImVec2(0, 0);
+        // Shared with the Game view: whichever view hosts the running game forwards input.
+        PlayInput* playInput;
+        bool gameCursorInView = false;
 
         std::map<uint32_t, int> width;
         std::map<uint32_t, int> height;
@@ -71,9 +64,6 @@ namespace jasperengine::editor {
         void handleCloseScene(uint32_t sceneId);
         void closeSceneInternal(uint32_t sceneId);
         void sceneEventHandler(SceneProject* sceneProject);
-        void forwardPlayKeyboardInput(ImGuiIO& io, int mods);
-        void releasePlayKeys(int mods);
-        void releasePlayMouseButtons(int mods);
         void endLook(uint32_t sceneId);
         void handleResourceFileDragDrop(SceneProject* sceneProject);
         Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
@@ -83,6 +73,8 @@ namespace jasperengine::editor {
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
+        void drawGizmosMenu(SceneProject& sceneProject);
+        void drawHostedGameImage(ImTextureID texture);
         std::string getWindowTitle(const SceneProject& sceneProject) const;
         Entity resolveStructureSelection(uint32_t viewportSceneId, uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);
@@ -93,10 +85,12 @@ namespace jasperengine::editor {
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
         
     public:
-        SceneWindow(Project* project);
+        SceneWindow(Project* project, PlayInput* playInput);
 
         void show();
         bool isFocused() const;
+        // The pointer is over a Scene view that shows the running game.
+        bool isGameCursorInView() const;
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);

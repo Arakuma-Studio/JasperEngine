@@ -560,6 +560,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/Properties.cpp
     ${EDITOR_DIR}/window/OutputWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
+    ${EDITOR_DIR}/window/GameWindow.cpp
+    ${EDITOR_DIR}/window/MainToolbar.cpp
+    ${EDITOR_DIR}/window/PlayInput.cpp
     ${EDITOR_DIR}/window/Structure.cpp
     ${EDITOR_DIR}/window/ResourcesWindow.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp

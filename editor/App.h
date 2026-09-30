@@ -19,6 +19,9 @@
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/AiChatWindow.h"
+#include "window/GameWindow.h"
+#include "window/MainToolbar.h"
+#include "window/PlayInput.h"
 
 #include "window/LoadingWindow.h"
 
@@ -137,6 +140,9 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         AiChatWindow* aiChatWindow;
+        PlayInput* playInput;
+        GameWindow* gameWindow;
+        MainToolbar* mainToolbar;
 
         LoadingWindow* loadingWindow;
 
@@ -219,6 +225,8 @@ namespace jasperengine::editor{
         void persistPanelVisibilitySettings();
         void processNextSaveDialog();
         bool popSaveDialogQueueItem();
+        // Edit-mode Game view: draws sceneProject through its game camera
+        void renderGameViewPass(SceneProject& sceneProject);
 
         void closeWindow();
         void parseBenchmarkArgs(int argc, char** argv);
@@ -327,6 +335,12 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         Structure* getStructureWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
+        GameWindow* getGameWindow() const;
+        // Play/Pause/Step and the transform tools, for the Edit menu
+        MainToolbar* getMainToolbar() const;
+        bool isSceneWindowFocused() const;
+        void resetLayout();
 
         // Window settings methods. Sizes are physical pixels, converted between
         // the saved scale and the uiScale the backend is opening the window on.
