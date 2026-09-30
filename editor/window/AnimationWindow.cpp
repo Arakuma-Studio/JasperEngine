@@ -74,10 +74,10 @@ TimelineMetrics timelineMetrics() {
     const float s = editor::Theme::dpiScale();
     TimelineMetrics m;
     m.scale = s;
-    m.rulerHeight = 20.0f * s;
-    m.trackHeight = 24.0f * s;
+    m.rulerHeight = 22.0f * s;
+    m.trackHeight = 26.0f * s;
     m.trackPadding = 2.0f * s;
-    m.labelWidth = 80.0f * s;
+    m.labelWidth = 210.0f * s;
     m.trackEndPadding = 32.0f * s;
     m.minBlockWidth = 10.0f * s;
     m.tickMajor = 10.0f * s;
@@ -90,8 +90,8 @@ TimelineMetrics timelineMetrics() {
     m.textPad = 4.0f * s;
     m.blockRounding = 3.0f * s;
     m.selectionThickness = 2.0f * s;
-    m.keyMarkerRadius = 3.0f * s;
-    m.keyHitRadius = 6.0f * s;
+    m.keyMarkerRadius = 5.0f * s;
+    m.keyHitRadius = 7.0f * s;
     m.resizeEdgeZone = 5.0f * s;
     return m;
 }
@@ -263,41 +263,41 @@ std::string editor::AnimationWindow::getActionLabel(Entity actionEntity, Scene* 
     Signature sig = scene->getSignature(actionEntity);
 
     if (sig.test(scene->getComponentId<SpriteAnimationComponent>())) {
-        return "SpriteAnimation";
+        return "Sprite Animation";
     }
 
     if (sig.test(scene->getComponentId<TranslateTracksComponent>())) {
-        return "TranslateTracks";
+        return "Position Tracks";
     }
 
     if (sig.test(scene->getComponentId<RotateTracksComponent>())) {
-        return "RotateTracks";
+        return "Rotation Tracks";
     }
 
     if (sig.test(scene->getComponentId<ScaleTracksComponent>())) {
-        return "ScaleTracks";
+        return "Scale Tracks";
     }
 
     if (sig.test(scene->getComponentId<MorphTracksComponent>())) {
-        return "MorphTracks";
+        return "Morph Tracks";
     }
 
     if (sig.test(scene->getComponentId<KeyframeTracksComponent>())) {
-        return "KeyframeTracks";
+        return "Keyframe Tracks";
     }
 
     if (sig.test(scene->getComponentId<TimedActionComponent>())) {
         if (sig.test(scene->getComponentId<PositionActionComponent>()))
-            return "PositionAction";
+            return "Position Tween";
         if (sig.test(scene->getComponentId<RotationActionComponent>()))
-            return "RotationAction";
+            return "Rotation Tween";
         if (sig.test(scene->getComponentId<ScaleActionComponent>()))
-            return "ScaleAction";
+            return "Scale Tween";
         if (sig.test(scene->getComponentId<ColorActionComponent>()))
-            return "ColorAction";
+            return "Color Tween";
         if (sig.test(scene->getComponentId<AlphaActionComponent>()))
-            return "AlphaAction";
-        return "TimedAction";
+            return "Alpha Tween";
+        return "Tween";
     }
 
     if (sig.test(scene->getComponentId<AnimationComponent>())) {
@@ -937,15 +937,15 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
         if (channel == 0){
             tracksType = ComponentType::TranslateTracksComponent;
             creationType = EntityCreationType::TRANSLATE_TRACKS;
-            name = "TranslateTracks";
+            name = "Position Tracks";
         }else if (channel == 1){
             tracksType = ComponentType::RotateTracksComponent;
             creationType = EntityCreationType::ROTATE_TRACKS;
-            name = "RotateTracks";
+            name = "Rotation Tracks";
         }else if (channel == 2){
             tracksType = ComponentType::ScaleTracksComponent;
             creationType = EntityCreationType::SCALE_TRACKS;
-            name = "ScaleTracks";
+            name = "Scale Tracks";
         }else{
             continue;
         }
@@ -955,7 +955,7 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
         if (track.skip){
             std::string targetName = scene->getEntityName(target);
             if (targetName.empty()){
-                targetName = "Entity " + std::to_string(target);
+                targetName = "GameObject " + std::to_string(target);
             }
             keyNotice = std::string(name) + " for \"" + targetName + "\" has no active frame at this time; key skipped";
             keyNoticeAt = ImGui::GetTime();
@@ -1329,10 +1329,186 @@ std::string editor::AnimationWindow::getAnimationEntityLabel(Entity entity, Scen
 }
 
 void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim, Scene* scene, SceneProject* sceneProject) {
-    // Animation entity combo selector
+    bool sceneIsStopped = (sceneProject->playState == ScenePlayState::STOPPED);
+    bool canPreview = canPreviewEntity(selectedEntity, scene);
+    Entity toolbarClip = timelineClip(scene);
+    AnimationComponent& toolbarClipAnim = (toolbarClip != selectedEntity)
+        ? scene->getComponent<AnimationComponent>(toolbarClip) : anim;
+    float clipDuration = getAnimationDuration(toolbarClipAnim, scene);
+    bool holdingEndPose = isPreviewing && currentTime > clipDuration + kKeyTimeEpsilon;
+
+    float maxTime = sceneIsStopped ? std::max(kAuthoringMaxTime, clipDuration) : clipDuration;
+
+    // Preview: evaluate the clip in the Scene view without playing it (Unity's Preview toggle)
+    {
+        const bool previewOn = isPreviewing;
+        ImGui::BeginDisabled(!sceneIsStopped || (!previewOn && !canPreview));
+        if (previewOn) {
+            ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
+        }
+        if (ImGui::Button("Preview##anim_preview")) {
+            if (previewOn) {
+                isPlaying = false;
+                stopPreview(scene, sceneProject, true);
+            } else {
+                finishTimelineDrag(scene, sceneProject, true);
+                seekPreview(scene, sceneProject, currentTime);
+            }
+        }
+        if (previewOn) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip(previewOn ? "Stop previewing and restore the scene"
+                                        : "Preview the clip at the playhead in the Scene view");
+    }
+    ImGui::SameLine();
+
+    // Add Keyframe (snapshot): key every track reached by the playhead with its target's
+    // current transform values (single undo step). A scrub creates a paused
+    // preview, which is safe to snapshot; only active playback is blocked.
+    bool hasSnapshotTarget = hasSnapshotTracks(scene, anim);
+    bool canSnapshot = sceneIsStopped && !isPlaying && hasSnapshotTarget;
+    ImGui::BeginDisabled(!canSnapshot);
+    if (ImGui::Button(ICON_FA_DIAMOND "+##anim_snapshot")) {
+        snapshotTracks(scene, sceneProject, anim);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!sceneIsStopped) {
+            ImGui::SetTooltip("Add Keyframe is only available while the scene is stopped.");
+        } else if (isPlaying) {
+            ImGui::SetTooltip("Pause or stop animation playback to add keyframes.");
+        } else if (!hasSnapshotTarget) {
+            ImGui::SetTooltip("Add Keyframe: no keyframe tracks under the playhead");
+        } else if (holdingEndPose) {
+            ImGui::SetTooltip("Add Keyframe (%.2fs): the preview can only evaluate through %.2fs, so the GameObject\n"
+                              "is holding the clip's end pose. Adjust the pose before adding the keyframe if you want\n"
+                              "different values at this later time.", currentTime, clipDuration);
+        } else {
+            ImGui::SetTooltip("Add Keyframe (%.2fs): store the current position, rotation and scale of every\n"
+                              "track reached by the playhead as keyframes at this time.\n"
+                              "Right-click the timeline to key a single track or channel.", currentTime);
+        }
+    }
+    ImGui::SameLine();
+
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    // Key navigation: clip start, previous key, play, next key, clip end
+    std::vector<float> keyTimes = {0.0f, clipDuration};
+    for (const ActionFrame& frame : toolbarClipAnim.actions) {
+        keyTimes.push_back(frame.startTime);
+        keyTimes.push_back(frame.startTime + effectiveFrameDuration(frame, scene));
+        if (frame.action != NULL_ENTITY && scene->isEntityCreated(frame.action)) {
+            if (KeyframeTracksComponent* keys = scene->findComponent<KeyframeTracksComponent>(frame.action)) {
+                for (float t : keys->times) keyTimes.push_back(frame.startTime + t);
+            }
+        }
+    }
+    std::sort(keyTimes.begin(), keyTimes.end());
+    auto jumpTo = [&](float time) {
+        finishTimelineDrag(scene, sceneProject, true);
+        isPlaying = false;
+        time = std::clamp(time, 0.0f, maxTime);
+        if (sceneIsStopped && canPreview) {
+            seekPreview(scene, sceneProject, time);
+        } else {
+            currentTime = time;
+        }
+    };
+    float previousKey = -1.0f;
+    float nextKey = -1.0f;
+    for (float t : keyTimes) {
+        if (t < currentTime - kKeyTimeEpsilon) previousKey = t;
+        if (nextKey < 0.0f && t > currentTime + kKeyTimeEpsilon) nextKey = t;
+    }
+
+    if (ImGui::Button(ICON_FA_BACKWARD_FAST "##anim_first")) jumpTo(0.0f);
+    ImGui::SetItemTooltip("Go to the beginning of the clip");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(previousKey < 0.0f);
+    if (ImGui::Button(ICON_FA_BACKWARD_STEP "##anim_prev_key")) jumpTo(previousKey);
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Go to the previous keyframe");
+    ImGui::SameLine();
+
+    // Play/Pause
+    if (isPlaying) {
+        if (ImGui::Button(ICON_FA_PAUSE "##anim_pause")) {
+            isPlaying = false;
+        }
+    } else {
+        ImGui::BeginDisabled(sceneIsStopped && !canPreview);
+        if (ImGui::Button(ICON_FA_PLAY "##anim_play")) {
+            finishTimelineDrag(scene, sceneProject, true);
+            playbackFollowSuspended = false;
+            isPlaying = true;
+            if (sceneIsStopped && !isPreviewing) {
+                currentTime = 0;
+                startPreview(scene, sceneProject);
+            } else if (sceneIsStopped && isPreviewing) {
+                ActionComponent& action = sceneProject->scene->getComponent<ActionComponent>(selectedEntity);
+                if (action.state == ActionState::Stopped) {
+                    seekPreview(scene, sceneProject, 0.0f);
+                }
+            }
+        }
+        ImGui::EndDisabled();
+        if (sceneIsStopped && !canPreview && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Preview needs an Action component on the Animation's GameObject.");
+        }
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(nextKey < 0.0f);
+    if (ImGui::Button(ICON_FA_FORWARD_STEP "##anim_next_key")) jumpTo(nextKey);
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Go to the next keyframe");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_FORWARD_FAST "##anim_last")) jumpTo(clipDuration);
+    ImGui::SetItemTooltip("Go to the end of the clip");
+    ImGui::SameLine();
+
+    // Stop
+    ImGui::BeginDisabled(!isPlaying && !isPreviewing);
+    if (ImGui::Button(ICON_FA_STOP "##anim_stop")) {
+        isPlaying = false;
+        currentTime = 0;
+        if (isPreviewing) {
+            stopPreview(scene, sceneProject, true);
+        }
+        selectedFrameIndex = prePlaySelectedFrameIndex;
+        prePlaySelectedFrameIndex = -1;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Stop and go back to the first frame");
+    ImGui::SameLine();
+
+    // Time display. The field scrubs the timeline clip (the blend target during a
+    // transition preview), so its range must come from that clip too.
+    ImGui::SetNextItemWidth(Theme::dpi(64.0f));
+    if (ImGui::DragFloat("##anim_time", &currentTime, 0.01f, 0.0f, maxTime, "%.2fs")) {
+        if (sceneIsStopped && canPreview) {
+            seekPreview(scene, sceneProject, currentTime);
+        } else {
+            currentTime = std::max(0.0f, std::min(currentTime, maxTime));
+        }
+    }
+    ImGui::SameLine();
+
+    // Speed
+    ImGui::SetNextItemWidth(Theme::dpi(48.0f));
+    ImGui::DragFloat("##anim_speed", &playbackSpeed, 0.01f, 0.01f, 10.0f, "%.1fx");
+    ImGui::SetItemTooltip("Playback speed");
+    ImGui::SameLine();
+
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    // Clip dropdown: every Animation in the scene
     auto animations = scene->getComponentArray<AnimationComponent>();
     std::string currentLabel = getAnimationEntityLabel(selectedEntity, scene);
-    bool canPreview = canPreviewEntity(selectedEntity, scene);
 
     float textWidth = ImGui::CalcTextSize(currentLabel.c_str()).x;
     float arrowWidth = ImGui::GetFrameHeight();
@@ -1358,233 +1534,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         }
         ImGui::EndCombo();
     }
-    ImGui::SameLine();
-
-    // Add Action
-    ImGui::BeginDisabled(isPreviewing);
-    if (ImGui::Button(ICON_FA_PLUS " Add Action")) {
-        ImGui::OpenPopup("##add_action_popup");
-    }
-    if (ImGui::BeginPopup("##add_action_popup")) {
-        EntityCreationType selectedType = EntityCreationType::EMPTY;
-        std::string entityName;
-        bool selected = false;
-
-        if (ImGui::MenuItem(ICON_FA_PLUS "  Empty Action")) {
-            selected = true;
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem(ICON_FA_FILM "  Animation")) {
-            selectedType = EntityCreationType::ANIMATION;
-            entityName = "Animation";
-            selected = true;
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem(ICON_FA_PLAY "  Sprite Animation")) {
-            selectedType = EntityCreationType::SPRITE_ANIMATION;
-            entityName = "SpriteAnimation";
-            selected = true;
-        }
-        if (ImGui::BeginMenu(ICON_FA_BOLT "  Basic animations")) {
-            if (ImGui::MenuItem(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "  Position Action")) {
-                selectedType = EntityCreationType::POSITION_ACTION;
-                entityName = "PositionAction";
-                selected = true;
-            }
-            if (ImGui::MenuItem(ICON_FA_ROTATE "  Rotation Action")) {
-                selectedType = EntityCreationType::ROTATION_ACTION;
-                entityName = "RotationAction";
-                selected = true;
-            }
-            if (ImGui::MenuItem(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER "  Scale Action")) {
-                selectedType = EntityCreationType::SCALE_ACTION;
-                entityName = "ScaleAction";
-                selected = true;
-            }
-            if (ImGui::MenuItem(ICON_FA_PALETTE "  Color Action")) {
-                selectedType = EntityCreationType::COLOR_ACTION;
-                entityName = "ColorAction";
-                selected = true;
-            }
-            if (ImGui::MenuItem(ICON_FA_EYE "  Alpha Action")) {
-                selectedType = EntityCreationType::ALPHA_ACTION;
-                entityName = "AlphaAction";
-                selected = true;
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem(ICON_FA_ROUTE "  Translate Tracks")) {
-            selectedType = EntityCreationType::TRANSLATE_TRACKS;
-            entityName = "TranslateTracks";
-            selected = true;
-        }
-        if (ImGui::MenuItem(ICON_FA_ARROWS_SPIN "  Rotate Tracks")) {
-            selectedType = EntityCreationType::ROTATE_TRACKS;
-            entityName = "RotateTracks";
-            selected = true;
-        }
-        if (ImGui::MenuItem(ICON_FA_MAXIMIZE "  Scale Tracks")) {
-            selectedType = EntityCreationType::SCALE_TRACKS;
-            entityName = "ScaleTracks";
-            selected = true;
-        }
-        if (ImGui::MenuItem(ICON_FA_SHAPES "  Morph Tracks")) {
-            selectedType = EntityCreationType::MORPH_TRACKS;
-            entityName = "MorphTracks";
-            selected = true;
-        }
-
-        if (selected) {
-            // If a frame is selected, add to the same track, otherwise track 0
-            uint32_t targetTrack = 0;
-            if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
-                targetTrack = anim.actions[selectedFrameIndex].track;
-            }
-
-            Entity actionEntity = NULL_ENTITY;
-            if (selectedType != EntityCreationType::EMPTY) {
-                Entity target = scene->findComponent<ActionComponent>(selectedEntity)
-                    ? scene->getComponent<ActionComponent>(selectedEntity).target
-                    : NULL_ENTITY;
-                auto* cmd = new CreateEntityCmd(project, selectedSceneId, entityName, selectedType, target);
-                CommandHandle::get(selectedSceneId)->addCommandNoMerge(cmd);
-                actionEntity = cmd->getEntity();
-            }
-
-            // Duration 0 = auto: the frame follows the action's own duration.
-            // Empty frames have no action to resolve, so give a visible default.
-            float newDuration = (actionEntity != NULL_ENTITY) ? 0.0f : 1.0f;
-            ActionFrame newFrame = {0.0f, newDuration, actionEntity, targetTrack};
-
-            // Find non-overlapping track (zero-length frames floored so they still
-            // spread onto free tracks)
-            float newFrameDur = std::max(effectiveFrameDuration(newFrame, scene), 0.01f);
-            bool overlap;
-            do {
-                overlap = false;
-                for (const auto& a : anim.actions) {
-                    if (a.track == newFrame.track) {
-                        float startA = a.startTime;
-                        float endA = a.startTime + std::max(effectiveFrameDuration(a, scene), 0.01f);
-                        float startB = newFrame.startTime;
-                        float endB = newFrame.startTime + newFrameDur;
-                        if (std::max(startA, startB) < std::min(endA, endB)) {
-                            overlap = true;
-                            newFrame.track++;
-                            break;
-                        }
-                    }
-                }
-            } while (overlap);
-
-            anim.actions.push_back(newFrame);
-            selectedFrameIndex = anim.actions.size() - 1;
-        }
-
-        ImGui::EndPopup();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-    ImGui::SameLine();
-
-    // Play/Pause
-    bool sceneIsStopped = (sceneProject->playState == ScenePlayState::STOPPED);
-    if (isPlaying) {
-        if (ImGui::Button(ICON_FA_PAUSE "##anim_pause")) {
-            isPlaying = false;
-        }
-    } else {
-        ImGui::BeginDisabled(sceneIsStopped && !canPreview);
-        if (ImGui::Button(ICON_FA_PLAY "##anim_play")) {
-            finishTimelineDrag(scene, sceneProject, true);
-            playbackFollowSuspended = false;
-            isPlaying = true;
-            if (sceneIsStopped && !isPreviewing) {
-                currentTime = 0;
-                startPreview(scene, sceneProject);
-            } else if (sceneIsStopped && isPreviewing) {
-                ActionComponent& action = sceneProject->scene->getComponent<ActionComponent>(selectedEntity);
-                if (action.state == ActionState::Stopped) {
-                    seekPreview(scene, sceneProject, 0.0f);
-                }
-            }
-        }
-        ImGui::EndDisabled();
-        if (sceneIsStopped && !canPreview && ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Animation preview requires an ActionComponent on the selected animation entity.");
-        }
-    }
-    ImGui::SameLine();
-
-    // Stop
-    ImGui::BeginDisabled(!isPlaying && !isPreviewing);
-    if (ImGui::Button(ICON_FA_STOP "##anim_stop")) {
-        isPlaying = false;
-        currentTime = 0;
-        if (isPreviewing) {
-            stopPreview(scene, sceneProject, true);
-        }
-        selectedFrameIndex = prePlaySelectedFrameIndex;
-        prePlaySelectedFrameIndex = -1;
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-    ImGui::SameLine();
-
-    Entity toolbarClip = timelineClip(scene);
-    AnimationComponent& toolbarClipAnim = (toolbarClip != selectedEntity)
-        ? scene->getComponent<AnimationComponent>(toolbarClip) : anim;
-    float clipDuration = getAnimationDuration(toolbarClipAnim, scene);
-    bool holdingEndPose = isPreviewing && currentTime > clipDuration + kKeyTimeEpsilon;
-
-    // Snapshot: key every track reached by the playhead with its target's
-    // current transform values (single undo step). A scrub creates a paused
-    // preview, which is safe to snapshot; only active playback is blocked.
-    bool hasSnapshotTarget = hasSnapshotTracks(scene, anim);
-    bool canSnapshot = sceneIsStopped && !isPlaying && hasSnapshotTarget;
-    ImGui::BeginDisabled(!canSnapshot);
-    if (ImGui::Button(ICON_FA_CAMERA "##anim_snapshot")) {
-        snapshotTracks(scene, sceneProject, anim);
-    }
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        if (!sceneIsStopped) {
-            ImGui::SetTooltip("Snapshot is only available while the scene is stopped.");
-        } else if (isPlaying) {
-            ImGui::SetTooltip("Pause or stop animation playback to snapshot.");
-        } else if (!hasSnapshotTarget) {
-            ImGui::SetTooltip("No keyframe tracks under the playhead to snapshot");
-        } else if (holdingEndPose) {
-            ImGui::SetTooltip("Snapshot (%.2fs): the preview can only evaluate through %.2fs, so the object\n"
-                              "is holding the clip's end pose. Adjust the pose before Snapshot if you want\n"
-                              "different values at this later time.", currentTime, clipDuration);
-        } else {
-            ImGui::SetTooltip("Snapshot (%.2fs): store the current position, rotation and scale of every\n"
-                              "track reached by the playhead as keyframes at this time.\n"
-                              "Right-click the timeline to key a single track or channel.", currentTime);
-        }
-    }
-    ImGui::SameLine();
-
-    // Time display. The field scrubs the timeline clip (the blend target during a
-    // transition preview), so its range must come from that clip too.
-    ImGui::SetNextItemWidth(60);
-    float maxTime = sceneIsStopped ? std::max(kAuthoringMaxTime, clipDuration) : clipDuration;
-    if (ImGui::DragFloat("##anim_time", &currentTime, 0.01f, 0.0f, maxTime, "%.2fs")) {
-        if (sceneIsStopped && canPreview) {
-            seekPreview(scene, sceneProject, currentTime);
-        } else {
-            currentTime = std::max(0.0f, std::min(currentTime, maxTime));
-        }
-    }
-    ImGui::SameLine();
-
-    // Speed
-    ImGui::SetNextItemWidth(50);
-    ImGui::DragFloat("##anim_speed", &playbackSpeed, 0.01f, 0.01f, 10.0f, "%.1fx");
+    ImGui::SetItemTooltip("Animation clip");
     ImGui::SameLine();
 
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
@@ -1653,10 +1603,9 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
     ImGui::SameLine();
 
     // Zoom
-    ImGui::Text("Zoom:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(80);
-    ImGui::SliderFloat("##anim_zoom", &pixelsPerSecond, minPixelsPerSecond, maxPixelsPerSecond, "%.0f");
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    ImGui::SliderFloat("##anim_zoom", &pixelsPerSecond, minPixelsPerSecond, maxPixelsPerSecond, ICON_FA_MAGNIFYING_GLASS " %.0f");
+    ImGui::SetItemTooltip("Zoom (pixels per second). Mouse wheel over the time ruler zooms too.");
     ImGui::SameLine();
 
     // Snap
@@ -1711,6 +1660,133 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
             keyNotice.clear();
         }
     }
+
+    // Add Property: opened from the button under the property list
+    ImGui::BeginDisabled(isPreviewing);
+    if (addPropertyRequested) {
+        ImGui::OpenPopup("##add_action_popup");
+        addPropertyRequested = false;
+    }
+    if (ImGui::BeginPopup("##add_action_popup")) {
+        EntityCreationType selectedType = EntityCreationType::EMPTY;
+        std::string entityName;
+        bool selected = false;
+
+        if (ImGui::MenuItem(ICON_FA_PLUS "  Empty Action")) {
+            selected = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem(ICON_FA_FILM "  Animation")) {
+            selectedType = EntityCreationType::ANIMATION;
+            entityName = "Animation";
+            selected = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem(ICON_FA_PLAY "  Sprite Animation")) {
+            selectedType = EntityCreationType::SPRITE_ANIMATION;
+            entityName = "Sprite Animation";
+            selected = true;
+        }
+        if (ImGui::BeginMenu(ICON_FA_BOLT "  Tweens")) {
+            if (ImGui::MenuItem(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "  Position Tween")) {
+                selectedType = EntityCreationType::POSITION_ACTION;
+                entityName = "Position Tween";
+                selected = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_ROTATE "  Rotation Tween")) {
+                selectedType = EntityCreationType::ROTATION_ACTION;
+                entityName = "Rotation Tween";
+                selected = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER "  Scale Tween")) {
+                selectedType = EntityCreationType::SCALE_ACTION;
+                entityName = "Scale Tween";
+                selected = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_PALETTE "  Color Tween")) {
+                selectedType = EntityCreationType::COLOR_ACTION;
+                entityName = "Color Tween";
+                selected = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_EYE "  Alpha Tween")) {
+                selectedType = EntityCreationType::ALPHA_ACTION;
+                entityName = "Alpha Tween";
+                selected = true;
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem(ICON_FA_ROUTE "  Position Tracks")) {
+            selectedType = EntityCreationType::TRANSLATE_TRACKS;
+            entityName = "Position Tracks";
+            selected = true;
+        }
+        if (ImGui::MenuItem(ICON_FA_ARROWS_SPIN "  Rotation Tracks")) {
+            selectedType = EntityCreationType::ROTATE_TRACKS;
+            entityName = "Rotation Tracks";
+            selected = true;
+        }
+        if (ImGui::MenuItem(ICON_FA_MAXIMIZE "  Scale Tracks")) {
+            selectedType = EntityCreationType::SCALE_TRACKS;
+            entityName = "Scale Tracks";
+            selected = true;
+        }
+        if (ImGui::MenuItem(ICON_FA_SHAPES "  Morph Tracks")) {
+            selectedType = EntityCreationType::MORPH_TRACKS;
+            entityName = "Morph Tracks";
+            selected = true;
+        }
+
+        if (selected) {
+            // If a frame is selected, add to the same track, otherwise track 0
+            uint32_t targetTrack = 0;
+            if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
+                targetTrack = anim.actions[selectedFrameIndex].track;
+            }
+
+            Entity actionEntity = NULL_ENTITY;
+            if (selectedType != EntityCreationType::EMPTY) {
+                Entity target = scene->findComponent<ActionComponent>(selectedEntity)
+                    ? scene->getComponent<ActionComponent>(selectedEntity).target
+                    : NULL_ENTITY;
+                auto* cmd = new CreateEntityCmd(project, selectedSceneId, entityName, selectedType, target);
+                CommandHandle::get(selectedSceneId)->addCommandNoMerge(cmd);
+                actionEntity = cmd->getEntity();
+            }
+
+            // Duration 0 = auto: the frame follows the action's own duration.
+            // Empty frames have no action to resolve, so give a visible default.
+            float newDuration = (actionEntity != NULL_ENTITY) ? 0.0f : 1.0f;
+            ActionFrame newFrame = {0.0f, newDuration, actionEntity, targetTrack};
+
+            // Find non-overlapping track (zero-length frames floored so they still
+            // spread onto free tracks)
+            float newFrameDur = std::max(effectiveFrameDuration(newFrame, scene), 0.01f);
+            bool overlap;
+            do {
+                overlap = false;
+                for (const auto& a : anim.actions) {
+                    if (a.track == newFrame.track) {
+                        float startA = a.startTime;
+                        float endA = a.startTime + std::max(effectiveFrameDuration(a, scene), 0.01f);
+                        float startB = newFrame.startTime;
+                        float endB = newFrame.startTime + newFrameDur;
+                        if (std::max(startA, startB) < std::min(endA, endB)) {
+                            overlap = true;
+                            newFrame.track++;
+                            break;
+                        }
+                    }
+                }
+            } while (overlap);
+
+            anim.actions.push_back(newFrame);
+            selectedFrameIndex = anim.actions.size() - 1;
+        }
+
+        ImGui::EndPopup();
+    }
+    ImGui::EndDisabled();
 }
 
 void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
@@ -1719,15 +1795,20 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
     float rulerHeight = metrics.rulerHeight;
     float labelWidth = metrics.labelWidth;
 
-    // Label column header
+    // Property list header, over the property rows (Unity's left pane)
     drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + labelWidth, canvasPos.y + rulerHeight),
-                            IM_COL32(50, 50, 50, 255));
-    drawList->AddText(ImVec2(canvasPos.x + metrics.textPad, canvasPos.y + metrics.inset), IM_COL32(150, 150, 150, 255), "Track");
+                            IM_COL32(56, 56, 56, 255));
+    drawList->AddText(ImVec2(canvasPos.x + metrics.textPad * 2.0f, canvasPos.y + (rulerHeight - ImGui::GetFontSize()) * 0.5f),
+                      IM_COL32(150, 150, 150, 255), "Properties");
+    drawList->AddLine(ImVec2(canvasPos.x + labelWidth - 1.0f, canvasPos.y),
+                      ImVec2(canvasPos.x + labelWidth - 1.0f, canvasPos.y + canvasSize.y), IM_COL32(25, 25, 25, 255));
 
-    // Timeline ruler background
+    // Time ruler background
     drawList->AddRectFilled(ImVec2(canvasPos.x + labelWidth, canvasPos.y),
                             ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + rulerHeight),
-                            IM_COL32(40, 40, 40, 255));
+                            IM_COL32(52, 52, 52, 255));
+    drawList->AddLine(ImVec2(canvasPos.x, canvasPos.y + rulerHeight - 1.0f),
+                      ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + rulerHeight - 1.0f), IM_COL32(25, 25, 25, 255));
 
     // Choose a stable 1/2/5 interval that keeps major labels readable at every
     // zoom level. The old fixed thresholds put labels only ~20 px apart at
@@ -1764,17 +1845,20 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
         bool isMajorTick = tickIndex % subdivisions == 0;
         if (isMajorTick) {
             drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - metrics.tickMajor), ImVec2(x, canvasPos.y + rulerHeight),
-                              IM_COL32(180, 180, 180, 255));
+                              IM_COL32(150, 150, 150, 255));
+            // Faint grid line through the dopesheet, like Unity's major time lines
+            drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight), ImVec2(x, canvasPos.y + canvasSize.y),
+                              IM_COL32(255, 255, 255, 14));
 
             char buf[16];
             float roundedTime = std::round(t);
             bool isWholeSecond = std::fabs(t - roundedTime) < 0.0001f;
             snprintf(buf, sizeof(buf), "%.*fs", isWholeSecond ? 0 : labelPrecision,
                      isWholeSecond ? roundedTime : t);
-            drawList->AddText(ImVec2(x + metrics.inset, canvasPos.y + metrics.inset), IM_COL32(180, 180, 180, 255), buf);
+            drawList->AddText(ImVec2(x + metrics.inset * 2.0f, canvasPos.y + metrics.inset), IM_COL32(170, 170, 170, 255), buf);
         } else {
             drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - metrics.tickMinor), ImVec2(x, canvasPos.y + rulerHeight),
-                              IM_COL32(100, 100, 100, 255));
+                              IM_COL32(95, 95, 95, 255));
         }
     }
 }
@@ -1915,21 +1999,71 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     std::vector<int> trackLaneCount;
     assignVisualSubLanes(anim.actions, visualEndPx, numTracks, pixelsPerSecond, subLane, trackLaneCount);
 
-    // 1. Draw track backgrounds and labels
+    // 1. Draw track backgrounds and the property list (Unity's left pane): each
+    // track is a row named after what it animates, "Target : Property".
+    const int selectedTrack = allowSelection && selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()
+        ? (int)anim.actions[selectedFrameIndex].track : -1;
+    const uint32_t addPropertyTrack = anim.actions.empty() ? 0 : maxTrack + 1;
     for (uint32_t t = 0; t < numTracks; t++) {
         float trackY = canvasPos.y + rulerHeight + t * (trackHeight + trackPadding);
 
-        // Track background
-        ImU32 bgColor = (t % 2 == 0) ? IM_COL32(35, 35, 35, 255) : IM_COL32(45, 45, 45, 255);
+        // Dopesheet row background
+        ImU32 bgColor = (t % 2 == 0) ? IM_COL32(40, 40, 40, 255) : IM_COL32(44, 44, 44, 255);
         drawList->AddRectFilled(ImVec2(canvasPos.x, trackY),
                                 ImVec2(canvasPos.x + canvasSize.x, trackY + trackHeight), bgColor);
 
-        // Label area
-        std::string label = "Track " + std::to_string(t);
+        // Property row
+        const bool rowSelected = (int)t == selectedTrack;
         drawList->AddRectFilled(ImVec2(canvasPos.x, trackY),
-                                ImVec2(canvasPos.x + labelWidth, trackY + trackHeight),
-                                IM_COL32(50, 50, 50, 255));
-        drawList->AddText(ImVec2(canvasPos.x + metrics.textPad, trackY + metrics.textPad), IM_COL32(200, 200, 200, 255), label.c_str());
+                                ImVec2(canvasPos.x + labelWidth - 1.0f, trackY + trackHeight),
+                                rowSelected ? IM_COL32(44, 93, 135, 255) : IM_COL32(56, 56, 56, 255));
+
+        if (t == addPropertyTrack) {
+            // Unity's Add Property button closes the property list
+            const float buttonWidth = std::min(labelWidth - metrics.textPad * 4.0f, 120.0f * metrics.scale);
+            const float buttonHeight = std::min(trackHeight - metrics.inset * 2.0f, ImGui::GetFrameHeight());
+            ImGui::SetCursorScreenPos(ImVec2(canvasPos.x + (labelWidth - buttonWidth) * 0.5f,
+                                             trackY + (trackHeight - buttonHeight) * 0.5f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            ImGui::BeginDisabled(isPreviewing || !allowSelection);
+            if (ImGui::Button("Add Property##anim_add_property", ImVec2(buttonWidth, buttonHeight))) {
+                addPropertyRequested = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::PopStyleVar();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                mouseOverFrame = true;
+                ImGui::SetTooltip(isPreviewing ? "Stop the preview to add properties"
+                                               : "Add a Tween, track or clip to this Animation");
+            }
+            continue;
+        }
+
+        const ActionFrame* firstFrame = nullptr;
+        int frameCount = 0;
+        for (const ActionFrame& frame : anim.actions) {
+            if (frame.track != t) continue;
+            if (!firstFrame) firstFrame = &frame;
+            frameCount++;
+        }
+        if (!firstFrame) continue;
+
+        std::string label = getActionLabel(firstFrame->action, scene);
+        if (firstFrame->action != NULL_ENTITY && scene->isEntityCreated(firstFrame->action)) {
+            ActionComponent* rowAction = scene->findComponent<ActionComponent>(firstFrame->action);
+            if (rowAction && rowAction->target != NULL_ENTITY && scene->isEntityCreated(rowAction->target)) {
+                std::string rowTarget = scene->getEntityName(rowAction->target);
+                if (!rowTarget.empty()) label = rowTarget + " : " + label;
+            }
+        }
+        if (frameCount > 1) {
+            label += " (+" + std::to_string(frameCount - 1) + ")";
+        }
+        const float textY = trackY + (trackHeight - ImGui::GetFontSize()) * 0.5f;
+        drawList->PushClipRect(ImVec2(canvasPos.x, trackY), ImVec2(canvasPos.x + labelWidth - metrics.textPad, trackY + trackHeight), true);
+        drawList->AddText(ImVec2(canvasPos.x + metrics.textPad * 3.0f, textY),
+                          rowSelected ? IM_COL32(255, 255, 255, 255) : IM_COL32(210, 210, 210, 255), label.c_str());
+        drawList->PopClipRect();
     }
 
     // 2. Draw blocks
@@ -1967,6 +2101,13 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
         if (visEnd > visStart) {
             ImU32 blockColor = getFrameColor(frame.action);
+            KeyframeTracksComponent* blockKeys = frame.action != NULL_ENTITY && scene->isEntityCreated(frame.action)
+                ? scene->findComponent<KeyframeTracksComponent>(frame.action) : nullptr;
+            const bool hasKeys = blockKeys && !blockKeys->times.empty();
+            if (hasKeys) {
+                // A keyframed clip reads as a dopesheet row: a faint band under the diamonds
+                blockColor = (blockColor & ~IM_COL32_A_MASK) | ((ImU32)70 << IM_COL32_A_SHIFT);
+            }
             drawList->AddRectFilled(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot),
                                     blockColor, metrics.blockRounding);
 
@@ -1975,19 +2116,19 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                                   IM_COL32(255, 220, 120, 255), metrics.blockRounding, 0, metrics.selectionThickness);
             }
 
-            // Keyframe diamonds sit on the block's bottom edge, below the label.
-            // Keep them in the track padding so dense keys never cover the text.
+            // Keyframe diamonds sit on the row's center line, as in Unity's dopesheet.
+            // Keyframed blocks draw no label, so dense keys never cover text.
             bool mouseOverKey = false;
             if (frame.action != NULL_ENTITY && scene->isEntityCreated(frame.action)) {
                 if (KeyframeTracksComponent* kfComp = scene->findComponent<KeyframeTracksComponent>(frame.action)) {
-                    const float keyMarkerRadius = metrics.keyMarkerRadius;
+                    const float keyMarkerRadius = std::min(metrics.keyMarkerRadius, (blockBot - blockTop) * 0.45f);
                     const float keyHitRadius = metrics.keyHitRadius;
-                    float ky = blockBot;
+                    float ky = (blockTop + blockBot) * 0.5f;
                     int hoveredKeyIndex = -1;
                     float hoveredKeyDistanceSq = 1e9f;
                     ImVec2 mousePos = ImGui::GetIO().MousePos;
-                    drawList->PushClipRect(ImVec2(visStart, blockTop),
-                                           ImVec2(visEnd, blockBot + trackPadding), true);
+                    drawList->PushClipRect(ImVec2(visStart - keyMarkerRadius, blockTop),
+                                           ImVec2(visEnd + keyMarkerRadius, blockBot), true);
                     for (size_t keyIndex = 0; keyIndex < kfComp->times.size(); keyIndex++) {
                         bool selectedKey = allowSelection && selectedKeyFrameIndex == (int)i
                             && selectedKeyIndex == (int)keyIndex;
@@ -1996,8 +2137,13 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                         if (kx >= visStart && kx <= visEnd) {
                             float radius = selectedKey ? keyMarkerRadius + metrics.scale : keyMarkerRadius;
                             ImU32 color = selectedKey
-                                ? IM_COL32(255, 210, 80, 255)
-                                : IM_COL32(255, 255, 255, 230);
+                                ? IM_COL32(88, 160, 240, 255)
+                                : IM_COL32(200, 200, 200, 255);
+                            float outline = radius + metrics.scale;
+                            drawList->AddQuadFilled(ImVec2(kx, ky - outline),
+                                                    ImVec2(kx + outline, ky),
+                                                    ImVec2(kx, ky + outline),
+                                                    ImVec2(kx - outline, ky), IM_COL32(24, 24, 24, 255));
                             drawList->AddQuadFilled(ImVec2(kx, ky - radius),
                                                     ImVec2(kx + radius, ky),
                                                     ImVec2(kx, ky + radius),
@@ -2064,14 +2210,14 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                     displayLabel = indexStr.c_str();
                 }
             }
-            if (displayLabel) {
+            if (displayLabel && !hasKeys) {
                 // Keep the text attached to the block's un-clamped start so it
                 // scrolls out of view with the block instead of sticking to the
                 // left edge. Clip it to the visible block to protect the track
                 // label column when the text is partially offscreen.
                 drawList->PushClipRect(ImVec2(visStart, blockTop),
                                        ImVec2(visEnd, blockBot), true);
-                drawList->AddText(ImVec2(blockStart + metrics.textPad, blockTop + metrics.textPad),
+                drawList->AddText(ImVec2(blockStart + metrics.textPad, (blockTop + blockBot - ImGui::GetFontSize()) * 0.5f),
                                   IM_COL32(255, 255, 255, 255), displayLabel);
                 drawList->PopClipRect();
             }
@@ -2383,11 +2529,11 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
                 const char* invalidReason = nullptr;
                 if (entityPayload->entitySceneId != 0 && entityPayload->entitySceneId != sceneProject->id) {
-                    invalidReason = "Entity belongs to another scene";
+                    invalidReason = "GameObject belongs to another scene";
                 } else if (dropped == NULL_ENTITY || !scene->isEntityCreated(dropped)) {
-                    invalidReason = "Invalid entity";
+                    invalidReason = "Invalid GameObject";
                 } else if (!scene->findComponent<ActionComponent>(dropped)) {
-                    invalidReason = "Entity has no Action component";
+                    invalidReason = "GameObject has no Action component";
                 } else if (scene->getSystem<ActionSystem>()->isAnimationReachable(dropped, selectedEntity)) {
                     invalidReason = "Would create an animation cycle";
                 }
@@ -2456,16 +2602,18 @@ bool editor::AnimationWindow::drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, 
     float playheadX = canvasPos.x + labelWidth + (currentTime - timeStart) * pixelsPerSecond;
 
     if (playheadX >= canvasPos.x + labelWidth && playheadX <= canvasPos.x + canvasSize.x) {
+        // White like Unity's playhead; red while the preview drives the scene
+        const ImU32 playheadColor = isPreviewing ? IM_COL32(255, 80, 80, 255) : IM_COL32(235, 235, 235, 255);
         drawList->AddLine(ImVec2(playheadX, canvasPos.y),
                           ImVec2(playheadX, canvasPos.y + canvasSize.y),
-                          IM_COL32(255, 80, 80, 255), metrics.playheadThickness);
+                          playheadColor, metrics.playheadThickness);
 
         // Playhead triangle at top
         drawList->AddTriangleFilled(
             ImVec2(playheadX - metrics.playheadHalf, canvasPos.y),
             ImVec2(playheadX + metrics.playheadHalf, canvasPos.y),
             ImVec2(playheadX, canvasPos.y + metrics.playheadTip),
-            IM_COL32(255, 80, 80, 255));
+            playheadColor);
     }
 
     ImVec2 timeAreaMin(canvasPos.x + labelWidth, canvasPos.y);
@@ -2571,7 +2719,7 @@ void editor::AnimationWindow::show() {
         }
         selectedEntity = NULL_ENTITY;
         selectedSceneId = 0;
-        ImGui::TextDisabled("No entities with AnimationComponent in this scene.");
+        ImGui::TextDisabled("No Animation in this scene. Add an Animation component to a GameObject to begin animating.");
         ImGui::End();
         if (wasOpen && !windowOpen) {
             setOpen(false);

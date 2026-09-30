@@ -89,6 +89,10 @@ namespace jasperengine::editor{
         // time; the toolbar Snapshot button keys every track at the playhead.
         int keyPopupFrameIndex;  // -1 = empty-area popup keying the animation's target
         float keyPopupTime;
+        // Set by the Add Property button under the property list; the toolbar
+        // opens the add popup on the next frame.
+        bool addPropertyRequested = false;
+
         // transient toolbar warning (e.g. key skipped), cleared after a few seconds
         std::string keyNotice;
         double keyNoticeAt;
