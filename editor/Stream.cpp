@@ -9,6 +9,7 @@
 
 #include "Base64.h"
 #include "Catalog.h"
+#include "util/YamlNumbers.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
@@ -212,6 +213,11 @@ float editor::Stream::decodeFinite(const YAML::Node& node, float fallback) {
         return finiteOr(fallback);
     }
 
+    float value;
+    if (YamlNumbers::readPlain(node.Scalar(), value)) {
+        return finiteOr(value, fallback);
+    }
+
     try {
         float value = node.as<float>();
         return finiteOr(value, fallback);
@@ -225,6 +231,11 @@ double editor::Stream::decodeFiniteDouble(const YAML::Node& node, double fallbac
         return finiteOr(fallback);
     }
 
+    double value;
+    if (YamlNumbers::readPlain(node.Scalar(), value)) {
+        return finiteOr(value, fallback);
+    }
+
     try {
         double value = node.as<double>();
         return finiteOr(value, fallback);
@@ -236,6 +247,11 @@ double editor::Stream::decodeFiniteDouble(const YAML::Node& node, double fallbac
 float editor::Stream::decodePositiveFinite(const YAML::Node& node, float fallback) {
     if (!node || !node.IsScalar()) {
         return positiveFiniteOr(fallback, 1.0f);
+    }
+
+    float value;
+    if (YamlNumbers::readPlain(node.Scalar(), value)) {
+        return positiveFiniteOr(value, fallback);
     }
 
     try {
@@ -261,19 +277,19 @@ uint32_t editor::Stream::decodeLayerMask(const YAML::Node& node, uint32_t fallba
 
 void editor::Stream::encodeFinite(YAML::Node& node, const char* key, float value) {
     if (std::isfinite(value)) {
-        node[key] = value;
+        node[key] = YamlNumbers::text(value);
     }
 }
 
 void editor::Stream::encodeFinite(YAML::Node& node, const char* key, double value) {
     if (std::isfinite(value)) {
-        node[key] = value;
+        node[key] = YamlNumbers::text(value);
     }
 }
 
 void editor::Stream::encodePositiveFinite(YAML::Node& node, const char* key, float value) {
     if (std::isfinite(value) && value > 0.0f) {
-        node[key] = value;
+        node[key] = YamlNumbers::text(value);
     }
 }
 
@@ -1150,8 +1166,8 @@ ScriptType editor::Stream::stringToScriptType(const std::string& str) {
 YAML::Node editor::Stream::encodeVector2(const Vector2& vec){
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(finiteOr(vec.x));
-    node.push_back(finiteOr(vec.y));
+    node[0] = YamlNumbers::text(finiteOr(vec.x));
+    node[1] = YamlNumbers::text(finiteOr(vec.y));
     return node;
 }
 
@@ -1166,9 +1182,9 @@ Vector2 editor::Stream::decodeVector2(const YAML::Node& node) {
 YAML::Node editor::Stream::encodeVector3(const Vector3& vec) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(finiteOr(vec.x));
-    node.push_back(finiteOr(vec.y));
-    node.push_back(finiteOr(vec.z));
+    node[0] = YamlNumbers::text(finiteOr(vec.x));
+    node[1] = YamlNumbers::text(finiteOr(vec.y));
+    node[2] = YamlNumbers::text(finiteOr(vec.z));
     return node;
 }
 
@@ -1183,10 +1199,10 @@ Vector3 editor::Stream::decodeVector3(const YAML::Node& node) {
 YAML::Node editor::Stream::encodeVector4(const Vector4& vec){
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(finiteOr(vec.x));
-    node.push_back(finiteOr(vec.y));
-    node.push_back(finiteOr(vec.z));
-    node.push_back(finiteOr(vec.w));
+    node[0] = YamlNumbers::text(finiteOr(vec.x));
+    node[1] = YamlNumbers::text(finiteOr(vec.y));
+    node[2] = YamlNumbers::text(finiteOr(vec.z));
+    node[3] = YamlNumbers::text(finiteOr(vec.w));
     return node;
 }
 
@@ -1221,10 +1237,10 @@ ShaderUniformValues editor::Stream::decodeShaderUniforms(const YAML::Node& node)
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(finiteOr(quat.w, 1.0f));
-    node.push_back(finiteOr(quat.x));
-    node.push_back(finiteOr(quat.y));
-    node.push_back(finiteOr(quat.z));
+    node[0] = YamlNumbers::text(finiteOr(quat.w, 1.0f));
+    node[1] = YamlNumbers::text(finiteOr(quat.x));
+    node[2] = YamlNumbers::text(finiteOr(quat.y));
+    node[3] = YamlNumbers::text(finiteOr(quat.z));
     return node;
 }
 
@@ -1239,10 +1255,10 @@ Quaternion editor::Stream::decodeQuaternion(const YAML::Node& node) {
 YAML::Node editor::Stream::encodeRect(const Rect& rect) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
-    node.push_back(finiteOr(rect.getX()));
-    node.push_back(finiteOr(rect.getY()));
-    node.push_back(finiteOr(rect.getWidth()));
-    node.push_back(finiteOr(rect.getHeight()));
+    node[0] = YamlNumbers::text(finiteOr(rect.getX()));
+    node[1] = YamlNumbers::text(finiteOr(rect.getY()));
+    node[2] = YamlNumbers::text(finiteOr(rect.getWidth()));
+    node[3] = YamlNumbers::text(finiteOr(rect.getHeight()));
     return node;
 }
 
@@ -1262,7 +1278,7 @@ YAML::Node editor::Stream::encodeMatrix4(const Matrix4& mat) {
         YAML::Node row;
         row.SetStyle(YAML::EmitterStyle::Flow);
         for (int j = 0; j < 4; j++) {
-            row.push_back(safeMatrix[i][j]);
+            row[j] = YamlNumbers::text(safeMatrix[i][j]);
         }
         node.push_back(row);
     }
@@ -1427,7 +1443,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
         if (node["wrapU"]) texture.setWrapU(stringToTextureWrap(node["wrapU"].as<std::string>()));
         if (node["wrapV"]) texture.setWrapV(stringToTextureWrap(node["wrapV"].as<std::string>()));
         // Old scenes carry the scale inside the path ("?svgScale=N"), absorbed by setPath()
-        if (node["svgScale"]) texture.setSvgScale(node["svgScale"].as<float>());
+        if (node["svgScale"]) texture.setSvgScale(YamlNumbers::as<float>(node["svgScale"]));
         if (node["alphaBorder"]) texture.setAlphaBorder(stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()));
 
         //if (node["isFramebuffer"] && node["isFramebuffer"].as<bool>()) {
@@ -1560,8 +1576,8 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
     node["vertexCount"] = submesh.vertexCount;
-    node["faceCulling"] = submesh.faceCulling;
-    node["textureShadow"] = submesh.textureShadow;
+    node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
+    node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
 
     // The fields the next model load must keep instead of taking them from the file.
     if (submesh.overrideFields != 0) {
@@ -1569,21 +1585,21 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     }
 
     // Flags
-    node["hasTexCoord1"] = submesh.hasTexCoord1;
-    node["hasTexCoord2"] = submesh.hasTexCoord2;
-    node["hasNormalMap"] = submesh.hasNormalMap;
-    node["hasTangent"] = submesh.hasTangent;
-    node["hasVertexColor3"] = submesh.hasVertexColor3;
-    node["hasVertexColor4"] = submesh.hasVertexColor4;
-    node["hasTextureRect"] = submesh.hasTextureRect;
-    node["hasSkinning"] = submesh.hasSkinning;
-    node["hasMorphTarget"] = submesh.hasMorphTarget;
-    node["hasMorphNormal"] = submesh.hasMorphNormal;
-    node["hasMorphTangent"] = submesh.hasMorphTangent;
+    node["hasTexCoord1"] = YamlNumbers::text(submesh.hasTexCoord1);
+    node["hasTexCoord2"] = YamlNumbers::text(submesh.hasTexCoord2);
+    node["hasNormalMap"] = YamlNumbers::text(submesh.hasNormalMap);
+    node["hasTangent"] = YamlNumbers::text(submesh.hasTangent);
+    node["hasVertexColor3"] = YamlNumbers::text(submesh.hasVertexColor3);
+    node["hasVertexColor4"] = YamlNumbers::text(submesh.hasVertexColor4);
+    node["hasTextureRect"] = YamlNumbers::text(submesh.hasTextureRect);
+    node["hasSkinning"] = YamlNumbers::text(submesh.hasSkinning);
+    node["hasMorphTarget"] = YamlNumbers::text(submesh.hasMorphTarget);
+    node["hasMorphNormal"] = YamlNumbers::text(submesh.hasMorphNormal);
+    node["hasMorphTangent"] = YamlNumbers::text(submesh.hasMorphTangent);
 
     if (submesh.hasSkinningNormalization) {
-        node["normAdjustJoint"] = submesh.normAdjustJoint;
-        node["normAdjustWeight"] = submesh.normAdjustWeight;
+        node["normAdjustJoint"] = YamlNumbers::text(submesh.normAdjustJoint);
+        node["normAdjustWeight"] = YamlNumbers::text(submesh.normAdjustWeight);
     }
 
     return node;
@@ -1621,8 +1637,8 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
 
     submesh.hasSkinningNormalization = false;
     if (node["normAdjustJoint"] || node["normAdjustWeight"]) {
-        submesh.normAdjustJoint = node["normAdjustJoint"] ? node["normAdjustJoint"].as<float>() : 1.0f;
-        submesh.normAdjustWeight = node["normAdjustWeight"] ? node["normAdjustWeight"].as<float>() : 1.0f;
+        submesh.normAdjustJoint = node["normAdjustJoint"] ? YamlNumbers::as<float>(node["normAdjustJoint"]) : 1.0f;
+        submesh.normAdjustWeight = node["normAdjustWeight"] ? YamlNumbers::as<float>(node["normAdjustWeight"]) : 1.0f;
         submesh.hasSkinningNormalization = true;
     }
 
@@ -1687,8 +1703,8 @@ TileData editor::Stream::decodeTileData(const YAML::Node& node) {
     if (node["name"]) tile.name = node["name"].as<std::string>();
     if (node["rectId"]) tile.rectId = node["rectId"].as<int>();
     if (node["position"]) tile.position = decodeVector2(node["position"]);
-    if (node["width"]) tile.width = node["width"].as<float>();
-    if (node["height"]) tile.height = node["height"].as<float>();
+    if (node["width"]) tile.width = YamlNumbers::as<float>(node["width"]);
+    if (node["height"]) tile.height = YamlNumbers::as<float>(node["height"]);
     return tile;
 }
 
@@ -2888,22 +2904,22 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
 
     if (node["globalIlluminationIntensity"] && node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(
-            node["globalIlluminationIntensity"].as<float>(),
+            YamlNumbers::as<float>(node["globalIlluminationIntensity"]),
             decodeVector3(node["globalIlluminationColor"])
         );
     } else if (node["globalIlluminationIntensity"]) {
-        scene->setGlobalIllumination(node["globalIlluminationIntensity"].as<float>());
+        scene->setGlobalIllumination(YamlNumbers::as<float>(node["globalIlluminationIntensity"]));
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
     }
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(
-            node["ambientLight2DIntensity"].as<float>(),
+            YamlNumbers::as<float>(node["ambientLight2DIntensity"]),
             decodeVector3(node["ambientLight2DColor"])
         );
     } else if (node["ambientLight2DIntensity"]) {
-        scene->setAmbientLight2D(node["ambientLight2DIntensity"].as<float>());
+        scene->setAmbientLight2D(YamlNumbers::as<float>(node["ambientLight2DIntensity"]));
     } else if (node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(decodeVector3(node["ambientLight2DColor"]));
     }
@@ -2916,31 +2932,31 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setSSAOEnabled(node["ssaoEnabled"].as<bool>());
     }
     if (node["ssaoRadius"]) {
-        scene->setSSAORadius(node["ssaoRadius"].as<float>());
+        scene->setSSAORadius(YamlNumbers::as<float>(node["ssaoRadius"]));
     }
     if (node["ssaoIntensity"]) {
-        scene->setSSAOIntensity(node["ssaoIntensity"].as<float>());
+        scene->setSSAOIntensity(YamlNumbers::as<float>(node["ssaoIntensity"]));
     }
     if (node["ssaoBias"]) {
-        scene->setSSAOBias(node["ssaoBias"].as<float>());
+        scene->setSSAOBias(YamlNumbers::as<float>(node["ssaoBias"]));
     }
     if (node["ssrEnabled"]) {
         scene->setSSREnabled(node["ssrEnabled"].as<bool>());
     }
     if (node["ssrMaxDistance"]) {
-        scene->setSSRMaxDistance(node["ssrMaxDistance"].as<float>());
+        scene->setSSRMaxDistance(YamlNumbers::as<float>(node["ssrMaxDistance"]));
     }
     if (node["ssrThickness"]) {
-        scene->setSSRThickness(node["ssrThickness"].as<float>());
+        scene->setSSRThickness(YamlNumbers::as<float>(node["ssrThickness"]));
     }
     if (node["ssrMaxSteps"]) {
         scene->setSSRMaxSteps(node["ssrMaxSteps"].as<int>());
     }
     if (node["ssrIntensity"]) {
-        scene->setSSRIntensity(node["ssrIntensity"].as<float>());
+        scene->setSSRIntensity(YamlNumbers::as<float>(node["ssrIntensity"]));
     }
     if (node["ssrBlur"]) {
-        scene->setSSRBlur(node["ssrBlur"].as<float>());
+        scene->setSSRBlur(YamlNumbers::as<float>(node["ssrBlur"]));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
@@ -3449,8 +3465,8 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = node["defaultValue"] ? node["defaultValue"].as<int>() : 0;
                 break;
             case ScriptPropertyType::Float:
-                prop.value = node["value"].as<float>();
-                prop.defaultValue = node["defaultValue"] ? node["defaultValue"].as<float>() : 0.0f;
+                prop.value = YamlNumbers::as<float>(node["value"]);
+                prop.defaultValue = node["defaultValue"] ? YamlNumbers::as<float>(node["defaultValue"]) : 0.0f;
                 break;
             case ScriptPropertyType::String:
                 prop.value = node["value"].as<std::string>();
@@ -3585,10 +3601,10 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
 
     // Encode shader part properties
     node["baseColorFactor"] = encodeVector4(material.baseColorFactor);
-    node["metallicFactor"] = material.metallicFactor;
-    node["roughnessFactor"] = material.roughnessFactor;
-    node["alphaCutoff"] = material.alphaCutoff;
-    node["foliageTransmission"] = material.foliageTransmission;
+    node["metallicFactor"] = YamlNumbers::text(material.metallicFactor);
+    node["roughnessFactor"] = YamlNumbers::text(material.roughnessFactor);
+    node["alphaCutoff"] = YamlNumbers::text(material.alphaCutoff);
+    node["foliageTransmission"] = YamlNumbers::text(material.foliageTransmission);
     node["alphaMode"] = materialAlphaModeToString(material.alphaMode);
     node["emissiveFactor"] = encodeVector3(material.emissiveFactor);
 
@@ -3720,7 +3736,7 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
     YAML::Node compNode;
 
     if (signature.test(registry->getComponentId<Transform>())) {
-        Transform transform = registry->getComponent<Transform>(entity);
+        const Transform& transform = registry->getComponent<Transform>(entity);
         compNode[Catalog::getComponentName(ComponentType::Transform, true)] = encodeTransform(transform);
     }
 
@@ -3734,259 +3750,259 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         bool isModel = isModelBackedMesh(entity, registry, signature);
         // a generated mesh rebuilds its buffers on load, but not its textures
         bool isGenerated = isModel || isGeneratedMesh(registry, signature);
-        MeshComponent mesh = registry->getComponent<MeshComponent>(entity);
+        const MeshComponent& mesh = registry->getComponent<MeshComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::MeshComponent, true)] = encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
     }
 
     if (signature.test(registry->getComponentId<UIComponent>())) {
         const bool isText = signature.test(registry->getComponentId<TextComponent>());
         bool isGenerated = isGeneratedUI(registry, signature);
-        UIComponent ui = registry->getComponent<UIComponent>(entity);
+        const UIComponent& ui = registry->getComponent<UIComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::UIComponent, true)] = encodeUIComponent(ui, !isGenerated, !isText);
     }
 
     if (signature.test(registry->getComponentId<ButtonComponent>())) {
-        ButtonComponent button = registry->getComponent<ButtonComponent>(entity);
+        const ButtonComponent& button = registry->getComponent<ButtonComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ButtonComponent, true)] = encodeButtonComponent(button);
     }
 
     if (signature.test(registry->getComponentId<ScrollbarComponent>())) {
-        ScrollbarComponent scrollbar = registry->getComponent<ScrollbarComponent>(entity);
+        const ScrollbarComponent& scrollbar = registry->getComponent<ScrollbarComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ScrollbarComponent, true)] = encodeScrollbarComponent(scrollbar);
     }
 
     if (signature.test(registry->getComponentId<ProgressbarComponent>())) {
-        ProgressbarComponent progressbar = registry->getComponent<ProgressbarComponent>(entity);
+        const ProgressbarComponent& progressbar = registry->getComponent<ProgressbarComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ProgressbarComponent, true)] = encodeProgressbarComponent(progressbar);
     }
 
     if (signature.test(registry->getComponentId<InputFieldComponent>())) {
-        InputFieldComponent inputfield = registry->getComponent<InputFieldComponent>(entity);
+        const InputFieldComponent& inputfield = registry->getComponent<InputFieldComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::InputFieldComponent, true)] = encodeInputFieldComponent(inputfield);
     }
 
     if (signature.test(registry->getComponentId<PanelComponent>())) {
-        PanelComponent panel = registry->getComponent<PanelComponent>(entity);
+        const PanelComponent& panel = registry->getComponent<PanelComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::PanelComponent, true)] = encodePanelComponent(panel);
     }
 
     if (signature.test(registry->getComponentId<RectTransformComponent>())) {
-        RectTransformComponent layout = registry->getComponent<RectTransformComponent>(entity);
+        const RectTransformComponent& layout = registry->getComponent<RectTransformComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::RectTransformComponent, true)] = encodeRectTransformComponent(layout);
     }
 
     if (signature.test(registry->getComponentId<LayoutGroupComponent>())) {
-        LayoutGroupComponent container = registry->getComponent<LayoutGroupComponent>(entity);
+        const LayoutGroupComponent& container = registry->getComponent<LayoutGroupComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::LayoutGroupComponent, true)] = encodeLayoutGroupComponent(container);
     }
 
     if (signature.test(registry->getComponentId<TextComponent>())) {
-        TextComponent text = registry->getComponent<TextComponent>(entity);
+        const TextComponent& text = registry->getComponent<TextComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TextComponent, true)] = encodeTextComponent(text);
     }
 
     if (signature.test(registry->getComponentId<ImageComponent>())) {
-        ImageComponent image = registry->getComponent<ImageComponent>(entity);
+        const ImageComponent& image = registry->getComponent<ImageComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ImageComponent, true)] = encodeImageComponent(image);
     }
 
     if (signature.test(registry->getComponentId<SpriteComponent>())) {
-        SpriteComponent sprite = registry->getComponent<SpriteComponent>(entity);
+        const SpriteComponent& sprite = registry->getComponent<SpriteComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::SpriteComponent, true)] = encodeSpriteComponent(sprite);
     }
 
     if (signature.test(registry->getComponentId<TilemapComponent>())) {
-        TilemapComponent tilemap = registry->getComponent<TilemapComponent>(entity);
+        const TilemapComponent& tilemap = registry->getComponent<TilemapComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TilemapComponent, true)] = encodeTilemapComponent(tilemap);
     }
 
     if (signature.test(registry->getComponentId<TerrainComponent>())) {
-        TerrainComponent terrain = registry->getComponent<TerrainComponent>(entity);
+        const TerrainComponent& terrain = registry->getComponent<TerrainComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TerrainComponent, true)] = encodeTerrainComponent(terrain);
     }
 
     if (signature.test(registry->getComponentId<LightComponent>())) {
-        LightComponent light = registry->getComponent<LightComponent>(entity);
+        const LightComponent& light = registry->getComponent<LightComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::LightComponent, true)] = encodeLightComponent(light);
     }
 
     if (signature.test(registry->getComponentId<Light2DComponent>())) {
-        Light2DComponent light2d = registry->getComponent<Light2DComponent>(entity);
+        const Light2DComponent& light2d = registry->getComponent<Light2DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Light2DComponent, true)] = encodeLight2DComponent(light2d);
     }
 
     if (signature.test(registry->getComponentId<ShadowCaster2DComponent>())) {
-        ShadowCaster2DComponent shadowcaster2d = registry->getComponent<ShadowCaster2DComponent>(entity);
+        const ShadowCaster2DComponent& shadowcaster2d = registry->getComponent<ShadowCaster2DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ShadowCaster2DComponent, true)] = encodeShadowCaster2DComponent(shadowcaster2d);
     }
 
     if (signature.test(registry->getComponentId<FogComponent>())) {
-        FogComponent fog = registry->getComponent<FogComponent>(entity);
+        const FogComponent& fog = registry->getComponent<FogComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::FogComponent, true)] = encodeFogComponent(fog);
     }
 
     if (signature.test(registry->getComponentId<MirrorComponent>())) {
-        MirrorComponent mirror = registry->getComponent<MirrorComponent>(entity);
+        const MirrorComponent& mirror = registry->getComponent<MirrorComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::MirrorComponent, true)] = encodeMirrorComponent(mirror);
     }
 
     if (signature.test(registry->getComponentId<ReflectionProbeComponent>())) {
-        ReflectionProbeComponent probe = registry->getComponent<ReflectionProbeComponent>(entity);
+        const ReflectionProbeComponent& probe = registry->getComponent<ReflectionProbeComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ReflectionProbeComponent, true)] = encodeReflectionProbeComponent(probe);
     }
 
     if (signature.test(registry->getComponentId<CameraComponent>())) {
-        CameraComponent camera = registry->getComponent<CameraComponent>(entity);
+        const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
     }
 
     if (signature.test(registry->getComponentId<AudioSourceComponent>())) {
-        AudioSourceComponent audio = registry->getComponent<AudioSourceComponent>(entity);
+        const AudioSourceComponent& audio = registry->getComponent<AudioSourceComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::AudioSourceComponent, true)] = encodeAudioSourceComponent(audio);
     }
 
     if (signature.test(registry->getComponentId<ScriptComponent>())) {
-        ScriptComponent script = registry->getComponent<ScriptComponent>(entity);
+        const ScriptComponent& script = registry->getComponent<ScriptComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ScriptComponent, true)] = encodeScriptComponent(script);
     }
 
     if (signature.test(registry->getComponentId<SkyboxComponent>())) {
-        SkyboxComponent sky = registry->getComponent<SkyboxComponent>(entity);
+        const SkyboxComponent& sky = registry->getComponent<SkyboxComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::SkyboxComponent, true)] = encodeSkyboxComponent(sky);
     }
 
     if (signature.test(registry->getComponentId<ModelComponent>())) {
-        ModelComponent model = registry->getComponent<ModelComponent>(entity);
+        const ModelComponent& model = registry->getComponent<ModelComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ModelComponent, true)] = encodeModelComponent(model);
     }
 
     if (signature.test(registry->getComponentId<Rigidbody2DComponent>())) {
-        Rigidbody2DComponent body = registry->getComponent<Rigidbody2DComponent>(entity);
+        const Rigidbody2DComponent& body = registry->getComponent<Rigidbody2DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Rigidbody2DComponent, true)] = encodeRigidbody2DComponent(body);
     }
 
     if (signature.test(registry->getComponentId<RigidbodyComponent>())) {
-        RigidbodyComponent body = registry->getComponent<RigidbodyComponent>(entity);
+        const RigidbodyComponent& body = registry->getComponent<RigidbodyComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::RigidbodyComponent, true)] = encodeRigidbodyComponent(body);
     }
 
     if (signature.test(registry->getComponentId<Joint2DComponent>())) {
-        Joint2DComponent joint = registry->getComponent<Joint2DComponent>(entity);
+        const Joint2DComponent& joint = registry->getComponent<Joint2DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Joint2DComponent, true)] = encodeJoint2DComponent(joint);
     }
 
     if (signature.test(registry->getComponentId<Joint3DComponent>())) {
-        Joint3DComponent joint = registry->getComponent<Joint3DComponent>(entity);
+        const Joint3DComponent& joint = registry->getComponent<Joint3DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::Joint3DComponent, true)] = encodeJoint3DComponent(joint);
     }
 
     if (signature.test(registry->getComponentId<ActionComponent>())) {
-        ActionComponent action = registry->getComponent<ActionComponent>(entity);
+        const ActionComponent& action = registry->getComponent<ActionComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ActionComponent, true)] = encodeActionComponent(action);
     }
 
     if (signature.test(registry->getComponentId<TweenComponent>())) {
-        TweenComponent timed = registry->getComponent<TweenComponent>(entity);
+        const TweenComponent& timed = registry->getComponent<TweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TweenComponent, true)] = encodeTweenComponent(timed);
     }
 
     if (signature.test(registry->getComponentId<PositionTweenComponent>())) {
-        PositionTweenComponent posAction = registry->getComponent<PositionTweenComponent>(entity);
+        const PositionTweenComponent& posAction = registry->getComponent<PositionTweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::PositionTweenComponent, true)] = encodePositionTweenComponent(posAction);
     }
 
     if (signature.test(registry->getComponentId<RotationTweenComponent>())) {
-        RotationTweenComponent rotAction = registry->getComponent<RotationTweenComponent>(entity);
+        const RotationTweenComponent& rotAction = registry->getComponent<RotationTweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::RotationTweenComponent, true)] = encodeRotationTweenComponent(rotAction);
     }
 
     if (signature.test(registry->getComponentId<ScaleTweenComponent>())) {
-        ScaleTweenComponent scaleTween = registry->getComponent<ScaleTweenComponent>(entity);
+        const ScaleTweenComponent& scaleTween = registry->getComponent<ScaleTweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ScaleTweenComponent, true)] = encodeScaleTweenComponent(scaleTween);
     }
 
     if (signature.test(registry->getComponentId<ColorTweenComponent>())) {
-        ColorTweenComponent colorTween = registry->getComponent<ColorTweenComponent>(entity);
+        const ColorTweenComponent& colorTween = registry->getComponent<ColorTweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ColorTweenComponent, true)] = encodeColorTweenComponent(colorTween);
     }
 
     if (signature.test(registry->getComponentId<AlphaTweenComponent>())) {
-        AlphaTweenComponent alphaTween = registry->getComponent<AlphaTweenComponent>(entity);
+        const AlphaTweenComponent& alphaTween = registry->getComponent<AlphaTweenComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::AlphaTweenComponent, true)] = encodeAlphaTweenComponent(alphaTween);
     }
 
     if (signature.test(registry->getComponentId<SpriteAnimationComponent>())) {
-        SpriteAnimationComponent spriteanim = registry->getComponent<SpriteAnimationComponent>(entity);
+        const SpriteAnimationComponent& spriteanim = registry->getComponent<SpriteAnimationComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::SpriteAnimationComponent, true)] = encodeSpriteAnimationComponent(spriteanim);
     }
 
     if (signature.test(registry->getComponentId<AnimationComponent>())) {
-        AnimationComponent animation = registry->getComponent<AnimationComponent>(entity);
+        const AnimationComponent& animation = registry->getComponent<AnimationComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::AnimationComponent, true)] = encodeAnimationComponent(animation);
     }
 
     if (signature.test(registry->getComponentId<BoneComponent>())) {
-        BoneComponent bone = registry->getComponent<BoneComponent>(entity);
+        const BoneComponent& bone = registry->getComponent<BoneComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::BoneComponent, true)] = encodeBoneComponent(bone);
     }
 
     if (signature.test(registry->getComponentId<KeyframeTracksComponent>())) {
-        KeyframeTracksComponent tracks = registry->getComponent<KeyframeTracksComponent>(entity);
+        const KeyframeTracksComponent& tracks = registry->getComponent<KeyframeTracksComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true)] = encodeKeyframeTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<TranslateTracksComponent>())) {
-        TranslateTracksComponent tracks = registry->getComponent<TranslateTracksComponent>(entity);
+        const TranslateTracksComponent& tracks = registry->getComponent<TranslateTracksComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TranslateTracksComponent, true)] = encodeTranslateTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<RotateTracksComponent>())) {
-        RotateTracksComponent tracks = registry->getComponent<RotateTracksComponent>(entity);
+        const RotateTracksComponent& tracks = registry->getComponent<RotateTracksComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::RotateTracksComponent, true)] = encodeRotateTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<ScaleTracksComponent>())) {
-        ScaleTracksComponent tracks = registry->getComponent<ScaleTracksComponent>(entity);
+        const ScaleTracksComponent& tracks = registry->getComponent<ScaleTracksComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ScaleTracksComponent, true)] = encodeScaleTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<MorphTracksComponent>())) {
-        MorphTracksComponent tracks = registry->getComponent<MorphTracksComponent>(entity);
+        const MorphTracksComponent& tracks = registry->getComponent<MorphTracksComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::MorphTracksComponent, true)] = encodeMorphTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<ParticleSystemComponent>())) {
-        ParticleSystemComponent particles = registry->getComponent<ParticleSystemComponent>(entity);
+        const ParticleSystemComponent& particles = registry->getComponent<ParticleSystemComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = encodeParticleSystemComponent(particles);
     }
 
     if (signature.test(registry->getComponentId<PointsComponent>())) {
-        PointsComponent pts = registry->getComponent<PointsComponent>(entity);
+        const PointsComponent& pts = registry->getComponent<PointsComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::PointsComponent, true)] = encodePointsComponent(pts);
     }
 
     if (signature.test(registry->getComponentId<LineRendererComponent>())) {
-        LineRendererComponent lines = registry->getComponent<LineRendererComponent>(entity);
+        const LineRendererComponent& lines = registry->getComponent<LineRendererComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::LineRendererComponent, true)] = encodeLineRendererComponent(lines);
     }
 
     if (signature.test(registry->getComponentId<PolygonComponent>())) {
-        PolygonComponent polygon = registry->getComponent<PolygonComponent>(entity);
+        const PolygonComponent& polygon = registry->getComponent<PolygonComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::PolygonComponent, true)] = encodePolygonComponent(polygon);
     }
 
     if (signature.test(registry->getComponentId<MeshPolygonComponent>())) {
-        MeshPolygonComponent polygon = registry->getComponent<MeshPolygonComponent>(entity);
+        const MeshPolygonComponent& polygon = registry->getComponent<MeshPolygonComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::MeshPolygonComponent, true)] = encodeMeshPolygonComponent(polygon);
     }
 
     if (signature.test(registry->getComponentId<InstancedMeshComponent>())) {
-        InstancedMeshComponent instmesh = registry->getComponent<InstancedMeshComponent>(entity);
+        const InstancedMeshComponent& instmesh = registry->getComponent<InstancedMeshComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::InstancedMeshComponent, true)] = encodeInstancedMeshComponent(instmesh);
     }
 
     if (signature.test(registry->getComponentId<PrefabComponent>())) {
-        PrefabComponent prefab = registry->getComponent<PrefabComponent>(entity);
+        const PrefabComponent& prefab = registry->getComponent<PrefabComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::PrefabComponent, true)] = encodePrefabComponent(prefab);
     }
 
@@ -4004,11 +4020,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         Transform transform = decodeTransform(compNode[compName], existing);
         transform.parent = parent;
         if (!signature.test(registry->getComponentId<Transform>())){
-            registry->addComponent<Transform>(entity, transform);
+            registry->addComponent<Transform>(entity, std::move(transform));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Transform, existing, &transform);
             registry->addEntityChild(transform.parent, entity, false);
-            registry->getComponent<Transform>(entity) = transform;
+            registry->getComponent<Transform>(entity) = std::move(transform);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4018,10 +4034,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         MeshComponent* existing = registry->findComponent<MeshComponent>(entity);
         MeshComponent mesh = decodeMeshComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<MeshComponent>())){
-            registry->addComponent<MeshComponent>(entity, mesh);
+            registry->addComponent<MeshComponent>(entity, std::move(mesh));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, existing, &mesh);
-            registry->getComponent<MeshComponent>(entity) = mesh;
+            registry->getComponent<MeshComponent>(entity) = std::move(mesh);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4031,10 +4047,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         UIComponent* existing = registry->findComponent<UIComponent>(entity);
         UIComponent ui = decodeUIComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<UIComponent>())){
-            registry->addComponent<UIComponent>(entity, ui);
+            registry->addComponent<UIComponent>(entity, std::move(ui));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIComponent, existing, &ui);
-            registry->getComponent<UIComponent>(entity) = ui;
+            registry->getComponent<UIComponent>(entity) = std::move(ui);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4044,10 +4060,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ButtonComponent* existing = registry->findComponent<ButtonComponent>(entity);
         ButtonComponent button = decodeButtonComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ButtonComponent>())){
-            registry->addComponent<ButtonComponent>(entity, button);
+            registry->addComponent<ButtonComponent>(entity, std::move(button));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ButtonComponent, existing, &button);
-            registry->getComponent<ButtonComponent>(entity) = button;
+            registry->getComponent<ButtonComponent>(entity) = std::move(button);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4057,10 +4073,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ScrollbarComponent* existing = registry->findComponent<ScrollbarComponent>(entity);
         ScrollbarComponent scrollbar = decodeScrollbarComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ScrollbarComponent>())){
-            registry->addComponent<ScrollbarComponent>(entity, scrollbar);
+            registry->addComponent<ScrollbarComponent>(entity, std::move(scrollbar));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScrollbarComponent, existing, &scrollbar);
-            registry->getComponent<ScrollbarComponent>(entity) = scrollbar;
+            registry->getComponent<ScrollbarComponent>(entity) = std::move(scrollbar);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4070,10 +4086,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ProgressbarComponent* existing = registry->findComponent<ProgressbarComponent>(entity);
         ProgressbarComponent progressbar = decodeProgressbarComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ProgressbarComponent>())){
-            registry->addComponent<ProgressbarComponent>(entity, progressbar);
+            registry->addComponent<ProgressbarComponent>(entity, std::move(progressbar));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ProgressbarComponent, existing, &progressbar);
-            registry->getComponent<ProgressbarComponent>(entity) = progressbar;
+            registry->getComponent<ProgressbarComponent>(entity) = std::move(progressbar);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4083,10 +4099,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         InputFieldComponent* existing = registry->findComponent<InputFieldComponent>(entity);
         InputFieldComponent inputfield = decodeInputFieldComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<InputFieldComponent>())){
-            registry->addComponent<InputFieldComponent>(entity, inputfield);
+            registry->addComponent<InputFieldComponent>(entity, std::move(inputfield));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InputFieldComponent, existing, &inputfield);
-            registry->getComponent<InputFieldComponent>(entity) = inputfield;
+            registry->getComponent<InputFieldComponent>(entity) = std::move(inputfield);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4096,10 +4112,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         PanelComponent* existing = registry->findComponent<PanelComponent>(entity);
         PanelComponent panel = decodePanelComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<PanelComponent>())){
-            registry->addComponent<PanelComponent>(entity, panel);
+            registry->addComponent<PanelComponent>(entity, std::move(panel));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::PanelComponent, existing, &panel);
-            registry->getComponent<PanelComponent>(entity) = panel;
+            registry->getComponent<PanelComponent>(entity) = std::move(panel);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4109,10 +4125,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         RectTransformComponent* existing = registry->findComponent<RectTransformComponent>(entity);
         RectTransformComponent layout = decodeRectTransformComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<RectTransformComponent>())){
-            registry->addComponent<RectTransformComponent>(entity, layout);
+            registry->addComponent<RectTransformComponent>(entity, std::move(layout));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RectTransformComponent, existing, &layout);
-            registry->getComponent<RectTransformComponent>(entity) = layout;
+            registry->getComponent<RectTransformComponent>(entity) = std::move(layout);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4122,10 +4138,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         LayoutGroupComponent* existing = registry->findComponent<LayoutGroupComponent>(entity);
         LayoutGroupComponent container = decodeLayoutGroupComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<LayoutGroupComponent>())){
-            registry->addComponent<LayoutGroupComponent>(entity, container);
+            registry->addComponent<LayoutGroupComponent>(entity, std::move(container));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LayoutGroupComponent, existing, &container);
-            registry->getComponent<LayoutGroupComponent>(entity) = container;
+            registry->getComponent<LayoutGroupComponent>(entity) = std::move(container);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4135,10 +4151,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         TextComponent* existing = registry->findComponent<TextComponent>(entity);
         TextComponent text = decodeTextComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<TextComponent>())){
-            registry->addComponent<TextComponent>(entity, text);
+            registry->addComponent<TextComponent>(entity, std::move(text));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TextComponent, existing, &text);
-            registry->getComponent<TextComponent>(entity) = text;
+            registry->getComponent<TextComponent>(entity) = std::move(text);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4148,10 +4164,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ImageComponent* existing = registry->findComponent<ImageComponent>(entity);
         ImageComponent image = decodeImageComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ImageComponent>())){
-            registry->addComponent<ImageComponent>(entity, image);
+            registry->addComponent<ImageComponent>(entity, std::move(image));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ImageComponent, existing, &image);
-            registry->getComponent<ImageComponent>(entity) = image;
+            registry->getComponent<ImageComponent>(entity) = std::move(image);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4161,10 +4177,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         SpriteComponent* existing = registry->findComponent<SpriteComponent>(entity);
         SpriteComponent sprite = decodeSpriteComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<SpriteComponent>())){
-            registry->addComponent<SpriteComponent>(entity, sprite);
+            registry->addComponent<SpriteComponent>(entity, std::move(sprite));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SpriteComponent, existing, &sprite);
-            registry->getComponent<SpriteComponent>(entity) = sprite;
+            registry->getComponent<SpriteComponent>(entity) = std::move(sprite);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4174,10 +4190,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         TilemapComponent* existing = registry->findComponent<TilemapComponent>(entity);
         TilemapComponent tilemap = decodeTilemapComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<TilemapComponent>())){
-            registry->addComponent<TilemapComponent>(entity, tilemap);
+            registry->addComponent<TilemapComponent>(entity, std::move(tilemap));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TilemapComponent, existing, &tilemap);
-            registry->getComponent<TilemapComponent>(entity) = tilemap;
+            registry->getComponent<TilemapComponent>(entity) = std::move(tilemap);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4187,10 +4203,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         TerrainComponent* existing = registry->findComponent<TerrainComponent>(entity);
         TerrainComponent terrain = decodeTerrainComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<TerrainComponent>())){
-            registry->addComponent<TerrainComponent>(entity, terrain);
+            registry->addComponent<TerrainComponent>(entity, std::move(terrain));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TerrainComponent, existing, &terrain);
-            registry->getComponent<TerrainComponent>(entity) = terrain;
+            registry->getComponent<TerrainComponent>(entity) = std::move(terrain);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4200,11 +4216,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         LightComponent* existing = registry->findComponent<LightComponent>(entity);
         LightComponent light = decodeLightComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<LightComponent>())){
-            registry->addComponent<LightComponent>(entity, light);
+            registry->addComponent<LightComponent>(entity, std::move(light));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LightComponent, existing, &light);
-            registry->getComponent<LightComponent>(entity) = light;
+            registry->getComponent<LightComponent>(entity) = std::move(light);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4214,11 +4230,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         Light2DComponent* existing = registry->findComponent<Light2DComponent>(entity);
         Light2DComponent light2d = decodeLight2DComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<Light2DComponent>())){
-            registry->addComponent<Light2DComponent>(entity, light2d);
+            registry->addComponent<Light2DComponent>(entity, std::move(light2d));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::Light2DComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Light2DComponent, existing, &light2d);
-            registry->getComponent<Light2DComponent>(entity) = light2d;
+            registry->getComponent<Light2DComponent>(entity) = std::move(light2d);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4228,11 +4244,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ShadowCaster2DComponent* existing = registry->findComponent<ShadowCaster2DComponent>(entity);
         ShadowCaster2DComponent shadowcaster2d = decodeShadowCaster2DComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ShadowCaster2DComponent>())){
-            registry->addComponent<ShadowCaster2DComponent>(entity, shadowcaster2d);
+            registry->addComponent<ShadowCaster2DComponent>(entity, std::move(shadowcaster2d));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::ShadowCaster2DComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ShadowCaster2DComponent, existing, &shadowcaster2d);
-            registry->getComponent<ShadowCaster2DComponent>(entity) = shadowcaster2d;
+            registry->getComponent<ShadowCaster2DComponent>(entity) = std::move(shadowcaster2d);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4242,11 +4258,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         FogComponent* existing = registry->findComponent<FogComponent>(entity);
         FogComponent fog = decodeFogComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<FogComponent>())){
-            registry->addComponent<FogComponent>(entity, fog);
+            registry->addComponent<FogComponent>(entity, std::move(fog));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::FogComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FogComponent, existing, &fog);
-            registry->getComponent<FogComponent>(entity) = fog;
+            registry->getComponent<FogComponent>(entity) = std::move(fog);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4256,11 +4272,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         MirrorComponent* existing = registry->findComponent<MirrorComponent>(entity);
         MirrorComponent mirror = decodeMirrorComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<MirrorComponent>())){
-            registry->addComponent<MirrorComponent>(entity, mirror);
+            registry->addComponent<MirrorComponent>(entity, std::move(mirror));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::MirrorComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::MirrorComponent, existing, &mirror);
-            registry->getComponent<MirrorComponent>(entity) = mirror;
+            registry->getComponent<MirrorComponent>(entity) = std::move(mirror);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4270,11 +4286,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ReflectionProbeComponent* existing = registry->findComponent<ReflectionProbeComponent>(entity);
         ReflectionProbeComponent probe = decodeReflectionProbeComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ReflectionProbeComponent>())){
-            registry->addComponent<ReflectionProbeComponent>(entity, probe);
+            registry->addComponent<ReflectionProbeComponent>(entity, std::move(probe));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::ReflectionProbeComponent));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ReflectionProbeComponent, existing, &probe);
-            registry->getComponent<ReflectionProbeComponent>(entity) = probe;
+            registry->getComponent<ReflectionProbeComponent>(entity) = std::move(probe);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4284,10 +4300,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         CameraComponent* existing = registry->findComponent<CameraComponent>(entity);
         CameraComponent camera = decodeCameraComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<CameraComponent>())){
-            registry->addComponent<CameraComponent>(entity, camera);
+            registry->addComponent<CameraComponent>(entity, std::move(camera));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::CameraComponent, existing, &camera);
-            registry->getComponent<CameraComponent>(entity) = camera;
+            registry->getComponent<CameraComponent>(entity) = std::move(camera);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4297,10 +4313,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         AudioSourceComponent* existing = registry->findComponent<AudioSourceComponent>(entity);
         AudioSourceComponent audio = decodeAudioSourceComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<AudioSourceComponent>())){
-            registry->addComponent<AudioSourceComponent>(entity, audio);
+            registry->addComponent<AudioSourceComponent>(entity, std::move(audio));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AudioSourceComponent, existing, &audio);
-            registry->getComponent<AudioSourceComponent>(entity) = audio;
+            registry->getComponent<AudioSourceComponent>(entity) = std::move(audio);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4310,10 +4326,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ScriptComponent* existing = registry->findComponent<ScriptComponent>(entity);
         ScriptComponent script = decodeScriptComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ScriptComponent>())){
-            registry->addComponent<ScriptComponent>(entity, script);
+            registry->addComponent<ScriptComponent>(entity, std::move(script));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScriptComponent, existing, &script);
-            registry->getComponent<ScriptComponent>(entity) = script;
+            registry->getComponent<ScriptComponent>(entity) = std::move(script);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4323,10 +4339,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         SkyboxComponent* existing = registry->findComponent<SkyboxComponent>(entity);
         SkyboxComponent sky = decodeSkyboxComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<SkyboxComponent>())){
-            registry->addComponent<SkyboxComponent>(entity, sky);
+            registry->addComponent<SkyboxComponent>(entity, std::move(sky));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SkyboxComponent, existing, &sky);
-            registry->getComponent<SkyboxComponent>(entity) = sky;
+            registry->getComponent<SkyboxComponent>(entity) = std::move(sky);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4336,10 +4352,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ModelComponent* existing = registry->findComponent<ModelComponent>(entity);
         ModelComponent model = decodeModelComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ModelComponent>())){
-            registry->addComponent<ModelComponent>(entity, model);
+            registry->addComponent<ModelComponent>(entity, std::move(model));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ModelComponent, existing, &model);
-            registry->getComponent<ModelComponent>(entity) = model;
+            registry->getComponent<ModelComponent>(entity) = std::move(model);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4349,10 +4365,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         Rigidbody2DComponent* existing = registry->findComponent<Rigidbody2DComponent>(entity);
         Rigidbody2DComponent body = decodeRigidbody2DComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<Rigidbody2DComponent>())){
-            registry->addComponent<Rigidbody2DComponent>(entity, body);
+            registry->addComponent<Rigidbody2DComponent>(entity, std::move(body));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Rigidbody2DComponent, existing, &body);
-            registry->getComponent<Rigidbody2DComponent>(entity) = body;
+            registry->getComponent<Rigidbody2DComponent>(entity) = std::move(body);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4364,10 +4380,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         const Vector3 bodyScale = bodyTransform ? bodyTransform->scale : Vector3::UNIT_SCALE;
         RigidbodyComponent body = decodeRigidbodyComponent(compNode[compName], existing, bodyScale);
         if (!signature.test(registry->getComponentId<RigidbodyComponent>())){
-            registry->addComponent<RigidbodyComponent>(entity, body);
+            registry->addComponent<RigidbodyComponent>(entity, std::move(body));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RigidbodyComponent, existing, &body);
-            registry->getComponent<RigidbodyComponent>(entity) = body;
+            registry->getComponent<RigidbodyComponent>(entity) = std::move(body);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4377,10 +4393,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         Joint2DComponent* existing = registry->findComponent<Joint2DComponent>(entity);
         Joint2DComponent joint = decodeJoint2DComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<Joint2DComponent>())){
-            registry->addComponent<Joint2DComponent>(entity, joint);
+            registry->addComponent<Joint2DComponent>(entity, std::move(joint));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Joint2DComponent, existing, &joint);
-            registry->getComponent<Joint2DComponent>(entity) = joint;
+            registry->getComponent<Joint2DComponent>(entity) = std::move(joint);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4390,10 +4406,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         Joint3DComponent* existing = registry->findComponent<Joint3DComponent>(entity);
         Joint3DComponent joint = decodeJoint3DComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<Joint3DComponent>())){
-            registry->addComponent<Joint3DComponent>(entity, joint);
+            registry->addComponent<Joint3DComponent>(entity, std::move(joint));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::Joint3DComponent, existing, &joint);
-            registry->getComponent<Joint3DComponent>(entity) = joint;
+            registry->getComponent<Joint3DComponent>(entity) = std::move(joint);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4403,10 +4419,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ActionComponent* existing = registry->findComponent<ActionComponent>(entity);
         ActionComponent action = decodeActionComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ActionComponent>())){
-            registry->addComponent<ActionComponent>(entity, action);
+            registry->addComponent<ActionComponent>(entity, std::move(action));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ActionComponent, existing, &action);
-            registry->getComponent<ActionComponent>(entity) = action;
+            registry->getComponent<ActionComponent>(entity) = std::move(action);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4416,10 +4432,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         TweenComponent* existing = registry->findComponent<TweenComponent>(entity);
         TweenComponent timed = decodeTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<TweenComponent>())){
-            registry->addComponent<TweenComponent>(entity, timed);
+            registry->addComponent<TweenComponent>(entity, std::move(timed));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::TweenComponent, existing, &timed);
-            registry->getComponent<TweenComponent>(entity) = timed;
+            registry->getComponent<TweenComponent>(entity) = std::move(timed);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4429,10 +4445,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         PositionTweenComponent* existing = registry->findComponent<PositionTweenComponent>(entity);
         PositionTweenComponent posAction = decodePositionTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<PositionTweenComponent>())){
-            registry->addComponent<PositionTweenComponent>(entity, posAction);
+            registry->addComponent<PositionTweenComponent>(entity, std::move(posAction));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::PositionTweenComponent, existing, &posAction);
-            registry->getComponent<PositionTweenComponent>(entity) = posAction;
+            registry->getComponent<PositionTweenComponent>(entity) = std::move(posAction);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4442,10 +4458,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         RotationTweenComponent* existing = registry->findComponent<RotationTweenComponent>(entity);
         RotationTweenComponent rotAction = decodeRotationTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<RotationTweenComponent>())){
-            registry->addComponent<RotationTweenComponent>(entity, rotAction);
+            registry->addComponent<RotationTweenComponent>(entity, std::move(rotAction));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::RotationTweenComponent, existing, &rotAction);
-            registry->getComponent<RotationTweenComponent>(entity) = rotAction;
+            registry->getComponent<RotationTweenComponent>(entity) = std::move(rotAction);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4455,10 +4471,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ScaleTweenComponent* existing = registry->findComponent<ScaleTweenComponent>(entity);
         ScaleTweenComponent scaleTween = decodeScaleTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ScaleTweenComponent>())){
-            registry->addComponent<ScaleTweenComponent>(entity, scaleTween);
+            registry->addComponent<ScaleTweenComponent>(entity, std::move(scaleTween));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ScaleTweenComponent, existing, &scaleTween);
-            registry->getComponent<ScaleTweenComponent>(entity) = scaleTween;
+            registry->getComponent<ScaleTweenComponent>(entity) = std::move(scaleTween);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4468,10 +4484,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ColorTweenComponent* existing = registry->findComponent<ColorTweenComponent>(entity);
         ColorTweenComponent colorTween = decodeColorTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ColorTweenComponent>())){
-            registry->addComponent<ColorTweenComponent>(entity, colorTween);
+            registry->addComponent<ColorTweenComponent>(entity, std::move(colorTween));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ColorTweenComponent, existing, &colorTween);
-            registry->getComponent<ColorTweenComponent>(entity) = colorTween;
+            registry->getComponent<ColorTweenComponent>(entity) = std::move(colorTween);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4481,10 +4497,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         AlphaTweenComponent* existing = registry->findComponent<AlphaTweenComponent>(entity);
         AlphaTweenComponent alphaTween = decodeAlphaTweenComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<AlphaTweenComponent>())){
-            registry->addComponent<AlphaTweenComponent>(entity, alphaTween);
+            registry->addComponent<AlphaTweenComponent>(entity, std::move(alphaTween));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AlphaTweenComponent, existing, &alphaTween);
-            registry->getComponent<AlphaTweenComponent>(entity) = alphaTween;
+            registry->getComponent<AlphaTweenComponent>(entity) = std::move(alphaTween);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4494,10 +4510,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         SpriteAnimationComponent* existing = registry->findComponent<SpriteAnimationComponent>(entity);
         SpriteAnimationComponent spriteanim = decodeSpriteAnimationComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<SpriteAnimationComponent>())){
-            registry->addComponent<SpriteAnimationComponent>(entity, spriteanim);
+            registry->addComponent<SpriteAnimationComponent>(entity, std::move(spriteanim));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::SpriteAnimationComponent, existing, &spriteanim);
-            registry->getComponent<SpriteAnimationComponent>(entity) = spriteanim;
+            registry->getComponent<SpriteAnimationComponent>(entity) = std::move(spriteanim);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4507,10 +4523,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         AnimationComponent* existing = registry->findComponent<AnimationComponent>(entity);
         AnimationComponent animation = decodeAnimationComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<AnimationComponent>())){
-            registry->addComponent<AnimationComponent>(entity, animation);
+            registry->addComponent<AnimationComponent>(entity, std::move(animation));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::AnimationComponent, existing, &animation);
-            registry->getComponent<AnimationComponent>(entity) = animation;
+            registry->getComponent<AnimationComponent>(entity) = std::move(animation);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4520,9 +4536,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         BoneComponent* existing = registry->findComponent<BoneComponent>(entity);
         BoneComponent bone = decodeBoneComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<BoneComponent>())){
-            registry->addComponent<BoneComponent>(entity, bone);
+            registry->addComponent<BoneComponent>(entity, std::move(bone));
         }else{
-            registry->getComponent<BoneComponent>(entity) = bone;
+            registry->getComponent<BoneComponent>(entity) = std::move(bone);
         }
     }
 
@@ -4531,9 +4547,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         KeyframeTracksComponent* existing = registry->findComponent<KeyframeTracksComponent>(entity);
         KeyframeTracksComponent tracks = decodeKeyframeTracksComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<KeyframeTracksComponent>())){
-            registry->addComponent<KeyframeTracksComponent>(entity, tracks);
+            registry->addComponent<KeyframeTracksComponent>(entity, std::move(tracks));
         }else{
-            registry->getComponent<KeyframeTracksComponent>(entity) = tracks;
+            registry->getComponent<KeyframeTracksComponent>(entity) = std::move(tracks);
         }
     }
 
@@ -4542,9 +4558,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         TranslateTracksComponent* existing = registry->findComponent<TranslateTracksComponent>(entity);
         TranslateTracksComponent tracks = decodeTranslateTracksComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<TranslateTracksComponent>())){
-            registry->addComponent<TranslateTracksComponent>(entity, tracks);
+            registry->addComponent<TranslateTracksComponent>(entity, std::move(tracks));
         }else{
-            registry->getComponent<TranslateTracksComponent>(entity) = tracks;
+            registry->getComponent<TranslateTracksComponent>(entity) = std::move(tracks);
         }
     }
 
@@ -4553,9 +4569,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         RotateTracksComponent* existing = registry->findComponent<RotateTracksComponent>(entity);
         RotateTracksComponent tracks = decodeRotateTracksComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<RotateTracksComponent>())){
-            registry->addComponent<RotateTracksComponent>(entity, tracks);
+            registry->addComponent<RotateTracksComponent>(entity, std::move(tracks));
         }else{
-            registry->getComponent<RotateTracksComponent>(entity) = tracks;
+            registry->getComponent<RotateTracksComponent>(entity) = std::move(tracks);
         }
     }
 
@@ -4564,9 +4580,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ScaleTracksComponent* existing = registry->findComponent<ScaleTracksComponent>(entity);
         ScaleTracksComponent tracks = decodeScaleTracksComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ScaleTracksComponent>())){
-            registry->addComponent<ScaleTracksComponent>(entity, tracks);
+            registry->addComponent<ScaleTracksComponent>(entity, std::move(tracks));
         }else{
-            registry->getComponent<ScaleTracksComponent>(entity) = tracks;
+            registry->getComponent<ScaleTracksComponent>(entity) = std::move(tracks);
         }
     }
 
@@ -4575,9 +4591,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         MorphTracksComponent* existing = registry->findComponent<MorphTracksComponent>(entity);
         MorphTracksComponent tracks = decodeMorphTracksComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<MorphTracksComponent>())){
-            registry->addComponent<MorphTracksComponent>(entity, tracks);
+            registry->addComponent<MorphTracksComponent>(entity, std::move(tracks));
         }else{
-            registry->getComponent<MorphTracksComponent>(entity) = tracks;
+            registry->getComponent<MorphTracksComponent>(entity) = std::move(tracks);
         }
     }
 
@@ -4586,9 +4602,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         ParticleSystemComponent* existing = registry->findComponent<ParticleSystemComponent>(entity);
         ParticleSystemComponent particles = decodeParticleSystemComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<ParticleSystemComponent>())){
-            registry->addComponent<ParticleSystemComponent>(entity, particles);
+            registry->addComponent<ParticleSystemComponent>(entity, std::move(particles));
         }else{
-            registry->getComponent<ParticleSystemComponent>(entity) = particles;
+            registry->getComponent<ParticleSystemComponent>(entity) = std::move(particles);
         }
     }
 
@@ -4597,9 +4613,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         PointsComponent* existing = registry->findComponent<PointsComponent>(entity);
         PointsComponent pts = decodePointsComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<PointsComponent>())) {
-            registry->addComponent<PointsComponent>(entity, pts);
+            registry->addComponent<PointsComponent>(entity, std::move(pts));
         } else {
-            registry->getComponent<PointsComponent>(entity) = pts;
+            registry->getComponent<PointsComponent>(entity) = std::move(pts);
         }
     }
 
@@ -4608,9 +4624,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         LineRendererComponent* existing = registry->findComponent<LineRendererComponent>(entity);
         LineRendererComponent lines = decodeLineRendererComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<LineRendererComponent>())) {
-            registry->addComponent<LineRendererComponent>(entity, lines);
+            registry->addComponent<LineRendererComponent>(entity, std::move(lines));
         } else {
-            registry->getComponent<LineRendererComponent>(entity) = lines;
+            registry->getComponent<LineRendererComponent>(entity) = std::move(lines);
         }
     }
 
@@ -4619,9 +4635,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         PolygonComponent* existing = registry->findComponent<PolygonComponent>(entity);
         PolygonComponent polygon = decodePolygonComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<PolygonComponent>())) {
-            registry->addComponent<PolygonComponent>(entity, polygon);
+            registry->addComponent<PolygonComponent>(entity, std::move(polygon));
         } else {
-            registry->getComponent<PolygonComponent>(entity) = polygon;
+            registry->getComponent<PolygonComponent>(entity) = std::move(polygon);
         }
     }
 
@@ -4630,9 +4646,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         MeshPolygonComponent* existing = registry->findComponent<MeshPolygonComponent>(entity);
         MeshPolygonComponent polygon = decodeMeshPolygonComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<MeshPolygonComponent>())) {
-            registry->addComponent<MeshPolygonComponent>(entity, polygon);
+            registry->addComponent<MeshPolygonComponent>(entity, std::move(polygon));
         } else {
-            registry->getComponent<MeshPolygonComponent>(entity) = polygon;
+            registry->getComponent<MeshPolygonComponent>(entity) = std::move(polygon);
         }
     }
 
@@ -4641,10 +4657,10 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         InstancedMeshComponent* existing = registry->findComponent<InstancedMeshComponent>(entity);
         InstancedMeshComponent instmesh = decodeInstancedMeshComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<InstancedMeshComponent>())){
-            registry->addComponent<InstancedMeshComponent>(entity, instmesh);
+            registry->addComponent<InstancedMeshComponent>(entity, std::move(instmesh));
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::InstancedMeshComponent, existing, &instmesh);
-            registry->getComponent<InstancedMeshComponent>(entity) = instmesh;
+            registry->getComponent<InstancedMeshComponent>(entity) = std::move(instmesh);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -4654,9 +4670,9 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         PrefabComponent* existing = registry->findComponent<PrefabComponent>(entity);
         PrefabComponent prefab = decodePrefabComponent(compNode[compName], existing);
         if (!signature.test(registry->getComponentId<PrefabComponent>())){
-            registry->addComponent<PrefabComponent>(entity, prefab);
+            registry->addComponent<PrefabComponent>(entity, std::move(prefab));
         }else{
-            registry->getComponent<PrefabComponent>(entity) = prefab;
+            registry->getComponent<PrefabComponent>(entity) = std::move(prefab);
         }
     }
 }
@@ -4674,13 +4690,13 @@ YAML::Node editor::Stream::encodeTransform(const Transform& transform) {
     transformNode["modelMatrix"] = encodeMatrix4(transform.modelMatrix);
     transformNode["normalMatrix"] = encodeMatrix4(transform.normalMatrix);
     //transformNode["modelViewProjectionMatrix"] = encodeMatrix4(transform.modelViewProjectionMatrix);
-    transformNode["visible"] = transform.visible;
+    transformNode["visible"] = YamlNumbers::text(transform.visible);
     //transformNode["parent"] = transform.parent;
     //transformNode["distanceToCamera"] = transform.distanceToCamera;
     transformNode["billboardRotation"] = encodeQuaternion(transform.billboardRotation);
-    transformNode["billboard"] = transform.billboard;
-    transformNode["fakeBillboard"] = transform.fakeBillboard;
-    transformNode["cylindricalBillboard"] = transform.cylindricalBillboard;
+    transformNode["billboard"] = YamlNumbers::text(transform.billboard);
+    transformNode["fakeBillboard"] = YamlNumbers::text(transform.fakeBillboard);
+    transformNode["cylindricalBillboard"] = YamlNumbers::text(transform.cylindricalBillboard);
     //transformNode["needUpdateChildVisibility"] = transform.needUpdateChildVisibility;
     //transformNode["needUpdate"] = transform.needUpdate;
 
@@ -4707,7 +4723,7 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
     //if (node["modelViewProjectionMatrix"]) transform.modelViewProjectionMatrix = decodeMatrix4(node["modelViewProjectionMatrix"]);
     if (node["visible"]) transform.visible = node["visible"].as<bool>();
     //transform.parent = node["parent"].as<Entity>();
-    //if (node["distanceToCamera"]) transform.distanceToCamera = node["distanceToCamera"].as<float>();
+    //if (node["distanceToCamera"]) transform.distanceToCamera = YamlNumbers::as<float>(node["distanceToCamera"]);
     if (node["billboardRotation"]) transform.billboardRotation = decodeQuaternion(node["billboardRotation"]);
     if (node["billboard"]) transform.billboard = node["billboard"].as<bool>();
     if (node["fakeBillboard"]) transform.fakeBillboard = node["fakeBillboard"].as<bool>();
@@ -4720,7 +4736,7 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
 
 YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones) {
     YAML::Node node;
-    node["enabled"] = mesh.enabled;
+    node["enabled"] = YamlNumbers::text(mesh.enabled);
 
     //node["loaded"] = mesh.loaded;
     //node["loadCalled"] = mesh.loadCalled;
@@ -4755,14 +4771,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
         node["bonesMatrix"] = bonesNode;
     }
 
-    node["normAdjustJoint"] = mesh.normAdjustJoint;
-    node["normAdjustWeight"] = mesh.normAdjustWeight;
+    node["normAdjustJoint"] = YamlNumbers::text(mesh.normAdjustJoint);
+    node["normAdjustWeight"] = YamlNumbers::text(mesh.normAdjustWeight);
 
     // Encode morph weights array
     YAML::Node morphWeightsNode;
     morphWeightsNode.SetStyle(YAML::EmitterStyle::Flow);
     for(int i = 0; i < MAX_MORPHTARGETS; i++) {
-        morphWeightsNode.push_back(mesh.morphWeights[i]);
+        morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
     }
     node["morphWeights"] = morphWeightsNode;
 
@@ -4771,15 +4787,15 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
     node["worldAABB"] = encodeAABB(mesh.worldAABB);
 
-    node["receiveLights"] = mesh.receiveLights;
-    node["receiveIBL"] = mesh.receiveIBL;
-    node["castShadows"] = mesh.castShadows;
-    node["receiveShadows"] = mesh.receiveShadows;
-    node["lodEnabled"] = mesh.lodEnabled;
-    node["lodBias"] = mesh.lodBias;
-    node["renderInReflectionProbes"] = mesh.renderInReflectionProbes;
-    node["shadowsBillboard"] = mesh.shadowsBillboard;
-    node["transparent"] = mesh.transparent;
+    node["receiveLights"] = YamlNumbers::text(mesh.receiveLights);
+    node["receiveIBL"] = YamlNumbers::text(mesh.receiveIBL);
+    node["castShadows"] = YamlNumbers::text(mesh.castShadows);
+    node["receiveShadows"] = YamlNumbers::text(mesh.receiveShadows);
+    node["lodEnabled"] = YamlNumbers::text(mesh.lodEnabled);
+    node["lodBias"] = YamlNumbers::text(mesh.lodBias);
+    node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
+    node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
+    node["transparent"] = YamlNumbers::text(mesh.transparent);
 
     node["cullingMode"] = cullingModeToString(mesh.cullingMode);
     node["windingOrder"] = windingOrderToString(mesh.windingOrder);
@@ -4847,14 +4863,14 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
         mesh.needUpdateBones = bonesNode.size() > 0;
     }
 
-    if (node["normAdjustJoint"]) mesh.normAdjustJoint = node["normAdjustJoint"].as<float>();
-    if (node["normAdjustWeight"]) mesh.normAdjustWeight = node["normAdjustWeight"].as<float>();
+    if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
+    if (node["normAdjustWeight"]) mesh.normAdjustWeight = YamlNumbers::as<float>(node["normAdjustWeight"]);
 
     // Decode morph weights
     if (node["morphWeights"]) {
         auto morphWeightsNode = node["morphWeights"];
         for(int i = 0; i < MAX_MORPHTARGETS; i++) {
-            mesh.morphWeights[i] = morphWeightsNode[i].as<float>();
+            mesh.morphWeights[i] = YamlNumbers::as<float>(morphWeightsNode[i]);
         }
     }
 
@@ -5043,8 +5059,8 @@ ScrollbarComponent editor::Stream::decodeScrollbarComponent(const YAML::Node& no
 
     if (node["bar"]) scrollbar.bar = node["bar"].as<Entity>();
     if (node["type"]) scrollbar.type = stringToScrollbarType(node["type"].as<std::string>());
-    if (node["barSize"]) scrollbar.barSize = node["barSize"].as<float>();
-    if (node["step"]) scrollbar.step = node["step"].as<float>();
+    if (node["barSize"]) scrollbar.barSize = YamlNumbers::as<float>(node["barSize"]);
+    if (node["step"]) scrollbar.step = YamlNumbers::as<float>(node["step"]);
     if (node["barMarginLeft"]) scrollbar.barMarginLeft = node["barMarginLeft"].as<int>();
     if (node["barMarginRight"]) scrollbar.barMarginRight = node["barMarginRight"].as<int>();
     if (node["barMarginTop"]) scrollbar.barMarginTop = node["barMarginTop"].as<int>();
@@ -5076,7 +5092,7 @@ ProgressbarComponent editor::Stream::decodeProgressbarComponent(const YAML::Node
 
     if (node["fill"]) progressbar.fill = node["fill"].as<Entity>();
     if (node["type"]) progressbar.type = stringToProgressbarType(node["type"].as<std::string>());
-    if (node["value"]) progressbar.value = node["value"].as<float>();
+    if (node["value"]) progressbar.value = YamlNumbers::as<float>(node["value"]);
     if (node["fillMarginLeft"]) progressbar.fillMarginLeft = node["fillMarginLeft"].as<int>();
     if (node["fillMarginRight"]) progressbar.fillMarginRight = node["fillMarginRight"].as<int>();
     if (node["fillMarginTop"]) progressbar.fillMarginTop = node["fillMarginTop"].as<int>();
@@ -5116,8 +5132,8 @@ InputFieldComponent editor::Stream::decodeInputFieldComponent(const YAML::Node& 
     if (node["text"]) inputfield.text = node["text"].as<Entity>();
     if (node["selection"]) inputfield.selection = node["selection"].as<Entity>();
     if (node["cursor"]) inputfield.cursor = node["cursor"].as<Entity>();
-    if (node["cursorBlink"]) inputfield.cursorBlink = node["cursorBlink"].as<float>();
-    if (node["cursorWidth"]) inputfield.cursorWidth = node["cursorWidth"].as<float>();
+    if (node["cursorBlink"]) inputfield.cursorBlink = YamlNumbers::as<float>(node["cursorBlink"]);
+    if (node["cursorWidth"]) inputfield.cursorWidth = YamlNumbers::as<float>(node["cursorWidth"]);
     if (node["cursorColor"]) inputfield.cursorColor = decodeVector4(node["cursorColor"]);
     if (node["selectionColor"]) inputfield.selectionColor = decodeVector4(node["selectionColor"]);
     if (node["placeholderColor"]) inputfield.placeholderColor = decodeVector4(node["placeholderColor"]);
@@ -5221,10 +5237,10 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
 
     if (node["width"]) layout.width = node["width"].as<unsigned int>();
     if (node["height"]) layout.height = node["height"].as<unsigned int>();
-    if (node["anchorPointLeft"]) layout.anchorPointLeft = node["anchorPointLeft"].as<float>();
-    if (node["anchorPointTop"]) layout.anchorPointTop = node["anchorPointTop"].as<float>();
-    if (node["anchorPointRight"]) layout.anchorPointRight = node["anchorPointRight"].as<float>();
-    if (node["anchorPointBottom"]) layout.anchorPointBottom = node["anchorPointBottom"].as<float>();
+    if (node["anchorPointLeft"]) layout.anchorPointLeft = YamlNumbers::as<float>(node["anchorPointLeft"]);
+    if (node["anchorPointTop"]) layout.anchorPointTop = YamlNumbers::as<float>(node["anchorPointTop"]);
+    if (node["anchorPointRight"]) layout.anchorPointRight = YamlNumbers::as<float>(node["anchorPointRight"]);
+    if (node["anchorPointBottom"]) layout.anchorPointBottom = YamlNumbers::as<float>(node["anchorPointBottom"]);
     if (node["anchorOffsetLeft"]) layout.anchorOffsetLeft = node["anchorOffsetLeft"].as<int>();
     if (node["anchorOffsetTop"]) layout.anchorOffsetTop = node["anchorOffsetTop"].as<int>();
     if (node["anchorOffsetRight"]) layout.anchorOffsetRight = node["anchorOffsetRight"].as<int>();
@@ -5348,7 +5364,7 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
     if (node["patchMarginRight"]) image.patchMarginRight = node["patchMarginRight"].as<int>();
     if (node["patchMarginTop"]) image.patchMarginTop = node["patchMarginTop"].as<int>();
     if (node["patchMarginBottom"]) image.patchMarginBottom = node["patchMarginBottom"].as<int>();
-    if (node["textureScaleFactor"]) image.textureScaleFactor = node["textureScaleFactor"].as<float>();
+    if (node["textureScaleFactor"]) image.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     //image.needUpdatePatches = node["needUpdatePatches"].as<bool>();
 
     return image;
@@ -5356,12 +5372,12 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
 
 YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) {
     YAML::Node node;
-    node["enabled"] = sprite.enabled;
+    node["enabled"] = YamlNumbers::text(sprite.enabled);
     node["width"] = sprite.width;
     node["height"] = sprite.height;
-    node["automaticFlipY"] = sprite.automaticFlipY;
-    node["flipY"] = sprite.flipY;
-    node["textureScaleFactor"] = sprite.textureScaleFactor;
+    node["automaticFlipY"] = YamlNumbers::text(sprite.automaticFlipY);
+    node["flipY"] = YamlNumbers::text(sprite.flipY);
+    node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
     //node["needUpdateSprite"] = sprite.needUpdateSprite;
 
@@ -5393,7 +5409,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["height"]) sprite.height = node["height"].as<unsigned int>();
     if (node["automaticFlipY"]) sprite.automaticFlipY = node["automaticFlipY"].as<bool>();
     if (node["flipY"]) sprite.flipY = node["flipY"].as<bool>();
-    if (node["textureScaleFactor"]) sprite.textureScaleFactor = node["textureScaleFactor"].as<float>();
+    if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = stringToPivotPreset(node["pivotPreset"].as<std::string>());
     //if (node["needUpdateSprite"]) sprite.needUpdateSprite = node["needUpdateSprite"].as<bool>();
 
@@ -5458,7 +5474,7 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
     if (node["height"]) tilemap.height = node["height"].as<unsigned int>();
     if (node["automaticFlipY"]) tilemap.automaticFlipY = node["automaticFlipY"].as<bool>();
     if (node["flipY"]) tilemap.flipY = node["flipY"].as<bool>();
-    if (node["textureScaleFactor"]) tilemap.textureScaleFactor = node["textureScaleFactor"].as<float>();
+    if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["reserveTiles"]) tilemap.reserveTiles = node["reserveTiles"].as<unsigned int>();
 
     if (node["tilesRect"]) {
@@ -5677,11 +5693,11 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     }
     if (node["autoSetRanges"]) terrain.autoSetRanges = node["autoSetRanges"].as<bool>();
     if (node["offset"]) terrain.offset = decodeVector2(node["offset"]);
-    if (node["terrainSize"]) terrain.terrainSize = node["terrainSize"].as<float>();
-    if (node["maxHeight"]) terrain.maxHeight = node["maxHeight"].as<float>();
-    if (node["resolution"]) terrain.resolution = node["resolution"].as<float>();
-    if (node["textureBaseTiles"]) terrain.textureBaseTiles = node["textureBaseTiles"].as<float>();
-    if (node["textureDetailTiles"]) terrain.textureDetailTiles = node["textureDetailTiles"].as<float>();
+    if (node["terrainSize"]) terrain.terrainSize = YamlNumbers::as<float>(node["terrainSize"]);
+    if (node["maxHeight"]) terrain.maxHeight = YamlNumbers::as<float>(node["maxHeight"]);
+    if (node["resolution"]) terrain.resolution = YamlNumbers::as<float>(node["resolution"]);
+    if (node["textureBaseTiles"]) terrain.textureBaseTiles = YamlNumbers::as<float>(node["textureBaseTiles"]);
+    if (node["textureDetailTiles"]) terrain.textureDetailTiles = YamlNumbers::as<float>(node["textureDetailTiles"]);
     if (node["rootGridSize"]) terrain.rootGridSize = node["rootGridSize"].as<int>();
     if (node["levels"]) terrain.levels = node["levels"].as<int>();
 
@@ -5692,7 +5708,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             if (!node["ranges"][i] || node["ranges"][i].IsNull()) {
                 continue;
             }
-            terrain.ranges.push_back(node["ranges"][i].as<float>());
+            terrain.ranges.push_back(YamlNumbers::as<float>(node["ranges"][i]));
         }
     }
 
@@ -5897,15 +5913,15 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["direction"]) light.direction = decodeVector3(node["direction"]);
     if (node["worldDirection"]) light.worldDirection = decodeVector3(node["worldDirection"]);
     if (node["color"]) light.color = decodeVector3(node["color"]);
-    if (node["range"]) light.range = node["range"].as<float>();
-    if (node["intensity"]) light.intensity = node["intensity"].as<float>();
-    if (node["innerConeCos"]) light.innerConeCos = node["innerConeCos"].as<float>();
-    if (node["outerConeCos"]) light.outerConeCos = node["outerConeCos"].as<float>();
+    if (node["range"]) light.range = YamlNumbers::as<float>(node["range"]);
+    if (node["intensity"]) light.intensity = YamlNumbers::as<float>(node["intensity"]);
+    if (node["innerConeCos"]) light.innerConeCos = YamlNumbers::as<float>(node["innerConeCos"]);
+    if (node["outerConeCos"]) light.outerConeCos = YamlNumbers::as<float>(node["outerConeCos"]);
     if (node["spotMask"]) light.spotMask = decodeTexture(node["spotMask"]);
     if (node["cullingMask"]) light.cullingMask = decodeLayerMask(node["cullingMask"], light.cullingMask);
     if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
     if (node["automaticShadowCamera"]) light.automaticShadowCamera = node["automaticShadowCamera"].as<bool>();
-    if (node["shadowBias"]) light.shadowBias = node["shadowBias"].as<float>();
+    if (node["shadowBias"]) light.shadowBias = YamlNumbers::as<float>(node["shadowBias"]);
     if (node["mapResolution"]) light.mapResolution = node["mapResolution"].as<unsigned int>();
     if (node["shadowCameraNearFar"]) light.shadowCameraNearFar = decodeVector2(node["shadowCameraNearFar"]);
     if (node["numShadowCascades"]) light.numShadowCascades = node["numShadowCascades"].as<unsigned int>();
@@ -5941,13 +5957,13 @@ Light2DComponent editor::Stream::decodeLight2DComponent(const YAML::Node& node, 
     }
 
     if (node["color"]) light.color = decodeVector3(node["color"]);
-    if (node["intensity"]) light.intensity = node["intensity"].as<float>();
-    if (node["range"]) light.range = node["range"].as<float>();
-    if (node["falloff"]) light.falloff = node["falloff"].as<float>();
-    if (node["height"]) light.height = node["height"].as<float>();
+    if (node["intensity"]) light.intensity = YamlNumbers::as<float>(node["intensity"]);
+    if (node["range"]) light.range = YamlNumbers::as<float>(node["range"]);
+    if (node["falloff"]) light.falloff = YamlNumbers::as<float>(node["falloff"]);
+    if (node["height"]) light.height = YamlNumbers::as<float>(node["height"]);
     if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
-    if (node["shadowBias"]) light.shadowBias = node["shadowBias"].as<float>();
-    if (node["shadowSoftness"]) light.shadowSoftness = node["shadowSoftness"].as<float>();
+    if (node["shadowBias"]) light.shadowBias = YamlNumbers::as<float>(node["shadowBias"]);
+    if (node["shadowSoftness"]) light.shadowSoftness = YamlNumbers::as<float>(node["shadowSoftness"]);
     if (node["mapResolution"]) light.mapResolution = node["mapResolution"].as<unsigned int>();
 
     if (node["enabled"]) light.enabled = node["enabled"].as<bool>();
@@ -6025,9 +6041,9 @@ FogComponent editor::Stream::decodeFogComponent(const YAML::Node& node, const Fo
 
     if (node["type"]) fog.type = stringToFogType(node["type"].as<std::string>());
     if (node["color"]) fog.color = decodeVector3(node["color"]);
-    if (node["density"]) fog.density = node["density"].as<float>();
-    if (node["linearStart"]) fog.linearStart = node["linearStart"].as<float>();
-    if (node["linearEnd"]) fog.linearEnd = node["linearEnd"].as<float>();
+    if (node["density"]) fog.density = YamlNumbers::as<float>(node["density"]);
+    if (node["linearStart"]) fog.linearStart = YamlNumbers::as<float>(node["linearStart"]);
+    if (node["linearEnd"]) fog.linearEnd = YamlNumbers::as<float>(node["linearEnd"]);
 
     return fog;
 }
@@ -6094,13 +6110,13 @@ ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YA
     }
     if (node["boxOffset"]) probe.boxOffset = decodeVector3(node["boxOffset"]);
     if (node["boxSize"]) probe.boxSize = decodeVector3(node["boxSize"]);
-    if (node["blendDistance"]) probe.blendDistance = node["blendDistance"].as<float>();
-    if (node["intensity"]) probe.intensity = node["intensity"].as<float>();
+    if (node["blendDistance"]) probe.blendDistance = YamlNumbers::as<float>(node["blendDistance"]);
+    if (node["intensity"]) probe.intensity = YamlNumbers::as<float>(node["intensity"]);
     if (node["priority"]) probe.priority = node["priority"].as<int>();
     if (node["resolution"]) probe.resolution = node["resolution"].as<unsigned int>();
-    if (node["nearClip"]) probe.nearClip = node["nearClip"].as<float>();
-    if (node["farClip"]) probe.farClip = node["farClip"].as<float>();
-    if (node["updateInterval"]) probe.updateInterval = node["updateInterval"].as<float>();
+    if (node["nearClip"]) probe.nearClip = YamlNumbers::as<float>(node["nearClip"]);
+    if (node["farClip"]) probe.farClip = YamlNumbers::as<float>(node["farClip"]);
+    if (node["updateInterval"]) probe.updateInterval = YamlNumbers::as<float>(node["updateInterval"]);
     if (node["includeSky"]) probe.includeSky = node["includeSky"].as<bool>();
     if (node["cullingMask"]) probe.cullingMask = decodeLayerMask(node["cullingMask"], probe.cullingMask);
     if (node["texture"]) probe.texture = decodeTexture(node["texture"]);
@@ -6367,7 +6383,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
         }
     }
     if (node["color"]) sky.color = decodeVector4(node["color"]);
-    if (node["rotation"]) sky.rotation = node["rotation"].as<float>();
+    if (node["rotation"]) sky.rotation = YamlNumbers::as<float>(node["rotation"]);
     if (node["visible"]) sky.visible = node["visible"].as<bool>();
 
     if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
@@ -6600,12 +6616,12 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (node["colliders"][i]["pointB"]) {
                 body.colliders[i].pointB = decodeVector2(node["colliders"][i]["pointB"]);
             }
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = node["colliders"][i]["radius"].as<float>();
+            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
             if (node["colliders"][i]["loop"]) body.colliders[i].loop = node["colliders"][i]["loop"].as<bool>();
 
-            if (node["colliders"][i]["density"]) body.colliders[i].density = node["colliders"][i]["density"].as<float>();
-            if (node["colliders"][i]["friction"]) body.colliders[i].friction = node["colliders"][i]["friction"].as<float>();
-            if (node["colliders"][i]["restitution"]) body.colliders[i].restitution = node["colliders"][i]["restitution"].as<float>();
+            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
+            if (node["colliders"][i]["friction"]) body.colliders[i].friction = YamlNumbers::as<float>(node["colliders"][i]["friction"]);
+            if (node["colliders"][i]["restitution"]) body.colliders[i].restitution = YamlNumbers::as<float>(node["colliders"][i]["restitution"]);
             if (node["colliders"][i]["sensor"]) body.colliders[i].sensor = node["colliders"][i]["sensor"].as<bool>();
             if (node["colliders"][i]["enableHitEvents"]) body.colliders[i].enableHitEvents = node["colliders"][i]["enableHitEvents"].as<bool>();
             if (node["colliders"][i]["contactEvents"]) body.colliders[i].contactEvents = node["colliders"][i]["contactEvents"].as<bool>();
@@ -6721,7 +6737,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
     if (node["motionQuality"]) body.motionQuality = stringToRigidbodyMotionQuality(node["motionQuality"].as<std::string>());
     if (node["sensor"]) body.sensor = node["sensor"].as<bool>();
-    if (node["gravityFactor"]) body.gravityFactor = node["gravityFactor"].as<float>();
+    if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -6760,14 +6776,14 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
             if (node["colliders"][i]["rotation"]) {
                 body.colliders[i].rotation = decodeQuaternion(node["colliders"][i]["rotation"]);
             }
-            if (node["colliders"][i]["width"]) body.colliders[i].width = node["colliders"][i]["width"].as<float>();
-            if (node["colliders"][i]["height"]) body.colliders[i].height = node["colliders"][i]["height"].as<float>();
-            if (node["colliders"][i]["depth"]) body.colliders[i].depth = node["colliders"][i]["depth"].as<float>();
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = node["colliders"][i]["radius"].as<float>();
-            if (node["colliders"][i]["halfHeight"]) body.colliders[i].halfHeight = node["colliders"][i]["halfHeight"].as<float>();
-            if (node["colliders"][i]["topRadius"]) body.colliders[i].topRadius = node["colliders"][i]["topRadius"].as<float>();
-            if (node["colliders"][i]["bottomRadius"]) body.colliders[i].bottomRadius = node["colliders"][i]["bottomRadius"].as<float>();
-            if (node["colliders"][i]["density"]) body.colliders[i].density = node["colliders"][i]["density"].as<float>();
+            if (node["colliders"][i]["width"]) body.colliders[i].width = YamlNumbers::as<float>(node["colliders"][i]["width"]);
+            if (node["colliders"][i]["height"]) body.colliders[i].height = YamlNumbers::as<float>(node["colliders"][i]["height"]);
+            if (node["colliders"][i]["depth"]) body.colliders[i].depth = YamlNumbers::as<float>(node["colliders"][i]["depth"]);
+            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
+            if (node["colliders"][i]["halfHeight"]) body.colliders[i].halfHeight = YamlNumbers::as<float>(node["colliders"][i]["halfHeight"]);
+            if (node["colliders"][i]["topRadius"]) body.colliders[i].topRadius = YamlNumbers::as<float>(node["colliders"][i]["topRadius"]);
+            if (node["colliders"][i]["bottomRadius"]) body.colliders[i].bottomRadius = YamlNumbers::as<float>(node["colliders"][i]["bottomRadius"]);
+            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
 
             if (node["colliders"][i]["source"]) {
                 std::string source = node["colliders"][i]["source"].as<std::string>();
@@ -6937,12 +6953,12 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["planeAxis"]) joint.planeAxis = decodeVector3(node["planeAxis"]);
     if (node["axisX"]) joint.axisX = decodeVector3(node["axisX"]);
     if (node["axisY"]) joint.axisY = decodeVector3(node["axisY"]);
-    if (node["limitsMin"]) joint.limitsMin = node["limitsMin"].as<float>();
-    if (node["limitsMax"]) joint.limitsMax = node["limitsMax"].as<float>();
-    if (node["normalHalfConeAngle"]) joint.normalHalfConeAngle = node["normalHalfConeAngle"].as<float>();
-    if (node["planeHalfConeAngle"]) joint.planeHalfConeAngle = node["planeHalfConeAngle"].as<float>();
-    if (node["twistMinAngle"]) joint.twistMinAngle = node["twistMinAngle"].as<float>();
-    if (node["twistMaxAngle"]) joint.twistMaxAngle = node["twistMaxAngle"].as<float>();
+    if (node["limitsMin"]) joint.limitsMin = YamlNumbers::as<float>(node["limitsMin"]);
+    if (node["limitsMax"]) joint.limitsMax = YamlNumbers::as<float>(node["limitsMax"]);
+    if (node["normalHalfConeAngle"]) joint.normalHalfConeAngle = YamlNumbers::as<float>(node["normalHalfConeAngle"]);
+    if (node["planeHalfConeAngle"]) joint.planeHalfConeAngle = YamlNumbers::as<float>(node["planeHalfConeAngle"]);
+    if (node["twistMinAngle"]) joint.twistMinAngle = YamlNumbers::as<float>(node["twistMinAngle"]);
+    if (node["twistMaxAngle"]) joint.twistMaxAngle = YamlNumbers::as<float>(node["twistMaxAngle"]);
     if (node["fixedPointA"]) joint.fixedPointA = decodeVector3(node["fixedPointA"]);
     if (node["fixedPointB"]) joint.fixedPointB = decodeVector3(node["fixedPointB"]);
     if (node["hingeA"]) joint.hingeA = node["hingeA"].as<Entity>();
@@ -7014,7 +7030,7 @@ ActionComponent editor::Stream::decodeActionComponent(const YAML::Node& node, co
     action.pauseTrigger = false;
 
     if (node["state"]) action.state = stringToActionState(node["state"].as<std::string>());
-    if (node["speed"]) action.speed = node["speed"].as<float>();
+    if (node["speed"]) action.speed = YamlNumbers::as<float>(node["speed"]);
     if (node["target"]) action.target = node["target"].as<Entity>();
     if (node["ownedTarget"]) action.ownedTarget = node["ownedTarget"].as<bool>();
 
@@ -7043,7 +7059,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
     timed.time = 0;
     timed.value = 0;
 
-    if (node["duration"]) timed.duration = node["duration"].as<float>();
+    if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["loop"]) timed.loop = node["loop"].as<bool>();
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
@@ -7168,8 +7184,8 @@ AlphaTweenComponent editor::Stream::decodeAlphaTweenComponent(const YAML::Node& 
         alphaTween = *oldAlphaTween;
     }
 
-    if (node["endAlpha"]) alphaTween.endAlpha = node["endAlpha"].as<float>();
-    if (node["startAlpha"]) alphaTween.startAlpha = node["startAlpha"].as<float>();
+    if (node["endAlpha"]) alphaTween.endAlpha = YamlNumbers::as<float>(node["endAlpha"]);
+    if (node["startAlpha"]) alphaTween.startAlpha = YamlNumbers::as<float>(node["startAlpha"]);
 
     return alphaTween;
 }
@@ -7262,17 +7278,17 @@ AnimationComponent editor::Stream::decodeAnimationComponent(const YAML::Node& no
     }
 
     if (node["loop"]) animation.loop = node["loop"].as<bool>();
-    if (node["duration"]) animation.duration = node["duration"].as<float>();
+    if (node["duration"]) animation.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["ownedActions"]) animation.ownedActions = node["ownedActions"].as<bool>();
-    if (node["defaultFadeTime"]) animation.defaultFadeTime = node["defaultFadeTime"].as<float>();
+    if (node["defaultFadeTime"]) animation.defaultFadeTime = YamlNumbers::as<float>(node["defaultFadeTime"]);
 
     if (node["actions"]) {
         animation.actions.clear();
         for (const YAML::Node& frameNode : node["actions"]) {
             ActionFrame frame;
             if (frameNode["track"]) frame.track = frameNode["track"].as<uint32_t>();
-            if (frameNode["startTime"]) frame.startTime = frameNode["startTime"].as<float>();
-            if (frameNode["duration"]) frame.duration = frameNode["duration"].as<float>();
+            if (frameNode["startTime"]) frame.startTime = YamlNumbers::as<float>(frameNode["startTime"]);
+            if (frameNode["duration"]) frame.duration = YamlNumbers::as<float>(frameNode["duration"]);
             if (frameNode["action"]) frame.action = frameNode["action"].as<Entity>();
             animation.actions.push_back(frame);
         }
@@ -7344,12 +7360,12 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
     }
 
     if (node["index"]) tracks.index = node["index"].as<int>();
-    if (node["interpolation"]) tracks.interpolation = node["interpolation"].as<float>();
+    if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
 
     if (node["times"]) {
         tracks.times.clear();
         for (const YAML::Node& t : node["times"]) {
-            tracks.times.push_back(t.as<float>());
+            tracks.times.push_back(YamlNumbers::as<float>(t));
         }
     }
 
@@ -7392,7 +7408,7 @@ static YAML::Node encodeFloatList(const std::vector<float>& values) {
 static std::vector<float> decodeFloatList(const YAML::Node& node) {
     std::vector<float> values;
     for (const YAML::Node& f : node) {
-        values.push_back(f.as<float>());
+        values.push_back(editor::YamlNumbers::as<float>(f));
     }
     return values;
 }
@@ -7676,7 +7692,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         particles.bursts.clear();
         for (const auto& bn : node["bursts"]) {
             ParticleBurst b;
-            if (bn["time"]) b.time = bn["time"].as<float>();
+            if (bn["time"]) b.time = YamlNumbers::as<float>(bn["time"]);
             if (bn["minCount"]) b.minCount = bn["minCount"].as<int>();
             if (bn["maxCount"]) b.maxCount = bn["maxCount"].as<int>();
             particles.bursts.push_back(b);
@@ -7685,23 +7701,23 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
 
     if (node["lifeInitializer"]) {
         const YAML::Node& n = node["lifeInitializer"];
-        if (n["minLife"]) particles.lifeInitializer.minLife = n["minLife"].as<float>();
-        if (n["maxLife"]) particles.lifeInitializer.maxLife = n["maxLife"].as<float>();
+        if (n["minLife"]) particles.lifeInitializer.minLife = YamlNumbers::as<float>(n["minLife"]);
+        if (n["maxLife"]) particles.lifeInitializer.maxLife = YamlNumbers::as<float>(n["maxLife"]);
     }
     if (node["positionInitializer"]) {
         const YAML::Node& n = node["positionInitializer"];
         if (n["shape"]) particles.positionInitializer.shape = stringToParticleEmitterShape(n["shape"].as<std::string>());
         if (n["minPosition"]) particles.positionInitializer.minPosition = decodeVector3(n["minPosition"]);
         if (n["maxPosition"]) particles.positionInitializer.maxPosition = decodeVector3(n["maxPosition"]);
-        if (n["radius"]) particles.positionInitializer.radius = n["radius"].as<float>();
-        if (n["innerRadius"]) particles.positionInitializer.innerRadius = n["innerRadius"].as<float>();
-        if (n["coneAngle"]) particles.positionInitializer.coneAngle = n["coneAngle"].as<float>();
-        if (n["coneHeight"]) particles.positionInitializer.coneHeight = n["coneHeight"].as<float>();
+        if (n["radius"]) particles.positionInitializer.radius = YamlNumbers::as<float>(n["radius"]);
+        if (n["innerRadius"]) particles.positionInitializer.innerRadius = YamlNumbers::as<float>(n["innerRadius"]);
+        if (n["coneAngle"]) particles.positionInitializer.coneAngle = YamlNumbers::as<float>(n["coneAngle"]);
+        if (n["coneHeight"]) particles.positionInitializer.coneHeight = YamlNumbers::as<float>(n["coneHeight"]);
     }
     if (node["positionModifier"]) {
         const YAML::Node& n = node["positionModifier"];
-        if (n["fromTime"]) particles.positionModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.positionModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.positionModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.positionModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromPosition"]) particles.positionModifier.fromPosition = decodeVector3(n["fromPosition"]);
         if (n["toPosition"]) particles.positionModifier.toPosition = decodeVector3(n["toPosition"]);
         if (n["function"]) particles.positionModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->positionModifier.function : nullptr);
@@ -7713,8 +7729,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["velocityModifier"]) {
         const YAML::Node& n = node["velocityModifier"];
-        if (n["fromTime"]) particles.velocityModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.velocityModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.velocityModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.velocityModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromVelocity"]) particles.velocityModifier.fromVelocity = decodeVector3(n["fromVelocity"]);
         if (n["toVelocity"]) particles.velocityModifier.toVelocity = decodeVector3(n["toVelocity"]);
         if (n["function"]) particles.velocityModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->velocityModifier.function : nullptr);
@@ -7726,8 +7742,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["accelerationModifier"]) {
         const YAML::Node& n = node["accelerationModifier"];
-        if (n["fromTime"]) particles.accelerationModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.accelerationModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.accelerationModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.accelerationModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromAcceleration"]) particles.accelerationModifier.fromAcceleration = decodeVector3(n["fromAcceleration"]);
         if (n["toAcceleration"]) particles.accelerationModifier.toAcceleration = decodeVector3(n["toAcceleration"]);
         if (n["function"]) particles.accelerationModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->accelerationModifier.function : nullptr);
@@ -7740,8 +7756,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["colorModifier"]) {
         const YAML::Node& n = node["colorModifier"];
-        if (n["fromTime"]) particles.colorModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.colorModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.colorModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.colorModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromColor"]) particles.colorModifier.fromColor = decodeVector3(n["fromColor"]);
         if (n["toColor"]) particles.colorModifier.toColor = decodeVector3(n["toColor"]);
         if (n["function"]) particles.colorModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->colorModifier.function : nullptr);
@@ -7754,7 +7770,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
             particles.colorGradient.stops.clear();
             for (const auto& sn : n["stops"]) {
                 ParticleColorGradientStop s;
-                if (sn["time"]) s.time = sn["time"].as<float>();
+                if (sn["time"]) s.time = YamlNumbers::as<float>(sn["time"]);
                 if (sn["color"]) s.color = decodeVector3(sn["color"]);
                 particles.colorGradient.stops.push_back(s);
             }
@@ -7763,28 +7779,28 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["alphaInitializer"]) {
         const YAML::Node& n = node["alphaInitializer"];
-        if (n["minAlpha"]) particles.alphaInitializer.minAlpha = n["minAlpha"].as<float>();
-        if (n["maxAlpha"]) particles.alphaInitializer.maxAlpha = n["maxAlpha"].as<float>();
+        if (n["minAlpha"]) particles.alphaInitializer.minAlpha = YamlNumbers::as<float>(n["minAlpha"]);
+        if (n["maxAlpha"]) particles.alphaInitializer.maxAlpha = YamlNumbers::as<float>(n["maxAlpha"]);
     }
     if (node["alphaModifier"]) {
         const YAML::Node& n = node["alphaModifier"];
-        if (n["fromTime"]) particles.alphaModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.alphaModifier.toTime = n["toTime"].as<float>();
-        if (n["fromAlpha"]) particles.alphaModifier.fromAlpha = n["fromAlpha"].as<float>();
-        if (n["toAlpha"]) particles.alphaModifier.toAlpha = n["toAlpha"].as<float>();
+        if (n["fromTime"]) particles.alphaModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.alphaModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
+        if (n["fromAlpha"]) particles.alphaModifier.fromAlpha = YamlNumbers::as<float>(n["fromAlpha"]);
+        if (n["toAlpha"]) particles.alphaModifier.toAlpha = YamlNumbers::as<float>(n["toAlpha"]);
         if (n["function"]) particles.alphaModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->alphaModifier.function : nullptr);
     }
     if (node["sizeInitializer"]) {
         const YAML::Node& n = node["sizeInitializer"];
-        if (n["minSize"]) particles.sizeInitializer.minSize = n["minSize"].as<float>();
-        if (n["maxSize"]) particles.sizeInitializer.maxSize = n["maxSize"].as<float>();
+        if (n["minSize"]) particles.sizeInitializer.minSize = YamlNumbers::as<float>(n["minSize"]);
+        if (n["maxSize"]) particles.sizeInitializer.maxSize = YamlNumbers::as<float>(n["maxSize"]);
     }
     if (node["sizeModifier"]) {
         const YAML::Node& n = node["sizeModifier"];
-        if (n["fromTime"]) particles.sizeModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.sizeModifier.toTime = n["toTime"].as<float>();
-        if (n["fromSize"]) particles.sizeModifier.fromSize = n["fromSize"].as<float>();
-        if (n["toSize"]) particles.sizeModifier.toSize = n["toSize"].as<float>();
+        if (n["fromTime"]) particles.sizeModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.sizeModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
+        if (n["fromSize"]) particles.sizeModifier.fromSize = YamlNumbers::as<float>(n["fromSize"]);
+        if (n["toSize"]) particles.sizeModifier.toSize = YamlNumbers::as<float>(n["toSize"]);
         if (n["function"]) particles.sizeModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->sizeModifier.function : nullptr);
     }
     if (node["spriteInitializer"]) {
@@ -7796,8 +7812,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["spriteModifier"]) {
         const YAML::Node& n = node["spriteModifier"];
-        if (n["fromTime"]) particles.spriteModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.spriteModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.spriteModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.spriteModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["function"]) particles.spriteModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->spriteModifier.function : nullptr);
         if (n["frames"]) {
             particles.spriteModifier.frames.clear();
@@ -7812,8 +7828,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["rotationModifier"]) {
         const YAML::Node& n = node["rotationModifier"];
-        if (n["fromTime"]) particles.rotationModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.rotationModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.rotationModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.rotationModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromRotation"]) particles.rotationModifier.fromRotation = decodeQuaternion(n["fromRotation"]);
         if (n["toRotation"]) particles.rotationModifier.toRotation = decodeQuaternion(n["toRotation"]);
         if (n["function"]) particles.rotationModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->rotationModifier.function : nullptr);
@@ -7827,8 +7843,8 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["scaleModifier"]) {
         const YAML::Node& n = node["scaleModifier"];
-        if (n["fromTime"]) particles.scaleModifier.fromTime = n["fromTime"].as<float>();
-        if (n["toTime"]) particles.scaleModifier.toTime = n["toTime"].as<float>();
+        if (n["fromTime"]) particles.scaleModifier.fromTime = YamlNumbers::as<float>(n["fromTime"]);
+        if (n["toTime"]) particles.scaleModifier.toTime = YamlNumbers::as<float>(n["toTime"]);
         if (n["fromScale"]) particles.scaleModifier.fromScale = decodeVector3(n["fromScale"]);
         if (n["toScale"]) particles.scaleModifier.toScale = decodeVector3(n["toScale"]);
         if (n["function"]) particles.scaleModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->scaleModifier.function : nullptr);
@@ -7974,8 +7990,8 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
             PointData pt;
             if (ptNode["position"]) pt.position = decodeVector3(ptNode["position"]);
             if (ptNode["color"]) pt.color = decodeVector4(ptNode["color"]);
-            if (ptNode["size"]) pt.size = ptNode["size"].as<float>();
-            if (ptNode["rotation"]) pt.rotation = ptNode["rotation"].as<float>();
+            if (ptNode["size"]) pt.size = YamlNumbers::as<float>(ptNode["size"]);
+            if (ptNode["rotation"]) pt.rotation = YamlNumbers::as<float>(ptNode["rotation"]);
             if (ptNode["textureRect"]) pt.textureRect = decodeRect(ptNode["textureRect"]);
             if (ptNode["visible"]) pt.visible = ptNode["visible"].as<bool>();
             points.points.push_back(pt);

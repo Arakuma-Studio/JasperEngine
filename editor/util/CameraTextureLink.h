@@ -29,6 +29,9 @@ namespace jasperengine::editor {
         // framebuffer of its camera entity (or unbind if the camera is gone),
         // flagging affected components to reload; returns true if any changed
         static bool resolve(EntityRegistry* registry);
+        // resolve for what changed in these entities only: their own textures, or all of
+        // the scene when one of them is a camera
+        static bool resolve(EntityRegistry* registry, const std::vector<Entity>& entities);
     };
 
 }

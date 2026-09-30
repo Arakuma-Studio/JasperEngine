@@ -688,6 +688,44 @@ std::string editor::ProjectUtils::makeUniqueEntityName(const std::string& baseNa
     return uniqueName;
 }
 
+editor::UniqueEntityNames::UniqueEntityNames(std::unordered_set<std::string> existingNames)
+    : existingNames(std::move(existingNames)) {
+}
+
+std::string editor::UniqueEntityNames::make(const std::string& baseName) {
+    // What makeUniqueEntityName gives: the name itself when free, else the first free
+    // "<base> <n>" from the number after its own
+    if (baseName.empty() || existingNames.find(baseName) == existingNames.end()) {
+        existingNames.insert(baseName);
+        return baseName;
+    }
+
+    std::string cleanBase = baseName;
+    size_t nameCount = 2;
+    splitTrailingDuplicateNumber(baseName, cleanBase, nameCount);
+
+    // Every number of a known taken run is skipped at once
+    size_t number = nameCount;
+    auto run = takenRuns.find(cleanBase);
+    const bool extendsRun = run != takenRuns.end() && run->second.first <= number && number <= run->second.second + 1;
+    if (extendsRun) {
+        number = run->second.second + 1;
+    }
+
+    std::string uniqueName = cleanBase + " " + std::to_string(number);
+    while (existingNames.find(uniqueName) != existingNames.end()) {
+        uniqueName = cleanBase + " " + std::to_string(++number);
+    }
+    existingNames.insert(uniqueName);
+
+    if (extendsRun) {
+        run->second.second = number;
+    } else {
+        takenRuns[cleanBase] = {nameCount, number};
+    }
+    return uniqueName;
+}
+
 std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities) {
     if (!scene || baseName.empty()) {
         return baseName;
@@ -717,17 +755,32 @@ size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity 
 }
 
 void editor::ProjectUtils::sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities) {
+    // Key: Transform index, 0 without a Transform. Stable, so equal keys (the flat
+    // GameObjects) keep the order they are listed in.
     auto transforms = registry->getComponentArray<Transform>();
-    std::unordered_map<Entity, size_t> transformOrder;
-    for (size_t i = 0; i < transforms->size(); ++i) {
-        Entity ent = transforms->getEntity(i);
-        transformOrder[ent] = i;
-    }
-    std::sort(entities.begin(), entities.end(),
-        [&transformOrder](const Entity& a, const Entity& b) {
-            return transformOrder[a] < transformOrder[b];
+    const ComponentId transformId = registry->getComponentId<Transform>();
+    std::vector<std::pair<size_t, Entity>> keyed;
+    keyed.reserve(entities.size());
+    bool sorted = true;
+    for (Entity entity : entities) {
+        size_t key = 0;
+        if (registry->isEntityCreated(entity) && registry->getSignature(entity).test(transformId)) {
+            key = transforms->getIndex(entity);
         }
-    );
+        if (!keyed.empty() && key < keyed.back().first) {
+            sorted = false;
+        }
+        keyed.emplace_back(key, entity);
+    }
+    if (sorted) {
+        return;
+    }
+    std::stable_sort(keyed.begin(), keyed.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+    for (size_t i = 0; i < keyed.size(); i++) {
+        entities[i] = keyed[i].second;
+    }
 }
 
 bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform) {
@@ -800,7 +853,7 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
     return true;
 }
 
-void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform){
+void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform, bool sortEntities){
     if (hasTransform){
 
         auto transforms = registry->getComponentArray<Transform>();
@@ -811,7 +864,7 @@ void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std:
             index += sizeOfSourceBranch;
         }
 
-        moveEntityOrderByTransform(registry, entities, source, parent, index);
+        moveEntityOrderByTransform(registry, entities, source, parent, index, true, sortEntities);
 
     }else{
 
@@ -834,14 +887,16 @@ void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std:
     }
 }
 
-void editor::ProjectUtils::moveEntityOrderByTransform(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t transformIndex, bool enableMove){
+void editor::ProjectUtils::moveEntityOrderByTransform(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t transformIndex, bool enableMove, bool sortEntities){
     registry->addEntityChild(parent, source, true);
 
     if (enableMove){
         registry->moveChildToIndex(source, transformIndex);
     }
 
-    ProjectUtils::sortEntitiesByTransformOrder(registry, entities);
+    if (sortEntities){
+        ProjectUtils::sortEntitiesByTransformOrder(registry, entities);
+    }
 }
 
 void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity entity, ComponentType componentType, std::vector<Entity>& entities, YAML::Node componentNode){

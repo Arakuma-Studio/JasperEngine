@@ -173,6 +173,12 @@ namespace jasperengine::editor{
 
         static std::vector<ComponentType> findComponents(EntityRegistry* registry, Entity entity);
         static std::map<std::string, PropertyData> findEntityProperties(EntityRegistry* registry, Entity entity, ComponentType component);
+        // False when the component certainly holds none of the properties a reference pass
+        // looks at: Entity and EntityReference ones (entities) or Textures naming a
+        // render-to-texture camera (cameraTextures). Such a pass can then skip building its
+        // property map, the costly part for a thousand sprites. Knows Transform, Sprite
+        // and Mesh; any other component answers true.
+        static bool mayHoldReferences(EntityRegistry* registry, Entity entity, ComponentType component, bool entities, bool cameraTextures);
 
         static uint64_t getChangedUpdateFlags(ComponentType compType, void* oldComp, void* newComp);
         static uint64_t getComponentStructuralUpdateFlags(ComponentType compType);

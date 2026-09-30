@@ -7,7 +7,9 @@
 
 #include <string>
 #include <filesystem>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "LuaBridge.h"
@@ -23,6 +25,19 @@
 #include "command/Command.h"
 
 namespace jasperengine::editor {
+
+// ProjectUtils::makeUniqueEntityName for many names in a row, each then taken. Remembers,
+// per base name, the run of numbered names found taken, so naming a thousand copies of
+// "Sprite 1".."Sprite 1000" does not rescan the run for each: same names, linear time.
+class UniqueEntityNames {
+public:
+    explicit UniqueEntityNames(std::unordered_set<std::string> existingNames);
+    std::string make(const std::string& baseName);
+
+private:
+    std::unordered_set<std::string> existingNames;
+    std::unordered_map<std::string, std::pair<size_t, size_t>> takenRuns; // base -> [first, last] all taken
+};
 
 class ProjectUtils {
 public:
@@ -45,8 +60,10 @@ public:
     static void sortEntitiesByTransformOrder(EntityRegistry* registry, std::vector<Entity>& entities);
 
     static bool moveEntityOrderByTarget(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity target, InsertionType type, Entity& oldParent, size_t& oldIndex, bool& hasTransform);
-    static void moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform);
-    static void moveEntityOrderByTransform(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t transformIndex, bool enableMove = true);
+    // sortEntities false leaves the tracked list to one sortEntitiesByTransformOrder by the
+    // caller after a batch of moves
+    static void moveEntityOrderByIndex(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t index, bool hasTransform, bool sortEntities = true);
+    static void moveEntityOrderByTransform(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t transformIndex, bool enableMove = true, bool sortEntities = true);
 
     static void addEntityComponent(EntityRegistry* registry, Entity entity, ComponentType componentType, std::vector<Entity>& entities, YAML::Node componentNode = YAML::Node());
     static YAML::Node removeEntityComponent(EntityRegistry* registry, Entity entity, ComponentType componentType, std::vector<Entity>& entities, bool encodeComponent = false);

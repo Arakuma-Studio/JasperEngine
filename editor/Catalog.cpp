@@ -5,6 +5,7 @@
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
+#include "util/CameraTextureLink.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
@@ -3881,6 +3882,61 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
 
     return ret;
+}
+
+bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity, ComponentType component, bool entities, bool cameraTextures){
+    // The cases below rely on what those components enumerate. Checked once against their
+    // property list, so a reference property added to one later turns the shortcut off
+    // instead of being skipped.
+    static const bool shortcutsHold = []() {
+        for (ComponentType type : {ComponentType::Transform, ComponentType::SpriteComponent, ComponentType::MeshComponent}) {
+            for (const auto& [name, property] : getProperties(type, nullptr)) {
+                if (property.type == PropertyType::Entity || property.type == PropertyType::EntityReference) {
+                    return false;
+                }
+                if (property.type == PropertyType::Texture && (type != ComponentType::MeshComponent ||
+                        (name != "submeshes[].material.baseColorTexture" && name != "submeshes[].material.emissiveTexture" &&
+                         name != "submeshes[].material.metallicRoughnessTexture" && name != "submeshes[].material.occlusionTexture" &&
+                         name != "submeshes[].material.normalTexture"))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }();
+    if (!shortcutsHold) {
+        return entities || cameraTextures;
+    }
+
+    switch (component) {
+        case ComponentType::Transform:
+        case ComponentType::SpriteComponent:
+            // Only values (kTransformProperties, enumerateSpriteProperties)
+            return false;
+        case ComponentType::MeshComponent: {
+            // No entity properties; a texture of each submesh material (enumerateMeshProperties)
+            if (!cameraTextures) {
+                return false;
+            }
+            const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
+            if (!mesh) {
+                return false;
+            }
+            for (size_t s = 0; s < mesh->submeshes.size(); s++) {
+                const Material& material = mesh->submeshes[s].material;
+                for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
+                        &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
+                    // Most are empty: no id to parse
+                    if (!texture->getId().empty() && CameraTextureLink::isCameraTexture(*texture)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        default:
+            return entities || cameraTextures;
+    }
 }
 
 std::map<std::string, editor::PropertyData> editor::Catalog::findEntityProperties(EntityRegistry* registry, Entity entity, ComponentType component){

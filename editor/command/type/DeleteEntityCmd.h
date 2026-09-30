@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <unordered_map>
 #include <vector>
 
 #include "yaml-cpp/yaml.h"
@@ -60,6 +61,11 @@ namespace jasperengine::editor{
 
         bool wasModified;
 
+        // Snapshots encoded just before by the caller (Cut), used by the first execute
+        std::unordered_map<Entity, YAML::Node> preEncoded;
+        // The snapshots are such encodes: nodes of a copy the clipboard may still be writing out
+        bool snapshotsShared = false;
+
         bool appendEntityData(Entity entity);
         std::vector<size_t> prepareDeleteSet();
         void snapshotEntities();
@@ -74,6 +80,12 @@ namespace jasperengine::editor{
     public:
         DeleteEntityCmd(Project* project, uint32_t sceneId, Entity entity, bool allowLockedRoots = false);
         DeleteEntityCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities, bool allowLockedRoots = false);
+        ~DeleteEntityCmd() override;
+
+        // Encodes of GameObjects about to be deleted, made with Stream::encodeEntity and the
+        // project context just before this command runs: its first execute takes these
+        // as its snapshots instead of encoding the same GameObjects again
+        void setPreEncoded(std::unordered_map<Entity, YAML::Node> snapshots) { preEncoded = std::move(snapshots); }
 
         bool execute() override;
         void undo() override;

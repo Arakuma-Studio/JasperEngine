@@ -303,6 +303,9 @@ void editor::Project::remapEntityProperties(EntityRegistry* registry, const std:
     }
     for (Entity entity : entities) {
         for (ComponentType componentType : Catalog::findComponents(registry, entity)) {
+            if (!Catalog::mayHoldReferences(registry, entity, componentType, true, false)) {
+                continue;
+            }
             uint64_t updateFlags = 0;
 
             for (auto& [propertyName, property] : Catalog::findEntityProperties(registry, entity, componentType)) {

@@ -1844,13 +1844,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
             if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
-                Command* lastCmd = nullptr;
-                for (Entity entity : targets) {
-                    lastCmd = new DeleteEntityCmd(project, sceneId, entity);
-                    CommandHandle::get(sceneId)->addCommand(lastCmd);
-                }
-                if (lastCmd) {
-                    lastCmd->setNoMerge();
+                // One command for all of them: one snapshot pass and one undo step
+                if (!targets.empty()) {
+                    CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, targets));
                 }
                 entityDeleted = true;
             }

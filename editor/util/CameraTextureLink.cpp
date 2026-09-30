@@ -57,6 +57,8 @@ std::string editor::CameraTextureLink::cameraName(EntityRegistry* registry, cons
 bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity cameraEntity){
     for (Entity entity : registry->getEntityList()){
         for (ComponentType cpType : Catalog::findComponents(registry, entity)){
+            if (!Catalog::mayHoldReferences(registry, entity, cpType, false, true))
+                continue;
             std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(registry, entity, cpType);
             for (auto& [name, prop] : properties){
                 if (prop.type != PropertyType::Texture || !prop.ref)
@@ -71,35 +73,68 @@ bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity ca
     return false;
 }
 
+namespace {
+    bool resolveEntity(EntityRegistry* registry, Entity entity);
+}
+
 bool editor::CameraTextureLink::resolve(EntityRegistry* registry){
     bool changed = false;
 
     for (Entity entity : registry->getEntityList()){
-        for (ComponentType cpType : Catalog::findComponents(registry, entity)){
-            std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(registry, entity, cpType);
-            for (auto& [name, prop] : properties){
-                if (prop.type != PropertyType::Texture || !prop.ref)
-                    continue;
+        changed |= resolveEntity(registry, entity);
+    }
 
-                Texture* texture = static_cast<Texture*>(prop.ref);
-                Entity cameraEntity = parse(texture->getId());
-                if (cameraEntity == NULL_ENTITY)
-                    continue;
+    return changed;
+}
 
-                CameraComponent* camera = registry->findComponent<CameraComponent>(cameraEntity);
-                Framebuffer* target = camera ? camera->framebuffer : nullptr;
+bool editor::CameraTextureLink::resolve(EntityRegistry* registry, const std::vector<Entity>& entities){
+    // A camera among them may be what textures anywhere name
+    for (Entity entity : entities){
+        if (registry->isEntityCreated(entity) && registry->findComponent<CameraComponent>(entity)){
+            return resolve(registry);
+        }
+    }
 
-                if (texture->getFramebuffer() != target){
-                    std::string textureId = texture->getId();
-                    texture->setFramebuffer(target); // clears the id
-                    texture->setId(textureId);
+    bool changed = false;
+    for (Entity entity : entities){
+        if (registry->isEntityCreated(entity)){
+            changed |= resolveEntity(registry, entity);
+        }
+    }
+    return changed;
+}
 
-                    Catalog::updateEntity(registry, entity, prop.updateFlags);
-                    changed = true;
-                }
+namespace {
+bool resolveEntity(EntityRegistry* registry, Entity entity){
+    using namespace jasperengine::editor;
+    bool changed = false;
+    for (ComponentType cpType : Catalog::findComponents(registry, entity)){
+        if (!Catalog::mayHoldReferences(registry, entity, cpType, false, true))
+            continue;
+        std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(registry, entity, cpType);
+        for (auto& [name, prop] : properties){
+            if (prop.type != PropertyType::Texture || !prop.ref)
+                continue;
+
+            Texture* texture = static_cast<Texture*>(prop.ref);
+            Entity cameraEntity = CameraTextureLink::parse(texture->getId());
+            if (cameraEntity == NULL_ENTITY)
+                continue;
+
+            CameraComponent* camera = registry->findComponent<CameraComponent>(cameraEntity);
+            Framebuffer* target = camera ? camera->framebuffer : nullptr;
+
+            if (texture->getFramebuffer() != target){
+                std::string textureId = texture->getId();
+                texture->setFramebuffer(target); // clears the id
+                texture->setId(textureId);
+
+                Catalog::updateEntity(registry, entity, prop.updateFlags);
+                changed = true;
             }
         }
     }
 
     return changed;
+}
 }

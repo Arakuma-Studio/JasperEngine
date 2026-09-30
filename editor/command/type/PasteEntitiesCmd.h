@@ -41,6 +41,7 @@ namespace jasperengine::editor{
     public:
         PasteEntitiesCmd(Project* project, uint32_t sceneId, std::shared_ptr<const GameObjectsClip> clip,
                          EntityClipboard::Placement placement, Entity anchor);
+        ~PasteEntitiesCmd() override;
 
         bool execute() override;
         void undo() override;
