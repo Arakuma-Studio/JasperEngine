@@ -29,12 +29,37 @@ namespace jasperengine::editor {
             // Marks the viewport sub-selection (tiles, instances, occluder points)
             // in Properties lists; same orange as the viewport selection outline.
             static ImVec4 SubSelectionText;
-            // Amber warning text, e.g. alert notes; matches OutputWindow's Warning log color.
+            // Unity console yellow; alert notes and the Console's warning icon.
             static ImVec4 WarningText;
+
+            // Unity dark skin extras. ImGuiCol_Header* is the blue selection
+            // highlight (Hierarchy, Project, menus); component/foldout headers
+            // push FoldoutHeader* instead (see pushFoldoutHeaderColors()).
+            static ImVec4 Selection;            // #2C5D87 focused selection
+            static ImVec4 SelectionUnfocused;   // grey selection of an unfocused panel
+            static ImVec4 FoldoutHeader;        // #3E3E3E Inspector component header
+            static ImVec4 FoldoutHeaderHovered;
+            static ImVec4 FoldoutHeaderActive;
+            static ImVec4 ToolbarBackground;    // panel toolbars (Console, Project, Hierarchy search)
+            static ImVec4 ToolbarBorder;        // line under a panel toolbar
+            static ImVec4 PrefabText;           // #7BAEFA prefab instance name
+            static ImVec4 PrefabTextMuted;      // children of a prefab instance
+            static ImVec4 ErrorText;            // Console error red
+            static ImVec4 LogIcon;              // Console log (info) icon
+            static ImVec4 RowBackgroundAlt;     // odd rows in lists (Console)
+            static ImVec4 PlayModeTint;         // multiplied into backgrounds while playing
         };
 
         static void apply();
         static void applyDpiScale(float dpiScale);
+
+        // Unity darkens the editor while in play mode. Call every frame with the
+        // play state; it only rewrites the style when the state changes.
+        static void setPlayModeTint(bool active);
+        static bool isPlayModeTinted();
+
+        static void pushFoldoutHeaderColors();
+        static void popFoldoutHeaderColors();
 
         static float dpiScale();
         static float dpi(float value);
