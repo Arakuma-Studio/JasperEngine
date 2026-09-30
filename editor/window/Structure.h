@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "SceneWindow.h"
+#include "command/type/CreateEntityCmd.h"
 #include "imgui.h"
 #include <list>
 #include <string>
@@ -47,6 +48,30 @@ namespace jasperengine::editor{
         std::list<TreeNode> children;
     };
 
+    // Scene types a create entry is offered in (bit mask)
+    enum CreateSceneMask : uint8_t {
+        CREATE_IN_3D = 1 << 0,
+        CREATE_IN_2D = 1 << 1,
+        CREATE_IN_UI = 1 << 2,
+        CREATE_IN_WORLD = CREATE_IN_3D | CREATE_IN_2D,
+        CREATE_IN_ALL = CREATE_IN_3D | CREATE_IN_2D | CREATE_IN_UI
+    };
+
+    // One row of the GameObject create menu. The main menu bar's GameObject menu,
+    // the Hierarchy "+" dropdown and the Hierarchy right-click Create items are all
+    // built from this single table, so they cannot drift apart.
+    struct CreateMenuEntry {
+        const char* submenu;            // nullptr = top level, otherwise "3D Object", "Light", ...
+        const char* label;
+        const char* icon;
+        EntityCreationType type;
+        const char* entityName;         // Name given to the new GameObject
+        uint8_t scenes;                 // CreateSceneMask
+        bool separatorBefore = false;   // Within its menu level
+        bool rootOnly = false;          // Only offered when creating at the scene root
+        const char* shortcut = nullptr; // Shown in the main menu bar
+    };
+
     struct EntitySelectionEntry {
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
@@ -58,7 +83,6 @@ namespace jasperengine::editor{
         Project* project;
         SceneWindow* sceneWindow;
 
-        char nameBuffer[256];
         bool matchCase = false;
         char searchBuffer[256] = "";
 
@@ -102,9 +126,26 @@ namespace jasperengine::editor{
         void resetEntitySelectionAnchor();
         void moveCameraToEditorView(Entity cameraEntity);
 
-        void showNewEntityMenu(bool isScene, Entity parent, bool addToBundle);
+        // What the inline rename field is editing: a GameObject row or the scene header
+        enum class RenameTarget { None, Entity, Scene };
+        RenameTarget renameTarget = RenameTarget::None;
+        uint32_t renameSceneId = NULL_PROJECT_SCENE;
+        Entity renameEntity = NULL_ENTITY;
+        char renameBuffer[256] = "";
+        int renameFocusFrames = 0;
+        int renameMissedFrames = 0;     // frames the renamed row was not drawn
+        bool windowFocused = false;
+
+        void showCreateMenuItems(bool atRoot, Entity parent, bool addToBundle);
+        void showSceneMenu(SceneProject* sceneProject);
+        void showPrefabMenu(const TreeNode& node);
+        void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);
+        bool isRenaming(const TreeNode& node) const;
+        void drawRenameField();
+        void commitRename();
+        void revealInProject(const std::filesystem::path& path);
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
-        void showIconMenu();
+        void showToolbar();
         void showTreeNode(TreeNode& node);
         void syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId = NULL_PROJECT_SCENE, Entity collapsedAncestor = NULL_ENTITY);
         bool collectRevealPath(TreeNode& node);
@@ -128,6 +169,17 @@ namespace jasperengine::editor{
         static constexpr const char* WINDOW_NAME = "Structure";
 
         static std::string getObjectIcon(Signature signature, Scene* scene);
+
+        // Shared GameObject create table (see CreateMenuEntry)
+        static const std::vector<CreateMenuEntry>& getCreateMenuEntries();
+        static bool isCreateEntryAvailable(const CreateMenuEntry& entry, SceneType sceneType);
+        // Creates the entry in the selected scene; parent NULL_ENTITY = scene root
+        void createGameObject(const CreateMenuEntry& entry, Entity parent = NULL_ENTITY, bool addToBundle = false);
+        // The single selected GameObject if it can take children, or NULL_ENTITY
+        Entity getSelectedParentForCreate() const;
+        // Inline rename (F2) of the single selected GameObject; false if there is nothing to rename
+        bool renameSelected();
+        bool isFocused() const;
 
         Structure(Project* project, SceneWindow* sceneWindow);
 

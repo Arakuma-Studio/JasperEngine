@@ -2804,3 +2804,186 @@ void editor::ResourcesWindow::show() {
     handleNewDirectory();
     handleRename();
 }
+
+// ---- Assets menu (main menu bar) ------------------------------------------
+// Additive block: entry points for App's Assets menu, working on the same
+// selection and current folder as this panel's own context menus.
+
+static void focusProjectPanel(editor::ResourcesWindow* window) {
+    window->setOpen(true);
+    ImGui::SetWindowFocus(editor::ResourcesWindow::WINDOW_NAME);
+}
+
+bool editor::ResourcesWindow::hasAssetSelection() const {
+    return !selectedFiles.empty();
+}
+
+bool editor::ResourcesWindow::hasSingleAssetSelection() const {
+    return selectedFiles.size() == 1;
+}
+
+void editor::ResourcesWindow::revealAsset(const fs::path& absolutePath) {
+    if (absolutePath.empty() || !fs::exists(absolutePath)) {
+        return;
+    }
+    scanDirectory(absolutePath.parent_path());
+    selectedFiles.clear();
+    selectedFiles.insert(absolutePath.filename().string());
+    lastSelectedFile = absolutePath.filename().string();
+    focusProjectPanel(this);
+}
+
+void editor::ResourcesWindow::assetsCreateFolder() {
+    focusProjectPanel(this);
+    isCreatingNewDirectory = true;
+    memset(nameBuffer, 0, sizeof(nameBuffer));
+}
+
+void editor::ResourcesWindow::assetsCreateScript(bool lua) {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+
+    // Unique base name: the C++ class and the Lua module are named after the file
+    const std::string baseName = lua ? "NewLuaScript" : "NewScript";
+    std::string name = baseName;
+    for (int counter = 1;; counter++) {
+        const bool taken = lua
+            ? fs::exists(currentPath / (name + ".lua"))
+            : (fs::exists(currentPath / (name + ".h")) || fs::exists(currentPath / (name + ".cpp")));
+        if (!taken) break;
+        name = baseName + std::to_string(counter);
+    }
+
+    if (lua) {
+        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc);
+        if (!f) {
+            Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
+            return;
+        }
+        f << "-- " << name << ".lua\n\n";
+        f << "local " << name << " = {\n";
+        f << "    -- Editor-exposed properties\n";
+        f << "    properties = {\n";
+        f << "        {\n";
+        f << "            name = \"speed\",\n";
+        f << "            displayName = \"Speed\",\n";
+        f << "            type = \"float\",\n";
+        f << "            default = 5.0\n";
+        f << "        }\n";
+        f << "    }\n";
+        f << "}\n\n";
+        f << "function " << name << ":init()\n";
+        f << "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
+        f << "    RegisterEngineEvent(self, \"onUpdate\")\n";
+        f << "end\n\n";
+        f << "function " << name << ":onUpdate()\n";
+        f << "end\n\n";
+        f << "return " << name << "\n";
+    } else {
+        std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
+        std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);
+        if (!h || !c) {
+            Backend::getApp().registerAlert("Create C++ Script", "Could not write to " + currentPath.string());
+            return;
+        }
+        h << "#pragma once\n\n";
+        h << "#include \"ScriptBase.h\"\n";
+        h << "#include \"Engine.h\"\n";
+        h << "#include \"ScriptProperty.h\"\n\n";
+        h << "class " << name << " : public jasperengine::ScriptBase {\n";
+        h << "public:\n";
+        h << "    DPROPERTY(\"Speed\")\n";
+        h << "    float speed = 5.0f;\n\n";
+        h << "    " << name << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
+        h << "    ~" << name << "();\n\n";
+        h << "    void onUpdate();\n";
+        h << "};\n";
+
+        c << "#include \"" << name << ".h\"\n\n";
+        c << "using namespace jasperengine;\n\n";
+        c << name << "::" << name << "(Scene* scene, Entity entity): ScriptBase(scene, entity) {\n";
+        c << "    REGISTER_ENGINE_EVENT(onUpdate);\n";
+        c << "}\n\n";
+        c << name << "::~" << name << "() {\n";
+        c << "}\n\n";
+        c << "void " << name << "::onUpdate() {\n";
+        c << "}\n";
+    }
+
+    scanDirectory(currentPath);
+    const std::string fileName = name + (lua ? ".lua" : ".h");
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    if (lua) {
+        startRename(fileName);
+    }
+}
+
+void editor::ResourcesWindow::assetsShowInFileManager() {
+    fs::path target = currentPath;
+    if (selectedFiles.size() == 1) {
+        const fs::path selected = currentPath / *selectedFiles.begin();
+        if (fs::is_directory(selected)) {
+            target = selected;
+        }
+    }
+    if (!target.empty()) {
+        openInFileManager(target);
+    }
+}
+
+void editor::ResourcesWindow::assetsOpenSelected() {
+    if (selectedFiles.size() != 1) {
+        return;
+    }
+    const std::string fileName = *selectedFiles.begin();
+    auto it = std::find_if(files.begin(), files.end(),
+        [&](const FileEntry& entry) { return entry.name == fileName; });
+    if (it == files.end()) {
+        return;
+    }
+    const fs::path filePath = currentPath / fileName;
+    if (it->isDirectory) {
+        scanDirectory(filePath);
+        selectedFiles.clear();
+        focusProjectPanel(this);
+    } else if (it->type == FileType::IMAGE) {
+        imageViewerWindow->openFile(filePath);
+    } else if (it->type == FileType::SCENE) {
+        project->openScene(filePath);
+    } else {
+        codeEditor->openFile(filePath.string(), true);
+    }
+}
+
+void editor::ResourcesWindow::assetsRenameSelected() {
+    if (selectedFiles.size() != 1) {
+        return;
+    }
+    focusProjectPanel(this);
+    startRename(*selectedFiles.begin());
+}
+
+void editor::ResourcesWindow::assetsDeleteSelected() {
+    if (selectedFiles.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    showDeleteConfirmation = true;
+}
+
+void editor::ResourcesWindow::assetsImport() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
+}
+
+void editor::ResourcesWindow::assetsRefresh() {
+    refreshProjectFiles();
+    refreshCurrentDirectory();
+}

@@ -43,6 +43,10 @@
 
 using namespace jasperengine;
 
+// Unity's prefab-instance blue, for rows that belong to a prefab
+static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.49f, 0.67f, 0.97f, 1.0f);
+static const ImVec4 PREFAB_MEMBER_TEXT_COLOR = ImVec4(0.49f, 0.67f, 0.97f, 0.82f);
+
 static bool hasScripts(Scene* scene, Entity entity) {
     ScriptComponent* scriptComponent = scene->findComponent<ScriptComponent>(entity);
     return scriptComponent && !scriptComponent->scripts.empty();
@@ -449,308 +453,406 @@ bool editor::Structure::isOpen() const{
     return windowOpen;
 }
 
-void editor::Structure::showNewEntityMenu(bool isScene, Entity parent, bool addToBundle){
-    if (isScene){
+const std::vector<editor::CreateMenuEntry>& editor::Structure::getCreateMenuEntries(){
+    using T = EntityCreationType;
+    // submenu, label, icon, type, new GameObject name, scenes, separatorBefore, rootOnly, shortcut
+    static const std::vector<CreateMenuEntry> entries = {
+        {nullptr, "Create Empty", ICON_FA_CUBE, T::OBJECT, "GameObject", CREATE_IN_ALL, false, false, "Ctrl+Shift+N"},
+        {nullptr, "Create Empty (No Transform)", ICON_FA_CIRCLE_DOT, T::EMPTY, "GameObject", CREATE_IN_ALL, false, true},
+
+        {"3D Object", "Cube", ICON_FA_CUBE, T::BOX, "Cube", CREATE_IN_3D},
+        {"3D Object", "Sphere", ICON_FA_CIRCLE, T::SPHERE, "Sphere", CREATE_IN_3D},
+        {"3D Object", "Capsule", ICON_FA_CAPSULES, T::CAPSULE, "Capsule", CREATE_IN_3D},
+        {"3D Object", "Cylinder", ICON_FA_DATABASE, T::CYLINDER, "Cylinder", CREATE_IN_3D},
+        {"3D Object", "Plane", ICON_FA_SQUARE, T::PLANE, "Plane", CREATE_IN_3D},
+        {"3D Object", "Quad", ICON_FA_SQUARE_FULL, T::WALL, "Quad", CREATE_IN_3D},
+        {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
+        {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
+        {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+
+        {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
+        {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
+        {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
+        {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::OCCLUDER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
+
+        {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLES, "Particle System", CREATE_IN_WORLD},
+        {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINES, "Line", CREATE_IN_WORLD},
+        {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
+
+        {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
+        {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
+        {"Light", "Spot Light", ICON_FA_LIGHTBULB, T::SPOT_LIGHT, "Spot Light", CREATE_IN_3D},
+        {"Light", "Light 2D", ICON_FA_LIGHTBULB, T::POINT_LIGHT_2D, "Light 2D", CREATE_IN_2D},
+        {"Light", "Reflection Probe", ICON_FA_BULLSEYE, T::REFLECTION_PROBE, "Reflection Probe", CREATE_IN_3D, true},
+
+        {"Audio", "Audio Source", ICON_FA_FILE_AUDIO, T::SOUND, "Audio Source", CREATE_IN_ALL},
+        {"Audio", "Audio Source 3D", ICON_FA_VOLUME_HIGH, T::SOUND_3D, "Audio Source 3D", CREATE_IN_WORLD},
+
+        {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
+        {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
+        {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
+        {"UI", "Scrollbar", ICON_FA_ARROWS_UP_DOWN, T::SCROLLBAR, "Scrollbar", CREATE_IN_ALL},
+        {"UI", "Progress Bar", ICON_FA_BARS_PROGRESS, T::PROGRESSBAR, "Progress Bar", CREATE_IN_ALL},
+        {"UI", "Input Field", ICON_FA_I_CURSOR, T::TEXTEDIT, "Input Field", CREATE_IN_ALL},
+        {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
+        {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
+        {"UI", "Layout Group", ICON_FA_OBJECT_GROUP, T::CONTAINER, "Layout Group", CREATE_IN_ALL, true},
+
+        {"Physics", "Rigidbody", ICON_FA_WEIGHT_HANGING, T::BODY3D, "Rigidbody", CREATE_IN_3D},
+        {"Physics", "Joint", ICON_FA_LINK, T::JOINT3D, "Joint", CREATE_IN_3D},
+        {"Physics", "Rigidbody 2D", ICON_FA_WEIGHT_HANGING, T::BODY2D, "Rigidbody 2D", CREATE_IN_2D, true},
+        {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
+
+        {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKY, "Skybox", CREATE_IN_3D},
+        {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
+
+        {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_ACTION, "Position Tween", CREATE_IN_ALL},
+        {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_ACTION, "Rotation Tween", CREATE_IN_ALL},
+        {"Tween", "Scale Tween", ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, T::SCALE_ACTION, "Scale Tween", CREATE_IN_ALL},
+        {"Tween", "Color Tween", ICON_FA_PALETTE, T::COLOR_ACTION, "Color Tween", CREATE_IN_ALL},
+        {"Tween", "Alpha Tween", ICON_FA_EYE, T::ALPHA_ACTION, "Alpha Tween", CREATE_IN_ALL},
+
+        {"Animation", "Animation", ICON_FA_FILM, T::ANIMATION, "Animation", CREATE_IN_ALL},
+        {"Animation", "Sprite Animation", ICON_FA_PLAY, T::SPRITE_ANIMATION, "Sprite Animation", CREATE_IN_ALL},
+        {"Animation", "Position Track", ICON_FA_ROUTE, T::TRANSLATE_TRACKS, "Position Track", CREATE_IN_ALL, true},
+        {"Animation", "Rotation Track", ICON_FA_ARROWS_SPIN, T::ROTATE_TRACKS, "Rotation Track", CREATE_IN_ALL},
+        {"Animation", "Scale Track", ICON_FA_MAXIMIZE, T::SCALE_TRACKS, "Scale Track", CREATE_IN_ALL},
+        {"Animation", "Morph Track", ICON_FA_SHAPES, T::MORPH_TRACKS, "Morph Track", CREATE_IN_ALL},
+
+        {nullptr, "Camera", ICON_FA_VIDEO, T::CAMERA, "Camera", CREATE_IN_ALL},
+    };
+    return entries;
+}
+
+bool editor::Structure::isCreateEntryAvailable(const CreateMenuEntry& entry, SceneType sceneType){
+    switch (sceneType) {
+        case SceneType::SCENE_3D: return (entry.scenes & CREATE_IN_3D) != 0;
+        case SceneType::SCENE_2D: return (entry.scenes & CREATE_IN_2D) != 0;
+        case SceneType::SCENE_UI: return (entry.scenes & CREATE_IN_UI) != 0;
+    }
+    return true;
+}
+
+void editor::Structure::createGameObject(const CreateMenuEntry& entry, Entity parent, bool addToBundle){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    if (entry.rootOnly) {
         parent = NULL_ENTITY;
-
-        if (ImGui::MenuItem(ICON_FA_CIRCLE_DOT"  Empty entity")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Entity", addToBundle));
-        }
-
-        ImGui::Separator();
     }
-
-    if (ImGui::MenuItem(ICON_FA_SITEMAP"  Empty object")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Object", EntityCreationType::OBJECT, parent, addToBundle));
-        openParent = parent;
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+        new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToBundle));
+    openParent = parent;
+    // The new GameObject is selected: scroll it into view, as Unity does
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() == 1) {
+        revealEntity(sceneProject->id, selected[0]);
     }
+}
 
-    if (ImGui::MenuItem(ICON_FA_VIDEO"  Camera")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Camera", EntityCreationType::CAMERA, parent, addToBundle));
-        openParent = parent;
+Entity editor::Structure::getSelectedParentForCreate() const{
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return NULL_ENTITY;
     }
-
-    if (ImGui::MenuItem(ICON_FA_CLOUD"  Sky")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Sky", EntityCreationType::SKY, parent, addToBundle));
-        openParent = parent;
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() != 1 || cachedPlayCreatedEntities.count(selected[0]) > 0) {
+        return NULL_ENTITY;
     }
-
-    if (ImGui::MenuItem(ICON_FA_SMOG"  Fog")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Fog", EntityCreationType::FOG, parent, addToBundle));
-        openParent = parent;
+    if (!sceneProject->scene->findComponent<Transform>(selected[0])) {
+        return NULL_ENTITY;
     }
+    return selected[0];
+}
 
-    if (ImGui::BeginMenu(ICON_FA_VOLUME_HIGH"  Sound")){
-        if (ImGui::MenuItem(ICON_FA_FILE_AUDIO"  Sound Source")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Sound Source", EntityCreationType::SOUND, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH"  3D Sound")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "3D Sound", EntityCreationType::SOUND_3D, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
+static const char* createSubmenuIcon(const char* submenu){
+    const std::string name = submenu;
+    if (name == "3D Object") return ICON_FA_CUBE;
+    if (name == "2D Object") return ICON_FA_IMAGE;
+    if (name == "Effects") return ICON_FA_FIRE;
+    if (name == "Light") return ICON_FA_LIGHTBULB;
+    if (name == "Audio") return ICON_FA_VOLUME_HIGH;
+    if (name == "UI") return ICON_FA_WINDOW_RESTORE;
+    if (name == "Physics") return ICON_FA_WEIGHT_HANGING;
+    if (name == "Rendering") return ICON_FA_CLOUD;
+    if (name == "Tween") return ICON_FA_BOLT;
+    if (name == "Animation") return ICON_FA_FILM;
+    return ICON_FA_FOLDER;
+}
+
+// Unity-order create items: top-level items, submenus, then the trailing items
+// (Camera), with a separator wherever the list switches between the two.
+void editor::Structure::showCreateMenuItems(bool atRoot, Entity parent, bool addToBundle){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject) {
+        return;
     }
+    const SceneType sceneType = sceneProject->sceneType;
+    const auto& entries = getCreateMenuEntries();
 
-    if (ImGui::BeginMenu(ICON_FA_WINDOW_RESTORE"  UI")){
-        if (ImGui::MenuItem(ICON_FA_OBJECT_GROUP"  Container")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Container", EntityCreationType::CONTAINER, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_IMAGE"  Image")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Image", EntityCreationType::IMAGE, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_FONT"  Text")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Text", EntityCreationType::TEXT, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_SQUARE_CARET_RIGHT"  Button")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Button", EntityCreationType::BUTTON, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_ARROWS_UP_DOWN"  Scrollbar")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Scrollbar", EntityCreationType::SCROLLBAR, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_BARS_PROGRESS"  Progressbar")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Progressbar", EntityCreationType::PROGRESSBAR, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_I_CURSOR"  Text Edit")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "TextEdit", EntityCreationType::TEXTEDIT, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_WINDOW_MAXIMIZE"  Panel")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Panel", EntityCreationType::PANEL, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DRAW_POLYGON"  Polygon")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Polygon", EntityCreationType::POLYGON, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
-    }
+    auto offered = [&](const CreateMenuEntry& entry) {
+        return isCreateEntryAvailable(entry, sceneType) && (atRoot || !entry.rootOnly);
+    };
+    auto itemLabel = [](const CreateMenuEntry& entry) {
+        return std::string(entry.icon) + "  " + entry.label;
+    };
 
-    if (ImGui::BeginMenu(ICON_FA_ATOM"  Physics")){
-        if (ImGui::MenuItem(ICON_FA_LINK"  Joint 2D")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Joint2D", EntityCreationType::JOINT2D, parent, addToBundle));
-            openParent = parent;
+    std::vector<std::string> shownSubmenus;
+    int lastKind = -1; // 0 = item, 1 = submenu
+    for (const CreateMenuEntry& entry : entries) {
+        if (!offered(entry)) {
+            continue;
         }
-        if (ImGui::MenuItem(ICON_FA_LINK"  Joint 3D")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Joint3D", EntityCreationType::JOINT3D, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_WEIGHT_HANGING"  Empty Body 2D")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Body2D", EntityCreationType::BODY2D, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_WEIGHT_HANGING"  Empty Body 3D")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Body3D", EntityCreationType::BODY3D, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::MenuItem(ICON_FA_FIRE"  Particles")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Particles", EntityCreationType::PARTICLES, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::BeginMenu(ICON_FA_FILM"  Animation")){
-        if (ImGui::MenuItem(ICON_FA_FILM"  Animation")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Animation", EntityCreationType::ANIMATION, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem(ICON_FA_PLAY"  Sprite Animation")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "SpriteAnimation", EntityCreationType::SPRITE_ANIMATION, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::BeginMenu(ICON_FA_BOLT"  Basic animations")){
-            if (ImGui::MenuItem(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT"  Position Action")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "PositionAction", EntityCreationType::POSITION_ACTION, parent, addToBundle));
-                openParent = parent;
+        if (!entry.submenu) {
+            if (lastKind == 1) ImGui::Separator();
+            lastKind = 0;
+            if (ImGui::MenuItem(itemLabel(entry).c_str())) {
+                createGameObject(entry, parent, addToBundle);
             }
-            if (ImGui::MenuItem(ICON_FA_ROTATE"  Rotation Action")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "RotationAction", EntityCreationType::ROTATION_ACTION, parent, addToBundle));
-                openParent = parent;
-            }
-            if (ImGui::MenuItem(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER"  Scale Action")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "ScaleAction", EntityCreationType::SCALE_ACTION, parent, addToBundle));
-                openParent = parent;
-            }
-            if (ImGui::MenuItem(ICON_FA_PALETTE"  Color Action")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "ColorAction", EntityCreationType::COLOR_ACTION, parent, addToBundle));
-                openParent = parent;
-            }
-            if (ImGui::MenuItem(ICON_FA_EYE"  Alpha Action")){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "AlphaAction", EntityCreationType::ALPHA_ACTION, parent, addToBundle));
-                openParent = parent;
+            continue;
+        }
+
+        const std::string submenu = entry.submenu;
+        if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) {
+            continue;
+        }
+        shownSubmenus.push_back(submenu);
+        if (lastKind == 0) ImGui::Separator();
+        lastKind = 1;
+
+        const std::string submenuLabel = std::string(createSubmenuIcon(entry.submenu)) + "  " + submenu;
+        if (ImGui::BeginMenu(submenuLabel.c_str())) {
+            bool first = true;
+            for (const CreateMenuEntry& child : entries) {
+                if (!child.submenu || submenu != child.submenu || !offered(child)) {
+                    continue;
+                }
+                if (child.separatorBefore && !first) ImGui::Separator();
+                first = false;
+                if (ImGui::MenuItem(itemLabel(child).c_str())) {
+                    createGameObject(child, parent, addToBundle);
+                }
             }
             ImGui::EndMenu();
         }
-        ImGui::Separator();
-        if (ImGui::MenuItem(ICON_FA_ROUTE"  Translate Tracks")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "TranslateTracks", EntityCreationType::TRANSLATE_TRACKS, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_ARROWS_SPIN"  Rotate Tracks")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "RotateTracks", EntityCreationType::ROTATE_TRACKS, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_MAXIMIZE"  Scale Tracks")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "ScaleTracks", EntityCreationType::SCALE_TRACKS, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_SHAPES"  Morph Tracks")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "MorphTracks", EntityCreationType::MORPH_TRACKS, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
     }
-
-    if (ImGui::MenuItem(ICON_FA_CIRCLE"  Point Sprites")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "PointSprites", EntityCreationType::POINTS, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::MenuItem(ICON_FA_GRIP_LINES"  Lines")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Lines", EntityCreationType::LINES, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::BeginMenu(ICON_FA_LIGHTBULB"  Light")){
-        if (ImGui::MenuItem(ICON_FA_LIGHTBULB"  Point")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Point Light", EntityCreationType::POINT_LIGHT, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_LIGHTBULB"  Directional")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Directional Light", EntityCreationType::DIRECTIONAL_LIGHT, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_LIGHTBULB"  Spot")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Spot Light", EntityCreationType::SPOT_LIGHT, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::BeginMenu(ICON_FA_DICE_D20"  Basic shape")){
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Box")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Box", EntityCreationType::BOX, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Plane")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Plane", EntityCreationType::PLANE, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Wall")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Wall", EntityCreationType::WALL, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Sphere")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Sphere", EntityCreationType::SPHERE, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Cylinder")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Cylinder", EntityCreationType::CYLINDER, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Capsule")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Capsule", EntityCreationType::CAPSULE, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_DICE_D20"  Torus")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Torus", EntityCreationType::TORUS, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::BeginMenu(ICON_FA_CUBES_STACKED"  2D")){
-        if (ImGui::MenuItem(ICON_FA_IMAGE"  Sprite")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Sprite", EntityCreationType::SPRITE, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_BORDER_ALL"  Tilemap")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Tilemap", EntityCreationType::TILEMAP, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_LIGHTBULB"  2D Light")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "2D Light", EntityCreationType::POINT_LIGHT_2D, parent, addToBundle));
-            openParent = parent;
-        }
-        if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE"  2D Occluder")){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "2D Occluder", EntityCreationType::OCCLUDER_2D, parent, addToBundle));
-            openParent = parent;
-        }
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::MenuItem(ICON_FA_VECTOR_SQUARE"  Mesh Polygon")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "MeshPolygon", EntityCreationType::MESH_POLYGON, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::MenuItem(ICON_FA_PERSON_RUNNING"  Model")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Model", EntityCreationType::MODEL, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::MenuItem(ICON_FA_CLONE"  Mirror")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Mirror", EntityCreationType::MIRROR, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::MenuItem(ICON_FA_CUBE"  Reflection Probe")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Reflection Probe", EntityCreationType::REFLECTION_PROBE, parent, addToBundle));
-        openParent = parent;
-    }
-
-    if (ImGui::MenuItem(ICON_FA_MOUNTAIN"  Terrain")){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new CreateEntityCmd(project, project->getSelectedSceneId(), "Terrain", EntityCreationType::TERRAIN, parent, addToBundle));
-        openParent = parent;
-    }
-
-    ImGui::EndMenu();
 }
 
-void editor::Structure::showIconMenu(){
-    if (ImGui::Button(ICON_FA_PLUS)) {
-        ImGui::OpenPopup("NewObjectMenu");
+void editor::Structure::showToolbar(){
+    // Unity's "+ v" create dropdown, then the search field filling the rest
+    if (ImGui::Button(ICON_FA_PLUS " " ICON_FA_CARET_DOWN)) {
+        ImGui::OpenPopup("HierarchyCreateMenu");
     }
+    ImGui::SetItemTooltip("Create a GameObject");
 
     ImGui::SameLine();
 
-    UIUtils::searchInput("##structure_search", "", searchBuffer, sizeof(searchBuffer), false, &matchCase);
+    UIUtils::searchInput("##structure_search", "Search", searchBuffer, sizeof(searchBuffer), false, &matchCase);
 
-    if (ImGui::BeginPopup("NewObjectMenu"))
-    {
-        ImGui::Text("New scene:");
-        ImVec2 buttonSize = ImVec2(ImGui::GetFontSize() * 8, ImGui::GetFontSize() * 2);
-        if (ImGui::Button(ICON_FA_CUBES "  3D Scene", buttonSize)) {
-            project->createNewScene("New Scene", SceneType::SCENE_3D);
-            ImGui::CloseCurrentPopup();
-        }
-        //ImGui::SameLine();
-        if (ImGui::Button(ICON_FA_CUBES_STACKED "  2D Scene", buttonSize)) {
-            project->createNewScene("New Scene", SceneType::SCENE_2D);
-            ImGui::CloseCurrentPopup();
-        }
-        //ImGui::SameLine();
-        if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  UI Scene", buttonSize)) {
-            project->createNewScene("New Scene", SceneType::SCENE_UI);
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::Separator();
-        if (ImGui::BeginMenu(ICON_FA_CIRCLE_DOT"  Create entity"))
-        {
-            showNewEntityMenu(true, NULL_ENTITY, false);
-        }
-
+    if (ImGui::BeginPopup("HierarchyCreateMenu")) {
+        showCreateMenuItems(true, NULL_ENTITY, false);
         ImGui::EndPopup();
     }
+}
+
+void editor::Structure::showSceneMenu(SceneProject* sceneProject){
+    if (!sceneProject) {
+        return;
+    }
+    const uint32_t sceneId = sceneProject->id;
+    const bool busy = project->isAnyScenePlaying();
+
+    if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Save Scene", nullptr, false, !busy)) {
+        project->saveScene(sceneId);
+    }
+    if (ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename")) {
+        beginRename(RenameTarget::Scene, sceneId, NULL_ENTITY, sceneProject->name);
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::BeginMenu(ICON_FA_CUBE "  GameObject")) {
+        showCreateMenuItems(true, NULL_ENTITY, false);
+        ImGui::EndMenu();
+    }
+    showAddChildSceneMenu();
+
+    ImGui::Separator();
+
+    if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Scene Asset", nullptr, false, !sceneProject->filepath.empty())) {
+        revealInProject(sceneProject->filepath);
+    }
+    const bool canRemove = !busy && project->getScenes().size() > 1;
+    if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Scene from Project", nullptr, false, canRemove)) {
+        // Deferred: the scene is still being drawn this frame
+        Project* proj = project;
+        Backend::getApp().enqueueMainThreadTask([proj, sceneId]() {
+            if (!proj->getScene(sceneId) || proj->isAnyScenePlaying() || proj->getScenes().size() <= 1) return;
+            proj->checkUnsavedAndExecute(sceneId, [proj, sceneId]() {
+                proj->removeScene(sceneId);
+            });
+        });
+    }
+}
+
+void editor::Structure::showPrefabMenu(const TreeNode& node){
+    const uint32_t sceneId = project->getSelectedSceneId();
+
+    if (!node.isBundle && !node.isParentBundle) {
+        if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Create Prefab", nullptr, false, !node.isLocked && node.hasTransform)) {
+            saveNodeAsBundle(node);
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            std::filesystem::path directory = std::filesystem::relative(getBundleSaveDirectory(), project->getProjectPath());
+            ImGui::SetItemTooltip("Saves to %s", directory == "." ? "the project root" : directory.string().c_str());
+        }
+
+        const auto& sceneBundles = project->getEntityBundles(sceneId);
+        if (ImGui::BeginMenu(ICON_FA_BOXES_STACKED "  Add to Prefab", !sceneBundles.empty())) {
+            for (const auto& [path, bundlePtr] : sceneBundles) {
+                auto sceneIt = bundlePtr->instances.find(sceneId);
+                if (sceneIt == bundlePtr->instances.end() || sceneIt->second.empty()) continue;
+                std::string label = path.stem().string();
+                if (ImGui::MenuItem(label.c_str())) {
+                    Entity rootEntity = sceneIt->second.front().rootEntity;
+                    CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, rootEntity));
+                }
+            }
+            ImGui::EndMenu();
+        }
+    }
+
+    if (node.isParentBundle && !node.isBundleRoot) {
+        if (ImGui::MenuItem(ICON_FA_LOCK_OPEN "  Remove from Prefab", nullptr, false, node.isBundle)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, node.id, node.parent));
+        }
+        if (ImGui::MenuItem(ICON_FA_BOXES_STACKED "  Add to Prefab", nullptr, false, !node.isBundle)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, node.parent));
+        }
+    }
+
+    if (node.isBundleRoot && node.hasBundleParent) {
+        bool isNestedMember = node.isBundle && (node.bundleFilepath != node.nestedBundleFilepath);
+        if (ImGui::MenuItem(ICON_FA_LOCK_OPEN "  Remove from Parent Prefab", nullptr, false, isNestedMember)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, sceneId, node.id, node.parent));
+        }
+        if (ImGui::MenuItem(ICON_FA_BOXES_STACKED "  Add to Parent Prefab", nullptr, false, !isNestedMember)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, node.parent));
+        }
+    }
+
+    if (node.isBundle || node.isBundleRoot) {
+        ImGui::Separator();
+        std::filesystem::path assetPath = node.isBundleRoot ? node.nestedBundleFilepath : node.bundleFilepath;
+        if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
+            revealInProject(assetPath);
+        }
+    }
+}
+
+void editor::Structure::revealInProject(const std::filesystem::path& path){
+    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
+        std::filesystem::path absolute = path;
+        if (absolute.is_relative()) {
+            absolute = project->getProjectPath() / absolute;
+        }
+        resourcesWindow->revealAsset(absolute);
+    }
+}
+
+void editor::Structure::beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName){
+    renameTarget = target;
+    renameSceneId = sceneId;
+    renameEntity = entity;
+    strncpy(renameBuffer, currentName.c_str(), sizeof(renameBuffer) - 1);
+    renameBuffer[sizeof(renameBuffer) - 1] = '\0';
+    renameFocusFrames = 3; // the field activates a frame after SetKeyboardFocusHere
+    renameMissedFrames = 0;
+    if (target == RenameTarget::Entity) {
+        revealEntity(sceneId, entity);
+    }
+}
+
+bool editor::Structure::isRenaming(const TreeNode& node) const{
+    if (renameTarget == RenameTarget::Scene) {
+        return node.isScene && node.id == renameSceneId;
+    }
+    if (renameTarget == RenameTarget::Entity) {
+        return !node.isScene && !node.isChildScene && node.id == renameEntity && getNodeSceneId(node) == renameSceneId;
+    }
+    return false;
+}
+
+void editor::Structure::drawRenameField(){
+    renameMissedFrames = 0;
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (renameFocusFrames > 0) {
+        ImGui::SetKeyboardFocusHere();
+        renameFocusFrames--;
+    }
+    // No vertical padding, so the field keeps the row height
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+    const bool entered = ImGui::InputText("##HierarchyRename", renameBuffer, sizeof(renameBuffer),
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    ImGui::PopStyleVar();
+    if (ImGui::IsItemActive()) {
+        renameFocusFrames = 0;
+    }
+    if (entered) {
+        commitRename();
+    } else if (ImGui::IsItemDeactivated()) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            renameTarget = RenameTarget::None;
+        } else {
+            commitRename();
+        }
+    } else if (!ImGui::IsItemActive() && renameFocusFrames == 0) {
+        // Never got focus (the row scrolled away or another window took it)
+        renameTarget = RenameTarget::None;
+    }
+}
+
+void editor::Structure::commitRename(){
+    const RenameTarget target = renameTarget;
+    renameTarget = RenameTarget::None;
+    if (renameBuffer[0] == '\0') {
+        return;
+    }
+
+    if (target == RenameTarget::Scene) {
+        SceneProject* sceneProject = project->getScene(renameSceneId);
+        if (sceneProject && sceneProject->name != renameBuffer) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new SceneNameCmd(project, renameSceneId, renameBuffer));
+        }
+    } else if (target == RenameTarget::Entity) {
+        SceneProject* sceneProject = project->getScene(renameSceneId);
+        if (sceneProject && sceneProject->scene && sceneProject->scene->isEntityCreated(renameEntity)
+            && sceneProject->scene->getEntityName(renameEntity) != renameBuffer) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new EntityNameCmd(project, renameSceneId, renameEntity, renameBuffer));
+        }
+    }
+}
+
+bool editor::Structure::renameSelected(){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return false;
+    }
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() != 1 || cachedPlayCreatedEntities.count(selected[0]) > 0) {
+        return false;
+    }
+    setOpen(true);
+    ImGui::SetWindowFocus(Structure::WINDOW_NAME);
+    beginRename(RenameTarget::Entity, sceneProject->id, selected[0], sceneProject->scene->getEntityName(selected[0]));
+    return true;
+}
+
+bool editor::Structure::isFocused() const{
+    return windowOpen && windowFocused;
 }
 
 void editor::Structure::drawInsertionMarker(const ImVec2& p1, const ImVec2& p2) {
@@ -784,7 +886,7 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
     }else if (signature.test(scene->getComponentId<FogComponent>())){
         return ICON_FA_SMOG;
     }else if (signature.test(scene->getComponentId<ReflectionProbeComponent>())){
-        return ICON_FA_CUBE;
+        return ICON_FA_BULLSEYE;
     }else if (signature.test(scene->getComponentId<UIContainerComponent>())){
         return ICON_FA_OBJECT_GROUP;
     }else if (signature.test(scene->getComponentId<ButtonComponent>())){
@@ -853,7 +955,7 @@ std::string editor::Structure::getObjectIcon(Signature signature, Scene* scene){
     }else if (signature.test(scene->getComponentId<Body2DComponent>()) || signature.test(scene->getComponentId<Body3DComponent>())){
         return ICON_FA_WEIGHT_HANGING;
     }else if (signature.test(scene->getComponentId<Transform>())){
-        return ICON_FA_SITEMAP;
+        return ICON_FA_CUBE; // plain GameObject, Unity's generic cube
     }
 
     return ICON_FA_CIRCLE_DOT;
@@ -939,9 +1041,9 @@ void editor::Structure::handleEntityFilesDrop(const std::vector<std::string>& fi
             std::vector<Entity> newEntities = importCmd->getImportedEntities();
 
             if (newEntities.size() > 0) {
-                Out::info("Successfully imported bundle from: %s", path.string().c_str());
+                Out::info("Instantiated prefab from: %s", path.string().c_str());
             } else {
-                Out::warning("Failed to import bundle from: %s", path.string().c_str());
+                Out::warning("Failed to instantiate prefab from: %s", path.string().c_str());
             }
         }
     }
@@ -1002,7 +1104,7 @@ void editor::Structure::handleSceneFilesDropAsChildScenes(const std::vector<std:
 }
 
 void editor::Structure::showAddChildSceneMenu() {
-    if (ImGui::BeginMenu(ICON_FA_FOLDER_TREE "  Add child scene")) {
+    if (ImGui::BeginMenu(ICON_FA_FOLDER_TREE "  Add Child Scene")) {
         uint32_t currentSceneId = project->getSelectedSceneId();
         const auto& scenes = project->getScenes();
 
@@ -1024,7 +1126,7 @@ void editor::Structure::showAddChildSceneMenu() {
         }
 
         if (!hasAvailableScenes) {
-            ImGui::TextDisabled("No available scenes");
+            ImGui::TextDisabled("No scenes available");
         }
 
         ImGui::EndMenu();
@@ -1230,19 +1332,27 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     } else if (node.isChildScene) {
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
         pushedHighlightColor = true;
-    } else if (node.isBundle && !node.isParentBundle) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.8f, 1.0f)); // Pale gold for bundle root
-        pushedHighlightColor = true;
-    } else if (node.isBundleRoot && node.isParentBundle) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.7f, 1.0f, 1.0f)); // Light blue for nested bundle root
+    } else if ((node.isBundle && !node.isParentBundle) || (node.isBundleRoot && node.isParentBundle)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_TEXT_COLOR); // Prefab instance root
         pushedHighlightColor = true;
     } else if (node.isBundle && node.isParentBundle) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.82f, 1.0f, 0.82f)); // Softer blue for bundle children
+        ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_MEMBER_TEXT_COLOR); // GameObject inside a prefab instance
         pushedHighlightColor = true;
     }
 
+    const bool renamingNode = isRenaming(node);
     std::string nodeLabel = BidiText::toVisual(node.name);
-    bool nodeOpen = ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
+    SceneProject* headerScene = node.isScene ? project->getScene(node.id) : nullptr;
+    if (node.isScene) {
+        // Unity's scene header row: framed, always spans the panel, "*" while unsaved
+        flags |= ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding;
+        if (headerScene && headerScene->isModified) {
+            nodeLabel += "*";
+        }
+    }
+    bool nodeOpen = renamingNode
+        ? ImGui::TreeNodeEx("##node", flags, "%s", node.icon.c_str())
+        : ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
     if (!node.isScene && !node.isChildScene) {
         auto& sceneCollapsedEntities = collapsedEntities[getNodeSceneId(node)];
         if (!node.children.empty() && !nodeOpen) {
@@ -1266,8 +1376,10 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::PopStyleColor();
     }
 
-    if (node.isScene){
-        ImGui::SetItemTooltip("Id: %u", node.id);
+    if (renamingNode){
+        // no tooltip over the rename field
+    }else if (node.isScene){
+        ImGui::SetItemTooltip("Scene: %s\nId: %u", node.name.c_str(), node.id);
     }else if (node.isChildScene){
         const SceneProject* childScene = project->getScene(node.childSceneId);
         std::filesystem::path childScenePath = childScene ? childScene->filepath : std::filesystem::path();
@@ -1289,24 +1401,24 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                 Entity registryEntity = bundle ? bundle->getRegistryEntity(project->getSelectedSceneId(), node.id) : NULL_ENTITY;
 
                 ImGui::BeginTooltip();
-                ImGui::Text("Entity: %u", node.id);
+                ImGui::Text("GameObject: %u", node.id);
                 ImGui::Separator();
-                ImGui::Text("Path: %s", tooltipPath.string().c_str());
+                ImGui::Text("Prefab: %s", tooltipPath.string().c_str());
                 if (instanceId != 0) {
                     ImGui::Text("Instance: %u", instanceId);
                 }
                 if (registryEntity != NULL_ENTITY) {
-                    ImGui::Text("Bundle: %u", registryEntity);
+                    ImGui::Text("Prefab GameObject: %u", registryEntity);
                 }
                 ImGui::EndTooltip();
             }
         } else {
             if (node.canEditModelHierarchy) {
-                ImGui::SetItemTooltip("Entity: %u\nDrag to organize the parts of this model", node.id);
+                ImGui::SetItemTooltip("GameObject: %u\nDrag to organize the parts of this model", node.id);
             } else if (!node.hierarchyReason.empty()) {
-                ImGui::SetItemTooltip("Entity: %u\n%s", node.id, node.hierarchyReason.c_str());
+                ImGui::SetItemTooltip("GameObject: %u\n%s", node.id, node.hierarchyReason.c_str());
             } else {
-                ImGui::SetItemTooltip("Entity: %u", node.id);
+                ImGui::SetItemTooltip("GameObject: %u", node.id);
             }
         }
     }
@@ -1601,290 +1713,233 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     }
 
     if (nodeRightClicked) {
-        strncpy(nameBuffer, node.name.c_str(), sizeof(nameBuffer) - 1);
-        nameBuffer[sizeof(nameBuffer) - 1] = '\0';
-        ImGui::OpenPopup("ContextMenu");
+        // Unity selects the row it opens a context menu for
+        if (!node.isScene && !node.isChildScene && !isChildSceneEntity
+            && !project->isSelectedEntity(project->getSelectedSceneId(), node.id)) {
+            applyEntitySelection(project->getSelectedSceneId(), node.id, false, false);
+        }
+        ImGui::OpenPopup(node.isScene ? "SceneMenu" : "ContextMenu");
     }
 
-    if (ImGui::BeginPopup("ContextMenu")) {
-        // Child scene context menu
+    if (!node.isScene && ImGui::BeginPopup("ContextMenu")) {
         if (node.isChildScene) {
-            ImGui::Text("Name:");
-            ImGui::PushItemWidth(200);
-            ImGui::BeginDisabled(true);
-            if (ImGui::InputText("##ChangeChildSceneNameInput", nameBuffer, IM_ARRAYSIZE(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)){
-                ImGui::CloseCurrentPopup();
+            ImGui::TextDisabled("%s", node.name.c_str());
+            ImGui::Separator();
+            SceneProject* childScene = project->getScene(node.childSceneId);
+            if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN "  Open Scene", nullptr, false, childScene && !childScene->filepath.empty())) {
+                project->openScene(childScene->filepath);
             }
-            ImGui::EndDisabled();
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                if (nameBuffer[0] != '\0' && strcmp(nameBuffer, node.name.c_str()) != 0) {
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new SceneNameCmd(project, node.childSceneId, nameBuffer));
+            bool isLoaded = childScene && childScene->expandedInline;
+            if (ImGui::MenuItem(isLoaded ? ICON_FA_EYE_SLASH "  Hide Contents" : ICON_FA_EYE "  Show Contents")) {
+                if (isLoaded) {
+                    project->unloadChildSceneInline(node.childSceneId);
+                } else {
+                    project->loadChildSceneInline(node.childSceneId);
                 }
             }
-            ImGui::PopItemWidth();
-
-            ImGui::Separator();
             bool startActive = project->isChildSceneStartActive(node.ownerSceneId, node.childSceneId);
-            if (ImGui::MenuItem(ICON_FA_PLAY "  Start active", nullptr, startActive)) {
+            if (ImGui::MenuItem(ICON_FA_PLAY "  Start Active", nullptr, startActive)) {
                 CommandHandle::get(node.ownerSceneId)->addCommand(new SetChildSceneStartActiveCmd(project, node.ownerSceneId, node.childSceneId, !startActive));
             }
-            if (ImGui::MenuItem(ICON_FA_TRASH "  Remove child scene")) {
+            if (childScene && ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Scene Asset", nullptr, false, !childScene->filepath.empty())) {
+                revealInProject(childScene->filepath);
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Child Scene")) {
                 CommandHandle::get(node.ownerSceneId)->addCommand(new RemoveChildSceneCmd(project, node.ownerSceneId, node.childSceneId));
             }
             ImGui::EndPopup();
         } else if (isChildSceneEntity) {
-            // Child scene entity context menu - view only (no structural changes)
-            ImGui::Text("Name: %s", node.name.c_str());
-            ImGui::Text("Entity: %u", node.id);
+            // GameObject of a child scene: view only, edit it in its own scene
+            ImGui::TextDisabled("%s", node.name.c_str());
+            ImGui::Separator();
+            ImGui::Text("GameObject: %u", node.id);
             const SceneProject* childScene = project->getScene(node.entitySceneId);
             if (childScene) {
                 ImGui::Text("Scene: %s", childScene->name.c_str());
             }
+            ImGui::TextDisabled("Open the child scene to edit it");
             ImGui::EndPopup();
         } else {
-            // Regular entity/scene context menu
-            ImGui::Text("Name:");
-
-            ImGui::PushItemWidth(200);
-            ImGui::BeginDisabled(node.isPlayCreated);
-            if (ImGui::InputText("##ChangeNameInput", nameBuffer, IM_ARRAYSIZE(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)){
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndDisabled();
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                if (nameBuffer[0] != '\0' && strcmp(nameBuffer, node.name.c_str()) != 0) {
-                    if (node.isScene){
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new SceneNameCmd(project, node.id, nameBuffer));
-                    }else{
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new EntityNameCmd(project, project->getSelectedSceneId(), node.id, nameBuffer));
-                    }
-                }
+            const uint32_t sceneId = project->getSelectedSceneId();
+            // Unity acts on the whole selection when the clicked row is part of it
+            std::vector<Entity> targets = project->getSelectedEntities(sceneId);
+            if (targets.empty() || !project->isSelectedEntity(sceneId, node.id)) {
+                targets = {node.id};
             }
 
-            ImGui::Separator();
             bool entityDeleted = false;
-            if (ImGui::MenuItem(ICON_FA_COPY"  Duplicate", "Ctrl+D", false, !node.isScene && !node.isLocked)){
-                if (!node.isScene){
-                    std::vector<Entity> entitiesToDuplicate = project->getSelectedEntities(project->getSelectedSceneId());
-                    if (entitiesToDuplicate.empty() || !project->isSelectedEntity(project->getSelectedSceneId(), node.id)){
-                        entitiesToDuplicate = {node.id};
-                    }
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new DuplicateEntityCmd(project, project->getSelectedSceneId(), entitiesToDuplicate));
-                }
+            if (ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
+                beginRename(RenameTarget::Entity, sceneId, node.id, node.name);
             }
-            if (ImGui::MenuItem(ICON_FA_TRASH"  Delete", "Del / Backspace", false, !node.isLocked)){
-                if (!node.isScene){
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new DeleteEntityCmd(project, project->getSelectedSceneId(), node.id));
-                    entityDeleted = true;
-                }
+            if (ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
+                CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
-            if (!entityDeleted && !node.isScene && node.hasTransform) {
-                SceneProject* selectedScene = project->getSelectedScene();
-
-                if (selectedScene && selectedScene->scene) {
-                    ModelComponent* model = selectedScene->scene->findComponent<ModelComponent>(node.id);
-                    MeshComponent* mesh = selectedScene->scene->findComponent<MeshComponent>(node.id);
-                    if (model && mesh && !model->filename.empty()) {
-                        ImGui::Separator();
-
-                        const bool restoreHierarchy = model->mergeStaticMeshes;
-                        std::string mergeReason;
-                        bool canChangeMerge = restoreHierarchy ||
-                            selectedScene->scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, *mesh, &mergeReason);
-                        bool canEditHierarchy = ProjectUtils::hasCustomMeshParenting(selectedScene->scene, node.id) &&
-                            selectedScene->scene->getSystem<MeshSystem>()->canEditModelHierarchy(*model);
-                        if (!restoreHierarchy && canEditHierarchy) {
-                            canChangeMerge = false;
-                            mergeReason = "Reset the mesh parenting before merging this model";
-                        }
-
-                        if (ImGui::MenuItem(ICON_FA_SITEMAP "  Reset mesh parenting", nullptr, false, !node.isLocked && canEditHierarchy)) {
-                            MultiPropertyCmd* resetCmd = new MultiPropertyCmd();
-                            std::map<int, Entity> defaults = selectedScene->scene->getSystem<MeshSystem>()->getModelNodeDefaultParents(node.id, *model);
-                            // Move descendants first so a reversed parent/child arrangement can be reset.
-                            std::vector<std::pair<int, Entity>> parts(model->meshNodesMapping.begin(), model->meshNodesMapping.end());
-                            std::sort(parts.begin(), parts.end(), [&](const auto& a, const auto& b) {
-                                return ProjectUtils::getTransformIndex(selectedScene->scene, a.second) >
-                                    ProjectUtils::getTransformIndex(selectedScene->scene, b.second);
-                            });
-                            for (const auto& meshNode : parts) {
-                                auto defaultIt = defaults.find(meshNode.first);
-                                Entity defaultParent = defaultIt != defaults.end() ? defaultIt->second : node.id;
-                                if (selectedScene->scene->getComponent<Transform>(meshNode.second).parent != defaultParent) {
-                                    resetCmd->addCommand(std::make_unique<MoveEntityOrderCmd>(
-                                        project, selectedScene->id, meshNode.second, defaultParent, InsertionType::INTO));
-                                }
-                            }
-                            CommandHandle::get(selectedScene->id)->addCommandNoMerge(resetCmd);
-                        }
-
-                        bool mergeEnabled = !node.isLocked && canChangeMerge;
-                        const char* mergeLabel = restoreHierarchy
-                            ? ICON_FA_OBJECT_GROUP "  Restore model mesh children"
-                            : ICON_FA_COMPRESS "  Merge static model";
-
-                        if (ImGui::MenuItem(mergeLabel, nullptr, false, mergeEnabled)) {
-                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                                new ModelLoadCmd(project, selectedScene->id, node.id, model->filename, !restoreHierarchy));
-                        }
-                        if (!mergeEnabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                            ImGui::SetItemTooltip("%s", node.isLocked ? "Entity is locked" : mergeReason.c_str());
-                        }
-                    }
+            if (ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
+                Command* lastCmd = nullptr;
+                for (Entity entity : targets) {
+                    lastCmd = new DeleteEntityCmd(project, sceneId, entity);
+                    CommandHandle::get(sceneId)->addCommand(lastCmd);
                 }
-
-                bool allowPhysicsBody = selectedScene &&
-                    (selectedScene->sceneType == SceneType::SCENE_2D || selectedScene->sceneType == SceneType::SCENE_3D);
-
-                if (allowPhysicsBody) {
-                    ComponentType bodyType = selectedScene->sceneType == SceneType::SCENE_3D ? ComponentType::Body3DComponent : ComponentType::Body2DComponent;
-                    Signature signature = selectedScene->scene->getSignature(node.id);
-                    bool hasBody = false;
-
-                    if (bodyType == ComponentType::Body3DComponent) {
-                        hasBody = signature.test(selectedScene->scene->getComponentId<Body3DComponent>());
-                    } else {
-                        hasBody = signature.test(selectedScene->scene->getComponentId<Body2DComponent>());
-                    }
-
-                    if (ImGui::MenuItem(ICON_FA_DUMBBELL "  Add Physics Body", nullptr, false, !node.isLocked && !hasBody)) {
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new AddComponentCmd(project, project->getSelectedSceneId(), node.id, bodyType));
-                    }
-
-                    bool canAddOccluder2D = selectedScene->sceneType == SceneType::SCENE_2D
-                        && !signature.test(selectedScene->scene->getComponentId<Occluder2DComponent>())
-                        && (signature.test(selectedScene->scene->getComponentId<SpriteComponent>())
-                            || signature.test(selectedScene->scene->getComponentId<TilemapComponent>()));
-                    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE "  Add 2D Occluder", nullptr, false, !node.isLocked && canAddOccluder2D)) {
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new AddComponentCmd(project, project->getSelectedSceneId(), node.id, ComponentType::Occluder2DComponent));
-                    }
-
-                    bool hasMesh = signature.test(selectedScene->scene->getComponentId<MeshComponent>());
-                    bool hasInstanced = signature.test(selectedScene->scene->getComponentId<InstancedMeshComponent>());
-                    if (hasMesh && ImGui::MenuItem(ICON_FA_LAYER_GROUP "  Add Instanced Mesh", nullptr, false, !node.isLocked && !hasInstanced)) {
-                        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, project->getSelectedSceneId(), node.id, ComponentType::InstancedMeshComponent));
-                        std::vector<InstanceData> initialInstances = { InstanceData() };
-                        multiCmd->addPropertyCmd<std::vector<InstanceData>>(project, project->getSelectedSceneId(), node.id, ComponentType::InstancedMeshComponent, "instances", initialInstances);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multiCmd);
-                    }
+                if (lastCmd) {
+                    lastCmd->setNoMerge();
                 }
+                entityDeleted = true;
             }
-            if (!entityDeleted && !node.isPlayCreated && node.isParentBundle && !node.isBundleRoot){
+
+            // Create children of this GameObject
+            if (!entityDeleted && !node.isPlayCreated && node.hasTransform) {
                 ImGui::Separator();
-                if (ImGui::MenuItem(ICON_FA_LOCK_OPEN"  Remove from bundle", nullptr, false, node.isBundle)){
-                    if (node.isBundle){
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, project->getSelectedSceneId(), node.id, node.parent));
-                    }
-                }
-                if (ImGui::MenuItem(ICON_FA_BOXES_STACKED"  Insert into bundle", nullptr, false, !node.isBundle)){
-                    if (!node.isBundle){
-                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new AddEntityToBundleCmd(project, project->getSelectedSceneId(), node.id, node.parent));
-                    }
-                }
-            }
-            if (!entityDeleted && !node.isPlayCreated && node.isBundleRoot && node.hasBundleParent){
-                ImGui::Separator();
-                bool isNestedMember = node.isBundle && (node.bundleFilepath != node.nestedBundleFilepath);
-                if (ImGui::MenuItem(ICON_FA_LOCK_OPEN"  Remove from bundle (nested)", nullptr, false, isNestedMember)){
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new RemoveEntityFromBundleCmd(project, project->getSelectedSceneId(), node.id, node.parent));
-                }
-                if (ImGui::MenuItem(ICON_FA_BOXES_STACKED"  Insert into bundle (nested)", nullptr, false, !isNestedMember)){
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new AddEntityToBundleCmd(project, project->getSelectedSceneId(), node.id, node.parent));
-                }
-            }
-            if (!entityDeleted && !node.isPlayCreated && !node.isScene && !node.isBundle && !node.isParentBundle){
-                uint32_t sceneId = project->getSelectedSceneId();
-                const auto& sceneBundles = project->getEntityBundles(sceneId);
-
-                ImGui::Separator();
-
-                if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Save as Bundle", nullptr, false, !node.isLocked && node.hasTransform)) {
-                    saveNodeAsBundle(node);
-                }
-                if (ImGui::IsItemHovered()) {
-                    std::filesystem::path directory = std::filesystem::relative(getBundleSaveDirectory(), project->getProjectPath());
-                    ImGui::SetItemTooltip("Saves to %s", directory == "." ? "project root" : directory.string().c_str());
-                }
-
-                if (!sceneBundles.empty()) {
-                    if (ImGui::BeginMenu(ICON_FA_BOXES_STACKED "  Insert to Bundle")) {
-                        for (const auto& [path, bundlePtr] : sceneBundles) {
-                            auto sceneIt = bundlePtr->instances.find(sceneId);
-                            if (sceneIt == bundlePtr->instances.end() || sceneIt->second.empty()) continue;
-                            std::string label = path.stem().string();
-                            if (ImGui::MenuItem(label.c_str())) {
-                                Entity rootEntity = sceneIt->second.front().rootEntity;
-                                CommandHandle::get(sceneId)->addCommandNoMerge(new AddEntityToBundleCmd(project, sceneId, node.id, rootEntity));
-                            }
-                        }
-                        ImGui::EndMenu();
-                    }
-                }
-            }
-            if (!entityDeleted && !node.isPlayCreated && (node.hasTransform || node.isScene)){
-                ImGui::Separator();
-                static bool createBundleChild = false;
-                if (node.isBundle){
+                static bool createInPrefab = false;
+                if (node.isBundle) {
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y * 0.5f));
-                    ImGui::Checkbox("Create new bundle", &createBundleChild);
+                    ImGui::Checkbox("Add to Prefab", &createInPrefab);
+                    ImGui::SetItemTooltip("New GameObjects become part of this prefab");
                     ImGui::PopStyleVar(1);
                 }
-                if (ImGui::BeginMenu(ICON_FA_CIRCLE_DOT"  Create child")){
-                    showNewEntityMenu(node.isScene, node.id, createBundleChild);
+                showCreateMenuItems(false, node.id, node.isBundle && createInPrefab);
+            }
+
+            if (!entityDeleted && !node.isPlayCreated) {
+                ImGui::Separator();
+                if (ImGui::BeginMenu(ICON_FA_CUBE "  Prefab")) {
+                    showPrefabMenu(node);
+                    ImGui::EndMenu();
                 }
             }
 
-            // Scene-specific options
-            if (node.isScene) {
-                ImGui::Separator();
-                showAddChildSceneMenu();
+            SceneProject* selectedScene = project->getSelectedScene();
+            if (!entityDeleted && node.hasTransform && selectedScene && selectedScene->scene) {
+                Scene* scene = selectedScene->scene;
+                Signature signature = scene->getSignature(node.id);
+                bool separatorShown = false;
+                auto separatorOnce = [&separatorShown]() {
+                    if (!separatorShown) ImGui::Separator();
+                    separatorShown = true;
+                };
+
+                if (selectedScene->sceneType == SceneType::SCENE_2D || selectedScene->sceneType == SceneType::SCENE_3D) {
+                    const bool is3D = selectedScene->sceneType == SceneType::SCENE_3D;
+                    ComponentType bodyType = is3D ? ComponentType::Body3DComponent : ComponentType::Body2DComponent;
+                    bool hasBody = is3D ? signature.test(scene->getComponentId<Body3DComponent>())
+                                        : signature.test(scene->getComponentId<Body2DComponent>());
+                    separatorOnce();
+                    if (ImGui::MenuItem(is3D ? ICON_FA_WEIGHT_HANGING "  Add Rigidbody" : ICON_FA_WEIGHT_HANGING "  Add Rigidbody 2D",
+                                        nullptr, false, !node.isLocked && !hasBody)) {
+                        CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, bodyType));
+                    }
+
+                    bool canAddShadowCaster = !is3D
+                        && !signature.test(scene->getComponentId<Occluder2DComponent>())
+                        && (signature.test(scene->getComponentId<SpriteComponent>())
+                            || signature.test(scene->getComponentId<TilemapComponent>()));
+                    if (!is3D && ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE "  Add Shadow Caster 2D", nullptr, false, !node.isLocked && canAddShadowCaster)) {
+                        CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, ComponentType::Occluder2DComponent));
+                    }
+
+                    bool hasMesh = signature.test(scene->getComponentId<MeshComponent>());
+                    bool hasInstanced = signature.test(scene->getComponentId<InstancedMeshComponent>());
+                    if (hasMesh && ImGui::MenuItem(ICON_FA_LAYER_GROUP "  Add Instanced Mesh", nullptr, false, !node.isLocked && !hasInstanced)) {
+                        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+                        multiCmd->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, node.id, ComponentType::InstancedMeshComponent));
+                        std::vector<InstanceData> initialInstances = { InstanceData() };
+                        multiCmd->addPropertyCmd<std::vector<InstanceData>>(project, sceneId, node.id, ComponentType::InstancedMeshComponent, "instances", initialInstances);
+                        CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
+                    }
+                }
+
+                ModelComponent* model = scene->findComponent<ModelComponent>(node.id);
+                MeshComponent* mesh = scene->findComponent<MeshComponent>(node.id);
+                if (model && mesh && !model->filename.empty()) {
+                    ImGui::Separator();
+
+                    const bool restoreHierarchy = model->mergeStaticMeshes;
+                    std::string mergeReason;
+                    bool canChangeMerge = restoreHierarchy ||
+                        scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, *mesh, &mergeReason);
+                    bool canEditHierarchy = ProjectUtils::hasCustomMeshParenting(scene, node.id) &&
+                        scene->getSystem<MeshSystem>()->canEditModelHierarchy(*model);
+                    if (!restoreHierarchy && canEditHierarchy) {
+                        canChangeMerge = false;
+                        mergeReason = "Reset the mesh parenting before merging this model";
+                    }
+
+                    if (ImGui::MenuItem(ICON_FA_SITEMAP "  Reset Mesh Parenting", nullptr, false, !node.isLocked && canEditHierarchy)) {
+                        MultiPropertyCmd* resetCmd = new MultiPropertyCmd();
+                        std::map<int, Entity> defaults = scene->getSystem<MeshSystem>()->getModelNodeDefaultParents(node.id, *model);
+                        // Move descendants first so a reversed parent/child arrangement can be reset.
+                        std::vector<std::pair<int, Entity>> parts(model->meshNodesMapping.begin(), model->meshNodesMapping.end());
+                        std::sort(parts.begin(), parts.end(), [&](const auto& a, const auto& b) {
+                            return ProjectUtils::getTransformIndex(scene, a.second) >
+                                ProjectUtils::getTransformIndex(scene, b.second);
+                        });
+                        for (const auto& meshNode : parts) {
+                            auto defaultIt = defaults.find(meshNode.first);
+                            Entity defaultParent = defaultIt != defaults.end() ? defaultIt->second : node.id;
+                            if (scene->getComponent<Transform>(meshNode.second).parent != defaultParent) {
+                                resetCmd->addCommand(std::make_unique<MoveEntityOrderCmd>(
+                                    project, selectedScene->id, meshNode.second, defaultParent, InsertionType::INTO));
+                            }
+                        }
+                        CommandHandle::get(selectedScene->id)->addCommandNoMerge(resetCmd);
+                    }
+
+                    bool mergeEnabled = !node.isLocked && canChangeMerge;
+                    const char* mergeLabel = restoreHierarchy
+                        ? ICON_FA_OBJECT_GROUP "  Restore Model Mesh Children"
+                        : ICON_FA_COMPRESS "  Merge Static Model";
+
+                    if (ImGui::MenuItem(mergeLabel, nullptr, false, mergeEnabled)) {
+                        CommandHandle::get(sceneId)->addCommandNoMerge(
+                            new ModelLoadCmd(project, selectedScene->id, node.id, model->filename, !restoreHierarchy));
+                    }
+                    if (!mergeEnabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetItemTooltip("%s", node.isLocked ? "GameObject is locked" : mergeReason.c_str());
+                    }
+                }
             }
 
-            if (!entityDeleted && !node.isScene) {
-                SceneProject* sceneProject = project->getSelectedScene();
-                if (sceneProject && sceneProject->scene
-                    && sceneProject->scene->getSignature(node.id).test(sceneProject->scene->getComponentId<CameraComponent>())) {
-                    ImGui::Separator();
-                    bool canMoveToEditorView = !node.isLocked && node.hasTransform
-                        && sceneProject->sceneRender
-                        && sceneProject->sceneRender->getCamera();
-                    if (ImGui::MenuItem(ICON_FA_CAMERA"  Move to Editor View", nullptr, false, canMoveToEditorView)) {
-                        moveCameraToEditorView(node.id);
+            if (!entityDeleted && selectedScene && selectedScene->scene
+                && selectedScene->scene->getSignature(node.id).test(selectedScene->scene->getComponentId<CameraComponent>())) {
+                ImGui::Separator();
+                bool canAlignWithView = !node.isLocked && node.hasTransform
+                    && selectedScene->sceneRender
+                    && selectedScene->sceneRender->getCamera();
+                if (ImGui::MenuItem(ICON_FA_CAMERA "  Align With View", nullptr, false, canAlignWithView)) {
+                    moveCameraToEditorView(node.id);
+                }
+                if (!canAlignWithView && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip(node.isLocked ? "Camera is locked" : "Scene view camera unavailable");
+                }
+                bool previewingCamera = selectedScene->sceneRender
+                    && selectedScene->sceneRender->isPreviewCameraActive()
+                    && selectedScene->sceneRender->getPreviewCameraEntity() == node.id;
+                bool canPreviewCamera = node.hasTransform
+                    && selectedScene->playState == ScenePlayState::STOPPED
+                    && selectedScene->sceneRender;
+                if (previewingCamera) {
+                    if (ImGui::MenuItem(ICON_FA_XMARK "  Exit Camera Preview", nullptr, false, canPreviewCamera)) {
+                        sceneWindow->stopViewingCamera(selectedScene->id);
                     }
-                    if (!canMoveToEditorView && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                        ImGui::SetTooltip(node.isLocked ? "Camera is locked" : "Editor camera unavailable");
+                } else {
+                    if (ImGui::MenuItem(ICON_FA_VIDEO "  View Through Camera", nullptr, false, canPreviewCamera)) {
+                        sceneWindow->viewThroughCamera(selectedScene->id, node.id);
                     }
-                    bool previewingThisCamera = sceneProject->sceneRender
-                        && sceneProject->sceneRender->isPreviewCameraActive()
-                        && sceneProject->sceneRender->getPreviewCameraEntity() == node.id;
-                    bool canPreviewCamera = node.hasTransform
-                        && sceneProject->playState == ScenePlayState::STOPPED
-                        && sceneProject->sceneRender;
-                    if (previewingThisCamera) {
-                        if (ImGui::MenuItem(ICON_FA_XMARK"  Exit Camera Preview", nullptr, false, canPreviewCamera)) {
-                            sceneWindow->stopViewingCamera(sceneProject->id);
-                        }
-                    } else {
-                        if (ImGui::MenuItem(ICON_FA_VIDEO"  View Through Camera", nullptr, false, canPreviewCamera)) {
-                            sceneWindow->viewThroughCamera(sceneProject->id, node.id);
-                        }
+                }
+                if (!canPreviewCamera && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip(selectedScene->playState == ScenePlayState::STOPPED ? "Camera transform unavailable" : "Stop the scene to preview cameras");
+                }
+                if (node.isMainCamera) {
+                    if (ImGui::MenuItem(ICON_FA_EYE_SLASH "  Unset as Main Camera")) {
+                        CommandHandle::get(sceneId)->addCommand(new SetMainCameraCmd(project, sceneId, NULL_ENTITY));
                     }
-                    if (!canPreviewCamera && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                        ImGui::SetTooltip(sceneProject->playState == ScenePlayState::STOPPED ? "Camera transform unavailable" : "Stop the scene to preview cameras");
+                } else {
+                    bool usedAsTexture = CameraTextureLink::isCameraUsed(selectedScene->scene, node.id);
+                    if (ImGui::MenuItem(ICON_FA_EYE "  Set as Main Camera", nullptr, false, !usedAsTexture && !node.isPlayCreated)) {
+                        CommandHandle::get(sceneId)->addCommand(new SetMainCameraCmd(project, sceneId, node.id));
                     }
-                    if (node.isMainCamera) {
-                        if (ImGui::MenuItem(ICON_FA_EYE_SLASH"  Unset as Main Camera", nullptr, false, node.isMainCamera)) {
-                            CommandHandle::get(project->getSelectedSceneId())->addCommand(new SetMainCameraCmd(project, project->getSelectedSceneId(), NULL_ENTITY));
-                        }
-                    } else {
-                        bool usedAsTexture = CameraTextureLink::isCameraUsed(sceneProject->scene, node.id);
-                        if (ImGui::MenuItem(ICON_FA_EYE"  Set as Main Camera", nullptr, false, !usedAsTexture && !node.isPlayCreated)) {
-                            CommandHandle::get(project->getSelectedSceneId())->addCommand(new SetMainCameraCmd(project, project->getSelectedSceneId(), node.id));
-                        }
-                        if (usedAsTexture && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                            ImGui::SetTooltip("Camera is used as texture source (render to texture)");
-                        }
+                    if (usedAsTexture && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("Camera is used as a render texture source");
                     }
                 }
             }
@@ -1893,7 +1948,33 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         }
     }
 
-    if (node.isMainCamera) {
+    if (renamingNode) {
+        drawRenameField();
+    }
+
+    // Scene header ⋮ button, right-aligned like Unity's
+    if (node.isScene && !renamingNode) {
+        const char* icon = ICON_FA_ELLIPSIS_VERTICAL;
+        float buttonWidth = ImGui::CalcTextSize(icon).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        float buttonPosX = ImGui::GetWindowContentRegionMax().x - buttonWidth;
+        ImGui::SameLine(buttonPosX > ImGui::GetCursorPosX() ? buttonPosX : 0.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.1f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.2f));
+        if (ImGui::Button(icon)) {
+            ImGui::OpenPopup("SceneMenu");
+        }
+        ImGui::SetItemTooltip("Scene options");
+        ImGui::PopStyleColor(3);
+    }
+
+    // Scene header: the same menu from right-click and from its ⋮ button
+    if (node.isScene && ImGui::BeginPopup("SceneMenu")) {
+        showSceneMenu(headerScene);
+        ImGui::EndPopup();
+    }
+
+    if (node.isMainCamera && !renamingNode) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y * 0.5f);
@@ -1901,9 +1982,10 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::TextUnformatted(ICON_FA_EYE);
         ImGui::SetWindowFontScale(1.0f);
         ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("Main Camera");
     }
 
-    if (node.hasScript || (node.hasChildScript && !nodeOpen)) {
+    if ((node.hasScript || (node.hasChildScript && !nodeOpen)) && !renamingNode) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y * 0.5f);
@@ -1911,9 +1993,10 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::TextUnformatted(ICON_FA_FILE_CODE);
         ImGui::SetWindowFontScale(1.0f);
         ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("Has scripts");
     }
 
-    if (instanceCount > 0) {
+    if (instanceCount > 0 && !renamingNode) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
         if (!node.isMainCamera) {
@@ -1973,7 +2056,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
             }
         }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(isLoaded ? "Unload child scene" : "Load child scene");
+            ImGui::SetTooltip(isLoaded ? "Hide child scene contents" : "Show child scene contents");
         }
 
         ImGui::PopID();
@@ -2116,7 +2199,12 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
 
     root = TreeNode();
 
-    root.icon = ICON_FA_TV;
+    switch (sceneProject->sceneType) {
+        case SceneType::SCENE_3D: root.icon = ICON_FA_CUBES; break;
+        case SceneType::SCENE_2D: root.icon = ICON_FA_CUBES_STACKED; break;
+        case SceneType::SCENE_UI: root.icon = ICON_FA_WINDOW_RESTORE; break;
+        default: root.icon = ICON_FA_CUBES; break;
+    }
     root.id = sceneProject->id;
     root.isScene = true;
     root.order = order++;
@@ -2407,6 +2495,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
 }
 
 void editor::Structure::show(){
+    windowFocused = false;
     if (!windowOpen) {
         return;
     }
@@ -2429,6 +2518,20 @@ void editor::Structure::show(){
             setOpen(false);
         }
         return;
+    }
+    // Tree rows do not take window focus when clicked, so do it here: F2, F and
+    // the Edit menu need to know the Hierarchy is the panel being worked in.
+    if ((ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)
+        && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_NoPopupHierarchy)
+        && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        ImGui::SetWindowFocus();
+    }
+    windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    // A rename started for a scene that is no longer shown has nothing to edit
+    if (renameTarget != RenameTarget::None && renameSceneId != sceneProject->id) {
+        renameTarget = RenameTarget::None;
     }
 
     // Rebuild the tree only when it changed. Key = scene + structureVersion + entity count +
@@ -2469,8 +2572,8 @@ void editor::Structure::show(){
         rebuildEntityTree(sceneProject, root, sceneEntitiesSet);
     }
 
-    showIconMenu();
-    ImGui::BeginChild("StructureScrollRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+    showToolbar();
+    ImGui::BeginChild("StructureScrollRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
     // Apply search filtering if there's a search term
     if (strlen(searchBuffer) > 0) {
@@ -2495,16 +2598,19 @@ void editor::Structure::show(){
     syncSceneWindowSelectionHierarchy(root);
     float treeLastCursorY = ImGui::GetCursorScreenPos().y;
 
+    // The renamed row is hidden (filtered out, deleted): drop the rename
+    if (renameTarget != RenameTarget::None && ++renameMissedFrames > 2) {
+        renameTarget = RenameTarget::None;
+    }
+
     // Handle right-click in empty space
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
         ImGui::OpenPopup("EmptySpaceContextMenu");
     }
 
-    // Empty space context menu
+    // Empty space context menu: create at the scene root
     if (ImGui::BeginPopup("EmptySpaceContextMenu")) {
-        if (ImGui::BeginMenu(ICON_FA_CIRCLE_DOT"  Create entity")) {
-            showNewEntityMenu(true, NULL_ENTITY, false);
-        }
+        showCreateMenuItems(true, NULL_ENTITY, false);
         ImGui::EndPopup();
     }
 
