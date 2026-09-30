@@ -44,7 +44,7 @@
 using namespace jasperengine;
 
 // Unity's prefab-instance blue, for rows that belong to a prefab
-static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.49f, 0.67f, 0.97f, 1.0f);
+static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.48f, 0.68f, 0.98f, 1.0f); // Theme::Colors::PrefabText, #7BAEFA
 static const ImVec4 PREFAB_MEMBER_TEXT_COLOR = ImVec4(0.49f, 0.67f, 0.97f, 0.82f);
 
 static bool hasScripts(Scene* scene, Entity entity) {
@@ -1350,9 +1350,18 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
             nodeLabel += "*";
         }
     }
+    // Unity dims GameObjects that are inactive themselves or through a parent
+    const bool dimInactive = !node.isScene && !node.isChildScene && nodeSceneProject && nodeSceneProject->scene
+        && nodeSceneProject->scene->hasInactiveEntities() && !nodeSceneProject->scene->isEntityActiveInHierarchy(node.id);
+    if (dimInactive) {
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
     bool nodeOpen = renamingNode
         ? ImGui::TreeNodeEx("##node", flags, "%s", node.icon.c_str())
         : ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
+    if (dimInactive) {
+        ImGui::PopStyleVar();
+    }
     if (!node.isScene && !node.isChildScene) {
         auto& sceneCollapsedEntities = collapsedEntities[getNodeSceneId(node)];
         if (!node.children.empty() && !nodeOpen) {
