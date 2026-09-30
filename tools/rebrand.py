@@ -55,8 +55,9 @@ NAME = re.compile(rb"doriax", re.IGNORECASE)
 # Never rewritten; the only places the upstream name is expected to remain.
 ALLOW_FILES = {"LICENSE", "NOTICE.md", "README.md", "tools/rebrand.py"}
 ALLOW_PREFIXES = ("docs/superpowers/",)
-# Attribution lines elsewhere (e.g. the About window) carry this marker.
-ALLOW_LINE = re.compile(rb"[Bb]ased on Doriax")
+# Attribution lines elsewhere (e.g. the About window) carry this marker, and
+# the fork-point tag is named doriax-base.
+ALLOW_LINE = re.compile(rb"[Bb]ased on Doriax|doriax-base")
 
 THIRD_PARTY = ("libs/", "engine/libs/", "shadercompiler/libs/")
 # Vendored files that Doriax patched to call into the engine.

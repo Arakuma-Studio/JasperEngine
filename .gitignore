@@ -74,3 +74,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Python bytecode from importing tools/*.py
+__pycache__/

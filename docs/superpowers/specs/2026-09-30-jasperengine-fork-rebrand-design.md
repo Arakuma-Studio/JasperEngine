@@ -111,7 +111,7 @@ Directories are renamed deepest first.
   - Binary files
   - Third-party trees `libs/`, `engine/libs/` and `shadercompiler/libs/`, **except** the three files that reference Doriax: `engine/libs/sokol/sokol.cpp`, `engine/libs/sokol/sokol_app.h` and `engine/libs/harfbuzz/CMakeLists.txt`
 - **Kept as-is:** per-file copyright headers (`// (c) Eduardo Doria and contributors`, SPDX lines). The general rules cannot match "Doria " anyway.
-- **Allowlist for `--check`:** `LICENSE`, `NOTICE.md`, `README.md`, `tools/rebrand.py`, `docs/superpowers/`, and any line containing "Based on Doriax" (the About window credit).
+- **Allowlist for `--check`:** `LICENSE`, `NOTICE.md`, `README.md`, `tools/rebrand.py`, `docs/superpowers/`, and any line containing "Based on Doriax" (the About window credit) or the `doriax-base` tag name.
 
 ### 3.4 Known consequence
 
