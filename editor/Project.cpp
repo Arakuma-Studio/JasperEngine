@@ -4347,7 +4347,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         // Restore snapshot if present
-        if (sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull()) {
+        const bool restoredFromSnapshot = sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull();
+        if (restoredFromSnapshot) {
             Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
 
             // entities are still live, so the decode also removes components added during play
@@ -4384,6 +4385,10 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         sceneProject->playState = ScenePlayState::STOPPED;
+        if (!entry.ownedRuntime) {
+            // the edit-time scene itself played (runtime copies have no history)
+            CommandHandle::get(sceneProject->id)->endPlaySession(restoredFromSnapshot);
+        }
 
         Entity cameraEntity = sceneProject->scene->getCamera();
         if (cameraEntity != NULL_ENTITY && sceneProject->scene->isEntityCreated(cameraEntity)) {
@@ -8633,6 +8638,7 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->playState = ScenePlayState::STOPPED;
+            CommandHandle::get(sceneId)->endPlaySession(false);
         }
 
         {
@@ -9326,6 +9332,7 @@ void editor::Project::start(uint32_t sceneId) {
     }
 
     sceneProject->playState = ScenePlayState::LOADING;
+    CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
 
@@ -9522,6 +9529,7 @@ void editor::Project::stop(uint32_t sceneId) {
                 editor::getEditorHost().resetLastActivatedScene();
                 if (mainSceneProject) {
                     mainSceneProject->playState = ScenePlayState::STOPPED;
+                    CommandHandle::get(mainSceneProject->id)->endPlaySession(false);
                 }
             }
 

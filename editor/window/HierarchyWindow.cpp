@@ -1403,6 +1403,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeHovered = ImGui::IsItemHovered();
     bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    const ImGuiID nodeItemId = ImGui::GetItemID();
 
     // Pop color if we pushed it
     if (pushedHighlightColor) {
@@ -1751,6 +1752,15 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             && !project->isSelectedEntity(project->getSelectedSceneId(), node.id)) {
             applyEntitySelection(project->getSelectedSceneId(), node.id, false, false);
         }
+        // Taking focus in the same frame closes a popup opened in it, so a click
+        // that just focused the panel opens the menu on the next frame
+        if (focusedThisFrame) {
+            pendingContextMenuItem = nodeItemId;
+        } else {
+            ImGui::OpenPopup(node.isScene ? "SceneMenu" : "ContextMenu");
+        }
+    } else if (pendingContextMenuItem != 0 && pendingContextMenuItem == nodeItemId) {
+        pendingContextMenuItem = 0;
         ImGui::OpenPopup(node.isScene ? "SceneMenu" : "ContextMenu");
     }
 
@@ -2584,6 +2594,9 @@ void editor::HierarchyWindow::show(){
         && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_NoPopupHierarchy)
         && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         ImGui::SetWindowFocus();
+        focusedThisFrame = true;
+    } else {
+        focusedThisFrame = false;
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
@@ -2663,6 +2676,13 @@ void editor::HierarchyWindow::show(){
 
     // Handle right-click in empty space
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        if (focusedThisFrame) {
+            pendingEmptySpaceMenu = true;
+        } else {
+            ImGui::OpenPopup("EmptySpaceContextMenu");
+        }
+    } else if (pendingEmptySpaceMenu) {
+        pendingEmptySpaceMenu = false;
         ImGui::OpenPopup("EmptySpaceContextMenu");
     }
 
