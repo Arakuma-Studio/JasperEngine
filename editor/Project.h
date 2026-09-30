@@ -362,6 +362,11 @@ namespace jasperengine::editor{
         mutable std::mutex playSessionMutex;
         std::shared_ptr<PlaySession> activePlaySession;
 
+        // Single-frame advance while paused (see step())
+        uint32_t stepSceneId = NULL_PROJECT_SCENE;
+        bool stepPending = false;
+        float stepSavedMaxDeltatime = 0.0f;
+
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
         void prepareRuntimeScene(PlayRuntimeScene& entry);
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
@@ -889,6 +894,19 @@ namespace jasperengine::editor{
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
         void stopActivePlay();
+
+        // Advances a paused game by exactly one frame (pausing it first if it plays).
+        // The frame runs in the next draw of the scene, bracketed by the two calls below.
+        void step(uint32_t sceneId);
+        bool isStepPending(uint32_t sceneId) const;
+        // True when a step was pending and the scene now runs for one frame
+        bool beginStepFrame(uint32_t sceneId);
+        void endStepFrame(uint32_t sceneId);
+
+        // Main scene of the active play session, or NULL_PROJECT_SCENE
+        uint32_t getPlaySessionSceneId() const;
+        // Camera the game renders through: the main camera, else the scene default
+        Entity getGameCamera(uint32_t sceneId) const;
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);

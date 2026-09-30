@@ -9252,6 +9252,94 @@ void editor::Project::stopActivePlay() {
     stop(mainSceneId);
 }
 
+void editor::Project::step(uint32_t sceneId) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject) {
+        return;
+    }
+
+    if (sceneProject->playState == ScenePlayState::PLAYING) {
+        pause(sceneId);
+    }
+    if (sceneProject->playState != ScenePlayState::PAUSED) {
+        return;
+    }
+
+    stepSceneId = sceneId;
+    stepPending = true;
+    sceneProject->needUpdateRender = true;
+}
+
+bool editor::Project::isStepPending(uint32_t sceneId) const {
+    return stepPending && stepSceneId == sceneId;
+}
+
+bool editor::Project::beginStepFrame(uint32_t sceneId) {
+    if (!isStepPending(sceneId)) {
+        return false;
+    }
+    stepPending = false;
+
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || sceneProject->playState != ScenePlayState::PAUSED) {
+        return false;
+    }
+
+    std::vector<PlayRuntimeScene> runtimeScenesCopy;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        if (!activePlaySession || activePlaySession->mainSceneId != sceneId) {
+            return false;
+        }
+        runtimeScenesCopy = activePlaySession->runtimeScenes;
+    }
+
+    // Unpaused for this one draw only: no onResume/onPause, like a single frame
+    // of a game that never stopped
+    for (const auto& entry : runtimeScenesCopy) {
+        if (entry.runtime && entry.runtime->scene) pauseEngineScene(entry.runtime->scene, false);
+    }
+    Engine::pauseGameEvents(false);
+
+    // The draw measures the time since the last one, which while paused is long.
+    // Capping it at the fixed step makes the frame advance exactly one update.
+    float frameTime = Engine::getUpdateTime();
+    if (frameTime <= 0.0f) frameTime = 1.0f / 60.0f;
+    stepSavedMaxDeltatime = Engine::getMaxDeltatime();
+    Engine::setMaxDeltatime(frameTime);
+
+    return true;
+}
+
+void editor::Project::endStepFrame(uint32_t sceneId) {
+    Engine::setMaxDeltatime(stepSavedMaxDeltatime);
+
+    std::vector<PlayRuntimeScene> runtimeScenesCopy;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        if (activePlaySession && activePlaySession->mainSceneId == sceneId) {
+            runtimeScenesCopy = activePlaySession->runtimeScenes;
+        }
+    }
+    for (const auto& entry : runtimeScenesCopy) {
+        if (entry.runtime && entry.runtime->scene) pauseEngineScene(entry.runtime->scene, true);
+    }
+    Engine::pauseGameEvents(true);
+}
+
+uint32_t editor::Project::getPlaySessionSceneId() const {
+    std::scoped_lock lock(playSessionMutex);
+    return activePlaySession ? activePlaySession->mainSceneId : NULL_PROJECT_SCENE;
+}
+
+Entity editor::Project::getGameCamera(uint32_t sceneId) const {
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return NULL_ENTITY;
+    }
+    return getSceneCamera(sceneProject);
+}
+
 void editor::Project::waitForPlaySessionToFinish() {
     // Wait for the detached finalizeStop thread to complete
     // so that all cleanup finishes before the app tears down.

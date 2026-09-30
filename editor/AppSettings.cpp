@@ -97,6 +97,7 @@ float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
 PanelVisibilitySettings AppSettings::panelVisibility;
+GameViewSettings AppSettings::gameViewSettings;
 ai::Settings AppSettings::aiSettings;
 
 bool AppSettings::initialize() {
@@ -253,6 +254,14 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["ai_chat"]) panelVisibility.aiChat = panelsNode["ai_chat"].as<bool>();
+                if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
+            }
+            if (editorNode["game_view"]) {
+                auto gameNode = editorNode["game_view"];
+                if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
+                if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
+                if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
             }
         }
 
@@ -387,7 +396,14 @@ bool AppSettings::saveSettings() {
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["ai_chat"] = panelVisibility.aiChat;
+        panelsNode["game"] = panelVisibility.game;
         editorNode["panels"] = panelsNode;
+        YAML::Node gameNode;
+        gameNode["aspect"] = gameViewSettings.aspect;
+        gameNode["scale"] = gameViewSettings.scale;
+        gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
+        gameNode["stats"] = gameViewSettings.showStats;
+        editorNode["game_view"] = gameNode;
         settingsData["editor"] = editorNode;
 
         // AI assistant settings. Secrets must never be serialized here.
@@ -628,6 +644,15 @@ PanelVisibilitySettings AppSettings::getPanelVisibility() {
 
 void AppSettings::setPanelVisibility(const PanelVisibilitySettings& visibility) {
     panelVisibility = visibility;
+    saveSettings();
+}
+
+GameViewSettings AppSettings::getGameViewSettings() {
+    return gameViewSettings;
+}
+
+void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
+    gameViewSettings = settings;
     saveSettings();
 }
 

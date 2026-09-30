@@ -12,13 +12,15 @@
 # STEPS="..." then runs space separated steps: "x,y" left click, "r:x,y" right
 # click, "m:x,y" move the mouse (hover), "k:key" key press, "w:secs" wait, and
 # "s" to save <name>-1.png, <name>-2.png, ... (each step waits 0.4s).
+# KEYS tokens sleep:N (wait N seconds), click:X,Y (left click), drag:X1,Y1,X2,Y2
+# (left drag) and shot:TAG (screenshot <name>-TAG.png) script longer interactions.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -59,7 +61,21 @@ docker run --rm \
             win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
             [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
             for c in \$CLICKS; do IFS=, read -r cx cy cb <<< \"\$c\"; xdotool mousemove \$cx \$cy click \${cb:-1}; sleep 0.7; done
-            for k in \$KEYS; do xdotool key \$k; sleep 0.5; done
+            for k in \$KEYS; do
+                case \$k in
+                    sleep:*) sleep \${k#sleep:} ;;
+                    click:*) xy=\${k#click:}; xdotool mousemove \${xy%,*} \${xy#*,} click 1 ;;
+                    drag:*) IFS=, read -r x1 y1 x2 y2 <<< \"\${k#drag:}\"
+                        xdotool mousemove \$x1 \$y1; sleep 0.3; xdotool mousedown 1; sleep 0.3
+                        for i in 1 2 3 4 5 6 7 8 9 10; do
+                            xdotool mousemove \$(( x1 + (x2 - x1) * i / 10 )) \$(( y1 + (y2 - y1) * i / 10 )); sleep 0.15
+                        done
+                        sleep 0.5; xdotool mouseup 1 ;;
+                    shot:*) import -window root ../$NAME-\${k#shot:}.png; echo \"ok: build/shots/$NAME-\${k#shot:}.png\" ;;
+                    *) xdotool key \$k ;;
+                esac
+                sleep 0.5
+            done
             sleep \$KEYS_WAIT
             kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited after keys'; tail -30 ../$NAME.log; exit 1; }
             import -window root ../$NAME-keys.png

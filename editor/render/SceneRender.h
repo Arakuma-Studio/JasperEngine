@@ -164,6 +164,8 @@ namespace jasperengine::editor{
         Camera* camera;
         Framebuffer framebuffer;
         Entity previewCameraEntity;
+        // Set only while the Game view pass draws through a game camera
+        Entity gameViewCameraEntity = NULL_ENTITY;
 
         Lines* selLines;
         Lines* terrainBrushLines;
@@ -218,6 +220,13 @@ namespace jasperengine::editor{
         void clearPreviewCamera();
         Entity getPreviewCameraEntity() const;
         bool isPreviewCameraActive();
+
+        // Game view pass (edit mode): draws this scene through cameraEntity into target,
+        // without the editor layers and gizmos. The caller sizes the view and draws;
+        // endGameViewPass() hands the scene back to the editor camera, and the next
+        // editor draw needs activate() again.
+        void beginGameViewPass(Entity cameraEntity, Framebuffer* target);
+        void endGameViewPass();
         ToolsLayer* getToolsLayer();
         UILayer* getUILayer();
 

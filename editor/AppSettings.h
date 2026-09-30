@@ -19,6 +19,7 @@ struct PanelVisibilitySettings {
     bool animation = true;
     bool terrain = false;
     bool aiChat = true;
+    bool game = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
         return structure == other.structure
@@ -27,12 +28,27 @@ struct PanelVisibilitySettings {
             && output == other.output
             && animation == other.animation
             && terrain == other.terrain
-            && aiChat == other.aiChat;
+            && aiChat == other.aiChat
+            && game == other.game;
     }
 
     bool operator!=(const PanelVisibilitySettings& other) const {
         return !(*this == other);
     }
+};
+
+// Game view toolbar state
+struct GameViewSettings {
+    int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
+    float scale = 1.0f;          // zoom of the game image
+    bool maximizeOnPlay = false;
+    bool showStats = false;
+
+    bool operator==(const GameViewSettings& other) const {
+        return aspect == other.aspect && scale == other.scale
+            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats;
+    }
+    bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };
 
 // Compiler paths and job count are machine-specific, so they live in the project's
@@ -94,6 +110,7 @@ private:
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
     static PanelVisibilitySettings panelVisibility;
+    static GameViewSettings gameViewSettings;
 
     // AI assistant settings (API keys are intentionally not stored here)
     static ai::Settings aiSettings;
@@ -182,6 +199,9 @@ public:
     // Panels toggled from the View menu
     static PanelVisibilitySettings getPanelVisibility();
     static void setPanelVisibility(const PanelVisibilitySettings& visibility);
+
+    static GameViewSettings getGameViewSettings();
+    static void setGameViewSettings(const GameViewSettings& settings);
 
     // AI assistant settings
     static ai::Settings getAiSettings();
