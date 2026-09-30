@@ -757,8 +757,12 @@ void editor::App::showFooter(){
         return;
     }
 
+    // Unity greys the whole editor while in Play mode. Set here, before the
+    // dockspace and panels draw, so the tint lands in the same frame.
+    Theme::setPlayModeTint(project.isPlaySessionActive());
+
     const float fontScale = 0.9f;
-    const float footerHeight = (ImGui::GetTextLineHeight() * fontScale) + Theme::dpi(10.0f);
+    const float footerHeight = std::floor((ImGui::GetTextLineHeight() * fontScale) + Theme::dpi(8.0f));
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                             ImGuiWindowFlags_NoMove |
                             ImGuiWindowFlags_NoDocking |
@@ -773,158 +777,128 @@ void editor::App::showFooter(){
     ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, footerHeight));
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(8.0f, 6.0f)));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_Border));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.60f, 0.60f, 1.00f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(6.0f, 4.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Theme::dpi(ImVec2(6.0f, 0.0f)));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_TitleBg));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_Text));
 
     if (ImGui::Begin("##Footer", nullptr, flags)) {
         ImGui::SetWindowFontScale(fontScale);
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 winPos = ImGui::GetWindowPos();
+        const ImVec2 winSize = ImGui::GetWindowSize();
+        // Separator line along the top, like Unity's status bar.
+        drawList->AddLine(winPos, ImVec2(winPos.x + winSize.x, winPos.y),
+                          ImGui::GetColorU32(ImGuiCol_Border), Theme::dpi(1.0f));
 
         const float fps = footerFramerate;
         const float deltaMs = footerDeltaMs;
         const size_t queuedResources = Engine::getQueuedResourceCount();
         SceneProject* selectedScene = project.getSelectedScene();
         const bool hasSelectedScene = selectedScene != nullptr;
-        const bool isPlaying = hasSelectedScene && selectedScene->playState == ScenePlayState::PLAYING;
-        const bool isPaused = hasSelectedScene && selectedScene->playState == ScenePlayState::PAUSED;
         const bool isSaving = hasSelectedScene && selectedScene->playState == ScenePlayState::SAVING;
         const bool isLoading = hasSelectedScene && selectedScene->playState == ScenePlayState::LOADING;
-        const bool isStopped = !hasSelectedScene || selectedScene->playState == ScenePlayState::STOPPED;
         const bool isCancelling = hasSelectedScene && selectedScene->playState == ScenePlayState::CANCELLING;
         const bool isAnySaving = project.isAnySceneSaving();
-        const bool canPlayPause = hasSelectedScene && !isSaving && !isLoading && !isCancelling && (isPlaying || isPaused || (isStopped && !project.isAnyScenePlaying()));
-        const bool canStop = hasSelectedScene && !isSaving && !isStopped && !isCancelling;
-        const ImVec4 footerButtonHovered = ImVec4(1.0f, 1.0f, 1.0f, 0.08f);
-        const ImVec4 footerButtonActive = ImVec4(1.0f, 1.0f, 1.0f, 0.14f);
 
-        auto footerActionButton = [&](const char* label) -> bool {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, footerButtonHovered);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, footerButtonActive);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Theme::dpi(ImVec2(6.0f, 1.0f)));
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-
-            bool pressed = ImGui::Button(label);
-
-            ImGui::PopStyleVar(2);
-            ImGui::PopStyleColor(3);
-
-            return pressed;
-        };
-
-        // Left side: Status
-        bool statusShown = false;
+        // Right side, built first so the console message knows how much room it has.
+        std::vector<std::pair<std::string, ImVec4>> indicators;
+        const ImVec4 textCol = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        const ImVec4 dimCol = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+        const ImVec4 busyCol = ImVec4(0.48f, 0.68f, 0.98f, 1.0f);
         if (isSaving || isAnySaving) {
-            ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), ICON_FA_FLOPPY_DISK " Saving scene");
-            statusShown = true;
+            indicators.emplace_back(ICON_FA_FLOPPY_DISK " Saving scene", busyCol);
         } else if (isLoading) {
-            ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), ICON_FA_SPINNER " Loading scene");
-            statusShown = true;
+            indicators.emplace_back(ICON_FA_SPINNER " Loading scene", busyCol);
         } else if (isCancelling) {
-            ImGui::TextColored(ImVec4(0.8f, 0.7f, 0.4f, 1.0f), ICON_FA_STOP " Stopping");
-            statusShown = true;
-        } else if (queuedResources > 0) {
-            ImGui::Text(ICON_FA_SPINNER " Loading resources: %zu", queuedResources);
-            statusShown = true;
-        } else {
-             if (selectedScene) {
-                if (selectedScene->playState == ScenePlayState::PLAYING){
-                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), ICON_FA_PLAY " Playing");
-                    statusShown = true;
-                } else if (selectedScene->playState == ScenePlayState::PAUSED){
-                    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.4f, 1.0f), ICON_FA_PAUSE " Paused");
-                    statusShown = true;
-                }
-             }
+            indicators.emplace_back(ICON_FA_STOP " Stopping", Theme::Colors::WarningText);
         }
-
-        if (!statusShown) {
-            ImGui::TextDisabled(ICON_FA_CHECK " Ready");
+        if (queuedResources > 0) {
+            indicators.emplace_back(std::string(ICON_FA_SPINNER " Loading resources: ") + std::to_string(queuedResources), busyCol);
         }
-
-        // Middle: Scene Info & Selection
         if (selectedScene) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("|");
-            ImGui::SameLine();
-            ImGui::Text("Scene: %s", selectedScene->name.c_str());
+            indicators.emplace_back(std::string(ICON_FA_CUBE " ") + selectedScene->name, dimCol);
+            const size_t selectionCount = selectedScene->selectedEntities.size();
+            if (selectionCount == 1) {
+                indicators.emplace_back("1 GameObject selected", dimCol);
+            } else if (selectionCount > 1) {
+                indicators.emplace_back(std::to_string(selectionCount) + " GameObjects selected", dimCol);
+            }
+        }
+        char statText[160];
+        const Engine::FrameStats& frameStats = Engine::getFrameStats();
+        snprintf(statText, sizeof(statText), ICON_FA_GAUGE_HIGH " %.1f FPS  %.2f ms", fps, deltaMs);
+        indicators.emplace_back(statText, textCol);
+        snprintf(statText, sizeof(statText), ICON_FA_CUBES " %u  " ICON_FA_DRAW_POLYGON " %llu",
+                 frameStats.drawCalls, (unsigned long long)frameStats.triangles);
+        indicators.emplace_back(statText, textCol);
 
-            ImGui::SameLine();
-            ImGui::TextDisabled("|");
-            ImGui::SameLine();
+        const float gap = Theme::dpi(14.0f);
+        float indicatorsWidth = 0.0f;
+        for (const auto& indicator : indicators) {
+            indicatorsWidth += ImGui::CalcTextSize(indicator.first.c_str()).x + gap;
+        }
+        const float rightStart = ImGui::GetWindowContentRegionMax().x - indicatorsWidth + gap;
 
-            size_t selectionCount = selectedScene->selectedEntities.size();
-            if (selectionCount == 0) {
-                ImGui::TextDisabled("No Selection");
-            } else if (selectionCount == 1) {
-                ImGui::Text("Selected: 1 Entity");
-            } else {
-                ImGui::Text("Selected: %zu Entities", selectionCount);
+        // Left side: the newest Console message; a click brings up the Console.
+        LogType latestType = LogType::Info;
+        std::string latestMessage;
+        if (outputWindow && outputWindow->getLatestLog(latestType, latestMessage)) {
+            const size_t lineEnd = latestMessage.find_first_of("\r\n");
+            if (lineEnd != std::string::npos) latestMessage.resize(lineEnd);
+
+            const char* icon = ICON_FA_CIRCLE_INFO;
+            ImVec4 iconCol = Theme::Colors::LogIcon;
+            if (latestType == LogType::Warning) {
+                icon = ICON_FA_TRIANGLE_EXCLAMATION;
+                iconCol = Theme::Colors::WarningText;
+            } else if (latestType == LogType::Error) {
+                icon = ICON_FA_CIRCLE_EXCLAMATION;
+                iconCol = Theme::Colors::ErrorText;
+            } else if (latestType == LogType::Success) {
+                icon = ICON_FA_CIRCLE_CHECK;
+                iconCol = ImVec4(0.45f, 0.80f, 0.45f, 1.0f);
+            } else if (latestType == LogType::Build) {
+                icon = ICON_FA_HAMMER;
+                iconCol = ImVec4(0.55f, 0.72f, 0.90f, 1.0f);
             }
 
-            ImGui::SameLine();
-            ImGui::TextDisabled("|");
-            ImGui::SameLine();
-
-            ImGui::BeginDisabled(!canPlayPause);
-            if (footerActionButton(isPlaying ? ICON_FA_PAUSE " Pause" : (isPaused ? ICON_FA_PLAY " Resume" : ICON_FA_PLAY " Play"))) {
-                if (isPlaying) {
-                    project.pause(selectedScene->id);
-                } else if (isPaused) {
-                    project.resume(selectedScene->id);
-                } else {
-                    project.start(selectedScene->id);
-                }
+            const ImVec2 start = ImGui::GetCursorScreenPos();
+            const float maxWidth = std::max(0.0f, rightStart - ImGui::GetCursorPosX() - gap);
+            ImGui::InvisibleButton("##FooterConsole", ImVec2(maxWidth, ImGui::GetTextLineHeight()));
+            const bool hovered = ImGui::IsItemHovered();
+            if (ImGui::IsItemClicked()) {
+                outputWindow->requestFocus();
             }
-            ImGui::EndDisabled();
-
-            ImGui::SameLine();
-            ImGui::BeginDisabled(!canStop);
-            if (footerActionButton(ICON_FA_STOP " Stop")) {
-                project.stop(selectedScene->id);
+            if (hovered) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                ImGui::SetTooltip("Open the Console");
             }
-            ImGui::EndDisabled();
+            drawList->AddText(start, ImGui::GetColorU32(iconCol), icon);
+            const float textX = start.x + ImGui::CalcTextSize(icon).x + Theme::dpi(6.0f);
+            const ImVec4 clip(textX, start.y, start.x + maxWidth, start.y + ImGui::GetTextLineHeight());
+            drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(textX, start.y),
+                              ImGui::GetColorU32(hovered ? textCol : ImVec4(textCol.x, textCol.y, textCol.z, 0.85f)),
+                              latestMessage.c_str(), nullptr, 0.0f, &clip);
         }
 
-        // Right side: Performance stats
-        char fpsText[32];
-        char msText[32];
-        char drawText[48];
-        char triText[48];
-        sprintf(fpsText, ICON_FA_GAUGE_HIGH " %.1f FPS", fps);
-        sprintf(msText, ICON_FA_CLOCK " %.2f ms", deltaMs);
-        const Engine::FrameStats& frameStats = Engine::getFrameStats();
-        sprintf(drawText, ICON_FA_CUBES " %u", frameStats.drawCalls);
-        sprintf(triText, ICON_FA_DRAW_POLYGON " %llu", (unsigned long long)frameStats.triangles);
-
-        // Calculate width to position at right
-        float statsWidth = ImGui::CalcTextSize(fpsText).x + ImGui::CalcTextSize(msText).x
-            + ImGui::CalcTextSize(drawText).x + ImGui::CalcTextSize(triText).x + 70.0f;
-        float statsStartX = ImGui::GetWindowContentRegionMax().x - statsWidth;
-        if (statsStartX > ImGui::GetCursorPosX()) {
-            ImGui::SameLine(statsStartX);
+        // Right side: status indicators and render stats.
+        if (rightStart > ImGui::GetCursorPosX()) {
+            ImGui::SameLine(rightStart);
         } else {
             ImGui::SameLine();
         }
-
-        ImGui::Text("%s", fpsText);
-        ImGui::SameLine();
-        ImGui::TextDisabled("|");
-        ImGui::SameLine();
-        ImGui::Text("%s", msText);
-        ImGui::SameLine();
-        ImGui::TextDisabled("|");
-        ImGui::SameLine();
-        ImGui::Text("%s", drawText);
-        ImGui::SameLine();
-        ImGui::TextDisabled("|");
-        ImGui::SameLine();
-        ImGui::Text("%s", triText);
+        for (size_t i = 0; i < indicators.size(); i++) {
+            if (i > 0) ImGui::SameLine(0.0f, gap);
+            ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
+        }
     }
     ImGui::End();
 
     ImGui::PopStyleColor(2);
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(3);
 
     // Reserve space from the viewport work area so dockspace doesn't overlap
     viewport->WorkSize.y -= footerHeight;
@@ -1062,34 +1036,48 @@ void editor::App::buildDefaultLayout(){
     // WorkSize is what DockSpaceOverViewport() sizes the root node to, so the
     // caps below measure against the room the panels actually get.
     const ImVec2 viewport = ImGui::GetMainViewport()->WorkSize;
-    ImGuiID dock_id_left, dock_id_left_top, dock_id_left_bottom, dock_id_right, dock_id_middle, dock_id_middle_bottom;
+    ImGuiID dock_id_left, dock_id_left_top, dock_id_right, dock_id_middle, dock_id_middle_bottom;
     // dock_id_middle_top is a member: dockTabWindow() reads it after this runs.
 
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dockspace_id, viewport);
 
-    // Sizes in font sizes hold the same text at any DPI, but can add up to more
-    // than the window has, leaving a sibling with no room at all.
-    auto preferredSize = [](float fontSizes, float available, float maxShare){
-        return std::min(fontSizes * ImGui::GetFontSize(), available * maxShare);
+    // Unity's "Default" layout, as shares of the window: Inspector down the
+    // whole right side, Project/Console across the bottom of the rest,
+    // Hierarchy top-left and the Scene/Game tabs in the centre. Each share is
+    // held to a minimum in font sizes so small windows keep readable panels.
+    auto share = [](float fraction, float available, float minFontSizes){
+        return std::min(std::max(fraction * available, minFontSizes * ImGui::GetFontSize()), available * 0.45f);
     };
+    const float rightWidth = share(0.22f, viewport.x, 16);
+    const float leftWidth = share(0.18f, viewport.x, 12);
+    const float bottomHeight = share(0.30f, viewport.y, 10);
 
-    // Structure on the left, Resources split off its bottom.
-    ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.0f, &dock_id_left, &dock_id_middle);
-    ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(preferredSize(14, viewport.x, 0.3f), viewport.y));
-    ImGui::DockBuilderDockWindow(Structure::WINDOW_NAME, dock_id_left);
-
-    ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Down, 0.0f, &dock_id_left_bottom, &dock_id_left_top);
-    ImGui::DockBuilderSetNodeSize(dock_id_left_bottom, ImVec2(viewport.x, preferredSize(50, viewport.y, 0.65f)));
-    ImGui::DockBuilderDockWindow(ResourcesWindow::WINDOW_NAME, dock_id_left_bottom);
-
-    // Properties on the right.
-    ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
-    ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(preferredSize(19, viewport.x, 0.3f), viewport.y));
+    // Inspector on the right, full height; AI Chat and Terrain Editor behind it.
+    ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
+    ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
+    ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
     ImGui::DockBuilderDockWindow(Properties::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(AiChatWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
 
+    // Project, Console and Animation across the bottom, under Hierarchy + Scene.
+    ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
+    ImGui::DockBuilderSetNodeSize(dock_id_middle_bottom, ImVec2(viewport.x - rightWidth, bottomHeight));
+    ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
+    ImGui::DockBuilderDockWindow(ResourcesWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(OutputWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+
+    // Hierarchy top-left; the Scene tabs and Game view fill the centre.
+    ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
+    ImGui::DockBuilderSetNodeSize(dock_id_left_top, ImVec2(leftWidth, viewport.y - bottomHeight));
+    ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
+    ImGui::DockBuilderDockWindow(Structure::WINDOW_NAME, dock_id_left_top);
+    ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
+
+    // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
         ImGuiID windowId = ImHashStr(windowName);
         ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByID(windowId);
@@ -1101,12 +1089,10 @@ void editor::App::buildDefaultLayout(){
     };
     stampPanelDockOrder(Properties::WINDOW_NAME, 0);
     stampPanelDockOrder(AiChatWindow::WINDOW_NAME, 1);
-
-    // Output/Animation across the bottom; scenes fill the remaining centre.
-    ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_middle_top);
-    ImGui::DockBuilderSetNodeSize(dock_id_middle_bottom, ImVec2(viewport.x, preferredSize(10, viewport.y, 0.4f)));
-    ImGui::DockBuilderDockWindow(OutputWindow::WINDOW_NAME, dock_id_middle_bottom);
-    ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    stampPanelDockOrder(TerrainEditWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(ResourcesWindow::WINDOW_NAME, 0);
+    stampPanelDockOrder(OutputWindow::WINDOW_NAME, 1);
+    stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1361,7 +1347,9 @@ void editor::App::setup() {
     // Persist the docking layout next to settings.yaml at a stable absolute
     // path, so it survives restarts regardless of the working directory or
     // build type. (initializeSettings() above has already set the config dir.)
-    layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout.ini").string();
+    // Versioned so a layout saved before the Unity-style default (and window
+    // titles) is left behind instead of restored: bump when the default changes.
+    layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
     io.IniFilename = layoutIniPath.c_str();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -1380,20 +1368,24 @@ void editor::App::setup() {
     static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
     io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, 0.0f, &config, icon_ranges);
 
+    // Unity's UI text is small and dense; 15px Roboto gets close while staying
+    // crisp. Icons merge at the same size so they line up with the text.
+    const float uiFontSize = 15.0f;
+
     ImFontConfig config1;
-    strcpy(config1.Name, "roboto-regular (16 px)");
+    strcpy(config1.Name, "roboto-regular (15 px)");
     config1.FontDataOwnedByAtlas = false;
     config1.OversampleH = 2;
     config1.OversampleV = 2;
     config1.RasterizerMultiply = 1.5f;
-    ImFont* font1 = io.Fonts->AddFontFromMemoryTTF(roboto_regular_ttf, roboto_regular_ttf_len, 16.0f, &config1);
+    ImFont* font1 = io.Fonts->AddFontFromMemoryTTF(roboto_regular_ttf, roboto_regular_ttf_len, uiFontSize, &config1);
 
     ImFontConfig config2;
     config2.MergeMode = true;
-    config2.GlyphMinAdvanceX = 16.0f; // Use if you want to make the icon monospaced
+    config2.GlyphMinAdvanceX = uiFontSize; // Use if you want to make the icon monospaced
     config2.FontDataOwnedByAtlas = false;
     static const ImWchar icon_ranges2[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-    io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, 16.0f, &config2, icon_ranges2);
+    io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, uiFontSize, &config2, icon_ranges2);
 
     // Same Arabic subset the engine renders text with, so property fields and the scene
     // tree show Arabic instead of missing-glyph boxes. Since 1.92 the atlas loads glyphs
@@ -1406,7 +1398,7 @@ void editor::App::setup() {
     configArabic.OversampleH = 2;
     configArabic.OversampleV = 2;
     configArabic.RasterizerMultiply = 1.5f;
-    io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configArabic);
+    io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, uiFontSize, &configArabic);
 
     ImFontConfig config3;
     strcpy(config3.Name, "jetbrains-mono-regular");
@@ -2714,9 +2706,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
 }
 
 void editor::App::pushTabNotificationStyle(){
-    ImGui::PushStyleColor(ImGuiCol_Tab,        ImVec4(0.22f, 0.30f, 0.40f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_TabDimmed,   ImVec4(0.22f, 0.30f, 0.40f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_TabHovered,  ImVec4(0.26f, 0.35f, 0.46f, 1.00f));
+    // Unselected tab with unseen content: a muted take on the selection blue.
+    ImGui::PushStyleColor(ImGuiCol_Tab,        ImVec4(0.17f, 0.27f, 0.37f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_TabDimmed,   ImVec4(0.17f, 0.27f, 0.37f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered,  ImVec4(0.23f, 0.35f, 0.47f, 1.00f));
 }
 
 void editor::App::popTabNotificationStyle(){

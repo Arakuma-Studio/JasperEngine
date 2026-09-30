@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include "imgui.h"
@@ -21,40 +22,53 @@ namespace jasperengine::editor {
         LogType type;
         std::string message;
         float timestamp;
+        uint64_t id = 0;                     // increasing sequence number
     };
 
+    // The Console. Unity-style: a toolbar (Clear, Collapse, Clear on Play,
+    // Error Pause, search, Log/Warning/Error counters that filter), one row per
+    // message, and a details pane with the full text of the selected message.
     class OutputWindow {
     private:
-        ImGuiTextBuffer buf;
-        ImGuiTextFilter filter;
-        ImVector<int> lineOffsets;           // Start index of each line in buf (size = lines + 1)
+        // Severity buckets the counters and filters work on. Info and Success
+        // are "Log"; Build (compiler/shader output) folds into Log as well.
+        enum Severity { SEVERITY_LOG = 0, SEVERITY_WARNING = 1, SEVERITY_ERROR = 2, SEVERITY_COUNT = 3 };
+
+        struct Row {
+            size_t logIndex;                 // entry shown (the first occurrence when collapsed)
+            int count;                       // identical entries merged into this row
+        };
+
         std::vector<LogData> logs;
-        size_t storedLogLineCount;           // Raw log lines kept before wrapping/filtering
-        std::vector<LogType> lineTypes;      // One per displayed line
-        std::vector<char> lineHardBreak;     // 1 if displayed line ends with a hard newline, 0 if soft-wrapped
+        size_t storedLogLineCount;           // raw log lines kept, trimmed to MAX_STORED_LOG_LINES
+        uint64_t nextLogId;
+        size_t severityCounts[SEVERITY_COUNT];
 
         static constexpr size_t MAX_STORED_LOG_LINES = 10000;
 
+        std::vector<Row> rows;               // filtered (and collapsed) view of logs
         bool needsRebuild;
-        float menuWidth;
 
-        // Character-level selection (global indices into buf)
-        int selectionStart;                  // inclusive
-        int selectionEnd;                    // exclusive
-        bool hasStoredSelection;
-        bool isSelecting;                    // dragging selection?
+        ImGuiTextFilter filter;
+        bool searchMatchCase;
+        bool severityFilters[SEVERITY_COUNT];
 
-        bool typeFilters[5];
+        bool collapse;
+        bool clearOnPlay;
+        bool errorPause;
 
-        // Auto-scroll
-        bool autoScroll;                // when true, keep pinned to bottom
-        bool autoScrollLockedButton;    // the button state
-        float lastScrollY;              // track last scroll position to detect manual scrolling
-        bool userScrollInputPending;    // scroll input may be applied by ImGui on the next Begin()
-        bool pendingScrollToBottom;       // one-shot scroll from context menu
+        // Selection is kept by log id so it survives rebuilds and trimming.
+        uint64_t selectedLogId;
+        bool hasSelection;
+        bool scrollToSelection;
 
-        // Search options
-        bool searchMatchCase;           // enable case-sensitive search
+        bool autoScroll;                     // stick to the newest message
+        float detailsHeight;                 // logical px, the pane under the list
+
+        // Play-state tracking for Clear on Play and Error Pause.
+        bool wasPlaying;
+        uint64_t lastIdBeforePlay;           // newest id seen on the last frame not playing
+        bool pendingErrorPause;
 
         // Tab notification
         bool hasNotification;
@@ -62,28 +76,23 @@ namespace jasperengine::editor {
         bool focusRequested;
         bool isWindowVisible;
 
-        void rebuildBuffer(float wrapWidth); // accept wrap width
         static size_t countRawLines(const std::string& message);
         static size_t trimLeadingRawLines(std::string& message, size_t linesToTrim);
+        static Severity severityOf(LogType type);
         bool enforceStoredLineLimit();
-        void resetDisplayBuffer();
-
-        // Helpers for selection
-        int clampIndexToCodepointBoundary(int idx) const;
-        bool isWordChar(unsigned int cp);
-        void selectWordAt(int bufferIndex);
-        void selectLineAt(int bufferIndex);
-
-        // Text filter helper honoring match-case
+        void recountSeverities();
+        void rebuildRows();
         bool passTextFilter(const char* text) const;
+        const LogData* selectedLog() const;
 
-        std::string buildCopyText(int startInclusive, int endExclusive) const;
-        bool copySelectionToClipboard();
-        void copyAllToClipboard();
-        void selectAll();
+        void updatePlayState();
+        void showToolbar();
+        void showList(float height);
+        void showDetails();
+        void copyAllToClipboard() const;
 
     public:
-        static constexpr const char* WINDOW_NAME = "Output";
+        static constexpr const char* WINDOW_NAME = "Console";
 
         OutputWindow();
         void clear();
@@ -92,6 +101,11 @@ namespace jasperengine::editor {
         void show();
         void setOpen(bool open);
         bool isOpen() const;
+        // Opens the Console if needed and brings its tab to the front.
+        void requestFocus();
+
+        // Newest message, for the status bar. False when the Console is empty.
+        bool getLatestLog(LogType& type, std::string& message) const;
 
         // Return the most recent log entries as prefixed text (e.g. "[Error] ..."),
         // oldest-first. When onlyProblems is true, keep only Error/Warning/Build

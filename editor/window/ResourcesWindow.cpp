@@ -34,6 +34,7 @@
 #include "subsystem/MeshSystem.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
 #include "util/EntityPayload.h"
@@ -171,6 +172,7 @@ editor::ResourcesWindow::ResourcesWindow(Project* project, CodeEditor* codeEdito
     this->showDeleteConfirmation = false;
     this->stopThumbnailThread = false;
     memset(this->nameBuffer, 0, sizeof(this->nameBuffer));
+    memset(this->searchBuffer, 0, sizeof(this->searchBuffer));
 
     thumbnailThread = std::thread(&ResourcesWindow::thumbnailWorker, this);
 }
@@ -557,45 +559,94 @@ ImU32 editor::ResourcesWindow::fileSeparatorColor(const FileEntry& fe) const{
     }
 }
 
+// Flat toolbar button in the Unity style (no frame until hovered).
+static bool projectToolbarButton(const char* label, const char* tooltip = nullptr) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, editor::Theme::Colors::IconButtonHovered);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, editor::Theme::Colors::IconButtonActive);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    bool pressed = ImGui::Button(label);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    if (tooltip && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("%s", tooltip);
+    }
+    return pressed;
+}
+
+// Toolbar strip background with Unity's dark bottom edge; returns its height.
+static float drawToolbarStrip(float height) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 min = ImGui::GetCursorScreenPos();
+    ImVec2 max(min.x + ImGui::GetContentRegionAvail().x, min.y + height);
+    dl->AddRectFilled(min, max, ImGui::GetColorU32(editor::Theme::Colors::ToolbarBackground));
+    dl->AddLine(ImVec2(min.x, max.y - 0.5f), ImVec2(max.x, max.y - 0.5f), ImGui::GetColorU32(editor::Theme::Colors::ToolbarBorder), editor::Theme::dpi(1.0f));
+    return height;
+}
+
+void editor::ResourcesWindow::renderCreateMenuItems() {
+    if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Create Folder")){
+        isCreatingNewDirectory = true;
+        memset(nameBuffer, 0, sizeof(nameBuffer));
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import New Asset...")){
+        importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
+    }
+
+    if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN " Import Folder...")){
+        importExternalPaths(editor::FileDialogs::pickFolderDialogMultiple());
+    }
+}
+
 void editor::ResourcesWindow::renderHeader() {
-    ImGui::BeginDisabled(currentPath == project->getProjectPath());
-    if (ImGui::Button(ICON_FA_HOUSE)) {
-        scanDirectory(project->getProjectPath().string());
-        selectedFiles.clear();
+    // Unity's Project toolbar: the create menu on the left, search and the
+    // panel options on the right.
+    const float padX = Theme::dpi(4.0f);
+    const float padY = Theme::dpi(2.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(6.0f), Theme::dpi(2.0f)));
+    const float frameH = ImGui::GetFrameHeight();
+    const ImVec2 barMin = ImGui::GetCursorScreenPos();
+    const float barW = ImGui::GetContentRegionAvail().x;
+    const float barH = drawToolbarStrip(frameH + padY * 2.0f);
+
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x + padX, barMin.y + padY));
+    if (projectToolbarButton(ICON_FA_PLUS " " ICON_FA_CARET_DOWN, "Create")) {
+        ImGui::OpenPopup("##ProjectCreateMenu");
     }
-    if (currentPath != project->getProjectPath() && ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
-            handleInternalDragAndDrop(project->getProjectPath());
-        }
-        ImGui::EndDragDropTarget();
+    if (ImGui::BeginPopup("##ProjectCreateMenu")) {
+        renderCreateMenuItems();
+        ImGui::EndPopup();
     }
+
+    const float gearW = ImGui::CalcTextSize(ICON_FA_ELLIPSIS_VERTICAL).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
     ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_ANGLE_LEFT)) {
-        if (!currentPath.empty() && currentPath != project->getProjectPath()) {
-            fs::path parentPath = currentPath.parent_path();
-            currentPath = parentPath;
-            scanDirectory(currentPath);
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
+    if (UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW)) {
+        std::string trimmed = searchBuffer;
+        trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+        trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
+        if (trimmed != searchText) {
+            searchText = trimmed;
             selectedFiles.clear();
+            scanDirectory(currentPath);
         }
     }
-    if (currentPath != project->getProjectPath() && ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
-            handleInternalDragAndDrop(currentPath.parent_path());
-        }
-        ImGui::EndDragDropTarget();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImVec2 pathDisplaySize = ImVec2(-ImGui::CalcTextSize(ICON_FA_GEAR).x - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
-    renderPathBreadcrumb(pathDisplaySize);
-    ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_GEAR)) {
+    ImGui::SameLine(0.0f, Theme::dpi(4.0f));
+    if (projectToolbarButton(ICON_FA_ELLIPSIS_VERTICAL, "Project panel options")) {
         ImGui::OpenPopup("SettingsPopup");
     }
+    ImGui::PopStyleVar();
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x, barMin.y + barH));
+    ImGui::Dummy(ImVec2(0.0f, 0.0f));
 
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(300.0f), 0.0f));
     if (ImGui::BeginPopup("SettingsPopup")) {
-        ImGui::Text("Settings");
+        ImGui::Text("Project Panel");
         ImGui::SameLine();
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(2.0f), ImGui::GetStyle().FramePadding.y));
@@ -629,20 +680,10 @@ void editor::ResourcesWindow::renderHeader() {
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Icon size");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderInt("##IconSize", &iconSize, 16.0f, THUMBNAIL_SIZE)) {
-                AppSettings::setResourcesIconSize(iconSize);
-                AppSettings::saveSettings();
-            }
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
             ImGui::Text("Layout");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            const char* layoutNames[] = { "Auto", "Grid", "Split (files only)", "Split" };
+            const char* layoutNames[] = { "Auto", "One Column", "Two Column (files only)", "Two Column" };
             int layoutIndex = static_cast<int>(currentLayout);
             if (ImGui::Combo("##Layout", &layoutIndex, layoutNames, IM_ARRAYSIZE(layoutNames))) {
                 currentLayout = static_cast<LayoutType>(layoutIndex);
@@ -655,9 +696,9 @@ void editor::ResourcesWindow::renderHeader() {
             ImGui::Text("Item view");
             ImGui::TableSetColumnIndex(1);
             ItemViewStyle prevStyle = itemViewStyle;
-            if (ImGui::RadioButton("Classic", itemViewStyle == ItemViewStyle::CLASSIC)) itemViewStyle = ItemViewStyle::CLASSIC;
+            if (ImGui::RadioButton("Icons", itemViewStyle == ItemViewStyle::CLASSIC)) itemViewStyle = ItemViewStyle::CLASSIC;
             ImGui::SameLine();
-            if (ImGui::RadioButton("Card", itemViewStyle == ItemViewStyle::CARD)) itemViewStyle = ItemViewStyle::CARD;
+            if (ImGui::RadioButton("Cards", itemViewStyle == ItemViewStyle::CARD)) itemViewStyle = ItemViewStyle::CARD;
             if (itemViewStyle != prevStyle) {
                 AppSettings::setResourcesItemViewStyle(static_cast<int>(itemViewStyle));
                 AppSettings::saveSettings();
@@ -670,17 +711,74 @@ void editor::ResourcesWindow::renderHeader() {
     }
 }
 
+void editor::ResourcesWindow::renderBottomBar() {
+    // Unity's bottom strip: the selected asset's path on the left, the icon
+    // size slider on the right.
+    const float padX = Theme::dpi(6.0f);
+    const float padY = Theme::dpi(2.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(4.0f), Theme::dpi(1.0f)));
+    const float frameH = ImGui::GetFrameHeight();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 barMin = ImGui::GetCursorScreenPos();
+    const float barW = ImGui::GetContentRegionAvail().x;
+    const float barH = frameH + padY * 2.0f;
+    dl->AddRectFilled(barMin, ImVec2(barMin.x + barW, barMin.y + barH), ImGui::GetColorU32(Theme::Colors::ToolbarBackground));
+    dl->AddLine(ImVec2(barMin.x, barMin.y + 0.5f), ImVec2(barMin.x + barW, barMin.y + 0.5f), ImGui::GetColorU32(Theme::Colors::ToolbarBorder), Theme::dpi(1.0f));
+
+    const float sliderW = std::min(Theme::dpi(90.0f), barW * 0.3f);
+    const float sliderX = barMin.x + barW - padX - sliderW;
+
+    std::string status;
+    TextureRender* statusIcon = nullptr;
+    if (selectedFiles.size() == 1) {
+        const std::string& name = *selectedFiles.begin();
+        status = (currentPath / name).lexically_relative(project->getProjectPath()).generic_string();
+        for (const FileEntry& f : files) {
+            if (f.name == name) { statusIcon = f.icon; break; }
+        }
+    } else if (selectedFiles.size() > 1) {
+        status = std::to_string(selectedFiles.size()) + " items selected";
+    }
+    if (!status.empty()) {
+        float x = barMin.x + padX;
+        const float lineH = ImGui::GetTextLineHeight();
+        const float textY = barMin.y + (barH - lineH) * 0.5f;
+        if (ImTextureID tex = Backend::getImGuiTexture(statusIcon); statusIcon && tex != ImTextureID{}) {
+            dl->AddImage(tex, ImVec2(x, textY), ImVec2(x + lineH, textY + lineH));
+            x += lineH + Theme::dpi(4.0f);
+        }
+        ImGui::RenderTextEllipsis(dl, ImVec2(x, textY), ImVec2(sliderX - padX, textY + lineH), sliderX - padX, status.c_str(), nullptr, nullptr);
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(sliderX, barMin.y + padY));
+    ImGui::SetNextItemWidth(sliderW);
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, Theme::dpi(8.0f));
+    ImGui::SliderInt("##IconSize", &iconSize, MIN_GRID_ICON_SIZE, THUMBNAIL_SIZE, "", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::PopStyleVar();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("Icon size");
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        AppSettings::setResourcesIconSize(iconSize);
+        AppSettings::saveSettings();
+    }
+    ImGui::PopStyleVar();
+    ImGui::SetCursorScreenPos(ImVec2(barMin.x, barMin.y + barH));
+    ImGui::Dummy(ImVec2(0.0f, 0.0f));
+}
+
 // ImGui hides label text after "##", so breadcrumb items (directory names that
 // may contain "##") draw their text manually over a label-less widget; callers
 // wrap these in PushID for uniqueness
-static bool verbatimTextButton(const std::string& label) {
+static bool verbatimTextButton(const std::string& label, bool current) {
     const char* begin = label.c_str();
     const char* end = begin + label.size();
     ImVec2 textSize = ImGui::CalcTextSize(begin, end);
     ImVec2 padding = ImGui::GetStyle().FramePadding;
     ImVec2 pos = ImGui::GetCursorScreenPos();
     bool pressed = ImGui::Button("##BreadcrumbItem", ImVec2(textSize.x + padding.x * 2.0f, textSize.y + padding.y * 2.0f));
-    ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + padding.x, pos.y + padding.y), ImGui::GetColorU32(ImGuiCol_Text), begin, end);
+    ImU32 col = ImGui::GetColorU32(current || ImGui::IsItemHovered() ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + padding.x, pos.y + padding.y), col, begin, end);
     return pressed;
 }
 
@@ -703,11 +801,14 @@ static void openInFileManager(const fs::path& dir) {
 }
 
 void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
+    // Unity's path bar over the grid: "project > assets > sprites", each
+    // segment clickable and a drop target.
     fs::path rootPath = project->getProjectPath();
 
-    // Segments between the project root and the current directory, each paired
-    // with its absolute path so it can be clicked and used as a drop target
     std::vector<std::pair<std::string, fs::path>> segments;
+    std::string rootName = rootPath.filename().string();
+    if (rootName.empty()) rootName = rootPath.string();
+    segments.emplace_back(rootName, rootPath);
     if (!currentPath.empty() && currentPath != rootPath && currentPath.string().find(rootPath.string()) == 0) {
         fs::path accumulated = rootPath;
         for (const auto& part : currentPath.lexically_relative(rootPath)) {
@@ -722,21 +823,33 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
     fs::path navigateTo;
     fs::path dropTarget;
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(50, 50, 50, 255));
+    ImVec2 barMin = ImGui::GetCursorScreenPos();
     ImGui::BeginChild("##ResourcesPath", size, false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddLine(ImVec2(barMin.x, barMin.y + size.y - 0.5f), ImVec2(barMin.x + ImGui::GetWindowWidth(), barMin.y + size.y - 0.5f),
+                ImGui::GetColorU32(Theme::Colors::ToolbarBorder), Theme::dpi(1.0f));
 
-    float framePaddingY = ImGui::GetStyle().FramePadding.y;
-    float separatorWidth = ImGui::CalcTextSize("/").x;
-    auto segmentWidth = [](const std::string& name) {
-        return ImGui::CalcTextSize(name.c_str()).x;
+    const char* separator = ICON_FA_ANGLE_RIGHT;
+    const float framePadX = Theme::dpi(3.0f);
+    float separatorWidth = ImGui::CalcTextSize(separator).x + framePadX * 2.0f;
+    auto segmentWidth = [&](const std::string& name) {
+        return ImGui::CalcTextSize(name.c_str()).x + framePadX * 2.0f;
     };
+
+    ImGui::SetCursorPos(ImVec2(Theme::dpi(6.0f), 0.0f));
+    ImGui::AlignTextToFramePadding();
+
+    if (!searchText.empty()) {
+        ImGui::TextDisabled("Search results for \"%s\" in", searchText.c_str());
+        ImGui::SameLine();
+    }
 
     // Fit as many trailing segments as possible; earlier ones collapse into "..."
     size_t firstVisible = segments.size();
     float usedWidth = 0.0f;
     float availableWidth = ImGui::GetContentRegionAvail().x;
     for (size_t i = segments.size(); i-- > 0;) {
-        float width = separatorWidth + segmentWidth(segments[i].first);
+        float width = segmentWidth(segments[i].first) + (i > 0 ? separatorWidth : 0.0f);
         float reserved = (i > 0) ? (separatorWidth + segmentWidth("...")) : 0.0f;
         if (firstVisible < segments.size() && (usedWidth + width + reserved) > availableWidth) {
             break;
@@ -746,17 +859,13 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::Colors::IconButtonHovered);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::Colors::IconButtonActive);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-    ImGui::SetCursorPosY(framePaddingY);
-
-    if (segments.empty()) {
-        ImGui::TextUnformatted("/");
-    }
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePadX, ImGui::GetStyle().FramePadding.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 
     if (firstVisible > 0) {
-        ImGui::TextDisabled("/");
-        ImGui::SameLine();
         if (ImGui::Button("...##BreadcrumbMore")) {
             ImGui::OpenPopup("##BreadcrumbMorePopup");
         }
@@ -765,11 +874,14 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
 
     bool segmentTooltipShown = false;
     for (size_t i = firstVisible; i < segments.size(); i++) {
-        ImGui::TextDisabled("/");
-        ImGui::SameLine();
+        if (i > firstVisible || firstVisible > 0) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled(" %s ", separator);
+            ImGui::SameLine();
+        }
         ImGui::PushID(static_cast<int>(i));
         bool isCurrent = (segments[i].second == currentPath);
-        if (verbatimTextButton(segments[i].first) && !isCurrent) {
+        if (verbatimTextButton(segments[i].first, isCurrent) && (!isCurrent || !searchText.empty())) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
@@ -778,7 +890,7 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
             }
             ImGui::EndDragDropTarget();
         }
-        if (ImGui::IsItemHovered()) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             ImGui::SetTooltip("%s", segments[i].second.string().c_str());
             segmentTooltipShown = true;
         }
@@ -786,8 +898,8 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
         ImGui::SameLine();
     }
 
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(3);
 
     if (ImGui::BeginPopup("##BreadcrumbMorePopup")) {
         for (size_t i = 0; i < firstVisible; i++) {
@@ -801,12 +913,12 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
     }
 
     ImGui::EndChild();
-    if (!segmentTooltipShown && !currentPath.empty()) {
-        ImGui::SetItemTooltip("%s", currentPath.string().c_str());
-    }
-    ImGui::PopStyleColor();
+    (void)segmentTooltipShown;
 
     if (!navigateTo.empty()) {
+        // Clicking a path segment leaves search mode, like Unity.
+        searchText.clear();
+        searchBuffer[0] = '\0';
         scanDirectory(navigateTo);
         selectedFiles.clear();
     }
@@ -818,18 +930,19 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
 void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     // Stored iconSize stays logical; layout/draw use the current window DPI.
     const float uiIconSize = static_cast<float>(iconSize) * Theme::dpiScale();
-    const float uiIconPadding = 1.5f * uiIconSize;
+    const bool useCardView = (itemViewStyle == ItemViewStyle::CARD);
+    // Unity turns the grid into a list at the smallest icon size.
+    const bool useListView = !useCardView && iconSize <= MIN_GRID_ICON_SIZE;
 
     // --- Common grid sizing -------------------------------------------------
-    float columnWidth = uiIconSize + uiIconPadding;
+    // Unity tiles: the icon plus room for a short name under it.
+    float columnWidth = useCardView ? uiIconSize * 2.5f : std::max(uiIconSize * 1.3f, Theme::dpi(76.0f));
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    int columns = static_cast<int>(availableWidth / columnWidth);
+    int columns = useListView ? 1 : static_cast<int>(availableWidth / columnWidth);
     if (columns < 1) columns = 1;
 
-    const bool useCardView = (itemViewStyle == ItemViewStyle::CARD);
-
     // Card view gets a bit more vertical padding than classic.
-    ImVec2 cellPadding = Theme::dpi(useCardView ? ImVec2(6.0f, 8.0f) : ImVec2(8.0f, 8.0f));
+    ImVec2 cellPadding = Theme::dpi(useCardView ? ImVec2(6.0f, 8.0f) : (useListView ? ImVec2(0.0f, 0.0f) : ImVec2(2.0f, 6.0f)));
     float  totalTableWidth = availableWidth;
 
     ImVec2 scrollRegionMin = ImGui::GetWindowPos();
@@ -905,21 +1018,18 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
 
             float cellWidth = ImGui::GetContentRegionAvail().x;
 
-            // --- Classic-only metrics --------------------------------------
-            float itemSpacingY = 0.0f;
-            ImVec2 textSizeClassic(0, 0);
-            ImVec2 selectableSizeClassic(0, 0);
-
             // --- Choose item size per style --------------------------------
+            // Classic tile: icon, then a one-line name in a selection pill.
+            const float namePadY = Theme::dpi(1.0f);
+            const float nameHeight = lineHeight + namePadY * 2.0f;
+            const float iconNameGap = Theme::dpi(3.0f);
             ImVec2 itemSize;
             if (useCardView){
                 itemSize = ImVec2(cellWidth, cardHeight);
+            }else if (useListView){
+                itemSize = ImVec2(cellWidth, lineHeight + Theme::dpi(4.0f));
             }else{
-                itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
-                textSizeClassic = ImGui::CalcTextSize(file.displayName.c_str(), nullptr, true, cellWidth);
-                float cellHeight = uiIconSize + itemSpacingY + textSizeClassic.y;
-                selectableSizeClassic = ImVec2(cellWidth, cellHeight);
-                itemSize = selectableSizeClassic;
+                itemSize = ImVec2(cellWidth, uiIconSize + iconNameGap + nameHeight);
             }
 
             // --- Marquee overlap before item creation ----------------------
@@ -960,11 +1070,15 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 itemPressed = ImGui::InvisibleButton("##card", itemSize);
                 hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
             }else{
-                ImGui::BeginGroup(); // classic uses a group
+                // Classic and list draw their own highlight (see below).
+                ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
                 itemPressed = ImGui::Selectable("",
                                                 isSelected,
                                                 ImGuiSelectableFlags_AllowDoubleClick,
                                                 itemSize);
+                ImGui::PopStyleColor(3);
                 hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
             }
 
@@ -1209,30 +1323,77 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
 
             }else{
                 // ------------------------------------------------------------
-                // Classic layout: icon + wrapped text centered
+                // Unity tile (or list row): icon, name with ellipsis, blue
+                // selection behind the icon and the name.
                 // ------------------------------------------------------------
-                float iconOffsetX = (cellWidth - uiIconSize) * 0.5f;
-                float iconOffsetY = itemSize.y + itemSpacingY;
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                const float alpha = notInProject ? 0.4f : 1.0f;
+                const ImU32 selectionCol = ImGui::GetColorU32(windowFocused ? Theme::Colors::Selection : Theme::Colors::SelectionUnfocused);
+                const ImU32 hoverCol = ImGui::GetColorU32(Theme::Colors::IconButtonHovered);
+                const ImU32 tintCol = IM_COL32(255, 255, 255, (int)(255 * alpha));
+                const float rounding = Theme::dpi(3.0f);
 
-                // Move back up into the selectable rect
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + iconOffsetX);
-                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - iconOffsetY);
+                if (useListView){
+                    if (isSelected) drawList->AddRectFilled(itemMin, itemMax, selectionCol);
+                    else if (hovered) drawList->AddRectFilled(itemMin, itemMax, hoverCol);
+                    const float rowH = itemMax.y - itemMin.y;
+                    const float small = std::min(lineHeight, rowH);
+                    float w = small, h = small;
+                    if (dispW > 0.0f && dispH > 0.0f){
+                        float scale = std::min(small / dispW, small / dispH);
+                        w = dispW * scale;
+                        h = dispH * scale;
+                    }
+                    ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (small - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
+                    if (fileIconImage != ImTextureID{}){
+                        drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                    }
+                    ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + small, itemMin.y + (rowH - lineHeight) * 0.5f);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
+                    ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
+                                              file.displayName.c_str(), nullptr, nullptr);
+                    ImGui::PopStyleColor();
+                }else{
+                    const ImVec2 iconBoxMin(itemMin.x + (cellWidth - uiIconSize) * 0.5f, itemMin.y);
+                    const ImVec2 iconBoxMax(iconBoxMin.x + uiIconSize, iconBoxMin.y + uiIconSize);
+                    const float pad = Theme::dpi(2.0f);
+                    if (isSelected){
+                        ImVec4 tint = windowFocused ? Theme::Colors::Selection : Theme::Colors::SelectionUnfocused;
+                        tint.w = 0.55f;
+                        drawList->AddRectFilled(ImVec2(iconBoxMin.x - pad, iconBoxMin.y - pad), ImVec2(iconBoxMax.x + pad, iconBoxMax.y + pad),
+                                                ImGui::GetColorU32(tint), rounding);
+                    }else if (hovered){
+                        drawList->AddRectFilled(ImVec2(iconBoxMin.x - pad, iconBoxMin.y - pad), ImVec2(iconBoxMax.x + pad, iconBoxMax.y + pad),
+                                                hoverCol, rounding);
+                    }
 
-                // Center the scaled thumbnail inside the icon box
-                float offsetX = (uiIconSize - dispW) * 0.5f;
-                float offsetY = (uiIconSize - dispH) * 0.5f;
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
-                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
-                if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
-                Widgets::image(fileIconImage, ImVec2(dispW, dispH));
+                    // Center the scaled thumbnail inside the icon box
+                    ImVec2 imgMin(iconBoxMin.x + (uiIconSize - dispW) * 0.5f, iconBoxMin.y + (uiIconSize - dispH) * 0.5f);
+                    if (fileIconImage != ImTextureID{}){
+                        drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                    }
 
-                float textOffsetX = (cellWidth * 0.5f) - (textSizeClassic.x * 0.5f);
-                if (textOffsetX < 0) textOffsetX = 0;
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textOffsetX);
-                ImGui::TextWrapped("%s", file.displayName.c_str());
-                if (notInProject) ImGui::PopStyleVar();
+                    // One line, centred when it fits, cut with an ellipsis when not
+                    const char* label = file.displayBaseName.c_str();
+                    const ImVec2 labelSize = ImGui::CalcTextSize(label);
+                    const float nameTop = iconBoxMax.y + iconNameGap;
+                    const float maxTextW = cellWidth - Theme::dpi(8.0f);
+                    const bool fits = labelSize.x <= maxTextW;
+                    const float textW = fits ? labelSize.x : maxTextW;
+                    const float textX = itemMin.x + (cellWidth - textW) * 0.5f;
+                    if (isSelected){
+                        drawList->AddRectFilled(ImVec2(textX - Theme::dpi(3.0f), nameTop), ImVec2(textX + textW + Theme::dpi(3.0f), nameTop + nameHeight),
+                                                selectionCol, rounding);
+                    }
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
+                    ImGui::RenderTextEllipsis(drawList, ImVec2(textX, nameTop + namePadY), ImVec2(textX + textW, nameTop + nameHeight),
+                                              textX + textW, label, nullptr, &labelSize);
+                    ImGui::PopStyleColor();
+                }
 
-                ImGui::EndGroup(); // classic group
+                if (hovered && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
+                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                }
             }
 
             // --- Selection behavior (unified) ------------------------------
@@ -1337,21 +1498,9 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     }
 
     if (ImGui::BeginPopup("ResourcesContextMenu")){
-        if (ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import Files")){
-            importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
-        }
-
-        if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN " Import Folders")){
-            importExternalPaths(editor::FileDialogs::pickFolderDialogMultiple());
-        }
+        renderCreateMenuItems();
 
         ImGui::Separator();
-
-        if (ImGui::MenuItem(ICON_FA_FOLDER " New Folder")){
-            isCreatingNewDirectory = true;
-            memset(nameBuffer, 0, sizeof(nameBuffer));
-            ImGui::CloseCurrentPopup();
-        }
 
         if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
             pasteFiles(currentPath);
@@ -1490,6 +1639,13 @@ const std::vector<fs::path>& editor::ResourcesWindow::treeSubdirectories(const f
     // A failed or truncated listing keeps the previous children, and leaves writeTime
     // stale so the next check retries instead of the node staying empty for good
     if (!ec) {
+        // Alphabetical, ignoring case, like the grid
+        std::sort(subDirs.begin(), subDirs.end(), [](const fs::path& a, const fs::path& b) {
+            std::string la = a.filename().string(), lb = b.filename().string();
+            std::transform(la.begin(), la.end(), la.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::transform(lb.begin(), lb.end(), lb.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return la < lb;
+        });
         cached.writeTime = writeTime;
         cached.subDirs = std::move(subDirs);
     }
@@ -1526,15 +1682,6 @@ void editor::ResourcesWindow::renderDirectoryTree(const fs::path& rootPath) {
     // Use unique ID to prevent ImGui tree node confusion
     ImGui::PushID(rootFullPath.c_str());
 
-    // Get the unique ID for this tree node
-    ImGuiID node_id = ImGui::GetID("##node");
-
-    // Query the current open state from ImGui's state storage
-    bool is_open = ImGui::GetStateStorage()->GetInt(node_id, 0) != 0;
-
-    // Select the appropriate icon: open folder if node is open OR selected, closed folder otherwise
-    const char* icon = (is_open || isRootSelected) ? ICON_FA_FOLDER_OPEN : ICON_FA_FOLDER;
-
     // Same list drives the leaf test and the recursion, so a folder holding only
     // dot-directories no longer gets an expander that opens onto nothing
     const std::vector<fs::path>& subDirs = treeSubdirectories(rootPath);
@@ -1543,16 +1690,33 @@ void editor::ResourcesWindow::renderDirectoryTree(const fs::path& rootPath) {
     if (subDirs.empty()) {
         rootFlags |= ImGuiTreeNodeFlags_Leaf;
     }
+    rootFlags |= ImGuiTreeNodeFlags_SpanFullWidth;
 
-    // Render the current directory node with the selected icon
-    bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s %s", icon, rootDisplayName.c_str());
+    // The label leaves room for the folder icon, drawn after as the same
+    // texture the grid uses (Unity shows one folder icon in both panes).
+    const float iconSize = ImGui::GetFontSize();
+    const float spaceWidth = std::max(1.0f, ImGui::CalcTextSize(" ").x);
+    const std::string iconGap(static_cast<size_t>(std::ceil((iconSize + Theme::dpi(6.0f)) / spaceWidth)), ' ');
+    const ImVec2 nodePos = ImGui::GetCursorScreenPos();
+    bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s%s", iconGap.c_str(), rootDisplayName.c_str());
+    const bool toggledOpen = ImGui::IsItemToggledOpen();
 
-    // Single click only selects the node; double click navigates to it
-    if (ImGui::IsItemClicked()) {
-        treeSelectedPath = rootPath;
+    ImTextureID folderTex = Backend::getImGuiTexture(folderIcon.getRender());
+    if (folderTex != ImTextureID{}) {
+        const ImVec2 iconMin(nodePos.x + ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.x * 2.0f,
+                             nodePos.y + (ImGui::GetItemRectSize().y - iconSize) * 0.5f);
+        ImGui::GetWindowDrawList()->AddImage(folderTex, iconMin, ImVec2(iconMin.x + iconSize, iconMin.y + iconSize));
     }
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        scanDirectory(rootPath);
+
+    // A click shows the folder in the grid, as in Unity (the arrow only expands)
+    if (ImGui::IsItemClicked() && !toggledOpen) {
+        treeSelectedPath = rootPath;
+        if (rootPath != currentPath || !searchText.empty()) {
+            searchText.clear();
+            searchBuffer[0] = '\0';
+            scanDirectory(rootPath);
+            selectedFiles.clear();
+        }
     }
 
     // Handle drag and drop target
@@ -1601,17 +1765,13 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
         lastWriteTime = {};
     }
 
-    TextureRender* folderIconH = folderIcon.getRender();
-    TextureRender* fileIconH = fileIcon.getRender();
-    TextureRender* sceneIconH = sceneIcon.getRender();
-    TextureRender* entityIconH = entityIcon.getRender();
-    TextureRender* sourceIconH = sourceIcon.getRender();
-    TextureRender* headerIconH = headerIcon.getRender();
-    TextureRender* luaIconH = luaIcon.getRender();
-    TextureRender* audioIconH = audioIcon.getRender();
-    TextureRender* fontIconH = fontIcon.getRender();
-
     files.clear();
+
+    // A search lists matches from this folder and everything below it instead.
+    if (!searchText.empty()) {
+        collectSearchResults();
+        return;
+    }
 
     ec.clear();
     fs::directory_iterator it(currentPath, fs::directory_options::skip_permission_denied, ec);
@@ -1630,71 +1790,114 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
             continue;
         }
 
-        FileEntry fileEntry;
-        fileEntry.name = entry.path().filename().string();
+        files.push_back(makeFileEntry(entry, entry.path().filename().string()));
+    }
+}
+
+editor::FileEntry editor::ResourcesWindow::makeFileEntry(const fs::directory_entry& entry, const std::string& name) {
+    FileEntry fileEntry;
+    fileEntry.name = name;
+    std::error_code entryEc;
+    fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
+
+    const std::string fileName = entry.path().filename().string();
+    fileEntry.displayName = BidiText::toVisual(fileName);
+    std::string baseName = fileName;
+    if (!fileEntry.isDirectory){
+        size_t dotPos = baseName.rfind('.');
+        if (dotPos != std::string::npos && dotPos > 0)
+            baseName = baseName.substr(0, dotPos);
+    }
+    fileEntry.displayBaseName = BidiText::toVisual(baseName);
+    fileEntry.icon = fileEntry.isDirectory ? folderIcon.getRender() : fileIcon.getRender();
+    fileEntry.hasThumbnail = false;
+
+    if (!fileEntry.isDirectory) {
+        fileEntry.extension = entry.path().extension().string();
+        if (Util::isImageFile(fileEntry.extension)){
+            fileEntry.type = FileType::IMAGE;
+        }else if (Util::isSceneFile(fileEntry.extension)){
+            fileEntry.type = FileType::SCENE;
+            fileEntry.icon = sceneIcon.getRender();
+        }else if (Util::isMaterialFile(fileEntry.extension)){
+            fileEntry.type = FileType::MATERIAL;
+        }else if (Util::isBundleFile(fileEntry.extension)){
+            fileEntry.type = FileType::BUNDLE;
+            fileEntry.icon = entityIcon.getRender();
+        }else if (Util::isModelFile(fileEntry.extension)){
+            fileEntry.type = FileType::MODEL;
+        }else if (Util::isLuaFile(fileEntry.extension)){
+            fileEntry.type = FileType::LUA;
+            fileEntry.icon = luaIcon.getRender();
+        }else if (Util::isHeaderFile(fileEntry.extension)){
+            fileEntry.type = FileType::HEADER;
+            fileEntry.icon = headerIcon.getRender();
+        }else if (Util::isSourceFile(fileEntry.extension)){
+            fileEntry.type = FileType::SOURCE;
+            fileEntry.icon = sourceIcon.getRender();
+        }else if (Util::isAudioFile(fileEntry.extension)){
+            fileEntry.type = FileType::AUDIO;
+            fileEntry.icon = audioIcon.getRender();
+        }else if (Util::isFontFile(fileEntry.extension)){
+            fileEntry.type = FileType::FONT;
+            fileEntry.icon = fontIcon.getRender();
+        }
+
+        if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL) {
+            queueThumbnailGeneration(entry.path(), fileEntry.type);
+        }
+    } else {
+        fileEntry.extension = "";
+    }
+
+    return fileEntry;
+}
+
+void editor::ResourcesWindow::collectSearchResults() {
+    // Case-insensitive substring match on the file name, like Unity's search
+    // box. Entry names are paths relative to currentPath, so every
+    // currentPath / name use (open, drag, delete, rename) keeps working.
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
+    };
+    const std::string needle = lower(searchText);
+    constexpr size_t MAX_SEARCH_RESULTS = 2000;
+
+    std::error_code ec;
+    fs::recursive_directory_iterator it(currentPath, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator end;
+    while (!ec && it != end && files.size() < MAX_SEARCH_RESULTS) {
+        const fs::directory_entry entry = *it;
+        const std::string fileName = entry.path().filename().string();
         std::error_code entryEc;
-        fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
-
-        fileEntry.displayName = BidiText::toVisual(fileEntry.name);
-        std::string baseName = fileEntry.name;
-        if (!fileEntry.isDirectory){
-            size_t dotPos = baseName.rfind('.');
-            if (dotPos != std::string::npos)
-                baseName = baseName.substr(0, dotPos);
+        const bool isDir = entry.is_directory(entryEc) && !entryEc;
+        if (fileName.empty() || fileName[0] == '.') {
+            if (isDir) it.disable_recursion_pending();
+            it.increment(ec);
+            continue;
         }
-        fileEntry.displayBaseName = BidiText::toVisual(baseName);
-        fileEntry.icon = fileEntry.isDirectory ? folderIconH : fileIconH;
-        fileEntry.hasThumbnail = false;
-
-        if (!fileEntry.isDirectory) {
-            fileEntry.extension = entry.path().extension().string();
-            if (Util::isImageFile(fileEntry.extension)){
-                fileEntry.type = FileType::IMAGE;
-            }else if (Util::isSceneFile(fileEntry.extension)){
-                fileEntry.type = FileType::SCENE;
-                fileEntry.icon = sceneIconH;
-            }else if (Util::isMaterialFile(fileEntry.extension)){
-                fileEntry.type = FileType::MATERIAL;
-            }else if (Util::isBundleFile(fileEntry.extension)){
-                fileEntry.type = FileType::BUNDLE;
-                fileEntry.icon = entityIconH;
-            }else if (Util::isModelFile(fileEntry.extension)){
-                fileEntry.type = FileType::MODEL;
-            }else if (Util::isLuaFile(fileEntry.extension)){
-                fileEntry.type = FileType::LUA;
-                fileEntry.icon = luaIconH;
-            }else if (Util::isHeaderFile(fileEntry.extension)){
-                fileEntry.type = FileType::HEADER;
-                fileEntry.icon = headerIconH;
-            }else if (Util::isSourceFile(fileEntry.extension)){
-                fileEntry.type = FileType::SOURCE;
-                fileEntry.icon = sourceIconH;
-            }else if (Util::isAudioFile(fileEntry.extension)){
-                fileEntry.type = FileType::AUDIO;
-                fileEntry.icon = audioIconH;
-            }else if (Util::isFontFile(fileEntry.extension)){
-                fileEntry.type = FileType::FONT;
-                fileEntry.icon = fontIconH;
-            }
-
-            if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL) {
-                queueThumbnailGeneration(entry.path(), fileEntry.type);
-            }
-        } else {
-            fileEntry.extension = "";
+        if (fileName != "project.yaml" && lower(fileName).find(needle) != std::string::npos) {
+            files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
         }
-
-        files.push_back(fileEntry);
+        it.increment(ec);
     }
 }
 
 void editor::ResourcesWindow::sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files) {
     if (!sortSpecs || sortSpecs->SpecsCount == 0) {
-        // Default behavior: Sort directories first, then by name
+        // Default behavior: directories first, then by name ignoring case (Unity order)
         std::sort(files.begin(), files.end(), [](const FileEntry& a, const FileEntry& b) {
             if (a.isDirectory != b.isDirectory) {
                 return a.isDirectory; // Directories come first
             }
+            const size_t n = std::min(a.name.size(), b.name.size());
+            for (size_t i = 0; i < n; i++) {
+                const int ca = std::tolower(static_cast<unsigned char>(a.name[i]));
+                const int cb = std::tolower(static_cast<unsigned char>(b.name[i]));
+                if (ca != cb) return ca < cb;
+            }
+            if (a.name.size() != b.name.size()) return a.name.size() < b.name.size();
             return a.name < b.name;
         });
         return;
@@ -2420,7 +2623,7 @@ void editor::ResourcesWindow::saveEntityFile(const fs::path& directory, const ch
 
     YAML::Node entityNode = YAML::Load(yamlString);
 
-    std::string entityName = "Bundle";
+    std::string entityName = "Prefab";
     if (entityNode["name"]) {
         entityName = entityNode["name"].as<std::string>();
     } else if (entityNode["members"] && entityNode["members"].IsSequence() && entityNode["members"].size() > 0) {
@@ -2430,7 +2633,7 @@ void editor::ResourcesWindow::saveEntityFile(const fs::path& directory, const ch
         }
     }
 
-    std::string baseName = entityName.empty() ? "Bundle" : entityName;
+    std::string baseName = entityName.empty() ? "Prefab" : entityName;
     fs::path relativePath = uniqueRelativePath(directory, baseName, ".bundle");
 
     CreateEntityBundleCmd* createBundleCmd = new CreateEntityBundleCmd(project, project->getSelectedSceneId(), relativePath, entityNode);
@@ -2609,7 +2812,10 @@ void editor::ResourcesWindow::show() {
 
     bool wasOpen = windowOpen;
 
-    if (!ImGui::Begin(ResourcesWindow::WINDOW_NAME, &windowOpen)) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    const bool windowVisible = ImGui::Begin(ResourcesWindow::WINDOW_NAME, &windowOpen);
+    ImGui::PopStyleVar();
+    if (!windowVisible) {
         windowFocused = false;
         ImGui::End();
         if (wasOpen && !windowOpen) {
@@ -2621,60 +2827,109 @@ void editor::ResourcesWindow::show() {
     windowPos = ImGui::GetWindowPos();
     scrollOffset = ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
 
-    // Determine effective layout when in AUTO mode
+    // Determine effective layout when in AUTO mode: Unity's two-column layout
+    // (folder tree + grid with subfolders) unless the panel is too narrow.
     LayoutType effectiveLayout = currentLayout;
     if (currentLayout == LayoutType::AUTO) {
         float windowWidth = ImGui::GetWindowWidth();
-        effectiveLayout = (windowWidth < Theme::dpi(layoutAutoThreshold)) ? LayoutType::GRID : LayoutType::SPLIT_FILES_ONLY;
+        effectiveLayout = (windowWidth < Theme::dpi(layoutAutoThreshold)) ? LayoutType::GRID : LayoutType::SPLIT;
     }
 
-    ImGuiTableFlags table_flags_for_sort_specs = ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Borders;
+    // Folders first, then names (the listing has no sortable header)
+    if (requestSort) {
+        sortWithSortSpecs(nullptr, files);
+        requestSort = false;
+    }
 
-    // Full-height header vertically centered on a text-height row, overlapping the
-    // spacing above/below (same layout pattern as the scene window toolbar)
-    float headerRowY = ImGui::GetCursorPosY();
-    ImGui::SetCursorPosY(headerRowY - (ImGui::GetFrameHeight() - ImGui::GetTextLineHeight()) * 0.5f);
     renderHeader();
-    ImGui::SetCursorPosY(headerRowY + ImGui::GetTextLineHeightWithSpacing());
-    ImGui::Separator();
 
-    if (effectiveLayout == LayoutType::GRID) {
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-        if (ImGui::BeginTable("for_sort_specs_only", 2, table_flags_for_sort_specs, ImVec2(0.0f, ImGui::GetFrameHeight()))) {
-            ImGui::TableSetupColumn("Name");
-            ImGui::TableSetupColumn("Type");
-            ImGui::TableHeadersRow();
-            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
-                if (sort_specs->SpecsDirty || requestSort) {
-                    sortWithSortSpecs(sort_specs, files);
-                    sort_specs->SpecsDirty = requestSort = false;
-                }
+    const ImVec2 innerPadding = Theme::dpi(ImVec2(6.0f, 4.0f));
+    const float breadcrumbHeight = ImGui::GetFrameHeight() + Theme::dpi(2.0f);
+
+    // Drops onto the file grid: imported files, materials and GameObjects
+    // (saved as Prefabs) land in the folder being shown.
+    auto acceptListingDrops = [&]() {
+        if (ImGui::BeginDragDropTarget()) {
+            isDragDropTarget = true;
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
+                importExternalPaths(Util::getStringsFromPayload(payload));
             }
-            ImGui::EndTable();
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("material")) {
+                const char* materialContent = static_cast<const char*>(payload->Data);
+                size_t contentLen = payload->DataSize;
+
+                MaterialPayload materialSource{0, NULL_PROJECT_SCENE, NULL_ENTITY, 0};
+                const MaterialPayload* sourcePtr = nullptr;
+
+                if (contentLen > sizeof(MaterialPayload)) {
+                    const MaterialPayload* candidate = reinterpret_cast<const MaterialPayload*>(materialContent);
+                    const char* yamlData = materialContent + sizeof(MaterialPayload);
+
+                    // New payload format: [MaterialPayload header][YAML string]
+                    if (candidate->magic == 0x4D54524C) {
+                        materialSource = *candidate;
+                        sourcePtr = &materialSource;
+                        materialContent = yamlData;
+                        contentLen -= sizeof(MaterialPayload);
+                    }
+                }
+
+                saveMaterialFile(currentPath, materialContent, contentLen, sourcePtr);
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
+                const char* entityContent = (const char*)payload->Data;
+                size_t contentLen = payload->DataSize;
+
+                saveEntityFile(currentPath, entityContent, contentLen);
+            }
+            ImGui::EndDragDropTarget();
         }
+    };
+
+    // Right pane (or the only pane): path bar, grid, bottom bar.
+    auto renderListingPane = [&](bool showDirectories) {
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+        renderPathBreadcrumb(ImVec2(0.0f, breadcrumbHeight));
         ImGui::PopStyleVar();
-        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, 0), true);
-        renderFileListing(true);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(4.0f), Theme::dpi(1.0f)));
+        const float bottomBarHeight = ImGui::GetFrameHeight() + Theme::dpi(4.0f);
+        ImGui::PopStyleVar();
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, innerPadding);
+        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, -bottomBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding);
+        renderFileListing(showDirectories);
         ImGui::EndChild();
+        ImGui::PopStyleVar();
+        acceptListingDrops();
+
+        renderBottomBar();
+    };
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+    if (effectiveLayout == LayoutType::GRID) {
+        renderListingPane(true);
     } else if (effectiveLayout == LayoutType::SPLIT_FILES_ONLY || effectiveLayout == LayoutType::SPLIT) {
-        float splitterWidth = Theme::dpi(4.0f);
-        ImGui::BeginChild("LeftPanel", ImVec2(Theme::dpi(leftPanelWidth), 0), true);
+        const float splitterWidth = Theme::dpi(4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, innerPadding);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImGui::GetStyle().ItemSpacing);
+        ImGui::BeginChild("LeftPanel", ImVec2(Theme::dpi(leftPanelWidth), 0), ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, Theme::dpi(2.0f)));
         renderDirectoryTree(project->getProjectPath());
+        ImGui::PopStyleVar();
         ImGui::EndChild();
+        ImGui::PopStyleVar(2);
         ImGui::SameLine();
-        float splitterX = ImGui::GetCursorPosX();
         ImGui::InvisibleButton("splitter", ImVec2(splitterWidth, -1));
 
-        // Handle visual appearance of the splitter
+        // A 1px dark line between the panes; the grab area is wider
         ImVec2 splitterMin = ImGui::GetItemRectMin();
         ImVec2 splitterMax = ImGui::GetItemRectMax();
+        const bool splitterHot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        const float lineX = std::floor((splitterMin.x + splitterMax.x) * 0.5f);
         ImGui::GetWindowDrawList()->AddRectFilled(
-            splitterMin, 
-            splitterMax, 
-            ImGui::GetColorU32(ImGui::IsItemHovered() || ImGui::IsItemActive() 
-                ? ImGuiCol_SliderGrabActive 
-                : ImGuiCol_SliderGrab)
-        );
+            ImVec2(lineX - (splitterHot ? Theme::dpi(1.0f) : 0.0f), splitterMin.y),
+            ImVec2(lineX + Theme::dpi(1.0f), splitterMax.y),
+            ImGui::GetColorU32(splitterHot ? ImGui::GetStyleColorVec4(ImGuiCol_SeparatorActive) : Theme::Colors::ToolbarBorder));
 
         // Handle splitter interaction
         if (ImGui::IsItemHovered()) {
@@ -2691,63 +2946,12 @@ void editor::ResourcesWindow::show() {
             AppSettings::saveSettings();
         }
         ImGui::SameLine();
-        ImGui::BeginChild("RightPanel", ImVec2(0, 0), true);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-        if (ImGui::BeginTable("for_sort_specs_only", 2, table_flags_for_sort_specs, ImVec2(0.0f, ImGui::GetFrameHeight()))) {
-            ImGui::TableSetupColumn("Name");
-            ImGui::TableSetupColumn("Type");
-            ImGui::TableHeadersRow();
-            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
-                if (sort_specs->SpecsDirty || requestSort) {
-                    sortWithSortSpecs(sort_specs, files);
-                    sort_specs->SpecsDirty = requestSort = false;
-                }
-            }
-            ImGui::EndTable();
-        }
-        ImGui::PopStyleVar();
-        ImGui::BeginChild("FileTableScrollRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
-        renderFileListing(effectiveLayout == LayoutType::SPLIT);
-        ImGui::EndChild();
+        ImGui::BeginChild("RightPanel", ImVec2(0, 0), ImGuiChildFlags_None);
+        renderListingPane(effectiveLayout == LayoutType::SPLIT);
         ImGui::EndChild();
     }
+    ImGui::PopStyleVar();
 
-    // Remaining code (drag and drop, context menus, keyboard shortcuts, etc.) remains unchanged
-    if (ImGui::BeginDragDropTarget()) {
-        isDragDropTarget = true;
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
-            importExternalPaths(Util::getStringsFromPayload(payload));
-        }
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("material")) {
-            const char* materialContent = static_cast<const char*>(payload->Data);
-            size_t contentLen = payload->DataSize;
-
-            MaterialPayload materialSource{0, NULL_PROJECT_SCENE, NULL_ENTITY, 0};
-            const MaterialPayload* sourcePtr = nullptr;
-
-            if (contentLen > sizeof(MaterialPayload)) {
-                const MaterialPayload* candidate = reinterpret_cast<const MaterialPayload*>(materialContent);
-                const char* yamlData = materialContent + sizeof(MaterialPayload);
-
-                // New payload format: [MaterialPayload header][YAML string]
-                if (candidate->magic == 0x4D54524C) {
-                    materialSource = *candidate;
-                    sourcePtr = &materialSource;
-                    materialContent = yamlData;
-                    contentLen -= sizeof(MaterialPayload);
-                }
-            }
-
-            saveMaterialFile(currentPath, materialContent, contentLen, sourcePtr);
-        }
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
-            const char* entityContent = (const char*)payload->Data;
-            size_t contentLen = payload->DataSize;
-
-            saveEntityFile(currentPath, entityContent, contentLen);
-        }
-        ImGui::EndDragDropTarget();
-    }
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
         ImGuiDragDropFlags target_flags = ImGuiDragDropFlags_AcceptBeforeDelivery;

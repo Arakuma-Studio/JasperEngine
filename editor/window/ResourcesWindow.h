@@ -88,7 +88,7 @@ namespace jasperengine::editor {
         };
         ItemViewStyle itemViewStyle = ItemViewStyle::CLASSIC;
 
-        float layoutAutoThreshold = 600.0f;
+        float layoutAutoThreshold = 420.0f;
         float leftPanelWidth = 200.0f;  // Width of the left panel in SPLIT layout
 
         bool firstOpen;
@@ -113,6 +113,8 @@ namespace jasperengine::editor {
         std::unordered_set<std::string> pendingThumbnailRequests;
 
         int iconSize;
+        // At this icon size and below the listing is a list, as in Unity.
+        static constexpr int MIN_GRID_ICON_SIZE = 16;
 
         std::string lastSelectedFile;
         std::unordered_set<std::string> selectedFiles;
@@ -134,6 +136,11 @@ namespace jasperengine::editor {
         bool clipboardCut;
 
         char nameBuffer[256];
+
+        // Project search box: while set, the listing shows matching files from
+        // currentPath and below (entry names are then relative paths).
+        char searchBuffer[128];
+        std::string searchText;
 
         bool isRenaming;
         bool renameSelectPending;
@@ -199,12 +206,16 @@ namespace jasperengine::editor {
         bool fileNotInProject(const FileEntry& fe) const;
 
         void renderHeader();
+        void renderCreateMenuItems();
         void renderPathBreadcrumb(const ImVec2& size);
+        void renderBottomBar();
         void renderFileListing(bool showDirectories);
         void renderDirectoryTree(const fs::path& path);
         const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
+        FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
+        void collectSearchResults();
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
         void highlightDragAndDrop();
         void handleInternalDragAndDrop(const fs::path& targetDirectory);
@@ -231,7 +242,7 @@ namespace jasperengine::editor {
         fs::path uniqueRelativePath(const fs::path& directory, const std::string& baseName, const std::string& extension);
 
     public:
-        static constexpr const char* WINDOW_NAME = "Resources";
+        static constexpr const char* WINDOW_NAME = "Project";
 
         ResourcesWindow(Project* project, CodeEditor* codeEditor, ImageViewerWindow* imageViewerWindow);
         ~ResourcesWindow();

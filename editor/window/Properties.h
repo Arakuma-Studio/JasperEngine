@@ -412,7 +412,7 @@ namespace jasperengine::editor{
         void drawMorphTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
 
     public:
-        static constexpr const char* WINDOW_NAME = "Properties";
+        static constexpr const char* WINDOW_NAME = "Inspector";
 
         Properties(Project* project);
 
