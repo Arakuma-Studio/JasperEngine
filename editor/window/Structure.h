@@ -125,7 +125,7 @@ namespace jasperengine::editor{
         void markMatchingNodes(TreeNode& node, const std::string& searchLower);
 
     public:
-        static constexpr const char* WINDOW_NAME = "Structure";
+        static constexpr const char* WINDOW_NAME = "Hierarchy";
 
         static std::string getObjectIcon(Signature signature, Scene* scene);
 
