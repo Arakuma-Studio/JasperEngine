@@ -305,3 +305,11 @@ void Tilemap::clearAll(){
     clearTiles();
     clearRects();
 }
+
+void Tilemap::setEnabled(bool enabled){
+    getComponent<TilemapComponent>().enabled = enabled;
+}
+
+bool Tilemap::isEnabled() const{
+    return getComponent<TilemapComponent>().enabled;
+}

@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <typeinfo>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
@@ -46,10 +47,8 @@
 #define REGISTER_ENGINE_EVENT(EVENT) \
     do { \
         std::string __tag = JASPERENGINE_EVENT_SUBSCRIPTION_TAG(EVENT); \
-        ::jasperengine::Engine::EVENT.add< \
-            std::remove_pointer_t<decltype(this)>, \
-            &std::remove_pointer_t<decltype(this)>::EVENT \
-        >(__tag, this); \
+        ::jasperengine::Engine::EVENT.add(__tag, ::jasperengine::detail::engineEventCallback( \
+            this, &std::remove_pointer_t<decltype(this)>::EVENT)); \
     } while (0)
 
 #define UNREGISTER_ENGINE_EVENT(EVENT) \
@@ -358,6 +357,42 @@ namespace jasperengine {
             tags.clear();
         }
     };
+
+    class Scene;
+
+    // True when a script instance may receive engine events: its GameObject is active
+    // in hierarchy and its script entry is enabled (defined in ScriptBase.cpp).
+    JASPERENGINE_API bool isScriptActive(Scene* scene, unsigned int entity, const void* instance);
+
+    namespace detail {
+        template<typename T, typename = void>
+        struct IsSceneScript : std::false_type {};
+
+        template<typename T>
+        struct IsSceneScript<T, std::void_t<decltype(std::declval<T*>()->getScene()), decltype(std::declval<T*>()->getEntity())>> : std::true_type {};
+
+        // REGISTER_ENGINE_EVENT callback; a scene script (ScriptBase) is skipped while
+        // inactive or disabled, like Unity's Update on a disabled MonoBehaviour
+        template<typename T, typename Ret, typename... Args>
+        std::function<Ret(Args...)> engineEventCallback(T* obj, Ret (T::*method)(Args...)) {
+            if constexpr (IsSceneScript<T>::value) {
+                return [obj, method](Args... args) -> Ret {
+                    if (!::jasperengine::isScriptActive(obj->getScene(), obj->getEntity(), static_cast<const void*>(obj))) {
+                        if constexpr (std::is_void<Ret>::value) {
+                            return;
+                        } else {
+                            return Ret();
+                        }
+                    }
+                    return (obj->*method)(args...);
+                };
+            } else {
+                return [obj, method](Args... args) -> Ret {
+                    return (obj->*method)(args...);
+                };
+            }
+        }
+    }
 }
 
 #endif //FUNCTIONSUBSCRIBE_H

@@ -306,3 +306,11 @@ float Light::getNumCascades() const{
 
     return lightcomp.numShadowCascades;
 }
+
+void Light::setEnabled(bool enabled){
+    getComponent<LightComponent>().enabled = enabled;
+}
+
+bool Light::isEnabled() const{
+    return getComponent<LightComponent>().enabled;
+}

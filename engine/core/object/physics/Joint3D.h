@@ -10,6 +10,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Joint3D: public EntityHandle{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Joint3D is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Joint3D(Scene* scene);
         Joint3D(Scene* scene, Entity entity);
         virtual ~Joint3D();

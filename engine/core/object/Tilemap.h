@@ -11,6 +11,10 @@ namespace jasperengine{
     class JASPERENGINE_API Tilemap: public Mesh{
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Tilemap is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Tilemap(Scene* scene);
         Tilemap(Scene* scene, Entity entity);
         virtual ~Tilemap();

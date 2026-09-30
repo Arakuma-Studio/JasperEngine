@@ -292,3 +292,16 @@ bool UILayout::isIgnoreScissor() const{
 
     return layout.ignoreScissor;
 }
+
+void UILayout::setEnabled(bool enabled){
+    if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+        ui->enabled = enabled;
+    }else{
+        Log::warn("Entity %u has no UIComponent to enable", entity);
+    }
+}
+
+bool UILayout::isEnabled() const{
+    UIComponent* ui = scene->findComponent<UIComponent>(entity);
+    return !ui || ui->enabled;
+}

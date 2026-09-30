@@ -12,6 +12,10 @@ namespace jasperengine{
     class JASPERENGINE_API Terrain: public Mesh{
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Terrain is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Terrain(Scene* scene);
         Terrain(Scene* scene, Entity entity);
         virtual ~Terrain();

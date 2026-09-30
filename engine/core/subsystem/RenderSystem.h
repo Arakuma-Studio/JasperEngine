@@ -15,6 +15,7 @@
 #include "component/ImageComponent.h"
 #include "component/CameraComponent.h"
 #include "component/LightComponent.h"
+#include "component/Light2DComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LinesComponent.h"
 #include "component/TerrainComponent.h"
@@ -490,6 +491,13 @@ namespace jasperengine{
 
 		static bool samplesCameraTarget(const CameraComponent& camera, const MeshComponent& mesh);
 		static bool samplesCameraTarget(const CameraComponent& camera, const Texture& texture);
+		// the entity is active in hierarchy and none of its renderer components
+		// (mesh, sprite, model, tilemap, terrain, instances, particles, points, lines, UI) is disabled
+		bool isRenderActive(Entity entity, Signature signature) const;
+		bool isRenderActive(Entity entity) const;
+		// enabled light on an entity active in hierarchy
+		bool isLightActive(Entity entity, const LightComponent& light) const;
+		bool isLight2DActive(Entity entity, const Light2DComponent& light) const;
 		bool isRenderingFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
 		void updateSwapchainRedirect();

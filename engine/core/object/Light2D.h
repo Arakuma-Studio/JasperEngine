@@ -10,6 +10,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Light2D: public Object{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Light2D is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Light2D(Scene* scene);
         Light2D(Scene* scene, Entity entity);
         virtual ~Light2D();

@@ -1703,8 +1703,9 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         }
     }
 
-    //Particles
-    if (signature.test(scene->getComponentId<ParticlesComponent>())){
+    //Particles (a disabled Particle System holds its particles until enabled again)
+    if (signature.test(scene->getComponentId<ParticlesComponent>()) &&
+            scene->getComponent<ParticlesComponent>(entity).enabled){
         ParticlesComponent& particles = scene->getComponent<ParticlesComponent>(entity);
 
         if (targetSignature.test(scene->getComponentId<InstancedMeshComponent>())){
@@ -1946,6 +1947,11 @@ void ActionSystem::update(double dt){
         Entity entity = animations->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+        // an inactive GameObject's animations wait, triggers included
+        if (!scene->isEntityActiveInHierarchy(entity)){
+            continue;
+        }
+
         if (signature.test(scene->getComponentId<ActionComponent>())){
             ActionComponent& action = scene->getComponent<ActionComponent>(entity);
 
@@ -1961,6 +1967,10 @@ void ActionSystem::update(double dt){
     auto actions = scene->getComponentArray<ActionComponent>();
     for (int i = 0; i < actions->size(); i++){
 		ActionComponent& action = actions->getComponentFromIndex(i);
+
+        if (!scene->isEntityActiveInHierarchy(actions->getEntity(i))){
+            continue;
+        }
 
         actionStateChange(actions->getEntity(i), action);
 

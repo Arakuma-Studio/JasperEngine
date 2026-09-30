@@ -57,6 +57,9 @@ namespace jasperengine{
     };
 
     struct Body2DComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
 #ifdef JASPERENGINE_PHYSICS_2D
         b2BodyId body = b2_nullBodyId;
 #endif

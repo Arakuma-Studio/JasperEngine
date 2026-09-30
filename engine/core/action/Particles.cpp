@@ -534,3 +534,10 @@ void Particles::setScaleModifier(float fromTime, float toTime, Vector3 fromScale
     partAnim.scaleModifier.function = function;
 }
 
+void Particles::setEnabled(bool enabled){
+    getComponent<ParticlesComponent>().enabled = enabled;
+}
+
+bool Particles::isEnabled() const{
+    return getComponent<ParticlesComponent>().enabled;
+}

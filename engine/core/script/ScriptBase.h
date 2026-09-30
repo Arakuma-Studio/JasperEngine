@@ -20,6 +20,11 @@ namespace jasperengine {
 
         Scene* getScene() const;
         Entity getEntity() const;
+
+        // Unity isActiveAndEnabled: the GameObject is active in hierarchy and this
+        // script's entry is enabled. Engine events registered with
+        // REGISTER_ENGINE_EVENT are skipped while it is false.
+        bool isActiveAndEnabled() const;
     };
 
 }

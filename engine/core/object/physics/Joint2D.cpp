@@ -109,3 +109,11 @@ Joint2DType Joint2D::getType(){
 
     return joint.type;
 }
+
+void Joint2D::setEnabled(bool enabled){
+    getComponent<Joint2DComponent>().enabled = enabled;
+}
+
+bool Joint2D::isEnabled() const{
+    return getComponent<Joint2DComponent>().enabled;
+}

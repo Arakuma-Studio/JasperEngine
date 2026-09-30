@@ -35,6 +35,18 @@ namespace jasperengine{
         void setName(const std::string& name);
         std::string getName() const;
 
+        // Unity GameObject.SetActive / activeSelf / activeInHierarchy
+        void setActive(bool active);
+        bool isActive() const;
+        bool isActiveInHierarchy() const;
+
+        void setTag(const std::string& tag);
+        std::string getTag() const;
+        bool compareTag(const std::string& tag) const;
+
+        void setLayer(int layer);
+        int getLayer() const;
+
         bool isEntityOwned() const;
         void setEntityOwned(bool entityOwned);
 

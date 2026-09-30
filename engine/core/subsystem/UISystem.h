@@ -102,6 +102,8 @@ namespace jasperengine{
         // True when the entity is alive and still usable as a UI event target
         bool isLiveUIEntity(Entity entity) const;
         bool isLiveUIEntity(Entity entity, Signature signature) const;
+        // Active in hierarchy with an enabled UIComponent (when it has one): drawn and interactive
+        bool isUIActive(Entity entity, Signature signature) const;
 
         void pointerDownOnUI(Entity entity, float x, float y);
         void pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor);

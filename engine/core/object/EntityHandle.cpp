@@ -77,6 +77,38 @@ std::string EntityHandle::getName() const{
     return scene->getEntityName(entity);
 }
 
+void EntityHandle::setActive(bool active){
+    scene->setEntityActive(entity, active);
+}
+
+bool EntityHandle::isActive() const{
+    return scene->isEntityActive(entity);
+}
+
+bool EntityHandle::isActiveInHierarchy() const{
+    return scene->isEntityActiveInHierarchy(entity);
+}
+
+void EntityHandle::setTag(const std::string& tag){
+    scene->setEntityTag(entity, tag);
+}
+
+std::string EntityHandle::getTag() const{
+    return scene->getEntityTag(entity);
+}
+
+bool EntityHandle::compareTag(const std::string& tag) const{
+    return scene->getEntityTag(entity) == tag;
+}
+
+void EntityHandle::setLayer(int layer){
+    scene->setEntityLayer(entity, layer);
+}
+
+int EntityHandle::getLayer() const{
+    return scene->getEntityLayer(entity);
+}
+
 bool EntityHandle::isEntityOwned() const{
     return entityOwned;
 }

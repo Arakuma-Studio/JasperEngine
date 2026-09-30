@@ -120,6 +120,26 @@ namespace jasperengine {
         // named child without depending on globally unique names.
         Entity findEntity(const std::string& name, Entity parent) const;
 
+        // GameObject active state (Unity SetActive / activeSelf / activeInHierarchy). An
+        // inactive entity and all its Transform descendants are not rendered, simulated,
+        // heard or updated by scripts; their own flags are kept for reactivation.
+        void setEntityActive(Entity entity, bool active);
+        bool isEntityActive(Entity entity) const; // own flag (activeSelf)
+        bool isEntityActiveInHierarchy(Entity entity) const; // own flag and every parent's
+        bool hasInactiveEntities() const; // false: every entity is active in hierarchy
+
+        // Tag (default "Untagged") and layer (0..31, default 0) of an entity
+        void setEntityTag(Entity entity, const std::string& tag);
+        std::string getEntityTag(Entity entity) const;
+        void setEntityLayer(Entity entity, int layer);
+        int getEntityLayer(Entity entity) const;
+        // First entity with the tag, NULL_ENTITY when none
+        Entity findEntityByTag(const std::string& tag) const;
+        std::vector<Entity> findEntitiesByTag(const std::string& tag) const;
+        // Unity's built-in tags, and names of the built-in layers ("" for an unnamed layer)
+        static const std::vector<std::string>& getBuiltinTags();
+        static std::string getBuiltinLayerName(int layer);
+
         Entity findOldestParent(Entity entity);
         bool isParentOf(Entity parent, Entity child) const;
         size_t findBranchLastIndex(Entity entity);

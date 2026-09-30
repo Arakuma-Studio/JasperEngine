@@ -2013,6 +2013,21 @@ void UISystem::update(double dt){
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+        // a deactivated or disabled element cannot keep the keyboard focus
+        if (signature.test(scene->getComponentId<UIComponent>())){
+            UIComponent& ui = scene->getComponent<UIComponent>(entity);
+            if (ui.focused && !isUIActive(entity, signature)){
+                ui.focused = false;
+                if (TextEditComponent* textedit = scene->findComponent<TextEditComponent>(entity)){
+                    textedit->needUpdateTextEdit = true;
+                }
+                ui.onLostFocus.call();
+                // the callback may have changed the registry and moved the layout; an
+                // inactive element takes no layout space, so it just waits a frame
+                continue;
+            }
+        }
+
         if (signature.test(scene->getComponentId<UIContainerComponent>())){
             UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
             // reseting all container boxes
@@ -2028,7 +2043,8 @@ void UISystem::update(double dt){
             if (layoutParentEntity != NULL_ENTITY){
                 UILayoutComponent* parentlayout = scene->findComponent<UILayoutComponent>(layoutParentEntity);
                 UIContainerComponent* parentcontainer = scene->findComponent<UIContainerComponent>(layoutParentEntity);
-                if (parentcontainer && transform.visible){
+                // like Unity layout groups, an inactive child takes no space
+                if (parentcontainer && transform.visible && scene->isEntityActiveInHierarchy(entity)){
                     if (parentcontainer->numBoxes < MAX_CONTAINER_BOXES){
                         layout.containerBoxIndex = parentcontainer->numBoxes;
                         if (!layout.usingAnchors){
@@ -2614,7 +2630,7 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
             TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused){
+            if (ui.focused && isUIActive(entity, signature)){
                 TextComponent* text = scene->findComponent<TextComponent>(textedit.text);
                 if (text && handleTextEditCharInput(textedit, *text, ui, codepoint)){
                     return true;
@@ -2635,7 +2651,7 @@ bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
             TextEditComponent& textedit = scene->getComponent<TextEditComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused){
+            if (ui.focused && isUIActive(entity, signature)){
                 TextComponent* text = scene->findComponent<TextComponent>(textedit.text);
                 if (text && handleTextEditKeyDown(textedit, *text, ui, key, repeat, mods)){
                     return true;
@@ -2645,6 +2661,14 @@ bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
     }
 
     return false;
+}
+
+bool UISystem::isUIActive(Entity entity, Signature signature) const {
+    if (!scene->isEntityActiveInHierarchy(entity))
+        return false;
+    if (signature.test(scene->getComponentId<UIComponent>()))
+        return scene->getComponent<UIComponent>(entity).enabled;
+    return true;
 }
 
 bool UISystem::isLiveUIEntity(Entity entity) const {
@@ -2846,7 +2870,7 @@ bool UISystem::eventOnPointerDown(float x, float y){
         if (signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            if (transform.visible){
+            if (transform.visible && isUIActive(entity, signature)){
                 if (signature.test(scene->getComponentId<ImageComponent>())){
                     Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout->width * transform.worldScale.x, layout->height * transform.worldScale.y);
 
@@ -2932,7 +2956,7 @@ bool UISystem::eventOnPointerUp(float x, float y){
         Transform* transform = scene->findComponent<Transform>(entity);
         UIComponent* ui = scene->findComponent<UIComponent>(entity);
 
-        if (transform->visible && signature.test(scene->getComponentId<ImageComponent>())){
+        if (transform->visible && isUIActive(entity, signature) && signature.test(scene->getComponentId<ImageComponent>())){
             Rect uirect(transform->worldPosition.x, transform->worldPosition.y, layout->width * transform->worldScale.x, layout->height * transform->worldScale.y);
 
             if (layout->panel != NULL_ENTITY){
@@ -3210,7 +3234,7 @@ bool UISystem::eventOnPointerMove(float x, float y){
         if (signature.test(scene->getComponentId<Transform>())){
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            if (transform.visible){
+            if (transform.visible && isUIActive(entity, signature)){
                 if (signature.test(scene->getComponentId<ImageComponent>())){
                     Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
 

@@ -26,6 +26,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API Joint2DComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
 #ifdef JASPERENGINE_PHYSICS_2D
         b2JointId joint = b2_nullJointId;
 #endif

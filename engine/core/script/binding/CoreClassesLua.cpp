@@ -666,6 +666,18 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::constOverload<const std::string&>(&EntityRegistry::findEntity),
             luabridge::constOverload<const std::string&, Entity>(&EntityRegistry::findEntity))
         .addFunction("getSignature", &EntityRegistry::getSignature)
+        .addFunction("setEntityActive", &EntityRegistry::setEntityActive)
+        .addFunction("isEntityActive", &EntityRegistry::isEntityActive)
+        .addFunction("isEntityActiveInHierarchy", &EntityRegistry::isEntityActiveInHierarchy)
+        .addFunction("setEntityTag", &EntityRegistry::setEntityTag)
+        .addFunction("getEntityTag", &EntityRegistry::getEntityTag)
+        .addFunction("setEntityLayer", &EntityRegistry::setEntityLayer)
+        .addFunction("getEntityLayer", &EntityRegistry::getEntityLayer)
+        .addFunction("findEntityByTag", &EntityRegistry::findEntityByTag)
+        .addFunction("findEntitiesByTag", &EntityRegistry::findEntitiesByTag)
+        // Unity-style names: GameObject.FindWithTag / FindGameObjectsWithTag
+        .addFunction("findByTag", &EntityRegistry::findEntityByTag)
+        .addFunction("findAllByTag", &EntityRegistry::findEntitiesByTag)
         .addFunction("addEntityChild", &EntityRegistry::addEntityChild)
         .addFunction("moveChildToIndex", &EntityRegistry::moveChildToIndex)
         .addFunction("moveChildToTop", &EntityRegistry::moveChildToTop)

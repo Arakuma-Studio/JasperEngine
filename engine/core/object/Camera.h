@@ -19,6 +19,10 @@ namespace jasperengine{
         void applyPerspectiveDefaults(CameraComponent& cameraComponent);
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Camera is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Camera(Scene* scene);
         Camera(Scene* scene, Entity entity);
         virtual ~Camera();

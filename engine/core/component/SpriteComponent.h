@@ -23,6 +23,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API SpriteComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         unsigned int width = 0;
         unsigned int height = 0;
 

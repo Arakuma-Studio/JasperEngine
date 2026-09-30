@@ -10,6 +10,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Lines: public Object{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Lines is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Lines(Scene* scene);
         Lines(Scene* scene, Entity entity);
         virtual ~Lines();

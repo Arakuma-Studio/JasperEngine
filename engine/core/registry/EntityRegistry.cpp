@@ -258,6 +258,88 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
     return NULL_ENTITY;
 }
 
+void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    entityManager.setActive(entity, active);
+}
+
+bool EntityRegistry::isEntityActive(Entity entity) const {
+    return entityManager.isActive(entity);
+}
+
+bool EntityRegistry::isEntityActiveInHierarchy(Entity entity) const {
+    if (!entityManager.hasInactive()){
+        return true;
+    }
+
+    auto transforms = componentManager.getComponentArray<Transform>();
+    // a parent cycle cannot happen through the registry, the bound only guards bad data
+    for (int depth = 0; entity != NULL_ENTITY && depth < 1024; depth++){
+        if (!entityManager.isActive(entity)){
+            return false;
+        }
+        Transform* transform = transforms->findComponent(entity);
+        entity = transform ? transform->parent : NULL_ENTITY;
+    }
+    return true;
+}
+
+bool EntityRegistry::hasInactiveEntities() const {
+    return entityManager.hasInactive();
+}
+
+void EntityRegistry::setEntityTag(Entity entity, const std::string& tag) {
+    entityManager.setTag(entity, tag);
+}
+
+std::string EntityRegistry::getEntityTag(Entity entity) const {
+    return entityManager.getTag(entity);
+}
+
+void EntityRegistry::setEntityLayer(Entity entity, int layer) {
+    entityManager.setLayer(entity, layer);
+}
+
+int EntityRegistry::getEntityLayer(Entity entity) const {
+    return entityManager.getLayer(entity);
+}
+
+Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
+    for (Entity entity : entityManager.getEntityList()){
+        if (entityManager.getTag(entity) == tag){
+            return entity;
+        }
+    }
+    return NULL_ENTITY;
+}
+
+std::vector<Entity> EntityRegistry::findEntitiesByTag(const std::string& tag) const {
+    std::vector<Entity> found;
+    for (Entity entity : entityManager.getEntityList()){
+        if (entityManager.getTag(entity) == tag){
+            found.push_back(entity);
+        }
+    }
+    return found;
+}
+
+const std::vector<std::string>& EntityRegistry::getBuiltinTags() {
+    static const std::vector<std::string> tags = {
+        DEFAULT_ENTITY_TAG, "Respawn", "Finish", "EditorOnly", "MainCamera", "Player", "GameController"
+    };
+    return tags;
+}
+
+std::string EntityRegistry::getBuiltinLayerName(int layer) {
+    switch (layer) {
+        case 0: return "Default";
+        case 1: return "TransparentFX";
+        case 2: return "Ignore Raycast";
+        case 4: return "Water";
+        case 5: return "UI";
+        default: return "";
+    }
+}
+
 Entity EntityRegistry::findOldestParent(Entity entity){
     auto transforms = componentManager.getComponentArray<Transform>();
 

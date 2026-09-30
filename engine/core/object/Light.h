@@ -10,6 +10,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Light: public Object{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Light is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);
         virtual ~Light();

@@ -10,6 +10,10 @@ namespace jasperengine{
     class JASPERENGINE_API UILayout: public Object{
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled UI is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         UILayout(Scene* scene);
         UILayout(Scene* scene, Entity entity);
         virtual ~UILayout();

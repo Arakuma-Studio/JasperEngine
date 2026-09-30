@@ -855,3 +855,11 @@ void Mesh::clearInstances(){
         Log::error("There is no instanced mesh component in this mesh");
     }
 }
+
+void Mesh::setEnabled(bool enabled){
+    getComponent<MeshComponent>().enabled = enabled;
+}
+
+bool Mesh::isEnabled() const{
+    return getComponent<MeshComponent>().enabled;
+}

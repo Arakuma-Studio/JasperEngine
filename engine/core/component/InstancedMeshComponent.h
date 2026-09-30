@@ -59,6 +59,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API InstancedMeshComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         ExternalBuffer buffer;
 
         std::vector<InstanceData> instances;

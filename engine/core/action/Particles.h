@@ -11,6 +11,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Particles: public Action{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Particles is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Particles(Scene* scene);
         Particles(Scene* scene, Entity entity);
         virtual ~Particles();

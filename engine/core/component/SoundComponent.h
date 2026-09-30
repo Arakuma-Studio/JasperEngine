@@ -28,6 +28,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API SoundComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         std::shared_ptr<SoLoud::Wav> sample = nullptr;
         unsigned int handle = 0; //Soloud handle
 

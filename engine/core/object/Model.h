@@ -13,6 +13,10 @@ namespace tinygltf {class Model;}
 namespace jasperengine{
     class JASPERENGINE_API Model: public Mesh{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Model is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Model(Scene* scene);
         Model(Scene* scene, Entity entity);
         virtual ~Model();

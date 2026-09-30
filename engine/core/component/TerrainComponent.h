@@ -135,6 +135,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API TerrainComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         // per-view CDLOD node selection (see TerrainView). Extra RTT cameras beyond
         // MAX_TERRAIN_VIEWS fall back to the main camera's selection (view 0).
         TerrainView views[MAX_TERRAIN_VIEWS];

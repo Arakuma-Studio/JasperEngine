@@ -271,3 +271,11 @@ int Terrain::getLevels() const{
 
     return (int)terrain.levels;
 }
+
+void Terrain::setEnabled(bool enabled){
+    getComponent<TerrainComponent>().enabled = enabled;
+}
+
+bool Terrain::isEnabled() const{
+    return getComponent<TerrainComponent>().enabled;
+}

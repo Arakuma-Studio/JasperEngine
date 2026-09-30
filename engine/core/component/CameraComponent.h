@@ -33,6 +33,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API CameraComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
 
         CameraType type = CameraType::CAMERA_UI;
         

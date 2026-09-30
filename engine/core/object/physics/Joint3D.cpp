@@ -173,3 +173,11 @@ Joint3DType Joint3D::getType(){
 
     return joint.type;
 }
+
+void Joint3D::setEnabled(bool enabled){
+    getComponent<Joint3DComponent>().enabled = enabled;
+}
+
+bool Joint3D::isEnabled() const{
+    return getComponent<Joint3DComponent>().enabled;
+}
