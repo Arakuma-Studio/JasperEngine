@@ -379,6 +379,9 @@
 		71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
 		71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
 		71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 71125F172E41845E006D11A1 /* EntityRegistry.h */; };
+		7AA5E0032F2A000000000001 /* TagManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AA5E0022F2A000000000001 /* TagManager.cpp */; };
+		7AA5E0042F2A000000000001 /* TagManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AA5E0022F2A000000000001 /* TagManager.cpp */; };
+		7AA5E0052F2A000000000001 /* TagManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AA5E0012F2A000000000001 /* TagManager.h */; };
 		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
 		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
 		711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */; };
@@ -1913,6 +1916,8 @@
 		710EE4A12A2E2A2000EB04EC /* macos */ = {isa = PBXFileReference; lastKnownFileType = folder; path = macos; sourceTree = "<group>"; };
 		71125F172E41845E006D11A1 /* EntityRegistry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EntityRegistry.h; sourceTree = "<group>"; };
 		71125F182E41845E006D11A1 /* EntityRegistry.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EntityRegistry.cpp; sourceTree = "<group>"; };
+		7AA5E0012F2A000000000001 /* TagManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TagManager.h; sourceTree = "<group>"; };
+		7AA5E0022F2A000000000001 /* TagManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TagManager.cpp; sourceTree = "<group>"; };
 		711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdMobAdapter.m; sourceTree = "<group>"; };
 		711607092A0D1F360052A9C3 /* AdMobAdapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdMobAdapter.h; sourceTree = "<group>"; };
 		7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleMobileAds.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework"; sourceTree = "<group>"; };
@@ -3854,6 +3859,8 @@
 			children = (
 				71125F172E41845E006D11A1 /* EntityRegistry.h */,
 				71125F182E41845E006D11A1 /* EntityRegistry.cpp */,
+				7AA5E0012F2A000000000001 /* TagManager.h */,
+				7AA5E0022F2A000000000001 /* TagManager.cpp */,
 			);
 			path = registry;
 			sourceTree = "<group>";
@@ -5728,6 +5735,7 @@
 				71D7494E296731A800348AB8 /* FogComponent.h in Headers */,
 				71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */,
 				71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */,
+				7AA5E0052F2A000000000001 /* TagManager.h in Headers */,
 				17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */,
 				17145B3D2FF7FC5E00543CB7 /* ShadowCaster2D.h in Headers */,
 				71F225482C587388006ED3CA /* ParticleSystem.h in Headers */,
@@ -7196,6 +7204,7 @@
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				7AA5E0032F2A000000000001 /* TagManager.cpp in Sources */,
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
@@ -7385,6 +7394,7 @@
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				7AA5E0042F2A000000000001 /* TagManager.cpp in Sources */,
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,

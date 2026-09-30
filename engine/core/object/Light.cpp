@@ -314,3 +314,11 @@ void Light::setEnabled(bool enabled){
 bool Light::isEnabled() const{
     return getComponent<LightComponent>().enabled;
 }
+
+void Light::setCullingMask(uint32_t cullingMask){
+    getComponent<LightComponent>().cullingMask = cullingMask;
+}
+
+uint32_t Light::getCullingMask() const{
+    return getComponent<LightComponent>().cullingMask;
+}

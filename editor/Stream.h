@@ -112,6 +112,8 @@ namespace jasperengine::editor {
         static float decodeFinite(const YAML::Node& node, float fallback);
         static double decodeFiniteDouble(const YAML::Node& node, double fallback);
         static float decodePositiveFinite(const YAML::Node& node, float fallback);
+        // camera, light and reflection probe culling masks (one bit per layer)
+        static uint32_t decodeLayerMask(const YAML::Node& node, uint32_t fallback);
         static void encodeFinite(YAML::Node& node, const char* key, float value);
         static void encodeFinite(YAML::Node& node, const char* key, double value);
         static void encodePositiveFinite(YAML::Node& node, const char* key, float value);

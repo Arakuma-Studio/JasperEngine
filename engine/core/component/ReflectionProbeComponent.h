@@ -6,6 +6,7 @@
 
 #include "math/Vector3.h"
 #include "texture/Texture.h"
+#include "registry/TagManager.h"
 
 namespace jasperengine{
 
@@ -44,6 +45,8 @@ namespace jasperengine{
         float farClip = 100.0f;
         float updateInterval = 1.0f;
         bool includeSky = true;
+        // Unity ReflectionProbe.cullingMask: layers the capture draws
+        uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 
         // Six-face cubemap used by static probes. Dynamic probes ignore it.
         Texture texture;

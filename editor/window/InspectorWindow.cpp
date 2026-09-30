@@ -1905,8 +1905,22 @@ static void addBoldText(ImDrawList* drawList, const ImVec2& pos, ImU32 color, co
 }
 
 static std::string layerDisplayName(int layer){
-    std::string name = EntityRegistry::getBuiltinLayerName(layer);
+    std::string name = TagManager::layerToName(layer);
     return name.empty() ? "Layer " + std::to_string(layer) : name;
+}
+
+// Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+static std::string layerMaskLabel(uint32_t mask){
+    if (mask == LAYER_MASK_NOTHING) return "Nothing";
+    if (mask == LAYER_MASK_EVERYTHING) return "Everything";
+    for (int layer = 0; layer < MAX_LAYERS; layer++){
+        if (mask == (1u << layer)){
+            std::string name = TagManager::layerToName(layer);
+            if (!name.empty()) return name;
+            break;
+        }
+    }
+    return "Mixed...";
 }
 
 void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly){
@@ -2071,20 +2085,12 @@ void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std
             EntityStateCmd::tag(project, sceneProject->id, entities, newTag));
     };
 
-    bool openAddTag = false;
     ImGui::SetNextItemWidth(width);
     ImGui::BeginDisabled(readOnly);
     if (ImGui::BeginCombo("##tag", mixed ? "-" : tag.c_str())){
-        // built-in tags, then the custom ones the scene uses
-        std::vector<std::string> tags = EntityRegistry::getBuiltinTags();
-        for (Entity entity : sceneProject->entities){
-            if (!scene->isEntityCreated(entity)) continue;
-            std::string entityTag = scene->getEntityTag(entity);
-            if (std::find(tags.begin(), tags.end(), entityTag) == tags.end()){
-                tags.push_back(entityTag);
-            }
-        }
-        for (const std::string& option : tags){
+        // the project's tags (built-in first); a GameObject may still hold a removed one,
+        // which only shows as its current value, as in Unity
+        for (const std::string& option : TagManager::getAllTags()){
             bool selected = !mixed && option == tag;
             if (ImGui::Selectable(option.c_str(), selected) && !selected){
                 applyTag(option);
@@ -2092,32 +2098,50 @@ void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std
             if (selected) ImGui::SetItemDefaultFocus();
         }
         ImGui::Separator();
+        // Unity opens the Tags and Layers settings to add one
         if (ImGui::Selectable("Add Tag...")){
-            openAddTag = true;
+            tagsAndLayersRequested = true;
         }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
+    if (!mixed && !TagManager::isTagDefined(tag)){
+        ImGui::SetItemTooltip("Tag \"%s\" is not in Project Settings > Tags and Layers", tag.c_str());
+    }
+}
 
-    if (openAddTag){
-        newTagBuffer[0] = '\0';
-        ImGui::OpenPopup("add_tag_popup");
-    }
-    if (ImGui::BeginPopup("add_tag_popup")){
-        ImGui::TextUnformatted("New Tag Name");
-        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        ImGui::SetNextItemWidth(Theme::dpi(180.0f));
-        bool submit = ImGui::InputText("##new_tag", newTagBuffer, sizeof(newTagBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
-        ImGui::SameLine();
-        ImGui::BeginDisabled(newTagBuffer[0] == '\0');
-        submit = ImGui::Button("Save") || submit;
-        ImGui::EndDisabled();
-        if (submit && newTagBuffer[0] != '\0'){
-            applyTag(newTagBuffer);
-            ImGui::CloseCurrentPopup();
+bool editor::InspectorWindow::consumeTagsAndLayersRequest(){
+    bool requested = tagsAndLayersRequested;
+    tagsAndLayersRequested = false;
+    return requested;
+}
+
+// The entities and every Transform descendant, each once
+static std::vector<Entity> withDescendants(Scene* scene, const std::vector<Entity>& entities){
+    std::vector<Entity> all = entities;
+    auto transforms = scene->getComponentArray<Transform>();
+    for (Entity entity : entities){
+        if (!scene->findComponent<Transform>(entity)) continue;
+        size_t index = transforms->getIndex(entity);
+        size_t branchEnd = scene->findBranchLastIndex(entity);
+        for (size_t i = index + 1; i <= branchEnd; i++){
+            Entity descendant = transforms->getEntity(i);
+            if (std::find(all.begin(), all.end(), descendant) == all.end()){
+                all.push_back(descendant);
+            }
         }
-        ImGui::EndPopup();
     }
+    return all;
+}
+
+static bool hasTransformChildren(Scene* scene, const std::vector<Entity>& entities){
+    auto transforms = scene->getComponentArray<Transform>();
+    for (Entity entity : entities){
+        if (scene->findComponent<Transform>(entity) && scene->findBranchLastIndex(entity) > transforms->getIndex(entity)){
+            return true;
+        }
+    }
+    return false;
 }
 
 void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){
@@ -2131,37 +2155,75 @@ void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const s
         }
     }
 
-    auto applyLayer = [&](int newLayer){
+    auto applyLayer = [&](const std::vector<Entity>& targets, int newLayer){
         CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            EntityStateCmd::layer(project, sceneProject->id, entities, newLayer));
+            EntityStateCmd::layer(project, sceneProject->id, targets, newLayer));
     };
 
+    int chosenLayer = -1;
     ImGui::SetNextItemWidth(width);
     ImGui::BeginDisabled(readOnly);
     if (ImGui::BeginCombo("##layer", mixed ? "-" : layerDisplayName(layer).c_str())){
-        for (int option = 0; option < 32; option++){
-            std::string name = EntityRegistry::getBuiltinLayerName(option);
+        // Unity lists the named layers as "N: Name"
+        for (int option = 0; option < MAX_LAYERS; option++){
+            std::string name = TagManager::layerToName(option);
             if (name.empty()) continue;
             bool selected = !mixed && option == layer;
             if (ImGui::Selectable((std::to_string(option) + ": " + name).c_str(), selected) && !selected){
-                applyLayer(option);
+                chosenLayer = option;
             }
             if (selected) ImGui::SetItemDefaultFocus();
         }
         ImGui::Separator();
-        if (ImGui::BeginMenu("Unnamed Layers")){
-            for (int option = 0; option < 32; option++){
-                if (!EntityRegistry::getBuiltinLayerName(option).empty()) continue;
-                bool selected = !mixed && option == layer;
-                if (ImGui::MenuItem((std::to_string(option) + ": " + layerDisplayName(option)).c_str(), nullptr, selected) && !selected){
-                    applyLayer(option);
-                }
-            }
-            ImGui::EndMenu();
+        if (ImGui::Selectable("Add Layer...")){
+            tagsAndLayersRequested = true;
         }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
+
+    if (chosenLayer >= 0){
+        if (hasTransformChildren(scene, entities)){
+            // Unity asks whether the children follow
+            pendingLayerSceneId = sceneProject->id;
+            pendingLayerEntities = entities;
+            pendingLayer = chosenLayer;
+            ImGui::OpenPopup("Change Layer##change_layer_children");
+        }else{
+            applyLayer(entities, chosenLayer);
+        }
+    }
+
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("Change Layer##change_layer_children", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
+        const std::string layerName = TagManager::layerToName(pendingLayer);
+        ImGui::Text("Do you want to set layer to %s for all child objects as well?",
+            layerName.empty() ? std::to_string(pendingLayer).c_str() : layerName.c_str());
+        ImGui::Spacing();
+
+        int choice = 0; // 1 children, 2 this object only, 3 cancel
+        if (ImGui::Button("Yes, change children")) choice = 1;
+        ImGui::SameLine();
+        if (ImGui::Button("No, this object only")) choice = 2;
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) choice = 3;
+
+        if (choice != 0){
+            // the selection may have changed scene or lost entities while the dialog was open
+            if (choice != 3 && pendingLayerSceneId == sceneProject->id){
+                std::vector<Entity> targets;
+                for (Entity entity : pendingLayerEntities){
+                    if (scene->isEntityCreated(entity)) targets.push_back(entity);
+                }
+                if (!targets.empty()){
+                    applyLayer(choice == 1 ? withDescendants(scene, targets) : targets, pendingLayer);
+                }
+            }
+            pendingLayerEntities.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool readOnly){
@@ -3703,6 +3765,84 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+        if (!settings.help.empty()){
+            ImGui::SameLine(); helpMarker(settings.help);
+        }
+
+    }else if (type == RowPropertyType::LayerMask){
+        std::map<Entity, unsigned int> eValue;
+        bool dif = false;
+        unsigned int* defArr = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            defArr = static_cast<unsigned int*>(prop.def);
+            eValue[entity] = *static_cast<unsigned int*>(prop.ref);
+            if (eValue[entity] != eValue[entities[0]])
+                dif = true;
+        }
+        const unsigned int value = eValue[entities[0]];
+
+        bool defChanged = defArr && (dif || value != *defArr);
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            finishProperty = true;
+        }
+
+        // the bits of the layers that have a name, the only ones Unity lists
+        uint32_t namedMask = 0;
+        for (int layer = 0; layer < MAX_LAYERS; layer++){
+            if (!TagManager::layerToName(layer).empty()) namedMask |= (1u << layer);
+        }
+
+        auto setMask = [&](auto computeValue){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, computeValue(eValue[entity]), settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            finishProperty = true;
+        };
+
+        if (dif)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        const bool comboOpen = ImGui::BeginCombo(("##layermask_" + id).c_str(), dif ? "-" : layerMaskLabel(value).c_str());
+        if (dif)
+            ImGui::PopStyleColor();
+        if (comboOpen){
+            // Unity's mask field: toggles keep the list open, Nothing and Everything set every bit
+            ImGui::PushItemFlag(ImGuiItemFlags_AutoClosePopups, false);
+            if (ImGui::MenuItem("Nothing", nullptr, !dif && value == LAYER_MASK_NOTHING)){
+                setMask([](unsigned int){ return (unsigned int)LAYER_MASK_NOTHING; });
+            }
+            if (ImGui::MenuItem("Everything", nullptr, !dif && value == LAYER_MASK_EVERYTHING)){
+                setMask([](unsigned int){ return (unsigned int)LAYER_MASK_EVERYTHING; });
+            }
+            for (int layer = 0; layer < MAX_LAYERS; layer++){
+                const std::string name = TagManager::layerToName(layer);
+                if (name.empty()) continue;
+                const uint32_t bit = 1u << layer;
+                bool allOn = true;
+                for (Entity& entity : entities){
+                    if (!(eValue[entity] & bit)) allOn = false;
+                }
+                if (ImGui::MenuItem((std::to_string(layer) + ": " + name).c_str(), nullptr, allOn)){
+                    if (allOn){
+                        setMask([bit](unsigned int old){ return old & ~bit; });
+                    }else{
+                        // every named layer on reads as Everything, as Unity stores it
+                        setMask([bit, namedMask](unsigned int old){
+                            unsigned int updated = old | bit;
+                            return ((updated & namedMask) == namedMask) ? (unsigned int)LAYER_MASK_EVERYTHING : updated;
+                        });
+                    }
+                }
+            }
+            ImGui::PopItemFlag();
+            ImGui::EndCombo();
+        }
 
         if (!settings.help.empty()){
             ImGui::SameLine(); helpMarker(settings.help);
@@ -7602,7 +7742,7 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     Scene* scene = sceneProject->scene;
     CameraComponent& camera = scene->getComponent<CameraComponent>(entities[0]);
 
-    float firstColSize = getLabelSize("Auto Resize");
+    float firstColSize = std::max(getLabelSize("Auto Resize"), getLabelSize("Culling Mask"));
 
     beginTable(cpType, firstColSize);
 
@@ -7611,6 +7751,8 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, enumSettings);
 
     RowSettings defaultSettings;
+
+    propertyRow(RowPropertyType::LayerMask, cpType, "cullingMask", "Culling Mask", sceneProject, entities, defaultSettings);
 
     propertyRow(RowPropertyType::Bool, cpType, "useTarget", "Use Target", sceneProject, entities, defaultSettings);
 
@@ -8591,7 +8733,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     RowSettings settingsLightType;
     settingsLightType.enumEntries = &entriesLightType;
 
-    beginTable(cpType, getLabelSize("Inner cone"));
+    beginTable(cpType, std::max(getLabelSize("Inner cone"), getLabelSize("Culling Mask")));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsLightType);
     propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Float, cpType, "range", "Range", sceneProject, entities, settingsFloat);
@@ -8612,6 +8754,9 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
             propertyRow(RowPropertyType::HalfCone, cpType, "outerConeCos", "Angle Cone", sceneProject, entities, settingsCone);
         }
     }
+    RowSettings settingsCulling;
+    settingsCulling.help = "Layers this light lights. GameObjects on other layers get no light and cast no shadow from it.";
+    propertyRow(RowPropertyType::LayerMask, cpType, "cullingMask", "Culling Mask", sceneProject, entities, settingsCulling);
     endTable();
 
     ImGui::SeparatorText("Shadow settings");
@@ -8881,11 +9026,12 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
     }
 
     ImGui::SeparatorText("Capture");
-    beginTable(cpType, getLabelSize("Resolution"), "reflection_probe_capture");
+    beginTable(cpType, std::max(getLabelSize("Resolution"), getLabelSize("Culling Mask")), "reflection_probe_capture");
     propertyRow(RowPropertyType::UIntSlider, cpType, "resolution", "Resolution", sceneProject, entities, resolutionSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "nearClip", "Near", sceneProject, entities, floatSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "farClip", "Far", sceneProject, entities, floatSettings);
     propertyRow(RowPropertyType::Bool, cpType, "includeSky", "Include Skybox", sceneProject, entities);
+    propertyRow(RowPropertyType::LayerMask, cpType, "cullingMask", "Culling Mask", sceneProject, entities);
     endTable();
 
     if (entities.size() == 1 && ImGui::Button(ICON_FA_ARROWS_ROTATE " Refresh Probe", ImVec2(ImGui::GetContentRegionAvail().x, 0))){

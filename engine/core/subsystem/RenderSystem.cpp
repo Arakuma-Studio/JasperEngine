@@ -301,6 +301,11 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     shadowCaster2DNeedUpdateBuffer = false;
     hasReflectionProbes = false;
     capturingReflectionProbe = false;
+
+    for (uint32_t& mask : lightCullingMasks){
+        mask = LAYER_MASK_EVERYTHING;
+    }
+    hasLightCullingMasks = false;
 }
 
 RenderSystem::~RenderSystem(){
@@ -868,6 +873,13 @@ void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& ren
 
 void RenderSystem::processLights(int numLights, CameraComponent& camera, Transform& cameraTransform){
     auto lights = scene->getComponentArray<LightComponent>();
+
+    hasLightCullingMasks = false;
+    for (int i = 0; i < MAX_LIGHTS; i++){
+        const uint32_t mask = (i < numLights) ? lights->getComponentFromIndex(i).cullingMask : LAYER_MASK_EVERYTHING;
+        lightCullingMasks[i] = mask;
+        hasLightCullingMasks = hasLightCullingMasks || mask != LAYER_MASK_EVERYTHING;
+    }
 
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
@@ -1536,6 +1548,7 @@ void RenderSystem::renderReflectionProbeCapture(){
     captureCamera.aspect = 1.0f;
     captureCamera.nearClip = std::max(probe->nearClip, 0.001f);
     captureCamera.farClip = std::max(probe->farClip, captureCamera.nearClip + 0.001f);
+    captureCamera.cullingMask = probe->cullingMask;
     updateCamera(captureCamera, captureTransform);
 
     Vector4 previousEye = fs_lighting.eyePos;
@@ -1568,7 +1581,8 @@ void RenderSystem::renderReflectionProbeCapture(){
             continue;
         Transform& transform = transforms->getComponentFromIndex(i);
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes || !isRenderActive(entity))
+        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes || !isRenderActive(entity) ||
+                !isLayerVisible(entity, probe->cullingMask))
             continue;
 
         updateMVP(i, transform, captureCamera, captureTransform);
@@ -3896,6 +3910,21 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             updateTerrainNodesBuffer(*terrain, terrainView);
         }
 
+        // a light whose culling mask leaves out this layer adds nothing here
+        fs_lighting_t* lighting = &fs_lighting;
+        if (hasLightCullingMasks){
+            const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
+            for (int l = 0; l < MAX_LIGHTS; l++){
+                if (!(lightCullingMasks[l] & layerBit)){
+                    if (lighting == &fs_lighting){
+                        fs_lightingMasked = fs_lighting;
+                        lighting = &fs_lightingMasked;
+                    }
+                    fs_lightingMasked.color_intensity[l].w = 0.0f;
+                }
+            }
+        }
+
         for (int i = 0; i < mesh.numSubmeshes; i++){
             // an indexed submesh without indices has nothing to draw (a tilemap rect
             // with no tile placed on it). Its texture state is cleared here because
@@ -3960,7 +3989,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             if (submeshLit){
                 ShaderData& lightingShaderData = mesh.submeshes[i].shader.get()->shaderData;
                 loadSpotMaskTexture(lightingShaderData, render);
-                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &fs_lighting);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), lighting);
                 if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
                     render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &vs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &fs_shadows);
@@ -4373,7 +4402,7 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature))
+        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
@@ -4534,7 +4563,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature))
+        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
@@ -6213,6 +6242,8 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
     const float mNear = mainCameraPtr->nearClip, mFar = mainCameraPtr->farClip;
     const float mLeft = mainCameraPtr->leftClip, mRight = mainCameraPtr->rightClip;
     const float mBottom = mainCameraPtr->bottomClip, mTop = mainCameraPtr->topClip;
+    // a mirror reflects the layers its viewer sees
+    const uint32_t mCullingMask = mainCameraPtr->cullingMask;
     // mainCameraPtr must not be used past here (may dangle after camera creation)
 
     // Creating a reflection camera appends to the camera/transform arrays but never
@@ -6264,6 +6295,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
         refCam->rightClip = mRight;
         refCam->bottomClip = mBottom;
         refCam->topClip = mTop;
+        refCam->cullingMask = mCullingMask;
 
         // recompute the reflection camera matrices with the override applied
         updateCamera(*refCam, *refCamTransform);
@@ -7192,6 +7224,10 @@ bool RenderSystem::isRenderActive(Entity entity) const{
     return isRenderActive(entity, scene->getSignature(entity));
 }
 
+bool RenderSystem::isLayerVisible(Entity entity, uint32_t cullingMask) const{
+    return cullingMask == LAYER_MASK_EVERYTHING || (cullingMask & (1u << scene->getEntityLayer(entity))) != 0;
+}
+
 bool RenderSystem::isLightActive(Entity entity, const LightComponent& light) const{
     return light.enabled && scene->isEntityActiveInHierarchy(entity);
 }
@@ -8028,16 +8064,21 @@ void RenderSystem::draw(){
         auto meshes = scene->getComponentArray<MeshComponent>();
         int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
 
+        // as in Unity, a layer the rendering camera or the light culls casts no shadow
+        const CameraComponent* shadowCamera = scene->findComponent<CameraComponent>(scene->getCamera());
+        const uint32_t shadowCameraMask = shadowCamera ? shadowCamera->cullingMask : LAYER_MASK_EVERYTHING;
+
         // a projective slot has its own culled instance view; point faces draw everything
         auto drawShadowCasters = [&](LightComponent& light, int cameraIndex, PipelineType pipelineType, int instanceView){
             const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, cameraIndex, instanceView - 1) : LodView();
             const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
+            const uint32_t casterMask = shadowCameraMask & light.cullingMask;
             for (int i = 0; i < meshes->size(); i++){
                 MeshComponent& mesh = meshes->getComponentFromIndex(i);
                 Entity entity = meshes->getEntity(i);
                 Transform* transform = scene->findComponent<Transform>(entity);
 
-                if (!transform || !transform->visible || !isRenderActive(entity)){
+                if (!transform || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, casterMask)){
                     continue;
                 }
 
@@ -8250,6 +8291,9 @@ void RenderSystem::draw(){
             continue; // camera is not used
         }
 
+        // layers this camera draws (Unity Camera.cullingMask)
+        const uint32_t cullingMask = camera.cullingMask;
+
         // a disabled render-to-texture camera keeps its last image; the main camera always draws
         if (!isMainCamera && (!camera.enabled || !scene->isEntityActiveInHierarchy(cameraEntity))){
             continue;
@@ -8449,7 +8493,7 @@ void RenderSystem::draw(){
                 }
 
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-                if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature)){
+                if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature) || !isLayerVisible(entity, cullingMask)){
                     continue;
                 }
 
@@ -8529,9 +8573,10 @@ void RenderSystem::draw(){
                 updateMVP(i, transform, camera, cameraTransform);
             }
 
-            // inactive GameObjects and disabled renderers draw nothing; a UI element
-            // still sets its scissor below so its children are clipped the same way
-            const bool renderActive = isRenderActive(entity, signature);
+            // inactive GameObjects, disabled renderers and layers the camera culls draw
+            // nothing; a UI element still sets its scissor below so its children are
+            // clipped the same way
+            const bool renderActive = isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask);
 
             // apply scissor on UI
             if (signature.test(scene->getComponentId<RectTransformComponent>())){

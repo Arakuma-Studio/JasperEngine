@@ -2038,6 +2038,27 @@ bool editor::Project::isPhysics3DEnabled() const{
     return physics3DEnabled;
 }
 
+void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, const std::vector<std::string>& layerNames){
+    TagManager::setTags(tags);
+    TagManager::setLayerNames(layerNames);
+
+    this->tags = TagManager::getTags();
+    this->layerNames.assign(MAX_LAYERS, std::string());
+    for (int layer = 0; layer < MAX_LAYERS; layer++){
+        if (!TagManager::isBuiltinLayer(layer)){
+            this->layerNames[layer] = TagManager::layerToName(layer);
+        }
+    }
+}
+
+const std::vector<std::string>& editor::Project::getTags() const{
+    return tags;
+}
+
+const std::vector<std::string>& editor::Project::getLayerNames() const{
+    return layerNames;
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -4007,6 +4028,7 @@ void editor::Project::resetConfigs() {
     cxxStandard = defaultCxxStandard;
     physics2DEnabled = defaultPhysics2DEnabled;
     physics3DEnabled = defaultPhysics3DEnabled;
+    setTagsAndLayers({}, {});
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -5133,7 +5155,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames});
 }
 
 void editor::Project::updateGeneratedSources() {
@@ -8761,7 +8783,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames});
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }

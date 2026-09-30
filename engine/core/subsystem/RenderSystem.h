@@ -389,6 +389,12 @@ namespace jasperengine{
 		bool needUpdateShadowBindings;
 
 		fs_lighting_t fs_lighting;
+		// Light culling masks per light slot (Everything past the scene's lights). When one
+		// leaves out a layer, drawMesh lights that layer's meshes from fs_lightingMasked:
+		// fs_lighting with those lights at zero intensity.
+		uint32_t lightCullingMasks[MAX_LIGHTS];
+		bool hasLightCullingMasks;
+		fs_lighting_t fs_lightingMasked;
 		fs_lighting2d_t fs_lighting2d;
 		vs_shadows_t vs_shadows;
 		fs_shadows_t fs_shadows;
@@ -495,6 +501,8 @@ namespace jasperengine{
 		// (mesh, sprite, model, tilemap, terrain, instances, particles, points, lines, UI) is disabled
 		bool isRenderActive(Entity entity, Signature signature) const;
 		bool isRenderActive(Entity entity) const;
+		// the entity's layer is in a camera, light or probe culling mask; Everything costs one compare
+		bool isLayerVisible(Entity entity, uint32_t cullingMask) const;
 		// enabled light on an entity active in hierarchy
 		bool isLightActive(Entity entity, const LightComponent& light) const;
 		bool isLight2DActive(Entity entity, const Light2DComponent& light) const;

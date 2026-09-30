@@ -314,6 +314,10 @@ namespace jasperengine::editor{
         int cxxStandard;  // C++ standard for Play and exported builds
         bool physics2DEnabled;  // Box2D in exported builds; Play always has it
         bool physics3DEnabled;  // Jolt in exported builds; Play always has it
+        // Tags and Layers: user tags, and user layer names indexed by layer (MAX_LAYERS
+        // entries, empty for built-in and unnamed layers)
+        std::vector<std::string> tags;
+        std::vector<std::string> layerNames;
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
@@ -592,6 +596,14 @@ namespace jasperengine::editor{
 
         void setPhysics3DEnabled(bool enabled);
         bool isPhysics3DEnabled() const;
+
+        // Project Settings > Tags and Layers. Also sets the engine's TagManager, which the
+        // Inspector and Play read; names are kept as TagManager accepts them (trimmed,
+        // no empty or repeated tag, no repeated layer name, built-in layers untouched).
+        void setTagsAndLayers(const std::vector<std::string>& tags, const std::vector<std::string>& layerNames);
+        const std::vector<std::string>& getTags() const;
+        // MAX_LAYERS entries, index = layer; empty for built-in and unnamed layers
+        const std::vector<std::string>& getLayerNames() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").

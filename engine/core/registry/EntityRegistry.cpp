@@ -304,6 +304,10 @@ int EntityRegistry::getEntityLayer(Entity entity) const {
 }
 
 Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
+    if (!TagManager::isTagDefined(tag)){
+        Log::error("Tag: %s is not defined.", tag.c_str());
+        return NULL_ENTITY;
+    }
     for (Entity entity : entityManager.getEntityList()){
         if (entityManager.getTag(entity) == tag){
             return entity;
@@ -314,30 +318,16 @@ Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
 
 std::vector<Entity> EntityRegistry::findEntitiesByTag(const std::string& tag) const {
     std::vector<Entity> found;
+    if (!TagManager::isTagDefined(tag)){
+        Log::error("Tag: %s is not defined.", tag.c_str());
+        return found;
+    }
     for (Entity entity : entityManager.getEntityList()){
         if (entityManager.getTag(entity) == tag){
             found.push_back(entity);
         }
     }
     return found;
-}
-
-const std::vector<std::string>& EntityRegistry::getBuiltinTags() {
-    static const std::vector<std::string> tags = {
-        DEFAULT_ENTITY_TAG, "Respawn", "Finish", "EditorOnly", "MainCamera", "Player", "GameController"
-    };
-    return tags;
-}
-
-std::string EntityRegistry::getBuiltinLayerName(int layer) {
-    switch (layer) {
-        case 0: return "Default";
-        case 1: return "TransparentFX";
-        case 2: return "Ignore Raycast";
-        case 4: return "Water";
-        case 5: return "UI";
-        default: return "";
-    }
 }
 
 Entity EntityRegistry::findOldestParent(Entity entity){
