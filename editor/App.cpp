@@ -220,6 +220,8 @@ enum class AppMenuCommand : uint32_t {
     Redo,
     DuplicateSelection,
     DeleteSelection,
+    RenameSelection,
+    FrameSelected,
     ToggleStructure,
     ToggleProperties,
     ToggleResources,
@@ -227,17 +229,29 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleAiChat,
+    FocusScene,
     ToggleDetachableWindows,
     ResetLayout,
     ProjectSettings,
     ProjectScenes,
     ProjectBundles,
     ClearTrash,
-    RunScene,
-    PauseScene,
-    ResumeScene,
+    TogglePlay,
+    TogglePause,
     StopScene,
     RemoveScene,
+    CreateGameObject,     // payload: index into Structure::getCreateMenuEntries()
+    CreateEmptyChild,
+    AddComponent,
+    AssetsCreateFolder,
+    AssetsCreateLuaScript,
+    AssetsCreateCppScript,
+    AssetsShowInFileManager,
+    AssetsOpen,
+    AssetsRename,
+    AssetsDelete,
+    AssetsImport,
+    AssetsRefresh,
     About,
     Documentation,
     KeyboardShortcuts,
@@ -269,16 +283,20 @@ editor::PlatformMenuItem menuShortcut(AppMenuCommand command,
 
 editor::PlatformMenuItem menuToggle(AppMenuCommand command,
                                     std::string label,
-                                    bool checked) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label));
+                                    bool checked,
+                                    std::string shortcut = {},
+                                    bool enabled = true) {
+    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
     item.checked = checked;
+    item.shortcut = std::move(shortcut);
     return item;
 }
 
 editor::PlatformMenuItem menuPayloadCommand(AppMenuCommand command,
                                             std::string label,
-                                            std::string payload) {
-    editor::PlatformMenuItem item = menuCommand(command, std::move(label));
+                                            std::string payload,
+                                            bool enabled = true) {
+    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
     item.command.payload = std::move(payload);
     return item;
 }
@@ -300,13 +318,66 @@ editor::PlatformMenuItem menuSubmenu(std::string label,
     return item;
 }
 
-const char* imguiMenuLabel(const editor::PlatformMenuItem& item) {
-    switch (static_cast<AppMenuCommand>(item.command.id)) {
-        case AppMenuCommand::NewScene3D: return ICON_FA_CUBES "  3D Scene";
-        case AppMenuCommand::NewScene2D: return ICON_FA_CUBES_STACKED "  2D Scene";
-        case AppMenuCommand::NewSceneUI: return ICON_FA_WINDOW_RESTORE "  UI Scene";
-        default: return item.label.c_str();
+// Window titles may carry an ImGui "###id" suffix, which native menus would show.
+std::string windowMenuLabel(const char* windowName) {
+    std::string label = windowName;
+    const size_t idPos = label.find("##");
+    if (idPos != std::string::npos) label.resize(idPos);
+    return label;
+}
+
+// GameObject menu from the Hierarchy's create table (Structure::getCreateMenuEntries),
+// in the same order and grouping the Hierarchy's own menus use.
+std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* scene,
+                                                          bool canCreate,
+                                                          bool canCreateChild) {
+    using editor::Structure;
+    using editor::CreateMenuEntry;
+    const auto& entries = Structure::getCreateMenuEntries();
+    auto offered = [scene](const CreateMenuEntry& entry) {
+        return !scene || Structure::isCreateEntryAvailable(entry, scene->sceneType);
+    };
+    auto entryItem = [&](size_t index) {
+        const CreateMenuEntry& entry = entries[index];
+        editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::CreateGameObject,
+            entry.label, std::to_string(index), canCreate);
+        if (entry.shortcut) item.shortcut = entry.shortcut;
+        return item;
+    };
+
+    std::vector<editor::PlatformMenuItem> items;
+    std::vector<std::string> shownSubmenus;
+    int lastKind = -1; // 0 = item, 1 = submenu
+    for (size_t i = 0; i < entries.size(); i++) {
+        const CreateMenuEntry& entry = entries[i];
+        if (!offered(entry)) continue;
+        if (!entry.submenu) {
+            if (lastKind == 1) items.push_back(menuSeparator());
+            lastKind = 0;
+            items.push_back(entryItem(i));
+            // Unity lists Create Empty Child right under Create Empty
+            if (entry.type == editor::EntityCreationType::OBJECT) {
+                items.push_back(menuShortcut(AppMenuCommand::CreateEmptyChild, "Create Empty Child",
+                                             "Alt+Shift+N", canCreateChild));
+            }
+            continue;
+        }
+        const std::string submenu = entry.submenu;
+        if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) continue;
+        shownSubmenus.push_back(submenu);
+        if (lastKind == 0) items.push_back(menuSeparator());
+        lastKind = 1;
+
+        std::vector<editor::PlatformMenuItem> children;
+        for (size_t j = i; j < entries.size(); j++) {
+            const CreateMenuEntry& child = entries[j];
+            if (!child.submenu || submenu != child.submenu || !offered(child)) continue;
+            if (child.separatorBefore && !children.empty()) children.push_back(menuSeparator());
+            children.push_back(entryItem(j));
+        }
+        items.push_back(menuSubmenu(submenu, std::move(children), canCreate));
     }
+    return items;
 }
 
 } // namespace
@@ -320,11 +391,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     bool isPaused = hasSelectedScene && selectedScene->playState == ScenePlayState::PAUSED;
     bool isLoading = hasSelectedScene && selectedScene->playState == ScenePlayState::LOADING;
     bool isSaving = hasSelectedScene && selectedScene->playState == ScenePlayState::SAVING;
-    bool canRun = hasSelectedScene && !isProjectBusy;
-    bool canPause = hasSelectedScene && isPlaying;
-    bool canResume = hasSelectedScene && isPaused;
     bool canStop = hasSelectedScene && !isSaving && (isPlaying || isPaused || isLoading);
+    bool canPlay = hasSelectedScene && (canStop || !isProjectBusy);
+    bool canPause = hasSelectedScene && (isPlaying || isPaused);
     bool canRemove = hasSelectedScene && !isProjectBusy && project.getScenes().size() > 1;
+    const bool textInput = ImGui::GetIO().WantTextInput;
 
     bool canSave = false;
     if (!saveDialogInProgress) {
@@ -341,7 +412,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
 
     bool canUndo = false;
     bool canRedo = false;
-    if (!ImGui::GetIO().WantTextInput) {
+    if (!textInput) {
         if (lastFocusedWindow == LastFocusedWindow::Resources) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
@@ -353,6 +424,19 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
         }
     }
+
+    // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
+    // editor or a running game (native menus own their key equivalents)
+    const bool sceneContext = !textInput && !isProjectBusy && lastFocusedWindow == LastFocusedWindow::AnySceneWindow;
+    const size_t selectedCount = hasSelectedScene ? project.getSelectedEntities(selectedSceneId).size() : 0;
+    const bool canFrame = sceneContext && selectedCount > 0 && selectedScene->sceneType == SceneType::SCENE_3D;
+    const bool canRename = sceneContext && selectedCount == 1;
+    const bool canCreate = hasSelectedScene && selectedScene->scene;
+    const bool canCreateChild = canCreate && structureWindow->getSelectedParentForCreate() != NULL_ENTITY;
+    const bool canAddComponent = hasSelectedScene && selectedCount > 0 && !isProjectBusy;
+
+    const bool assetSelected = resourcesWindow->hasAssetSelection();
+    const bool singleAsset = resourcesWindow->hasSingleAssetSelection();
 
     std::vector<PlatformMenuItem> recentItems;
     std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
@@ -371,85 +455,122 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
                                           "Clear Recent Projects"));
     }
 
+    auto newSceneItems = [&]() {
+        return std::vector<PlatformMenuItem>{
+            menuCommand(AppMenuCommand::NewScene3D, "3D"),
+            menuCommand(AppMenuCommand::NewScene2D, "2D"),
+            menuCommand(AppMenuCommand::NewSceneUI, "UI")
+        };
+    };
+
     PlatformMenuModel menu;
     menu.menus.push_back(menuSubmenu("File", {
-        menuCommand(AppMenuCommand::NewProject, "New Project", !isProjectBusy),
-        menuShortcut(AppMenuCommand::OpenProject, "Open Project...", "Ctrl+O",
-                     !isProjectBusy),
-        menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
-        menuSeparator(),
+        menuSubmenu("New Scene", newSceneItems(), !isProjectBusy),
         menuShortcut(AppMenuCommand::Save, "Save", "Ctrl+S", canSave),
         menuShortcut(AppMenuCommand::SaveAll, "Save All", "Ctrl+Shift+S", canSaveAll),
+        menuCommand(AppMenuCommand::RemoveScene, "Remove Scene from Project", canRemove),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::NewProject, "New Project...", !isProjectBusy),
+        menuShortcut(AppMenuCommand::OpenProject, "Open Project...", "Ctrl+O", !isProjectBusy),
+        menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
         menuCommand(AppMenuCommand::SaveProjectAs, "Save Project As...", canSaveAll),
         menuSeparator(),
-        menuCommand(AppMenuCommand::ExportProject, "Export Project..."),
+        menuShortcut(AppMenuCommand::ExportProject, "Build Settings...", "Ctrl+Shift+B"),
         menuSeparator(),
         menuCommand(AppMenuCommand::Exit, "Exit")
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
         menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
+#if defined(__APPLE__)
         menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
+#else
+        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
+#endif
         menuSeparator(),
         menuShortcut(AppMenuCommand::DuplicateSelection, "Duplicate", "Ctrl+D", canEditSelection(true)),
+        menuShortcut(AppMenuCommand::RenameSelection, "Rename", "F2", canRename),
         menuShortcut(AppMenuCommand::DeleteSelection, "Delete", "Delete", canEditSelection(false)),
         menuSeparator(),
-        menuCommand(AppMenuCommand::EditorSettings, "Editor Settings...")
-    }));
-
-    menu.menus.push_back(menuSubmenu("View", {
-        menuToggle(AppMenuCommand::ToggleStructure, Structure::WINDOW_NAME,
-                   structureWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleProperties, Properties::WINDOW_NAME,
-                   propertiesWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleResources, ResourcesWindow::WINDOW_NAME,
-                   resourcesWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleOutput, OutputWindow::WINDOW_NAME,
-                   outputWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleAnimation, AnimationWindow::WINDOW_NAME,
-                   animationWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleTerrain, TerrainEditWindow::WINDOW_NAME,
-                   terrainEditWindow->isOpen()),
-        menuToggle(AppMenuCommand::ToggleAiChat, AiChatWindow::WINDOW_NAME,
-                   aiChatWindow->isOpen()),
+        menuShortcut(AppMenuCommand::FrameSelected, "Frame Selected", "F", canFrame),
         menuSeparator(),
-        menuToggle(AppMenuCommand::ToggleDetachableWindows, "Detachable Windows",
-                   AppSettings::getMultiViewportEnabled()),
+        menuToggle(AppMenuCommand::TogglePlay, "Play", isPlaying || isPaused || isLoading, "Ctrl+P", canPlay),
+        menuToggle(AppMenuCommand::TogglePause, "Pause", isPaused, "Ctrl+Shift+P", canPause),
+        menuCommand(AppMenuCommand::StopScene, "Stop", canStop),
+        // TODO(merge): "Step" (Ctrl+Alt+P) goes here once the toolbar's Step action lands.
         menuSeparator(),
-        menuCommand(AppMenuCommand::ResetLayout, "Reset Layout")
-    }));
-
-    menu.menus.push_back(menuSubmenu("Project", {
         menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
-        menuCommand(AppMenuCommand::ProjectScenes, "Manage Scenes...", !isProjectBusy),
-        menuCommand(AppMenuCommand::ProjectBundles, "Bundles..."),
-        menuSeparator(),
-        menuCommand(AppMenuCommand::ClearTrash, "Empty Project Trash...", !isProjectBusy)
+        menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
     }));
 
-    menu.menus.push_back(menuSubmenu("Scene", {
-        menuSubmenu("New Scene", {
-            menuCommand(AppMenuCommand::NewScene3D, "3D Scene"),
-            menuCommand(AppMenuCommand::NewScene2D, "2D Scene"),
-            menuCommand(AppMenuCommand::NewSceneUI, "UI Scene")
-        }, !isProjectBusy),
+    menu.menus.push_back(menuSubmenu("Assets", {
+        menuSubmenu("Create", {
+            menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
+            menuSeparator(),
+            menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
+            menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+            menuSeparator(),
+            menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
+        }),
+        menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
+        menuCommand(AppMenuCommand::AssetsOpen, "Open", singleAsset),
+        menuCommand(AppMenuCommand::AssetsRename, "Rename", singleAsset),
+        menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::RunScene, "Run Current Scene", "F5", canRun),
-        menuShortcut(AppMenuCommand::PauseScene, "Pause", "F6", canPause),
-        menuShortcut(AppMenuCommand::ResumeScene, "Resume", "F5", canResume),
-        menuShortcut(AppMenuCommand::StopScene, "Stop", "F7", canStop),
+        menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
+        menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
         menuSeparator(),
-        menuCommand(AppMenuCommand::RemoveScene, "Remove Scene from Project", canRemove)
+        menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
+        menuCommand(AppMenuCommand::ProjectBundles, "Prefabs..."),
+        menuCommand(AppMenuCommand::ClearTrash, "Empty Trash...", !isProjectBusy)
+    }));
+
+    menu.menus.push_back(menuSubmenu("GameObject",
+        gameObjectMenuItems(selectedScene, canCreate, canCreateChild)));
+
+    menu.menus.push_back(menuSubmenu("Component", {
+        menuShortcut(AppMenuCommand::AddComponent, "Add...", "Ctrl+Shift+A", canAddComponent)
+    }));
+
+    menu.menus.push_back(menuSubmenu("Window", {
+        menuSubmenu("General", {
+            menuShortcut(AppMenuCommand::FocusScene, "Scene", "Ctrl+1", hasSelectedScene),
+            // TODO(merge): "Game" (Ctrl+2) goes here once the Game window lands.
+            menuShortcut(AppMenuCommand::ToggleProperties, windowMenuLabel(Properties::WINDOW_NAME), "Ctrl+3"),
+            menuShortcut(AppMenuCommand::ToggleStructure, windowMenuLabel(Structure::WINDOW_NAME), "Ctrl+4"),
+            menuShortcut(AppMenuCommand::ToggleResources, windowMenuLabel(ResourcesWindow::WINDOW_NAME), "Ctrl+5"),
+            menuShortcut(AppMenuCommand::ToggleOutput, windowMenuLabel(OutputWindow::WINDOW_NAME), "Ctrl+Shift+C")
+        }),
+        menuSubmenu("Animation", {
+            menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
+        }),
+        menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("AI", {
+            menuCommand(AppMenuCommand::ToggleAiChat, windowMenuLabel(AiChatWindow::WINDOW_NAME))
+        }),
+        menuSeparator(),
+        menuSubmenu("Layouts", {
+            menuCommand(AppMenuCommand::ResetLayout, "Reset Layout")
+        }),
+        menuToggle(AppMenuCommand::ToggleDetachableWindows, "Detachable Windows",
+                   AppSettings::getMultiViewportEnabled())
     }));
 
     menu.menus.push_back(menuSubmenu("Help", {
+        menuCommand(AppMenuCommand::About, "About JasperEngine"),
+        menuSeparator(),
         menuShortcut(AppMenuCommand::Documentation, "Documentation", "F1"),
         menuCommand(AppMenuCommand::KeyboardShortcuts, "Keyboard Shortcuts"),
-        menuCommand(AppMenuCommand::ReportIssue, "Report an Issue..."),
-        menuSeparator(),
-        menuCommand(AppMenuCommand::About, "About JasperEngine")
+        menuCommand(AppMenuCommand::ReportIssue, "Report an Issue...")
     }));
     return menu;
+}
+
+// Window menu items open the window if needed and bring it to the front (Unity).
+template <typename W>
+static void showEditorWindow(W* window) {
+    window->setOpen(true);
+    ImGui::SetWindowFocus(W::WINDOW_NAME);
 }
 
 void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
@@ -549,26 +670,38 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 CommandHandle::get(project.getSelectedSceneId())->redo();
             }
             break;
+        case AppMenuCommand::RenameSelection:
+            if (!structureWindow->renameSelected()) propertiesWindow->focusNameInput();
+            break;
+        case AppMenuCommand::FrameSelected:
+            if (SceneProject* scene = project.getSelectedScene()) {
+                sceneWindow->focusOnEntities(scene, project.getSelectedEntities(scene->id));
+            }
+            break;
         case AppMenuCommand::ToggleStructure:
-            structureWindow->setOpen(!structureWindow->isOpen());
+            showEditorWindow(structureWindow);
             break;
         case AppMenuCommand::ToggleProperties:
-            propertiesWindow->setOpen(!propertiesWindow->isOpen());
+            showEditorWindow(propertiesWindow);
             break;
         case AppMenuCommand::ToggleResources:
-            resourcesWindow->setOpen(!resourcesWindow->isOpen());
+            showEditorWindow(resourcesWindow);
             break;
         case AppMenuCommand::ToggleOutput:
-            outputWindow->setOpen(!outputWindow->isOpen());
+            showEditorWindow(outputWindow);
             break;
         case AppMenuCommand::ToggleAnimation:
-            animationWindow->setOpen(!animationWindow->isOpen());
+            showEditorWindow(animationWindow);
             break;
         case AppMenuCommand::ToggleTerrain:
-            terrainEditWindow->setOpen(!terrainEditWindow->isOpen());
+            showEditorWindow(terrainEditWindow);
             break;
         case AppMenuCommand::ToggleAiChat:
-            aiChatWindow->setOpen(!aiChatWindow->isOpen());
+            showEditorWindow(aiChatWindow);
+            break;
+        case AppMenuCommand::FocusScene:
+            if (project.getSelectedScene())
+                ImGui::SetWindowFocus(("###Scene" + std::to_string(project.getSelectedSceneId())).c_str());
             break;
         case AppMenuCommand::ToggleDetachableWindows: {
             const bool multiViewport = !AppSettings::getMultiViewportEnabled();
@@ -618,26 +751,32 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ClearTrash: {
             if (project.isAnyScenePlaying()) return;
             const auto projectPath = project.getProjectPath();
-            registerConfirmAlert("Empty Project Trash",
+            registerConfirmAlert("Empty Trash",
                 "Permanently delete all files in this project's trash?\nThis cannot be undone.",
                 [this, projectPath]() {
                     if (project.getProjectPath() == projectPath && !project.isAnyScenePlaying()) project.clearTrash();
                 });
             break;
         }
-        case AppMenuCommand::RunScene:
-            if (project.getSelectedScene() && !project.isAnyScenePlaying())
-                project.start(project.getSelectedSceneId());
+        case AppMenuCommand::TogglePlay:
+            // Unity's Play toggles: starts the selected scene, or stops it when running
+            if (SceneProject* scene = project.getSelectedScene()) {
+                const ScenePlayState state = scene->playState;
+                if (state == ScenePlayState::PLAYING || state == ScenePlayState::PAUSED ||
+                    state == ScenePlayState::LOADING) {
+                    project.stop(scene->id);
+                } else if (state != ScenePlayState::SAVING && !project.isAnyScenePlaying()) {
+                    project.start(scene->id);
+                }
+            }
             break;
-        case AppMenuCommand::PauseScene:
-            if (SceneProject* scene = project.getSelectedScene();
-                scene && scene->playState == ScenePlayState::PLAYING)
-                project.pause(project.getSelectedSceneId());
-            break;
-        case AppMenuCommand::ResumeScene:
-            if (SceneProject* scene = project.getSelectedScene();
-                scene && scene->playState == ScenePlayState::PAUSED)
-                project.resume(project.getSelectedSceneId());
+        case AppMenuCommand::TogglePause:
+            if (SceneProject* scene = project.getSelectedScene()) {
+                if (scene->playState == ScenePlayState::PLAYING)
+                    project.pause(scene->id);
+                else if (scene->playState == ScenePlayState::PAUSED)
+                    project.resume(scene->id);
+            }
             break;
         case AppMenuCommand::StopScene:
             if (SceneProject* scene = project.getSelectedScene(); scene &&
@@ -657,6 +796,61 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         }
+        case AppMenuCommand::CreateGameObject: {
+            const auto& entries = Structure::getCreateMenuEntries();
+            const size_t index = command.payload.empty() ? entries.size()
+                : static_cast<size_t>(std::strtoul(command.payload.c_str(), nullptr, 10));
+            SceneProject* scene = project.getSelectedScene();
+            if (index < entries.size() && scene && scene->scene &&
+                Structure::isCreateEntryAvailable(entries[index], scene->sceneType)) {
+                structureWindow->createGameObject(entries[index], NULL_ENTITY);
+            }
+            break;
+        }
+        case AppMenuCommand::CreateEmptyChild: {
+            const Entity parent = structureWindow->getSelectedParentForCreate();
+            if (parent == NULL_ENTITY) break;
+            for (const CreateMenuEntry& entry : Structure::getCreateMenuEntries()) {
+                if (entry.type == EntityCreationType::OBJECT) {
+                    structureWindow->createGameObject(entry, parent);
+                    break;
+                }
+            }
+            break;
+        }
+        case AppMenuCommand::AddComponent: {
+            SceneProject* scene = project.getSelectedScene();
+            if (scene && !project.isAnyScenePlaying() && !project.getSelectedEntities(scene->id).empty())
+                propertiesWindow->requestAddComponent();
+            break;
+        }
+        case AppMenuCommand::AssetsCreateFolder:
+            resourcesWindow->assetsCreateFolder();
+            break;
+        case AppMenuCommand::AssetsCreateLuaScript:
+            resourcesWindow->assetsCreateScript(true);
+            break;
+        case AppMenuCommand::AssetsCreateCppScript:
+            resourcesWindow->assetsCreateScript(false);
+            break;
+        case AppMenuCommand::AssetsShowInFileManager:
+            resourcesWindow->assetsShowInFileManager();
+            break;
+        case AppMenuCommand::AssetsOpen:
+            resourcesWindow->assetsOpenSelected();
+            break;
+        case AppMenuCommand::AssetsRename:
+            resourcesWindow->assetsRenameSelected();
+            break;
+        case AppMenuCommand::AssetsDelete:
+            resourcesWindow->assetsDeleteSelected();
+            break;
+        case AppMenuCommand::AssetsImport:
+            resourcesWindow->assetsImport();
+            break;
+        case AppMenuCommand::AssetsRefresh:
+            resourcesWindow->assetsRefresh();
+            break;
         case AppMenuCommand::About:
             aboutWindow.open();
             break;
@@ -678,23 +872,30 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         }
         case AppMenuCommand::KeyboardShortcuts:
             registerAlert("Keyboard Shortcuts",
-                "PROJECT AND EDITING\n"
-                "Ctrl+O    Open project\n"
+                "FILE AND EDIT\n"
                 "Ctrl+S    Save current scene or script\n"
                 "Ctrl+Shift+S    Save all scenes, scripts, and project\n"
+                "Ctrl+O    Open project\n"
+                "Ctrl+Shift+B    Build Settings\n"
                 "Ctrl+Z    Undo\n"
-                "Ctrl+Shift+Z    Redo\n"
-                "Ctrl+D    Duplicate selection\n"
-                "Delete / Backspace    Delete selection\n"
-                "F2    Rename selection\n\n"
-                "PLAYBACK\n"
-                "F5    Run current scene / Resume\n"
-                "F6    Pause\n"
-                "F7    Stop\n\n"
+                "Ctrl+Y / Ctrl+Shift+Z    Redo\n"
+                "Ctrl+D    Duplicate\n"
+                "F2    Rename\n"
+                "Delete / Backspace    Delete\n\n"
+                "GAMEOBJECT AND COMPONENT\n"
+                "Ctrl+Shift+N    Create Empty\n"
+                "Alt+Shift+N    Create Empty Child\n"
+                "Ctrl+Shift+A    Add Component\n\n"
+                "PLAY MODE\n"
+                "Ctrl+P    Play / Stop (F5 plays, F7 stops)\n"
+                "Ctrl+Shift+P    Pause / Resume (F6 pauses)\n\n"
+                "WINDOWS\n"
+                "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
+                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
                 "SCENE VIEW\n"
                 "W / E / R    Move / Rotate / Scale\n"
                 "T    Toggle local / global transforms\n"
-                "F / Home    Frame selection / all objects (3D)\n\n"
+                "F / Home    Frame selected / all (3D)\n\n"
                 "F1    Documentation",
                 "On macOS, menu shortcuts use Command instead of Ctrl.");
             break;
@@ -711,7 +912,7 @@ void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items)
                 ImGui::EndMenu();
             }
         } else if (ImGui::MenuItem(
-                       imguiMenuLabel(item),
+                       item.label.c_str(),
                        item.shortcut.empty() ? nullptr : item.shortcut.c_str(),
                        item.checked, item.enabled)) {
             executeMenuCommand(item.command);
@@ -1637,6 +1838,38 @@ void editor::App::show(){
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
+
+        // Unity menu shortcuts. Not while typing: text fields and the code editor
+        // use modifier+letter chords of their own.
+        if (!io.WantTextInput && !codeEditor->isFocused()) {
+            auto chord = [&io](bool ctrl, bool shift, bool alt, ImGuiKey key) {
+                return io.KeyCtrl == ctrl && io.KeyShift == shift && io.KeyAlt == alt && ImGui::IsKeyPressed(key, false);
+            };
+            auto run = [this](AppMenuCommand menuCommand, std::string payload = {}) {
+                executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
+            };
+            if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
+            if (chord(true, false, false, ImGuiKey_P)) run(AppMenuCommand::TogglePlay);
+            if (chord(true, true, false, ImGuiKey_P)) run(AppMenuCommand::TogglePause);
+            if (chord(true, true, false, ImGuiKey_N)) {
+                const auto& entries = Structure::getCreateMenuEntries();
+                for (size_t i = 0; i < entries.size(); i++) {
+                    if (entries[i].type == EntityCreationType::OBJECT) {
+                        run(AppMenuCommand::CreateGameObject, std::to_string(i));
+                        break;
+                    }
+                }
+            }
+            if (chord(false, true, true, ImGuiKey_N)) run(AppMenuCommand::CreateEmptyChild);
+            if (chord(true, true, false, ImGuiKey_A)) run(AppMenuCommand::AddComponent);
+            if (chord(true, false, false, ImGuiKey_1)) run(AppMenuCommand::FocusScene);
+            // TODO(merge): Ctrl+2 opens the Game window once it lands.
+            if (chord(true, false, false, ImGuiKey_3)) run(AppMenuCommand::ToggleProperties);
+            if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleStructure);
+            if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleResources);
+            if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
+            if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleOutput);
+        }
     }
 
     if (isDroppedExternalPaths) {
@@ -1667,7 +1900,16 @@ void editor::App::show(){
 
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) duplicateSelection();
 
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) propertiesWindow->focusNameInput();
+        // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
+        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+            if (!(structureWindow->isFocused() && structureWindow->renameSelected())) propertiesWindow->focusNameInput();
+        }
+
+        // Frame Selected (Edit menu): the Scene view handles F itself while it has focus
+        if (!io.WantTextInput && !io.KeyCtrl && !io.KeyShift && !io.KeyAlt &&
+            structureWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+            executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::FrameSelected), {}});
+        }
     }
 
     if (!popupOpen && resourcesWindow->isFocused()) {
