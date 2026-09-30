@@ -12,9 +12,7 @@ editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
 
 editor::CommandHistory::~CommandHistory(){
-    for (int i = 0; i < list.size(); i++){
-        delete list[i];
-    }
+    clear();
 }
 
 void editor::CommandHistory::addCommand(editor::Command* cmd){
@@ -27,7 +25,7 @@ void editor::CommandHistory::addCommand(editor::Command* cmd){
             list.erase(list.begin() + index, list.end());
         }
 
-        if (list.size() > 0 && list.back()->canMerge() && cmd->canMerge()){
+        if (list.size() > undoFloor() && list.back()->canMerge() && cmd->canMerge()){
             if (cmd->mergeWith(list.back())){
                 list.pop_back();
             }
@@ -50,7 +48,7 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
 }
 
 void editor::CommandHistory::undo(){
-    if (index > 0){
+    if (index > undoFloor()){
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
         index--;
@@ -81,7 +79,7 @@ void editor::CommandHistory::redo(){
 }
 
 bool editor::CommandHistory::canUndo() const{
-    return index > 0;
+    return index > undoFloor();
 }
 
 bool editor::CommandHistory::canRedo() const{
@@ -89,9 +87,49 @@ bool editor::CommandHistory::canRedo() const{
 }
 
 void editor::CommandHistory::clear(){
-    for (int i = 0; i < list.size(); i++){
-        delete list[i];
+    for (Command* cmd : list){
+        delete cmd;
+    }
+    for (Command* cmd : editRedo){
+        delete cmd;
     }
     list.clear();
+    editRedo.clear();
     index = 0;
+    playFloor = 0;
+    inPlaySession = false;
+}
+
+void editor::CommandHistory::beginPlaySession(){
+    if (inPlaySession){
+        return;
+    }
+    inPlaySession = true;
+    playFloor = index;
+    editRedo.assign(list.begin() + index, list.end());
+    list.erase(list.begin() + index, list.end());
+}
+
+void editor::CommandHistory::endPlaySession(bool rolledBack){
+    if (!inPlaySession){
+        return;
+    }
+    inPlaySession = false;
+
+    if (!rolledBack && list.size() > playFloor){
+        // play-time commands stay, and like any new command they end the old redo tail
+        for (Command* cmd : editRedo){
+            delete cmd;
+        }
+        editRedo.clear();
+        return;
+    }
+
+    for (auto it = list.begin() + playFloor; it != list.end(); ++it){
+        delete *it;
+    }
+    list.erase(list.begin() + playFloor, list.end());
+    list.insert(list.end(), editRedo.begin(), editRedo.end());
+    editRedo.clear();
+    index = playFloor;
 }

@@ -839,6 +839,7 @@ set(JASPERENGINE_SRCS
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
     core/registry/EntityRegistry.cpp
+    core/registry/TagManager.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
     core/render/FramebufferRender.cpp

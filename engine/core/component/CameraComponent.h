@@ -9,6 +9,7 @@
 #include "math/Plane.h"
 #include "texture/Framebuffer.h"
 #include "render/CameraRender.h"
+#include "registry/TagManager.h"
 
 #define DEFAULT_ORTHO_NEAR          -10
 #define DEFAULT_ORTHO_FAR           10
@@ -38,7 +39,11 @@ namespace jasperengine{
 
 
         CameraType type = CameraType::CAMERA_UI;
-        
+
+        // Unity Camera.cullingMask: bit N set draws GameObjects on layer N (and lets
+        // them cast shadows when this is the main camera)
+        uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
         Matrix4 projectionMatrix;
         Matrix4 viewMatrix;
         Matrix4 viewProjectionMatrix;

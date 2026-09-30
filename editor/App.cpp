@@ -14,6 +14,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
+#include "util/EntityClipboard.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -221,6 +222,11 @@ enum class AppMenuCommand : uint32_t {
     Exit,
     Undo,
     Redo,
+    SelectAll,
+    CutSelection,
+    CopySelection,
+    PasteSelection,
+    PasteAsChild,
     DuplicateSelection,
     DeleteSelection,
     RenameSelection,
@@ -486,6 +492,13 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
 #endif
         menuSeparator(),
+        menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
+        menuSeparator(),
+        menuShortcut(AppMenuCommand::CutSelection, "Cut", "Ctrl+X", canCutSelection()),
+        menuShortcut(AppMenuCommand::CopySelection, "Copy", "Ctrl+C", canCopySelection()),
+        menuShortcut(AppMenuCommand::PasteSelection, "Paste", "Ctrl+V", canPasteSelection(false)),
+        menuShortcut(AppMenuCommand::PasteAsChild, "Paste As Child", "Ctrl+Shift+V", canPasteSelection(true)),
+        menuSeparator(),
         menuShortcut(AppMenuCommand::DuplicateSelection, "Duplicate", "Ctrl+D", canEditSelection(true)),
         menuShortcut(AppMenuCommand::RenameSelection, "Rename", "F2", canRename),
         menuShortcut(AppMenuCommand::DeleteSelection, "Delete", "Delete", canEditSelection(false)),
@@ -670,6 +683,21 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::RenameSelection:
             if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
+            break;
+        case AppMenuCommand::SelectAll:
+            selectAll();
+            break;
+        case AppMenuCommand::CutSelection:
+            copySelection(true);
+            break;
+        case AppMenuCommand::CopySelection:
+            copySelection(false);
+            break;
+        case AppMenuCommand::PasteSelection:
+            pasteSelection(false);
+            break;
+        case AppMenuCommand::PasteAsChild:
+            pasteSelection(true);
             break;
         case AppMenuCommand::FrameSelected:
             if (SceneProject* scene = project.getSelectedScene()) {
@@ -866,6 +894,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+Shift+B    Build Settings\n"
                 "Ctrl+Z    Undo\n"
                 "Ctrl+Y / Ctrl+Shift+Z    Redo\n"
+                "Ctrl+A    Select All\n"
+                "Ctrl+X / Ctrl+C / Ctrl+V    Cut / Copy / Paste GameObjects\n"
+                "Ctrl+Shift+V    Paste As Child\n"
                 "Ctrl+D    Duplicate\n"
                 "F2    Rename\n"
                 "Delete / Backspace    Delete\n\n"
@@ -911,6 +942,10 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
     if (ImGui::BeginMainMenuBar()) {
         for (const PlatformMenuItem& topLevel : menu.menus) {
             if (ImGui::BeginMenu(topLevel.label.c_str(), topLevel.enabled)) {
+                // Paste reflects what another editor instance or application copied
+                if (topLevel.label == "Edit" && ImGui::IsWindowAppearing()) {
+                    EntityClipboard::refresh();
+                }
                 showImGuiMenuItems(topLevel.children);
                 ImGui::EndMenu();
             }
@@ -1734,6 +1769,71 @@ void editor::App::duplicateSelection() {
     }
 }
 
+bool editor::App::isSceneEditContext() const {
+    // Enabled items keep their native key equivalent, stealing it from a focused text field
+    return !ImGui::GetIO().WantTextInput && lastFocusedWindow == LastFocusedWindow::AnySceneWindow;
+}
+
+bool editor::App::canSelectAll() {
+    SceneProject* scene = project.getSelectedScene();
+    return isSceneEditContext() && scene && scene->scene && !scene->entities.empty();
+}
+
+bool editor::App::canCutSelection() {
+    // Deleting follows Duplicate: not while a scene plays
+    return canCopySelection() && !project.isAnyScenePlaying();
+}
+
+bool editor::App::canCopySelection() {
+    // Copying only reads, so it also works in Play mode (to paste the values after Stop)
+    SceneProject* scene = project.getSelectedScene();
+    return isSceneEditContext() && scene && scene->scene && !scene->selectedEntities.empty();
+}
+
+bool editor::App::canPasteSelection(bool asChild) {
+    SceneProject* scene = project.getSelectedScene();
+    if (!isSceneEditContext() || project.isAnyScenePlaying() || !scene || !scene->scene ||
+        !EntityClipboard::hasGameObjects(&project)) {
+        return false;
+    }
+    if (!asChild) {
+        return true;
+    }
+    for (Entity entity : scene->selectedEntities) {
+        if (scene->scene->isEntityCreated(entity) && scene->scene->findComponent<Transform>(entity)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void editor::App::selectAll() {
+    if (!canSelectAll()) return;
+    SceneProject* scene = project.getSelectedScene();
+    // A child is selected through its parent, as in the Hierarchy
+    project.replaceSelectedEntities(scene->id, Project::getTopLevelEntities(scene->scene, scene->entities));
+}
+
+void editor::App::copySelection(bool cut) {
+    if (!(cut ? canCutSelection() : canCopySelection())) return;
+    const uint32_t sceneId = project.getSelectedSceneId();
+    std::vector<Entity> selection = EntityClipboard::getCopyableSelection(&project, sceneId);
+    if (selection.empty()) return;
+    if (cut) {
+        EntityClipboard::cutGameObjects(&project, sceneId, selection);
+    } else {
+        EntityClipboard::copyGameObjects(&project, sceneId, selection);
+    }
+}
+
+void editor::App::pasteSelection(bool asChild) {
+    if (!isSceneEditContext() || project.isAnyScenePlaying()) return;
+    SceneProject* scene = project.getSelectedScene();
+    if (!scene || !scene->scene) return;
+    // Reads the clipboard itself: another editor instance may have copied since the last probe
+    EntityClipboard::pasteGameObjects(&project, scene->id, asChild);
+}
+
 void editor::App::show(){
     float dpiScale = 1.0f;
     if (const ImGuiViewport* mainViewport = ImGui::GetMainViewport()) {
@@ -1748,6 +1848,8 @@ void editor::App::show(){
         loadingWindow->show();
         return;
     }
+
+    EntityClipboard::update();
 
     // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
     for (SceneProject& sceneProject : project.getScenes()) {
@@ -1852,6 +1954,18 @@ void editor::App::show(){
 
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) duplicateSelection();
 
+        // Clipboard and Select All: only for the Hierarchy and the Scene view, where the keys
+        // are not text operations (the Console and the Project window have their own)
+        if (!io.WantTextInput && io.KeyCtrl && !io.KeyAlt && (hierarchyWindow->isFocused() || sceneWindow->isFocused())) {
+            auto run = [this](AppMenuCommand menuCommand) {
+                executeMenuCommand({static_cast<uint32_t>(menuCommand), {}});
+            };
+            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)) run(AppMenuCommand::SelectAll);
+            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_X, false)) run(AppMenuCommand::CutSelection);
+            if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_C, false)) run(AppMenuCommand::CopySelection);
+            if (ImGui::IsKeyPressed(ImGuiKey_V, false)) run(io.KeyShift ? AppMenuCommand::PasteAsChild : AppMenuCommand::PasteSelection);
+        }
+
         // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
         if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
             if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
@@ -1903,6 +2017,7 @@ void editor::App::show(){
     projectSaveDialog.show();
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
+    if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();

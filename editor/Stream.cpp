@@ -246,6 +246,19 @@ float editor::Stream::decodePositiveFinite(const YAML::Node& node, float fallbac
     }
 }
 
+uint32_t editor::Stream::decodeLayerMask(const YAML::Node& node, uint32_t fallback) {
+    if (!node || !node.IsScalar()) {
+        return fallback;
+    }
+
+    // written unsigned; a hand-written -1 (Unity's Everything) also reads as all layers
+    try {
+        return static_cast<uint32_t>(node.as<long long>());
+    } catch (const YAML::Exception&) {
+        return fallback;
+    }
+}
+
 void editor::Stream::encodeFinite(YAML::Node& node, const char* key, float value) {
     if (std::isfinite(value)) {
         node[key] = value;
@@ -1869,6 +1882,27 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["versionControlMetadata"] = project->hasVersionControlMetadata();
     }
 
+    if (!project->getTags().empty()) {
+        YAML::Node tagsNode;
+        for (const std::string& tag : project->getTags()) {
+            tagsNode.push_back(tag);
+        }
+        root["tags"] = tagsNode;
+    }
+    {
+        YAML::Node layersNode;
+        const std::vector<std::string>& layerNames = project->getLayerNames();
+        for (int layer = 0; layer < (int)layerNames.size(); layer++) {
+            if (!layerNames[layer].empty()) {
+                // a string key keeps the node a map (an integer key can turn it into a sequence)
+                layersNode[std::to_string(layer)] = layerNames[layer];
+            }
+        }
+        if (layersNode.size() != 0) {
+            root["layers"] = layersNode;
+        }
+    }
+
     {
         YAML::Node exportNode;
 
@@ -2194,6 +2228,28 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["versionControlMetadata"].IsDefined()) {
         project->setVersionControlMetadata(node["versionControlMetadata"].as<bool>());
+    }
+
+    {
+        // Tags and Layers: "tags" lists the user tags, "layers" maps a user layer index to its name
+        std::vector<std::string> tags;
+        if (node["tags"] && node["tags"].IsSequence()) {
+            for (const auto& tagNode : node["tags"]) {
+                if (tagNode.IsScalar()) tags.push_back(tagNode.as<std::string>());
+            }
+        }
+        std::vector<std::string> layerNames(MAX_LAYERS);
+        if (node["layers"] && node["layers"].IsMap()) {
+            for (const auto& layerNode : node["layers"]) {
+                int layer = -1;
+                if (!YAML::convert<int>::decode(layerNode.first, layer) || layer < 0 || layer >= MAX_LAYERS || !layerNode.second.IsScalar()) {
+                    Out::warning("Ignoring layer entry \"%s\" in project settings", layerNode.first.Scalar().c_str());
+                    continue;
+                }
+                layerNames[layer] = layerNode.second.as<std::string>();
+            }
+        }
+        project->setTagsAndLayers(tags, layerNames);
     }
 
     if (node["export"] && node["export"].IsMap()) {
@@ -3030,24 +3086,26 @@ YAML::Node editor::Stream::encodeEntity(const Entity entity, const EntityRegistr
                 hasCurrentEntity = !sceneProject ||
                     std::find(sceneProject->entities.begin(), sceneProject->entities.end(), currentEntity) != sceneProject->entities.end();
                 if (hasCurrentEntity) {
+                    // Past the branch: stop before encoding an entity outside it
+                    auto parentIt = entityNodes.find(transform.parent);
+                    if (parentIt == entityNodes.end()) {
+                        break; // No more childs
+                    }
+                    YAML::Node& parentNode = parentIt->second;
+
                     fs::path currentPrefabPath = importedPrefabPath(currentEntity);
                     YAML::Node& currentNode = entityNodes[currentEntity];
                     currentNode = ignoreContainingPrefab && currentPrefabPath.empty() ?
                         encodeEntityAux(currentEntity, registry) :
                         encodeEntityAux(currentEntity, registry, project, sceneProject, currentPrefabPath);
 
-                    if (entityNodes.find(transform.parent) != entityNodes.end()) {
-                        YAML::Node& parentNode = entityNodes[transform.parent];
-                        if (!parentNode["children"]) {
-                            parentNode["children"] = YAML::Node();
-                        }
-                        parentNode["children"].push_back(currentNode);
-                        if (project && registry->getSignature(currentEntity).test(registry->getComponentId<PrefabComponent>()) &&
-                            (!sceneProject || !currentPrefabPath.empty())) {
-                            skippedPrefabBranch.insert(currentEntity);
-                        }
-                    } else {
-                        break; // No more childs
+                    if (!parentNode["children"]) {
+                        parentNode["children"] = YAML::Node();
+                    }
+                    parentNode["children"].push_back(currentNode);
+                    if (project && registry->getSignature(currentEntity).test(registry->getComponentId<PrefabComponent>()) &&
+                        (!sceneProject || !currentPrefabPath.empty())) {
+                        skippedPrefabBranch.insert(currentEntity);
                     }
                 }
             }
@@ -5816,6 +5874,7 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     node["innerConeCos"] = light.innerConeCos;
     node["outerConeCos"] = light.outerConeCos;
     node["spotMask"] = encodeTexture(light.spotMask);
+    node["cullingMask"] = light.cullingMask;
     node["shadows"] = light.shadows;
     node["automaticShadowCamera"] = light.automaticShadowCamera;
     node["shadowBias"] = light.shadowBias;
@@ -5843,6 +5902,7 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["innerConeCos"]) light.innerConeCos = node["innerConeCos"].as<float>();
     if (node["outerConeCos"]) light.outerConeCos = node["outerConeCos"].as<float>();
     if (node["spotMask"]) light.spotMask = decodeTexture(node["spotMask"]);
+    if (node["cullingMask"]) light.cullingMask = decodeLayerMask(node["cullingMask"], light.cullingMask);
     if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
     if (node["automaticShadowCamera"]) light.automaticShadowCamera = node["automaticShadowCamera"].as<bool>();
     if (node["shadowBias"]) light.shadowBias = node["shadowBias"].as<float>();
@@ -6012,6 +6072,7 @@ YAML::Node editor::Stream::encodeReflectionProbeComponent(const ReflectionProbeC
     node["farClip"] = probe.farClip;
     node["updateInterval"] = probe.updateInterval;
     node["includeSky"] = probe.includeSky;
+    node["cullingMask"] = probe.cullingMask;
     node["texture"] = encodeTexture(probe.texture);
 
     return node;
@@ -6041,6 +6102,7 @@ ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YA
     if (node["farClip"]) probe.farClip = node["farClip"].as<float>();
     if (node["updateInterval"]) probe.updateInterval = node["updateInterval"].as<float>();
     if (node["includeSky"]) probe.includeSky = node["includeSky"].as<bool>();
+    if (node["cullingMask"]) probe.cullingMask = decodeLayerMask(node["cullingMask"], probe.cullingMask);
     if (node["texture"]) probe.texture = decodeTexture(node["texture"]);
     probe.needUpdate = true;
 
@@ -6052,6 +6114,7 @@ YAML::Node editor::Stream::encodeCameraComponent(const CameraComponent& camera) 
     node["enabled"] = camera.enabled;
 
     node["type"] = cameraTypeToString(camera.type);
+    node["cullingMask"] = camera.cullingMask;
     encodeFiniteVector3(node, "target", camera.target);
     encodeFiniteVector3(node, "up", camera.up);
     encodeFinite(node, "leftClip", camera.leftClip);
@@ -6083,6 +6146,7 @@ CameraComponent editor::Stream::decodeCameraComponent(const YAML::Node& node, co
     }
 
     if (node["type"]) camera.type = stringToCameraType(node["type"].as<std::string>());
+    if (node["cullingMask"]) camera.cullingMask = decodeLayerMask(node["cullingMask"], camera.cullingMask);
     camera.target = decodeFiniteVector3(node["target"], camera.target);
     camera.up = decodeFiniteVector3(node["up"], camera.up);
     camera.leftClip = decodeFinite(node["leftClip"], camera.leftClip);

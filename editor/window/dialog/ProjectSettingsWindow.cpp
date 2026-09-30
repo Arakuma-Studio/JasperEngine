@@ -135,8 +135,6 @@ static const settingsui::Category projectCategories[] = {
 static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
 static_assert(std::size(projectCategories) == static_cast<size_t>(ProjectCategory::Count));
 
-static const char* builtInTags[] = { "Untagged", "Respawn", "Finish", "EditorOnly", "MainCamera", "Player", "GameController" };
-static const char* builtInLayers[] = { "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI" };
 static constexpr float settingsLabelWidth = 200.0f;
 static constexpr float settingsPanelPadding = 12.0f;
 static constexpr float settingsButtonWidth = 120.0f;
@@ -945,6 +943,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
+
+    m_tags = project->getTags();
+    m_layerNames = project->getLayerNames();
+    m_layerNames.resize(MAX_LAYERS);
+    m_newTagBuffer[0] = '\0';
 }
 
 void ProjectSettingsWindow::show() {
@@ -1015,7 +1018,9 @@ void ProjectSettingsWindow::drawSettings() {
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
-    const bool canSave = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
+    const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
+    const std::string tagsAndLayersProblem = tagsAndLayersError();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
@@ -1026,7 +1031,11 @@ void ProjectSettingsWindow::drawSettings() {
     }
     ImGui::EndDisabled();
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
+        if (!hasAbi) {
+            ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
+        } else {
+            ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
+        }
     }
 
     ImGui::SameLine();
@@ -1333,35 +1342,134 @@ void ProjectSettingsWindow::drawScriptingSettings() {
     });
 }
 
+std::string ProjectSettingsWindow::newTagError() const {
+    const std::string tag = TagManager::trimName(m_newTagBuffer);
+    if (tag.empty()) return "Type a tag name";
+    if (TagManager::isBuiltinTag(tag) || std::find(m_tags.begin(), m_tags.end(), tag) != m_tags.end()) {
+        return "Tag \"" + tag + "\" is already defined";
+    }
+    return "";
+}
+
+int ProjectSettingsWindow::findLayerNameClash(int layer, const std::string& name) const {
+    if (name.empty()) return -1;
+    for (int other = 0; other < MAX_LAYERS; other++) {
+        if (other == layer) continue;
+        const std::string otherName = TagManager::isBuiltinLayer(other)
+            ? std::string(TagManager::getBuiltinLayerName(other))
+            : TagManager::trimName(m_layerNames[other]);
+        if (otherName == name) return other;
+    }
+    return -1;
+}
+
+std::string ProjectSettingsWindow::tagsAndLayersError() const {
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+        if (TagManager::isBuiltinLayer(layer)) continue;
+        const int clash = findLayerNameClash(layer, TagManager::trimName(m_layerNames[layer]));
+        if (clash >= 0) {
+            return "User Layer " + std::to_string(layer) + " repeats the name of layer " + std::to_string(clash);
+        }
+    }
+    return "";
+}
+
 void ProjectSettingsWindow::drawTagsAndLayersSettings() {
     if (beginSettingsPanel("##TagsAndLayersSettingsPanel")) {
-        drawSectionNote("Built-in tags and layers. They are read-only for now.");
+        drawSectionNote("Saved with the project. A GameObject keeps a tag that is removed here, but scripts "
+            "can no longer set or compare it. Scripts read layer names through LayerMask.");
+
+        const ImVec4 errorColor(1.0f, 0.45f, 0.35f, 1.0f);
+        const float buttonWidth = ImGui::GetFrameHeight();
 
         if (Theme::foldoutHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##TagsTable")) {
-            for (size_t i = 0; i < std::size(builtInTags); i++) {
+            for (const std::string& tag : TagManager::getBuiltinTags()) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("Built-in");
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(tag.c_str());
+            }
+
+            // Unity's list: user tags by index, - removes one, + adds the name typed below
+            int removeIndex = -1;
+            for (size_t i = 0; i < m_tags.size(); i++) {
+                ImGui::PushID(static_cast<int>(i));
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
                 ImGui::Text("Tag %zu", i);
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted(builtInTags[i]);
+                ImGui::TextUnformatted(m_tags[i].c_str());
+                // right-aligned in the cell, like the + below
+                ImGui::SameLine();
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - buttonWidth));
+                if (ImGui::Button(ICON_FA_MINUS, ImVec2(buttonWidth, 0))) {
+                    removeIndex = static_cast<int>(i);
+                }
+                ImGui::SetItemTooltip("Remove tag \"%s\"", m_tags[i].c_str());
+                ImGui::PopID();
+            }
+            if (removeIndex >= 0) {
+                m_tags.erase(m_tags.begin() + removeIndex);
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("New Tag Name");
+            ImGui::TableNextColumn();
+            const std::string addError = newTagError();
+            ImGui::SetNextItemWidth(-(buttonWidth + ImGui::GetStyle().ItemSpacing.x));
+            bool add = ImGui::InputTextWithHint("##NewTagName", "Tag name", m_newTagBuffer, sizeof(m_newTagBuffer),
+                                                ImGuiInputTextFlags_EnterReturnsTrue);
+            if (add) {
+                // keep typing tags one after another
+                ImGui::SetKeyboardFocusHere(-1);
+            }
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!addError.empty());
+            add = ImGui::Button(ICON_FA_PLUS "##AddTag", ImVec2(buttonWidth, 0)) || add;
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("%s", addError.empty() ? "Add the tag" : addError.c_str());
+            if (add && addError.empty()) {
+                m_tags.push_back(TagManager::trimName(m_newTagBuffer));
+                m_newTagBuffer[0] = '\0';
+            }
+            if (m_newTagBuffer[0] != '\0' && !addError.empty()) {
+                ImGui::TextColored(errorColor, "%s", addError.c_str());
             }
             ImGui::EndTable();
         }
 
         if (Theme::foldoutHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LayersTable")) {
-            const int builtInCount = static_cast<int>(std::size(builtInLayers));
-            for (int i = 0; i < 32; i++) {
-                const char* layer = i < builtInCount ? builtInLayers[i] : "";
+            for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                ImGui::PushID(layer);
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text(i < builtInCount ? "Builtin Layer %d" : "User Layer %d", i);
+                const bool builtin = TagManager::isBuiltinLayer(layer);
+                ImGui::Text(builtin ? "Builtin Layer %d" : "User Layer %d", layer);
                 ImGui::TableNextColumn();
-                ImGui::AlignTextToFramePadding();
-                if (*layer) ImGui::TextUnformatted(layer);
-                else ImGui::TextDisabled("-");
+                if (builtin) {
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextDisabled("%s", TagManager::getBuiltinLayerName(layer));
+                } else {
+                    char buffer[128];
+                    snprintf(buffer, sizeof(buffer), "%s", m_layerNames[layer].c_str());
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::InputText("##LayerName", buffer, sizeof(buffer))) {
+                        m_layerNames[layer] = buffer;
+                    }
+                    const int clash = findLayerNameClash(layer, TagManager::trimName(m_layerNames[layer]));
+                    if (clash >= 0) {
+                        ImGui::TextColored(errorColor, "Layer %d already has this name", clash);
+                    }
+                }
+                ImGui::PopID();
             }
             ImGui::EndTable();
         }
@@ -1688,6 +1796,9 @@ bool ProjectSettingsWindow::applySettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
         return false;
     }
+    if (!tagsAndLayersError().empty()) {
+        return false;
+    }
     // The edit buffer truncates long names. Only write back when the value
     // changed, since setName also rebuilds libName and the window title.
     std::string projectName = m_projectNameBuffer;
@@ -1826,6 +1937,14 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);
+
+    // a name typed into New Tag Name but not added yet is kept rather than lost
+    std::vector<std::string> tags = m_tags;
+    if (m_newTagBuffer[0] != '\0' && newTagError().empty()) {
+        tags.push_back(TagManager::trimName(m_newTagBuffer));
+    }
+    // GameObjects keep a removed tag, as in Unity; scripts then see it as not defined
+    m_project->setTagsAndLayers(tags, m_layerNames);
 
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();

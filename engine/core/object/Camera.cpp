@@ -596,6 +596,14 @@ bool Camera::isDepthTest() const{
     return camera.depthTest;
 }
 
+void Camera::setCullingMask(uint32_t cullingMask){
+    getComponent<CameraComponent>().cullingMask = cullingMask;
+}
+
+uint32_t Camera::getCullingMask() const{
+    return getComponent<CameraComponent>().cullingMask;
+}
+
 Ray Camera::screenToRay(float x, float y){
     CameraComponent& camera = getComponent<CameraComponent>();
 

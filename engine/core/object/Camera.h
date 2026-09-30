@@ -118,6 +118,10 @@ namespace jasperengine{
         void setDepthTest(bool depthTest);
         bool isDepthTest() const;
 
+        // Unity Camera.cullingMask: layers this camera draws (LAYER_MASK_EVERYTHING by default)
+        void setCullingMask(uint32_t cullingMask);
+        uint32_t getCullingMask() const;
+
         Ray screenToRay(float x, float y);
 
         float getDistanceFromTarget() const;

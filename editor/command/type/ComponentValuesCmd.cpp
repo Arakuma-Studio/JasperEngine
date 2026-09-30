@@ -1,0 +1,460 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "ComponentValuesCmd.h"
+
+#include "Stream.h"
+#include "Out.h"
+#include "command/type/AddComponentCmd.h"
+#include "command/type/ModelLoadCmd.h"
+#include "command/type/MultiPropertyCmd.h"
+#include "command/type/PropertyCmd.h"
+#include "util/CameraTextureLink.h"
+#include "window/dialog/ComponentAddDialog.h"
+
+#include <initializer_list>
+
+using namespace jasperengine;
+
+namespace {
+
+    // Mesh fields the geometry owns. A sprite, tilemap, polygon or terrain rebuilds them and a
+    // model loads them from its file, so a paste onto such a mesh keeps them.
+    const std::initializer_list<const char*> meshGeometryKeys = {
+        "buffer", "indices", "eBuffers", "bonesMatrix", "aabb", "verticesAABB", "worldAABB",
+        "normAdjustJoint", "normAdjustWeight", "morphWeights"
+    };
+    const std::initializer_list<const char*> submeshGeometryKeys = {
+        "primitiveType", "vertexCount", "hasTexCoord1", "hasTexCoord2", "hasNormalMap", "hasTangent",
+        "hasVertexColor3", "hasVertexColor4", "hasTextureRect", "hasSkinning", "hasMorphTarget",
+        "hasMorphNormal", "hasMorphTangent", "normAdjustJoint", "normAdjustWeight"
+    };
+    // The same for a UI element an image, text or polygon draws
+    const std::initializer_list<const char*> uiGeometryKeys = {
+        "buffer", "indices", "minBufferCount", "minIndicesCount", "primitiveType", "vertexCount", "aabb", "worldAABB"
+    };
+
+    void keepKey(YAML::Node& value, const YAML::Node& current, const char* key) {
+        const YAML::Node& constCurrent = current;
+        if (constCurrent[key]) {
+            value[key] = YAML::Clone(constCurrent[key]);
+        } else {
+            value.remove(key);
+        }
+    }
+
+    // `source` made fit for `entity`: its own structure (child entities, owned tracks,
+    // generated geometry) stays. `skip` gets the properties that must then not be remapped.
+    YAML::Node prepareValue(Scene* scene, Entity entity, editor::ComponentType type, const YAML::Node& source,
+                            std::vector<std::string>& skip) {
+        YAML::Node value = YAML::Clone(source);
+        if (!value.IsMap()) {
+            value = YAML::Node(YAML::NodeType::Map);
+        }
+        const YAML::Node current = editor::EntityClipboard::encodeComponent(scene, entity, type);
+
+        auto keep = [&](const char* key) {
+            keepKey(value, current, key);
+            skip.push_back(key);
+        };
+
+        switch (type) {
+            case editor::ComponentType::ButtonComponent:
+                keep("label");
+                break;
+            case editor::ComponentType::ScrollbarComponent:
+                keep("bar");
+                break;
+            case editor::ComponentType::ProgressbarComponent:
+                keep("fill");
+                break;
+            case editor::ComponentType::PanelComponent:
+                keep("headerimage");
+                keep("headercontainer");
+                keep("headertext");
+                break;
+            case editor::ComponentType::InputFieldComponent:
+                keep("text");
+                keep("selection");
+                keep("cursor");
+                break;
+            case editor::ComponentType::ActionComponent:
+                // Ownership is the entity's: a pasted target is referenced, never owned, and
+                // a target this action owns is not given up
+                keepKey(value, current, "ownedTarget");
+                if (scene->getComponent<ActionComponent>(entity).ownedTarget) {
+                    keep("target");
+                }
+                break;
+            case editor::ComponentType::AnimationComponent:
+                keepKey(value, current, "ownedActions");
+                if (scene->getComponent<AnimationComponent>(entity).ownedActions) {
+                    keep("actions");
+                }
+                break;
+            case editor::ComponentType::MeshComponent: {
+                const Signature signature = scene->getSignature(entity);
+                const bool modelBacked = editor::Stream::isModelBackedMesh(entity, scene, signature);
+                if (!modelBacked && !editor::Stream::isGeneratedMesh(scene, signature)) {
+                    break;
+                }
+                for (const char* key : meshGeometryKeys) {
+                    keepKey(value, current, key);
+                }
+                // As many submeshes as the geometry has, each keeping its geometry fields
+                const YAML::Node currentSubmeshes = current["submeshes"];
+                const YAML::Node sourceSubmeshes = value["submeshes"];
+                YAML::Node submeshes(YAML::NodeType::Sequence);
+                for (size_t i = 0; currentSubmeshes && i < currentSubmeshes.size(); i++) {
+                    const bool pasted = sourceSubmeshes && sourceSubmeshes.IsSequence() && i < sourceSubmeshes.size();
+                    YAML::Node submesh = YAML::Clone(pasted ? sourceSubmeshes[i] : currentSubmeshes[i]);
+                    for (const char* key : submeshGeometryKeys) {
+                        keepKey(submesh, currentSubmeshes[i], key);
+                    }
+                    if (modelBacked && pasted) {
+                        // The next load of the model file must keep what was pasted
+                        const YAML::Node currentOverrides = currentSubmeshes[i]["overrideFields"];
+                        uint32_t overrides = currentOverrides ? currentOverrides.as<uint32_t>() : 0;
+                        overrides |= SubmeshOverride_Material | SubmeshOverride_FaceCulling | SubmeshOverride_TextureShadow;
+                        submesh["overrideFields"] = overrides;
+                    }
+                    submeshes.push_back(submesh);
+                }
+                value["submeshes"] = submeshes;
+                break;
+            }
+            case editor::ComponentType::UIComponent:
+                if (editor::Stream::isGeneratedUI(scene, scene->getSignature(entity))) {
+                    for (const char* key : uiGeometryKeys) {
+                        keepKey(value, current, key);
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+        return value;
+    }
+
+    // Unity's Reset of a script resets its fields; here that is the property values of every
+    // script in the component, which keeps its scripts
+    YAML::Node scriptDefaults(Scene* scene, Entity entity) {
+        YAML::Node value = editor::EntityClipboard::encodeComponent(scene, entity, editor::ComponentType::ScriptComponent);
+        YAML::Node scripts = value["scripts"];
+        if (scripts && scripts.IsSequence()) {
+            for (YAML::Node script : scripts) {
+                YAML::Node properties = script["properties"];
+                if (!properties || !properties.IsSequence()) {
+                    continue;
+                }
+                for (YAML::Node property : properties) {
+                    if (property["defaultValue"]) {
+                        property["value"] = YAML::Clone(property["defaultValue"]);
+                    } else {
+                        property.remove("value");
+                    }
+                    property.remove("sceneId");
+                }
+            }
+        }
+        return value;
+    }
+
+    bool hasComponent(Scene* scene, Entity entity, editor::ComponentType type) {
+        return scene->isEntityCreated(entity) &&
+            scene->getSignature(entity).test(editor::Catalog::getComponentId(scene, type));
+    }
+
+    std::string displayName(editor::ComponentType type) {
+        return editor::Catalog::getComponentDisplayName(type);
+    }
+
+    struct ModelValue {
+        bool enabled = true;
+        std::string filename;
+        bool mergeStaticMeshes = false;
+    };
+
+    ModelValue readModelValue(const YAML::Node& value) {
+        ModelValue model;
+        if (value["enabled"]) model.enabled = value["enabled"].as<bool>();
+        if (value["filename"]) model.filename = value["filename"].as<std::string>();
+        if (value["mergeStaticMeshes"]) model.mergeStaticMeshes = value["mergeStaticMeshes"].as<bool>();
+        return model;
+    }
+
+    // A model is its file: applying one loads it (ModelLoadCmd rebuilds the generated
+    // children into the GameObject's Transform and Mesh), the other two values are plain
+    // properties. `current` is null for a Model component added by the same command.
+    void addModelCommands(editor::MultiPropertyCmd* multi, editor::Project* project, uint32_t sceneId, Scene* scene, Entity entity,
+                          const ModelValue& model, const ModelComponent* current) {
+        const std::string currentFile = current ? current->filename : std::string();
+        const bool currentMerge = current ? current->mergeStaticMeshes : false;
+        if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge)) {
+            for (editor::ComponentType needed : {editor::ComponentType::Transform, editor::ComponentType::MeshComponent}) {
+                if (!hasComponent(scene, entity, needed)) {
+                    multi->addCommand(std::make_unique<editor::AddComponentCmd>(project, sceneId, entity, needed));
+                }
+            }
+            multi->addCommand(std::make_unique<editor::ModelLoadCmd>(project, sceneId, entity, model.filename, model.mergeStaticMeshes));
+        } else if (model.filename.empty()) {
+            multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "mergeStaticMeshes", model.mergeStaticMeshes);
+        }
+        multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "enabled", model.enabled);
+    }
+
+}
+
+editor::ComponentValuesCmd::ComponentValuesCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                               ComponentType type, std::shared_ptr<const ComponentClip> clip){
+    this->project = project;
+    this->sceneId = sceneId;
+    this->type = type;
+    this->clip = std::move(clip);
+    for (Entity entity : entities) {
+        Target target;
+        target.entity = entity;
+        targets.push_back(target);
+    }
+}
+
+bool editor::ComponentValuesCmd::execute(){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene){
+        return false;
+    }
+    Scene* scene = sceneProject->scene;
+
+    wasModified = sceneProject->isModified;
+    bool changed = false;
+
+    YAML::Node defaults;
+    if (!clip && type != ComponentType::ScriptComponent) {
+        defaults = EntityClipboard::encodeDefaultComponent(type);
+    }
+
+    for (Target& target : targets) {
+        target.before = YAML::Node();
+        if (!hasComponent(scene, target.entity, type)) {
+            continue;
+        }
+
+        target.before = EntityClipboard::encodeComponent(scene, target.entity, type);
+        const Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, target.entity));
+        target.overridden = prefab && prefab->hasComponentOverride(sceneId, target.entity, type);
+
+        std::vector<std::string> skip;
+        YAML::Node source = clip ? clip->value :
+            (type == ComponentType::ScriptComponent ? scriptDefaults(scene, target.entity) : defaults);
+        EntityClipboard::applyComponentValue(scene, target.entity, type, prepareValue(scene, target.entity, type, source, skip));
+
+        if (clip) {
+            // The copied GameObject becomes this one; other references follow the paste rules
+            std::unordered_map<Entity, Entity> self{{clip->entity, target.entity}};
+            ClipboardRemap remap;
+            remap.map = &self;
+            remap.externalNames = &clip->externalNames;
+            remap.sourceSceneId = clip->sceneId;
+            remap.targetSceneId = sceneId;
+            remap.sameScene = clip->project == EntityClipboard::projectKey(project) && clip->sceneId == sceneId;
+            uint64_t updateFlags = EntityClipboard::remapReferences(scene, target.entity, type, remap, skip);
+            if (updateFlags != 0) {
+                Catalog::updateEntity(scene, target.entity, updateFlags);
+            }
+        }
+
+        if (project->isEntityInPrefab(sceneId, target.entity)) {
+            project->prefabPropertyChanged(sceneId, target.entity, type, {});
+        }
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    if (type == ComponentType::CameraComponent) {
+        CameraTextureLink::resolve(scene);
+    }
+    sceneProject->isModified = true;
+    return true;
+}
+
+void editor::ComponentValuesCmd::undo(){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene){
+        return;
+    }
+    Scene* scene = sceneProject->scene;
+
+    for (auto it = targets.rbegin(); it != targets.rend(); ++it) {
+        if (!it->before.IsMap() || !hasComponent(scene, it->entity, type)) {
+            continue;
+        }
+        EntityClipboard::applyComponentValue(scene, it->entity, type, it->before);
+        if (uint64_t updateFlags = EntityClipboard::bindCameraTextures(scene, it->entity, type)) {
+            Catalog::updateEntity(scene, it->entity, updateFlags);
+        }
+
+        // A reference the paste pointed outside the prefab made the component an override
+        Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, it->entity));
+        if (prefab && !it->overridden && prefab->hasComponentOverride(sceneId, it->entity, type)) {
+            prefab->clearComponentOverride(sceneId, it->entity, type);
+        }
+        if (project->isEntityInPrefab(sceneId, it->entity)) {
+            project->prefabPropertyChanged(sceneId, it->entity, type, {});
+        }
+    }
+
+    if (type == ComponentType::CameraComponent) {
+        CameraTextureLink::resolve(scene);
+    }
+    sceneProject->isModified = wasModified;
+}
+
+bool editor::ComponentValuesCmd::mergeWith(Command* otherCommand){
+    return false;
+}
+
+bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                                ComponentType type, const ComponentClip* clip, std::string* reason){
+    auto fail = [reason](const std::string& message) {
+        if (reason) *reason = message;
+        return false;
+    };
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || entities.empty()) {
+        return fail("No GameObject selected");
+    }
+    if (!clip) {
+        return fail("Copy a component first");
+    }
+    if (clip->type != type) {
+        return fail("The copied component is a " + displayName(clip->type));
+    }
+    for (Entity entity : entities) {
+        if (!hasComponent(sceneProject->scene, entity, type)) {
+            return fail("Not every selected GameObject has a " + displayName(type));
+        }
+    }
+    if (type == ComponentType::ModelComponent && readModelValue(clip->value).filename.empty()) {
+        for (Entity entity : entities) {
+            if (!sceneProject->scene->getComponent<ModelComponent>(entity).filename.empty()) {
+                return fail("The copied Model has no file, and a loaded model cannot be emptied: remove the component instead");
+            }
+        }
+    }
+    return true;
+}
+
+bool editor::ComponentValuesCmd::canPasteAsNew(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                               const ComponentClip* clip, std::string* reason){
+    auto fail = [reason](const std::string& message) {
+        if (reason) *reason = message;
+        return false;
+    };
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || entities.empty()) {
+        return fail("No GameObject selected");
+    }
+    if (!clip) {
+        return fail("Copy a component first");
+    }
+    if (!ComponentAddDialog::isListed(clip->type)) {
+        return fail("A " + displayName(clip->type) + " cannot be added");
+    }
+    for (Entity entity : entities) {
+        if (!sceneProject->scene->isEntityCreated(entity)) {
+            return fail("No GameObject selected");
+        }
+        if (hasComponent(sceneProject->scene, entity, clip->type)) {
+            return fail("A selected GameObject already has a " + displayName(clip->type));
+        }
+    }
+    return true;
+}
+
+bool editor::ComponentValuesCmd::canReset(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                          ComponentType type, std::string* reason){
+    auto fail = [reason](const std::string& message) {
+        if (reason) *reason = message;
+        return false;
+    };
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || entities.empty()) {
+        return fail("No GameObject selected");
+    }
+    if (type == ComponentType::PrefabComponent) {
+        return fail("The prefab link has no default values");
+    }
+    for (Entity entity : entities) {
+        if (!hasComponent(sceneProject->scene, entity, type)) {
+            return fail("Not every selected GameObject has a " + displayName(type));
+        }
+        if (type == ComponentType::ModelComponent && !sceneProject->scene->getComponent<ModelComponent>(entity).filename.empty()) {
+            return fail("A loaded model cannot be emptied: load another model file or remove the component");
+        }
+    }
+    return true;
+}
+
+editor::Command* editor::ComponentValuesCmd::buildPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                                              ComponentType type, std::shared_ptr<const ComponentClip> clip, std::string* reason){
+    if (!canPasteValues(project, sceneId, entities, type, clip.get(), reason)) {
+        return nullptr;
+    }
+    if (type != ComponentType::ModelComponent) {
+        return new ComponentValuesCmd(project, sceneId, entities, type, clip);
+    }
+
+    Scene* scene = project->getScene(sceneId)->scene;
+    const ModelValue model = readModelValue(clip->value);
+    MultiPropertyCmd* multi = new MultiPropertyCmd();
+    for (Entity entity : entities) {
+        addModelCommands(multi, project, sceneId, scene, entity, model, &scene->getComponent<ModelComponent>(entity));
+    }
+    return multi;
+}
+
+editor::Command* editor::ComponentValuesCmd::buildPasteAsNew(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                                             std::shared_ptr<const ComponentClip> clip, std::string* reason){
+    if (!canPasteAsNew(project, sceneId, entities, clip.get(), reason)) {
+        return nullptr;
+    }
+    Scene* scene = project->getScene(sceneId)->scene;
+    MultiPropertyCmd* multi = new MultiPropertyCmd();
+
+    if (clip->type == ComponentType::ModelComponent) {
+        // A model loads into the Transform and Mesh of its GameObject
+        const ModelValue model = readModelValue(clip->value);
+        for (Entity entity : entities) {
+            multi->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, ComponentType::ModelComponent));
+            addModelCommands(multi, project, sceneId, scene, entity, model, nullptr);
+        }
+        return multi;
+    }
+
+    for (Entity entity : entities) {
+        multi->addCommand(std::make_unique<AddComponentCmd>(project, sceneId, entity, clip->type));
+    }
+    multi->addCommand(std::make_unique<ComponentValuesCmd>(project, sceneId, entities, clip->type, clip));
+    return multi;
+}
+
+editor::Command* editor::ComponentValuesCmd::buildReset(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                                        ComponentType type, std::string* reason){
+    if (!canReset(project, sceneId, entities, type, reason)) {
+        return nullptr;
+    }
+    if (type != ComponentType::ModelComponent) {
+        return new ComponentValuesCmd(project, sceneId, entities, type, nullptr);
+    }
+
+    // Only a model without a file resets (canReset): its two plain values
+    Scene* scene = project->getScene(sceneId)->scene;
+    MultiPropertyCmd* multi = new MultiPropertyCmd();
+    for (Entity entity : entities) {
+        addModelCommands(multi, project, sceneId, scene, entity, ModelValue(), nullptr);
+    }
+    return multi;
+}

@@ -59,6 +59,10 @@ namespace jasperengine{
         void setIncludeSky(bool includeSky);
         bool isIncludeSky() const;
 
+        // Unity ReflectionProbe.cullingMask: layers the capture draws
+        void setCullingMask(uint32_t cullingMask);
+        uint32_t getCullingMask() const;
+
         // Authored six-face cubemap for static probes (see ReflectionProbeMode)
         void setTextures(const std::string& texturePositiveX, const std::string& textureNegativeX,
                         const std::string& texturePositiveY, const std::string& textureNegativeY,

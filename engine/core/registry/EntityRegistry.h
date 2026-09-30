@@ -8,6 +8,7 @@
 #include "EntityManager.h"
 #include "ComponentManager.h"
 #include "Signature.h"
+#include "TagManager.h"
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -74,7 +75,6 @@ namespace jasperengine {
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
 
-        void sortComponentsByTransform(Signature entitySignature);
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         void changeTransformChildren(Entity entity);
 
@@ -102,6 +102,11 @@ namespace jasperengine {
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 
         void moveChildToIndex(Entity entity, size_t index); // for internal/editor use
+        // Reorders the component arrays kept in Transform order (meshes, UI, ...) that the
+        // signature holds, after the Transform array itself was reordered. For internal/editor
+        // use: moving a block of branches directly in the Transform array needs one call,
+        // where moveChildToIndex re-sorts once per branch.
+        void sortComponentsByTransform(Signature entitySignature);
 
         void moveChildToTop(Entity entity);
         void moveChildUp(Entity entity);
@@ -133,12 +138,10 @@ namespace jasperengine {
         std::string getEntityTag(Entity entity) const;
         void setEntityLayer(Entity entity, int layer);
         int getEntityLayer(Entity entity) const;
-        // First entity with the tag, NULL_ENTITY when none
+        // First entity with the tag, NULL_ENTITY when none. Like Unity's FindWithTag, a tag
+        // the project does not define (TagManager) logs "Tag: X is not defined." and finds nothing.
         Entity findEntityByTag(const std::string& tag) const;
         std::vector<Entity> findEntitiesByTag(const std::string& tag) const;
-        // Unity's built-in tags, and names of the built-in layers ("" for an unnamed layer)
-        static const std::vector<std::string>& getBuiltinTags();
-        static std::string getBuiltinLayerName(int layer);
 
         Entity findOldestParent(Entity entity);
         bool isParentOf(Entity parent, Entity child) const;

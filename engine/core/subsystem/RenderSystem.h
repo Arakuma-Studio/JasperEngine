@@ -481,6 +481,9 @@ namespace jasperengine{
 			int shadowPointAtlasHeight = 0;
 			bool ownShadowAtlas = false;
 			bool ownShadowPointAtlas = false;
+			// layers whose meshes cast into this view's shadow maps: its camera's culling
+			// mask (a view with another mask cannot share the frame's maps)
+			uint32_t shadowCameraMask = LAYER_MASK_EVERYTHING;
 
 			std::unordered_map<Entity, std::array<InstanceViewRange, 1 + MAX_SHADOW_ATLAS_SLOTS>> instanceRanges;
 			std::unordered_map<Entity, ViewInstanceSource> instanceSources;
@@ -611,6 +614,13 @@ namespace jasperengine{
 
 		bool needUpdateShadowBindings;
 
+		// Light culling masks per light slot (Everything past the scene's lights). When one
+		// leaves out a layer, drawMesh lights that layer's meshes from fs_lightingMasked:
+		// the view's fs_lighting with those lights at zero intensity. The masks belong to
+		// the lights, so every view shares them; the masked copy is scratch per draw.
+		uint32_t lightCullingMasks[MAX_LIGHTS];
+		bool hasLightCullingMasks;
+		fs_lighting_t fs_lightingMasked;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
 
@@ -696,6 +706,8 @@ namespace jasperengine{
 		// (mesh, sprite, model, tilemap, terrain, instances, particles, points, lines, UI) is disabled
 		bool isRenderActive(Entity entity, Signature signature) const;
 		bool isRenderActive(Entity entity) const;
+		// the entity's layer is in a camera, light or probe culling mask; Everything costs one compare
+		bool isLayerVisible(Entity entity, uint32_t cullingMask) const;
 		// enabled light on an entity active in hierarchy
 		bool isLightActive(Entity entity, const LightComponent& light) const;
 		bool isLight2DActive(Entity entity, const Light2DComponent& light) const;

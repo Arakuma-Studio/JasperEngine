@@ -543,6 +543,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
+    ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
@@ -614,6 +615,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
+    ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
@@ -636,6 +639,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabLocalCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
+    ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
 

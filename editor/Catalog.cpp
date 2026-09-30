@@ -4,6 +4,7 @@
 #include "Catalog.h"
 
 #include "Stream.h"
+#include "util/EntityClipboard.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
@@ -413,6 +414,8 @@ namespace {
         makeFastProperty<LightComponent, float, &LightComponent::innerConeCos>("innerConeCos", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, float, &LightComponent::outerConeCos>("outerConeCos", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, Texture, &LightComponent::spotMask>("spotMask", PropertyType::Texture, UpdateFlags_LightShadowCamera),
+        // read by RenderSystem every frame (lighting and shadow casters)
+        makeFastProperty<LightComponent, uint32_t, &LightComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
@@ -465,11 +468,14 @@ namespace {
         makeFastProperty<ReflectionProbeComponent, float, &ReflectionProbeComponent::farClip>("farClip", PropertyType::Float, UpdateFlags_Reflection_Probe_Capture),
         makeFastProperty<ReflectionProbeComponent, float, &ReflectionProbeComponent::updateInterval>("updateInterval", PropertyType::Float, UpdateFlags_Reflection_Probe_Sampling),
         makeFastProperty<ReflectionProbeComponent, bool, &ReflectionProbeComponent::includeSky>("includeSky", PropertyType::Bool, UpdateFlags_Reflection_Probe_Capture),
+        makeFastProperty<ReflectionProbeComponent, uint32_t, &ReflectionProbeComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_Reflection_Probe_Capture),
         makeFastProperty<ReflectionProbeComponent, Texture, &ReflectionProbeComponent::texture>("texture", PropertyType::Texture, UpdateFlags_Reflection_Probe_Capture),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
+        // read by RenderSystem when the camera draws
+        makeFastProperty<CameraComponent, uint32_t, &CameraComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<CameraComponent, Vector3, &CameraComponent::target>("target", PropertyType::Vector3, UpdateFlags_Camera),
         makeFastProperty<CameraComponent, Vector3, &CameraComponent::up>("up", PropertyType::Vector3, UpdateFlags_Camera),
         makeFastProperty<CameraComponent, float, &CameraComponent::leftClip>("left", PropertyType::Float, UpdateFlags_Camera),
@@ -4590,6 +4596,19 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             targetRegistry->getComponent<ParticleSystemComponent>(targetEntity) = Stream::decodeParticleSystemComponent(encoded);
             break;
         }
+
+        // Written over the live component, so a live instance keeps its runtime state (an
+        // instanced mesh keeps its vertex layout, a body its physics handle)
+        case ComponentType::PointsComponent:
+        case ComponentType::ActionComponent:
+        case ComponentType::AnimationComponent:
+        case ComponentType::SpriteAnimationComponent:
+        case ComponentType::Rigidbody2DComponent:
+        case ComponentType::RigidbodyComponent:
+        case ComponentType::InstancedMeshComponent:
+            EntityClipboard::applyComponentValue(targetRegistry, targetEntity, compType,
+                EntityClipboard::encodeComponent(sourceRegistry, sourceEntity, compType));
+            break;
 
         default:
             printf("WARNING: Unsupported component type for copying: %s\n", getComponentName(compType).c_str());

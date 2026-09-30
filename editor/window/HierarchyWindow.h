@@ -135,6 +135,9 @@ namespace jasperengine::editor{
         int renameFocusFrames = 0;
         int renameMissedFrames = 0;     // frames the renamed row was not drawn
         bool windowFocused = false;
+        bool focusedThisFrame = false;      // the panel took focus from this frame's click
+        ImGuiID pendingContextMenuItem = 0; // row whose context menu opens next frame
+        bool pendingEmptySpaceMenu = false;
 
         void showCreateMenuItems(bool atRoot, Entity parent, bool addToPrefab);
         void showSceneMenu(SceneProject* sceneProject);

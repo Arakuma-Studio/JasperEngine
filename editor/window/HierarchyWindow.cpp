@@ -18,6 +18,7 @@
 #include "command/type/SceneNameCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "util/EntityClipboard.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
@@ -27,6 +28,7 @@
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
+#include "command/type/UnpackPrefabCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityPayload.h"
@@ -743,12 +745,34 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         }
     }
 
-    if (node.isPrefab || node.isPrefabRoot) {
-        ImGui::Separator();
+    // Unity acts on the whole selection when the clicked row is part of it; a GameObject
+    // inside an instance stands for the outermost instance holding it
+    std::vector<Entity> targets = project->getSelectedEntities(sceneId);
+    if (targets.empty() || !project->isSelectedEntity(sceneId, node.id)) {
+        targets = {node.id};
+    }
+    const bool canUnpack = UnpackPrefabCmd::canUnpack(project, sceneId, targets);
+
+    if (node.isPrefab || node.isPrefabRoot || canUnpack) {
+        const bool itemsAbove = (!node.isPrefab && !node.isParentPrefab) ||
+            (node.isParentPrefab && !node.isPrefabRoot) || (node.isPrefabRoot && node.hasPrefabParent);
+        if (itemsAbove) {
+            ImGui::Separator();
+        }
         std::filesystem::path assetPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
         }
+        if (ImGui::MenuItem(ICON_FA_BOX_OPEN "  Unpack", nullptr, false, canUnpack)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, false));
+        }
+        ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack"
+            : "Turns the Prefab instance into regular GameObjects; nested Prefab instances stay");
+        if (ImGui::MenuItem(ICON_FA_BOXES_PACKING "  Unpack Completely", nullptr, false, canUnpack)) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, true));
+        }
+        ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack"
+            : "Turns the Prefab instance and every Prefab instance inside it into regular GameObjects");
     }
 }
 
@@ -1379,6 +1403,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeHovered = ImGui::IsItemHovered();
     bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    const ImGuiID nodeItemId = ImGui::GetItemID();
 
     // Pop color if we pushed it
     if (pushedHighlightColor) {
@@ -1727,6 +1752,15 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             && !project->isSelectedEntity(project->getSelectedSceneId(), node.id)) {
             applyEntitySelection(project->getSelectedSceneId(), node.id, false, false);
         }
+        // Taking focus in the same frame closes a popup opened in it, so a click
+        // that just focused the panel opens the menu on the next frame
+        if (focusedThisFrame) {
+            pendingContextMenuItem = nodeItemId;
+        } else {
+            ImGui::OpenPopup(node.isScene ? "SceneMenu" : "ContextMenu");
+        }
+    } else if (pendingContextMenuItem != 0 && pendingContextMenuItem == nodeItemId) {
+        pendingContextMenuItem = 0;
         ImGui::OpenPopup(node.isScene ? "SceneMenu" : "ContextMenu");
     }
 
@@ -1778,13 +1812,38 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
 
             bool entityDeleted = false;
-            if (ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
+
+            // Unity's clipboard group, on the whole selection like the items below
+            if (ImGui::IsWindowAppearing()) {
+                EntityClipboard::refresh();
+            }
+            const bool canPaste = EntityClipboard::hasGameObjects(project) && !node.isPlayCreated;
+            auto copyTargets = [&]() {
+                return project->isSelectedEntity(sceneId, node.id) ?
+                    EntityClipboard::getCopyableSelection(project, sceneId) : std::vector<Entity>{node.id};
+            };
+            if (ImGui::MenuItem(ICON_FA_SCISSORS "  Cut", "Ctrl+X", false, !node.isLocked)) {
+                EntityClipboard::cutGameObjects(project, sceneId, copyTargets());
+                entityDeleted = true;
+            }
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Copy", "Ctrl+C", false, !node.isLocked)) {
+                EntityClipboard::copyGameObjects(project, sceneId, copyTargets());
+            }
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, canPaste && !entityDeleted)) {
+                EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::After, node.id);
+            }
+            if (ImGui::MenuItem(ICON_FA_PASTE "  Paste As Child", "Ctrl+Shift+V", false, canPaste && node.hasTransform && !entityDeleted)) {
+                EntityClipboard::pasteGameObjects(project, sceneId, EntityClipboard::Placement::Into, node.id);
+            }
+            ImGui::Separator();
+
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_I_CURSOR "  Rename", "F2", false, !node.isPlayCreated)) {
                 beginRename(RenameTarget::Entity, sceneId, node.id, node.name);
             }
-            if (ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_COPY "  Duplicate", "Ctrl+D", false, !node.isLocked)) {
                 CommandHandle::get(sceneId)->addCommandNoMerge(new DuplicateEntityCmd(project, sceneId, targets));
             }
-            if (ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
+            if (!entityDeleted && ImGui::MenuItem(ICON_FA_TRASH "  Delete", "Delete", false, !node.isLocked)) {
                 Command* lastCmd = nullptr;
                 for (Entity entity : targets) {
                     lastCmd = new DeleteEntityCmd(project, sceneId, entity);
@@ -2535,6 +2594,9 @@ void editor::HierarchyWindow::show(){
         && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_NoPopupHierarchy)
         && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         ImGui::SetWindowFocus();
+        focusedThisFrame = true;
+    } else {
+        focusedThisFrame = false;
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
@@ -2614,11 +2676,25 @@ void editor::HierarchyWindow::show(){
 
     // Handle right-click in empty space
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        if (focusedThisFrame) {
+            pendingEmptySpaceMenu = true;
+        } else {
+            ImGui::OpenPopup("EmptySpaceContextMenu");
+        }
+    } else if (pendingEmptySpaceMenu) {
+        pendingEmptySpaceMenu = false;
         ImGui::OpenPopup("EmptySpaceContextMenu");
     }
 
-    // Empty space context menu: create at the scene root
+    // Empty space context menu: paste and create at the scene root
     if (ImGui::BeginPopup("EmptySpaceContextMenu")) {
+        if (ImGui::IsWindowAppearing()) {
+            EntityClipboard::refresh();
+        }
+        if (ImGui::MenuItem(ICON_FA_PASTE "  Paste", "Ctrl+V", false, EntityClipboard::hasGameObjects(project))) {
+            EntityClipboard::pasteGameObjects(project, sceneProject->id, EntityClipboard::Placement::Root, NULL_ENTITY);
+        }
+        ImGui::Separator();
         showCreateMenuItems(true, NULL_ENTITY, false);
         ImGui::EndPopup();
     }

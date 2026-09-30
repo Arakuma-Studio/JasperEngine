@@ -72,6 +72,10 @@ namespace jasperengine{
             return localRight.crossProduct(localDirection).normalized();
         }
 
+        // Unity Light.cullingMask: GameObjects on a layer whose bit is clear are neither
+        // lit by this light nor cast its shadow
+        uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
         bool shadows = false;
         bool automaticShadowCamera = true;
         float shadowBias = 0.002f;

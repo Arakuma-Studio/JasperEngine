@@ -90,6 +90,11 @@ bool EntityHandle::isActiveInHierarchy() const{
 }
 
 void EntityHandle::setTag(const std::string& tag){
+    // Unity refuses a tag missing from Project Settings > Tags and Layers
+    if (!TagManager::isTagDefined(tag)){
+        Log::error("Tag: %s is not defined.", tag.c_str());
+        return;
+    }
     scene->setEntityTag(entity, tag);
 }
 
@@ -98,10 +103,18 @@ std::string EntityHandle::getTag() const{
 }
 
 bool EntityHandle::compareTag(const std::string& tag) const{
+    if (!TagManager::isTagDefined(tag)){
+        Log::error("Tag: %s is not defined.", tag.c_str());
+        return false;
+    }
     return scene->getEntityTag(entity) == tag;
 }
 
 void EntityHandle::setLayer(int layer){
+    if (layer < 0 || layer >= MAX_LAYERS){
+        Log::error("A GameObject can only be in one layer. The layer needs to be in the range [0...31]");
+        return;
+    }
     scene->setEntityLayer(entity, layer);
 }
 

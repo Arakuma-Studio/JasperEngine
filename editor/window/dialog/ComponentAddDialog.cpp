@@ -132,6 +132,16 @@ void ComponentAddDialog::initializeCategories() {
     };
 }
 
+bool ComponentAddDialog::isListed(ComponentType type) {
+    static const ComponentAddDialog listing;
+    for (const ComponentCategory& category : listing.m_categories) {
+        for (const ComponentEntry& entry : category.entries) {
+            if (entry.type == type) return true;
+        }
+    }
+    return false;
+}
+
 void ComponentAddDialog::open(
     std::function<void(ComponentType)> onAdd,
     std::function<bool(ComponentType)> canAddComponent,
