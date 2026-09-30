@@ -854,7 +854,7 @@ void editor::CodeEditor::showSettingsButton() {
     if (ImGui::Button(ICON_FA_GEAR)) {
         ImGui::OpenPopup("CodeEditorSettingsPopup");
     }
-    ImGui::SetItemTooltip("Editor settings");
+    ImGui::SetItemTooltip("Code Editor settings");
 
     if (ImGui::BeginPopup("CodeEditorSettingsPopup")) {
         if (ImGui::BeginTable("code_editor_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
@@ -1709,7 +1709,7 @@ void editor::CodeEditor::show() {
 
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
                     if (isCppSource) {
-                        Backend::getApp().registerAlert("Drop Entity", "Entity properties must be added to the header file (.h), not the source file (.cpp).");
+                        Backend::getApp().registerAlert("Drop GameObject", "GameObject properties must be added to the header file (.h), not the source file (.cpp).");
                     } else if (payload->DataSize >= sizeof(EntityPayload)) {
                         const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                         if (instance.languageType == SyntaxLanguage::Lua)

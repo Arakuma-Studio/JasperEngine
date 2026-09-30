@@ -8,7 +8,9 @@
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
 # CLICKS="X,Y key:ctrl+s sleep:2 shot:menu X,Y" runs before KEYS: X,Y clicks
-# there, key:K presses K, sleep:N waits, shot:S saves <name>-S.png.
+# there, key:K presses K, sleep:N waits, shot:S saves <name>-S.png and
+# drag:X1,Y1,X2,Y2 drags with the left button held, wheel:X,Y,N scrolls N
+# notches down (negative: up).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -61,6 +63,13 @@ docker run --rm \
                 key:*) xdotool key \"\${c#key:}\" ;;
                 sleep:*) sleep \"\${c#sleep:}\" ;;
                 shot:*) import -window root ../$NAME-\${c#shot:}.png; echo \"ok: build/shots/$NAME-\${c#shot:}.png\" ;;
+                wheel:*) IFS=, read -r x1 y1 n <<< \"\${c#wheel:}\"
+                        xdotool mousemove \$x1 \$y1; sleep 0.2
+                        if (( n > 0 )); then xdotool click --repeat \$n --delay 100 5; else xdotool click --repeat \$(( -n )) --delay 100 4; fi ;;
+                drag:*) IFS=, read -r x1 y1 x2 y2 <<< \"\${c#drag:}\"
+                        xdotool mousemove \$x1 \$y1 mousedown 1; sleep 0.3
+                        xdotool mousemove \$(( (x1 + x2) / 2 )) \$(( (y1 + y2) / 2 )); sleep 0.2
+                        xdotool mousemove \$x2 \$y2; sleep 0.3; xdotool mouseup 1 ;;
                 *) xdotool mousemove \${c%,*} \${c#*,}; sleep 0.2; xdotool click 1 ;;
             esac
             sleep 0.7
