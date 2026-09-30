@@ -134,6 +134,16 @@ namespace jasperengine::editor{
 
     using NodeRecovery = std::map<std::string, NodeRecoveryEntry>;
 
+    // A prefab instance unpacked by Project::unpackPrefabInstances, with what putting its
+    // prefab link back takes: the members stay in the scene, only the bookkeeping goes
+    struct PrefabUnpackRecord {
+        std::filesystem::path path;       // prefab asset the instance followed
+        size_t index = 0;                 // position in the asset's instance list for the scene
+        Prefab::Instance instance;        // members, registry mapping and overrides
+        bool hadComponent = false;
+        PrefabComponent component;        // the root's PrefabComponent
+    };
+
     struct SharedMoveRecoveryEntry {
         Entity oldParent;
         size_t oldIndex;
@@ -876,6 +886,17 @@ namespace jasperengine::editor{
         bool undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
 
         void cleanupPrefabsForScene(uint32_t sceneId);
+
+        // Root of the outermost prefab instance holding each entity (a nested instance root
+        // resolves to the instance above it), NULL_ENTITY outside any instance. The result
+        // is aligned with `entities`; the scene's instances are indexed once for all of them.
+        std::vector<Entity> getOutermostPrefabRoots(uint32_t sceneId, const std::vector<Entity>& entities) const;
+        // Unity's Unpack Prefab: the instances rooted at `roots` become plain GameObjects that
+        // keep their current values, overrides included, and their entity IDs. Nested prefab
+        // instances stay instances unless `completely`, which unpacks every instance below too.
+        // Returns what repackPrefabInstances needs to undo it, in unpack order.
+        std::vector<PrefabUnpackRecord> unpackPrefabInstances(uint32_t sceneId, const std::vector<Entity>& roots, bool completely);
+        void repackPrefabInstances(uint32_t sceneId, std::vector<PrefabUnpackRecord> records);
 
         //=== end Prefab part ===
 
