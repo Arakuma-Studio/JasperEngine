@@ -1114,7 +1114,7 @@ private:
 
         if (!createHostCmd){
             std::string name = fs::path(assetPath).stem().string();
-            createHostCmd = new CreateEntityCmd(project, sceneId, name.empty() ? "Objects" : name, EntityCreationType::MODEL, terrainEntity);
+            createHostCmd = new CreateEntityCmd(project, sceneId, name.empty() ? "Terrain Instances" : name, EntityCreationType::MODEL, terrainEntity);
             createHostCmd->setQuiet(true);
         }
         if (!createHostCmd->execute()){
@@ -2010,7 +2010,7 @@ editor::Command* editor::TerrainEditWindow::makePlacementCommand(SceneProject* s
 
     std::string name = fs::path(placeAssetPath).stem().string();
     if (name.empty()){
-        name = "Object";
+        name = "GameObject";
     }
     return new ModelLoadCmd(project, sceneProject->id, name, terrainEntity, localPosition, rotation, scale, placeAssetPath);
 }
@@ -2716,7 +2716,7 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
 }
 
 void editor::TerrainEditWindow::drawFoliageMesh(const TerrainFoliageLayer& layer){
-    terrainPropertyRow("Mesh", "Choose a model or drag one from Resources.");
+    terrainPropertyRow("Mesh", "Choose a model or drag one from the Project window.");
     ImGui::BeginGroup();
     const float available = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float startY = ImGui::GetCursorPosY();
@@ -2850,7 +2850,7 @@ float editor::TerrainEditWindow::sampleBrushMask(float localX, float localY) con
 }
 
 void editor::TerrainEditWindow::drawBrushMask(){
-    terrainPropertyRow("Mask", "Grayscale texture shaping the brush, and the relief the Stamp brush lays down. Drag one from Resources.");
+    terrainPropertyRow("Mask", "Grayscale texture shaping the brush, and the relief the Stamp Terrain tool lays down. Drag one from the Project window.");
     ImGui::BeginGroup();
     const float available = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float startY = ImGui::GetCursorPosY();
@@ -2909,7 +2909,7 @@ void editor::TerrainEditWindow::drawBrushMask(){
 }
 
 void editor::TerrainEditWindow::drawPlacementAsset(){
-    terrainPropertyRow("Asset", "Model or entity bundle the placement brush drops. Drag one from Resources.");
+    terrainPropertyRow("Asset", "Model or Prefab the Paint Trees brush places. Drag one from the Project window.");
     ImGui::BeginGroup();
     const float available = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float startY = ImGui::GetCursorPosY();
@@ -2955,7 +2955,7 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
     };
 
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
-    if (iconButton(ICON_FA_FOLDER_OPEN, "browse_place_asset", "Choose model or bundle", false, buttonSize)){
+    if (iconButton(ICON_FA_FOLDER_OPEN, "browse_place_asset", "Choose model or Prefab", false, buttonSize)){
         const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_MODEL | FILE_DIALOG_BUNDLE);
         if (!path.empty()){
             assignAsset(path);
@@ -2977,6 +2977,35 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
             }
         }
         ImGui::EndDragDropTarget();
+    }
+}
+
+// Unity's names for the sculpt tools, shown as the Paint Terrain title
+static const char* sculptToolName(editor::TerrainBrushMode mode){
+    switch (mode){
+        case editor::TerrainBrushMode::Raise:
+        case editor::TerrainBrushMode::Lower: return "Raise or Lower Terrain";
+        case editor::TerrainBrushMode::Smooth: return "Smooth Height";
+        case editor::TerrainBrushMode::Flatten: return "Set Height";
+        case editor::TerrainBrushMode::Sharpen: return "Sharpen Peaks";
+        case editor::TerrainBrushMode::Noise: return "Noise";
+        case editor::TerrainBrushMode::Terrace: return "Terrace";
+        case editor::TerrainBrushMode::Stamp: return "Stamp Terrain";
+        case editor::TerrainBrushMode::Erode: return "Erosion";
+        case editor::TerrainBrushMode::Ramp: return "Ramp";
+        default: return "Paint Terrain";
+    }
+}
+
+static editor::TerrainToolCategory toolCategoryFor(editor::TerrainBrushMode mode){
+    switch (mode){
+        case editor::TerrainBrushMode::PaintBase:
+        case editor::TerrainBrushMode::PaintLayer: return editor::TerrainToolCategory::Texture;
+        case editor::TerrainBrushMode::PaintDensity:
+        case editor::TerrainBrushMode::EraseDensity: return editor::TerrainToolCategory::Details;
+        case editor::TerrainBrushMode::PlaceObject:
+        case editor::TerrainBrushMode::EraseObject: return editor::TerrainToolCategory::Trees;
+        default: return editor::TerrainToolCategory::Sculpt;
     }
 }
 
@@ -3006,7 +3035,7 @@ void editor::TerrainEditWindow::show(){
     if (!hasValidTarget(sceneProject)){
         brushActive = false;
         endStroke();
-        ImGui::TextWrapped("%s", project->isAnyScenePlaying() ? "Stop the scene to edit terrain." : "Select a terrain in the scene to sculpt, paint, or edit foliage.");
+        ImGui::TextWrapped("%s", project->isAnyScenePlaying() ? "Stop the scene to edit terrain." : "Select a Terrain in the Hierarchy to sculpt, paint, or place details and trees.");
         ImGui::End();
         if (!windowOpen){
             setOpen(false);
@@ -3033,17 +3062,80 @@ void editor::TerrainEditWindow::show(){
         }
     };
 
-    if (ImGui::CollapsingHeader("Sculpt", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("sculpt_properties")){
+    // Unity's terrain tool bar: one tool at a time, then its settings and the brush
+    struct TerrainTool{
+        TerrainToolCategory category;
+        const char* icon;
+        const char* name;
+        const char* description;
+    };
+    static const TerrainTool terrainTools[] = {
+        {TerrainToolCategory::Sculpt, ICON_FA_MOUNTAIN_SUN, "Paint Terrain",
+         "Sculpt the heightmap: raise or lower, set height, smooth, stamp and more. Ctrl inverts, Shift smooths."},
+        {TerrainToolCategory::Texture, ICON_FA_PAINTBRUSH, "Paint Texture",
+         "Paint texture layers onto the terrain surface."},
+        {TerrainToolCategory::Details, ICON_FA_SEEDLING, "Paint Details",
+         "Paint grass and other detail meshes by density. Ctrl erases."},
+        {TerrainToolCategory::Trees, ICON_FA_TREE, "Paint Trees",
+         "Place trees, rocks and other models or Prefabs along the drag. Ctrl erases."},
+    };
+    if (brushActive && toolCategoryFor(brushMode) != toolCategory){
+        // A brush chosen elsewhere (shortcut or AI) brings its tool's settings up
+        toolCategory = toolCategoryFor(brushMode);
+    }
+    {
+        const float toolSize = std::round(ImGui::GetFrameHeight() * 1.6f);
+        const float toolsWidth = toolSize * IM_ARRAYSIZE(terrainTools) + spacing * (IM_ARRAYSIZE(terrainTools) - 1);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - toolsWidth) * 0.5f));
+        for (int i = 0; i < IM_ARRAYSIZE(terrainTools); ++i){
+            const TerrainTool& tool = terrainTools[i];
+            if (i > 0){
+                ImGui::SameLine();
+            }
+            const bool selected = toolCategory == tool.category;
+            ImGui::PushStyleColor(ImGuiCol_Button, selected ? Theme::Colors::ButtonActivated : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.25f);
+            const bool clicked = Widgets::iconButton((std::string("##terrain_tool_") + tool.name).c_str(), tool.icon, ImVec2(toolSize, toolSize));
+            ImGui::PopFont();
+            ImGui::PopStyleColor();
+            showTooltip(tool.name, ImGuiHoveredFlags_AllowWhenDisabled);
+            if (clicked && toolCategory != tool.category){
+                endStroke();
+                toolCategory = tool.category;
+                brushActive = false;
+            }
+        }
+        ImGui::Spacing();
+        const TerrainTool* currentTool = &terrainTools[0];
+        for (const TerrainTool& tool : terrainTools){
+            if (tool.category == toolCategory){
+                currentTool = &tool;
+            }
+        }
+        const char* toolTitle = currentTool->name;
+        if (toolCategory == TerrainToolCategory::Sculpt){
+            toolTitle = sculptToolName(brushMode);
+        }
+        const ImVec2 titlePos = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddText(ImVec2(titlePos.x + 1.0f, titlePos.y), ImGui::GetColorU32(ImGuiCol_Text), toolTitle);
+        ImGui::TextUnformatted(toolTitle);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", currentTool->description);
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+
+    if (toolCategory == TerrainToolCategory::Sculpt && beginTerrainProperties("sculpt_properties")){
         drawMapSettings(TerrainMapTarget::HeightMap, "Heightmap", heightMapResolution);
-        terrainPropertyRow("Brushes");
+        terrainPropertyRow("Tool");
         ImGui::BeginDisabled(terrain.heightMap.empty());
-        brushButton(TerrainBrushMode::Raise, ICON_FA_ARROW_UP, "terrain_raise", "Raise terrain (Ctrl lowers, Shift smooths)");
+        brushButton(TerrainBrushMode::Raise, ICON_FA_ARROW_UP, "terrain_raise", "Raise Terrain (Ctrl lowers, Shift smooths)");
         ImGui::SameLine();
-        brushButton(TerrainBrushMode::Lower, ICON_FA_ARROW_DOWN, "terrain_lower", "Lower terrain (Ctrl raises, Shift smooths)");
+        brushButton(TerrainBrushMode::Lower, ICON_FA_ARROW_DOWN, "terrain_lower", "Lower Terrain (Ctrl raises, Shift smooths)");
         ImGui::SameLine();
-        brushButton(TerrainBrushMode::Smooth, ICON_FA_WATER, "terrain_smooth", "Smooth terrain");
+        brushButton(TerrainBrushMode::Smooth, ICON_FA_WATER, "terrain_smooth", "Smooth Height");
         ImGui::SameLine();
-        brushButton(TerrainBrushMode::Flatten, ICON_FA_GRIP_LINES, "terrain_flatten", "Flatten terrain (Shift smooths)");
+        brushButton(TerrainBrushMode::Flatten, ICON_FA_GRIP_LINES, "terrain_flatten", "Set Height (Shift smooths)");
 
         brushButton(TerrainBrushMode::Sharpen, ICON_FA_CHART_LINE, "terrain_sharpen", "Sharpen terrain, pulling ridges back out of a smoothed surface");
         ImGui::SameLine();
@@ -3052,7 +3144,7 @@ void editor::TerrainEditWindow::show(){
         brushButton(TerrainBrushMode::Terrace, ICON_FA_STAIRS, "terrain_terrace", "Step the terrain into flat terraces");
         ImGui::SameLine();
         ImGui::BeginDisabled(brushMaskPath.empty());
-        brushButton(TerrainBrushMode::Stamp, ICON_FA_STAMP, "terrain_stamp", "Stamp the brush mask into the terrain as relief");
+        brushButton(TerrainBrushMode::Stamp, ICON_FA_STAMP, "terrain_stamp", "Stamp Terrain: press the brush mask into the terrain as relief");
         ImGui::EndDisabled();
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Erode, ICON_FA_DROPLET, "terrain_erode", "Erode with water and slope, cutting channels and settling scree");
@@ -3062,7 +3154,7 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndTable();
     }
 
-    if (ImGui::CollapsingHeader("Texture Paint", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("texture_paint_properties")){
+    if (toolCategory == TerrainToolCategory::Texture && beginTerrainProperties("texture_paint_properties")){
         const int blendMapIndex = selectedTextureLayer / 3;
         drawMapSettings(TerrainMapRef(TerrainMapTarget::BlendMap, blendMapIndex), "Blendmap", blendMapResolution);
         const bool blendMapReady = blendMapIndex < static_cast<int>(terrain.blendMaps.size()) &&
@@ -3077,7 +3169,7 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndTable();
     }
 
-    if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("foliage_properties")){
+    if (toolCategory == TerrainToolCategory::Details && beginTerrainProperties("foliage_properties")){
         terrainPropertyRow("Layer");
         auto layerLabel = [&](int index){
             const std::string& path = terrain.foliageLayers[index].meshPath;
@@ -3102,7 +3194,7 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndDisabled();
         bool layersChanged = false;
         ImGui::SameLine();
-        if (iconButton(ICON_FA_PLUS, "add_foliage_layer", "Add foliage layer", false, buttonSize)){
+        if (iconButton(ICON_FA_PLUS, "add_foliage_layer", "Add detail layer", false, buttonSize)){
             endStroke();
             std::vector<TerrainFoliageLayer> layers = terrain.foliageLayers;
             layers.emplace_back();
@@ -3113,7 +3205,7 @@ void editor::TerrainEditWindow::show(){
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(layerCount == 0 || layersChanged);
-        if (iconButton(ICON_FA_TRASH_CAN, "remove_foliage_layer", "Remove foliage layer", false, buttonSize)){
+        if (iconButton(ICON_FA_TRASH_CAN, "remove_foliage_layer", "Remove detail layer", false, buttonSize)){
             endStroke();
             std::vector<TerrainFoliageLayer> layers = terrain.foliageLayers;
             layers.erase(layers.begin() + selectedFoliageLayer);
@@ -3130,9 +3222,9 @@ void editor::TerrainEditWindow::show(){
             drawMapSettings(TerrainMapRef(TerrainMapTarget::DensityMap, selectedFoliageLayer), "Density map", densityMapResolution);
             terrainPropertyRow("Paint");
             ImGui::BeginDisabled(terrain.foliageLayers[selectedFoliageLayer].densityMap.empty());
-            brushButton(TerrainBrushMode::PaintDensity, ICON_FA_BRUSH, "terrain_paint_density", "Paint foliage density (Ctrl erases)");
+            brushButton(TerrainBrushMode::PaintDensity, ICON_FA_BRUSH, "terrain_paint_density", "Paint detail density (Ctrl erases)");
             ImGui::SameLine();
-            brushButton(TerrainBrushMode::EraseDensity, ICON_FA_ERASER, "terrain_erase_density", "Erase foliage density (Ctrl paints)");
+            brushButton(TerrainBrushMode::EraseDensity, ICON_FA_ERASER, "terrain_erase_density", "Erase detail density (Ctrl paints)");
             ImGui::EndDisabled();
 
             terrainPropertyRow("Density", "Instances per square world unit at full painted density.");
@@ -3179,7 +3271,7 @@ void editor::TerrainEditWindow::show(){
             if (ImGui::SliderFloat("##foliage_align", &alignment, 0.0f, 100.0f, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)){
                 setFoliageLayerProperty("alignToNormal", alignment / 100.0f);
             }
-            terrainPropertyRow("Draw distance", "Foliage visibility distance in world units. Ignored while editing terrain; restored when editing ends or play starts.");
+            terrainPropertyRow("Draw distance", "Detail visibility distance in world units. Ignored while editing terrain; restored when editing ends or play starts.");
             if (ImGui::DragFloat("##foliage_distance", &layer.drawDistance, 1.0f, 1.0f, 500.0f, "%.0f")){
                 setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
             }
@@ -3195,24 +3287,24 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndTable();
     }
 
-    if (ImGui::CollapsingHeader("Objects", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("object_properties")){
+    if (toolCategory == TerrainToolCategory::Trees && beginTerrainProperties("object_properties")){
         drawPlacementAsset();
-        terrainPropertyRow("Place", "Props are parented to the terrain, so they show in the outliner and can be transformed one by one.");
+        terrainPropertyRow("Place", "Placed GameObjects are parented to the terrain, so they show in the Hierarchy and can be transformed one by one.");
         ImGui::BeginDisabled(placeAssetPath.empty());
-        brushButton(TerrainBrushMode::PlaceObject, ICON_FA_TREE, "terrain_place_object", "Place objects along the drag (Ctrl erases)");
+        brushButton(TerrainBrushMode::PlaceObject, ICON_FA_TREE, "terrain_place_object", "Place along the drag (Ctrl erases)");
         ImGui::EndDisabled();
         ImGui::SameLine();
-        brushButton(TerrainBrushMode::EraseObject, ICON_FA_ERASER, "terrain_erase_object", "Erase the terrain's child objects under the brush (Ctrl places)");
+        brushButton(TerrainBrushMode::EraseObject, ICON_FA_ERASER, "terrain_erase_object", "Erase the terrain's placed GameObjects under the brush (Ctrl places)");
 
-        terrainPropertyRow("Instanced", "Batch every object of this asset into one draw. Instances can be moved but carry no components of their own, so turn this off for props that need collision, scripts or animation.");
+        terrainPropertyRow("Instanced", "Batch every placement of this asset into one draw. Instances can be moved but carry no components of their own, so turn this off for props that need Colliders, scripts or animation.");
         ImGui::BeginDisabled(Util::isBundleFile(placeAssetPath));
         ImGui::Checkbox("##place_instanced", &placeInstanced);
         ImGui::EndDisabled();
-        terrainPropertyRow("Spacing", "Closest two placed objects are allowed to get, in world units.");
+        terrainPropertyRow("Spacing", "Closest two placements are allowed to get, in world units.");
         if (ImGui::DragFloat("##place_spacing", &placeSpacing, 0.05f, MIN_PLACE_SPACING, 100.0f, "%.2f")){
             placeSpacing = std::clamp(placeSpacing, MIN_PLACE_SPACING, 100.0f);
         }
-        terrainPropertyRow("Scale range", "Random scale per object. Left at 1, a model keeps the scale its file authored.");
+        terrainPropertyRow("Scale range", "Random scale per placement. Left at 1, a model keeps the scale its file authored.");
         if (ImGui::DragFloatRange2("##place_scale", &placeMinScale, &placeMaxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f")){
             placeMinScale = std::max(0.01f, placeMinScale);
             placeMaxScale = std::max(placeMinScale, placeMaxScale);
@@ -3237,7 +3329,7 @@ void editor::TerrainEditWindow::show(){
         brushActive = false;
         endStroke();
     }
-    if (ImGui::CollapsingHeader("Brush", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("brush_properties")){
+    if (ImGui::CollapsingHeader("Brushes", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("brush_properties")){
         ImGui::BeginDisabled(!brushTargetAvailable);
         terrainPropertyRow("Shape");
         if (iconButton(ICON_FA_CIRCLE, "shape_circle", "Circle brush", brushShape == TerrainBrushShape::Circle, commandSize)){
@@ -3255,7 +3347,7 @@ void editor::TerrainEditWindow::show(){
         }
         ImGui::EndDisabled();
         const char* sizeTooltip = placementBrush ?
-            "How far objects scatter from the cursor, in world units. Adjust with [ and ] while painting." :
+            "How far placements scatter from the cursor, in world units. Adjust with [ and ] while painting." :
             "Brush size in world units. Adjust with [ and ] while painting.";
         terrainPropertyRow("Size", sizeTooltip);
         brushSize = std::clamp(brushSize, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
@@ -3370,6 +3462,7 @@ void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
 
     const TerrainEditorSettings& ts = project->getTerrainEditorSettings();
     brushMode     = static_cast<TerrainBrushMode>(ts.brushMode);
+    toolCategory  = toolCategoryFor(brushMode);
     brushShape    = static_cast<TerrainBrushShape>(ts.brushShape);
     brushFalloff  = static_cast<TerrainBrushFalloff>(ts.brushFalloff);
     brushSize     = std::clamp(ts.brushSize, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
