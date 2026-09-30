@@ -7,13 +7,14 @@
 # The project is copied first. Writes build/shots/<name>.png and <name>.log.
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
+# CLICKS="x,y x,y" (screen pixels) are left-clicked before KEYS, same screenshot.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -39,7 +40,7 @@ docker run --rm \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \
     -e HOME="/src/$WORK/home" \
-    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" \
+    -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" -e CLICKS="${CLICKS:-}" \
     "$IMAGE" bash -euo pipefail -c "
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99
@@ -50,9 +51,10 @@ docker run --rm \
         kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited early'; tail -30 ../$NAME.log; exit 1; }
         import -window root ../$NAME.png
         echo 'ok: build/shots/$NAME.png'
-        if [[ -n \"\$KEYS\" ]]; then
+        if [[ -n \"\$KEYS\" || -n \"\$CLICKS\" ]]; then
             win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
             [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
+            for c in \$CLICKS; do xdotool mousemove \${c%,*} \${c#*,} click 1; sleep 0.5; done
             for k in \$KEYS; do xdotool key \$k; sleep 0.5; done
             sleep \$KEYS_WAIT
             kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited after keys'; tail -30 ../$NAME.log; exit 1; }
