@@ -454,6 +454,13 @@ std::string editor::Factory::formatUInt(unsigned int value) {
     return std::to_string(value);
 }
 
+// culling masks read best as hex: 0xFFFFFFFFu is Everything
+static std::string formatLayerMask(uint32_t mask) {
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "0x%08Xu", (unsigned int)mask);
+    return buffer;
+}
+
 // Escape one byte into a C++ string or char literal. Non-ASCII stays raw in
 // strings for readability, but a lone high byte is not a valid char literal.
 static void appendCppEscape(std::string& out, unsigned char c, bool charLiteral) {
@@ -1392,6 +1399,7 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.type = " << formatLightType(light.type) << ";\n";
     code << ind << "light.direction = " << formatVector3(light.direction) << ";\n";
     code << ind << "light.shadows = " << formatBool(light.shadows) << ";\n";
+    code << ind << "light.cullingMask = " << formatLayerMask(light.cullingMask) << ";\n";
     code << ind << "light.intensity = " << formatFloat(light.intensity) << ";\n";
     code << ind << "light.range = " << formatFloat(light.range) << ";\n";
     code << ind << "light.color = " << formatVector3(light.color) << ";\n";
@@ -1493,6 +1501,7 @@ std::string editor::Factory::createReflectionProbeComponent(int indentSpaces, En
     code << ind << "probe.farClip = " << formatFloat(probe.farClip) << ";\n";
     code << ind << "probe.updateInterval = " << formatFloat(probe.updateInterval) << ";\n";
     code << ind << "probe.includeSky = " << formatBool(probe.includeSky) << ";\n";
+    code << ind << "probe.cullingMask = " << formatLayerMask(probe.cullingMask) << ";\n";
     code << formatTexture(indentSpaces, probe.texture, "probe.texture", projectPath);
     addComponentCode(code, ind, sceneName, entityName, entity, "ReflectionProbeComponent", "probe", assignExisting);
     return code.str();
@@ -1518,6 +1527,7 @@ std::string editor::Factory::createCameraComponent(int indentSpaces, EntityRegis
     code << ind << "camera.renderToTexture = " << formatBool(camera.renderToTexture) << ";\n";
     code << ind << "camera.transparentSort = " << formatBool(camera.transparentSort) << ";\n";
     code << ind << "camera.depthTest = " << formatBool(camera.depthTest) << ";\n";
+    code << ind << "camera.cullingMask = " << formatLayerMask(camera.cullingMask) << ";\n";
     code << ind << "camera.useTarget = " << formatBool(camera.useTarget) << ";\n";
     code << ind << "camera.autoResize = " << formatBool(camera.autoResize) << ";\n";
     code << ind << "camera.framebufferWidth = " << formatUInt(camera.framebufferWidth) << ";\n";

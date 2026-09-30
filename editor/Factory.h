@@ -84,7 +84,6 @@ namespace jasperengine::editor{
         static std::string formatInt(int value);
         static std::string formatUInt(unsigned int value);
         static std::string formatEntity(Entity entity, const std::unordered_map<Entity, std::string>* entityVarNames);
-        static std::string formatString(const std::string& value);
         static std::string formatChar(char value);
         static std::string formatAttributeType(AttributeType type);
         static std::string formatAttributeDataType(AttributeDataType type);
@@ -109,6 +108,8 @@ namespace jasperengine::editor{
         static std::vector<Entity> getPrefabMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities);
 
         static std::string toIdentifier(const std::string& name);
+        // C++ string literal of the value, quotes included
+        static std::string formatString(const std::string& value);
         static std::string formatFloat(float value);
 
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);

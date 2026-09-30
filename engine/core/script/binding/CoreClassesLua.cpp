@@ -35,6 +35,30 @@
 
 using namespace jasperengine;
 
+// LayerMask.getMask("Default", "Enemies") or LayerMask.getMask({"Default", "Enemies"}).
+// Unity returns an int: layer 31 makes it negative, as there.
+static int luaLayerMaskGetMask(lua_State* L){
+    std::vector<std::string> names;
+    const int top = lua_gettop(L);
+    if (top == 1 && lua_istable(L, 1)){
+        const lua_Integer count = (lua_Integer)lua_rawlen(L, 1);
+        for (lua_Integer i = 1; i <= count; i++){
+            lua_rawgeti(L, 1, i);
+            if (lua_type(L, -1) != LUA_TSTRING){
+                return luaL_error(L, "LayerMask.getMask: layer names must be strings");
+            }
+            names.emplace_back(lua_tostring(L, -1));
+            lua_pop(L, 1);
+        }
+    }else{
+        for (int i = 1; i <= top; i++){
+            names.emplace_back(luaL_checkstring(L, i));
+        }
+    }
+    lua_pushinteger(L, (lua_Integer)(int32_t)TagManager::getMask(names));
+    return 1;
+}
+
 void LuaBinding::registerCoreClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -206,6 +230,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("User", EntityPool::User)
         .addVariable("System", EntityPool::System)
         .endNamespace();
+
+    // Unity's LayerMask: layer names from Project Settings > Tags and Layers
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LayerMask>("LayerMask")
+        .addStaticFunction("nameToLayer", &TagManager::nameToLayer)
+        .addStaticFunction("layerToName", &TagManager::layerToName)
+        .addStaticFunction("getMask", &luaLayerMaskGetMask)
+        .endClass();
 
     // The "no entity" sentinel, mirroring the C++ NULL_ENTITY macro. Scene:findEntity
     // returns this when no match is found.
@@ -669,7 +701,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setEntityActive", &EntityRegistry::setEntityActive)
         .addFunction("isEntityActive", &EntityRegistry::isEntityActive)
         .addFunction("isEntityActiveInHierarchy", &EntityRegistry::isEntityActiveInHierarchy)
-        .addFunction("setEntityTag", &EntityRegistry::setEntityTag)
+        // scripts get Unity's check; loaders and generated scenes call the C++ setter directly
+        .addFunction("setEntityTag", [] (EntityRegistry* self, Entity entity, const std::string& tag) {
+            if (!TagManager::isTagDefined(tag)){
+                Log::error("Tag: %s is not defined.", tag.c_str());
+                return;
+            }
+            self->setEntityTag(entity, tag);
+        })
         .addFunction("getEntityTag", &EntityRegistry::getEntityTag)
         .addFunction("setEntityLayer", &EntityRegistry::setEntityLayer)
         .addFunction("getEntityLayer", &EntityRegistry::getEntityLayer)

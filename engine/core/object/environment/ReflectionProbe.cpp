@@ -189,6 +189,19 @@ bool ReflectionProbe::isIncludeSky() const{
     return probe.includeSky;
 }
 
+void ReflectionProbe::setCullingMask(uint32_t cullingMask){
+    ReflectionProbeComponent& probe = getComponent<ReflectionProbeComponent>();
+
+    if (probe.cullingMask != cullingMask){
+        probe.cullingMask = cullingMask;
+        invalidateCapture();
+    }
+}
+
+uint32_t ReflectionProbe::getCullingMask() const{
+    return getComponent<ReflectionProbeComponent>().cullingMask;
+}
+
 void ReflectionProbe::setTextures(const std::string& texturePositiveX, const std::string& textureNegativeX,
                         const std::string& texturePositiveY, const std::string& textureNegativeY,
                         const std::string& texturePositiveZ, const std::string& textureNegativeZ){

@@ -53,6 +53,17 @@
 
 using namespace jasperengine;
 
+// Layer masks read as Unity's int (Everything is -1) and take any integer, keeping its
+// low 32 bits, so both -1 and ~LayerMask.getMask("UI") work
+template<typename T>
+static lua_Integer getLuaCullingMask(const T* self){
+    return (lua_Integer)(int32_t)self->getCullingMask();
+}
+
+template<typename T>
+static void setLuaCullingMask(T* self, lua_Integer mask){
+    self->setCullingMask((uint32_t)mask);
+}
 
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -309,6 +320,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFramebufferFilter", &Camera::setFramebufferFilter)
         .addProperty("transparentSort", &Camera::isTransparentSort, &Camera::setTransparentSort)
         .addProperty("depthTest", &Camera::isDepthTest, &Camera::setDepthTest)
+        .addProperty("cullingMask", &getLuaCullingMask<Camera>, &setLuaCullingMask<Camera>)
         .addFunction("screenToRay", &Camera::screenToRay)
         .addFunction("getDistanceFromTarget", &Camera::getDistanceFromTarget)
         .addFunction("updateCamera", &Camera::updateCamera)
@@ -319,6 +331,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .deriveClass<Light, GameObject>("Light")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
+        .addProperty("cullingMask", &getLuaCullingMask<Light>, &setLuaCullingMask<Light>)
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)
@@ -421,6 +434,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("farClip", &ReflectionProbe::getFarClip, &ReflectionProbe::setFarClip)
         .addProperty("updateInterval", &ReflectionProbe::getUpdateInterval, &ReflectionProbe::setUpdateInterval)
         .addProperty("includeSky", &ReflectionProbe::isIncludeSky, &ReflectionProbe::setIncludeSky)
+        .addProperty("cullingMask", &getLuaCullingMask<ReflectionProbe>, &setLuaCullingMask<ReflectionProbe>)
         .addFunction("setTextures", &ReflectionProbe::setTextures)
         .addFunction("setTexture", &ReflectionProbe::setTexture)
         .addFunction("refresh", &ReflectionProbe::refresh)

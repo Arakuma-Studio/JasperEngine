@@ -8,6 +8,7 @@
 #include "EntityManager.h"
 #include "ComponentManager.h"
 #include "Signature.h"
+#include "TagManager.h"
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -133,12 +134,10 @@ namespace jasperengine {
         std::string getEntityTag(Entity entity) const;
         void setEntityLayer(Entity entity, int layer);
         int getEntityLayer(Entity entity) const;
-        // First entity with the tag, NULL_ENTITY when none
+        // First entity with the tag, NULL_ENTITY when none. Like Unity's FindWithTag, a tag
+        // the project does not define (TagManager) logs "Tag: X is not defined." and finds nothing.
         Entity findEntityByTag(const std::string& tag) const;
         std::vector<Entity> findEntitiesByTag(const std::string& tag) const;
-        // Unity's built-in tags, and names of the built-in layers ("" for an unnamed layer)
-        static const std::vector<std::string>& getBuiltinTags();
-        static std::string getBuiltinLayerName(int layer);
 
         Entity findOldestParent(Entity entity);
         bool isParentOf(Entity parent, Entity child) const;

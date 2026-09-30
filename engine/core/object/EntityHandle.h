@@ -40,10 +40,13 @@ namespace jasperengine{
         bool isActive() const;
         bool isActiveInHierarchy() const;
 
+        // Unity GameObject.tag / CompareTag: a tag missing from the project's Tags and
+        // Layers logs "Tag: X is not defined." (setTag leaves the tag unchanged)
         void setTag(const std::string& tag);
         std::string getTag() const;
         bool compareTag(const std::string& tag) const;
 
+        // 0..31; out of range logs an error and leaves the layer unchanged
         void setLayer(int layer);
         int getLayer() const;
 

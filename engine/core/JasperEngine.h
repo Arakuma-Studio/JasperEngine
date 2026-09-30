@@ -164,6 +164,7 @@
 #include "pool/ModelPool.h"
 
 #include "registry/EntityRegistry.h"
+#include "registry/TagManager.h"
 
 #include "render/BufferRender.h"
 #include "render/CameraRender.h"

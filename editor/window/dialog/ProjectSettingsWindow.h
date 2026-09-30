@@ -99,6 +99,12 @@ namespace jasperengine::editor {
         bool m_androidFullscreen = true;
         bool m_androidKeepScreenOn = false;
 
+        // Tags and Layers being edited: user tags, and user layer names indexed by layer
+        // (MAX_LAYERS entries, built-in ones empty)
+        std::vector<std::string> m_tags;
+        std::vector<std::string> m_layerNames;
+        char m_newTagBuffer[128] = {0};
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -111,6 +117,12 @@ namespace jasperengine::editor {
         void drawPhysics2DSettings();
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
+        // Why the New Tag Name field cannot be added ("" when it can)
+        std::string newTagError() const;
+        // Layer that already has the name (built-in or user, other than 'layer'), -1 when none
+        int findLayerNameClash(int layer, const std::string& name) const;
+        // First Tags and Layers problem that blocks OK, "" when there is none
+        std::string tagsAndLayersError() const;
         void drawEditorSettings();
         Texture* findThumbnail(const std::string& path);
 

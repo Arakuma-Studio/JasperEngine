@@ -1903,6 +1903,7 @@ void editor::App::show(){
     projectSaveDialog.show();
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
+    if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();

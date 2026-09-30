@@ -57,7 +57,8 @@ namespace jasperengine::editor{
         Custom,
         LocalEntity,
         ExternalEntity,
-        Font
+        Font,
+        LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
     };
 
     struct EnumEntry {
@@ -279,7 +280,12 @@ namespace jasperengine::editor{
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
-        char newTagBuffer[64] = "";
+        // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
+        bool tagsAndLayersRequested = false;
+        // layer picked for GameObjects with children, waiting for the Change Layer answer
+        uint32_t pendingLayerSceneId = NULL_PROJECT_SCENE;
+        std::vector<Entity> pendingLayerEntities;
+        int pendingLayer = 0;
 
         bool canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType);
 
@@ -439,6 +445,8 @@ namespace jasperengine::editor{
         void focusNameInput();
         // Component > Add... (main menu): opens the Add Component dialog for the selection
         void requestAddComponent();
+        // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
+        bool consumeTagsAndLayersRequest();
     private:
         bool addComponentRequested = false;
     };

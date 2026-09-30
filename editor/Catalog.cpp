@@ -413,6 +413,8 @@ namespace {
         makeFastProperty<LightComponent, float, &LightComponent::innerConeCos>("innerConeCos", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, float, &LightComponent::outerConeCos>("outerConeCos", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, Texture, &LightComponent::spotMask>("spotMask", PropertyType::Texture, UpdateFlags_LightShadowCamera),
+        // read by RenderSystem every frame (lighting and shadow casters)
+        makeFastProperty<LightComponent, uint32_t, &LightComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
@@ -465,11 +467,14 @@ namespace {
         makeFastProperty<ReflectionProbeComponent, float, &ReflectionProbeComponent::farClip>("farClip", PropertyType::Float, UpdateFlags_Reflection_Probe_Capture),
         makeFastProperty<ReflectionProbeComponent, float, &ReflectionProbeComponent::updateInterval>("updateInterval", PropertyType::Float, UpdateFlags_Reflection_Probe_Sampling),
         makeFastProperty<ReflectionProbeComponent, bool, &ReflectionProbeComponent::includeSky>("includeSky", PropertyType::Bool, UpdateFlags_Reflection_Probe_Capture),
+        makeFastProperty<ReflectionProbeComponent, uint32_t, &ReflectionProbeComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_Reflection_Probe_Capture),
         makeFastProperty<ReflectionProbeComponent, Texture, &ReflectionProbeComponent::texture>("texture", PropertyType::Texture, UpdateFlags_Reflection_Probe_Capture),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
+        // read by RenderSystem when the camera draws
+        makeFastProperty<CameraComponent, uint32_t, &CameraComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<CameraComponent, Vector3, &CameraComponent::target>("target", PropertyType::Vector3, UpdateFlags_Camera),
         makeFastProperty<CameraComponent, Vector3, &CameraComponent::up>("up", PropertyType::Vector3, UpdateFlags_Camera),
         makeFastProperty<CameraComponent, float, &CameraComponent::leftClip>("left", PropertyType::Float, UpdateFlags_Camera),

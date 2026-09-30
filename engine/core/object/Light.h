@@ -14,6 +14,11 @@ namespace jasperengine{
         // component checkbox (Unity Behaviour.enabled): a disabled Light is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
+
+        // Unity Light.cullingMask: layers this light lights and takes shadows from
+        void setCullingMask(uint32_t cullingMask);
+        uint32_t getCullingMask() const;
+
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);
         virtual ~Light();
