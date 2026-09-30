@@ -181,6 +181,10 @@ namespace jasperengine::editor {
             const Project* project = nullptr, const SceneProject* sceneProject = nullptr,
             const std::filesystem::path& bundlePathOverride = {});
 
+        // GameObject state next to the name: active, tag and layer
+        static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
+        static void decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode);
+
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
