@@ -22,7 +22,7 @@ inline Node::Node()
 inline Node::Node(NodeType::value type)
     : m_isValid(true),
       m_invalidKey{},
-      m_pMemory(new detail::memory_holder),
+      m_pMemory(std::make_shared<detail::memory_holder>()),
       m_pNode(&m_pMemory->create_node()) {
   m_pNode->set_type(type);
 }
@@ -31,7 +31,7 @@ template <typename T>
 inline Node::Node(const T& rhs)
     : m_isValid(true),
       m_invalidKey{},
-      m_pMemory(new detail::memory_holder),
+      m_pMemory(std::make_shared<detail::memory_holder>()),
       m_pNode(&m_pMemory->create_node()) {
   Assign(rhs);
 }
@@ -59,7 +59,7 @@ inline void Node::EnsureNodeExists() const {
   if (!m_isValid)
     throw InvalidNode(m_invalidKey);
   if (!m_pNode) {
-    m_pMemory.reset(new detail::memory_holder);
+    m_pMemory = std::make_shared<detail::memory_holder>();
     m_pNode = &m_pMemory->create_node();
     m_pNode->set_null();
   }
@@ -320,6 +320,15 @@ inline void Node::push_back(const Node& rhs) {
 template<typename Key>
 std::string key_to_string(const Key& key) {
   return streamable_to_string<Key, is_streamable<std::stringstream, Key>::value>().impl(key);
+}
+
+// Text keys name a missing key as they are, what streaming them gives, without
+// building a stream for each lookup that misses
+inline std::string key_to_string(const std::string& key) { return key; }
+inline std::string key_to_string(const char* key) { return std::string(key); }
+template <std::size_t N>
+std::string key_to_string(const char (&key)[N]) {
+  return std::string(key);
 }
 
 // indexing

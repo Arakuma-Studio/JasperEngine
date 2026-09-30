@@ -105,13 +105,6 @@ inline bool node::equals(const T& rhs, shared_memory_holder pMemory) {
   return false;
 }
 
-inline bool node::equals(const char* rhs, shared_memory_holder pMemory) {
-  std::string lhs;
-  if (convert<std::string>::decode(Node(*this, std::move(pMemory)), lhs)) {
-    return lhs == rhs;
-  }
-  return false;
-}
 
 // indexing
 template <typename Key>
