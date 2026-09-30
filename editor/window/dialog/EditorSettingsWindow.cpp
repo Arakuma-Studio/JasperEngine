@@ -10,8 +10,10 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
+#include "SettingsCategoryList.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <functional>
 
@@ -20,8 +22,36 @@ namespace jasperengine::editor {
 namespace {
     namespace fs = std::filesystem;
 
-    static constexpr float dialogWidth = 700.0f;
-    static constexpr float dialogHeight = 360.0f;
+    static constexpr float dialogWidth = 860.0f;
+    static constexpr float dialogHeight = 520.0f;
+    static constexpr float categoryListWidth = 190.0f;
+
+    enum class PreferencesCategory {
+        General,
+        CodeEditor,
+        ExternalTools,
+        ShaderCache,
+        Count
+    };
+
+    // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
+    const settingsui::Category preferencesCategories[] = {
+        {"General", "", "editor vsync default build directory output"},
+        {"Code Editor", "", "font size"},
+        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop"},
+        {"Shader Cache", "", "clear shader cache"},
+    };
+    constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
+    static_assert(std::size(preferencesCategories) == static_cast<size_t>(PreferencesCategory::Count));
+
+    // Sub-heading row inside a settings table.
+    void sectionRow(const char* title) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::Spacing();
+        settingsui::boldText(title);
+        ImGui::TableNextColumn();
+    }
     static constexpr float settingsLabelWidth = 190.0f;
     static constexpr float settingsPanelPadding = 12.0f;
     static constexpr float settingsButtonWidth = 120.0f;
@@ -150,6 +180,7 @@ void EditorSettingsWindow::open(Project* project) {
 
     m_emsdkOverride = AppSettings::getEmsdkPath();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -170,7 +201,7 @@ void EditorSettingsWindow::refreshEmsdkStatus() {
 void EditorSettingsWindow::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Editor Settings##EditorSettingsModal");
+    ImGui::OpenPopup("Preferences##EditorSettingsModal");
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImVec2 center = viewport->GetWorkCenter();
@@ -186,7 +217,7 @@ void EditorSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              noScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Editor Settings##EditorSettingsModal", &m_isOpen, flags);
+    bool popupOpen = ImGui::BeginPopupModal("Preferences##EditorSettingsModal", &m_isOpen, flags);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -201,49 +232,35 @@ void EditorSettingsWindow::show() {
 void EditorSettingsWindow::drawSettings() {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
-    float tabRegionHeight = std::max(1.0f, footerY - style.ItemSpacing.y - ImGui::GetCursorPosY());
+    float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    ImGui::BeginChild(
-        "##EditorSettingsTabRegion",
-        ImVec2(0, tabRegionHeight),
-        ImGuiChildFlags_None,
-        noScrollFlags
-    );
+    ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, noScrollFlags);
 
-    if (ImGui::BeginTabBar("##EditorSettingsTabs", ImGuiTabBarFlags_FittingPolicyShrink)) {
-        if (ImGui::BeginTabItem("General")) {
-            drawGeneralSettings();
-            ImGui::EndTabItem();
-        }
+    const float listWidth = std::min(Theme::dpi(categoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
+    settingsui::categoryList("##PreferencesCategories", preferencesCategories, preferencesCategoryCount, m_category,
+                             m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
+    ImGui::SameLine();
 
-        if (ImGui::BeginTabItem("Desktop")) {
-            drawCMakeSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Web")) {
-            drawWebSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Advanced")) {
-            drawAdvancedSettings();
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
+    ImGui::BeginGroup();
+    settingsui::categoryTitle(preferencesCategories[m_category].name);
+    switch (static_cast<PreferencesCategory>(m_category)) {
+        case PreferencesCategory::General: drawGeneralSettings(); break;
+        case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
+        case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
+        case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
+        default: break;
     }
+    ImGui::EndGroup();
 
     ImGui::EndChild();
 
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY - style.ItemSpacing.y));
     ImGui::Separator();
 
-    float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
-    float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(settingsButtonWidth));
-    float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
-    float buttonX = style.WindowPadding.x + std::max(0.0f, (footerWidth - buttonsWidth) * 0.5f);
-    ImGui::SetCursorPos(ImVec2(buttonX, footerY));
+    // Unity-style footer: buttons on the right, primary first.
+    const float buttonWidth = Theme::dpi(settingsButtonWidth);
+    const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
+    ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
@@ -253,7 +270,8 @@ void EditorSettingsWindow::drawSettings() {
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -261,8 +279,8 @@ void EditorSettingsWindow::drawSettings() {
 
 void EditorSettingsWindow::drawGeneralSettings() {
     drawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
-        if (beginSettingsRow("Default Export Directory",
-                             "Used by Export Project when the current project has no saved export directory.",
+        if (beginSettingsRow("Default Build Directory",
+                             "Used by Build Settings when the current project has no saved output directory.",
                              !m_defaultExportDirectory.empty())) {
             m_defaultExportDirectory.clear();
         }
@@ -289,8 +307,29 @@ void EditorSettingsWindow::drawGeneralSettings() {
     });
 }
 
+void EditorSettingsWindow::drawCodeEditorSettings() {
+    drawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
+        const bool fontChanged = std::fabs(m_codeEditorFontSize - AppSettings::defaultCodeEditorFontSize) > 1e-4f;
+        if (beginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
+            m_codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
+                         AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    });
+}
+
+void EditorSettingsWindow::drawExternalToolsSettings() {
+    drawSettingsPanel("##EditorExternalToolsPanel", [this]() {
+        sectionRow("Desktop Build");
+        drawCMakeSettings();
+        sectionRow("Web Build");
+        drawWebSettings();
+    });
+}
+
 void EditorSettingsWindow::drawCMakeSettings() {
-    drawSettingsPanel("##EditorCMakeSettingsPanel", [this]() {
+    {
         beginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
         fs::path cmakeDisplay = m_cmakeOverride.empty()
             ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
@@ -329,7 +368,7 @@ void EditorSettingsWindow::drawCMakeSettings() {
         }
 
         if (beginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
-                "Set the language standard in Project Settings > Build > C++ Standard.", m_cmakeKitIndex != 0)) {
+                "Set the language standard in Project Settings > Scripting > C++ Standard.", m_cmakeKitIndex != 0)) {
             m_cmakeKitIndex = 0;
         }
         if (m_cmakeKitIndex < 0 || m_cmakeKitIndex > static_cast<int>(m_availableKits.size())) {
@@ -382,12 +421,11 @@ void EditorSettingsWindow::drawCMakeSettings() {
                 ImGui::PopStyleColor();
             }
         }
-
-    });
+    }
 }
 
 void EditorSettingsWindow::drawWebSettings() {
-    drawSettingsPanel("##EditorWebSettingsPanel", [this]() {
+    {
         beginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
 
         fs::path emsdkDisplay = m_emsdkOverride.empty()
@@ -416,7 +454,7 @@ void EditorSettingsWindow::drawWebSettings() {
         } else {
             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Not found");
         }
-    });
+    }
 }
 
 void EditorSettingsWindow::drawAdvancedSettings() {
@@ -437,6 +475,7 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

@@ -392,7 +392,7 @@ void ScriptCreateDialog::selectExistingFile(bool selectHeader) {
 void ScriptCreateDialog::show() {
     if (!m_isOpen) return;
 
-    const char* popupName = "Create Script##CreateScriptModal";
+    const char* popupName = "New Script##CreateScriptModal";
     ImGui::OpenPopup(popupName);
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -414,21 +414,23 @@ void ScriptCreateDialog::show() {
         return;
     }
 
-    if (ImGui::RadioButton("Create new", !m_attachExisting)) {
+    if (ImGui::RadioButton("New Script", !m_attachExisting)) {
         m_attachExisting = false;
         m_attachError.clear();
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("Attach existing", m_attachExisting)) {
+    if (ImGui::RadioButton("Existing Script", m_attachExisting)) {
         m_attachExisting = true;
         m_attachError.clear();
     }
 
     if (!m_attachExisting) {
         ImGui::Spacing();
-        ImGui::TextUnformatted("Template:");
+        ImGui::TextUnformatted("Template");
         if (ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS)) {}
+        ImGui::SetItemTooltip("C++ class deriving from the GameObject's engine class, with its methods at hand.");
         if (ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS)) {}
+        ImGui::SetItemTooltip("Standalone C++ script, like a MonoBehaviour.");
         if (ImGui::RadioButton("Lua Script", (int*)&m_creationKind, (int)CreationKind::LUA)) {}
     }
 
@@ -447,7 +449,7 @@ void ScriptCreateDialog::show() {
         ImGui::TextWrapped("Choose an existing script to attach. Its files will not be changed.");
         ImGui::Spacing();
 
-        ImGui::TextUnformatted("Script File:");
+        ImGui::TextUnformatted("Script File");
         if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Script...##existing_source")) {
             selectExistingFile(false);
             isLua = m_existingScriptType == ScriptType::LUA;
@@ -467,7 +469,7 @@ void ScriptCreateDialog::show() {
         }
 
         if (isCpp && (!m_existingSourcePath.empty() || !m_existingHeaderPath.empty())) {
-            ImGui::TextUnformatted("Header File:");
+            ImGui::TextUnformatted("Header File");
             if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Header...##existing_header"))
                 selectExistingFile(true);
             ImGui::SameLine();
@@ -523,7 +525,7 @@ void ScriptCreateDialog::show() {
                     ImGui::SameLine(0, 0);
                     ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", ICON_FA_FOLDER_OPEN);
                     ImGui::SameLine();
-                    ImGui::Text("%s", rootPath == m_projectPath ? "Project Root" : rootPath.filename().string().c_str());
+                    ImGui::Text("%s", rootPath == m_projectPath ? "Project" : rootPath.filename().string().c_str());
                     if (ImGui::IsItemClicked() ||
                         (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
                         m_selectedPath = rootPath.string();
@@ -540,8 +542,8 @@ void ScriptCreateDialog::show() {
 
     ImGui::Spacing();
     ImGui::TextUnformatted(m_attachExisting
-        ? "Class / Module Name:"
-        : (isLua ? "Module Name:" : "Class Name:"));
+        ? "Class / Module Name"
+        : (isLua ? "Module Name" : "Class Name"));
     ImGui::SetNextItemWidth(-1);
 
     bool enterPressed = ImGui::InputText(
@@ -610,10 +612,10 @@ void ScriptCreateDialog::show() {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
             if (allCreateFilesExist) {
                 ImGui::TextWrapped(
-                    "Files with this name already exist. Create will ask whether to attach or replace them.");
+                    "Files with this name already exist. Create and Add will ask whether to add or replace them.");
             } else {
                 ImGui::TextWrapped(
-                    "Only part of this script exists. Create will ask before replacing existing files.");
+                    "Only part of this script exists. Create and Add will ask before replacing existing files.");
             }
             ImGui::PopStyleColor();
         }
@@ -621,7 +623,6 @@ void ScriptCreateDialog::show() {
 
     ImGui::Separator();
 
-    const float windowWidth = ImGui::GetWindowSize().x;
     auto cancelDialog = [this]() {
         m_isOpen = false;
         if (m_onCancel) m_onCancel();
@@ -630,22 +631,25 @@ void ScriptCreateDialog::show() {
 
     const float actionButtonWidth = Theme::dpi(120.0f);
     const float actionButtonsWidth = actionButtonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-    ImGui::SetCursorPosX((windowWidth - actionButtonsWidth) * 0.5f);
+    // Unity-style button row: right-aligned, primary first
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - actionButtonsWidth));
+    const bool escapePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+                               ImGui::IsKeyPressed(ImGuiKey_Escape, false);
 
     if (m_attachExisting) {
         ImGui::BeginDisabled(!hasBase || !attachFilesValid);
-        if (ImGui::Button("Attach", ImVec2(actionButtonWidth, 0)) ||
+        if (ImGui::Button("Add", ImVec2(actionButtonWidth, 0)) ||
                 (enterPressed && hasBase && attachFilesValid)) {
             if (finalizeAttachment(m_existingHeaderPath, m_existingSourcePath, name, m_existingScriptType))
                 ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)))
+        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     } else {
         ImGui::BeginDisabled(!hasBase);
-        if (ImGui::Button("Create", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
+        if (ImGui::Button("Create and Add", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
             if (anyCreateFileExists) {
                 m_attachError.clear();
                 ImGui::OpenPopup("Script Files Already Exist");
@@ -656,7 +660,7 @@ void ScriptCreateDialog::show() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)))
+        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     }
 
@@ -667,7 +671,7 @@ void ScriptCreateDialog::show() {
                                   ImGuiWindowFlags_Modal;
     if (ImGui::BeginPopupModal("Script Files Already Exist", nullptr, alertFlags)) {
         if (allCreateFilesExist) {
-            ImGui::TextUnformatted("These script files already exist.\nAttach them unchanged or replace their contents?");
+            ImGui::TextUnformatted("These script files already exist.\nAdd them unchanged or replace their contents?");
         } else {
             ImGui::TextUnformatted("Only part of this script exists.\nReplace the existing files and create the missing files?");
         }
@@ -682,10 +686,10 @@ void ScriptCreateDialog::show() {
         const int alertButtonCount = allCreateFilesExist ? 3 : 2;
         const float alertButtonsWidth = alertButtonWidth * alertButtonCount +
             ImGui::GetStyle().ItemSpacing.x * (alertButtonCount - 1);
-        ImGui::SetCursorPosX((ImGui::GetWindowSize().x - alertButtonsWidth) * 0.5f);
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - alertButtonsWidth));
 
         if (allCreateFilesExist) {
-            if (ImGui::Button("Attach Existing", ImVec2(alertButtonWidth, 0))) {
+            if (ImGui::Button("Add Existing", ImVec2(alertButtonWidth, 0))) {
                 const ScriptType type = m_creationKind == CreationKind::LUA
                     ? ScriptType::LUA
                     : ScriptType::CPP;

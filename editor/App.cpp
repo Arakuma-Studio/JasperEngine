@@ -1242,7 +1242,7 @@ void editor::App::buildDefaultLayout(){
     const float leftWidth = share(0.18f, viewport.x, 12);
     const float bottomHeight = share(0.30f, viewport.y, 10);
 
-    // Inspector on the right, full height; AI Chat and Terrain Editor behind it.
+    // Inspector on the right, full height; AI Chat and Terrain behind it.
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
     ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
@@ -1902,6 +1902,7 @@ void editor::App::show(){
     sceneSaveDialog.show();
     projectSaveDialog.show();
     exportWindow.show();
+    if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();

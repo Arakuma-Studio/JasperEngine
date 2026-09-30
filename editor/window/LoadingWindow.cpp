@@ -134,7 +134,7 @@ void LoadingWindow::drawProgressModal(const OverallBuildProgress& progress) {
         if (progress.hasActiveBuilds) {
             // Create a formatted string first, then use it with TreeNode
             char buildingText[256];
-            snprintf(buildingText, sizeof(buildingText), "Building %d resources", progress.totalBuilds);
+            snprintf(buildingText, sizeof(buildingText), "Preparing %d assets", progress.totalBuilds);
 
             if (ImGui::TreeNode("resource_list", "%s", buildingText)) {
                 // Get all active builds for the dropdown

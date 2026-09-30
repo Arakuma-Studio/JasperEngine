@@ -8,6 +8,7 @@
 #include "util/UIUtils.h"
 #include "util/Util.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace jasperengine::editor {
@@ -135,7 +136,7 @@ void ShaderForkDialog::show() {
                 ImGui::SameLine(0, 0);
                 ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", ICON_FA_FOLDER_OPEN);
                 ImGui::SameLine();
-                ImGui::TextUnformatted("Project Root");
+                ImGui::TextUnformatted("Project");
                 if (ImGui::IsItemClicked() ||
                         (ImGui::IsMouseClicked(0) &&
                          ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
@@ -149,7 +150,7 @@ void ShaderForkDialog::show() {
     }
     ImGui::EndChild();
 
-    ImGui::TextUnformatted("Shader Name:");
+    ImGui::TextUnformatted("Shader Name");
     ImGui::SetNextItemWidth(-1);
     bool enterPressed = ImGui::InputText(
         "##shader_fork_name", m_nameBuffer, sizeof(m_nameBuffer),
@@ -192,9 +193,9 @@ void ShaderForkDialog::show() {
 
     ImGui::Separator();
 
-    float windowWidth = ImGui::GetWindowSize().x;
-    float buttonsWidth = 250;
-    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+    // Unity-style button row: right-aligned, primary first
+    float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
     ImGui::BeginDisabled(!preview.valid);
     if (ImGui::Button("Create", ImVec2(120, 0)) || (enterPressed && preview.valid)) {
@@ -205,7 +206,8 @@ void ShaderForkDialog::show() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         if (m_onCancel)
             m_onCancel();

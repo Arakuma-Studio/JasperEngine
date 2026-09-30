@@ -66,7 +66,7 @@ std::string ScenesWindow::keptParentNames(const SceneEntry& entry) const {
 void ScenesWindow::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Scenes##ScenesModal");
+    ImGui::OpenPopup("Scenes in Build##ScenesModal");
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -81,7 +81,7 @@ void ScenesWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              noScrollFlags;
 
-    if (ImGui::BeginPopupModal("Scenes##ScenesModal", &m_isOpen, flags)) {
+    if (ImGui::BeginPopupModal("Scenes in Build##ScenesModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
@@ -94,7 +94,7 @@ void ScenesWindow::show() {
 void ScenesWindow::drawScenes() {
     const ImGuiStyle& style = ImGui::GetStyle();
 
-    ImGui::TextWrapped("Only the checked scenes are part of the project, built and exported. "
+    ImGui::TextWrapped("Only the checked scenes are part of the project and its builds. "
                        "Unchecking one keeps its file on disk.");
     ImGui::Spacing();
 
@@ -125,7 +125,7 @@ void ScenesWindow::drawScenes() {
             ImGui::TextDisabled("No scene file found in this project.");
         } else if (ImGui::BeginTable("##ScenesTable", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch, 0.6f);
-            ImGui::TableSetupColumn("Kept in the project", ImGuiTableColumnFlags_WidthStretch, 0.4f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.4f);
             ImGui::TableHeadersRow();
 
             for (SceneEntry& entry : m_entries) {
@@ -166,10 +166,11 @@ void ScenesWindow::drawScenes() {
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY - style.ItemSpacing.y));
     ImGui::Separator();
 
+    // Unity-style footer: buttons on the right, primary first.
     const float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
     const float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(dialogButtonWidth));
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
-    ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, (footerWidth - buttonsWidth) * 0.5f), footerY));
+    ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));
 
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
         applyScenes();
@@ -179,7 +180,8 @@ void ScenesWindow::drawScenes() {
 
     ImGui::SameLine();
 
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }

@@ -35,6 +35,14 @@ namespace jasperengine::editor{
         EraseObject
     };
 
+    // Unity's terrain tool bar: the tool whose settings the window shows.
+    enum class TerrainToolCategory{
+        Sculpt,
+        Texture,
+        Details,
+        Trees
+    };
+
     enum class TerrainBrushShape{
         Circle,
         Square
@@ -163,6 +171,7 @@ namespace jasperengine::editor{
         int blendMapResolution;
         int densityMapResolution;
         int selectedFoliageLayer;
+        TerrainToolCategory toolCategory = TerrainToolCategory::Sculpt;
         int selectedTextureLayer;
         // which layers show their settings under the layer row
         bool expandedLayers[MAX_TERRAIN_LAYERS] = {};
@@ -265,7 +274,7 @@ namespace jasperengine::editor{
         template<typename T> bool setFoliageLayerProperty(const char* field, const T& value);
 
     public:
-        static constexpr const char* WINDOW_NAME = "Terrain Editor";
+        static constexpr const char* WINDOW_NAME = "Terrain";
 
         static constexpr float MIN_BRUSH_SIZE = 0.1f;
         static constexpr float MAX_BRUSH_SIZE = 50.0f;

@@ -89,7 +89,7 @@ void SceneSaveDialog::show() {
 
                     // Display text
                     ImGui::SameLine();
-                    ImGui::Text("Project Root");
+                    ImGui::TextUnformatted("Project");
 
                     // If clicked, select the project root directory
                     if (ImGui::IsItemClicked() || 
@@ -109,12 +109,14 @@ void SceneSaveDialog::show() {
         ImGui::EndChild();
 
         // File name input
-        ImGui::Text("Scene File Name:");
+        ImGui::TextUnformatted("Scene Name");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##fileName", m_fileNameBuffer, sizeof(m_fileNameBuffer));
 
         // Show current selected directory path
-        ImGui::TextWrapped("Save to: %s", fs::relative(m_selectedPath, m_projectPath).string().c_str());
+        const fs::path saveDir = fs::relative(m_selectedPath, m_projectPath);
+        const std::string saveIn = (saveDir.empty() || saveDir == ".") ? "Project" : "Project/" + saveDir.generic_string();
+        ImGui::TextWrapped("Save in: %s", saveIn.c_str());
 
         // Get filename as string for validation and processing
         std::string fileName = m_fileNameBuffer;
@@ -133,15 +135,14 @@ void SceneSaveDialog::show() {
         bool fileExists = fs::exists(fullPath);
 
         if (fileExists) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: File already exists and will be overwritten!");
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "A scene with this name already exists and will be replaced.");
         }
 
         ImGui::Separator();
 
-        // Center the buttons
-        float windowWidth = ImGui::GetWindowSize().x;
-        float buttonsWidth = 250; // Total width for both buttons and spacing
-        ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+        // Unity-style button row: right-aligned, primary first
+        float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
         // Buttons
         ImGui::BeginDisabled(!canSave);
@@ -156,7 +157,8 @@ void SceneSaveDialog::show() {
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+            (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
 
             if (m_onCancel) {

@@ -151,8 +151,8 @@ void TextureSlicerToolDialog::show() {
 
     const bool isTileset = (m_mode == Mode::TILESET);
     const char* popupTitle = isTileset
-        ? ICON_FA_TABLE_CELLS " Tileset Slicer Tool##TextureSlicerToolModal"
-        : ICON_FA_GRIP " Sprite Slicer Tool##TextureSlicerToolModal";
+        ? ICON_FA_TABLE_CELLS " Slice Tileset##TextureSlicerToolModal"
+        : ICON_FA_GRIP " Slice Sprite Sheet##TextureSlicerToolModal";
     const char* rectLabel = isTileset ? "tile rects" : "frames";
     const char* namingLabel = isTileset ? "Rect Naming" : "Frame Naming";
     const char* detailsLabel = isTileset ? "Rect Details" : "Frame Details";
@@ -242,12 +242,12 @@ void TextureSlicerToolDialog::show() {
 
     // --- Slice Mode ---
     if (beginInputTable("SlicerSliceModeTable")) {
-        beginInputRow("Slice Mode", 14.0f * ImGui::GetFontSize());
-        if (ImGui::RadioButton("Grid (Columns x Rows)##SliceModeGrid", m_sliceMode == SliceMode::GRID)) {
+        beginInputRow("Type", 14.0f * ImGui::GetFontSize());
+        if (ImGui::RadioButton("Grid By Cell Count##SliceModeGrid", m_sliceMode == SliceMode::GRID)) {
             m_sliceMode = SliceMode::GRID;
             m_previewDirty = true;
         }
-        if (ImGui::RadioButton("Cell Size (W x H)##SliceModeCell", m_sliceMode == SliceMode::CELL_SIZE)) {
+        if (ImGui::RadioButton("Grid By Cell Size##SliceModeCell", m_sliceMode == SliceMode::CELL_SIZE)) {
             m_sliceMode = SliceMode::CELL_SIZE;
             m_previewDirty = true;
         }
@@ -412,12 +412,12 @@ void TextureSlicerToolDialog::show() {
     ImGui::Spacing();
 
     // Buttons
-    float windowWidth = ImGui::GetWindowSize().x;
-    float buttonsWidth = 260;
-    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+    // Unity-style button row: right-aligned, primary first
+    float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
     ImGui::BeginDisabled(m_previewRects.empty());
-    if (ImGui::Button("Apply", ImVec2(120, 0))) {
+    if (ImGui::Button("Slice", ImVec2(120, 0))) {
         if (m_onApply) {
             m_onApply(buildResult());
         }
@@ -427,7 +427,8 @@ void TextureSlicerToolDialog::show() {
     ImGui::EndDisabled();
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         if (m_onCancel) m_onCancel();
         ImGui::CloseCurrentPopup();

@@ -4,23 +4,24 @@
 #
 #   tools/editor-shot.sh <project-dir> [name] [seconds]
 #
-# The project is copied first. Writes build/shots/<name>.png and <name>.log.
-# KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
-# followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
-# CLICKS="x,y x,y,b" (screen pixels; b = mouse button, 3 right, 4/5 wheel) are
-# clicked before KEYS, same screenshot.
-# STEPS="..." then runs space separated steps: "x,y" left click, "r:x,y" right
-# click, "m:x,y" move the mouse (hover), "k:key" key press, "w:secs" wait, and
-# "s" to save <name>-1.png, <name>-2.png, ... (each step waits 0.4s).
-# KEYS tokens sleep:N (wait N seconds), click:X,Y (left click), drag:X1,Y1,X2,Y2
-# (left drag) and shot:TAG (screenshot <name>-TAG.png) script longer interactions.
+# The project is copied first. Writes build/shots/<name>.png and <name>.log
+# after <seconds>. Then, if CLICKS or KEYS are set, their steps run (CLICKS
+# first) and <name>-keys.png is saved KEYS_WAIT seconds later. STEPS run after
+# that. All three take the same space separated steps:
+#   X,Y or X,Y,B   click (button B: 1 left, 3 right, 4/5 wheel up/down)
+#   r:X,Y          right click          m:X,Y       move the mouse (hover)
+#   drag:X1,Y1,X2,Y2  left drag         wheel:X,Y,N scroll N notches (N<0: up)
+#   k:K, key:K, K  press xdotool key K (e.g. F5, ctrl+s, space)
+#   w:N, sleep:N   wait N seconds
+#   shot:TAG       save <name>-TAG.png  s   save <name>-1.png, <name>-2.png, ...
+# EXPORT_DIR=build/x (under the repo) sets the default Build Settings output.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -40,61 +41,74 @@ window:
   height: 900
   maximized: true
 EOF
+if [[ -n "${EXPORT_DIR:-}" ]]; then
+    printf 'export:\n  default_dir: /src/%s\n' "$EXPORT_DIR" >> "$ROOT/$WORK/settings.yaml"
+fi
+
+# Runs inside the container, from $WORK.
+cat > "$ROOT/$WORK/run.sh" <<'EOF'
+set -euo pipefail
+shots=0
+alive() { kill -0 "$pid" 2>/dev/null || { echo "FAIL: editor exited $1"; tail -30 "../$NAME.log"; exit 1; }; }
+shot() { import -window root "../$NAME$1.png"; echo "ok: build/shots/$NAME$1.png"; }
+steps() {
+    for t in $1; do
+        case "$t" in
+            s) shots=$((shots + 1)); shot "-$shots" ;;
+            shot:*) shot "-${t#shot:}" ;;
+            w:*) sleep "${t#w:}" ;;
+            sleep:*) sleep "${t#sleep:}" ;;
+            k:*) xdotool key "${t#k:}" ;;
+            key:*) xdotool key "${t#key:}" ;;
+            m:*) IFS=, read -r x y <<< "${t#m:}"; xdotool mousemove "$x" "$y" ;;
+            r:*) IFS=, read -r x y <<< "${t#r:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 3 ;;
+            click:*) IFS=, read -r x y <<< "${t#click:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 1 ;;
+            wheel:*) IFS=, read -r x y n <<< "${t#wheel:}"; xdotool mousemove "$x" "$y"; sleep 0.2
+                if (( n > 0 )); then xdotool click --repeat "$n" --delay 100 5; else xdotool click --repeat $(( -n )) --delay 100 4; fi ;;
+            drag:*) IFS=, read -r x1 y1 x2 y2 <<< "${t#drag:}"
+                xdotool mousemove "$x1" "$y1"; sleep 0.3; xdotool mousedown 1; sleep 0.3
+                for i in 1 2 3 4 5 6 7 8 9 10; do
+                    xdotool mousemove $(( x1 + (x2 - x1) * i / 10 )) $(( y1 + (y2 - y1) * i / 10 )); sleep 0.1
+                done
+                sleep 0.3; xdotool mouseup 1 ;;
+            [0-9]*,[0-9]*) IFS=, read -r x y b <<< "$t"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click "${b:-1}" ;;
+            *) xdotool key "$t" ;;
+        esac
+        sleep 0.5
+    done
+}
+
+Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
+export DISPLAY=:99
+sleep 1
+dbus-run-session -- "/src/$EDITOR" > "../$NAME.log" 2>&1 &
+pid=$!
+sleep "$SECS"
+alive early
+shot ""
+if [[ -n "$CLICKS$KEYS$STEPS" ]]; then
+    win=$(xdotool search --onlyvisible --name . | tail -1 || true)
+    [[ -n "$win" ]] && xdotool windowactivate --sync "$win" 2>/dev/null || true
+fi
+if [[ -n "$CLICKS$KEYS" ]]; then
+    steps "$CLICKS"
+    steps "$KEYS"
+    sleep "$KEYS_WAIT"
+    alive "after keys"
+    shot "-keys"
+fi
+if [[ -n "$STEPS" ]]; then
+    steps "$STEPS"
+    alive "during steps"
+fi
+kill "$pid"
+EOF
 
 docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$WORK" \
     -e HOME="/src/$WORK/home" \
+    -e NAME="$NAME" -e SECS="$SECS" -e EDITOR="$EDITOR" \
     -e KEYS="${KEYS:-}" -e KEYS_WAIT="${KEYS_WAIT:-5}" -e CLICKS="${CLICKS:-}" -e STEPS="${STEPS:-}" \
-    "$IMAGE" bash -euo pipefail -c "
-        Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
-        export DISPLAY=:99
-        sleep 1
-        dbus-run-session -- /src/$EDITOR > ../$NAME.log 2>&1 &
-        pid=\$!
-        sleep $SECS
-        kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited early'; tail -30 ../$NAME.log; exit 1; }
-        import -window root ../$NAME.png
-        echo 'ok: build/shots/$NAME.png'
-        if [[ -n \"\$KEYS\" || -n \"\$CLICKS\" ]]; then
-            win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
-            [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
-            for c in \$CLICKS; do IFS=, read -r cx cy cb <<< \"\$c\"; xdotool mousemove \$cx \$cy click \${cb:-1}; sleep 0.7; done
-            for k in \$KEYS; do
-                case \$k in
-                    sleep:*) sleep \${k#sleep:} ;;
-                    click:*) xy=\${k#click:}; xdotool mousemove \${xy%,*} \${xy#*,} click 1 ;;
-                    drag:*) IFS=, read -r x1 y1 x2 y2 <<< \"\${k#drag:}\"
-                        xdotool mousemove \$x1 \$y1; sleep 0.3; xdotool mousedown 1; sleep 0.3
-                        for i in 1 2 3 4 5 6 7 8 9 10; do
-                            xdotool mousemove \$(( x1 + (x2 - x1) * i / 10 )) \$(( y1 + (y2 - y1) * i / 10 )); sleep 0.15
-                        done
-                        sleep 0.5; xdotool mouseup 1 ;;
-                    shot:*) import -window root ../$NAME-\${k#shot:}.png; echo \"ok: build/shots/$NAME-\${k#shot:}.png\" ;;
-                    *) xdotool key \$k ;;
-                esac
-                sleep 0.5
-            done
-            sleep \$KEYS_WAIT
-            kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited after keys'; tail -30 ../$NAME.log; exit 1; }
-            import -window root ../$NAME-keys.png
-            echo 'ok: build/shots/$NAME-keys.png'
-        fi
-        if [[ -n \"\$STEPS\" ]]; then
-            n=0
-            for step in \$STEPS; do
-                case \"\$step\" in
-                    s) n=\$((n+1)); import -window root ../$NAME-\$n.png; echo \"ok: build/shots/$NAME-\$n.png\" ;;
-                    w:*) sleep \"\${step#w:}\" ;;
-                    k:*) xdotool key \"\${step#k:}\" ;;
-                    m:*) p=\${step#m:}; xdotool mousemove \${p/,/ } ;;
-                    r:*) p=\${step#r:}; xdotool mousemove \${p/,/ } click 3 ;;
-                    *) xdotool mousemove \${step/,/ } click 1 ;;
-                esac
-                sleep 0.4
-            done
-            kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited during steps'; tail -30 ../$NAME.log; exit 1; }
-        fi
-        kill \$pid
-    "
+    "$IMAGE" bash run.sh

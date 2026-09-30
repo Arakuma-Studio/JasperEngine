@@ -77,8 +77,9 @@ void AboutWindow::drawAbout() {
     ImGui::Separator();
 
     float okWidth = Theme::dpi(buttonWidth);
-    ImGui::SetCursorPosX((ImGui::GetWindowSize().x - okWidth) * 0.5f);
-    if (ImGui::Button("OK", ImVec2(okWidth, 0))) {
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - okWidth));
+    if (ImGui::Button("OK", ImVec2(okWidth, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }

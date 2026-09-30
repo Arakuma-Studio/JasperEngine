@@ -32,6 +32,10 @@ namespace jasperengine::editor {
         std::string m_emsdkOverride;
         EmsdkInfo m_emsdkInfo;
         bool m_editorVSyncEnabled = true;
+        float m_codeEditorFontSize = 0.0f;
+        // Unity-style category list; indexes PreferencesCategory in the .cpp.
+        int m_category = 0;
+        char m_categorySearch[64] = {0};
         std::filesystem::path m_defaultExportDirectory;
         std::string m_cacheStatus;
 
@@ -40,6 +44,9 @@ namespace jasperengine::editor {
         void refreshEmsdkStatus();
         void drawSettings();
         void drawGeneralSettings();
+        void drawCodeEditorSettings();
+        void drawExternalToolsSettings();
+        // Row drawers for the External Tools table.
         void drawCMakeSettings();
         void drawWebSettings();
         void drawAdvancedSettings();

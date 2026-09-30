@@ -311,6 +311,13 @@ void jasperengine::editor::Theme::popFoldoutHeaderColors() {
     ImGui::PopStyleColor(3);
 }
 
+bool jasperengine::editor::Theme::foldoutHeader(const char* label, int flags) {
+    pushFoldoutHeaderColors();
+    const bool open = ImGui::CollapsingHeader(label, flags);
+    popFoldoutHeaderColors();
+    return open;
+}
+
 float jasperengine::editor::Theme::dpiScale() {
     ImGuiContext* ctx = ImGui::GetCurrentContext();
     if (ctx && ctx->CurrentWindow && ctx->CurrentWindow->Viewport && ctx->CurrentWindow->Viewport->DpiScale > 0.0f) {

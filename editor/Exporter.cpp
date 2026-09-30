@@ -425,7 +425,7 @@ void editor::Exporter::setError(const std::string& message) {
     std::lock_guard<std::mutex> lock(progressMutex);
     progress.failed = true;
     progress.errorMessage = message;
-    Out::error("Export failed: %s", message.c_str());
+    Out::error("Build failed: %s", message.c_str());
 }
 
 editor::ExportProgress editor::Exporter::getProgress() const {
@@ -518,11 +518,11 @@ void editor::Exporter::runExport() {
     } else {
         if (!checkTargetDir()) return;
     }
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
 
     if (shaderGenerationOnly) {
         if (!buildAndSaveShaders()) return;
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
 
         setProgress("Shader generation complete", 1.0f);
         {
@@ -534,56 +534,56 @@ void editor::Exporter::runExport() {
     }
 
     if (!clearGenerated()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
     resolveShaderKeys();
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyGenerated()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     // Lua before assets, which skips the sources the lua tree took
     if (!copyLua()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCppScripts()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyEngine()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!buildAndSaveShaders()) return;
     if (config.mode == ExportMode::SourceCode) {
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
         if (!collectSourceResourcePack()) return;
     }
 
     if (buildMode) {
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
         if (!configureBuild()) return;
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
         if (!runBuild()) return;
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
         bool collected = (config.mode == ExportMode::Desktop)
             ? collectDesktopArtifacts()
             : collectWebArtifacts();
         if (!collected) return;
-        if (isCancelled()) { setError("Export cancelled"); return; }
+        if (isCancelled()) { setError("Build cancelled"); return; }
 
-        setProgressRaw("Export complete", 1.0f);
+        setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
             progress.finished = true;
         }
-        Out::info("Project exported successfully to: %s", config.destinationDir.string().c_str());
+        Out::info("Build completed: %s", config.destinationDir.string().c_str());
         return;
     }
 
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (isCancelled()) { setError("Build cancelled"); return; }
 
-    setProgress("Export complete", 1.0f);
+    setProgress("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         progress.finished = true;
     }
-    Out::info("Project exported successfully to: %s", config.targetDir.string().c_str());
+    Out::info("Build completed: %s", config.targetDir.string().c_str());
 }
 
 // Runs after loadAndSaveAllScenes(): saving a scene refreshes its cached keys, so
@@ -760,7 +760,7 @@ bool editor::Exporter::prepareCacheTarget() {
 bool editor::Exporter::configureBuild() {
     setProgressRaw("Configuring build...", 0.5f);
 
-    if (isCancelled()) { setError("Export cancelled"); return false; }
+    if (isCancelled()) { setError("Build cancelled"); return false; }
 
     const fs::path buildDir = config.targetDir / "build";
 
@@ -773,7 +773,7 @@ bool editor::Exporter::configureBuild() {
     if (config.mode == ExportMode::Web) {
         EmsdkInfo emsdk = detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
-            setError("Emscripten SDK not found. Configure it in Editor Settings > Web, set EMSDK, or add emcmake to PATH.");
+            setError("Emscripten SDK not found. Set it in Preferences > External Tools, set EMSDK, or add emcmake to PATH.");
             return false;
         }
         emcmake = emsdk.emcmake;
@@ -787,9 +787,9 @@ bool editor::Exporter::configureBuild() {
         // generator on macOS uses the sokol backend with a plain executable.
         if (effectiveGenerator == "Xcode") {
             if (config.cmakeGenerator.empty()) {
-                setError("Desktop export does not support the Xcode generator (it produces an app bundle). Unset the CMAKE_GENERATOR environment variable to use the default toolchain.");
+                setError("Executable Player builds do not support the Xcode generator (it produces an app bundle). Unset the CMAKE_GENERATOR environment variable to use the default toolchain.");
             } else {
-                setError("Desktop export does not support the Xcode generator (it produces an app bundle). Clear the generator in Editor Settings to use the default toolchain.");
+                setError("Executable Player builds do not support the Xcode generator (it produces an app bundle). Pick another compiler in Preferences > External Tools to use the default toolchain.");
             }
             return false;
         }
@@ -876,11 +876,11 @@ bool editor::Exporter::configureBuild() {
 
     if (!ok) {
         if (isCancelled()) {
-            setError("Export cancelled");
+            setError("Build cancelled");
         } else if (config.mode == ExportMode::Web && incompatiblePython) {
             setError("Emscripten failed with an incompatible Python interpreter. Activate the SDK environment and restart the editor from that terminal. Check EMSDK_PYTHON and use a Python version supported by your installed SDK. See Output for the traceback.");
         } else {
-            setError("Build configuration failed. See the Output window for details.");
+            setError("Build configuration failed. See the Console for details.");
         }
         return false;
     }
@@ -897,7 +897,7 @@ bool editor::Exporter::configureBuild() {
 bool editor::Exporter::runBuild() {
     setProgressRaw("Compiling project...", BUILD_PROGRESS_START);
 
-    if (isCancelled()) { setError("Export cancelled"); return false; }
+    if (isCancelled()) { setError("Build cancelled"); return false; }
 
     const fs::path buildDir = config.targetDir / "build";
 
@@ -943,9 +943,9 @@ bool editor::Exporter::runBuild() {
 
     if (!ok) {
         if (isCancelled()) {
-            setError("Export cancelled");
+            setError("Build cancelled");
         } else {
-            setError("Build failed. See the Output window for details.");
+            setError("Build failed. See the Console for details.");
         }
         return false;
     }
@@ -973,7 +973,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
         } else if (fs::exists(buildDir / (getAppName() + ".app"), ec)
                    || fs::exists(buildDir / config.buildType / (getAppName() + ".app"), ec)) {
             // A stale Xcode-configured cache can slip past the generator guard.
-            setError("The build produced an app bundle, which Desktop export does not support. Delete the project's .jasperengine/export/desktop folder and export again with the default toolchain.");
+            setError("The build produced an app bundle, which Executable Player builds do not support. Delete the project's .jasperengine/export/desktop folder and build again with the default toolchain.");
             return false;
         } else {
             setError("Built executable not found at: " + exePath.string() + " or " + configExePath.string());
@@ -1006,7 +1006,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
 
     if (isCancelled()) {
         // A committed pack stays: nothing else in the destination holds the resources
-        setError("Export cancelled");
+        setError("Build cancelled");
         return false;
     }
 
@@ -1084,7 +1084,7 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
 
         for (fs::recursive_directory_iterator end; files != end; files.increment(ec)) {
             if (isCancelled()) {
-                setError("Export cancelled");
+                setError("Build cancelled");
                 return false;
             }
 
@@ -1154,7 +1154,7 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
     }
 
     if (offset > MAX_RESOURCE_PACK_SIZE) {
-        setError("Packed resources exceed the 2 GiB limit. Disable Native Resource Pack in Project Settings.");
+        setError("Packed resources exceed the 2 GiB limit. Disable Native Resource Pack in Project Settings > Player > Publishing Settings.");
         return false;
     }
 
@@ -1187,7 +1187,7 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
     bool bodiesWritten = true;
     for (const auto& entry : entries) {
         if (isCancelled()) {
-            setError("Export cancelled");
+            setError("Build cancelled");
             bodiesWritten = false;
             break;
         }
@@ -1221,7 +1221,7 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
 
     if (isCancelled()) {
         fs::remove(tempPath, ec);
-        setError("Export cancelled");
+        setError("Build cancelled");
         return false;
     }
 
@@ -1257,7 +1257,7 @@ bool editor::Exporter::collectSourceResourcePack() {
 
     if (isCancelled()) {
         removeResourcePack(packPath);
-        setError("Export cancelled");
+        setError("Build cancelled");
         return false;
     }
 
@@ -1408,7 +1408,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     }
                 }
                 if (!names.empty()) {
-                    Out::warning("%s Physics is off, so its bodies and joints are left out of the export. Scenes using them: %s", backend, names.c_str());
+                    Out::warning("%s Physics is off, so its Rigidbodies and joints are left out of the build. Scenes using them: %s", backend, names.c_str());
                 }
             };
             if (!project->isPhysics2DEnabled()) {

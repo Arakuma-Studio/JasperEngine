@@ -8,6 +8,8 @@
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
 
+#include <algorithm>
+
 namespace jasperengine {
 namespace editor {
 
@@ -48,12 +50,12 @@ void ProjectSaveDialog::show() {
 
     if (popupOpen) {
         // Project name input
-        ImGui::Text("Project Name:");
+        ImGui::TextUnformatted("Project Name");
         ImGui::SetNextItemWidth(popupWidth);
         ImGui::InputText("##projectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
 
         // Project path display and button
-        ImGui::Text("Path:");
+        ImGui::TextUnformatted("Location");
 
         Vector2 pathDisplaySize = Vector2(popupWidth - ImGui::CalcTextSize("Browse").x - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
         Widgets::pathDisplay("##ProjectPath", m_projectPath, pathDisplaySize);
@@ -85,16 +87,15 @@ void ProjectSaveDialog::show() {
             if (!std::filesystem::is_empty(m_projectPath)) {
                 canSave = false;
                 ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 
-                                  "Selected directory is not empty.");
+                                  "Choose an empty folder for the project.");
             }
         }
 
         ImGui::Separator();
 
-        // Center the buttons
-        float windowWidth = ImGui::GetWindowSize().x;
-        float buttonsWidth = 250; // Total width for both buttons and spacing
-        ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+        // Unity-style button row: right-aligned, primary first
+        float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
         // Buttons
         ImGui::BeginDisabled(!canSave);
@@ -108,7 +109,8 @@ void ProjectSaveDialog::show() {
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+            (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
             if (m_onCancel) {
                 m_onCancel();

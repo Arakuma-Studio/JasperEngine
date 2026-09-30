@@ -8389,7 +8389,7 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     textureSettings.secondColSize = -1;
 
     if (entities.size() == 1){
-        if (ImGui::Button(ICON_FA_MOUNTAIN " Open Terrain Editor", ImVec2(-1, 0))){
+        if (ImGui::Button(ICON_FA_MOUNTAIN " Edit Terrain", ImVec2(-1, 0))){
             if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
                 terrainEditWindow->openForEntity(entities[0], sceneProject->id);
             }
@@ -8401,7 +8401,7 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
     endTable();
 
-    // The Terrain Editor owns adding and removing these, so here they are only listed
+    // The Terrain window owns adding and removing these, so here they are only listed
     if (!terrain.blendMaps.empty()){
         ImGui::SeparatorText("Blend Maps");
         beginTable(cpType, getLabelSize("Blend Map 1"), "terrain_blendmaps");

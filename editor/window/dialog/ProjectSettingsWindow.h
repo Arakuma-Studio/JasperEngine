@@ -99,15 +99,22 @@ namespace jasperengine::editor {
         bool m_androidFullscreen = true;
         bool m_androidKeepScreenOn = false;
 
-        void drawSettings();
-        void drawGeneralSettings();
-        void drawCanvasSettings();
-        void drawWindowSettings();
-        Texture* findThumbnail(const std::string& path);
-        void drawDirectoriesSettings();
-        void drawBuildSettings();
+        // Unity-style category list; indexes ProjectCategory in the .cpp.
+        int m_category = 0;
+        char m_categorySearch[64] = {0};
 
-        // Each platform section draws rows into the table its header opens.
+        void drawSettings();
+        void drawPlayerSettings();
+        void drawGraphicsSettings();
+        void drawQualitySettings();
+        void drawPhysicsSettings();
+        void drawPhysics2DSettings();
+        void drawScriptingSettings();
+        void drawTagsAndLayersSettings();
+        void drawEditorSettings();
+        Texture* findThumbnail(const std::string& path);
+
+        // Player's per-platform tabs; each platform draws rows into the table its tab opens.
         void drawPlatformsSettings();
         void drawWebSettings();
         void drawLinuxSettings();
@@ -128,7 +135,8 @@ namespace jasperengine::editor {
         ProjectSettingsWindow() = default;
         ~ProjectSettingsWindow() = default;
 
-        void open(Project* project);
+        // category: a page to show, e.g. "Player"; nullptr keeps the last one.
+        void open(Project* project, const char* category = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
     };

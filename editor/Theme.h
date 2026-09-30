@@ -60,6 +60,8 @@ namespace jasperengine::editor {
 
         static void pushFoldoutHeaderColors();
         static void popFoldoutHeaderColors();
+        // ImGui::CollapsingHeader in Unity's grey foldout colours
+        static bool foldoutHeader(const char* label, int flags = 0);
 
         static float dpiScale();
         static float dpi(float value);
