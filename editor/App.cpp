@@ -1707,6 +1707,7 @@ void editor::App::show(){
     sceneSaveDialog.show();
     projectSaveDialog.show();
     exportWindow.show();
+    if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     editorSettingsWindow.show();
     aboutWindow.show();
     projectSettingsWindow.show();

@@ -7,6 +7,7 @@
 #include "window/Widgets.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "SettingsCategoryList.h"
 
 #include <algorithm>
 #include <cmath>
@@ -102,8 +103,40 @@ static const AndroidPermissionInfo androidPermissionInfos[] = {
 
 static const int androidPermissionCount = sizeof(androidPermissionInfos) / sizeof(androidPermissionInfos[0]);
 
-static constexpr float dialogWidth = 750.0f;
-static constexpr float dialogHeight = 600.0f;
+static constexpr float dialogWidth = 960.0f;
+static constexpr float dialogHeight = 660.0f;
+static constexpr float categoryListWidth = 200.0f;
+
+enum class ProjectCategory {
+    Player,
+    Graphics,
+    Quality,
+    Physics,
+    Physics2D,
+    Scripting,
+    TagsAndLayers,
+    Editor,
+    Count
+};
+
+// Order matches ProjectCategory. Keywords are the page's setting labels, for the search field.
+static const settingsui::Category projectCategories[] = {
+    {"Player", "", "project product name application identifier version build default icon resolution presentation "
+                   "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
+                   "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution"},
+    {"Quality", "", "vsync"},
+    {"Physics", "", "3d physics jolt rigidbody"},
+    {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
+    {"Scripting", "", "lua directory script directories c++ standard"},
+    {"Tags and Layers", "", "tags layers"},
+    {"Editor", "", "version control files assets directory"},
+};
+static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
+static_assert(std::size(projectCategories) == static_cast<size_t>(ProjectCategory::Count));
+
+static const char* builtInTags[] = { "Untagged", "Respawn", "Finish", "EditorOnly", "MainCamera", "Player", "GameController" };
+static const char* builtInLayers[] = { "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI" };
 static constexpr float settingsLabelWidth = 200.0f;
 static constexpr float settingsPanelPadding = 12.0f;
 static constexpr float settingsButtonWidth = 120.0f;
@@ -796,8 +829,17 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     return nullptr;
 }
 
-void ProjectSettingsWindow::open(Project* project) {
+void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_isOpen = true;
+    if (category) {
+        for (int i = 0; i < projectCategoryCount; i++) {
+            if (strcmp(projectCategories[i].name, category) == 0) {
+                m_category = i;
+                m_categorySearch[0] = '\0';
+                break;
+            }
+        }
+    }
     m_project = project;
     m_projectNameOriginal = project->getName();
     snprintf(m_projectNameBuffer, sizeof(m_projectNameBuffer), "%s", m_projectNameOriginal.c_str());
@@ -939,59 +981,39 @@ void ProjectSettingsWindow::show() {
 void ProjectSettingsWindow::drawSettings() {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
-    float tabRegionHeight = std::max(1.0f, footerY - style.ItemSpacing.y - ImGui::GetCursorPosY());
+    float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    ImGui::BeginChild(
-        "##ProjectSettingsTabRegion",
-        ImVec2(0, tabRegionHeight),
-        ImGuiChildFlags_None,
-        noScrollFlags
-    );
+    ImGui::BeginChild("##ProjectSettingsRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, noScrollFlags);
 
-    if (ImGui::BeginTabBar("##ProjectSettingsTabs", ImGuiTabBarFlags_FittingPolicyShrink)) {
-        if (ImGui::BeginTabItem("General")) {
-            drawGeneralSettings();
-            ImGui::EndTabItem();
-        }
+    const float listWidth = std::min(Theme::dpi(categoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
+    settingsui::categoryList("##ProjectSettingsCategories", projectCategories, projectCategoryCount, m_category,
+                             m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
+    ImGui::SameLine();
 
-        if (ImGui::BeginTabItem("Canvas")) {
-            drawCanvasSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Window")) {
-            drawWindowSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Directories")) {
-            drawDirectoriesSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Build")) {
-            drawBuildSettings();
-            ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Platforms")) {
-            drawPlatformsSettings();
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
+    ImGui::BeginGroup();
+    settingsui::categoryTitle(projectCategories[m_category].name);
+    switch (static_cast<ProjectCategory>(m_category)) {
+        case ProjectCategory::Player: drawPlayerSettings(); break;
+        case ProjectCategory::Graphics: drawGraphicsSettings(); break;
+        case ProjectCategory::Quality: drawQualitySettings(); break;
+        case ProjectCategory::Physics: drawPhysicsSettings(); break;
+        case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
+        case ProjectCategory::Scripting: drawScriptingSettings(); break;
+        case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
+        case ProjectCategory::Editor: drawEditorSettings(); break;
+        default: break;
     }
+    ImGui::EndGroup();
 
     ImGui::EndChild();
 
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY - style.ItemSpacing.y));
     ImGui::Separator();
 
-    float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
-    float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(settingsButtonWidth));
-    float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
-    float buttonX = style.WindowPadding.x + std::max(0.0f, (footerWidth - buttonsWidth) * 0.5f);
-    ImGui::SetCursorPos(ImVec2(buttonX, footerY));
+    // Unity-style footer: buttons on the right, primary first.
+    const float buttonWidth = Theme::dpi(settingsButtonWidth);
+    const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
+    ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
     const bool canSave = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
 
@@ -1004,11 +1026,12 @@ void ProjectSettingsWindow::drawSettings() {
     }
     ImGui::EndDisabled();
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Select at least one Android architecture.");
+        ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -1036,13 +1059,131 @@ std::string ProjectSettingsWindow::inheritedApplicationBuild() const {
     return std::to_string(std::max(1, m_applicationBuild));
 }
 
-void ProjectSettingsWindow::drawGeneralSettings() {
-    if (beginSettingsPanel("##GeneralSettingsPanel")) {
-        if (ImGui::CollapsingHeader("Project", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##ProjectSettingsTable")) {
+void ProjectSettingsWindow::drawPlayerSettings() {
+    if (beginSettingsPanel("##PlayerSettingsPanel")) {
+        if (beginSettingsTable("##PlayerProductTable")) {
             beginSettingsRow("Project Name");
             ImGui::SetNextItemWidth(-1);
             ImGui::InputText("##ProjectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
 
+
+            const ApplicationSettings defaults;
+
+            beginSettingsRow("Product Name");
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
+            ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
+            endSettingsRow("Name every platform shows to the player. Empty means the project name.");
+
+            if (beginSettingsRow("Application Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
+                snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", defaults.identifier.c_str());
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputText("##ApplicationIdentifier", m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer));
+            endSettingsRow("Reverse-DNS id behind the Apple bundle identifiers and the Android package name.");
+            if (!isSharedIdentifierValid(m_applicationIdentifierBuffer)) {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use letters and digits only, for example com.company.game.");
+            }
+
+            if (beginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
+                snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", defaults.version.c_str());
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputText("##ApplicationVersion", m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer));
+            endSettingsRow("Version shown to the player. Apple takes at most three parts, Windows pads to four.");
+            if (!isAppleVersionValid(m_applicationVersionBuffer)) {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use up to three numbers from 0 to 65535, for example 1.0.");
+            }
+
+            drawIntSetting("Build", "##ApplicationBuild", m_applicationBuild, static_cast<int>(defaults.build), 1,
+                "Apple build number and Android version code. Increase it for every release.");
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Icon", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerIconTable")) {
+            beginSettingsRow("Default Icon");
+            {
+                const ImGuiStyle& style = ImGui::GetStyle();
+                float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
+                float clearWidth = ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f;
+                float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - browseWidth - clearWidth - style.ItemSpacing.x * 2.0f - helpMarkerWidth());
+
+                fs::path iconDisplay = m_windowIcon.empty() ? fs::path("<None>") : m_windowIcon;
+                Widgets::pathDisplay("##WindowIconPath", iconDisplay, Vector2(pathWidth, ImGui::GetFrameHeight()));
+
+                ImGui::SameLine();
+                if (ImGui::Button("Browse##windowicon")) {
+                    std::string defaultPath = m_project->getProjectPath().string();
+                    std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_IMAGE, false);
+                    if (!selectedPath.empty()) {
+                        // Store project-relative when the file is inside the project
+                        // so the setting survives moving the project folder.
+                        std::error_code ec;
+                        fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
+                        if (ec || relPath.empty() || relPath.string().rfind("..", 0) == 0) {
+                            m_windowIcon = fs::path(selectedPath);
+                        } else {
+                            m_windowIcon = relPath;
+                        }
+                    }
+                }
+
+                ImGui::SameLine();
+                ImGui::BeginDisabled(m_windowIcon.empty());
+                if (ImGui::Button("Clear##windowicon")) {
+                    m_windowIcon.clear();
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("Application icon for desktop builds: embedded into the Windows executable and used as the window/taskbar icon. Square PNG recommended (256x256 or larger).");
+
+                if (!m_windowIcon.empty()) {
+                    if (Texture* thumb = findThumbnail(m_windowIcon.string())) {
+                        ImGui::Spacing();
+
+                        const float previewSize = Theme::dpi(64.0f);
+                        float thumbWidth = (float)thumb->getWidth();
+                        float thumbHeight = (float)thumb->getHeight();
+                        float scale = previewSize / std::max(1.0f, std::max(thumbWidth, thumbHeight));
+                        ImVec2 imageSize(std::max(1.0f, thumbWidth * scale), std::max(1.0f, thumbHeight * scale));
+
+                        ImVec2 imagePos = ImGui::GetCursorScreenPos();
+                        Widgets::image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
+                        ImGui::GetWindowDrawList()->AddRect(
+                            imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y),
+                            ImGui::GetColorU32(ImGuiCol_Border));
+                    }
+                }
+            }
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Resolution and Presentation", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerResolutionTable")) {
+            drawComboSetting("Fullscreen Mode", "##WindowMode", windowModeNames, windowModeCount, m_windowModeIndex,
+                findWindowModeIndex(Project::defaultWindowMode),
+                "Initial window state of desktop builds. Web and mobile ignore window settings.");
+
+            drawIntSetting("Default Screen Width", "##WindowWidth", m_windowWidth, (int)Project::defaultWindowWidth);
+            drawIntSetting("Default Screen Height", "##WindowHeight", m_windowHeight, (int)Project::defaultWindowHeight);
+
+            if (beginSettingsRow("Resizable Window", m_windowResizable != Project::defaultWindowResizable)) {
+                m_windowResizable = Project::defaultWindowResizable;
+            }
+            ImGui::Checkbox("##WindowResizable", &m_windowResizable);
+            endSettingsRow("Applies to desktop builds. Exported Windows and macOS builds are always resizable.");
+
+            if (beginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
+                snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
+            }
+            std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
+            ImGui::SetNextItemWidth(-1);
+            ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Splash and Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerLoadingTable")) {
             beginSettingsRow("Start Scene");
 
             const auto& scenes = m_project->getScenes();
@@ -1075,18 +1216,7 @@ void ProjectSettingsWindow::drawGeneralSettings() {
                 }
             }
 
-            if (beginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
-                m_versionControlMetadata = Project::defaultVersionControlMetadata;
-            }
-            ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
-            endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
-                "working directory, this machine's build settings and each developer's own layout stay out "
-                "of the repository. A file the editor did not generate is never replaced.");
 
-            ImGui::EndTable();
-        }
-
-        if (ImGui::CollapsingHeader("Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LoadingSettingsTable")) {
             const LoadingSettings defaults;
             LoadingSettings& loading = m_loadingSettings;
 
@@ -1122,47 +1252,25 @@ void ProjectSettingsWindow::drawGeneralSettings() {
             ImGui::EndTable();
         }
 
-        if (ImGui::CollapsingHeader("Application", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##ApplicationSettingsTable")) {
-            const ApplicationSettings defaults;
-
-            beginSettingsRow("Name");
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
-            ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
-            endSettingsRow("Name every platform shows to the player. Empty means project name.");
-
-            if (beginSettingsRow("Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
-                snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", defaults.identifier.c_str());
+        if (ImGui::CollapsingHeader("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
+            if (beginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
+                m_packNativeResources = Project::defaultPackNativeResources;
             }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::InputText("##ApplicationIdentifier", m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer));
-            endSettingsRow("Reverse-DNS id behind the Apple bundle identifiers and the Android package name.");
-            if (!isSharedIdentifierValid(m_applicationIdentifierBuffer)) {
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use letters and digits only, for example com.company.game.");
-            }
-
-            if (beginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
-                snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", defaults.version.c_str());
-            }
-            ImGui::SetNextItemWidth(-helpMarkerWidth());
-            ImGui::InputText("##ApplicationVersion", m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer));
-            endSettingsRow("Version shown to the player. Apple takes at most three parts, Windows pads to four.");
-            if (!isAppleVersionValid(m_applicationVersionBuffer)) {
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use up to three numbers from 0 to 65535, for example 1.0.");
-            }
-
-            drawIntSetting("Build", "##ApplicationBuild", m_applicationBuild, static_cast<int>(defaults.build), 1,
-                "Apple build number and Android version code. Increase it for every release.");
+            ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
+            endSettingsRow("Experimental. Packs exported assets and Lua files into resources.pak for Desktop and Android source exports. "
+                "Packed resources are read through Data; direct File handles cannot open them.");
 
             ImGui::EndTable();
         }
-    }
 
+        ImGui::Spacing();
+        drawPlatformsSettings();
+    }
     endSettingsPanel();
 }
 
-void ProjectSettingsWindow::drawCanvasSettings() {
-    drawSettingsPanel("##CanvasSettingsPanel", [this]() {
+void ProjectSettingsWindow::drawGraphicsSettings() {
+    drawSettingsPanel("##GraphicsSettingsPanel", [this]() {
         drawIntSetting("Canvas Width", "##CanvasWidth", m_canvasWidth, (int)Project::defaultCanvasWidth);
         drawIntSetting("Canvas Height", "##CanvasHeight", m_canvasHeight, (int)Project::defaultCanvasHeight);
 
@@ -1175,177 +1283,169 @@ void ProjectSettingsWindow::drawCanvasSettings() {
     });
 }
 
-void ProjectSettingsWindow::drawWindowSettings() {
-    drawSettingsPanel("##WindowSettingsPanel", [this]() {
-        drawComboSetting("Window Mode", "##WindowMode", windowModeNames, windowModeCount, m_windowModeIndex,
-            findWindowModeIndex(Project::defaultWindowMode),
-            "Initial window state of desktop builds. Web and mobile ignore window settings.");
-
-        drawIntSetting("Window Width", "##WindowWidth", m_windowWidth, (int)Project::defaultWindowWidth);
-        drawIntSetting("Window Height", "##WindowHeight", m_windowHeight, (int)Project::defaultWindowHeight);
-
-        if (beginSettingsRow("Window Resizable", m_windowResizable != Project::defaultWindowResizable)) {
-            m_windowResizable = Project::defaultWindowResizable;
-        }
-        ImGui::Checkbox("##WindowResizable", &m_windowResizable);
-        endSettingsRow("Applies to desktop builds. Exported Windows and macOS builds are always resizable.");
-
-        if (beginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
-            snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
-        }
-        std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
-        ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextWithHint("##WindowTitle", titleHint.c_str(), m_windowTitleBuffer, sizeof(m_windowTitleBuffer));
-
-        beginSettingsRow("Icon");
-        {
-            const ImGuiStyle& style = ImGui::GetStyle();
-            float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
-            float clearWidth = ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f;
-            float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - browseWidth - clearWidth - style.ItemSpacing.x * 2.0f - helpMarkerWidth());
-
-            fs::path iconDisplay = m_windowIcon.empty() ? fs::path("<None>") : m_windowIcon;
-            Widgets::pathDisplay("##WindowIconPath", iconDisplay, Vector2(pathWidth, ImGui::GetFrameHeight()));
-
-            ImGui::SameLine();
-            if (ImGui::Button("Browse##windowicon")) {
-                std::string defaultPath = m_project->getProjectPath().string();
-                std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_IMAGE, false);
-                if (!selectedPath.empty()) {
-                    // Store project-relative when the file is inside the project
-                    // so the setting survives moving the project folder.
-                    std::error_code ec;
-                    fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
-                    if (ec || relPath.empty() || relPath.string().rfind("..", 0) == 0) {
-                        m_windowIcon = fs::path(selectedPath);
-                    } else {
-                        m_windowIcon = relPath;
-                    }
-                }
-            }
-
-            ImGui::SameLine();
-            ImGui::BeginDisabled(m_windowIcon.empty());
-            if (ImGui::Button("Clear##windowicon")) {
-                m_windowIcon.clear();
-            }
-            ImGui::EndDisabled();
-            endSettingsRow("Application icon for desktop builds: embedded into the Windows executable and used as the window/taskbar icon. Square PNG recommended (256x256 or larger).");
-
-            if (!m_windowIcon.empty()) {
-                if (Texture* thumb = findThumbnail(m_windowIcon.string())) {
-                    ImGui::Spacing();
-
-                    const float previewSize = Theme::dpi(64.0f);
-                    float thumbWidth = (float)thumb->getWidth();
-                    float thumbHeight = (float)thumb->getHeight();
-                    float scale = previewSize / std::max(1.0f, std::max(thumbWidth, thumbHeight));
-                    ImVec2 imageSize(std::max(1.0f, thumbWidth * scale), std::max(1.0f, thumbHeight * scale));
-
-                    ImVec2 imagePos = ImGui::GetCursorScreenPos();
-                    Widgets::image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
-                    ImGui::GetWindowDrawList()->AddRect(
-                        imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y),
-                        ImGui::GetColorU32(ImGuiCol_Border));
-                }
-            }
-        }
-
+void ProjectSettingsWindow::drawQualitySettings() {
+    drawSettingsPanel("##QualitySettingsPanel", [this]() {
         if (beginSettingsRow("VSync", m_vsyncEnabled != Project::defaultVSyncEnabled)) {
             m_vsyncEnabled = Project::defaultVSyncEnabled;
         }
         ImGui::Checkbox("##VSync", &m_vsyncEnabled);
         endSettingsRow("Synchronize Play mode and supported desktop builds to the display refresh rate. "
-            "The editor window follows View > Editor VSync. "
+            "The editor window follows Preferences > General > Editor VSync. "
             "macOS Metal exports remain synchronized.");
     });
 }
 
-void ProjectSettingsWindow::drawDirectoriesSettings() {
-    drawSettingsPanel("##DirectoriesSettingsPanel", [this]() {
-        if (beginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
-            m_packNativeResources = Project::defaultPackNativeResources;
+void ProjectSettingsWindow::drawPhysicsSettings() {
+    drawSettingsPanel("##PhysicsSettingsPanel", [this]() {
+        if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
+            m_physics3DEnabled = Project::defaultPhysics3DEnabled;
         }
-        ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
-        endSettingsRow("Experimental. Packs exported assets and Lua files into resources.pak for Desktop and Android source exports. "
-            "Packed resources are read through Data; direct File handles cannot open them.");
+        ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
+        endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
 
-        drawDirectorySetting(
-            m_project, "Assets Directory", nullptr, "##AssetsPath", "Browse##assets",
-            m_assetsDir, fs::path(Project::defaultAssetsDir)
-        );
+    });
+}
+
+void ProjectSettingsWindow::drawPhysics2DSettings() {
+    drawSettingsPanel("##Physics2DSettingsPanel", [this]() {
+        if (beginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
+            m_physics2DEnabled = Project::defaultPhysics2DEnabled;
+        }
+        ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
+        endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
+
+    });
+}
+
+void ProjectSettingsWindow::drawScriptingSettings() {
+    drawSettingsPanel("##ScriptingSettingsPanel", [this]() {
         drawDirectorySetting(
             m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
             m_luaDir, fs::path(Project::defaultLuaDir), true
         );
         drawScriptDirsSetting(m_project, m_scriptDirs);
-    });
-}
-
-void ProjectSettingsWindow::drawBuildSettings() {
-    drawSettingsPanel("##BuildSettingsPanel", [this]() {
-        if (beginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
-            m_physics2DEnabled = Project::defaultPhysics2DEnabled;
-        }
-        ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
-        endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any 2D bodies and joints the scenes still use. Play always runs with both backends available.");
-
-        if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
-            m_physics3DEnabled = Project::defaultPhysics3DEnabled;
-        }
-        ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
-        endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any 3D bodies and joints the scenes still use. Play always runs with both backends available.");
 
         drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames, cxxStandardCount, m_cxxStandardIndex,
             findCxxStandardIndex(Project::defaultCxxStandard),
             "Language standard for C++ scripts in Play and exported games. Saved with the project. "
             "Exports also compile the engine with this standard. "
-            "Choose a compatible compiler in Editor Settings > Desktop.");
+            "Choose a compatible compiler in Preferences > External Tools.");
     });
 }
 
-void ProjectSettingsWindow::drawPlatformsSettings() {
-    // Collapsed by default: identity lives on General, so a section is only
-    // what its platform adds on top of it.
-    if (beginSettingsPanel("##PlatformsSettingsPanel")) {
-        if (ImGui::CollapsingHeader("Web") && beginSettingsTable("##WebSettingsTable")) {
-            drawWebSettings();
-            ImGui::EndTable();
-        }
+void ProjectSettingsWindow::drawTagsAndLayersSettings() {
+    if (beginSettingsPanel("##TagsAndLayersSettingsPanel")) {
+        drawSectionNote("Built-in tags and layers. They are read-only for now.");
 
-        if (ImGui::CollapsingHeader("Linux") && beginSettingsTable("##LinuxSettingsTable")) {
-            drawLinuxSettings();
-            ImGui::EndTable();
-        }
-
-        if (ImGui::CollapsingHeader("Windows")) {
-            drawSectionNote("The desktop icon is configured on the Window tab and reused for Windows exports.");
-            if (beginSettingsTable("##WindowsSettingsTable")) {
-                drawWindowsSettings();
-                ImGui::EndTable();
+        if (ImGui::CollapsingHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##TagsTable")) {
+            for (size_t i = 0; i < std::size(builtInTags); i++) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Tag %zu", i);
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(builtInTags[i]);
             }
-        }
-
-        if (ImGui::CollapsingHeader("macOS")) {
-            drawSectionNote("Bundle settings apply to Apple projects exported as source code. "
-                "Desktop export produces a standalone executable, not an .app bundle.");
-            if (beginSettingsTable("##MacOSSettingsTable")) {
-                drawMacOSSettings();
-                ImGui::EndTable();
-            }
-        }
-
-        if (ImGui::CollapsingHeader("iOS") && beginSettingsTable("##IOSSettingsTable")) {
-            drawIOSSettings();
             ImGui::EndTable();
         }
 
-        if (ImGui::CollapsingHeader("Android") && beginSettingsTable("##AndroidSettingsTable")) {
-            drawAndroidSettings();
+        if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LayersTable")) {
+            const int builtInCount = static_cast<int>(std::size(builtInLayers));
+            for (int i = 0; i < 32; i++) {
+                const char* layer = i < builtInCount ? builtInLayers[i] : "";
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text(i < builtInCount ? "Builtin Layer %d" : "User Layer %d", i);
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                if (*layer) ImGui::TextUnformatted(layer);
+                else ImGui::TextDisabled("-");
+            }
             ImGui::EndTable();
         }
     }
     endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawEditorSettings() {
+    drawSettingsPanel("##EditorSettingsPanel", [this]() {
+        if (beginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
+            m_versionControlMetadata = Project::defaultVersionControlMetadata;
+        }
+        ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
+        endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
+            "working directory, this machine's build settings and each developer's own layout stay out "
+            "of the repository. A file the editor did not generate is never replaced.");
+
+
+        drawDirectorySetting(
+            m_project, "Assets Directory", nullptr, "##AssetsPath", "Browse##assets",
+            m_assetsDir, fs::path(Project::defaultAssetsDir)
+        );
+    });
+}
+
+void ProjectSettingsWindow::drawPlatformsSettings() {
+    // Unity's per-platform Player tabs: each adds what its platform needs on top
+    // of the shared product settings above.
+    settingsui::boldText("Settings for Platform");
+    ImGui::Spacing();
+    if (!ImGui::BeginTabBar("##PlayerPlatformTabs", ImGuiTabBarFlags_FittingPolicyShrink)) return;
+
+    if (ImGui::BeginTabItem(ICON_FA_WINDOW_MAXIMIZE " Windows")) {
+        drawSectionNote("The Default Icon above is embedded into Windows players.");
+        if (beginSettingsTable("##WindowsSettingsTable")) {
+            drawWindowsSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(ICON_FA_LAPTOP " macOS")) {
+        drawSectionNote("Bundle settings apply to Apple projects exported as source code. "
+            "An Executable Player is a standalone executable, not an .app bundle.");
+        if (beginSettingsTable("##MacOSSettingsTable")) {
+            drawMacOSSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(ICON_FA_TERMINAL " Linux")) {
+        if (beginSettingsTable("##LinuxSettingsTable")) {
+            drawLinuxSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(ICON_FA_MOBILE_BUTTON " iOS")) {
+        if (beginSettingsTable("##IOSSettingsTable")) {
+            drawIOSSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(ICON_FA_MOBILE_SCREEN_BUTTON " Android")) {
+        if (beginSettingsTable("##AndroidSettingsTable")) {
+            drawAndroidSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem(ICON_FA_GLOBE " Web")) {
+        if (beginSettingsTable("##WebSettingsTable")) {
+            drawWebSettings();
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+
+    ImGui::EndTabBar();
 }
 
 void ProjectSettingsWindow::drawWebSettings() {

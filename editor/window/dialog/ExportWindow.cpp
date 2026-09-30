@@ -11,6 +11,10 @@
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
 #include "Theme.h"
+#include "Factory.h"
+#include "SettingsCategoryList.h"
+
+#include <cstdlib>
 
 namespace jasperengine::editor {
 
@@ -58,7 +62,7 @@ namespace {
 
 void ExportWindow::open(Project* project) {
     m_isOpen = true;
-    m_step = Step::ModeSelect;
+    m_step = Step::Settings;
     if (m_project != project) m_projectSettingsDirty = false;
     m_project = project;
     m_targetDir.clear();
@@ -85,8 +89,18 @@ void ExportWindow::open(Project* project) {
     m_graphicBackendIndex = 0;
     m_sourceBackendsConfigured = false;
     m_desktopBackendConfigured = false;
+    m_selectedSceneId = NULL_PROJECT_SCENE;
+    m_runAfterBuild = false;
+    m_launchDone = false;
+    m_playerSettingsRequested = false;
 
     populateBackendList();
+    // Remember the platform between openings, like Unity's active build target.
+    if (!m_platformInitialized) {
+        m_platform = hostPlatform();
+        m_buildPlayer = true;
+    }
+    selectPlatform(m_platform, m_buildPlayer);
 }
 
 void ExportWindow::populateShaderList() {
@@ -343,22 +357,28 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
 void ExportWindow::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Export Project##ExportModal");
+    ImGui::OpenPopup("Build Settings##ExportModal");
 
-    float width = Theme::dpi((m_step == Step::ModeSelect) ? 640.0f : 550.0f);
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (m_step == Step::Progress) {
+        const float width = std::min(Theme::dpi(560.0f), viewport->WorkSize.x * 0.9f);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0), ImVec2(width, viewport->WorkSize.y * 0.9f));
+    } else {
+        ImGui::SetNextWindowSize(ImVec2(
+            std::min(Theme::dpi(920.0f), viewport->WorkSize.x * 0.94f),
+            std::min(Theme::dpi(660.0f), viewport->WorkSize.y * 0.94f)), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSizeConstraints(Theme::dpi(ImVec2(640.0f, 460.0f)), viewport->WorkSize);
+    }
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(width, 0),
-        ImVec2(width, ImGui::GetMainViewport()->WorkSize.y * 0.9f)
-    );
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_Modal;
+    if (m_step == Step::Progress) {
+        flags |= ImGuiWindowFlags_AlwaysAutoResize;
+    } else {
+        flags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    }
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_Modal |
-                             ImGuiWindowFlags_AlwaysAutoResize;
-
-    bool popupOpen = ImGui::BeginPopupModal("Export Project##ExportModal", &m_isOpen, flags);
+    bool popupOpen = ImGui::BeginPopupModal("Build Settings##ExportModal", &m_isOpen, flags);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -369,113 +389,293 @@ void ExportWindow::show() {
             ImGui::CloseCurrentPopup();
         } else if (m_step == Step::Progress) {
             drawProgress();
-        } else if (m_step == Step::Settings) {
-            drawSettings();
         } else {
-            drawModeSelect();
+            drawSettings();
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                m_isOpen = false;
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndPopup();
     }
 }
 
-bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* title, const char* description,
-                                const ImVec2& size, const char* disabledText) {
-    ImVec2 cardPos = ImGui::GetCursorPos();
-
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.235f, 0.314f, 0.471f, 0.392f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.314f, 0.392f, 0.549f, 0.588f));
-    bool clicked = ImGui::Button(id, size);
-    ImGui::PopStyleColor(3);
-
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-
-    ImGui::GetWindowDrawList()->AddRect(
-        ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-        ImGui::GetColorU32(ImGuiCol_Border), ImGui::GetStyle().FrameRounding);
-
-    // NOTE: sizes derive from FontSizeBase, not GetFontSize() — passing the
-    // latter to PushFont would apply the global font scale twice.
-    const float baseSize = ImGui::GetStyle().FontSizeBase;
-    const float padX = Theme::dpi(12.0f);
-
-    // Large centered icon
-    ImGui::PushFont(ImGui::GetFont(), baseSize * 2.6f);
-    ImVec2 iconSize = ImGui::CalcTextSize(icon);
-    ImGui::SetCursorPos(ImVec2(cardPos.x + (size.x - iconSize.x) * 0.5f, cardPos.y + Theme::dpi(22.0f)));
-    ImGui::TextUnformatted(icon);
-    ImGui::PopFont();
-
-    // Title
-    ImGui::PushFont(ImGui::GetFont(), baseSize * 1.15f);
-    ImVec2 titleSize = ImGui::CalcTextSize(title);
-    float titleY = cardPos.y + Theme::dpi(22.0f) + iconSize.y + Theme::dpi(14.0f);
-    ImGui::SetCursorPos(ImVec2(cardPos.x + (size.x - titleSize.x) * 0.5f, titleY));
-    ImGui::TextUnformatted(title);
-    ImGui::PopFont();
-
-    // Description
-    const float descriptionY = titleY + titleSize.y + Theme::dpi(8.0f);
-    const float wrapWidth = size.x - padX * 2.0f;
-    ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-    ImGui::PushTextWrapPos(cardPos.x + size.x - padX);
-    ImGui::TextWrapped("%s", description);
-    ImGui::PopTextWrapPos();
-    ImGui::PopStyleColor();
-
-    if (disabledText) {
-        const float descriptionHeight = ImGui::CalcTextSize(description, nullptr, false, wrapWidth).y;
-        ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY + descriptionHeight + Theme::dpi(4.0f)));
-        ImGui::PushTextWrapPos(cardPos.x + size.x - padX);
-        ImGui::TextDisabled("%s", disabledText);
-        ImGui::PopTextWrapPos();
-    }
-
-    // Re-anchor the layout cursor to the card rect so SameLine() places the
-    // next card correctly after the overlay drawing above.
-    ImGui::SetCursorPos(cardPos);
-    ImGui::Dummy(size);
-
-    return clicked;
+bool ExportWindow::consumePlayerSettingsRequest() {
+    const bool requested = m_playerSettingsRequested;
+    m_playerSettingsRequested = false;
+    return requested;
 }
 
-void ExportWindow::drawModeSelect() {
-    ImGui::Spacing();
-    ImGui::TextDisabled("Choose how to export your project:");
-    ImGui::Spacing();
+ExportWindow::BuildPlatform ExportWindow::hostPlatform() {
+    #if defined(_WIN32)
+    return BuildPlatform::Windows;
+    #elif defined(__APPLE__)
+    return BuildPlatform::MacOS;
+    #else
+    return BuildPlatform::Linux;
+    #endif
+}
 
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float cardWidth = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
-    const ImVec2 cardSize(cardWidth, Theme::dpi(185.0f));
-
-    if (drawModeCard("##mode_source", ICON_FA_CODE, "Source Code",
-                     "C++ engine source for every supported platform:", cardSize,
-                     "Android \xc2\xb7 iOS \xc2\xb7 Web \xc2\xb7 Windows \xc2\xb7 Mac \xc2\xb7 Linux")) {
-        selectMode(ExportMode::SourceCode);
+const char* ExportWindow::platformName(BuildPlatform platform) {
+    switch (platform) {
+        case BuildPlatform::Windows: return "Windows";
+        case BuildPlatform::MacOS: return "macOS";
+        case BuildPlatform::Linux: return "Linux";
+        case BuildPlatform::Android: return "Android";
+        case BuildPlatform::IOS: return "iOS";
+        case BuildPlatform::Web: return "Web";
+        case BuildPlatform::Custom: return "Custom Graphics APIs";
+        default: return "";
     }
+}
+
+const char* ExportWindow::platformIcon(BuildPlatform platform) {
+    switch (platform) {
+        case BuildPlatform::Windows: return ICON_FA_WINDOW_MAXIMIZE;
+        case BuildPlatform::MacOS: return ICON_FA_LAPTOP;
+        case BuildPlatform::Linux: return ICON_FA_TERMINAL;
+        case BuildPlatform::Android: return ICON_FA_MOBILE_SCREEN_BUTTON;
+        case BuildPlatform::IOS: return ICON_FA_MOBILE_BUTTON;
+        case BuildPlatform::Web: return ICON_FA_GLOBE;
+        case BuildPlatform::Custom: return ICON_FA_MICROCHIP;
+        default: return "";
+    }
+}
+
+bool ExportWindow::platformCanBuildPlayer(BuildPlatform platform) const {
+    return platform == hostPlatform() || platform == BuildPlatform::Web;
+}
+
+std::set<ShaderBackend> ExportWindow::platformBackends(BuildPlatform platform) const {
+    // Same presets as the Custom Graphics APIs page
+    switch (platform) {
+        case BuildPlatform::Windows: return {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
+        case BuildPlatform::MacOS: return {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
+        case BuildPlatform::Linux: return {ShaderBackend::GLCore, ShaderBackend::Vulkan};
+        case BuildPlatform::Android: return {ShaderBackend::GLES3, ShaderBackend::Vulkan};
+        case BuildPlatform::IOS: return {ShaderBackend::MetalIOS};
+        case BuildPlatform::Web: return {ShaderBackend::GLES3};
+        default: return {};
+    }
+}
+
+void ExportWindow::selectPlatform(BuildPlatform platform, bool buildPlayer) {
+    if (!platformCanBuildPlayer(platform)) buildPlayer = false;
+    m_platform = platform;
+    m_buildPlayer = buildPlayer;
+    m_platformInitialized = true;
+
+    ExportMode mode = ExportMode::SourceCode;
+    if (buildPlayer) {
+        mode = platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
+    }
+    selectMode(mode);
+}
+
+void ExportWindow::setStartScene(uint32_t sceneId) {
+    if (!m_project || sceneId == m_startSceneId) return;
+    m_startSceneId = sceneId;
+    m_projectSettingsDirty = m_projectSettingsDirty || m_project->getStartSceneId() != sceneId;
+    m_project->setStartSceneId(sceneId);
+    saveCurrentSettingsToProject();
+}
+
+void ExportWindow::drawScenesInBuild(float height) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    // Unity order: the start scene is index 0, the rest follow in project order.
+    std::vector<const SceneProject*> scenes;
+    if (const SceneProject* start = m_project->getScene(m_startSceneId); start && !start->filepath.empty()) {
+        scenes.push_back(start);
+    }
+    for (const auto& scene : m_project->getScenes()) {
+        if (!scene.filepath.empty() && scene.id != m_startSceneId) scenes.push_back(&scene);
+    }
+
+    const float buttonsHeight = ImGui::GetFrameHeightWithSpacing();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    if (ImGui::BeginChild("##ScenesInBuild", ImVec2(0, std::max(1.0f, height - buttonsHeight)), ImGuiChildFlags_Borders)) {
+        if (scenes.empty()) {
+            ImGui::TextDisabled("No saved scenes. Save a scene to add it to the build.");
+        } else if (ImGui::BeginTable("##ScenesInBuildTable", 3, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Included", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+            ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Start Scene   00").x);
+
+            for (size_t i = 0; i < scenes.size(); i++) {
+                const SceneProject* scene = scenes[i];
+                ImGui::PushID(static_cast<int>(scene->id));
+                ImGui::TableNextRow();
+
+                ImGui::TableNextColumn();
+                // Every project scene ships; Edit Scenes In Build changes the list.
+                bool included = true;
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0.0f));
+                ImGui::BeginDisabled();
+                ImGui::Checkbox("##included", &included);
+                ImGui::EndDisabled();
+                ImGui::PopStyleVar();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip("Every scene of the project is in the build.\nUse Edit Scenes In Build... to add or remove scenes.");
+                }
+
+                ImGui::TableNextColumn();
+                std::error_code ec;
+                fs::path relative = fs::relative(scene->filepath, m_project->getProjectPath(), ec);
+                const std::string path = (ec || relative.empty()) ? scene->filepath.filename().generic_string()
+                                                                  : relative.generic_string();
+                if (ImGui::Selectable(path.c_str(), m_selectedSceneId == scene->id,
+                                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
+                    m_selectedSceneId = scene->id;
+                }
+                if (ImGui::BeginPopupContextItem("##scene_context")) {
+                    m_selectedSceneId = scene->id;
+                    ImGui::BeginDisabled(i == 0);
+                    if (ImGui::MenuItem("Set As Start Scene")) setStartScene(scene->id);
+                    ImGui::EndDisabled();
+                    ImGui::EndPopup();
+                }
+
+                ImGui::TableNextColumn();
+                char indexText[32];
+                snprintf(indexText, sizeof(indexText), "%zu", i);
+                if (i == 0) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    ImGui::TextUnformatted("Start Scene");
+                    ImGui::PopStyleColor();
+                    ImGui::SameLine();
+                }
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(indexText).x));
+                ImGui::TextUnformatted(indexText);
+
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+
+    const char* startLabel = "Set As Start Scene";
+    const char* editLabel = "Edit Scenes In Build...";
+    const float startWidth = textButtonWidth(startLabel);
+    const float editWidth = textButtonWidth(editLabel);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - startWidth - editWidth - style.ItemSpacing.x));
+    const bool canSetStart = m_selectedSceneId != NULL_PROJECT_SCENE && m_selectedSceneId != m_startSceneId &&
+                             m_project->getScene(m_selectedSceneId) != nullptr;
+    ImGui::BeginDisabled(!canSetStart);
+    if (ImGui::Button(startLabel)) setStartScene(m_selectedSceneId);
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("The start scene (index 0) is the first scene the player loads.");
     ImGui::SameLine();
-    if (drawModeCard("##mode_desktop", ICON_FA_DESKTOP, "Desktop",
-                     "Build a ready-to-run native executable for this computer", cardSize)) {
-        selectMode(ExportMode::Desktop);
+    ImGui::BeginDisabled(m_project->isAnyScenePlaying());
+    if (ImGui::Button(editLabel)) m_scenesWindow.open(m_project);
+    ImGui::EndDisabled();
+}
+
+void ExportWindow::drawPlatformList() {
+    const float rowHeight = Theme::dpi(34.0f);
+    const float baseSize = ImGui::GetStyle().FontSizeBase;
+    for (int i = 0; i < static_cast<int>(BuildPlatform::Count); i++) {
+        const BuildPlatform platform = static_cast<BuildPlatform>(i);
+        if (platform == BuildPlatform::Custom) {
+            ImGui::Separator();
+        }
+        ImGui::PushID(i);
+        const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+        if (ImGui::Selectable("##platform", m_platform == platform, 0, ImVec2(0, rowHeight))) {
+            if (m_platform != platform) selectPlatform(platform, platformCanBuildPlayer(platform));
+        }
+        if (platform == hostPlatform()) {
+            ImGui::SetItemTooltip("This computer: builds a ready-to-run player.");
+        } else if (platform == BuildPlatform::Custom) {
+            ImGui::SetItemTooltip("C++ source project with hand-picked graphics APIs.");
+        }
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        const float iconSize = baseSize * 1.35f;
+        const float iconSlot = Theme::dpi(30.0f);
+        ImFont* font = ImGui::GetFont();
+        const char* icon = platformIcon(platform);
+        const ImVec2 iconExtent = font->CalcTextSizeA(iconSize, FLT_MAX, 0.0f, icon);
+        drawList->AddText(font, iconSize,
+                          ImVec2(rowPos.x + Theme::dpi(4.0f) + (iconSlot - iconExtent.x) * 0.5f, rowPos.y + (rowHeight - iconExtent.y) * 0.5f),
+                          textColor, icon);
+        const float textHeight = ImGui::GetFontSize();
+        drawList->AddText(ImVec2(rowPos.x + Theme::dpi(8.0f) + iconSlot, rowPos.y + (rowHeight - textHeight) * 0.5f),
+                          textColor, platformName(platform));
+        ImGui::PopID();
     }
-    ImGui::SameLine();
-    if (drawModeCard("##mode_web", ICON_FA_GLOBE, "Web",
-                     "Build an HTML and WebAssembly version using Emscripten", cardSize)) {
-        selectMode(ExportMode::Web);
+}
+
+void ExportWindow::drawBuildTypeRow() {
+    beginSettingsRow("Build Type");
+    if (!platformCanBuildPlayer(m_platform)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("C++ Source Project");
+        ImGui::SetItemTooltip("Players for %s are built from the exported project with the platform's own tools.", platformName(m_platform));
+        return;
     }
 
-    ImGui::Spacing();
-    ImGui::Spacing();
+    const char* playerLabel = m_platform == BuildPlatform::Web ? "WebAssembly Player" : "Executable Player";
+    const char* labels[] = {playerLabel, "C++ Source Project"};
+    int index = m_buildPlayer ? 0 : 1;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::Combo("##BuildType", &index, labels, 2)) {
+        selectPlatform(m_platform, index == 0);
+    }
+}
 
-    float windowWidth = ImGui::GetWindowSize().x;
-    float cancelWidth = Theme::dpi(120.0f);
-    ImGui::SetCursorPosX((windowWidth - cancelWidth) * 0.5f);
-    if (ImGui::Button("Cancel", ImVec2(cancelWidth, 0))) {
-        m_isOpen = false;
-        ImGui::CloseCurrentPopup();
+void ExportWindow::drawSourceBackendsRow() {
+    beginSettingsRow("Graphics APIs");
+    std::string names;
+    for (ShaderBackend backend : platformBackends(m_platform)) {
+        if (!names.empty()) names += ", ";
+        names += ShaderPool::getShaderBackendName(backend);
+    }
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", names.c_str());
+    ImGui::SetItemTooltip("Shaders are compiled for these graphics APIs. Pick them by hand under Custom Graphics APIs.");
+}
+
+fs::path ExportWindow::builtPlayerPath() const {
+    // Mirrors Exporter::getAppName()
+    std::string exeName = m_project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(m_project->getName());
+    #ifdef _WIN32
+    exeName += ".exe";
+    #endif
+    return m_targetDir / exeName;
+}
+
+void ExportWindow::launchBuiltPlayer() {
+    if (m_mode != ExportMode::Desktop) return;
+
+    const fs::path exePath = builtPlayerPath();
+    std::error_code ec;
+    if (!fs::exists(exePath, ec)) {
+        Out::error("Build And Run: player not found at %s", exePath.string().c_str());
+        return;
+    }
+
+    // The player resolves assets and lua relative to its working directory.
+    #ifdef _WIN32
+    const std::string command = "start \"\" /D \"" + exePath.parent_path().string() + "\" \"" + exePath.string() + "\"";
+    #else
+    auto quote = [](const std::string& value) {
+        std::string quoted = "'";
+        for (char c : value) {
+            if (c == '\'') quoted += "'\\''";
+            else quoted += c;
+        }
+        return quoted + "'";
+    };
+    const std::string command = "cd " + quote(exePath.parent_path().string()) + " && " + quote(exePath.string()) + " >/dev/null 2>&1 &";
+    #endif
+    if (std::system(command.c_str()) != 0) {
+        Out::error("Build And Run: could not start %s", exePath.string().c_str());
+    } else {
+        Out::info("Running %s", exePath.string().c_str());
     }
 }
 
@@ -511,52 +711,13 @@ void ExportWindow::drawOutputDirRow(const char* label) {
     }
 }
 
-void ExportWindow::drawStartSceneRow() {
-    beginSettingsRow("Start Scene");
-    {
-        const auto& scenes = m_project->getScenes();
-        const SceneProject* selectedScene = m_project->getScene(m_startSceneId);
-        if (!selectedScene || selectedScene->filepath.empty()) {
-            selectedScene = nullptr;
-            m_startSceneId = NULL_PROJECT_SCENE;
-            for (const auto& scene : scenes) {
-                if (!scene.filepath.empty()) {
-                    selectedScene = &scene;
-                    m_startSceneId = scene.id;
-                    break;
-                }
-            }
-        }
-
-        if (selectedScene) {
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::BeginCombo("##StartScene", selectedScene->name.c_str())) {
-                for (const auto& scene : scenes) {
-                    if (scene.filepath.empty()) continue;
-
-                    bool isSelected = m_startSceneId == scene.id;
-                    if (ImGui::Selectable(scene.name.c_str(), isSelected)) {
-                        m_startSceneId = scene.id;
-                    }
-                    if (isSelected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-        } else {
-            ImGui::TextDisabled("No saved scenes");
-        }
-    }
-}
-
 void ExportWindow::drawGraphicBackendRow() {
-    beginSettingsRow("Graphic Backend");
+    beginSettingsRow("Graphics API");
 
     if (m_mode == ExportMode::Web) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("WebGL 2 (OpenGL ES 3)");
-        ImGui::SetItemTooltip("Web exports currently use the WebGL 2 backend");
+        ImGui::SetItemTooltip("Web players use WebGL 2");
         return;
     }
 
@@ -600,7 +761,7 @@ void ExportWindow::drawDesktopKitRows() {
     beginSettingsRow("Compiler");
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", kitDisplay.c_str());
-    ImGui::SetItemTooltip("Change in Editor Settings");
+    ImGui::SetItemTooltip("Change in Preferences > External Tools");
 
     beginSettingsRow("Build Jobs");
     ImGui::SetNextItemWidth(-1);
@@ -615,7 +776,8 @@ void ExportWindow::drawDesktopKitRows() {
 }
 
 void ExportWindow::drawShaderSection() {
-    ImGui::Text(ICON_FA_WAND_MAGIC_SPARKLES "  Shaders");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Shader variants compiled into the build");
     ImGui::SameLine();
 
     const char* addLabel = ICON_FA_PLUS " Add";
@@ -664,9 +826,9 @@ void ExportWindow::drawShaderSection() {
                 m_selectedShaderIndex = i;
             }
             if (isExcluded) ImGui::PopStyleColor();
-            ImGui::SetItemTooltip("%s", isExcluded ? "Excluded from the export. Select this shader and click Restore to include it again."
-                                       : isOverride ? "Shader override: manually added to the export."
-                                                    : "Collected from project scenes.");
+            ImGui::SetItemTooltip("%s", isExcluded ? "Excluded from the build. Select this shader and click Restore to include it again."
+                                       : isOverride ? "Shader override: manually added to the build."
+                                                    : "Collected from the scenes in the build.");
         }
     }
     ImGui::EndChild();
@@ -709,15 +871,15 @@ void ExportWindow::applySourcePlatformPresets() {
 }
 
 void ExportWindow::drawBackendSection() {
-    ImGui::Text(ICON_FA_MICROCHIP "  Graphic Backends");
+    settingsui::boldText("Graphics APIs");
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::BeginItemTooltip()) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-        ImGui::TextUnformatted("Use platform presets to select compatible shader backends, "
-                               "then fine-tune the selection in Custom Backends. "
+        ImGui::TextUnformatted("Use platform presets to select compatible graphics APIs, "
+                               "then fine-tune the selection by hand. "
                                "Switching tabs keeps your current selection. "
-                               "The selected backends below are included in the export.");
+                               "Shaders are compiled for every selected graphics API.");
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
@@ -747,7 +909,7 @@ void ExportWindow::drawBackendSection() {
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Custom Backends", nullptr, selectCustom ? ImGuiTabItemFlags_SetSelected : 0)) {
+        if (ImGui::BeginTabItem("By Graphics API", nullptr, selectCustom ? ImGuiTabItemFlags_SetSelected : 0)) {
             if (ImGui::BeginTable("backends_table", 3, ImGuiTableFlags_SizingStretchSame)) {
                 ImGui::TableSetupColumn("BackendCol1", ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableSetupColumn("BackendCol2", ImGuiTableColumnFlags_WidthStretch);
@@ -775,69 +937,81 @@ void ExportWindow::drawBackendSection() {
         selectedBackends += entry.name;
     }
     ImGui::Spacing();
-    ImGui::TextWrapped("Selected backends: %s", selectedBackends.empty() ? "None" : selectedBackends.c_str());
+    ImGui::TextWrapped("Selected graphics APIs: %s", selectedBackends.empty() ? "None" : selectedBackends.c_str());
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 }
 
-void ExportWindow::drawSettings() {
-    // Mode header
-    const char* modeIcon = ICON_FA_CODE;
-    const char* modeTitle = "Source Code Export";
+bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
+    const bool isCustom = m_platform == BuildPlatform::Custom;
+
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.3f);
+    ImGui::TextUnformatted(platformIcon(m_platform));
+    ImGui::PopFont();
+    ImGui::SameLine();
+    settingsui::boldText(platformName(m_platform), 1.3f);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::PushTextWrapPos(0.0f);
     if (m_mode == ExportMode::Desktop) {
-        modeIcon = ICON_FA_DESKTOP;
-        modeTitle = "Desktop Export";
+        ImGui::TextUnformatted("Builds a ready-to-run native player for this computer.");
     } else if (m_mode == ExportMode::Web) {
-        modeIcon = ICON_FA_GLOBE;
-        modeTitle = "Web Export";
+        ImGui::TextUnformatted("Builds an HTML and WebAssembly player with Emscripten.");
+    } else if (isCustom) {
+        ImGui::TextUnformatted("Exports the C++ source project with the graphics APIs picked below.");
+    } else {
+        ImGui::Text("Exports the C++ source project for %s.", platformName(m_platform));
     }
-    ImGui::Text("%s  %s", modeIcon, modeTitle);
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
     ImGui::PushItemWidth(-1);
-    ImGui::BeginTable("export_settings", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp);
-    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(140.0f));
-    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+    if (ImGui::BeginTable("export_settings", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(140.0f));
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-    drawOutputDirRow(m_mode == ExportMode::SourceCode ? "Target Directory" : "Destination Directory");
-    drawStartSceneRow();
-    if (m_mode == ExportMode::Desktop) {
-        drawGraphicBackendRow();
-        drawDesktopKitRows();
-    } else if (m_mode == ExportMode::Web) {
-        drawGraphicBackendRow();
+        if (!isCustom) drawBuildTypeRow();
+        drawOutputDirRow("Output Directory");
+        if (m_mode == ExportMode::Desktop) {
+            drawGraphicBackendRow();
+            drawDesktopKitRows();
+        } else if (m_mode == ExportMode::Web) {
+            drawGraphicBackendRow();
+        } else if (!isCustom) {
+            drawSourceBackendsRow();
+        }
+
+        ImGui::EndTable();
     }
-
-    ImGui::EndTable();
     ImGui::PopItemWidth();
 
     ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    drawShaderSection();
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (m_mode == ExportMode::SourceCode) {
+    if (isCustom) {
         drawBackendSection();
+    }
+
+    if (ImGui::CollapsingHeader("Shaders")) {
+        drawShaderSection();
+        ImGui::Spacing();
     }
 
     // --- Validation warnings ---
     bool canExport = !m_targetDir.empty();
     std::error_code ec;
     bool targetExists = !m_targetDir.empty() && fs::exists(m_targetDir, ec);
-    bool targetNotEmpty = targetExists && !fs::is_empty(m_targetDir, ec);
+    targetNotEmpty = targetExists && !fs::is_empty(m_targetDir, ec);
 
+    const ImVec4 warningColor(1.0f, 0.5f, 0.0f, 1.0f);
+    ImGui::PushTextWrapPos(0.0f);
+    if (m_targetDir.empty()) {
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Choose an output directory");
+    }
     if (targetNotEmpty) {
-        const char* dirLabel = (m_mode == ExportMode::SourceCode) ? "Target directory" : "Destination";
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s is not empty: existing files will be overwritten", dirLabel);
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " The output directory is not empty: existing files will be overwritten");
     }
 
     bool hasSavedScenes = false;
@@ -849,67 +1023,111 @@ void ExportWindow::drawSettings() {
     }
 
     if (!hasSavedScenes) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " No saved scenes in project");
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No saved scenes in the build");
         canExport = false;
     } else if (std::none_of(m_shaderEntries.begin(), m_shaderEntries.end(), [this](const ShaderEntry& entry) {
         return m_shaderExclusions.count(entry.key) == 0;
     })) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " No shaders selected for export");
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No shaders selected for the build");
     }
 
     if (m_mode == ExportMode::SourceCode) {
-        bool hasSelectedBackends = false;
-        for (const auto& entry : m_backendEntries) {
-            if (entry.selected) { hasSelectedBackends = true; break; }
-        }
-        if (!hasSelectedBackends) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " No graphic backends selected");
-            canExport = false;
+        if (isCustom) {
+            bool hasSelectedBackends = false;
+            for (const auto& entry : m_backendEntries) {
+                if (entry.selected) { hasSelectedBackends = true; break; }
+            }
+            if (!hasSelectedBackends) {
+                ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No graphics APIs selected");
+                canExport = false;
+            }
         }
     } else if (m_mode == ExportMode::Desktop) {
         if (!m_missingBuildTools.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-            ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Missing build tools:\n%s", m_missingBuildTools.c_str());
-            ImGui::PopStyleColor();
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Missing build tools:\n%s", m_missingBuildTools.c_str());
             canExport = false;
         }
     } else if (m_mode == ExportMode::Web) {
         if (!m_emsdkInfo.found) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-            ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Configure it in Editor Settings > Web.");
-            ImGui::PopStyleColor();
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set it in Preferences > External Tools.");
             canExport = false;
         }
     }
+    ImGui::PopTextWrapPos();
 
-    // --- Buttons ---
+    return canExport;
+}
+
+void ExportWindow::drawSettings() {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float footerHeight = ImGui::GetFrameHeight() + style.ItemSpacing.y;
+
+    settingsui::boldText("Scenes In Build");
+    const float scenesHeight = std::clamp(ImGui::GetContentRegionAvail().y * 0.3f, Theme::dpi(110.0f), Theme::dpi(200.0f));
+    drawScenesInBuild(scenesHeight);
     ImGui::Spacing();
-    if (ImGui::Button(ICON_FA_ARROW_LEFT " Back")) {
-        m_step = Step::ModeSelect;
+
+    const float bottomHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y - footerHeight - style.ItemSpacing.y);
+    const float listWidth = std::min(Theme::dpi(230.0f), ImGui::GetContentRegionAvail().x * 0.35f);
+
+    ImGui::BeginGroup();
+    settingsui::boldText("Platform");
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    if (ImGui::BeginChild("##PlatformList", ImVec2(listWidth, std::max(1.0f, bottomHeight - ImGui::GetTextLineHeightWithSpacing())),
+                          ImGuiChildFlags_Borders)) {
+        drawPlatformList();
     }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::EndGroup();
 
     ImGui::SameLine();
-    const float actionWidth = Theme::dpi(120.0f);
-    float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
-    ImGui::BeginDisabled(!canExport);
-    if (ImGui::Button("Export", ImVec2(actionWidth, 0))) {
+    bool targetNotEmpty = false;
+    bool canExport = false;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(12.0f, 8.0f)));
+    if (ImGui::BeginChild("##PlatformSettings", ImVec2(0, bottomHeight), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding)) {
+        canExport = drawPlatformSettings(targetNotEmpty);
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    // --- Footer: Player Settings... on the left, Build / Build And Run on the right ---
+    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight());
+    if (ImGui::Button("Player Settings...")) {
+        m_playerSettingsRequested = true;
+        m_isOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SetItemTooltip("Open Project Settings > Player");
+
+    const float actionWidth = Theme::dpi(120.0f);
+    const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
+
+    auto startBuild = [&](bool run) {
+        m_runAfterBuild = run;
+        m_launchDone = false;
         if (targetNotEmpty) {
             ImGui::OpenPopup("Directory Not Empty##ExportOverwrite");
         } else {
             startConfiguredExport(false);
         }
-    }
-    ImGui::EndDisabled();
+    };
 
+    ImGui::BeginDisabled(!canExport);
+    if (ImGui::Button("Build", ImVec2(actionWidth, 0))) startBuild(false);
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
-        m_isOpen = false;
-        ImGui::CloseCurrentPopup();
+    ImGui::BeginDisabled(m_mode != ExportMode::Desktop);
+    if (ImGui::Button("Build And Run", ImVec2(actionWidth, 0))) startBuild(true);
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    if (m_mode != ExportMode::Desktop && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Build And Run needs an Executable Player for this computer.");
     }
 
     drawOverwriteConfirmDialog();
+    m_scenesWindow.show();
 }
 
 void ExportWindow::drawOverwriteConfirmDialog() {
@@ -933,7 +1151,7 @@ void ExportWindow::drawOverwriteConfirmDialog() {
     ImGui::PushTextWrapPos();
     ImGui::Text("Files with the same name will be overwritten.");
     if (m_mode == ExportMode::SourceCode) {
-        ImGui::TextDisabled("Files left from an earlier export are not removed and may break the build.");
+        ImGui::TextDisabled("Files left from an earlier build are not removed and may break it.");
     }
     ImGui::PopTextWrapPos();
 
@@ -941,17 +1159,17 @@ void ExportWindow::drawOverwriteConfirmDialog() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    float windowWidth = ImGui::GetWindowSize().x;
     const float actionWidth = Theme::dpi(120.0f);
     float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
     if (ImGui::Button("Overwrite", ImVec2(actionWidth, 0))) {
         ImGui::CloseCurrentPopup();
         startConfiguredExport(true);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0)) ||
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         ImGui::CloseCurrentPopup();
     }
 
@@ -966,10 +1184,14 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
         exportConfig.packNativeResources = m_project->shouldPackNativeResources();
-        for (const auto& entry : m_backendEntries) {
-            if (entry.selected) {
-                exportConfig.selectedBackends.insert(entry.backend);
+        if (m_platform == BuildPlatform::Custom) {
+            for (const auto& entry : m_backendEntries) {
+                if (entry.selected) {
+                    exportConfig.selectedBackends.insert(entry.backend);
+                }
             }
+        } else {
+            exportConfig.selectedBackends = platformBackends(m_platform);
         }
     } else {
         exportConfig.destinationDir = m_targetDir;
@@ -1114,10 +1336,9 @@ void ExportWindow::drawAddShaderDialog() {
         }
 
         // Buttons
-        float windowWidth = ImGui::GetWindowSize().x;
         const float actionWidth = Theme::dpi(120.0f);
         float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-        ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
         ImGui::BeginDisabled(isDuplicate);
         if (ImGui::Button("Add", ImVec2(actionWidth, 0))) {
@@ -1126,9 +1347,10 @@ void ExportWindow::drawAddShaderDialog() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
-
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
+
+        if (ImGui::Button("Cancel", ImVec2(actionWidth, 0)) ||
+            (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_addShaderOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -1149,7 +1371,7 @@ void ExportWindow::drawProgress() {
     }
 
     ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
-    ImGui::Text("Exporting project...");
+    ImGui::TextUnformatted(m_mode == ExportMode::SourceCode ? "Exporting project..." : "Building player...");
     ImGui::Spacing();
 
     ImGui::ProgressBar(progress.overallProgress, ImVec2(-1.0f, 0.0f));
@@ -1168,34 +1390,35 @@ void ExportWindow::drawProgress() {
     if (progress.failed) {
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-        ImGui::TextWrapped(ICON_FA_CIRCLE_XMARK " Export failed: %s", progress.errorMessage.c_str());
+        ImGui::TextWrapped(ICON_FA_CIRCLE_XMARK " Build failed: %s", progress.errorMessage.c_str());
         ImGui::PopStyleColor();
         ImGui::Spacing();
 
-        float windowWidth = ImGui::GetWindowSize().x;
         float closeWidth = Theme::dpi(120.0f);
-        ImGui::SetCursorPosX((windowWidth - closeWidth) * 0.5f);
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth);
         if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     } else if (progress.finished) {
+        if (m_runAfterBuild && !m_launchDone) {
+            m_launchDone = true;
+            launchBuiltPlayer();
+        }
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Export completed successfully!");
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
         ImGui::Spacing();
 
-        float windowWidth = ImGui::GetWindowSize().x;
         float closeWidth = Theme::dpi(120.0f);
-        ImGui::SetCursorPosX((windowWidth - closeWidth) * 0.5f);
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth);
         if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     } else {
         // Still running: cancelling also terminates the compiler subprocess.
-        float windowWidth = ImGui::GetWindowSize().x;
         float cancelWidth = Theme::dpi(120.0f);
-        ImGui::SetCursorPosX((windowWidth - cancelWidth) * 0.5f);
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - cancelWidth);
         if (ImGui::Button("Cancel", ImVec2(cancelWidth, 0))) {
             m_exporter.cancelExport();
         }
