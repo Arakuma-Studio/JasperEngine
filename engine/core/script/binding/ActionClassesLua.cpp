@@ -139,6 +139,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Particles, Action>("Particles")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Particles::isEnabled, &Particles::setEnabled)
         .addFunction("reset", &Particles::reset)
         .addProperty("rate", &Particles::getRate, &Particles::setRate)
         .addProperty("maxPerUpdate", &Particles::getMaxPerUpdate, &Particles::setMaxPerUpdate)

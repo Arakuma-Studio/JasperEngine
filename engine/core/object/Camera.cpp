@@ -644,3 +644,11 @@ void Camera::updateCamera(){
 
     scene->getSystem<RenderSystem>()->updateCamera(camera, transform);
 }
+
+void Camera::setEnabled(bool enabled){
+    getComponent<CameraComponent>().enabled = enabled;
+}
+
+bool Camera::isEnabled() const{
+    return getComponent<CameraComponent>().enabled;
+}

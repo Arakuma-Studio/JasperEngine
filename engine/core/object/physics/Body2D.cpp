@@ -736,8 +736,12 @@ void Body2D::setType(BodyType type){
 void Body2D::setEnabled(bool enabled){
     Body2DComponent& body = getComponent<Body2DComponent>();
 
+    // the component flag is the setting; the physics system keeps an inactive
+    // GameObject's body out of the world whatever it says
+    body.enabled = enabled;
+
     checkBody(body);
-    if (enabled){
+    if (enabled && scene->isEntityActiveInHierarchy(entity)){
         b2Body_Enable(body.body);
     }else{
         b2Body_Disable(body.body);
@@ -822,8 +826,7 @@ BodyType Body2D::getType() const{
 bool Body2D::isEnabled() const{
     Body2DComponent& body = getComponent<Body2DComponent>();
 
-    checkBody(body);
-    return b2Body_IsEnabled(body.body);
+    return body.enabled;
 }
 
 float Body2D::getGravityScale() const{

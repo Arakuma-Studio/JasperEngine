@@ -260,3 +260,11 @@ bool Lines::removeShaderUniform(const std::string& name){
     lines.needUpdateShaderUniforms = true;
     return true;
 }
+
+void Lines::setEnabled(bool enabled){
+    getComponent<LinesComponent>().enabled = enabled;
+}
+
+bool Lines::isEnabled() const{
+    return getComponent<LinesComponent>().enabled;
+}

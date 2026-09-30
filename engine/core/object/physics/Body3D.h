@@ -30,6 +30,10 @@ namespace jasperengine{
         JPH::BodyInterface& getBodyInterface() const;
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Body3D is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Body3D(Scene* scene, Entity entity);
         virtual ~Body3D();
 

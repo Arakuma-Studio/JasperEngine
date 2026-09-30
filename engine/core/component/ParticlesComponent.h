@@ -232,6 +232,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API ParticlesComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         std::vector<ParticleData> particles;
 
         unsigned int maxParticles = 100;

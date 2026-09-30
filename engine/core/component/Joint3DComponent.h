@@ -30,6 +30,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API Joint3DComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::TwoBodyConstraint* joint = NULL;
 #endif

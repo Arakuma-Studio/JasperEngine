@@ -155,6 +155,13 @@ namespace jasperengine::editor{
         Catalog();
 
         static std::string getComponentName(ComponentType component, bool removeSuffix = false);
+        // Unity-style name for the UI ("Sprite Renderer", "Rigidbody 2D", "Audio Source").
+        // Display only: getComponentName stays the key of scenes, generated code and tools.
+        static std::string getComponentDisplayName(ComponentType component);
+        // Font Awesome icon of the component, for Inspector headers and the Add Component popup
+        static const char* getComponentIcon(ComponentType component);
+        // The component has the Unity enable checkbox (an "enabled" property)
+        static bool hasEnabledProperty(ComponentType component);
         static ComponentId getComponentId(const EntityRegistry* registry, ComponentType compType);
         static ComponentType getComponentType(const std::string& componentName);
         static Signature componentTypeToSignature(const EntityRegistry* registry, ComponentType compType);

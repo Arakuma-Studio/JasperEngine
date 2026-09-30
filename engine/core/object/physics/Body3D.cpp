@@ -835,3 +835,11 @@ Vector3 Body3D::getCenterOfMassPosition(){
 
     return Vector3(vec.GetX(), vec.GetY(), vec.GetZ());
 }
+
+void Body3D::setEnabled(bool enabled){
+    getComponent<Body3DComponent>().enabled = enabled;
+}
+
+bool Body3D::isEnabled() const{
+    return getComponent<Body3DComponent>().enabled;
+}

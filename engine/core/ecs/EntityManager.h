@@ -14,9 +14,16 @@
 
 namespace jasperengine{
 
+    // Unity's built-in tag, the one every GameObject starts with
+    inline constexpr const char* DEFAULT_ENTITY_TAG = "Untagged";
+
     struct EntityMetadata{
         std::string name;
         Signature signature;
+        // GameObject state: activeSelf, tag and layer (0..31)
+        bool active = true;
+        std::string tag = DEFAULT_ENTITY_TAG;
+        int layer = 0;
     };
 
     class JASPERENGINE_API EntityManager {
@@ -27,6 +34,8 @@ namespace jasperengine{
 
         Entity lastUserEntity = LAST_SYSTEM_ENTITY; // next user entity starts at 1001
         std::map<Entity, EntityMetadata> metadata;
+        // entities whose own active flag is off; zero lets hierarchy queries return early
+        size_t inactiveCount = 0;
 
     public:
 
@@ -100,7 +109,14 @@ namespace jasperengine{
         }
 
         void destroy(Entity entity) {
-            metadata.erase(entity);
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                return;
+            }
+            if (!it->second.active && inactiveCount > 0){
+                inactiveCount--;
+            }
+            metadata.erase(it);
         }
 
         std::vector<Entity> getEntityList() const{
@@ -139,6 +155,75 @@ namespace jasperengine{
                 return std::string();
             }
             return metadata.at(entity).name;
+        }
+
+        // Returns true when the flag changed
+        bool setActive(Entity entity, bool active) {
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                Log::error("Entity does not exist to set active");
+                return false;
+            }
+            if (it->second.active == active){
+                return false;
+            }
+            it->second.active = active;
+            if (active){
+                if (inactiveCount > 0) inactiveCount--;
+            }else{
+                inactiveCount++;
+            }
+            return true;
+        }
+
+        bool isActive(Entity entity) const {
+            if (inactiveCount == 0){
+                return true;
+            }
+            auto it = metadata.find(entity);
+            return it == metadata.end() || it->second.active;
+        }
+
+        bool hasInactive() const {
+            return inactiveCount > 0;
+        }
+
+        void setTag(Entity entity, const std::string& tag) {
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                Log::error("Entity does not exist to set tag");
+                return;
+            }
+            it->second.tag = tag.empty() ? std::string(DEFAULT_ENTITY_TAG) : tag;
+        }
+
+        std::string getTag(Entity entity) const {
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                return std::string(DEFAULT_ENTITY_TAG);
+            }
+            return it->second.tag;
+        }
+
+        void setLayer(Entity entity, int layer) {
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                Log::error("Entity does not exist to set layer");
+                return;
+            }
+            if (layer < 0 || layer > 31){
+                Log::warn("Layer %i is out of range (0 to 31), clamped", layer);
+                layer = layer < 0 ? 0 : 31;
+            }
+            it->second.layer = layer;
+        }
+
+        int getLayer(Entity entity) const {
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
+                return 0;
+            }
+            return it->second.layer;
         }
     };
 

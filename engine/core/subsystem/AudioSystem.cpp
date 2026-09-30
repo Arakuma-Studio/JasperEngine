@@ -289,6 +289,25 @@ void AudioSystem::update(double dt){
             continue;
         }
 
+        // Unity: disabling an Audio Source or its GameObject stops it and a play request
+        // is ignored. A source left Playing starts over on reactivation (play on awake).
+        if (!audio.enabled || !scene->isEntityActiveInHierarchy(entity)) {
+            if (audio.handle != 0) {
+                if (inited) {
+                    getSoloud().stop(audio.handle);
+                }
+                audio.handle = 0;
+                audio.playingTime = 0;
+            }
+            if (audio.state == SoundState::Paused) {
+                audio.state = SoundState::Stopped;
+            }
+            audio.startTrigger = false;
+            audio.pauseTrigger = false;
+            audio.stopTrigger = false;
+            continue;
+        }
+
         bool pendingStart = audio.startTrigger || (audio.state == SoundState::Playing && audio.handle == 0);
 
         if (audio.state == SoundState::Playing || pendingStart){

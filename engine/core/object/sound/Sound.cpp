@@ -338,3 +338,11 @@ float Sound::getDopplerFactor() const{
 
     return audio.dopplerFactor;
 }
+
+void Sound::setEnabled(bool enabled){
+    getComponent<SoundComponent>().enabled = enabled;
+}
+
+bool Sound::isEnabled() const{
+    return getComponent<SoundComponent>().enabled;
+}

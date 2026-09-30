@@ -12,6 +12,10 @@ namespace jasperengine {
 
     class JASPERENGINE_API Sound: public EntityHandle{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Sound is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Sound(Scene* scene);
         Sound(Scene* scene, bool is3D);
         Sound(Scene* scene, Entity entity);

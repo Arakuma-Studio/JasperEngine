@@ -20,6 +20,10 @@ namespace jasperengine{
         void applyFrameRect(Rect frameRect);
 
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Sprite is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Sprite(Scene* scene);
         Sprite(Scene* scene, Entity entity);
         virtual ~Sprite();

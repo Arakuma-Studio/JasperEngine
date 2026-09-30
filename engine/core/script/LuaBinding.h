@@ -29,7 +29,7 @@ namespace jasperengine {
 
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
-        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag);
+        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
         static std::string getScriptSubscriptionTag(int luaRef);
 
         static int moduleLoader(lua_State *L);

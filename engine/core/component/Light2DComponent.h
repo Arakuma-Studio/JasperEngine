@@ -10,6 +10,9 @@
 namespace jasperengine{
 
     struct JASPERENGINE_API Light2DComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         Vector3 color = Vector3(1.0, 1.0, 1.0);
 
         float intensity = 1.0;

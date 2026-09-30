@@ -286,3 +286,11 @@ void Model::resetToBindPose(){
     ModelComponent& model = getComponent<ModelComponent>();
     scene->getSystem<MeshSystem>()->resetModelToBindPose(entity, model);
 }
+
+void Model::setEnabled(bool enabled){
+    getComponent<ModelComponent>().enabled = enabled;
+}
+
+bool Model::isEnabled() const{
+    return getComponent<ModelComponent>().enabled;
+}

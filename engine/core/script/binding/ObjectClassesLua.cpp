@@ -161,6 +161,14 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("entity", &EntityHandle::getEntity)
         .addProperty("name", &EntityHandle::getName, &EntityHandle::setName)
         .addProperty("entityOwned", &EntityHandle::isEntityOwned, &EntityHandle::setEntityOwned)
+        .addFunction("setActive", &EntityHandle::setActive)
+        .addFunction("isActive", &EntityHandle::isActive)
+        .addFunction("isActiveInHierarchy", &EntityHandle::isActiveInHierarchy)
+        .addProperty("activeSelf", &EntityHandle::isActive)
+        .addProperty("activeInHierarchy", &EntityHandle::isActiveInHierarchy)
+        .addProperty("tag", &EntityHandle::getTag, &EntityHandle::setTag)
+        .addFunction("compareTag", &EntityHandle::compareTag)
+        .addProperty("layer", &EntityHandle::getLayer, &EntityHandle::setLayer)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -255,6 +263,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Camera, Object>("Camera")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Camera::isEnabled, &Camera::setEnabled)
         .addFunction("activate", &Camera::activate)
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
@@ -309,6 +318,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Light, Object>("Light")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)
@@ -344,6 +354,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Light2D, Object>("Light2D")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Light2D::isEnabled, &Light2D::setEnabled)
         .addProperty("color", &Light2D::getColor, (void(Light2D::*)(Vector3))&Light2D::setColor)
         .addFunction("setColor", (void(Light2D::*)(const float, const float, const float))&Light2D::setColor)
         .addProperty("intensity", &Light2D::getIntensity, &Light2D::setIntensity)
@@ -418,6 +429,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Mesh, Object>("Mesh")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Mesh::isEnabled, &Mesh::setEnabled)
         .addFunction("setTexture", 
             luabridge::overload<const std::string&>(&Mesh::setTexture),
             luabridge::overload<const std::string&,TextureData>(&Mesh::setTexture),
@@ -581,6 +593,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Terrain, Mesh>("Terrain")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Terrain::isEnabled, &Terrain::setEnabled)
         .addFunction("setHeightMap", (void(Terrain::*)(const std::string&))&Terrain::setHeightMap)
         .addFunction("setBlendMap", (void(Terrain::*)(const std::string&))&Terrain::setBlendMap)
         .addFunction("setBlendMapIndex", (void(Terrain::*)(unsigned int, const std::string&))&Terrain::setBlendMap)
@@ -610,6 +623,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Tilemap, Mesh>("Tilemap")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Tilemap::isEnabled, &Tilemap::setEnabled)
         .addFunction("findRectByString", &Tilemap::findRectByString)
         .addFunction("findTileByString", &Tilemap::findTileByString)
         .addProperty("textureScaleFactor", &Tilemap::getTextureScaleFactor, &Tilemap::setTextureScaleFactor)
@@ -649,6 +663,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Model, Mesh>("Model")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Model::isEnabled, &Model::setEnabled)
         .addFunction("loadOBJ", &Model::loadOBJ)
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
@@ -686,6 +701,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Points, Object>("Points")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Points::isEnabled, &Points::setEnabled)
         .addProperty("maxPoints", &Points::getMaxPoints, &Points::setMaxPoints)
         .addFunction("addPoint", 
             luabridge::overload<PointData>(&Points::addPoint),
@@ -737,6 +753,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Lines, Object>("Lines")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Lines::isEnabled, &Lines::setEnabled)
         .addProperty("maxLines", &Lines::getMaxLines, &Lines::setMaxLines)
         .addFunction("addLine", 
             luabridge::overload<Vector3, Vector3>(&Lines::addLine),
@@ -769,6 +786,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Sprite, Mesh>("Sprite")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Sprite::isEnabled, &Sprite::setEnabled)
         .addFunction("getOccluder2D", &Sprite::getOccluder2D)
         .addFunction("removeOccluder2D", &Sprite::removeOccluder2D)
         .addFunction("setSize", &Sprite::setSize)
@@ -801,6 +819,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<UILayout, Object>("UILayout")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &UILayout::isEnabled, &UILayout::setEnabled)
         .addFunction("setSize", &UILayout::setSize)
         .addProperty("width", &UILayout::getWidth, &UILayout::setWidth)
         .addProperty("height", &UILayout::getHeight, &UILayout::setHeight)
@@ -1098,6 +1117,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Sound, EntityHandle>("Sound")
+        .addProperty("enabled", &Sound::isEnabled, &Sound::setEnabled)
         // Entity before bool: a number must bind the entity overload, not is3D
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
         .addFunction("loadSound", &Sound::loadSound)
@@ -1303,6 +1323,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<Body3D, EntityHandle>("Body3D")
         .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("enabled", &Body3D::isEnabled, &Body3D::setEnabled)
         .addFunction("getAttachedObject", &Body3D::getAttachedObject)
         .addFunction("load", &Body3D::load)
         .addFunction("createBoxShape", 

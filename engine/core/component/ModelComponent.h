@@ -24,6 +24,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API ModelComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         std::shared_ptr<tinygltf::Model> gltfModel;
         std::shared_ptr<ObjModelData> objModel;
 

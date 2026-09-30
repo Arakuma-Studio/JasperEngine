@@ -31,6 +31,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API LinesComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         bool loaded = false;
         bool loadCalled = false;
 

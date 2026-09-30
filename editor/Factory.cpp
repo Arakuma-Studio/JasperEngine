@@ -400,6 +400,22 @@ std::string editor::Factory::formatQuaternion(const Quaternion& q) {
     return "Quaternion(" + formatFloat(q.w) + ", " + formatFloat(q.x) + ", " + formatFloat(q.y) + ", " + formatFloat(q.z) + ")";
 }
 
+std::string editor::Factory::formatEntityState(const std::string& ind, const std::string& entityExpr, const EntityRegistry* registry, Entity entity) {
+    std::string code;
+    if (!registry->isEntityActive(entity)) {
+        code += ind + "scene->setEntityActive(" + entityExpr + ", false);\n";
+    }
+    std::string tag = registry->getEntityTag(entity);
+    if (tag != DEFAULT_ENTITY_TAG) {
+        code += ind + "scene->setEntityTag(" + entityExpr + ", " + formatString(tag) + ");\n";
+    }
+    int layer = registry->getEntityLayer(entity);
+    if (layer != 0) {
+        code += ind + "scene->setEntityLayer(" + entityExpr + ", " + formatInt(layer) + ");\n";
+    }
+    return code;
+}
+
 std::string editor::Factory::formatBool(bool value) {
     return value ? "true" : "false";
 }
@@ -967,6 +983,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.indices.setCount(" << formatUInt(mesh.indices.getCount()) << ");\n";
     }
 
+    if (!mesh.enabled) code << ind << "mesh.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "MeshComponent", meshValue, assignExisting);
     return code.str();
 }
@@ -983,6 +1000,7 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
     if (!ui.shaderUniforms.empty())
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
     code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
+    if (!ui.enabled) code << ind << "ui.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "UIComponent", "ui", assignExisting);
     return code.str();
 }
@@ -1243,6 +1261,7 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
     }
+    if (!sprite.enabled) code << ind << "sprite.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SpriteComponent", "sprite", assignExisting);
     return code.str();
 }
@@ -1281,6 +1300,7 @@ std::string editor::Factory::createTilemapComponent(int indentSpaces, EntityRegi
     if (tilemap.numTiles > 0) {
         code << ind << "tilemap.numTiles = " << tilemap.numTiles << ";\n";
     }
+    if (!tilemap.enabled) code << ind << "tilemap.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TilemapComponent", tilemapValue, assignExisting);
     return code.str();
 }
@@ -1358,6 +1378,7 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.needUpdateTexture = true;\n";
     code << ind << "terrain.needUpdateFoliage = true;\n";
     code << ind << "terrain.heightMapLoaded = false;\n";
+    if (!terrain.enabled) code << ind << "terrain.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TerrainComponent", "terrain", assignExisting);
     return code.str();
 }
@@ -1383,6 +1404,7 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
     code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
     code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
+    if (!light.enabled) code << ind << "light.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "LightComponent", "light", assignExisting);
     return code.str();
 }
@@ -1402,6 +1424,7 @@ std::string editor::Factory::createLight2DComponent(int indentSpaces, EntityRegi
     code << ind << "light2d.shadowBias = " << formatFloat(light.shadowBias) << ";\n";
     code << ind << "light2d.shadowSoftness = " << formatFloat(light.shadowSoftness) << ";\n";
     code << ind << "light2d.mapResolution = " << formatUInt(light.mapResolution) << ";\n";
+    if (!light.enabled) code << ind << "light2d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Light2DComponent", "light2d", assignExisting);
     return code.str();
 }
@@ -1500,6 +1523,7 @@ std::string editor::Factory::createCameraComponent(int indentSpaces, EntityRegis
     code << ind << "camera.framebufferWidth = " << formatUInt(camera.framebufferWidth) << ";\n";
     code << ind << "camera.framebufferHeight = " << formatUInt(camera.framebufferHeight) << ";\n";
     code << ind << "camera.framebufferFilter = " << formatTextureFilter(camera.framebufferFilter) << ";\n";
+    if (!camera.enabled) code << ind << "camera.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "CameraComponent", "camera", assignExisting);
     return code.str();
 }
@@ -1530,6 +1554,7 @@ std::string editor::Factory::createSoundComponent(int indentSpaces, EntityRegist
     if (audio.state == SoundState::Playing) {
         code << ind << "audio.startTrigger = true;\n";
     }
+    if (!audio.enabled) code << ind << "audio.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SoundComponent", "audio", assignExisting);
     return code.str();
 }
@@ -1740,6 +1765,8 @@ std::string editor::Factory::createBody2DComponent(int indentSpaces, EntityRegis
         code << ind << "body2d.shapes[" << idx << "].groupIndex = " << body.shapes[i].groupIndex << ";\n";
     }
 
+    if (!body.enabled) code << ind << "body2d.enabled = false;\n";
+
     addComponentCode(code, ind, sceneName, entityName, entity, "Body2DComponent", "body2d", assignExisting);
     return code.str();
 }
@@ -1815,6 +1842,7 @@ std::string editor::Factory::createBody3DComponent(int indentSpaces, EntityRegis
         }
     }
 
+    if (!body.enabled) code << ind << "body3d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Body3DComponent", bodyValue, assignExisting);
     return code.str();
 }
@@ -1835,6 +1863,7 @@ std::string editor::Factory::createJoint2DComponent(int indentSpaces, EntityRegi
     code << ind << "joint2d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
     code << ind << "joint2d.rope = " << formatBool(joint.rope) << ";\n";
     code << ind << "joint2d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
+    if (!joint.enabled) code << ind << "joint2d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Joint2DComponent", "joint2d", assignExisting);
     return code.str();
 }
@@ -1882,6 +1911,7 @@ std::string editor::Factory::createJoint3DComponent(int indentSpaces, EntityRegi
     code << ind << "joint3d.isLooping = " << formatBool(joint.isLooping) << ";\n";
     code << ind << "joint3d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
     code << ind << "joint3d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
+    if (!joint.enabled) code << ind << "joint3d.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "Joint3DComponent", "joint3d", assignExisting);
     return code.str();
 }
@@ -2052,6 +2082,8 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     for (const auto& [name, index] : model.morphNameMapping) {
         code << ind << "modelcomp.morphNameMapping[" << formatString(name) << "] = " << formatInt(index) << ";\n";
     }
+
+    if (!model.enabled) code << ind << "modelcomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ModelComponent", "modelcomp", assignExisting);
     return code.str();
@@ -2518,7 +2550,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         if (bundleRoots.count(entity)) {
             const BundleInstanceInfo* bi = rootToInstance[entity];
             out << ind3 << "// Bundle instance: " << bi->bundlePath.string() << " (" << entityName << ")\n";
-            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
+            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n";
+            out << formatEntityState(ind3, std::to_string(entity), scene, entity) << "\n";
             out << componentsCode;
             out << "\n";
             if (usedRoots.count(entity)) {
@@ -2528,7 +2561,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
             }
         } else {
             out << ind3 << "// Entity " << entity << " (" << entityName << ")\n";
-            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
+            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n";
+            out << formatEntityState(ind3, std::to_string(entity), scene, entity) << "\n";
             out << componentsCode;
         }
         out << ind2 << "}\n";
@@ -2859,6 +2893,7 @@ std::string editor::Factory::createBundle(const fs::path& bundlePath, EntityRegi
         std::string entityName = registry->getEntityName(entity);
         out << ind1 << "Entity " << varName << " = scene->createEntity();\n";
         out << ind1 << "scene->setEntityName(" << varName << ", " << formatString(entityName) << ");\n";
+        out << formatEntityState(ind1, varName, registry, entity);
         out << ind1 << "members.push_back(" << varName << ");\n";
     }
     out << "\n";
@@ -3056,6 +3091,8 @@ std::string editor::Factory::createParticlesComponent(int indentSpaces, EntityRe
     code << ind << "particles.scaleModifier.toScale = " << formatVector3(p.scaleModifier.toScale) << ";\n";
     code << ind << "particles.scaleModifier.function = " << formatEase(p.scaleModifier.function) << ";\n";
 
+    if (!p.enabled) code << ind << "particles.enabled = false;\n";
+
     addComponentCode(code, ind, sceneName, entityName, entity, "ParticlesComponent", "particles", assignExisting);
     return code.str();
 }
@@ -3088,6 +3125,8 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
         code << ind << "    instmesh.instances.push_back(inst);\n";
         code << ind << "}\n";
     }
+
+    if (!p.enabled) code << ind << "instmesh.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "InstancedMeshComponent", "instmesh", assignExisting);
     return code.str();
@@ -3138,6 +3177,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
         code << ind << "}\n";
     }
 
+    if (!p.enabled) code << ind << "pointscomp.enabled = false;\n";
+
     addComponentCode(code, ind, sceneName, entityName, entity, "PointsComponent", "pointscomp", assignExisting);
     return code.str();
 }
@@ -3167,6 +3208,8 @@ std::string editor::Factory::createLinesComponent(int indentSpaces, EntityRegist
         code << ind << "    linescomp.lines.push_back(line);\n";
         code << ind << "}\n";
     }
+
+    if (!l.enabled) code << ind << "linescomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "LinesComponent", "linescomp", assignExisting);
     return code.str();

@@ -31,6 +31,9 @@ namespace jasperengine{
     };
 
     struct JASPERENGINE_API LightComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         LightType type = LightType::DIRECTIONAL;
 
         Vector3 direction;

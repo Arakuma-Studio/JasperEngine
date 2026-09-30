@@ -924,7 +924,9 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
         }
 
         fs_lighting.direction_range[i] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
-        fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
+        // a disabled light keeps its slot (the shader variant stays) but adds nothing
+        const float intensity = isLightActive(entity, light) ? light.intensity : 0.0f;
+        fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
         fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
         fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, light.numShadowCascades);
         fs_lighting.spotUp_maskAspect[i] = Vector4(
@@ -1087,7 +1089,8 @@ void RenderSystem::processLights2D(){
         }
 
         fs_lighting2d.position_range[i] = Vector4(worldPosition.x, worldPosition.y, light.height, std::max(light.range, 0.001f));
-        fs_lighting2d.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
+        const float intensity = isLight2DActive(entity, light) ? light.intensity : 0.0f;
+        fs_lighting2d.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
         fs_lighting2d.falloff_shadow[i] = Vector4(light.falloff, (float)light.shadowMapIndex, light.shadowSoftness, light.shadowBias);
     }
 
@@ -1565,7 +1568,7 @@ void RenderSystem::renderReflectionProbeCapture(){
             continue;
         Transform& transform = transforms->getComponentFromIndex(i);
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes)
+        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes || !isRenderActive(entity))
             continue;
 
         updateMVP(i, transform, captureCamera, captureTransform);
@@ -1959,7 +1962,7 @@ unsigned int RenderSystem::buildOccluder2DSegments(){
         }
         Entity entity = occluders->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
-        if (!transform || !transform->visible){
+        if (!transform || !transform->visible || !scene->isEntityActiveInHierarchy(entity)){
             continue;
         }
 
@@ -3608,7 +3611,8 @@ std::vector<RenderSystem::ShadowSlot> RenderSystem::collectShadowSlots(){
     int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
     for (int l = 0; l < shadowLightCount; l++){
         LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0)
+        if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
+                !isLightActive(lights->getEntity(l), light))
             continue;
         int numShadowCameras = (light.type == LightType::DIRECTIONAL) ? (int)light.numShadowCascades : 1;
         for (int c = 0; c < numShadowCameras; c++){
@@ -4369,7 +4373,7 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent)
+        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature))
             continue;
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
@@ -4530,7 +4534,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent)
+        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature))
             continue;
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
@@ -7163,6 +7167,39 @@ bool RenderSystem::samplesCameraTarget(const CameraComponent& camera, const Text
     return camera.renderToTexture && texture.getFramebuffer() == camera.framebuffer;
 }
 
+template<typename T>
+static bool isComponentDisabled(const Scene* scene, Entity entity, const Signature& signature){
+    return signature.test(scene->getComponentId<T>()) && !scene->getComponent<T>(entity).enabled;
+}
+
+bool RenderSystem::isRenderActive(Entity entity, Signature signature) const{
+    if (!scene->isEntityActiveInHierarchy(entity))
+        return false;
+
+    return !isComponentDisabled<MeshComponent>(scene, entity, signature) &&
+           !isComponentDisabled<SpriteComponent>(scene, entity, signature) &&
+           !isComponentDisabled<ModelComponent>(scene, entity, signature) &&
+           !isComponentDisabled<TilemapComponent>(scene, entity, signature) &&
+           !isComponentDisabled<TerrainComponent>(scene, entity, signature) &&
+           !isComponentDisabled<InstancedMeshComponent>(scene, entity, signature) &&
+           !isComponentDisabled<ParticlesComponent>(scene, entity, signature) &&
+           !isComponentDisabled<PointsComponent>(scene, entity, signature) &&
+           !isComponentDisabled<LinesComponent>(scene, entity, signature) &&
+           !isComponentDisabled<UIComponent>(scene, entity, signature);
+}
+
+bool RenderSystem::isRenderActive(Entity entity) const{
+    return isRenderActive(entity, scene->getSignature(entity));
+}
+
+bool RenderSystem::isLightActive(Entity entity, const LightComponent& light) const{
+    return light.enabled && scene->isEntityActiveInHierarchy(entity);
+}
+
+bool RenderSystem::isLight2DActive(Entity entity, const Light2DComponent& light) const{
+    return light.enabled && scene->isEntityActiveInHierarchy(entity);
+}
+
 bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
     // Cubemap sampling follows one fixed convention on every API, and with the
     // classic capture table (renderReflectionProbeCapture) it expects GL-style
@@ -8000,7 +8037,7 @@ void RenderSystem::draw(){
                 Entity entity = meshes->getEntity(i);
                 Transform* transform = scene->findComponent<Transform>(entity);
 
-                if (!transform || !transform->visible){
+                if (!transform || !transform->visible || !isRenderActive(entity)){
                     continue;
                 }
 
@@ -8055,7 +8092,8 @@ void RenderSystem::draw(){
             LightComponent& light = lights->getComponentFromIndex(l);
             if (light.type == LightType::POINT ||
                 light.intensity <= 0 || !light.shadows ||
-                light.shadowMapIndex < 0 || !hasShadowAtlas){
+                light.shadowMapIndex < 0 || !hasShadowAtlas ||
+                !isLightActive(lights->getEntity(l), light)){
                 continue;
             }
 
@@ -8091,7 +8129,8 @@ void RenderSystem::draw(){
             LightComponent& light = lights->getComponentFromIndex(l);
             if (light.type != LightType::POINT ||
                 light.intensity <= 0 || !light.shadows ||
-                light.shadowMapIndex < 0 || !hasShadowPointAtlas){
+                light.shadowMapIndex < 0 || !hasShadowPointAtlas ||
+                !isLightActive(lights->getEntity(l), light)){
                 continue;
             }
 
@@ -8146,7 +8185,8 @@ void RenderSystem::draw(){
 
         for (int l = 0; l < numLights2D; l++){
             Light2DComponent& light = lights2d->getComponentFromIndex(l);
-            if (!light.shadows || light.shadowMapIndex < 0 || light.intensity <= 0){
+            if (!light.shadows || light.shadowMapIndex < 0 || light.intensity <= 0 ||
+                    !isLight2DActive(lights2d->getEntity(l), light)){
                 continue;
             }
             Entity entity = lights2d->getEntity(l);
@@ -8208,6 +8248,11 @@ void RenderSystem::draw(){
 
         if (!isMainCamera && !camera.renderToTexture){
             continue; // camera is not used
+        }
+
+        // a disabled render-to-texture camera keeps its last image; the main camera always draws
+        if (!isMainCamera && (!camera.enabled || !scene->isEntityActiveInHierarchy(cameraEntity))){
+            continue;
         }
 
         int terrainView = 0;
@@ -8404,7 +8449,7 @@ void RenderSystem::draw(){
                 }
 
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-                if (!transform.visible || samplesCameraTarget(camera, mesh)){
+                if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature)){
                     continue;
                 }
 
@@ -8484,6 +8529,10 @@ void RenderSystem::draw(){
                 updateMVP(i, transform, camera, cameraTransform);
             }
 
+            // inactive GameObjects and disabled renderers draw nothing; a UI element
+            // still sets its scissor below so its children are clipped the same way
+            const bool renderActive = isRenderActive(entity, signature);
+
             // apply scissor on UI
             if (signature.test(scene->getComponentId<UILayoutComponent>())){
                 UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
@@ -8540,7 +8589,7 @@ void RenderSystem::draw(){
             if (signature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
-                if (transform.visible && !samplesCameraTarget(camera, mesh)){
+                if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh)){
 
                     // Per-camera transparent-instance sorting is intentionally NOT done
                     // here: the instance buffer is shared across all cameras and sokol
@@ -8574,7 +8623,7 @@ void RenderSystem::draw(){
                 if (signature.test(scene->getComponentId<TextComponent>())){
                     isText = true;
                 }
-                if (transform.visible && !samplesCameraTarget(camera, ui.texture))
+                if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
                     drawUI(ui, transform, colorPip);
 
             }else if (signature.test(scene->getComponentId<PointsComponent>())){
@@ -8584,7 +8633,7 @@ void RenderSystem::draw(){
                 // shared across all cameras and sokol only allows one sg_update_buffer per
                 // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
                 // camera's ordering computed in update().
-                if (transform.visible && !samplesCameraTarget(camera, points.texture)){
+                if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
                     if (!points.transparent || !distanceSort){
                         drawPoints(points, transform, camera, cameraTransform, colorPip);
                     }else{
@@ -8595,7 +8644,7 @@ void RenderSystem::draw(){
             }else if (signature.test(scene->getComponentId<LinesComponent>())){
                 LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
 
-                if (transform.visible)
+                if (transform.visible && renderActive)
                     drawLines(lines, transform, cameraTransform, colorPip);
 
             }

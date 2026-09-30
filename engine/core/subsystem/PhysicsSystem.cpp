@@ -1508,7 +1508,10 @@ void PhysicsSystem::destroyBody3D(Body3DComponent& body){
         pendingBodyDestroy3D.push_back(body.body);
     }else{
         JPH::BodyInterface &body_interface = getBodyInterface3D();
-        body_interface.RemoveBody(body.body);
+        // a disabled body was already taken out of the world
+        if (body_interface.IsAdded(body.body)){
+            body_interface.RemoveBody(body.body);
+        }
         body_interface.DestroyBody(body.body);
     }
 
@@ -2724,15 +2727,40 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
 
         if (b2Body_IsValid(body.body)){
-            updateBody2DPosition(signature, entity, body);
+            // a disabled Rigidbody 2D or inactive GameObject leaves the simulation
+            // (Box2D keeps its state and contacts are dropped) until it is enabled again
+            const bool simulate = body.enabled && scene->isEntityActiveInHierarchy(entity);
+            if (b2Body_IsEnabled(body.body) != simulate){
+                if (simulate){
+                    b2Body_Enable(body.body);
+                }else{
+                    b2Body_Disable(body.body);
+                }
+            }
 
-            body.newBody = false;
+            if (simulate){
+                updateBody2DPosition(signature, entity, body);
+
+                body.newBody = false;
+            }
         }
     }
     auto joints2d = scene->getComponentArray<Joint2DComponent>();
     for (int i = 0; i < joints2d->size(); i++){
         Joint2DComponent& joint = joints2d->getComponentFromIndex(i);
         Entity entity = joints2d->getEntity(i);
+
+        // a disabled joint, or one on or between inactive GameObjects, is removed
+        // from the world and rebuilt when everything is active again
+        if (!joint.enabled || !scene->isEntityActiveInHierarchy(entity) ||
+                (joint.bodyA != NULL_ENTITY && !scene->isEntityActiveInHierarchy(joint.bodyA)) ||
+                (joint.bodyB != NULL_ENTITY && !scene->isEntityActiveInHierarchy(joint.bodyB))){
+            if (b2Joint_IsValid(joint.joint)){
+                destroyJoint2D(joint);
+            }
+            joint.needUpdateJoint = true;
+            continue;
+        }
 
         if (joint.needUpdateJoint || !b2Joint_IsValid(joint.joint)){
             if (loadJoint2D(entity, joint)){
@@ -2799,15 +2827,39 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
 
         if (!body.body.IsInvalid()){
-            updateBody3DPosition(signature, entity, body);
+            // a disabled Rigidbody or inactive GameObject is taken out of the world
+            // (the Jolt body and its state are kept) until it is enabled again
+            const bool simulate = body.enabled && scene->isEntityActiveInHierarchy(entity);
+            JPH::BodyInterface& bodyInterface = getBodyInterface3D();
+            if (bodyInterface.IsAdded(body.body) != simulate){
+                if (simulate){
+                    bodyInterface.AddBody(body.body, body.type == BodyType::STATIC ? JPH::EActivation::DontActivate : JPH::EActivation::Activate);
+                }else{
+                    bodyInterface.RemoveBody(body.body);
+                }
+            }
 
-            body.newBody = false;
+            if (simulate){
+                updateBody3DPosition(signature, entity, body);
+
+                body.newBody = false;
+            }
         }
     }
     auto joints3d = scene->getComponentArray<Joint3DComponent>();
     for (int i = 0; i < joints3d->size(); i++){
         Joint3DComponent& joint = joints3d->getComponentFromIndex(i);
         Entity entity = joints3d->getEntity(i);
+
+        if (!joint.enabled || !scene->isEntityActiveInHierarchy(entity) ||
+                (joint.bodyA != NULL_ENTITY && !scene->isEntityActiveInHierarchy(joint.bodyA)) ||
+                (joint.bodyB != NULL_ENTITY && !scene->isEntityActiveInHierarchy(joint.bodyB))){
+            if (joint.joint){
+                destroyJoint3D(joint);
+            }
+            joint.needUpdateJoint = true;
+            continue;
+        }
 
         if (joint.needUpdateJoint || !joint.joint){
             if (loadJoint3D(entity, joint)){

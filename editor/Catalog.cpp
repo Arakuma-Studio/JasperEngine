@@ -4,6 +4,7 @@
 #include "Catalog.h"
 
 #include "Stream.h"
+#include "external/IconsFontAwesome6.h"
 
 #include <cctype>
 
@@ -3096,6 +3097,48 @@ namespace {
         {ComponentType::MorphTracksComponent, &findComponentPtr<MorphTracksComponent>, &resolveMorphTracksPropertyFast, &enumerateMorphTracksProperties},
     };
 
+    // The Unity component checkbox: "enabled" of every component that has one, shared
+    // here instead of repeated in each table (Occluder2D lists its own)
+    using EnabledRefGetter = bool* (*)(void*);
+
+    template<typename Component>
+    bool* getEnabledRef(void* comp) {
+        return &static_cast<Component*>(comp)->enabled;
+    }
+
+    EnabledRefGetter findEnabledGetter(ComponentType component) {
+        switch (component) {
+            case ComponentType::MeshComponent: return &getEnabledRef<MeshComponent>;
+            case ComponentType::ModelComponent: return &getEnabledRef<ModelComponent>;
+            case ComponentType::SpriteComponent: return &getEnabledRef<SpriteComponent>;
+            case ComponentType::TilemapComponent: return &getEnabledRef<TilemapComponent>;
+            case ComponentType::TerrainComponent: return &getEnabledRef<TerrainComponent>;
+            case ComponentType::PointsComponent: return &getEnabledRef<PointsComponent>;
+            case ComponentType::LinesComponent: return &getEnabledRef<LinesComponent>;
+            case ComponentType::ParticlesComponent: return &getEnabledRef<ParticlesComponent>;
+            case ComponentType::InstancedMeshComponent: return &getEnabledRef<InstancedMeshComponent>;
+            case ComponentType::LightComponent: return &getEnabledRef<LightComponent>;
+            case ComponentType::Light2DComponent: return &getEnabledRef<Light2DComponent>;
+            case ComponentType::CameraComponent: return &getEnabledRef<CameraComponent>;
+            case ComponentType::SoundComponent: return &getEnabledRef<SoundComponent>;
+            case ComponentType::Body2DComponent: return &getEnabledRef<Body2DComponent>;
+            case ComponentType::Body3DComponent: return &getEnabledRef<Body3DComponent>;
+            case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
+            case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
+            case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
+            default: return nullptr;
+        }
+    }
+
+    PropertyData resolveEnabledProperty(ComponentType component, void* comp) {
+        static bool defaultEnabled = true;
+        EnabledRefGetter getter = findEnabledGetter(component);
+        if (!getter) {
+            return PropertyData();
+        }
+        return {PropertyType::Bool, UpdateFlags_None, &defaultEnabled, comp ? getter(comp) : nullptr};
+    }
+
     PropertyData tryGetFastProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
         for (const FastComponentResolver& resolver : kFastComponentResolvers) {
             if (resolver.component != component) {
@@ -3105,6 +3148,10 @@ namespace {
             void* comp = resolver.findComponent(registry, entity);
             if (!comp) {
                 return PropertyData();
+            }
+
+            if (propertyName == "enabled" && findEnabledGetter(component)) {
+                return resolveEnabledProperty(component, comp);
             }
 
             return resolver.resolve(comp, propertyName);
@@ -3117,6 +3164,9 @@ namespace {
         for (const FastComponentResolver& resolver : kFastComponentResolvers) {
             if (resolver.component == component) {
                 resolver.enumerate(compRef, ps);
+                if (findEnabledGetter(component)) {
+                    ps["enabled"] = resolveEnabledProperty(component, compRef);
+                }
                 return true;
             }
         }
@@ -3129,6 +3179,9 @@ namespace {
                 void* comp = resolver.findComponent(registry, entity);
                 if (!comp) return false;
                 resolver.enumerate(comp, ps);
+                if (findEnabledGetter(component)) {
+                    ps["enabled"] = resolveEnabledProperty(component, comp);
+                }
                 return true;
             }
         }
@@ -3274,6 +3327,126 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
     }
 
     return name;
+}
+
+std::string editor::Catalog::getComponentDisplayName(ComponentType component){
+    switch (component){
+        case ComponentType::Transform: return "Transform";
+        case ComponentType::ScriptComponent: return "Script";
+        case ComponentType::MeshComponent: return "Mesh Renderer";
+        case ComponentType::LinesComponent: return "Line Renderer";
+        case ComponentType::LightComponent: return "Light";
+        case ComponentType::TerrainComponent: return "Terrain";
+        case ComponentType::PointsComponent: return "Point Renderer";
+        case ComponentType::SkyComponent: return "Skybox";
+        case ComponentType::ModelComponent: return "Model";
+        case ComponentType::UIComponent: return "Canvas Renderer";
+        case ComponentType::UILayoutComponent: return "Rect Transform";
+        case ComponentType::ActionComponent: return "Action";
+        case ComponentType::TimedActionComponent: return "Tween";
+        case ComponentType::AlphaActionComponent: return "Alpha Tween";
+        case ComponentType::AnimationComponent: return "Animation";
+        case ComponentType::SoundComponent: return "Audio Source";
+        case ComponentType::Body2DComponent: return "Rigidbody 2D";
+        case ComponentType::Body3DComponent: return "Rigidbody";
+        case ComponentType::BoneComponent: return "Bone";
+        case ComponentType::BundleComponent: return "Prefab";
+        case ComponentType::ButtonComponent: return "Button";
+        case ComponentType::CameraComponent: return "Camera";
+        case ComponentType::ColorActionComponent: return "Color Tween";
+        case ComponentType::FogComponent: return "Fog";
+        case ComponentType::ImageComponent: return "Image";
+        case ComponentType::InstancedMeshComponent: return "Mesh Instancing";
+        case ComponentType::Joint2DComponent: return "Joint 2D";
+        case ComponentType::Joint3DComponent: return "Joint";
+        case ComponentType::KeyframeTracksComponent: return "Keyframe Tracks";
+        case ComponentType::MeshPolygonComponent: return "Polygon Mesh";
+        case ComponentType::MorphTracksComponent: return "Morph Tracks";
+        case ComponentType::PanelComponent: return "Panel";
+        case ComponentType::ParticlesComponent: return "Particle System";
+        case ComponentType::PolygonComponent: return "Polygon";
+        case ComponentType::PositionActionComponent: return "Position Tween";
+        case ComponentType::ProgressbarComponent: return "Progress Bar";
+        case ComponentType::RotateTracksComponent: return "Rotation Tracks";
+        case ComponentType::RotationActionComponent: return "Rotation Tween";
+        case ComponentType::ScaleActionComponent: return "Scale Tween";
+        case ComponentType::ScaleTracksComponent: return "Scale Tracks";
+        case ComponentType::ScrollbarComponent: return "Scrollbar";
+        case ComponentType::SpriteAnimationComponent: return "Sprite Animation";
+        case ComponentType::SpriteComponent: return "Sprite Renderer";
+        case ComponentType::TextComponent: return "Text";
+        case ComponentType::TextEditComponent: return "Input Field";
+        case ComponentType::TilemapComponent: return "Tilemap";
+        case ComponentType::TranslateTracksComponent: return "Position Tracks";
+        case ComponentType::UIContainerComponent: return "Layout Group";
+        case ComponentType::MirrorComponent: return "Mirror";
+        case ComponentType::Light2DComponent: return "Light 2D";
+        case ComponentType::Occluder2DComponent: return "Shadow Caster 2D";
+        case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
+    }
+    return getComponentName(component);
+}
+
+const char* editor::Catalog::getComponentIcon(ComponentType component){
+    switch (component){
+        case ComponentType::Transform: return ICON_FA_UP_DOWN_LEFT_RIGHT;
+        case ComponentType::ScriptComponent: return ICON_FA_CODE;
+        case ComponentType::MeshComponent: return ICON_FA_SHAPES;
+        case ComponentType::LinesComponent: return ICON_FA_GRIP_LINES;
+        case ComponentType::LightComponent: return ICON_FA_LIGHTBULB;
+        case ComponentType::TerrainComponent: return ICON_FA_MOUNTAIN;
+        case ComponentType::PointsComponent: return ICON_FA_BRAILLE;
+        case ComponentType::SkyComponent: return ICON_FA_CLOUD_SUN;
+        case ComponentType::ModelComponent: return ICON_FA_CUBES;
+        case ComponentType::UIComponent: return ICON_FA_PAINTBRUSH;
+        case ComponentType::UILayoutComponent: return ICON_FA_VECTOR_SQUARE;
+        case ComponentType::ActionComponent: return ICON_FA_PLAY;
+        case ComponentType::TimedActionComponent: return ICON_FA_CLOCK;
+        case ComponentType::AlphaActionComponent: return ICON_FA_EYE;
+        case ComponentType::AnimationComponent: return ICON_FA_FILM;
+        case ComponentType::SoundComponent: return ICON_FA_VOLUME_HIGH;
+        case ComponentType::Body2DComponent: return ICON_FA_CIRCLE;
+        case ComponentType::Body3DComponent: return ICON_FA_CUBE;
+        case ComponentType::BoneComponent: return ICON_FA_BONE;
+        case ComponentType::BundleComponent: return ICON_FA_CUBE;
+        case ComponentType::ButtonComponent: return ICON_FA_SQUARE_CHECK;
+        case ComponentType::CameraComponent: return ICON_FA_VIDEO;
+        case ComponentType::ColorActionComponent: return ICON_FA_PALETTE;
+        case ComponentType::FogComponent: return ICON_FA_SMOG;
+        case ComponentType::ImageComponent: return ICON_FA_IMAGE;
+        case ComponentType::InstancedMeshComponent: return ICON_FA_CLONE;
+        case ComponentType::Joint2DComponent: return ICON_FA_LINK;
+        case ComponentType::Joint3DComponent: return ICON_FA_LINK;
+        case ComponentType::KeyframeTracksComponent: return ICON_FA_KEY;
+        case ComponentType::MeshPolygonComponent: return ICON_FA_DRAW_POLYGON;
+        case ComponentType::MorphTracksComponent: return ICON_FA_FACE_SMILE;
+        case ComponentType::PanelComponent: return ICON_FA_WINDOW_MAXIMIZE;
+        case ComponentType::ParticlesComponent: return ICON_FA_FIRE;
+        case ComponentType::PolygonComponent: return ICON_FA_DRAW_POLYGON;
+        case ComponentType::PositionActionComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
+        case ComponentType::ProgressbarComponent: return ICON_FA_BARS_PROGRESS;
+        case ComponentType::RotateTracksComponent: return ICON_FA_CIRCLE_NOTCH;
+        case ComponentType::RotationActionComponent: return ICON_FA_ROTATE;
+        case ComponentType::ScaleActionComponent: return ICON_FA_EXPAND;
+        case ComponentType::ScaleTracksComponent: return ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
+        case ComponentType::ScrollbarComponent: return ICON_FA_ARROWS_UP_DOWN;
+        case ComponentType::SpriteAnimationComponent: return ICON_FA_FILM;
+        case ComponentType::SpriteComponent: return ICON_FA_IMAGE;
+        case ComponentType::TextComponent: return ICON_FA_FONT;
+        case ComponentType::TextEditComponent: return ICON_FA_KEYBOARD;
+        case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
+        case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
+        case ComponentType::UIContainerComponent: return ICON_FA_TABLE_CELLS;
+        case ComponentType::MirrorComponent: return ICON_FA_CLONE;
+        case ComponentType::Light2DComponent: return ICON_FA_LIGHTBULB;
+        case ComponentType::Occluder2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
+        case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
+    }
+    return ICON_FA_PUZZLE_PIECE;
+}
+
+bool editor::Catalog::hasEnabledProperty(ComponentType component){
+    return component == ComponentType::Occluder2DComponent || findEnabledGetter(component) != nullptr;
 }
 
 ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, ComponentType compType) {

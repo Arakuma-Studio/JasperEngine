@@ -7,7 +7,8 @@
 # The project is copied first. Writes build/shots/<name>.png and <name>.log.
 # KEYS="F5" (xdotool key names, space separated) are pressed after <seconds>,
 # followed by a second screenshot <name>-keys.png after KEYS_WAIT seconds.
-# CLICKS="x,y x,y" (screen pixels) are left-clicked before KEYS, same screenshot.
+# CLICKS="x,y x,y,b" (screen pixels; b = mouse button, 3 right, 4/5 wheel) are
+# clicked before KEYS, same screenshot.
 # STEPS="..." then runs space separated steps: "x,y" left click, "r:x,y" right
 # click, "m:x,y" move the mouse (hover), "k:key" key press, "w:secs" wait, and
 # "s" to save <name>-1.png, <name>-2.png, ... (each step waits 0.4s).
@@ -17,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -57,7 +58,7 @@ docker run --rm \
         if [[ -n \"\$KEYS\" || -n \"\$CLICKS\" ]]; then
             win=\$(xdotool search --onlyvisible --name . | tail -1 || true)
             [[ -n \"\$win\" ]] && xdotool windowactivate --sync \$win 2>/dev/null || true
-            for c in \$CLICKS; do xdotool mousemove \${c%,*} \${c#*,} click 1; sleep 0.5; done
+            for c in \$CLICKS; do IFS=, read -r cx cy cb <<< \"\$c\"; xdotool mousemove \$cx \$cy click \${cb:-1}; sleep 0.7; done
             for k in \$KEYS; do xdotool key \$k; sleep 0.5; done
             sleep \$KEYS_WAIT
             kill -0 \$pid 2>/dev/null || { echo 'FAIL: editor exited after keys'; tail -30 ../$NAME.log; exit 1; }

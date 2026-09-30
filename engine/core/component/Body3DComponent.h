@@ -85,6 +85,9 @@ namespace jasperengine{
     };
 
     struct Body3DComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::BodyID body;
 #endif

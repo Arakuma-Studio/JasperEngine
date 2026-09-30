@@ -222,7 +222,7 @@ int LuaBinding::setLuaSearcher(lua_CFunction f, bool cleanSearchers) {
 }
 
 // Common implementation for event registration
-int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag) {
+int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive) {
     // Look up self[methodName] using __index
     lua_pushvalue(L, selfIndex);
     lua_pushstring(L, methodName);
@@ -260,12 +260,50 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     }
     int tagIndex = lua_gettop(L);
 
+    // A scene script's engine events (onUpdate, input...) are skipped while its
+    // GameObject is inactive or its entry disabled; other tables are never guarded
+    Scene* guardScene = nullptr;
+    lua_Integer guardEntity = 0;
+    lua_Integer guardRef = 0;
+    if (guardActive) {
+        lua_getfield(L, selfIndex, "scene");
+        if (lua_isuserdata(L, -1)) {
+            auto sceneResult = luabridge::get<Scene*>(L, -1);
+            if (sceneResult) {
+                guardScene = sceneResult.value();
+            }
+        }
+        lua_pop(L, 1);
+        lua_getfield(L, selfIndex, "entity");
+        guardEntity = lua_isinteger(L, -1) ? lua_tointeger(L, -1) : 0;
+        lua_pop(L, 1);
+        lua_getfield(L, selfIndex, "__scriptRef");
+        guardRef = lua_isinteger(L, -1) ? lua_tointeger(L, -1) : 0;
+        lua_pop(L, 1);
+    }
+
     // Build closure: function(...) return method(self, ...) end
     lua_pushvalue(L, methodFuncIndex); // method
     lua_pushvalue(L, selfIndex);       // self
+    if (guardScene && guardEntity > 0) {
+        lua_pushlightuserdata(L, guardScene);
+    } else {
+        lua_pushnil(L);
+    }
+    lua_pushinteger(L, guardEntity);
+    lua_pushinteger(L, guardRef);
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
+
+            if (lua_islightuserdata(Linner, lua_upvalueindex(3))) {
+                Scene* scene = static_cast<Scene*>(lua_touserdata(Linner, lua_upvalueindex(3)));
+                Entity entity = static_cast<Entity>(lua_tointeger(Linner, lua_upvalueindex(4)));
+                void* instance = reinterpret_cast<void*>(static_cast<intptr_t>(lua_tointeger(Linner, lua_upvalueindex(5))));
+                if (!isScriptActive(scene, entity, instance)) {
+                    return 0;
+                }
+            }
 
             lua_pushvalue(Linner, lua_upvalueindex(1)); // method
             lua_pushvalue(Linner, lua_upvalueindex(2)); // self
@@ -281,7 +319,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        2);
+        5);
     int closureIndex = lua_gettop(L);
 
     // event:add(tag, closure)
@@ -316,7 +354,7 @@ int LuaBinding::luaRegisterEvent(lua_State* L) {
     const char* methodName = lua_tostring(L, 3);
     const char* tag = (top >= 4 && !lua_isnil(L, 4)) ? lua_tostring(L, 4) : nullptr;
 
-    return luaRegisterEventImpl(L, 2, 1, methodName, tag);
+    return luaRegisterEventImpl(L, 2, 1, methodName, tag, false);
 }
 
 // Engine-specific: RegisterEngineEvent(self, methodName [, tag])
@@ -347,7 +385,7 @@ int LuaBinding::luaRegisterEngineEvent(lua_State* L) {
 
     int eventIndex = lua_gettop(L);
 
-    return luaRegisterEventImpl(L, eventIndex, 1, methodName, tag);
+    return luaRegisterEventImpl(L, eventIndex, 1, methodName, tag, true);
 }
 
 // Note it can be done in the same way with Sol2: https://github.com/ThePhD/sol2/issues/692
@@ -732,6 +770,12 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
 
             int ref = luaL_ref(L, LUA_REGISTRYINDEX);
             scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+
+            // lets RegisterEngineEvent find this entry to honour its enabled flag
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            lua_pushinteger(L, ref);
+            lua_setfield(L, -2, "__scriptRef");
+            lua_pop(L, 1);
             for (auto& prop : scriptEntry.properties) {
                 prop.luaRef = ref;
             }

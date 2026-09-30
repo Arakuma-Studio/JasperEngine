@@ -77,6 +77,8 @@ namespace jasperengine::editor{
         static std::string formatScriptType(ScriptType type);
         static std::string formatQuaternion(const Quaternion& q);
         static std::string formatBool(bool value);
+        // setEntityActive/Tag/Layer lines for what differs from a new GameObject
+        static std::string formatEntityState(const std::string& ind, const std::string& entityExpr, const EntityRegistry* registry, Entity entity);
         static std::string formatPositiveFloat(float value, float fallback = 1.0f);
         static std::string formatDouble(double value);
         static std::string formatInt(int value);

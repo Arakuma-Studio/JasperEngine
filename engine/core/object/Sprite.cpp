@@ -317,3 +317,11 @@ void Sprite::stopAnimation(){
         animation->stop();
     }
 }
+
+void Sprite::setEnabled(bool enabled){
+    getComponent<SpriteComponent>().enabled = enabled;
+}
+
+bool Sprite::isEnabled() const{
+    return getComponent<SpriteComponent>().enabled;
+}

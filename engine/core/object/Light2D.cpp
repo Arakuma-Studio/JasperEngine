@@ -134,3 +134,11 @@ unsigned int Light2D::getMapResolution() const{
 
     return lightcomp.mapResolution;
 }
+
+void Light2D::setEnabled(bool enabled){
+    getComponent<Light2DComponent>().enabled = enabled;
+}
+
+bool Light2D::isEnabled() const{
+    return getComponent<Light2DComponent>().enabled;
+}

@@ -3075,6 +3075,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
                 entityNode["type"] = "Entity";
                 entityNode["entity"] = entity;
                 entityNode["name"] = registry->getEntityName(entity);
+                encodeEntityState(entityNode, entity, registry);
 
                 Signature signature = registry->getSignature(entity);
                 YAML::Node components = encodeComponents(entity, registry, signature);
@@ -3275,6 +3276,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
 
         entityNode["entity"] = entity;
         entityNode["name"] = registry->getEntityName(entity);
+        encodeEntityState(entityNode, entity, registry);
 
         Signature signature = registry->getSignature(entity);
         YAML::Node components = encodeComponents(entity, registry, signature);
@@ -3285,6 +3287,28 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
     }
 
     return entityNode;
+}
+
+void editor::Stream::encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry) {
+    // only what differs from a new GameObject is written
+    if (!registry->isEntityActive(entity)) {
+        entityNode["active"] = false;
+    }
+    std::string tag = registry->getEntityTag(entity);
+    if (tag != DEFAULT_ENTITY_TAG) {
+        entityNode["tag"] = tag;
+    }
+    int layer = registry->getEntityLayer(entity);
+    if (layer != 0) {
+        entityNode["layer"] = layer;
+    }
+}
+
+void editor::Stream::decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode) {
+    // missing keys reset to defaults, decoding over a live entity restores it fully
+    registry->setEntityActive(entity, entityNode["active"] ? entityNode["active"].as<bool>() : true);
+    registry->setEntityTag(entity, entityNode["tag"] ? entityNode["tag"].as<std::string>() : std::string(DEFAULT_ENTITY_TAG));
+    registry->setEntityLayer(entity, entityNode["layer"] ? entityNode["layer"].as<int>() : 0);
 }
 
 YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
@@ -3451,6 +3475,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
 
         std::string name = entityNode["name"] ? entityNode["name"].as<std::string>() : "Entity";
         registry->setEntityName(entity, name);
+        decodeEntityState(entity, registry, entityNode);
 
         if (entityNode["components"]){
             // yaml-cpp only names the key it failed on, so point at the entity holding it
@@ -4637,6 +4662,7 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
 
 YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones) {
     YAML::Node node;
+    node["enabled"] = mesh.enabled;
 
     //node["loaded"] = mesh.loaded;
     //node["loadCalled"] = mesh.loadCalled;
@@ -4799,11 +4825,14 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     //mesh.needUpdateBuffer = node["needUpdateBuffer"].as<bool>();
     //mesh.needReload = node["needReload"].as<bool>();
 
+    if (node["enabled"]) mesh.enabled = node["enabled"].as<bool>();
+
     return mesh;
 }
 
 YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeBuffers, bool embedTextureData) {
     YAML::Node node;
+    node["enabled"] = ui.enabled;
     //node["loaded"] = ui.loaded;
     //node["loadCalled"] = ui.loadCalled;
     if (encodeBuffers){
@@ -4892,6 +4921,8 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     //ui.needUpdateAABB = node["needUpdateAABB"].as<bool>();
     //ui.needUpdateBuffer = node["needUpdateBuffer"].as<bool>();
     //ui.needUpdateTexture = node["needUpdateTexture"].as<bool>();
+
+    if (node["enabled"]) ui.enabled = node["enabled"].as<bool>();
 
     return ui;
 }
@@ -5267,6 +5298,7 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
 
 YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) {
     YAML::Node node;
+    node["enabled"] = sprite.enabled;
     node["width"] = sprite.width;
     node["height"] = sprite.height;
     node["automaticFlipY"] = sprite.automaticFlipY;
@@ -5323,11 +5355,14 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
         }
     }
 
+    if (node["enabled"]) sprite.enabled = node["enabled"].as<bool>();
+
     return sprite;
 }
 
 YAML::Node editor::Stream::encodeTilemapComponent(const TilemapComponent& tilemap) {
     YAML::Node node;
+    node["enabled"] = tilemap.enabled;
     node["width"] = tilemap.width;
     node["height"] = tilemap.height;
     node["automaticFlipY"] = tilemap.automaticFlipY;
@@ -5395,6 +5430,8 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
             }
         }
     }
+
+    if (node["enabled"]) tilemap.enabled = node["enabled"].as<bool>();
 
     return tilemap;
 }
@@ -5481,6 +5518,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
 
 YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrain) {
     YAML::Node node;
+    node["enabled"] = terrain.enabled;
     node["heightMap"] = encodeTexture(terrain.heightMap);
     YAML::Node blendMapsNode;
     for (const Texture& blendMap : terrain.blendMaps) {
@@ -5622,11 +5660,14 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.nodes.clear();
     terrain.numNodes = 0;
 
+    if (node["enabled"]) terrain.enabled = node["enabled"].as<bool>();
+
     return terrain;
 }
 
 YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     YAML::Node node;
+    node["enabled"] = model.enabled;
 
     if (!model.filename.empty()) {
         node["filename"] = model.filename;
@@ -5757,11 +5798,14 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
         model.needUpdateModel = true;
     }
 
+    if (node["enabled"]) model.enabled = node["enabled"].as<bool>();
+
     return model;
 }
 
 YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     YAML::Node node;
+    node["enabled"] = light.enabled;
 
     node["type"] = lightTypeToString(light.type);
     node["direction"] = encodeVector3(light.direction);
@@ -5806,11 +5850,14 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["shadowCameraNearFar"]) light.shadowCameraNearFar = decodeVector2(node["shadowCameraNearFar"]);
     if (node["numShadowCascades"]) light.numShadowCascades = node["numShadowCascades"].as<unsigned int>();
 
+    if (node["enabled"]) light.enabled = node["enabled"].as<bool>();
+
     return light;
 }
 
 YAML::Node editor::Stream::encodeLight2DComponent(const Light2DComponent& light) {
     YAML::Node node;
+    node["enabled"] = light.enabled;
 
     node["color"] = encodeVector3(light.color);
     node["intensity"] = light.intensity;
@@ -5842,6 +5889,8 @@ Light2DComponent editor::Stream::decodeLight2DComponent(const YAML::Node& node, 
     if (node["shadowBias"]) light.shadowBias = node["shadowBias"].as<float>();
     if (node["shadowSoftness"]) light.shadowSoftness = node["shadowSoftness"].as<float>();
     if (node["mapResolution"]) light.mapResolution = node["mapResolution"].as<unsigned int>();
+
+    if (node["enabled"]) light.enabled = node["enabled"].as<bool>();
 
     return light;
 }
@@ -6000,6 +6049,7 @@ ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YA
 
 YAML::Node editor::Stream::encodeCameraComponent(const CameraComponent& camera) {
     YAML::Node node;
+    node["enabled"] = camera.enabled;
 
     node["type"] = cameraTypeToString(camera.type);
     encodeFiniteVector3(node, "target", camera.target);
@@ -6052,11 +6102,14 @@ CameraComponent editor::Stream::decodeCameraComponent(const YAML::Node& node, co
     if (node["framebufferHeight"]) camera.framebufferHeight = node["framebufferHeight"].as<unsigned int>();
     if (node["framebufferFilter"]) camera.framebufferFilter = stringToTextureFilter(node["framebufferFilter"].as<std::string>());
 
+    if (node["enabled"]) camera.enabled = node["enabled"].as<bool>();
+
     return camera;
 }
 
 YAML::Node editor::Stream::encodeSoundComponent(const SoundComponent& audio) {
     YAML::Node node;
+    node["enabled"] = audio.enabled;
 
     node["state"] = soundStateToString(audio.state);
     if (!audio.filename.empty()) node["filename"] = audio.filename;
@@ -6119,6 +6172,8 @@ SoundComponent editor::Stream::decodeSoundComponent(const YAML::Node& node, cons
     audio.pauseTrigger = false;
     audio.stopTrigger = false;
     audio.needUpdate = true;
+
+    if (node["enabled"]) audio.enabled = node["enabled"].as<bool>();
 
     return audio;
 }
@@ -6420,6 +6475,7 @@ Joint3DType editor::Stream::stringToJoint3DType(const std::string& str) {
 
 YAML::Node editor::Stream::encodeBody2DComponent(const Body2DComponent& body) {
     YAML::Node node;
+    node["enabled"] = body.enabled;
 
     node["type"] = bodyTypeToString(body.type);
     node["numShapes"] = static_cast<unsigned int>(body.numShapes);
@@ -6513,6 +6569,8 @@ Body2DComponent editor::Stream::decodeBody2DComponent(const YAML::Node& node, co
         body.needUpdateShapes = true;
     }
 
+    if (node["enabled"]) body.enabled = node["enabled"].as<bool>();
+
     return body;
 }
 
@@ -6522,6 +6580,7 @@ Body2DComponent editor::Stream::decodeBody2DComponent(const YAML::Node& node, co
 
 YAML::Node editor::Stream::encodeBody3DComponent(const Body3DComponent& body) {
     YAML::Node node;
+    node["enabled"] = body.enabled;
 
     node["type"] = bodyTypeToString(body.type);
     node["motionQuality"] = body3DMotionQualityToString(body.motionQuality);
@@ -6694,6 +6753,8 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
         body.needUpdateShapes = true;
     }
 
+    if (node["enabled"]) body.enabled = node["enabled"].as<bool>();
+
     return body;
 }
 
@@ -6703,6 +6764,7 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
 
 YAML::Node editor::Stream::encodeJoint2DComponent(const Joint2DComponent& joint) {
     YAML::Node node;
+    node["enabled"] = joint.enabled;
 
     node["type"] = joint2DTypeToString(joint.type);
     node["bodyA"] = joint.bodyA;
@@ -6738,6 +6800,8 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
         joint.needUpdateJoint = true;
     }
 
+    if (node["enabled"]) joint.enabled = node["enabled"].as<bool>();
+
     return joint;
 }
 
@@ -6747,6 +6811,7 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
 
 YAML::Node editor::Stream::encodeJoint3DComponent(const Joint3DComponent& joint) {
     YAML::Node node;
+    node["enabled"] = joint.enabled;
 
     node["type"] = joint3DTypeToString(joint.type);
     node["bodyA"] = joint.bodyA;
@@ -6838,6 +6903,8 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (oldJoint && oldJoint->joint) {
         joint.needUpdateJoint = true;
     }
+
+    if (node["enabled"]) joint.enabled = node["enabled"].as<bool>();
 
     return joint;
 }
@@ -7362,6 +7429,7 @@ MorphTracksComponent editor::Stream::decodeMorphTracksComponent(const YAML::Node
 
 YAML::Node editor::Stream::encodeParticlesComponent(const ParticlesComponent& particles) {
     YAML::Node node;
+    node["enabled"] = particles.enabled;
 
     node["maxParticles"] = particles.maxParticles;
     node["emitter"] = particles.emitter;
@@ -7707,11 +7775,14 @@ ParticlesComponent editor::Stream::decodeParticlesComponent(const YAML::Node& no
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
 
+    if (node["enabled"]) particles.enabled = node["enabled"].as<bool>();
+
     return particles;
 }
 
 YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh) {
     YAML::Node node;
+    node["enabled"] = instmesh.enabled;
 
     node["maxInstances"] = instmesh.maxInstances;
     node["cullInstances"] = instmesh.cullInstances;
@@ -7771,11 +7842,14 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 
+    if (node["enabled"]) instmesh.enabled = node["enabled"].as<bool>();
+
     return instmesh;
 }
 
 YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) {
     YAML::Node node;
+    node["enabled"] = points.enabled;
 
     node["maxPoints"] = points.maxPoints;
     node["transparent"] = points.transparent;
@@ -7858,11 +7932,14 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     points.needUpdateTexture = true;
     points.needReload = false;
 
+    if (node["enabled"]) points.enabled = node["enabled"].as<bool>();
+
     return points;
 }
 
 YAML::Node editor::Stream::encodeLinesComponent(const LinesComponent& lines) {
     YAML::Node node;
+    node["enabled"] = lines.enabled;
 
     node["maxLines"] = lines.maxLines;
 
@@ -7915,6 +7992,8 @@ LinesComponent editor::Stream::decodeLinesComponent(const YAML::Node& node, cons
     lines.loadCalled = false;
     lines.needUpdateBuffer = false;
     lines.needReload = false;
+
+    if (node["enabled"]) lines.enabled = node["enabled"].as<bool>();
 
     return lines;
 }

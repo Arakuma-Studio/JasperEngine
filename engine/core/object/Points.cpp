@@ -383,3 +383,11 @@ bool Points::removeShaderUniform(const std::string& name){
     points.needUpdateShaderUniforms = true;
     return true;
 }
+
+void Points::setEnabled(bool enabled){
+    getComponent<PointsComponent>().enabled = enabled;
+}
+
+bool Points::isEnabled() const{
+    return getComponent<PointsComponent>().enabled;
+}

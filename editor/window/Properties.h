@@ -267,7 +267,19 @@ namespace jasperengine::editor{
         void dragDropResourcesTextureCubeSingleFile(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
         void dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
 
-        void handleComponentMenu(SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly);
+        // popupId: opened by the header's right click or its kebab button
+        void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool& headerOpen, bool readOnly);
+
+        // Unity Inspector header: active checkbox, icon and name, then Tag and Layer
+        void drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly);
+        void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
+        void drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
+        // Unity component header: foldout, icon, enable checkbox, name and a kebab menu; true when open
+        bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isBundle, bool isBundleOverridden, bool readOnly);
+        // centered button after the last component, opening the Add Component popup
+        void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
+        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        char newTagBuffer[64] = "";
 
         bool canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType);
 

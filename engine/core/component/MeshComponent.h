@@ -158,6 +158,9 @@ namespace jasperengine{
     };
 
     struct MeshComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         bool loaded = false;
         bool loadCalled = false;
 

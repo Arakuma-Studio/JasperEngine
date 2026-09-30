@@ -11,6 +11,10 @@ namespace jasperengine{
 
     class JASPERENGINE_API Points: public Object{
     public:
+
+        // component checkbox (Unity Behaviour.enabled): a disabled Points is skipped by its system
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
         Points(Scene* scene);
         Points(Scene* scene, Entity entity);
         virtual ~Points();

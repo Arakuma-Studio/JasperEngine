@@ -15,6 +15,9 @@
 namespace jasperengine{
 
     struct JASPERENGINE_API UIComponent{
+        // component checkbox: its system skips a disabled component
+        bool enabled = true;
+
         // Render part
         bool loaded = false;
         bool loadCalled = false;
