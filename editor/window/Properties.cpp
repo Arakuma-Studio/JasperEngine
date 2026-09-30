@@ -856,6 +856,12 @@ void editor::Properties::focusNameInput(){
     nameFocusFrames = 3; // the field activates a frame after SetKeyboardFocusHere
 }
 
+void editor::Properties::requestAddComponent(){
+    setOpen(true);
+    focusRequested = true;
+    addComponentRequested = true;
+}
+
 void editor::Properties::stopTransientPreviews() {
     stopSoundPreview();
     stopActionPreviewIfActive();
@@ -13109,6 +13115,7 @@ void editor::Properties::show(){
         return;
     }
     if (nameFocusFrames > 0) nameFocusFrames--;
+    const bool openAddComponent = std::exchange(addComponentRequested, false);
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
     SceneProject* sceneProject = project->getScene(propertiesSceneId);
@@ -13211,7 +13218,7 @@ void editor::Properties::show(){
         float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
         ImGui::BeginDisabled(isRuntimeSelection);
-        if (ImGui::Button(ICON_FA_SQUARE_PLUS " New component", ImVec2(buttonWidth, 0))) {
+        if (ImGui::Button(ICON_FA_SQUARE_PLUS " New component", ImVec2(buttonWidth, 0)) || (openAddComponent && !isRuntimeSelection)) {
             componentAddDialog.open(
                 [this, sceneProject, entities](ComponentType cpType) {
                     // Add component to all selected entities

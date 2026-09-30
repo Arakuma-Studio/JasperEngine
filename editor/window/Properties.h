@@ -425,6 +425,10 @@ namespace jasperengine::editor{
         void setOpen(bool open);
         bool isOpen() const;
         void focusNameInput();
+        // Component > Add... (main menu): opens the Add Component dialog for the selection
+        void requestAddComponent();
+    private:
+        bool addComponentRequested = false;
     };
 
 }

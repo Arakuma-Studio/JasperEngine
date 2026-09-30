@@ -277,6 +277,20 @@ namespace jasperengine::editor {
         void show();
         void setOpen(bool open);
         bool isOpen() const;
+
+        // ---- Assets menu (main menu bar) --------------------------------------
+        // Act on this panel's selection / current folder, and bring the panel up.
+        bool hasAssetSelection() const;
+        bool hasSingleAssetSelection() const;
+        void revealAsset(const fs::path& absolutePath);
+        void assetsCreateFolder();
+        void assetsCreateScript(bool lua);
+        void assetsShowInFileManager();
+        void assetsOpenSelected();
+        void assetsRenameSelected();
+        void assetsDeleteSelected();
+        void assetsImport();
+        void assetsRefresh();
     };
 
 }
