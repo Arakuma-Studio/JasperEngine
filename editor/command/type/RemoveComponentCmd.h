@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "Project.h"
 #include "Catalog.h"
+#include "command/PrefabEditUndo.h"
 #include "yaml-cpp/yaml.h"
 
 #include <cstddef>
@@ -18,12 +19,8 @@ namespace jasperengine::editor {
 
     struct RemoveComponentData {
         Entity entity = NULL_ENTITY;
-        YAML::Node oldComponent; // For no shared entities and no override components
-        bool hasOverride = false;
-        std::set<std::string> overriddenProperties; // what the instance overrode of it
-        bool recordedRemoval = false;               // a removed component override was recorded
-        bool wasAdded = false;                      // it was a component the instance added
-        ComponentRecovery recovery; // For shared entities
+        YAML::Node oldComponent;
+        bool removed = false;
     };
 
     class RemoveComponentCmd : public Command {
@@ -37,6 +34,9 @@ namespace jasperengine::editor {
         bool ownedEntitiesCaptured = false;
 
         bool wasModified;
+        // Unity: a component removed from a prefab instance's GameObject is a removed
+        // component override of that instance (one the instance added is simply gone)
+        PrefabEditUndo prefabUndo;
 
     public:
         RemoveComponentCmd(Project* project, size_t sceneId, Entity entity, ComponentType componentType);

@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "command/PrefabEditUndo.h"
 #include <cstdint>
 #include <string>
 
@@ -27,6 +28,7 @@ namespace jasperengine::editor{
         size_t sceneId;
 
         std::map<Entity, TransformCmdValue> props;
+        PrefabEditUndo prefabUndo;
 
         bool wasModified;
 

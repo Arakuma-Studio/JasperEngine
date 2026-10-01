@@ -20,13 +20,13 @@ bool editor::MeshChangeCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     oldMesh = Stream::encodeMeshComponent(sceneProject->scene->getComponent<MeshComponent>(entity));
+    prefabUndo.capture(project, sceneId, entity);
     sceneProject->scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(newMesh);
 
     sceneProject->isModified = true;
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        project->prefabPropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
-    }
+    // Unity: a prefab instance's mesh changed is an override of it (the whole mesh)
+    project->recordPrefabEdit(sceneId, entity, ComponentType::MeshComponent, {});
 
     return true;
 }
@@ -38,9 +38,7 @@ void editor::MeshChangeCmd::undo(){
 
     sceneProject->isModified = wasModified;
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        project->prefabPropertyChanged(sceneId, entity, ComponentType::MeshComponent, {});
-    }
+    prefabUndo.restore(project, sceneId);
 }
 
 bool editor::MeshChangeCmd::mergeWith(editor::Command* otherCommand){
@@ -48,6 +46,7 @@ bool editor::MeshChangeCmd::mergeWith(editor::Command* otherCommand){
     if (otherCmd != nullptr){
         if (sceneId == otherCmd->sceneId && entity == otherCmd->entity){
             this->oldMesh = otherCmd->oldMesh;
+            prefabUndo.mergeOlder(otherCmd->prefabUndo);
 
             this->wasModified = this->wasModified && otherCmd->wasModified;
             return true;
