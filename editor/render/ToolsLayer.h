@@ -41,6 +41,8 @@ namespace jasperengine::editor{
         virtual ~ToolsLayer();
 
         void updateCamera(CameraComponent& extCamera, Transform& extCameraTransform);
+        // Sees through a layered scene's camera as the view shows it (see LayerView)
+        void updateCamera(const LayerView& layerView);
         void updateGizmo(Camera* sceneCam, Vector3& position, Quaternion& rotation, float scale, OBB obb, Ray& mouseRay, bool mouseClicked, Vector4& anchorData, Rect& anchorArea);
 
         void mouseDrag(Vector3 point);
@@ -50,6 +52,8 @@ namespace jasperengine::editor{
         void enableRotateGizmo();
         void enableScaleGizmo();
         void enableObject2DGizmo();
+        // Same tool as another tools layer: the one the toolbar sets
+        void setGizmoSelected(GizmoSelected gizmoSelected);
 
         void setShowAnchorGizmo(bool enabled);
         void setShowObject2DRects(bool show);

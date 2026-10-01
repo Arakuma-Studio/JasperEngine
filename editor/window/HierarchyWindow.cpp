@@ -1271,9 +1271,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     // A runtime row waits for the 0.5s rebuild, so it can outlive its entity until then
-    if (node.isPlayCreated && !project->getSelectedScene()->scene->isEntityCreated(node.id)) {
-        return;
+    if (node.isPlayCreated) {
+        const SceneProject* rowScene = project->getScene(getNodeSceneId(node));
+        if (!rowScene || !rowScene->scene || !rowScene->scene->isEntityCreated(node.id)) {
+            return;
+        }
     }
+    // the scene a child scene row selects into the Inspector: its running copy while listed
+    const uint32_t childPropertiesSceneId = node.runtimeSceneId != 0 ? node.runtimeSceneId : node.childSceneId;
 
     pushNodeImGuiId(node);
 
@@ -1284,7 +1289,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     if ((node.isScene && std::find(selectedScenes.begin(), selectedScenes.end(), node.id) != selectedScenes.end()) ||
-        (node.isChildScene && std::find(selectedScenes.begin(), selectedScenes.end(), node.childSceneId) != selectedScenes.end())) {
+        (node.isChildScene && std::find(selectedScenes.begin(), selectedScenes.end(), childPropertiesSceneId) != selectedScenes.end())) {
         flags |= ImGuiTreeNodeFlags_Selected;
     }
 
@@ -1375,8 +1380,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         }
     }
     // Unity dims GameObjects that are inactive themselves or through a parent
-    const bool dimInactive = !node.isScene && !node.isChildScene && nodeSceneProject && nodeSceneProject->scene
-        && nodeSceneProject->scene->hasInactiveEntities() && !nodeSceneProject->scene->isEntityActiveInHierarchy(node.id);
+    const bool dimInactive = (!node.isScene && !node.isChildScene && nodeSceneProject && nodeSceneProject->scene
+        && nodeSceneProject->scene->hasInactiveEntities() && !nodeSceneProject->scene->isEntityActiveInHierarchy(node.id))
+        || node.isNotRunning;
     if (dimInactive) {
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
     }
@@ -1425,7 +1431,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
         const std::string pathText = childScenePath.empty() ? "Unsaved scene" : childScenePath.generic_string();
-        ImGui::SetItemTooltip("Child Scene\nPath: %s", pathText.c_str());
+        if (node.runtimeSceneId != 0) {
+            ImGui::SetItemTooltip("%s\nPath: %s\nRunning: changes made while playing revert on Stop",
+                node.isRuntimeLayer ? "Scene run by the game" : "Child Scene", pathText.c_str());
+        } else if (node.isNotRunning) {
+            ImGui::SetItemTooltip("Child Scene\nPath: %s\nNot running in the game", pathText.c_str());
+        } else {
+            ImGui::SetItemTooltip("Child Scene\nPath: %s", pathText.c_str());
+        }
     }else{
         if (node.isPrefab) {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
@@ -1472,8 +1485,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         }
     }
 
-    // Child scene entities: allow drag for cross-scene entity reference (ExternalEntity properties)
-    if (isChildSceneEntity && !node.isScene) {
+    // Child scene entities: allow drag for cross-scene entity reference (ExternalEntity properties).
+    // Not of a running copy: it goes with Stop, and a reference to it with it.
+    if (isChildSceneEntity && !node.isScene && !project->isPlayRuntimeScene(node.entitySceneId)) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             SceneProject* childSceneProject = project->getScene(node.entitySceneId);
             if (childSceneProject && childSceneProject->scene) {
@@ -1707,8 +1721,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         if (node.isChildScene) {
             project->clearAllSelections(project->getSelectedSceneId());
             selectedScenes.clear();
-            selectedScenes.push_back(node.childSceneId);
-            project->setSelectedSceneForProperties(node.childSceneId);
+            selectedScenes.push_back(childPropertiesSceneId);
+            project->setSelectedSceneForProperties(childPropertiesSceneId);
             resetEntitySelectionAnchor();
         } else if (isChildSceneEntity) {
             ImGuiIO& io = ImGui::GetIO();
@@ -1737,12 +1751,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         }
     }
 
-    // Handle double-click on entity to focus camera on it
+    // Handle double-click on entity to focus camera on it: in the Scene view of the scene
+    // shown, a GameObject of it or of a scene layered over it
     if (!node.isScene && !node.isChildScene && nodeHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        SceneProject* sceneProject = project->getSelectedScene();
-        if (sceneProject) {
+        if (project->getSelectedScene()) {
             std::vector<Entity> entities = { static_cast<Entity>(node.id) };
-            sceneWindow->focusOnEntities(sceneProject, entities);
+            sceneWindow->frameEntities(project->getSelectedSceneId(), getNodeSceneId(node), entities);
         }
     }
 
@@ -1772,24 +1786,30 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN "  Open Scene", nullptr, false, childScene && !childScene->filepath.empty())) {
                 project->openScene(childScene->filepath);
             }
+            // while the game runs, the row lists what it runs: no inline contents to switch
+            const bool gameRow = node.runtimeSceneId != 0 || node.isNotRunning;
             bool isLoaded = childScene && childScene->expandedInline;
-            if (ImGui::MenuItem(isLoaded ? ICON_FA_EYE_SLASH "  Hide Contents" : ICON_FA_EYE "  Show Contents")) {
+            if (ImGui::MenuItem(isLoaded ? ICON_FA_EYE_SLASH "  Hide Contents" : ICON_FA_EYE "  Show Contents", nullptr, false, !gameRow)) {
                 if (isLoaded) {
                     project->unloadChildSceneInline(node.childSceneId);
                 } else {
                     project->loadChildSceneInline(node.childSceneId);
                 }
             }
-            bool startActive = project->isChildSceneStartActive(node.ownerSceneId, node.childSceneId);
-            if (ImGui::MenuItem(ICON_FA_PLAY "  Start Active", nullptr, startActive)) {
-                CommandHandle::get(node.ownerSceneId)->addCommand(new SetChildSceneStartActiveCmd(project, node.ownerSceneId, node.childSceneId, !startActive));
+            if (!node.isRuntimeLayer) {
+                bool startActive = project->isChildSceneStartActive(node.ownerSceneId, node.childSceneId);
+                if (ImGui::MenuItem(ICON_FA_PLAY "  Start Active", nullptr, startActive)) {
+                    CommandHandle::get(node.ownerSceneId)->addCommand(new SetChildSceneStartActiveCmd(project, node.ownerSceneId, node.childSceneId, !startActive));
+                }
             }
             if (childScene && ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Scene Asset", nullptr, false, !childScene->filepath.empty())) {
                 revealInProject(childScene->filepath);
             }
-            ImGui::Separator();
-            if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Child Scene")) {
-                CommandHandle::get(node.ownerSceneId)->addCommand(new RemoveChildSceneCmd(project, node.ownerSceneId, node.childSceneId));
+            if (!node.isRuntimeLayer) {
+                ImGui::Separator();
+                if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Child Scene")) {
+                    CommandHandle::get(node.ownerSceneId)->addCommand(new RemoveChildSceneCmd(project, node.ownerSceneId, node.childSceneId));
+                }
             }
             ImGui::EndPopup();
         } else if (isChildSceneEntity) {
@@ -1801,7 +1821,11 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             if (childScene) {
                 ImGui::Text("Scene: %s", childScene->name.c_str());
             }
-            ImGui::TextDisabled("Open the child scene to edit it");
+            if (project->isPlayRuntimeScene(node.entitySceneId)) {
+                ImGui::TextDisabled("Running: changes revert on Stop");
+            } else {
+                ImGui::TextDisabled("Open the child scene to edit it");
+            }
             ImGui::EndPopup();
         } else {
             const uint32_t sceneId = project->getSelectedSceneId();
@@ -2073,7 +2097,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::SetItemTooltip("%zu instance%s", instanceCount, instanceCount == 1 ? "" : "s");
     }
 
-    if (node.isChildScene) {
+    if (node.isChildScene && !node.isRuntimeLayer) {
         bool startActive = project->isChildSceneStartActive(node.ownerSceneId, node.childSceneId);
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
@@ -2085,8 +2109,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::SetItemTooltip(startActive ? "Starts active" : "Starts inactive");
     }
 
-    // Eye icon toggle for child scene inline loading
-    if (node.isChildScene) {
+    // Eye icon toggle for child scene inline loading (not while the row lists the running game)
+    if (node.isChildScene && node.runtimeSceneId == 0 && !node.isNotRunning) {
         const SceneProject* childScene = project->getScene(node.childSceneId);
         bool isLoaded = childScene && childScene->expandedInline;
 
@@ -2170,7 +2194,7 @@ void editor::HierarchyWindow::syncSceneWindowSelectionHierarchy(const TreeNode& 
         collapsedSceneId = NULL_PROJECT_SCENE;
         collapsedAncestor = NULL_ENTITY;
     } else if (node.isChildScene) {
-        sceneWindow->beginStructureVisibilityUpdate(node.childSceneId);
+        sceneWindow->beginStructureVisibilityUpdate(node.runtimeSceneId != 0 ? node.runtimeSceneId : node.childSceneId);
         collapsedSceneId = NULL_PROJECT_SCENE;
         collapsedAncestor = NULL_ENTITY;
     } else {
@@ -2274,27 +2298,104 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     root.order = order++;
     root.name = sceneProject->name;
 
+    // The GameObjects of a child scene under its node: the edit-time scene, or while the
+    // game runs, its running copy with what the game made in it (read-only rows)
+    auto addSceneContents = [&](TreeNode& sceneNode, SceneProject* contentScene, uint32_t contentSceneId) {
+        Scene* contentRegistry = contentScene->scene;
+        const std::vector<Entity> contentPlayCreated = project->getPlayCreatedEntities(contentScene);
+        const std::unordered_set<Entity> contentPlayCreatedSet(contentPlayCreated.begin(), contentPlayCreated.end());
+        std::unordered_set<Entity> childEntitiesSet(contentScene->entities.begin(), contentScene->entities.end());
+        childEntitiesSet.insert(contentPlayCreated.begin(), contentPlayCreated.end());
+        std::unordered_map<Entity, TreeNode*> childEntityNodeMap;
+
+        std::vector<Entity> flatEntities = contentScene->entities;
+        flatEntities.insert(flatEntities.end(), contentPlayCreated.begin(), contentPlayCreated.end());
+
+        // non-hierarchical entities
+        for (auto& entity : flatEntities) {
+            Signature signature = contentRegistry->getSignature(entity);
+            if (!signature.test(contentRegistry->getComponentId<Transform>())) {
+                TreeNode enode;
+                enode.icon = getObjectIcon(signature, contentRegistry);
+                enode.id = entity;
+                enode.entitySceneId = contentSceneId;
+                enode.isMainCamera = (entity == contentScene->mainCamera);
+                enode.hasScript = hasScripts(contentRegistry, entity);
+                enode.isBone = signature.test(contentRegistry->getComponentId<BoneComponent>());
+                enode.isPrefabRoot = signature.test(contentRegistry->getComponentId<PrefabComponent>());
+                enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
+                enode.order = order++;
+                enode.name = contentRegistry->getEntityName(entity);
+                sceneNode.children.push_back(enode);
+                childEntityNodeMap[entity] = &sceneNode.children.back();
+            }
+        }
+
+        // hierarchical entities
+        auto childTransforms = contentRegistry->getComponentArray<Transform>();
+        for (int i = 0; i < childTransforms->size(); i++) {
+            Transform& transform = childTransforms->getComponentFromIndex(i);
+            Entity entity = childTransforms->getEntity(i);
+            Signature signature = contentRegistry->getSignature(entity);
+
+            if (childEntitiesSet.find(entity) != childEntitiesSet.end()) {
+                TreeNode enode;
+                enode.icon = getObjectIcon(signature, contentRegistry);
+                enode.id = entity;
+                enode.entitySceneId = contentSceneId;
+                enode.isMainCamera = (entity == contentScene->mainCamera);
+                enode.hasScript = hasScripts(contentRegistry, entity);
+                enode.isBone = signature.test(contentRegistry->getComponentId<BoneComponent>());
+                enode.isPrefabRoot = signature.test(contentRegistry->getComponentId<PrefabComponent>());
+                enode.hasTransform = true;
+                enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
+                enode.isLocked = enode.isPlayCreated || ProjectUtils::isEntityLocked(contentRegistry, entity);
+                enode.order = order++;
+                enode.name = contentRegistry->getEntityName(entity);
+
+                auto parentIt = childEntityNodeMap.find(transform.parent);
+                TreeNode* parentNode = parentIt != childEntityNodeMap.end() ? parentIt->second : nullptr;
+                if (parentNode) {
+                    enode.parent = parentNode->id;
+                    parentNode->children.push_back(enode);
+                    childEntityNodeMap[entity] = &parentNode->children.back();
+                } else if (transform.parent == NULL_ENTITY || (enode.isPlayCreated && childEntitiesSet.count(transform.parent) == 0)) {
+                    // a runtime entity can hang from an unlisted one, like the default camera
+                    sceneNode.children.push_back(enode);
+                    childEntityNodeMap[entity] = &sceneNode.children.back();
+                }
+            }
+        }
+    };
+
+    auto sceneTypeIcon = [](SceneType sceneType) -> std::string {
+        switch (sceneType) {
+            case SceneType::SCENE_3D: return ICON_FA_CUBES;
+            case SceneType::SCENE_2D: return ICON_FA_CUBES_STACKED;
+            case SceneType::SCENE_UI: return ICON_FA_WINDOW_RESTORE;
+        }
+        return ICON_FA_CUBES;
+    };
+
+    // While the game runs, the child scenes list the scenes it runs (as Unity lists the
+    // loaded scenes in Play mode): their running copies, live
+    const bool gameRunning = project->getPlaySessionSceneId() == sceneProject->id &&
+        (sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED);
+    const std::vector<SceneProject*> runningLayers = gameRunning
+        ? project->getRunningRuntimeLayerScenes(sceneProject->id) : std::vector<SceneProject*>();
+    std::unordered_set<uint32_t> listedLayers;
+
     // child scenes (shown before entities)
-    bool hasChildScenes = !sceneProject->childScenes.empty();
+    bool hasChildScenes = !sceneProject->childScenes.empty() || !runningLayers.empty();
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
         uint32_t childSceneId = childSceneRef.id;
-        const SceneProject* childScene = project->getScene(childSceneId);
+        SceneProject* childScene = project->getScene(childSceneId);
         if (!childScene) {
             continue; // Skip invalid child scene references
         }
 
         TreeNode childSceneNode;
-        switch (childScene->sceneType) {
-            case SceneType::SCENE_3D:
-                childSceneNode.icon = ICON_FA_CUBES;
-                break;
-            case SceneType::SCENE_2D:
-                childSceneNode.icon = ICON_FA_CUBES_STACKED;
-                break;
-            case SceneType::SCENE_UI:
-                childSceneNode.icon = ICON_FA_WINDOW_RESTORE;
-                break;
-        }
+        childSceneNode.icon = sceneTypeIcon(childScene->sceneType);
         childSceneNode.name = childScene->name;
         childSceneNode.isChildScene = true;
         childSceneNode.id = childSceneId;
@@ -2302,68 +2403,47 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
         childSceneNode.ownerSceneId = sceneProject->id;
         childSceneNode.order = order++;
 
-        // If child scene is expanded inline, build entity tree nodes for it
-        if (childScene->expandedInline && childScene->scene) {
-            std::unordered_set<Entity> childEntitiesSet(childScene->entities.begin(), childScene->entities.end());
-            std::unordered_map<Entity, TreeNode*> childEntityNodeMap;
-
-            // non-hierarchical entities
-            for (auto& entity : childScene->entities) {
-                Signature signature = childScene->scene->getSignature(entity);
-                if (!signature.test(childScene->scene->getComponentId<Transform>())) {
-                    TreeNode enode;
-                    enode.icon = getObjectIcon(signature, childScene->scene);
-                    enode.id = entity;
-                    enode.entitySceneId = childSceneId;
-                    enode.isMainCamera = (entity == childScene->mainCamera);
-                    enode.hasScript = hasScripts(childScene->scene, entity);
-                    enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
-                    enode.isPrefabRoot = signature.test(childScene->scene->getComponentId<PrefabComponent>());
-                    enode.order = order++;
-                    enode.name = childScene->scene->getEntityName(entity);
-                    childSceneNode.children.push_back(enode);
-                    childEntityNodeMap[entity] = &childSceneNode.children.back();
+        if (gameRunning) {
+            SceneProject* runtime = nullptr;
+            const uint32_t runtimeId = project->getPlayRuntimeSceneId(childSceneId);
+            for (SceneProject* runningLayer : runningLayers) {
+                if (runtimeId != NULL_PROJECT_SCENE && runningLayer->id == runtimeId) {
+                    runtime = runningLayer;
                 }
             }
-
-            // hierarchical entities
-            auto childTransforms = childScene->scene->getComponentArray<Transform>();
-            for (int i = 0; i < childTransforms->size(); i++) {
-                Transform& transform = childTransforms->getComponentFromIndex(i);
-                Entity entity = childTransforms->getEntity(i);
-                Signature signature = childScene->scene->getSignature(entity);
-
-                if (childEntitiesSet.find(entity) != childEntitiesSet.end()) {
-                    TreeNode enode;
-                    enode.icon = getObjectIcon(signature, childScene->scene);
-                    enode.id = entity;
-                    enode.entitySceneId = childSceneId;
-                    enode.isMainCamera = (entity == childScene->mainCamera);
-                    enode.hasScript = hasScripts(childScene->scene, entity);
-                    enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
-                    enode.isPrefabRoot = signature.test(childScene->scene->getComponentId<PrefabComponent>());
-                    enode.hasTransform = true;
-                    enode.isLocked = ProjectUtils::isEntityLocked(childScene->scene, entity);
-                    enode.order = order++;
-                    enode.name = childScene->scene->getEntityName(entity);
-
-                    if (transform.parent == NULL_ENTITY) {
-                        childSceneNode.children.push_back(enode);
-                        childEntityNodeMap[entity] = &childSceneNode.children.back();
-                    } else {
-                        auto parentIt = childEntityNodeMap.find(transform.parent);
-                        TreeNode* parentNode = parentIt != childEntityNodeMap.end() ? parentIt->second : nullptr;
-                        if (parentNode) {
-                            enode.parent = parentNode->id;
-                            parentNode->children.push_back(enode);
-                            childEntityNodeMap[entity] = &parentNode->children.back();
-                        }
-                    }
-                }
+            if (runtime && runtime->scene) {
+                childSceneNode.runtimeSceneId = runtimeId;
+                listedLayers.insert(runtimeId);
+                addSceneContents(childSceneNode, runtime, runtimeId);
+            } else {
+                // not running: nothing of it is in the game
+                childSceneNode.isNotRunning = true;
             }
+        } else if (childScene->expandedInline && childScene->scene) {
+            // If child scene is expanded inline, build entity tree nodes for it
+            addSceneContents(childSceneNode, childScene, childSceneId);
         }
 
         root.children.push_back(childSceneNode);
+    }
+
+    // scenes the game runs that are no child scene of this one: nested deeper, or added by scripts
+    for (SceneProject* runtime : runningLayers) {
+        if (listedLayers.count(runtime->id) || !runtime->scene) {
+            continue;
+        }
+        TreeNode layerNode;
+        layerNode.icon = sceneTypeIcon(runtime->sceneType);
+        layerNode.name = runtime->name;
+        layerNode.isChildScene = true;
+        layerNode.isRuntimeLayer = true;
+        layerNode.id = project->getPlaySourceSceneId(runtime->id);
+        layerNode.childSceneId = layerNode.id;
+        layerNode.ownerSceneId = sceneProject->id;
+        layerNode.runtimeSceneId = runtime->id;
+        layerNode.order = order++;
+        addSceneContents(layerNode, runtime, runtime->id);
+        root.children.push_back(layerNode);
     }
 
     bool separatorAfterChildScenes = hasChildScenes;
@@ -2614,6 +2694,15 @@ void editor::HierarchyWindow::show(){
                 hashCombine(childSignature, childScene->entities.size());
                 hashCombine(childSignature, (size_t)childScene->structureVersion);
             }
+        }
+    }
+    // the scenes the running game layers, as they come and go
+    hashCombine(childSignature, (size_t)sceneProject->playState);
+    if (project->getPlaySessionSceneId() == sceneProject->id) {
+        for (const SceneProject* runtime : project->getRunningRuntimeLayerScenes(sceneProject->id)) {
+            hashCombine(childSignature, (size_t)runtime->id);
+            hashCombine(childSignature, runtime->entities.size());
+            hashCombine(childSignature, (size_t)runtime->structureVersion);
         }
     }
 

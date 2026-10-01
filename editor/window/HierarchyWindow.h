@@ -45,6 +45,9 @@ namespace jasperengine::editor{
         uint32_t childSceneId = 0;          // Scene ID for child scene nodes
         uint32_t ownerSceneId = 0;          // Parent/owner scene ID (for child scene nodes)
         uint32_t entitySceneId = 0;         // Scene ID that owns this entity (for child scene entity nodes)
+        uint32_t runtimeSceneId = 0;        // Child scene nodes while the game runs: the running copy listed
+        bool isRuntimeLayer = false;        // A running scene the game layered that is no child scene of this one
+        bool isNotRunning = false;          // A child scene the running game does not show
         std::list<TreeNode> children;
     };
 

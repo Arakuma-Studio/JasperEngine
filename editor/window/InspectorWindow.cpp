@@ -2748,8 +2748,7 @@ void editor::InspectorWindow::syncSubSelection(SceneProject* sceneProject, Entit
         sceneProject->sceneRender->selectInstance(entity, instanceIndex);
     }
 
-    sceneProject->sceneRender->update(project->getSelectedEntities(sceneProject->id),
-        project->getEntities(sceneProject->id), sceneProject->mainCamera, sceneProject->displaySettings);
+    project->updateSceneRender(sceneProject->id);
 }
 
 

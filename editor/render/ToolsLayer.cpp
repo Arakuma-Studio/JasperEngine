@@ -65,6 +65,44 @@ void editor::ToolsLayer::updateCamera(CameraComponent& extCamera, Transform& ext
     }
 }
 
+void editor::ToolsLayer::updateCamera(const LayerView& layerView){
+    Entity entity = camera->getEntity();
+    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(entity);
+    Transform& cameratransform = scene->getComponent<Transform>(entity);
+
+    // the layer's own view matrix, so a camera turned by its rotation or a parent is seen
+    // exactly; its projection covers the whole view (autoResize would refit it to the canvas)
+    const bool changed = cameracomp.type != layerView.type
+        || cameracomp.leftClip != layerView.leftClip || cameracomp.rightClip != layerView.rightClip
+        || cameracomp.bottomClip != layerView.bottomClip || cameracomp.topClip != layerView.topClip
+        || cameracomp.nearClip != layerView.nearClip || cameracomp.farClip != layerView.farClip
+        || cameracomp.yfov != layerView.yfov || cameracomp.aspect != layerView.aspect
+        || cameracomp.autoResize || !cameracomp.hasCustomViewMatrix
+        || cameracomp.customViewMatrix != layerView.viewMatrix
+        || cameratransform.position != layerView.worldPosition;
+
+    if (!changed){
+        return;
+    }
+
+    cameracomp.type = layerView.type;
+    cameracomp.leftClip = layerView.leftClip;
+    cameracomp.rightClip = layerView.rightClip;
+    cameracomp.bottomClip = layerView.bottomClip;
+    cameracomp.topClip = layerView.topClip;
+    cameracomp.nearClip = layerView.nearClip;
+    cameracomp.farClip = layerView.farClip;
+    cameracomp.yfov = layerView.yfov;
+    cameracomp.aspect = layerView.aspect;
+    cameracomp.autoResize = false;
+    cameracomp.useTarget = false;
+    cameracomp.hasCustomViewMatrix = true;
+    cameracomp.customViewMatrix = layerView.viewMatrix;
+    cameracomp.needUpdate = true;
+
+    camera->setPosition(layerView.worldPosition);
+}
+
 void editor::ToolsLayer::updateGizmo(Camera* sceneCam, Vector3& position, Quaternion& rotation, float scale, OBB obb, Ray& mouseRay, bool mouseClicked, Vector4& anchorData, Rect& anchorArea){
     gizmoScale = scale;
 
@@ -148,6 +186,10 @@ void editor::ToolsLayer::enableScaleGizmo(){
 
 void editor::ToolsLayer::enableObject2DGizmo(){
     gizmoSelected = GizmoSelected::OBJECT2D;
+}
+
+void editor::ToolsLayer::setGizmoSelected(GizmoSelected gizmoSelected){
+    this->gizmoSelected = gizmoSelected;
 }
 
 void editor::ToolsLayer::setShowAnchorGizmo(bool enabled){

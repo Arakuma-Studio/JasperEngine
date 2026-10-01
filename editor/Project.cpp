@@ -3257,6 +3257,11 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     entry.initialized = true;
 
+    // a Play copy runs as the played scene does: what the game makes in it is its own
+    if (entry.ownedRuntime){
+        entry.runtime->playState = ScenePlayState::PLAYING;
+    }
+
     if (entry.runtime->sceneRender){
         entry.runtime->sceneRender->setPlayMode(true);
     }
@@ -3282,6 +3287,9 @@ void editor::Project::cleanupPlaySession(const std::shared_ptr<PlaySession>& ses
         SceneManager::removeScenePtr(entry.sourceSceneId);
 
         if (entry.ownedRuntime) {
+            const uint32_t runtimeId = runtime->id;
+            releasePlayRuntimeId(runtime, entry.sourceSceneId);
+            discardPlayRuntimeState(runtimeId, entry.sourceSceneId, session->mainSceneId);
             deleteSceneProject(runtime);
             delete runtime;
         }
@@ -4238,6 +4246,36 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
         }
     }
 
+    // A GameObject of a child scene selected when Play starts stays selected, now the
+    // running copy of it, as Unity keeps the selection into Play mode
+    for (const auto& entry : runtimeScenes) {
+        SceneProject* runtime = entry.runtime;
+        if (!entry.ownedRuntime || !runtime || !runtime->scene || runtime->id == entry.sourceSceneId) {
+            continue;
+        }
+        if (selectedSceneForProperties != entry.sourceSceneId || !Engine::isSceneRunning(runtime->scene)) {
+            continue;
+        }
+        SceneProject* sourceScene = getScene(entry.sourceSceneId);
+        if (!sourceScene) {
+            continue;
+        }
+        std::vector<Entity> carried;
+        for (Entity entity : sourceScene->selectedEntities) {
+            if (std::find(runtime->entities.begin(), runtime->entities.end(), entity) != runtime->entities.end()) {
+                carried.push_back(entity);
+            }
+        }
+        if (carried.empty()) {
+            continue;
+        }
+        sourceScene->selectedEntities.clear();
+        sourceScene->needUpdateRender = true;
+        runtime->selectedEntities = carried;
+        runtime->needUpdateRender = true;
+        selectedSceneForProperties = runtime->id;
+    }
+
     Engine::pauseGameEvents(false);
     Engine::onViewLoaded.call();
     Engine::systemViewChanged();
@@ -4312,8 +4350,38 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             continue;
         }
 
+        if (entry.ownedRuntime) {
+            // What was selected in the copy is selected again in the scene it copied, as
+            // far as that scene has it loaded and the GameObject existed before Play (like
+            // Unity after Play mode)
+            const uint32_t runtimeId = sceneProject->id;
+            if (runtimeId != entry.sourceSceneId && selectedSceneForProperties == runtimeId) {
+                SceneProject* sourceScene = findScene<SceneProject>(entry.sourceSceneId);
+                std::vector<Entity> restored;
+                if (sourceScene && sourceScene->scene) {
+                    for (Entity entity : sceneProject->selectedEntities) {
+                        if (std::find(sourceScene->entities.begin(), sourceScene->entities.end(), entity) != sourceScene->entities.end()) {
+                            restored.push_back(entity);
+                        }
+                    }
+                }
+                if (!restored.empty()) {
+                    sourceScene->selectedEntities = restored;
+                    sourceScene->needUpdateRender = true;
+                    selectedSceneForProperties = entry.sourceSceneId;
+                }
+            }
+            sceneProject->selectedEntities.clear();
+        }
+
         bool saveOnStop = false;
         bool keepModified = false;
+
+        // What the scene got while playing goes back with the snapshot below, and with it
+        // the unsaved mark those edits put on it (as Unity leaves no Play mode change)
+        if (!entry.ownedRuntime && sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull()) {
+            sceneProject->isModified = sceneProject->playStateModified;
+        }
 
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
@@ -4323,6 +4391,15 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Stop scene audio before restoring snapshot to prevent stale SoLoud handles on the next play
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
+
+        // The copy goes with Stop, so its id does too: after the prefab instances the game
+        // made in it went (their destroyer finds the copy by that id), before the copy is
+        // saved or deleted as its source scene
+        if (entry.ownedRuntime) {
+            const uint32_t runtimeId = sceneProject->id;
+            releasePlayRuntimeId(sceneProject, entry.sourceSceneId);
+            discardPlayRuntimeState(runtimeId, entry.sourceSceneId, mainSceneProject ? mainSceneProject->id : NULL_PROJECT_SCENE);
+        }
 
         // Collect shader keys while components are still loaded (before snapshot restore wipes loaded state).
         // Merge newly discovered keys into the editor-side scene and mark it modified so the file is saved.
@@ -5404,15 +5481,52 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
     return aabb;
 }
 
-Entity editor::Project::findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* mainScene, SceneType sceneType, float& distance, size_t& index) const{
+// What the view draws of an entity: hidden, inactive (itself or through a parent) and
+// disabled renderers draw nothing, so nothing of them can be clicked or boxed
+static bool isEntityDrawn(Scene* scene, Entity entity){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || !transform->visible){
+        return false;
+    }
+    if (scene->hasInactiveEntities() && !scene->isEntityActiveInHierarchy(entity)){
+        return false;
+    }
+    if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        return mesh->enabled;
+    }
+    if (const UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+        return ui->enabled;
+    }
+    if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity)){
+        return terrain->enabled;
+    }
+    return true;
+}
+
+// Bounds that come only from the icon the view's own scene draws for it
+static bool hasOnlyIconBounds(Scene* scene, Entity entity){
+    Signature signature = scene->getSignature(entity);
+    if (signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<UIComponent>())){
+        return false;
+    }
+    return signature.test(scene->getComponentId<LightComponent>()) ||
+           signature.test(scene->getComponentId<Light2DComponent>()) ||
+           signature.test(scene->getComponentId<CameraComponent>()) ||
+           signature.test(scene->getComponentId<AudioSourceComponent>());
+}
+
+Entity editor::Project::findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* sizeScene, SceneType sceneType, float& distance, size_t& index, bool iconsDrawn) const{
     Entity selEntity = NULL_ENTITY;
     Vector3 rayDirection = ray.getDirection();
     float rayLengthSq = rayDirection.dotProduct(rayDirection);
     if (rayLengthSq <= std::numeric_limits<float>::epsilon()) return NULL_ENTITY;
 
     for (auto& entity : entities) {
+        if (!scene->isEntityCreated(entity)) continue;
         Signature signature = scene->getSignature(entity);
         if (!signature.test(scene->getComponentId<Transform>())) continue;
+        if (!isEntityDrawn(scene, entity)) continue;
+        if (!iconsDrawn && hasOnlyIconBounds(scene, entity)) continue;
 
         if (signature.test(scene->getComponentId<TerrainComponent>())) {
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
@@ -5432,7 +5546,7 @@ Entity editor::Project::findBestEntityByRay(const std::vector<Entity>& entities,
             continue;
         }
 
-        AABB aabb = getEntityWorldAABB(scene, entity, mainScene);
+        AABB aabb = getEntityWorldAABB(scene, entity, sizeScene);
 
         if (!aabb.isNull() && !aabb.isInfinite()){
             RayReturn rreturn = ray.intersects(aabb);
@@ -5455,7 +5569,9 @@ bool editor::Project::selectEntitiesInRect(uint32_t sceneId, const std::vector<E
 
     bool found = false;
     for (auto& entity : entities) {
+        if (!scene->isEntityCreated(entity)) continue;
         if (!scene->getSignature(entity).test(scene->getComponentId<Transform>())) continue;
+        if (!isEntityDrawn(scene, entity)) continue;
 
         AABB aabb = getEntityLocalAABB(scene, entity);
 
@@ -5483,43 +5599,141 @@ bool editor::Project::selectEntitiesInRect(uint32_t sceneId, const std::vector<E
     return found;
 }
 
-Entity editor::Project::findObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId){
-    SceneProject* scenedata = getScene(sceneId);
-    Ray ray = scenedata->sceneRender->screenToRay(x, y);
+std::vector<Entity> editor::Project::getPickableEntities(const SceneProject* sceneProject) const{
+    std::vector<Entity> entities = sceneProject->entities;
+    // what a running scene made for itself is drawn too (and selectable, read-only)
+    const std::vector<Entity> playCreated = getPlayCreatedEntities(sceneProject);
+    entities.insert(entities.end(), playCreated.begin(), playCreated.end());
+    return entities;
+}
 
-    float distance = FLT_MAX;
-    size_t index = 0;
-    Entity selEntity = findBestEntityByRay(scenedata->entities, scenedata->scene, ray, scenedata->scene, scenedata->sceneType, distance, index);
+std::vector<editor::Project::SceneViewLayer> editor::Project::getSceneViewLayers(uint32_t sceneId){
+    std::vector<SceneViewLayer> layers;
 
-    // child scenes show inline only while stopped; a running scene's layers are the game's
-    if (selEntity != NULL_ENTITY || !outSceneId || scenedata->playState != ScenePlayState::STOPPED) {
-        if (outSceneId) *outSceneId = sceneId;
-        return selEntity;
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || !sceneProject->sceneRender){
+        return layers;
     }
 
-    const float viewWidth = (float)scenedata->sceneRender->getViewWidth();
-    const float viewHeight = (float)scenedata->sceneRender->getViewHeight();
+    SceneViewLayer base;
+    base.sceneId = sceneId;
+    base.sceneProject = sceneProject;
+    base.base = true;
+    base.running = sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED;
+    layers.push_back(base);
 
-    for (const ChildSceneRef& childSceneRef : scenedata->childScenes) {
-        uint32_t childId = childSceneRef.id;
-        SceneProject* childScene = getScene(childId);
-        if (!childScene || !childScene->expandedInline || !childScene->scene) continue;
+    const float width = (float)sceneProject->sceneRender->getViewWidth();
+    const float height = (float)sceneProject->sceneRender->getViewHeight();
+    if (width <= 0.0f || height <= 0.0f){
+        return layers;
+    }
 
-        Entity childCamEntity = childScene->scene->getCamera();
-        if (childCamEntity == NULL_ENTITY) continue;
-        Ray childRay = screenToRayFromCamera(childScene->scene->getComponent<CameraComponent>(childCamEntity), x, y, viewWidth, viewHeight);
+    // as SceneRender draws them: through the layer scene's camera, over rect
+    auto addLayer = [&](uint32_t layerId, SceneProject* layerScene, const Rect& rect, float canvasWidth, float canvasHeight, bool running){
+        if (!layerScene || !layerScene->scene){
+            return;
+        }
+        const Entity cameraEntity = layerScene->scene->getCamera();
+        const CameraComponent* camera = layerScene->scene->findComponent<CameraComponent>(cameraEntity);
+        const Transform* cameraTransform = layerScene->scene->findComponent<Transform>(cameraEntity);
+        if (cameraEntity == NULL_ENTITY || !camera || !cameraTransform){
+            return;
+        }
 
-        distance = FLT_MAX;
-        index = 0;
-        selEntity = findBestEntityByRay(childScene->entities, childScene->scene, childRay, scenedata->scene, scenedata->sceneType, distance, index);
+        SceneViewLayer layer;
+        layer.sceneId = layerId;
+        layer.sceneProject = layerScene;
+        layer.running = running;
+        layer.view = makeLayerView(*camera, *cameraTransform, rect, width, height, canvasWidth, canvasHeight);
+        layers.push_back(layer);
+    };
 
-        if (selEntity != NULL_ENTITY) {
-            if (outSceneId) *outSceneId = childId;
-            return selEntity;
+    if (sceneProject->playState == ScenePlayState::STOPPED){
+        // inline child scenes cover the view, their auto-resize cameras sized to it
+        const Rect full(0.0f, 0.0f, width, height);
+        for (const ChildSceneRef& childSceneRef : sceneProject->childScenes){
+            SceneProject* childScene = getScene(childSceneRef.id);
+            if (childScene && childScene->expandedInline && childScene->scene){
+                addLayer(childSceneRef.id, childScene, full, width, height, false);
+            }
+        }
+    }else if (getPlaySessionSceneId() == sceneId){
+        // the running game's layer scenes over its canvas, their cameras as the game has them
+        const Rect gameRect = sceneProject->sceneRender->getGameLayerRect((int)width, (int)height);
+        for (SceneProject* runtime : getRunningRuntimeLayerScenes(sceneId)){
+            addLayer(runtime->id, runtime, gameRect, 0.0f, 0.0f, true);
         }
     }
 
+    return layers;
+}
+
+bool editor::Project::isSceneViewLayer(uint32_t viewSceneId, uint32_t sceneId){
+    if (sceneId == NULL_PROJECT_SCENE || sceneId == viewSceneId){
+        return false;
+    }
+    const SceneProject* viewScene = getScene(viewSceneId);
+    if (!viewScene){
+        return false;
+    }
+
+    if (viewScene->playState == ScenePlayState::STOPPED){
+        if (!hasChildScene(viewSceneId, sceneId)){
+            return false;
+        }
+        const SceneProject* childScene = getScene(sceneId);
+        return childScene && childScene->expandedInline && childScene->scene;
+    }
+
+    for (SceneProject* runtime : getRunningRuntimeLayerScenes(viewSceneId)){
+        if (runtime->id == sceneId){
+            return true;
+        }
+    }
+    return false;
+}
+
+Entity editor::Project::findObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId){
     if (outSceneId) *outSceneId = sceneId;
+
+    SceneProject* scenedata = getScene(sceneId);
+    if (!scenedata || !scenedata->scene || !scenedata->sceneRender){
+        return NULL_ENTITY;
+    }
+
+    if (!outSceneId){
+        Ray ray = scenedata->sceneRender->screenToRay(x, y);
+        float distance = FLT_MAX;
+        size_t index = 0;
+        return findBestEntityByRay(getPickableEntities(scenedata), scenedata->scene, ray, scenedata->scene, scenedata->sceneType, distance, index);
+    }
+
+    // What is drawn on top is picked first: the layers in reverse drawing order, the
+    // scene itself last. Inside a layer, the nearest (3D) or the last drawn (2D) wins.
+    const std::vector<SceneViewLayer> layers = getSceneViewLayers(sceneId);
+    for (size_t i = layers.size(); i-- > 0;){
+        const SceneViewLayer& layer = layers[i];
+
+        Ray ray;
+        if (layer.base){
+            ray = scenedata->sceneRender->screenToRay(x, y);
+        }else{
+            // outside its rect a layer draws nothing
+            if (!layer.view.contains(x, y)) continue;
+            ray = layer.view.ray(x, y);
+        }
+
+        Scene* layerScene = layer.sceneProject->scene;
+        float distance = FLT_MAX;
+        size_t index = 0;
+        Entity hit = findBestEntityByRay(getPickableEntities(layer.sceneProject), layerScene, ray,
+            layer.base ? scenedata->scene : layerScene, layer.sceneProject->sceneType, distance, index, layer.base);
+        if (hit != NULL_ENTITY){
+            *outSceneId = layer.sceneId;
+            return hit;
+        }
+    }
+
     return NULL_ENTITY;
 }
 
@@ -5537,25 +5751,26 @@ bool editor::Project::isEntityPickable(uint32_t sceneId, Entity entity) const{
 
 bool editor::Project::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed){
     SceneProject* scenedata = getScene(sceneId);
-
-    setSelectedSceneForProperties(sceneId);
+    if (!scenedata || !scenedata->sceneRender){
+        return false;
+    }
 
     uint32_t hitSceneId = sceneId;
     Entity selEntity = findObjectByRay(sceneId, x, y, &hitSceneId);
 
     if (!scenedata->sceneRender->isAnyGizmoSideSelected()){
         if (selEntity != NULL_ENTITY){
-            if (hitSceneId != sceneId){
-                setSelectedSceneForProperties(hitSceneId);
-            }
-            if (!shiftPressed){
+            // a selection is of one scene: Shift adds to it only within that scene
+            if (!shiftPressed || getSelectedSceneForProperties() != hitSceneId){
                 clearAllSelections(sceneId);
             }
             addSelectedEntity(hitSceneId, selEntity);
+            setSelectedSceneForProperties(hitSceneId);
             return true;
         }
 
         clearAllSelections(sceneId);
+        setSelectedSceneForProperties(sceneId);
     }
 
     return false;
@@ -5563,39 +5778,63 @@ bool editor::Project::selectObjectByRay(uint32_t sceneId, float x, float y, bool
 
 bool editor::Project::selectObjectsByRect(uint32_t sceneId, Vector2 start, Vector2 end){
     SceneProject* scenedata = getScene(sceneId);
-
-    setSelectedSceneForProperties(sceneId);
-
-    Camera* camera = scenedata->sceneRender->getCamera();
+    if (!scenedata || !scenedata->sceneRender){
+        return false;
+    }
 
     clearAllSelections(sceneId);
 
-    if (selectEntitiesInRect(sceneId, scenedata->entities, scenedata->scene, camera->getViewProjectionMatrix(), start, end)) {
-        return false;
-    }
+    // The topmost scene with GameObjects inside the box takes the selection, as a click
+    // would: a selection is of one scene
+    const std::vector<SceneViewLayer> layers = getSceneViewLayers(sceneId);
+    for (size_t i = layers.size(); i-- > 0;){
+        const SceneViewLayer& layer = layers[i];
+        const Matrix4 vpMatrix = layer.base
+            ? scenedata->sceneRender->getCamera()->getViewProjectionMatrix()
+            : layer.view.viewProjectionMatrix;
 
-    // child scenes show inline only while stopped; a running scene's layers are the game's
-    if (scenedata->playState != ScenePlayState::STOPPED) {
-        return false;
-    }
-
-    // Try children if no main scene selections
-    for (const ChildSceneRef& childSceneRef : scenedata->childScenes) {
-        uint32_t childId = childSceneRef.id;
-        SceneProject* childScene = getScene(childId);
-        if (!childScene || !childScene->expandedInline || !childScene->scene) continue;
-
-        Entity childCamEntity = childScene->scene->getCamera();
-        if (childCamEntity == NULL_ENTITY) continue;
-
-        CameraComponent& childCam = childScene->scene->getComponent<CameraComponent>(childCamEntity);
-
-        if (selectEntitiesInRect(childId, childScene->entities, childScene->scene, childCam.viewProjectionMatrix, start, end)) {
-            setSelectedSceneForProperties(childId);
+        if (selectEntitiesInRect(layer.sceneId, getPickableEntities(layer.sceneProject), layer.sceneProject->scene, vpMatrix, start, end)){
+            setSelectedSceneForProperties(layer.sceneId);
+            return true;
         }
     }
 
+    setSelectedSceneForProperties(sceneId);
     return false;
+}
+
+uint32_t editor::Project::syncSceneRenderEditLayer(uint32_t sceneId){
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->sceneRender){
+        return sceneId;
+    }
+
+    const uint32_t propertiesSceneId = selectedSceneForProperties;
+    if (propertiesSceneId != sceneId && isSceneViewLayer(sceneId, propertiesSceneId)){
+        SceneProject* layerScene = getScene(propertiesSceneId);
+        if (layerScene && layerScene->scene && !layerScene->selectedEntities.empty()){
+            for (const SceneViewLayer& layer : getSceneViewLayers(sceneId)){
+                if (!layer.base && layer.sceneId == propertiesSceneId){
+                    sceneProject->sceneRender->setEditLayer(propertiesSceneId, layerScene->scene, layer.view,
+                        layerScene->selectedEntities, layerScene->entities, layer.running);
+                    return propertiesSceneId;
+                }
+            }
+        }
+    }
+
+    sceneProject->sceneRender->clearEditLayer();
+    return sceneId;
+}
+
+void editor::Project::updateSceneRender(uint32_t sceneId){
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->sceneRender){
+        return;
+    }
+
+    syncSceneRenderEditLayer(sceneId);
+    sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneProject->entities, sceneProject->mainCamera, sceneProject->displaySettings);
 }
 
 std::vector<editor::SceneProject>& editor::Project::getScenes(){
@@ -5647,12 +5886,180 @@ T* editor::Project::findScene(uint32_t sceneId) const {
 
 // Non-const version
 editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
-    return findScene<editor::SceneProject>(sceneId);
+    if (SceneProject* sceneProject = findScene<editor::SceneProject>(sceneId)) {
+        return sceneProject;
+    }
+    return findPlayRuntimeScene(sceneId);
 }
 
 // Const version
 const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
-    return findScene<const editor::SceneProject>(sceneId);
+    if (const SceneProject* sceneProject = findScene<const editor::SceneProject>(sceneId)) {
+        return sceneProject;
+    }
+    return findPlayRuntimeScene(sceneId);
+}
+
+editor::SceneProject* editor::Project::findPlayRuntimeScene(uint32_t sceneId) const {
+    if (sceneId == NULL_PROJECT_SCENE || !hasPlayRuntimeIds.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
+    std::scoped_lock lock(playRuntimeIdMutex);
+    auto it = playRuntimeIds.find(sceneId);
+    return it != playRuntimeIds.end() ? it->second : nullptr;
+}
+
+void editor::Project::assignPlayRuntimeId(SceneProject* runtime) {
+    if (!runtime) {
+        return;
+    }
+
+    // What the copy holds before it runs is its own, as for the played scene at Play:
+    // anything else is what the running game made (getPlayCreatedEntities)
+    if (runtime->scene) {
+        const std::vector<Entity> alive = runtime->scene->getEntityList();
+        runtime->playStateEntities = std::set<Entity>(alive.begin(), alive.end());
+    }
+
+    static std::mutex generatorMutex;
+    static std::mt19937 generator{std::random_device{}()};
+    std::uniform_int_distribution<uint32_t> distribution(1, std::numeric_limits<uint32_t>::max());
+
+    for (int attempt = 0; attempt < 1000; attempt++) {
+        uint32_t candidate;
+        {
+            std::scoped_lock generatorLock(generatorMutex);
+            candidate = distribution(generator);
+        }
+        if (findScene<SceneProject>(candidate)) {
+            continue;
+        }
+
+        std::scoped_lock lock(playRuntimeIdMutex);
+        if (playRuntimeIds.count(candidate)) {
+            continue;
+        }
+        playRuntimeIds[candidate] = runtime;
+        runtime->id = candidate;
+        hasPlayRuntimeIds.store(true, std::memory_order_release);
+        return;
+    }
+
+    Out::error("Could not allocate an id for the Play copy of scene '%s'", runtime->name.c_str());
+}
+
+void editor::Project::releasePlayRuntimeId(SceneProject* runtime, uint32_t sourceSceneId) {
+    if (!runtime) {
+        return;
+    }
+
+    std::scoped_lock lock(playRuntimeIdMutex);
+    auto it = playRuntimeIds.find(runtime->id);
+    if (it != playRuntimeIds.end() && it->second == runtime) {
+        playRuntimeIds.erase(it);
+    }
+    runtime->id = sourceSceneId;
+    hasPlayRuntimeIds.store(!playRuntimeIds.empty(), std::memory_order_release);
+}
+
+void editor::Project::discardPlayRuntimeState(uint32_t runtimeId, uint32_t sourceSceneId, uint32_t mainSceneId) {
+    if (runtimeId == NULL_PROJECT_SCENE || runtimeId == sourceSceneId) {
+        return;
+    }
+
+    // prefab instances the running game made in the copy, commands kept for it and
+    // what the windows remember of it
+    cleanupPrefabsForScene(runtimeId);
+    CommandHandle::remove(runtimeId);
+    editor::getEditorHost().clearSceneWindowState(runtimeId);
+
+    if (selectedSceneForProperties == runtimeId) {
+        selectedSceneForProperties = getScene(mainSceneId) ? mainSceneId : selectedScene;
+    }
+}
+
+std::vector<editor::SceneProject*> editor::Project::getPlayRuntimeScenesOf(uint32_t sceneId) {
+    std::vector<SceneProject*> runtimes;
+
+    std::scoped_lock lock(playSessionMutex);
+    if (!activePlaySession || activePlaySession->mainSceneId != sceneId) {
+        return runtimes;
+    }
+    for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+        if (entry.ownedRuntime && entry.runtime && entry.runtime->id != entry.sourceSceneId) {
+            runtimes.push_back(entry.runtime);
+        }
+    }
+    return runtimes;
+}
+
+uint32_t editor::Project::getPlayRuntimeSceneId(uint32_t sourceSceneId) const {
+    std::scoped_lock lock(playSessionMutex);
+    if (!activePlaySession || activePlaySession->cancelled.load(std::memory_order_acquire) ||
+        !activePlaySession->startupSucceeded.load(std::memory_order_acquire)) {
+        return NULL_PROJECT_SCENE;
+    }
+    for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+        if (entry.ownedRuntime && entry.sourceSceneId == sourceSceneId && entry.runtime && entry.runtime->id != sourceSceneId) {
+            return entry.runtime->id;
+        }
+    }
+    return NULL_PROJECT_SCENE;
+}
+
+uint32_t editor::Project::getPlaySourceSceneId(uint32_t sceneId) const {
+    if (!findPlayRuntimeScene(sceneId)) {
+        return sceneId;
+    }
+    std::scoped_lock lock(playSessionMutex);
+    if (activePlaySession) {
+        for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+            if (entry.ownedRuntime && entry.runtime && entry.runtime->id == sceneId) {
+                return entry.sourceSceneId;
+            }
+        }
+    }
+    return sceneId;
+}
+
+bool editor::Project::isPlayRuntimeScene(uint32_t sceneId) const {
+    return findPlayRuntimeScene(sceneId) != nullptr;
+}
+
+void editor::Project::syncPlayRuntimeSelections() {
+    if (!hasPlayRuntimeIds.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    std::vector<std::pair<SceneProject*, bool>> runtimes;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        // before startup nothing shows the copies, and Stop hands their selection back itself
+        if (!activePlaySession || !activePlaySession->startupSucceeded.load(std::memory_order_acquire) ||
+            activePlaySession->cancelled.load(std::memory_order_acquire)) {
+            return;
+        }
+        for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+            if (entry.ownedRuntime && entry.runtime && entry.runtime->scene && entry.runtime->id != entry.sourceSceneId) {
+                runtimes.push_back({entry.runtime, Engine::isSceneRunning(entry.runtime->scene)});
+            }
+        }
+    }
+
+    for (const auto& [runtime, running] : runtimes) {
+        if (running) {
+            deselectDestroyedEntities(runtime);
+            continue;
+        }
+        // a scene the game took off is gone, as in Unity, and so is its selection
+        if (!runtime->selectedEntities.empty()) {
+            runtime->selectedEntities.clear();
+            runtime->needUpdateRender = true;
+        }
+        if (selectedSceneForProperties == runtime->id) {
+            selectedSceneForProperties = selectedScene;
+        }
+    }
 }
 
 editor::SceneProject* editor::Project::getSelectedScene(){
@@ -5898,15 +6305,26 @@ std::vector<Entity> editor::Project::getEntities(uint32_t sceneId) const{
     return getScene(sceneId)->entities;
 }
 
+// The selection outline and gizmo are drawn, so a selection change needs a redraw: of the
+// scene, and of the scenes that show it as an inline child scene (their tools edit it)
+void editor::Project::markSelectionChanged(SceneProject* sceneProject){
+    sceneProject->needUpdateRender = true;
+    for (SceneProject& other : scenes){
+        if (findChildScene(other.childScenes, sceneProject->id) != other.childScenes.end()){
+            other.needUpdateRender = true;
+        }
+    }
+}
+
 void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
     // Ctrl-click deselect reaches the selection only through here.
-    getScene(sceneId)->needUpdateRender = true;
+    markSelectionChanged(getScene(sceneId));
     getScene(sceneId)->selectedEntities = selectedEntities;
 }
 
 void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
     // The selection outline/gizmo is rendered, so a selection change needs a redraw.
-    getScene(sceneId)->needUpdateRender = true;
+    markSelectionChanged(getScene(sceneId));
     std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
 
     entities.clear();
@@ -5916,7 +6334,7 @@ void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity)
 }
 
 void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    getScene(sceneId)->needUpdateRender = true;
+    markSelectionChanged(getScene(sceneId));
     std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
     Scene* scene = getScene(sceneId)->scene;
     auto transforms = scene->getComponentArray<Transform>();
@@ -5969,14 +6387,14 @@ void editor::Project::deselectDestroyedEntities(SceneProject* sceneProject){
     });
     if (destroyed != selected.end()){
         selected.erase(destroyed, selected.end());
-        sceneProject->needUpdateRender = true;
+        markSelectionChanged(sceneProject);
     }
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject->selectedEntities.empty()){
-        sceneProject->needUpdateRender = true;
+        markSelectionChanged(sceneProject);
     }
     sceneProject->selectedEntities.clear();
 }
@@ -5985,6 +6403,13 @@ void editor::Project::clearAllSelections(uint32_t sceneId){
     clearSelectedEntities(sceneId);
     for (uint32_t cId : getChildScenes(sceneId)) {
         clearSelectedEntities(cId);
+    }
+    // while it plays, its game's layer scenes are what its Scene view and Hierarchy select
+    for (SceneProject* runtime : getPlayRuntimeScenesOf(sceneId)) {
+        if (!runtime->selectedEntities.empty()) {
+            runtime->selectedEntities.clear();
+            runtime->needUpdateRender = true;
+        }
     }
 }
 
@@ -8739,6 +9164,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 } else {
                     entry.runtime = createRuntimeCloneFromSource(&currentSceneProject);
                     entry.ownedRuntime = true;
+                    assignPlayRuntimeId(entry.runtime);
                 }
 
                 if (!entry.runtime) {
@@ -8748,6 +9174,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                 if (isCancelled()) {
                     if (entry.ownedRuntime) {
+                        // never shown: nothing in the editor holds its id yet
+                        releasePlayRuntimeId(entry.runtime, entry.sourceSceneId);
                         deleteSceneProject(entry.runtime);
                         delete entry.runtime;
                     }
@@ -8864,6 +9292,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                 sceneProject->playStateSnapshot = std::move(playSnapshot);
                 sceneProject->playStateEntities = std::move(playEntities);
+                sceneProject->playStateModified = sceneProject->isModified;
 
                 std::vector<PlayRuntimeScene> runtimeScenesToInitialize;
                 {
@@ -8954,6 +9383,7 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
                     newEntry.ownedRuntime = true;
 
                     if (newEntry.runtime) {
+                        assignPlayRuntimeId(newEntry.runtime);
                         session->runtimeScenes.push_back(newEntry);
                         entryIndex = session->runtimeScenes.size() - 1;
                     }
@@ -9667,6 +10097,14 @@ void editor::Project::waitForPlaySessionToFinish() {
 
 std::vector<Scene*> editor::Project::getRunningRuntimeLayers(uint32_t sceneId) {
     std::vector<Scene*> runningLayers;
+    for (SceneProject* runtimeProject : getRunningRuntimeLayerScenes(sceneId)) {
+        runningLayers.push_back(runtimeProject->scene);
+    }
+    return runningLayers;
+}
+
+std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes(uint32_t sceneId) {
+    std::vector<SceneProject*> runningLayers;
 
     std::scoped_lock lock(playSessionMutex);
     if (!activePlaySession || activePlaySession->mainSceneId != sceneId) {
@@ -9682,7 +10120,7 @@ std::vector<Scene*> editor::Project::getRunningRuntimeLayers(uint32_t sceneId) {
             continue;
         }
         if (Engine::isSceneRunning(runtimeProject->scene)) {
-            runningLayers.push_back(runtimeProject->scene);
+            runningLayers.push_back(runtimeProject);
         }
     }
 
