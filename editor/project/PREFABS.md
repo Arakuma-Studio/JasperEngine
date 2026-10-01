@@ -1067,7 +1067,7 @@ with 3 properties), Linux container capped at 2 CPUs, Release, `os.clock()` in t
 | 1000 `instantiate` of the prefab (scripts started) | 30-44 ms (generated code) | 26-41 ms (template copies) |
 | 1000 copies of live instances | 43-62 ms | 50-66 ms |
 | 1000 `destroyImmediate`, oldest first | 115-193 ms (each compacts the arrays' tail; 15 ms newest first) | 140-187 ms |
-| the frame destroying 1001 with `destroy` | 48-57 ms | 94-125 ms (editor frame) |
+| the frame destroying 1001 with `destroy` | 32-57 ms | 94-125 ms (editor frame) |
 
 The test (`tools/smoke-test.sh tools/fixtures/prefab-runtime`, and Play in the editor)
 also checks names, placements, parenting, references into the copies, script values,
