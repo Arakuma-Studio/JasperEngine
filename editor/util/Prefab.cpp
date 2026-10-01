@@ -205,4 +205,27 @@ bool Prefab::hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType
 	return false;
 }
 
+Entity Prefab::getRegistryParent(Entity registryEntity) const {
+	if (!registry || registryEntity == NULL_ENTITY || !registry->isEntityCreated(registryEntity)) {
+		return NULL_ENTITY;
+	}
+	const Transform* transform = registry->findComponent<Transform>(registryEntity);
+	return transform ? transform->parent : NULL_ENTITY;
+}
+
+bool Prefab::isRegistryEntityAbsent(const Instance& instance, Entity registryEntity) const {
+	if (instance.removed.empty() || registryEntity == NULL_ENTITY) {
+		return false;
+	}
+	// The registry hierarchy is acyclic; the bound only guards a corrupt one
+	Entity current = registryEntity;
+	for (size_t depth = 0; current != NULL_ENTITY && depth <= registryEntities.size(); depth++) {
+		if (instance.removed.count(current)) {
+			return true;
+		}
+		current = getRegistryParent(current);
+	}
+	return false;
+}
+
 } // namespace jasperengine::editor

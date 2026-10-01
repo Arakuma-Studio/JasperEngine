@@ -267,7 +267,8 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "delete_entity",
-            "Delete a GameObject through the undoable command system.",
+            "Delete a GameObject through the undoable command system. A GameObject that comes from a Prefab "
+            "is removed from that Prefab instance only (a removed GameObject override); the Prefab keeps it.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},

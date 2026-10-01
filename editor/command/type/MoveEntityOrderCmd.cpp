@@ -66,10 +66,13 @@ bool editor::MoveEntityOrderCmd::execute(){
 void editor::MoveEntityOrderCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
+    // The reverse of execute: the source index was taken after the other instances moved
+    // (a GameObject leaving or entering one that removed a parent shifts the scene's
+    // indices), and theirs before the source moved
+    ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities, source, oldParent, oldIndex, hasTransform);
     if (prefabMoveRecovery.size() > 0){
         project->undoMoveEntityInPrefab(sceneId, source, target, prefabMoveRecovery, false);
     }
-    ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities, source, oldParent, oldIndex, hasTransform);
 
     sceneProject->isModified = wasModified;
 }

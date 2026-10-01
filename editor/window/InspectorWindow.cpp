@@ -29,6 +29,9 @@
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentToPrefabLocalCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "command/type/PrefabOverridesCmd.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
@@ -2082,11 +2085,28 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
             }
         }
 
+        const char* overridesLabel = "Overrides " ICON_FA_CARET_DOWN;
         const char* selectLabel = "Select";
         const char* unpackLabel = "Unpack " ICON_FA_CARET_DOWN;
+        const bool showOverrides = oneInstance && !mixedAsset;
         const float buttonsWidth = ImGui::CalcTextSize(selectLabel).x + ImGui::CalcTextSize(unpackLabel).x +
-            style.FramePadding.x * 4.0f + style.ItemInnerSpacing.x;
+            style.FramePadding.x * 4.0f + style.ItemInnerSpacing.x +
+            (showOverrides ? ImGui::CalcTextSize(overridesLabel).x + style.FramePadding.x * 2.0f + style.ItemInnerSpacing.x : 0.0f);
         ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
+
+        if (showOverrides) {
+            if (ImGui::Button(overridesLabel)) {
+                ImGui::OpenPopup("prefab_overrides_menu");
+            }
+            const ImVec2 overridesCorner(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y);
+            ImGui::SetItemTooltip("Review, revert or apply the overrides of this Prefab instance");
+            ImGui::SetNextWindowPos(overridesCorner, ImGuiCond_Appearing);
+            if (ImGui::BeginPopup("prefab_overrides_menu")) {
+                drawPrefabOverridesPopup(sceneProject, prefabRoots[0], readOnly);
+                ImGui::EndPopup();
+            }
+            ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        }
 
         ImGui::BeginDisabled(mixedAsset || assetPath.empty());
         if (ImGui::Button(selectLabel)) {
@@ -2125,6 +2145,167 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     }
 
     ImGui::PopID();
+}
+
+void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProject, Entity root, bool readOnly){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const bool locked = readOnly || project->isAnyScenePlaying();
+
+    const std::vector<std::pair<Entity, ComponentType>> components = project->getPrefabComponentOverrides(sceneId, root);
+    const std::vector<PrefabRemovalInfo> removals = project->getPrefabRemovals(sceneId, root);
+    const std::vector<std::pair<Entity, Entity>> added = project->getPrefabAddedGameObjects(sceneId, root);
+
+    // The prefab a GameObject of the instance (or the parent of an added one) belongs to
+    auto prefabOf = [&](Entity entity) {
+        if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity)) {
+            const Prefab* prefab = project->getPrefab(component->path);
+            const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, entity) : nullptr;
+            if (instance && instance->rootEntity == entity) {
+                return std::filesystem::path(component->path);
+            }
+        }
+        return project->findPrefabPathFor(sceneId, entity);
+    };
+
+    ImGui::Dummy(ImVec2(Theme::dpi(360.0f), 0.0f));
+    ImGui::Text("Overrides of \"%s\"", scene->getEntityName(root).c_str());
+    ImGui::Separator();
+    if (components.empty() && removals.empty() && added.empty()) {
+        ImGui::TextDisabled("No overrides");
+        return;
+    }
+
+    auto addCommand = [&](Command* command) {
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(command);
+    };
+    // One override: its label, then Revert and Apply
+    auto overrideRow = [&](const std::string& id, const std::string& label, const std::string& detail,
+                           const std::string& revertTip, bool canApply, const std::string& applyTip,
+                           const std::function<Command*()>& revert, const std::function<Command*()>& apply) {
+        ImGui::PushID(id.c_str());
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label.c_str());
+        if (!detail.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", detail.c_str());
+        }
+        ImGui::TableSetColumnIndex(1);
+        ImGui::BeginDisabled(locked);
+        if (ImGui::SmallButton("Revert")) {
+            addCommand(revert());
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", revertTip.c_str());
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::BeginDisabled(locked || !canApply);
+        if (ImGui::SmallButton("Apply")) {
+            addCommand(apply());
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", applyTip.c_str());
+        ImGui::PopID();
+    };
+    auto section = [](const char* title) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextDisabled("%s", title);
+    };
+
+    if (ImGui::BeginTable("prefab_overrides", 2, ImGuiTableFlags_SizingFixedFit)) {
+        if (!components.empty()) {
+            section("Overridden Components");
+            for (const std::pair<Entity, ComponentType>& component : components) {
+                const Entity entity = component.first;
+                const ComponentType type = component.second;
+                const std::string prefabName = prefabOf(entity).stem().string();
+                const bool canApply = project->canApplyComponentOverride(sceneId, entity, type);
+                overrideRow("component_" + std::to_string(entity) + "_" + std::to_string(static_cast<int>(type)),
+                    scene->getEntityName(entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(type), "",
+                    "Discard this instance's values and follow the Prefab again", canApply,
+                    canApply ? "Apply these values to Prefab '" + prefabName + "' and its instances that follow it" :
+                        std::string("It references GameObjects outside the Prefab instance, which the Prefab cannot hold"),
+                    [this, sceneId, entity, type]() -> Command* { return new ComponentToPrefabSharedCmd(project, sceneId, entity, type); },
+                    [this, sceneId, entity, type]() -> Command* { return new ApplyPrefabComponentCmd(project, sceneId, entity, type); });
+            }
+        }
+        if (!removals.empty()) {
+            section("Removed GameObjects");
+            for (const PrefabRemovalInfo& removal : removals) {
+                const std::string prefabName = removal.path.stem().string();
+                std::string detail = removal.instanceRoot != root ? "(" + prefabName + ")" : std::string();
+                if (removal.belowRemoved) {
+                    detail += detail.empty() ? "(below a removed GameObject)" : " (below a removed GameObject)";
+                }
+                overrideRow("removed_" + std::to_string(removal.instanceRoot) + "_" + std::to_string(removal.registryEntity),
+                    ICON_FA_MINUS " " + removal.name, detail,
+                    removal.belowRemoved ? "Stop removing it: it comes back with the removed GameObject above it" :
+                        "Bring it back from the Prefab, in its Prefab place",
+                    true, "Delete it from Prefab '" + prefabName + "' and all its instances",
+                    [this, sceneId, removal]() -> Command* { return new RevertPrefabRemovalCmd(project, sceneId, removal.path, removal.instanceRoot, removal.registryEntity); },
+                    [this, sceneId, removal]() -> Command* { return new ApplyPrefabRemovalCmd(project, sceneId, removal.path, removal.instanceRoot, removal.registryEntity); });
+            }
+        }
+        if (!added.empty()) {
+            section("Added GameObjects");
+            for (const std::pair<Entity, Entity>& addition : added) {
+                const Entity entity = addition.first;
+                const Entity parent = addition.second;
+                const std::string prefabName = prefabOf(parent).stem().string();
+                overrideRow("added_" + std::to_string(entity), ICON_FA_PLUS " " + scene->getEntityName(entity), "",
+                    "Delete this GameObject, which the instance added", true,
+                    "Add it to Prefab '" + prefabName + "' and all its instances",
+                    [this, sceneId, entity]() -> Command* { return new DeleteEntityCmd(project, sceneId, entity); },
+                    [this, sceneId, entity, parent]() -> Command* { return new AddEntityToPrefabCmd(project, sceneId, entity, parent); });
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Separator();
+    ImGui::BeginDisabled(locked);
+    if (ImGui::Button("Revert All")) {
+        // Added GameObjects first: their delete reads the scene as it is when made
+        std::vector<std::unique_ptr<Command>> steps;
+        if (!added.empty()) {
+            std::vector<Entity> addedEntities;
+            for (const std::pair<Entity, Entity>& addition : added) {
+                addedEntities.push_back(addition.first);
+            }
+            steps.emplace_back(new DeleteEntityCmd(project, sceneId, addedEntities));
+        }
+        // Removed GameObjects before components, so a reverted component that points at one
+        // (a Model at its nodes) finds it back
+        for (const PrefabRemovalInfo& removal : removals) {
+            steps.emplace_back(new RevertPrefabRemovalCmd(project, sceneId, removal.path, removal.instanceRoot, removal.registryEntity));
+        }
+        for (const std::pair<Entity, ComponentType>& component : components) {
+            steps.emplace_back(new ComponentToPrefabSharedCmd(project, sceneId, component.first, component.second));
+        }
+        addCommand(new PrefabOverridesCmd(project, sceneId, std::move(steps)));
+    }
+    ImGui::SetItemTooltip("Discard every override: the instance becomes its Prefab again");
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    if (ImGui::Button("Apply All")) {
+        // Added GameObjects first: each reads where it is when made
+        std::vector<std::unique_ptr<Command>> steps;
+        for (const std::pair<Entity, Entity>& addition : added) {
+            steps.emplace_back(new AddEntityToPrefabCmd(project, sceneId, addition.first, addition.second));
+        }
+        for (const std::pair<Entity, ComponentType>& component : components) {
+            if (project->canApplyComponentOverride(sceneId, component.first, component.second)) {
+                steps.emplace_back(new ApplyPrefabComponentCmd(project, sceneId, component.first, component.second));
+            }
+        }
+        for (const PrefabRemovalInfo& removal : removals) {
+            steps.emplace_back(new ApplyPrefabRemovalCmd(project, sceneId, removal.path, removal.instanceRoot, removal.registryEntity));
+        }
+        addCommand(new PrefabOverridesCmd(project, sceneId, std::move(steps)));
+    }
+    ImGui::SetItemTooltip("Make every override the Prefab's, for all its instances (components referencing GameObjects outside the instance stay overrides)");
+    ImGui::EndDisabled();
 }
 
 void editor::InspectorWindow::drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width){

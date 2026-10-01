@@ -22,8 +22,9 @@ namespace jasperengine::editor{
     // latter moved to the GameObject; a user's Action aimed at a node stays, aimed at no
     // GameObject. Undo brings the model back as it was: the same entity ids, the per-node edits,
     // the user's entities back on their nodes. On a Prefab instance the emptied Model and Mesh
-    // are overrides of that instance; a model whose GameObjects belong to the Prefab cannot be
-    // emptied in one instance (see canClear).
+    // are overrides of that instance, and the model's GameObjects that come from the Prefab are
+    // removed from that instance only (removed GameObject overrides) with the Prefab GameObjects
+    // below them, as in Unity: the Prefab and its other instances keep them.
     class ModelClearCmd: public Command{
 
     private:
@@ -65,10 +66,9 @@ namespace jasperengine::editor{
 
         // Entities the model owns: nodes, parts, bones, animations and their tracks
         static std::vector<Entity> collectOwnedEntities(Scene* scene, Entity entity, const ModelComponent& model);
-        // Entities other than the model's own that sit on its nodes, which the delete would take along
-        static std::vector<ParkedEntity> collectParkedEntities(Scene* scene, const std::vector<Entity>& owned, Entity entity);
-        // Why the model's own entities cannot be deleted from this scene alone, empty when they can
-        static std::string prefabNodesBlocker(Project* project, uint32_t sceneId, const std::vector<Entity>& owned);
+        // Entities other than the model's own that sit on its nodes, which the delete would take
+        // along; not Prefab GameObjects, which go with the node, out of the instance
+        static std::vector<ParkedEntity> collectParkedEntities(Project* project, uint32_t sceneId, Scene* scene, const std::vector<Entity>& owned, Entity entity);
 
         void unparkEntities(SceneProject* sceneProject);
         void overrideInPrefab(Entity target, ComponentType type);

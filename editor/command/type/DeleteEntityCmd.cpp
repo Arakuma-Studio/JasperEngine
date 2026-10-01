@@ -366,6 +366,7 @@ void editor::DeleteEntityCmd::snapshotEntities(){
         // which may be shared (a Cut's clipboard copy)
         entityData.data.reset(YAML::Node());
         entityData.recoveryPrefabData.clear();
+        entityData.removedFromInstance = PrefabBranchRecovery();
         entityData.isPrefabRoot = false;
         entityData.prefabPath.clear();
 
@@ -497,6 +498,10 @@ bool editor::DeleteEntityCmd::execute(){
                 }
                 project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities, false);
                 reconcilePending = true;
+            } else if (prefabMemberDelete == PrefabMemberDelete::RemoveFromInstance) {
+                // Unity's removed GameObject: this instance only, the Prefab keeps it
+                reconcile();
+                entityData.removedFromInstance = project->removePrefabBranch(sceneId, entityData.entity, true);
             } else {
                 reconcile();
                 if (!entityData.hasTransform) {
@@ -575,7 +580,12 @@ void editor::DeleteEntityCmd::undo(){
             restoredParent = parentRemap->second;
         }
 
-        if (entityData.recoveryPrefabData.size() == 0){
+        if (entityData.removedFromInstance.valid()) {
+            sortTracked();
+            if (!project->restorePrefabBranch(sceneId, entityData.removedFromInstance, &entityRemap, &restoredEntities)) {
+                Out::error("Could not restore removed prefab GameObject %u in scene %u", entityData.entity, sceneId);
+            }
+        } else if (entityData.recoveryPrefabData.size() == 0){
             if (!entityData.data.IsMap() || !entityData.data["type"]) {
                 continue;
             }
@@ -666,7 +676,7 @@ void editor::DeleteEntityCmd::undo(){
         };
         for (DeleteEntityData& entityData : entities) {
             remapEntity(entityData.parent);
-            if (!entityData.recoveryPrefabData.empty()) {
+            if (!entityData.recoveryPrefabData.empty() || entityData.removedFromInstance.valid()) {
                 remapEntity(entityData.entity);
             }
         }
@@ -710,7 +720,8 @@ void editor::DeleteEntityCmd::undo(){
 bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
     DeleteEntityCmd* otherCmd = dynamic_cast<DeleteEntityCmd*>(otherCommand);
     if (otherCmd != nullptr){
-        if (project == otherCmd->project && sceneId == otherCmd->sceneId && allowLockedRoots == otherCmd->allowLockedRoots){
+        if (project == otherCmd->project && sceneId == otherCmd->sceneId && allowLockedRoots == otherCmd->allowLockedRoots &&
+            prefabMemberDelete == otherCmd->prefabMemberDelete){
 
             lastSelected = otherCmd->lastSelected;
             // Undone together, back to before the older one

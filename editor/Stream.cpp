@@ -31,6 +31,56 @@
 using namespace jasperengine;
 
 namespace {
+    // Removed GameObject overrides of an instance and of the instances nested in it, as
+    // `prefabRemovedGameObjects` entries relative to it: {registryEntity} for its own, and
+    // for a nested instance's the nested root's prefabPath and prefabRootRegistryEntity,
+    // with the inner entry under `nested` once more than one level down.
+    void encodeRemovedGameObjects(const editor::Project* project, uint32_t sceneId, const EntityRegistry* registry,
+                                  const editor::Prefab::Instance& instance, YAML::Node& entries, size_t depth = 0) {
+        std::vector<Entity> removed;
+        removed.reserve(instance.removed.size());
+        for (const auto& [registryEntity, members] : instance.removed) {
+            removed.push_back(registryEntity);
+        }
+        std::sort(removed.begin(), removed.end());
+        for (Entity registryEntity : removed) {
+            YAML::Node entry;
+            entry["registryEntity"] = registryEntity;
+            entries.push_back(entry);
+        }
+
+        if (depth > 64) {
+            return; // a nesting cycle, which importPrefab refuses anyway
+        }
+        for (const editor::Prefab::EntityMember& member : instance.members) {
+            if (!registry->isEntityCreated(member.localEntity) ||
+                !registry->getSignature(member.localEntity).test(registry->getComponentId<PrefabComponent>())) {
+                continue;
+            }
+            const PrefabComponent* component = &registry->getComponent<PrefabComponent>(member.localEntity);
+            const editor::Prefab* nestedPrefab = component && !component->path.empty() ? project->getPrefab(component->path) : nullptr;
+            const editor::Prefab::Instance* nestedInstance = nestedPrefab ? nestedPrefab->getInstance(sceneId, member.localEntity) : nullptr;
+            if (!nestedInstance || nestedInstance->rootEntity != member.localEntity) {
+                continue;
+            }
+            YAML::Node nestedEntries(YAML::NodeType::Sequence);
+            encodeRemovedGameObjects(project, sceneId, registry, *nestedInstance, nestedEntries, depth + 1);
+            for (const YAML::Node& nestedEntry : nestedEntries) {
+                YAML::Node entry;
+                if (nestedEntry["prefabPath"]) {
+                    entry["prefabPath"] = component->path;
+                    entry["prefabRootRegistryEntity"] = member.registryEntity;
+                    entry["nested"] = nestedEntry;
+                } else {
+                    entry["registryEntity"] = nestedEntry["registryEntity"];
+                    entry["prefabPath"] = component->path;
+                    entry["prefabRootRegistryEntity"] = member.registryEntity;
+                }
+                entries.push_back(entry);
+            }
+        }
+    }
+
     // The customShaderId in a key is a session-local registry index, so a fork is
     // named by its project-relative path instead, the way scenes name theirs.
     // Both directions normalize, keeping a since-retired property bit out of the file.
@@ -3278,6 +3328,13 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
                             entityNode["prefabOverrides"] = overridesNode;
                         }
 
+                        // Prefab GameObjects this instance (or one nested in it) left out
+                        YAML::Node removedNode(YAML::NodeType::Sequence);
+                        encodeRemovedGameObjects(project, sceneProject->id, registry, instance, removedNode);
+                        if (removedNode.size() > 0) {
+                            entityNode["prefabRemovedGameObjects"] = removedNode;
+                        }
+
                         // Encode scene-specific local entities (children of prefab members/root not in members list)
                         YAML::Node localEntsNode;
                         std::unordered_set<Entity> memberSet;
@@ -3639,7 +3696,8 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
             if (prefabComp && !prefabComp->path.empty()) {
                 std::vector<Entity> prefabEntities = project->importPrefab(
                     sceneProject, entities, prefabComp->path, entity, false,
-                    entityNode["prefabOverrides"], entityNode["prefabLocalEntities"], entityRemap);
+                    entityNode["prefabOverrides"], entityNode["prefabLocalEntities"], entityRemap,
+                    entityNode["prefabRemovedGameObjects"]);
                 allEntities.insert(allEntities.end(), prefabEntities.begin(), prefabEntities.end());
             }
         }

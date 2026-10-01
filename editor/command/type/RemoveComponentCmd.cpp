@@ -62,6 +62,9 @@ bool editor::RemoveComponentCmd::execute() {
             ownedEntitiesCaptured = true;
 
             std::map<uint32_t, std::vector<Entity>> ownersByScene;
+            // Owners whose component goes from this instance only (not a Prefab edit): what they
+            // own of the Prefab is removed from the instance only too
+            std::set<std::pair<uint32_t, Entity>> instanceOwners;
             auto addOwner = [&](uint32_t ownerSceneId, Entity owner) {
                 SceneProject* ownerScene = project->getScene(ownerSceneId);
                 if (ownerScene && hasOwnedComponent(ownerScene->scene, owner, componentType)) {
@@ -76,6 +79,7 @@ bool editor::RemoveComponentCmd::execute() {
                     !prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
                 if (!sharedComponent) {
                     addOwner(sceneId, entityData.entity);
+                    instanceOwners.insert({sceneId, entityData.entity});
                     continue;
                 }
 
@@ -110,6 +114,7 @@ bool editor::RemoveComponentCmd::execute() {
             }
 
             std::map<uint32_t, std::vector<Entity>> targetsByScene;
+            std::map<uint32_t, std::vector<Entity>> instanceTargetsByScene;
             std::set<std::pair<fs::path, Entity>> sharedTargets;
             std::set<std::pair<uint32_t, Entity>> localTargets;
 
@@ -117,6 +122,7 @@ bool editor::RemoveComponentCmd::execute() {
                 SceneProject* ownerScene = project->getScene(ownerSceneId);
                 const std::vector<Entity>& preservedOwners = ownersByScene.at(ownerSceneId);
                 for (Entity owner : preservedOwners) {
+                    const bool instanceOwner = instanceOwners.count({ownerSceneId, owner}) != 0;
                     for (Entity target : ProjectUtils::getOwnedCascadeEntities(
                             ownerScene->scene, owner, componentType)) {
                         if (!ownerScene->scene->isEntityCreated(target)) {
@@ -130,12 +136,12 @@ bool editor::RemoveComponentCmd::execute() {
                         Prefab* targetPrefab = project->getPrefab(targetPrefabPath);
                         Entity registryTarget = targetPrefab ?
                             targetPrefab->getRegistryEntity(ownerSceneId, target) : NULL_ENTITY;
-                        if (registryTarget != NULL_ENTITY) {
+                        if (registryTarget != NULL_ENTITY && !instanceOwner) {
                             if (sharedTargets.insert({targetPrefabPath, registryTarget}).second) {
                                 targetsByScene[ownerSceneId].push_back(target);
                             }
                         } else if (localTargets.insert({ownerSceneId, target}).second) {
-                            targetsByScene[ownerSceneId].push_back(target);
+                            (instanceOwner ? instanceTargetsByScene : targetsByScene)[ownerSceneId].push_back(target);
                         }
                     }
                 }
@@ -144,8 +150,16 @@ bool editor::RemoveComponentCmd::execute() {
             for (uint32_t ownerSceneId : orderedSceneIds) {
                 auto targets = targetsByScene.find(ownerSceneId);
                 if (targets != targetsByScene.end() && !targets->second.empty()) {
+                    DeleteEntityCmd* ownedDelete = new DeleteEntityCmd(project,
+                        ownerSceneId, targets->second, true, ownersByScene.at(ownerSceneId));
+                    // The owner's component leaves the Prefab, and so do what it owns there
+                    ownedDelete->setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
+                    ownedEntityDeletes.emplace_back(ownedDelete);
+                }
+                auto instanceTargets = instanceTargetsByScene.find(ownerSceneId);
+                if (instanceTargets != instanceTargetsByScene.end() && !instanceTargets->second.empty()) {
                     ownedEntityDeletes.emplace_back(new DeleteEntityCmd(project,
-                        ownerSceneId, targets->second, true, ownersByScene.at(ownerSceneId)));
+                        ownerSceneId, instanceTargets->second, true, ownersByScene.at(ownerSceneId)));
                 }
             }
         }

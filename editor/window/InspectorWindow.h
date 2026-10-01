@@ -273,6 +273,8 @@ namespace jasperengine::editor{
 
         // Unity Inspector header: active checkbox, icon and name, then Tag and Layer
         void drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly);
+        // Unity's Overrides dropdown of the prefab bar, for the instance rooted at root
+        void drawPrefabOverridesPopup(SceneProject* sceneProject, Entity root, bool readOnly);
         void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         void drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         // Unity component header: foldout, icon, enable checkbox, name and a kebab menu; true when open
