@@ -7,6 +7,8 @@
 #include "Project.h"
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace jasperengine::editor{
 
@@ -23,6 +25,9 @@ namespace jasperengine::editor{
         Entity originalParent;
         size_t originalTransformIndex;
         bool hasTransform;
+        // The prefab instances in the branch as they were: their scene data goes into the
+        // prefab, an undo gives it back
+        std::vector<std::pair<Entity, YAML::Node>> nestedRoots;
 
     public:
         AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);

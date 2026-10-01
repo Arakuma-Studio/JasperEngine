@@ -6,6 +6,8 @@
 #include "Stream.h"
 #include "util/YamlNumbers.h"
 
+#include <unordered_set>
+
 namespace jasperengine::editor {
 
 // ---- PrefabObjectOverrides ----
@@ -172,27 +174,90 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     }
     registryEntities.clear();
     nestedInstances.clear();
+    stripped.clear();
+    addedObjects.clear();
     root = NULL_ENTITY;
 
     Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
 
     FileHeader header = readHeader(node);
+    const bool legacyFile = header.version < FILE_VERSION;
+    needsUpgrade = legacyFile;
+
+    // Stripped objects: references into the nested instances
+    if (node && node.IsMap() && node["stripped"] && node["stripped"].IsSequence()) {
+        for (const YAML::Node& entry : node["stripped"]) {
+            if (!entry.IsMap() || !entry["entity"] || !entry["source"] || !entry["source"].IsSequence()) {
+                continue;
+            }
+            std::vector<Entity> source;
+            for (const YAML::Node& id : entry["source"]) {
+                source.push_back(YamlNumbers::as<Entity>(id));
+            }
+            const Entity id = YamlNumbers::as<Entity>(entry["entity"]);
+            if (source.size() >= 2 && id != NULL_ENTITY && !registry->isEntityCreated(id)) {
+                stripped[id] = std::move(source);
+            }
+        }
+    }
+
     Entity highest = counter;
     for (Entity entity : registryEntities) {
         highest = std::max(highest, entity);
+    }
+    for (const auto& [id, source] : stripped) {
+        highest = std::max(highest, id);
     }
     if (header.nextEntity != NULL_ENTITY) {
         highest = std::max<Entity>(highest, header.nextEntity - 1);
     }
     registry->setLastEntity(highest);
 
-    const bool legacyFile = header.version < FILE_VERSION;
-    needsUpgrade = legacyFile;
+    if (legacyFile) {
+        // Files older than version 3 held copies of the nested prefabs' GameObjects below
+        // their nested roots: the nested import brings the real ones
+        std::unordered_set<Entity> nestedRoots;
+        for (Entity entity : registryEntities) {
+            const PrefabComponent* component = registry->findComponent<PrefabComponent>(entity);
+            if (component && (!component->path.empty() || !component->guid.empty())) {
+                nestedRoots.insert(entity);
+            }
+        }
+        std::vector<Entity> stale;
+        for (Entity entity : registryEntities) {
+            const Transform* transform = registry->findComponent<Transform>(entity);
+            for (Entity ancestor = transform ? transform->parent : NULL_ENTITY, depth = 0;
+                    ancestor != NULL_ENTITY && depth <= registryEntities.size(); depth++) {
+                if (nestedRoots.count(ancestor)) {
+                    stale.push_back(entity);
+                    break;
+                }
+                const Transform* parentTransform = registry->findComponent<Transform>(ancestor);
+                ancestor = parentTransform ? parentTransform->parent : NULL_ENTITY;
+            }
+        }
+        // children first
+        for (auto it = stale.rbegin(); it != stale.rend(); ++it) {
+            registry->destroyEntity(*it);
+        }
+        const std::unordered_set<Entity> staleSet(stale.begin(), stale.end());
+        registryEntities.erase(std::remove_if(registryEntities.begin(), registryEntities.end(),
+            [&staleSet](Entity entity) { return staleSet.count(entity) != 0; }), registryEntities.end());
+    }
 
     // The asset-level data of the nested instances. A legacy file has none: its nested
     // roots' own values are the old wrappers', made into overrides when first imported.
     const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
     forEachPrefabNode(node, [&](const YAML::Node& entityNode) {
+        // a GameObject this prefab adds to a nested instance, below one of its GameObjects
+        if (!legacyFile && entityNode["entity"] && (entityNode["addedTo"] || entityNode["childIndex"])) {
+            const Entity id = YamlNumbers::as<Entity>(entityNode["entity"]);
+            if (registry->isEntityCreated(id)) {
+                AddedObject& added = addedObjects[id];
+                if (entityNode["addedTo"]) added.parent = YamlNumbers::as<Entity>(entityNode["addedTo"]);
+                if (entityNode["childIndex"]) added.childIndex = YamlNumbers::as<int>(entityNode["childIndex"]);
+            }
+        }
         const YAML::Node components = entityNode["components"];
         if (!entityNode["entity"] || !components || !components.IsMap() || !components[prefabKey]) {
             return;
@@ -275,7 +340,82 @@ Entity Prefab::getNextEntity() const {
     for (Entity entity : registryEntities) {
         highest = std::max(highest, entity);
     }
+    for (const auto& [id, source] : stripped) {
+        highest = std::max(highest, id);
+    }
     return highest + 1;
+}
+
+Entity Prefab::allocateId() {
+    if (!registry) {
+        registry = std::make_unique<EntityRegistry>();
+    }
+    const Entity id = getNextEntity();
+    registry->setLastEntity(id);
+    return id;
+}
+
+Entity Prefab::findStripped(const std::vector<Entity>& source) const {
+    for (const auto& [id, way] : stripped) {
+        if (way == source) {
+            return id;
+        }
+    }
+    return NULL_ENTITY;
+}
+
+Entity Prefab::addStripped(const std::vector<Entity>& source) {
+    if (source.size() < 2) {
+        return NULL_ENTITY;
+    }
+    Entity id = findStripped(source);
+    if (id == NULL_ENTITY) {
+        id = allocateId();
+        stripped[id] = source;
+    }
+    return id;
+}
+
+Entity Prefab::getAddedObjectNestedRoot(Entity registryEntity) const {
+    if (!registry || registryEntity == NULL_ENTITY || !registry->isEntityCreated(registryEntity) || isNestedRoot(registryEntity)) {
+        return NULL_ENTITY;
+    }
+    Entity current = getRegistryParent(registryEntity);
+    for (size_t depth = 0; current != NULL_ENTITY && depth <= registryEntities.size(); depth++) {
+        if (isNestedRoot(current)) {
+            return current;
+        }
+        current = getRegistryParent(current);
+    }
+    return NULL_ENTITY;
+}
+
+std::vector<Entity> Prefab::getAddedObjectTops(Entity nestedRoot) const {
+    std::vector<Entity> tops;
+    if (!registry || !isNestedRoot(nestedRoot)) {
+        return tops;
+    }
+    auto transforms = registry->getComponentArray<Transform>();
+    for (size_t i = 0; i < transforms->size(); i++) {
+        if (transforms->getComponentFromIndex(i).parent == nestedRoot) {
+            tops.push_back(transforms->getEntity(i));
+        }
+    }
+    return tops;
+}
+
+void Prefab::takeAssetData(Prefab&& loaded) {
+    const Entity counter = registry ? registry->getLastEntity() : NULL_ENTITY;
+    registry = std::move(loaded.registry);
+    if (registry && registry->getLastEntity() < counter) {
+        registry->setLastEntity(counter);
+    }
+    registryEntities = std::move(loaded.registryEntities);
+    root = loaded.root;
+    nestedInstances = std::move(loaded.nestedInstances);
+    stripped = std::move(loaded.stripped);
+    addedObjects = std::move(loaded.addedObjects);
+    needsUpgrade = loaded.needsUpgrade;
 }
 
 Entity Prefab::Instance::getRegistryEntity(Entity localEntity) const {

@@ -171,6 +171,28 @@ public:
     // prefab and the scene, see Project::importPrefab). Written on the nested root's node.
     std::map<Entity, PrefabInstanceData> nestedInstances;
 
+    // Unity's stripped objects: GameObjects of the instances nested in this prefab (at any
+    // depth) that this prefab refers to, each by an id of this prefab (never a registry
+    // entity, taken from the same never-reused counter). `source` is the way down: the
+    // nested root's registry entity here, then the registry entity of the next nested root
+    // in that prefab, ..., then the GameObject's registry entity in the innermost prefab.
+    // A reference to such a GameObject (any component's entity reference, a script
+    // property, a camera texture link) holds the stripped id in this registry; importPrefab
+    // turns it into the nested GameObject's local id. Written as the file's `stripped:` list.
+    std::map<Entity, std::vector<Entity>> stripped;
+
+    // GameObjects this prefab adds to its nested instances (Unity's added GameObjects at
+    // asset level): registry entities of this prefab whose registry parent is a nested root.
+    // The top of each such branch may sit deeper in the nested instance than its root: its
+    // entry says below which nested GameObject (a stripped id; NULL_ENTITY for the nested
+    // root itself) and where among that GameObject's children (-1: last). Written on the
+    // branch's node as `addedTo` / `childIndex`.
+    struct AddedObject {
+        Entity parent = NULL_ENTITY;
+        int childIndex = -1;
+    };
+    std::map<Entity, AddedObject> addedObjects;
+
     bool isModified = false;
     // Read from a file older than FILE_VERSION: written again the next time a scene using it
     // is saved, even if nothing changed
@@ -209,6 +231,24 @@ public:
     Entity getRegistryParent(Entity registryEntity) const;
     // Whether a registry entity is the root of a prefab instance nested in this prefab
     bool isNestedRoot(Entity registryEntity) const;
+
+    // ---- Stripped objects and added GameObjects of nested instances (PREFABS.md 12) ----
+
+    // A new id of this prefab (a GameObject or a stripped object): above every id it had
+    bool isStripped(Entity id) const { return stripped.count(id) != 0; }
+    Entity allocateId();
+    // The stripped id for a way down into the nested instances, made when missing
+    Entity findStripped(const std::vector<Entity>& source) const;
+    Entity addStripped(const std::vector<Entity>& source);
+    // The nested root a GameObject this prefab added to a nested instance is below (the
+    // first nested root among its registry ancestors), NULL_ENTITY for any other one
+    Entity getAddedObjectNestedRoot(Entity registryEntity) const;
+    // The registry children of a nested root: the tops of the GameObjects this prefab adds
+    // to that nested instance, in registry order
+    std::vector<Entity> getAddedObjectTops(Entity nestedRoot) const;
+    // Moves a loaded file's asset data in (registry, root, nested data, stripped objects,
+    // added GameObjects), keeping the instances and the id counter's high-water mark
+    void takeAssetData(Prefab&& loaded);
 
 };
 

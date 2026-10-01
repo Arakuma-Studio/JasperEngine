@@ -498,12 +498,15 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
         topLevel.erase(rootIt);
         topLevel.insert(topLevel.begin(), prefab->root);
     }
+    // Without the project: the children of a nested root are written, they are the
+    // GameObjects this prefab adds to that nested instance (PREFABS.md 12)
     YAML::Node membersNode(YAML::NodeType::Sequence);
     for (Entity entity : topLevel) {
-        membersNode.push_back(Stream::encodeEntity(entity, prefab->registry.get(), this));
+        membersNode.push_back(Stream::encodeEntity(entity, prefab->registry.get()));
     }
 
-    // What this prefab overrides of the instances nested in it, on their roots
+    // What this prefab overrides of the instances nested in it, on their roots, and where
+    // the GameObjects it adds to them go
     std::function<void(YAML::Node)> addNestedBlocks = [&](YAML::Node node) {
         if (!node.IsMap()) {
             return;
@@ -518,6 +521,15 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
                     node["prefabInstance"] = block;
                 }
             }
+            auto added = prefab->addedObjects.find(entity);
+            if (added != prefab->addedObjects.end()) {
+                if (added->second.parent != NULL_ENTITY) {
+                    node["addedTo"] = added->second.parent;
+                }
+                if (added->second.childIndex >= 0) {
+                    node["childIndex"] = added->second.childIndex;
+                }
+            }
         }
         if (readNode["children"] && readNode["children"].IsSequence()) {
             for (YAML::Node child : node["children"]) {
@@ -525,12 +537,33 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
             }
         }
     };
-    if (!prefab->nestedInstances.empty()) {
+    if (!prefab->nestedInstances.empty() || !prefab->addedObjects.empty()) {
         for (YAML::Node member : membersNode) {
             addNestedBlocks(member);
         }
     }
     prefabNode["members"] = membersNode;
+
+    if (!prefab->stripped.empty()) {
+        YAML::Node strippedNode(YAML::NodeType::Sequence);
+        for (const auto& [id, source] : prefab->stripped) {
+            if (source.empty() || !prefab->isNestedRoot(source[0])) {
+                continue; // into a nested instance the prefab no longer has
+            }
+            YAML::Node entry;
+            entry["entity"] = id;
+            YAML::Node way(YAML::NodeType::Sequence);
+            way.SetStyle(YAML::EmitterStyle::Flow);
+            for (Entity step : source) {
+                way.push_back(step);
+            }
+            entry["source"] = way;
+            strippedNode.push_back(entry);
+        }
+        if (strippedNode.size() > 0) {
+            prefabNode["stripped"] = strippedNode;
+        }
+    }
     return prefabNode;
 }
 

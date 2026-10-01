@@ -167,7 +167,7 @@ namespace {
     // The asset layers of the instance rooted at `root`, innermost first: what each prefab
     // holding it (directly or further out) overrides of it
     std::vector<PrefabInstanceData*> assetLayersOf(editor::Project* project, std::map<std::filesystem::path, Prefab>& prefabAssets,
-            editor::SceneProject* sceneProject, Entity root) {
+            editor::SceneProject* sceneProject, Entity root, std::vector<Entity>* holderRoots = nullptr) {
         std::vector<OuterLink> links;
         Entity current = root;
         for (size_t depth = 0; depth < 64; depth++) {
@@ -186,6 +186,10 @@ namespace {
             }
             if (layer) {
                 layers.push_back(layer);
+                if (holderRoots) {
+                    // the layer's values are in the ids of the prefab of this instance
+                    holderRoots->push_back(links[j].instance->rootEntity);
+                }
             }
         }
         return layers;
@@ -215,16 +219,15 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
     scratch.takeComponents(registry, ref.registryEntity, Catalog::componentTypeToSignature(registry, type));
     scratch.takeState(registry, ref.registryEntity);
 
-    // References in prefab ids become this instance's
-    std::unordered_map<Entity, Entity> registryToLocal;
-    registryToLocal[ref.instance->rootRegistryEntity] = ref.instance->rootEntity;
-    for (const Prefab::EntityMember& member : ref.instance->members) {
-        registryToLocal[member.registryEntity] = member.localEntity;
-    }
-    remapEntityPropertiesInComponent(scratch.registry.get(), scratch.entity, type, {}, registryToLocal);
+    // References in prefab ids (stripped objects included) become this instance's
+    remapEntityPropertiesInComponent(scratch.registry.get(), scratch.entity, type, {}, getPrefabReferenceMap(sceneId, ref.instance->rootEntity));
 
-    // The layers between the prefab and this instance (when it is nested)
-    for (PrefabInstanceData* layer : assetLayersOf(this, prefabAssets, sceneProject, ref.instance->rootEntity)) {
+    // The layers between the prefab and this instance (when it is nested), their references
+    // in the ids of the prefab holding each made local
+    std::vector<Entity> holderRoots;
+    const std::vector<PrefabInstanceData*> layers = assetLayersOf(this, prefabAssets, sceneProject, ref.instance->rootEntity, &holderRoots);
+    for (size_t l = 0; l < layers.size(); l++) {
+        PrefabInstanceData* layer = layers[l];
         auto entry = layer->objects.find(ref.registryEntity);
         if (entry == layer->objects.end() || !entry->second.values.IsMap()) {
             continue;
@@ -236,6 +239,9 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
         }
         ScratchEntity layerValue;
         layerValue.decode(singleComponent(type, value));
+        if (layerValue.has(type)) {
+            remapEntityPropertiesInComponent(layerValue.registry.get(), layerValue.entity, type, {}, getPrefabReferenceMap(sceneId, holderRoots[l]));
+        }
         std::set<std::string> copied = names->second;
         copyProperties(layerValue, scratch.registry.get(), scratch.entity, type, copied, ref.path.string());
     }
@@ -491,22 +497,14 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
         return false;
     }
 
-    std::unordered_set<Entity> memberLocals;
-    memberLocals.insert(ref.instance->rootEntity);
-    for (const Prefab::EntityMember& member : ref.instance->members) {
-        memberLocals.insert(member.localEntity);
-    }
-
+    const Entity instanceRoot = ref.instance->rootEntity;
     if (target.empty() || target == ref.path) {
         Prefab& prefab = *ref.prefab;
         EntityRegistry* registry = prefab.registry.get();
+        // references into the instances nested in it are the prefab's (stripped objects)
         if (!hasComponent(registry, ref.registryEntity, type) ||
-            componentHasExternalEntityRef(scene, entity, type, memberLocals)) {
+            componentReferencesOutside(sceneId, instanceRoot, entity, type)) {
             return false; // a reference outside the instance cannot go into the shared Prefab
-        }
-        std::unordered_map<Entity, Entity> localToRegistry;
-        for (Entity local : memberLocals) {
-            localToRegistry[local] = ref.instance->getRegistryEntity(local);
         }
         if (whole) {
             ScratchEntity kept;
@@ -529,13 +527,20 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
                 Catalog::copyPropertyValue(scene, entity, registry, ref.registryEntity, type, property);
             }
         }
-        remapEntityPropertiesInComponent(registry, ref.registryEntity, type, properties, localToRegistry);
+        remapReferencesToPrefab(sceneId, instanceRoot, registry, ref.registryEntity, type, properties);
         recordNestedRootAssetOverride(prefab, ref.path, ref.registryEntity, type, properties);
         clearPropertyOverride(sceneId, entity, type, properties);
         prefab.isModified = true;
         const std::filesystem::path path = ref.path;
         refreshPrefabInstances(path);
     } else {
+        // the value as the target prefab holds it: references in its ids
+        bool outside = false;
+        const Entity holderRoot = findHolderInstanceRoot(sceneId, instanceRoot, target);
+        const YAML::Node value = holderRoot != NULL_ENTITY ? encodeComponentForPrefab(sceneId, holderRoot, entity, type, &outside) : YAML::Node();
+        if (!value || outside) {
+            return false;
+        }
         Prefab* targetPrefab = nullptr;
         PrefabInstanceData* layer = applyTargetLayer(sceneId, ref, target, &targetPrefab);
         if (!layer) {
@@ -549,7 +554,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
                 object.overrides.addProperty(type, property);
             }
         }
-        object.values["components"][componentKey(type)] = encodeComponent(scene, entity, type);
+        object.values["components"][componentKey(type)] = value;
         clearPropertyOverride(sceneId, entity, type, properties);
         targetPrefab->isModified = true;
         refreshPrefabInstances(target);
@@ -706,23 +711,24 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
         return false;
     }
     Scene* scene = sceneProject->scene;
+    const Entity instanceRoot = ref.instance->rootEntity;
     if (target.empty() || target == ref.path) {
-        std::unordered_set<Entity> memberLocals{ref.instance->rootEntity};
-        std::unordered_map<Entity, Entity> localToRegistry{{ref.instance->rootEntity, ref.instance->rootRegistryEntity}};
-        for (const Prefab::EntityMember& member : ref.instance->members) {
-            memberLocals.insert(member.localEntity);
-            localToRegistry[member.localEntity] = member.registryEntity;
-        }
-        if (componentHasExternalEntityRef(scene, entity, type, memberLocals)) {
+        bool outside = false;
+        const YAML::Node value = encodeComponentForPrefab(sceneId, instanceRoot, entity, type, &outside);
+        if (!value || outside) {
             return false;
         }
         Prefab& prefab = *ref.prefab;
-        ProjectUtils::addEntityComponent(prefab.registry.get(), ref.registryEntity, type, prefab.registryEntities,
-            YAML::Clone(encodeComponent(scene, entity, type)));
-        remapEntityPropertiesInComponent(prefab.registry.get(), ref.registryEntity, type, {}, localToRegistry);
+        ProjectUtils::addEntityComponent(prefab.registry.get(), ref.registryEntity, type, prefab.registryEntities, YAML::Clone(value));
         recordNestedRootAssetOverride(prefab, ref.path, ref.registryEntity, type, {});
         prefab.isModified = true;
     } else {
+        bool outside = false;
+        const Entity holderRoot = findHolderInstanceRoot(sceneId, instanceRoot, target);
+        const YAML::Node value = holderRoot != NULL_ENTITY ? encodeComponentForPrefab(sceneId, holderRoot, entity, type, &outside) : YAML::Node();
+        if (!value || outside) {
+            return false;
+        }
         Prefab* targetPrefab = nullptr;
         PrefabInstanceData* layer = applyTargetLayer(sceneId, ref, target, &targetPrefab);
         if (!layer) {
@@ -730,7 +736,7 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
         }
         PrefabInstanceData::Object& object = layerObject(layer, ref.registryEntity);
         object.overrides.addedComponents.insert(type);
-        object.values["components"][componentKey(type)] = encodeComponent(scene, entity, type);
+        object.values["components"][componentKey(type)] = value;
         targetPrefab->isModified = true;
     }
     it = ref.instance->overrides.find(entity);
@@ -928,12 +934,7 @@ void editor::Project::refreshPrefabInstances(const std::filesystem::path& filepa
             return;
         }
         // the ids are the file's, so the instances' members keep their registry entities
-        loaded.registry->setLastEntity(std::max(loaded.registry->getLastEntity(), prefab->registry ? prefab->registry->getLastEntity() : NULL_ENTITY));
-        prefab->registry = std::move(loaded.registry);
-        prefab->registryEntities = std::move(loaded.registryEntities);
-        prefab->root = loaded.root;
-        prefab->nestedInstances = std::move(loaded.nestedInstances);
-        prefab->needsUpgrade = loaded.needsUpgrade;
+        prefab->takeAssetData(std::move(loaded));
         prefab->isModified = false;
         for (auto& [sceneId, instances] : prefab->instances) {
             for (Prefab::Instance& instance : instances) {

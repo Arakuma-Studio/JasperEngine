@@ -32,6 +32,9 @@ namespace jasperengine::editor{
         bool addedToParentPrefab;
 
         bool quiet = false;
+        // Dropped on a GameObject of a prefab instance: Unity makes it a GameObject added to
+        // that instance (an override); Prefab Mode edits the prefab itself and asks for this
+        bool addToParentPrefab = false;
         bool hasPlacement = false;
         Vector3 placementPosition;
         Quaternion placementRotation;
@@ -51,6 +54,9 @@ namespace jasperengine::editor{
         // in the same spot
         void setPlacement(const Vector3& position, const Quaternion& rotation, const Vector3& scale);
         void setQuiet(bool quiet);
+        // The new instance becomes a GameObject of the prefab of the instance it is dropped
+        // on (nested in that prefab), not an added GameObject of that instance
+        void setAddToParentPrefab(bool add);
     };
 
 }

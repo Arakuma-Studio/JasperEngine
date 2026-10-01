@@ -7,9 +7,13 @@ GameObjects are matched by hierarchy path. Compared: name, state, parent, compon
 Stream encodes them, matrices and other derived fields included) and references (by target
 path, so entity ids may differ). --ignore-prefab-info leaves out the prefab link and the
 override bookkeeping (`prefab`, `overrides`), for a dump of an older editor; entity ids are
-compared only with --ids (member ids persisted across a save and load). Exit 1 on any
+compared only with --ids (member ids persisted across a save and load).
+--subtree=A:B compares the GameObjects below path A (A included) in the first dump with the
+ones below B in the second (two instances of one prefab): the roots' name, position,
+rotation and derived fields are left out, paths are relative to A and B. Exit 1 on any
 difference.
 """
+import copy
 import sys
 
 import yaml
@@ -37,7 +41,70 @@ def strip(node, ignore_prefab, ids):
     return node
 
 
+def drop_reference(components, key):
+    """Takes the raw id a `refs` key ("action.target", "mesh.submeshes[0].material.baseColorTexture") names."""
+    steps = []
+    for part in key.split("."):
+        name, _, rest = part.partition("[")
+        steps.append(name)
+        while rest:
+            index, _, rest = rest.partition("]")
+            steps.append(int(index))
+            rest = rest[1:] if rest.startswith("[") else rest
+    node = components
+    for step in steps[:-1]:
+        try:
+            node = node[step]
+        except (KeyError, IndexError, TypeError):
+            return
+    last = steps[-1]
+    if isinstance(node, dict) and last in node:
+        value = node[last]
+        if isinstance(value, dict) and "camera" in value:
+            value = dict(value)
+            value.pop("camera")
+            node[last] = value
+        else:
+            node.pop(last)
+
+
+def subtree(entities, root):
+    """The GameObjects below `root` (included), paths made relative to it ("<root>")."""
+    def rel(path):
+        if path == root:
+            return "<root>"
+        if isinstance(path, str) and path.startswith(root + "/"):
+            return "<root>" + path[len(root):]
+        return path
+    result = {}
+    for path, node in entities.items():
+        if path != root and not path.startswith(root + "/"):
+            continue
+        node = dict(node)
+        if "parent" in node:
+            node["parent"] = rel(node["parent"])
+        if isinstance(node.get("refs"), dict):
+            node["refs"] = {k: rel(v) for k, v in node["refs"].items()}
+            # the raw ids of what `refs` compares by path differ between two instances
+            comps = node["components"] = copy.deepcopy(node.get("components") or {})
+            for key in node["refs"]:
+                drop_reference(comps, key)
+        if path == root:
+            node.pop("name", None)
+            node.pop("parent", None)
+            comps = dict(node.get("components") or {})
+            if isinstance(comps.get("transform"), dict):
+                comps["transform"] = {k: v for k, v in comps["transform"].items() if k not in ("position", "rotation")}
+            node["components"] = comps
+        result[rel(path)] = node
+    return result
+
+
 def main():
+    pair = None
+    for a in sys.argv[1:]:
+        if a.startswith("--subtree="):
+            pair = a[len("--subtree="):].split(":", 1)
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     ignore_prefab = "--ignore-prefab-info" in sys.argv
     ids = "--ids" in sys.argv
@@ -45,6 +112,10 @@ def main():
     if len(args) != 2:
         sys.exit(__doc__)
     a, b = load(args[0]), load(args[1])
+    if pair:
+        ignored = ignored | DERIVED_FIELDS
+        a = {scene: subtree(entities, pair[0]) for scene, entities in a.items()}
+        b = {scene: subtree(entities, pair[1]) for scene, entities in b.items()}
     differences = 0
     for scene in sorted(set(a) | set(b)):
         ea, eb = a.get(scene), b.get(scene)

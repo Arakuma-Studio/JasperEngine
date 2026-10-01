@@ -31,6 +31,7 @@
 
 namespace jasperengine::editor{
     namespace prefabinternal { struct ScratchEntity; }
+    struct BakedPrefab;
 
     struct LocalBuildSettings;
 
@@ -219,6 +220,14 @@ namespace jasperengine::editor{
         Prefab::Instance instance;        // members, registry mapping and overrides
         bool hadComponent = false;
         PrefabComponent component;        // the root's PrefabComponent
+        // The instances nested in it as they were: unpacking makes what the prefab
+        // overrides of them their own overrides (Project::promoteNestedAssetData)
+        struct NestedState {
+            Entity root = NULL_ENTITY;
+            std::map<Entity, Prefab::ObjectOverrides> overrides;
+            std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removed;
+        };
+        std::vector<NestedState> nestedBefore;
     };
 
     // A GameObject of a prefab instance, at the level that owns its overrides: the instance
@@ -1343,11 +1352,85 @@ namespace jasperengine::editor{
         // An edit-shared change on an instance root: its properties that differ from the
         // prefab root's are overrides, the ones equal are not
         void syncRootPropertyOverrides(uint32_t sceneId, Entity root, ComponentType type, const std::vector<std::string>& properties);
-        // A prefab instance (rooted at localRoot) that became a nested one of `prefab` at
-        // registryRoot: what its scene data overrides goes into the prefab's asset-level
-        // data, out of the scene's (its added GameObjects stay the scene's)
-        void moveNestedInstanceDataToAsset(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryRoot,
-            SceneProject* sceneProject, Entity localRoot);
+        // Prefab instances (local root, registry entity in `prefab`) that became nested ones
+        // of `prefab`, whose instance is rooted at holderRoot: the GameObjects added to them
+        // in the scene (at any depth) become the prefab's (added GameObjects of those nested
+        // instances, PREFABS.md 12), what their scene data overrides becomes the prefab's
+        // asset-level data for them (references in the prefab's ids; what refers outside
+        // stays overridden in the scene), out of the scene's
+        void moveNestedInstancesToAsset(Prefab& prefab, const std::filesystem::path& prefabPath, SceneProject* sceneProject, Entity holderRoot,
+            const std::vector<Prefab::EntityMember>& nestedRoots);
+        // Components of the instance's GameObjects referring outside it (and the instances
+        // nested in it) become whole-component overrides: the prefab cannot hold them
+        void overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot);
+
+        // ---- Nested prefabs in assets, stripped objects (editor/project/PREFABS.md 12) ----
+
+        // A reference held by the prefab of the instance rooted at instanceRoot to the scene
+        // GameObject localTarget, in that prefab's ids: the registry entity of a GameObject of
+        // the instance (its root included), the stripped id (made when the prefab has none
+        // yet: the prefab is then modified) of a GameObject of an instance nested in it at
+        // any depth, NULL_ENTITY for anything else (outside: a prefab cannot hold it)
+        Entity makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget);
+        // The scene GameObject a reference of that prefab (a registry entity or a stripped
+        // id) means in the instance rooted at instanceRoot
+        Entity resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId);
+        // The references of a component of `registry` (the scene, a prefab registry holding a
+        // copy, or a scratch one), local ids of the scene, made the ids of the prefab of the
+        // instance rooted at instanceRoot (makePrefabReference), in place. `properties`
+        // limits it (empty: all). False when one pointed outside the instance (it is None
+        // now). Unchanged ids where `registry` already holds the prefab's are not expected.
+        bool remapReferencesToPrefab(uint32_t sceneId, Entity instanceRoot, EntityRegistry* registry, Entity entity, ComponentType type,
+            const std::vector<std::string>& properties = {});
+        // A component of a scene GameObject as the prefab of the instance rooted at
+        // instanceRoot stores it (references in its ids); `outside` reports a reference it
+        // could not hold (None in the result)
+        YAML::Node encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside = nullptr);
+        // Whether a component of a scene GameObject refers to something outside the instance
+        // rooted at instanceRoot and the instances nested in it (what no prefab can hold)
+        bool componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type);
+        // The root of the instance of `target` holding (at any depth) the instance rooted at
+        // instanceRoot (itself when it is one of `target`), NULL_ENTITY when none
+        Entity findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target);
+        // Registry entity (and stripped id) -> local entity of the instance rooted at instanceRoot
+        std::unordered_map<Entity, Entity> getPrefabReferenceMap(uint32_t sceneId, Entity instanceRoot);
+        // The instance whose root is `root` (of the prefab its PrefabComponent names)
+        Prefab::Instance* findInstanceRootedAt(SceneProject* sceneProject, Entity root, std::filesystem::path* path = nullptr);
+        // The scene GameObject a stripped object's way down names, from the holding
+        // instance's registry-to-local map
+        Entity resolveStrippedObject(SceneProject* sceneProject, const std::unordered_map<Entity, Entity>& registryToLocal, const std::vector<Entity>& source);
+        void addStrippedToMap(SceneProject* sceneProject, const Prefab& prefab, std::unordered_map<Entity, Entity>& registryToLocal);
+        // The local root of the instance nested in `instance` a nested data entry is for
+        Entity findNestedLocalRoot(SceneProject* sceneProject, const Prefab& prefab, const Prefab::Instance& instance, const PrefabInstanceData& entry);
+        // Import internals: a holding prefab's data for the instance rooted at nestedRoot
+        // (values in the holder's ids, made local by holderMap; the root's from the holder's
+        // registry entity holderEntity when given), and the scene's data and added
+        // GameObjects for an instance tree
+        void applyHolderData(SceneProject* sceneProject, Entity nestedRoot, const PrefabInstanceData& data, const std::unordered_map<Entity, Entity>& holderMap,
+            const EntityRegistry* holderRegistry, Entity holderEntity, bool skipRoot, size_t depth = 0);
+        void applySceneData(SceneProject* sceneProject, Entity instanceRoot, const PrefabInstanceData& data, size_t depth = 0);
+        void decodeSceneAddedGameObjects(SceneProject* sceneProject, std::vector<Entity>* entities, Entity instanceRoot, const PrefabInstanceData& data,
+            std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allResult, size_t depth = 0);
+        // What the prefabs holding the instance rooted at instanceRoot (outwards) override of
+        // some of its GameObjects (registry entities) and of some instances nested in it
+        void applyLayersAbove(SceneProject* sceneProject, Entity instanceRoot, const std::unordered_set<Entity>& registryEntities,
+            const std::vector<Prefab::EntityMember>& nestedRoots);
+        // Unpack of the instance rooted at instanceRoot (of `path`): what its prefab (and the
+        // prefabs it nests, down the chain) override of the instances nested in it becomes
+        // their own (scene) overrides and removed GameObjects, as Unity does; the GameObjects
+        // it added to them become theirs by themselves. `before` gets their previous state
+        // (repack puts it back); instances rooted in `skip` (unpacked too) are left alone.
+        void promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
+            std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip);
+        // Moves a GameObject at its place among its parent's children (-1: last)
+        static void placeAtChildIndex(Scene* scene, Entity parent, Entity local, int childIndex);
+        // The scene GameObjects of the instance rooted at instanceRoot and of every instance
+        // nested in it, at any depth (roots and members)
+        std::unordered_set<Entity> collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot);
+        // Prefab assets baked for the export: each prefab instantiated in a scratch scene
+        // (every layer applied, like the editor's instances), its GameObjects in
+        // build_prefab_* order (Factory::BakedPrefab)
+        std::map<std::filesystem::path, std::shared_ptr<BakedPrefab>> bakePrefabsForExport();
 
         //=== end Prefab part ===
 

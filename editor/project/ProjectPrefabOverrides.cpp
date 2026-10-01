@@ -230,6 +230,12 @@ std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(u
         }
     }
 
+    // What each prefab overrides of the instances nested in it becomes theirs (kept per root)
+    std::unordered_map<Entity, std::vector<PrefabUnpackRecord::NestedState>> nestedBefore;
+    for (Entity root : unpackRoots) {
+        promoteNestedAssetData(sceneId, *index.roots.at(root).path, root, nestedBefore[root], queued);
+    }
+
     records.reserve(unpackRoots.size());
     for (const std::filesystem::path* path : prefabPaths) {
         Prefab& prefab = prefabAssets.at(*path);
@@ -242,6 +248,7 @@ std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(u
                 record.path = *path;
                 record.index = i;
                 record.instance = std::move(instances[i]);
+                record.nestedBefore = std::move(nestedBefore[record.instance.rootEntity]);
                 records.push_back(std::move(record));
             } else {
                 if (kept != i) {
@@ -361,6 +368,13 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
                     *component = record.component;
                 } else {
                     scene->addComponent<PrefabComponent>(root, record.component);
+                }
+            }
+            // the instances nested in it get back the overrides they had
+            for (PrefabUnpackRecord::NestedState& nested : record.nestedBefore) {
+                if (Prefab::Instance* inner = findInstanceRootedAt(sceneProject, nested.root)) {
+                    inner->overrides = std::move(nested.overrides);
+                    inner->removed = std::move(nested.removed);
                 }
             }
         }

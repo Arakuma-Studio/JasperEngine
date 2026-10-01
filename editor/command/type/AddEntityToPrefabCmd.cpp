@@ -3,6 +3,7 @@
 
 #include "AddEntityToPrefabCmd.h"
 #include "util/ProjectUtils.h"
+#include "Stream.h"
 
 using namespace jasperengine;
 
@@ -29,6 +30,25 @@ editor::AddEntityToPrefabCmd::AddEntityToPrefabCmd(Project* project, uint32_t sc
 }
 
 bool editor::AddEntityToPrefabCmd::execute(){
+    nestedRoots.clear();
+    if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->scene) {
+        // the instance roots of the branch, its own included (nested ones are in their blocks)
+        std::vector<Entity> pending{entity};
+        for (size_t next = 0; next < pending.size(); next++) {
+            const Entity current = pending[next];
+            if (project->isPrefabInstanceRoot(sceneId, current)) {
+                nestedRoots.emplace_back(current, Stream::encodeEntity(current, sceneProject->scene, project, sceneProject));
+                continue;
+            }
+            auto transforms = sceneProject->scene->getComponentArray<Transform>();
+            for (size_t i = 0; i < transforms->size(); i++) {
+                if (transforms->getComponentFromIndex(i).parent == current) {
+                    pending.push_back(transforms->getEntity(i));
+                }
+            }
+        }
+    }
+
     bool result = project->addEntityToPrefab(sceneId, entity, parent, false);
 
     if (result){
@@ -40,6 +60,11 @@ bool editor::AddEntityToPrefabCmd::execute(){
 
 void editor::AddEntityToPrefabCmd::undo(){
     project->removeEntityFromPrefab(sceneId, entity, false);
+    if (SceneProject* sceneProject = project->getScene(sceneId)) {
+        for (const auto& [root, node] : nestedRoots) {
+            project->reimportPrefabInstance(sceneProject, root, node);
+        }
+    }
 
     if (hasTransform) {
         SceneProject* sceneProject = project->getScene(sceneId);

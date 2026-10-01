@@ -8,6 +8,7 @@
 #include "Catalog.h"
 #include "action/Ease.h"
 #include <functional>
+#include <memory>
 #include <string>
 #include <sstream>
 #include <filesystem>
@@ -46,6 +47,20 @@ namespace jasperengine::editor{
         std::vector<Entity> orderedMembers;
         // Entities the nested factory of each member appends, 0 for a plain member
         std::vector<size_t> nestedSizes;
+    };
+
+    // A prefab as its instances are, for the export: one instance of it made by the editor's
+    // import in a scratch scene (its nested prefabs at any depth, what it overrides of them,
+    // the GameObjects it adds to them, references into them resolved), so the generated
+    // build_prefab_* creates exactly what the editor shows (editor/project/PREFABS.md 12)
+    struct BakedPrefab {
+        std::shared_ptr<Scene> scene;
+        Entity root = NULL_ENTITY;
+        // The GameObjects in build_prefab_* member order: the prefab's own (registry order,
+        // getPrefabMemberEntities), then, for each of them that is a nested prefab root, that
+        // prefab's slots, recursively; NULL_ENTITY where a layer removed the GameObject (the
+        // slot is kept so a scene's member indices do not move)
+        std::vector<Entity> slots;
     };
 
     class Factory{
@@ -117,8 +132,9 @@ namespace jasperengine::editor{
     public:
         Factory();
 
-        // Registry members in build_prefab_* order, children of nested roots excluded
-        // (the prefab's root GameObject left out: it is the root build_prefab_* is given)
+        // Registry members in build_prefab_* order (the prefab's root GameObject left out: it is
+        // the root build_prefab_* is given). A nested root's children are GameObjects the prefab
+        // adds to that nested instance: members like any other.
         static std::vector<Entity> getPrefabMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities, Entity root = NULL_ENTITY);
 
         static std::string toIdentifier(const std::string& name);
@@ -138,14 +154,10 @@ namespace jasperengine::editor{
 
         static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
 
-        // prefabGuid: the asset GUID of a prefab path, empty for a prefab that is missing (its
-        // nested instances are then built as their root alone); not given, every nested
-        // prefab is taken as present
-        // root: the prefab's root GameObject. nestedRootOverrides: what this prefab overrides of
-        // the root of each prefab nested in it (Prefab::nestedInstances), by nested root
-        static std::string createPrefab(const std::filesystem::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath,
-            const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr, Entity root = NULL_ENTITY,
-            const std::map<Entity, PrefabObjectOverrides>& nestedRootOverrides = {});
+        // The source of a prefab's build_prefab_* / create_prefab_* functions from its baked
+        // instance. prefabGuid: the asset GUID of a prefab path (written on the bare root)
+        static std::string createPrefab(const std::filesystem::path& prefabPath, const BakedPrefab& baked, const fs::path& projectPath, const fs::path& generatedPath,
+            const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr);
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
         // Binds each camera-linked texture of the entities to its camera's framebuffer; with
         // namedCamerasOnly, only links to cameras that have a variable in entityVarNames

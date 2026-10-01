@@ -2,6 +2,7 @@
 """Prefab test projects for the prefab system (editor/project/PREFABS.md).
 
     tools/prefab-fixtures.py legacy <out-dir>
+    tools/prefab-fixtures.py nested <out-dir>     (see nested())
 
 `legacy` writes a project (FIXTURE: the TappyPlane fixture project, for its sprites) in the formats written before the real-root model (prefab
 files version 1 and 2, wrapper-root instances with whole-component overrides): a
@@ -183,7 +184,186 @@ def legacy(out):
     write_yaml(os.path.join(out, "Prefab Scene.scene"), scene)
 
 
+def camera_components(x=0.0, y=0.0):
+    return {
+        "transform": transform(x, y),
+        "camera": {"type": "camera_2d", "renderToTexture": True, "framebufferWidth": 256, "framebufferHeight": 256},
+    }
+
+
+def action_components(target=0):
+    return {"action": {"ownedTarget": False, "speed": 1, "state": "Stopped", "target": target}}
+
+
+def nested(out):
+    """A scene of plain GameObjects four levels deep (Forest > Tree > Branch > Leaf) and the
+    scene-dump ops that make prefabs of them bottom-up through the editor: each level is made
+    from a selection holding an instance of the one below with overrides of every kind
+    (properties, state, added and removed components, added and removed GameObjects) and
+    references into it (a camera texture link, action targets, joint bodies), so every level
+    of nesting holds asset-level data, stripped objects and added GameObjects. Then more
+    instances with scene overrides at every depth, references from the scene into deep
+    members and between instances, Create Prefab from a multi-selection of instances, and an
+    instance put into a prefab (Add to Prefab). Writes <out>/ (the project) and
+    <out>.ops/build.yaml."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-project"))
+    if not os.path.isdir(fixture):
+        sys.exit("needs the TappyPlane fixture project (build/fixture-project, or FIXTURE=<dir>)")
+    os.makedirs(out, exist_ok=True)
+    os.system('cp -r "%s/assets" "%s/"' % (fixture, out))
+    os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    project = yaml.safe_load(open(os.path.join(fixture, "project.yaml")))
+    project["name"] = "PrefabNested"
+    project["scenes"] = [{"filepath": "Nested Scene.scene"}]
+    project["startSceneId"] = 1
+    project.pop("standalonePrefabs", None)
+    write_yaml(os.path.join(out, "project.yaml"), project)
+
+    def sprite(texture, w, h, x=0.0, y=0.0, color=(1, 1, 1, 1), sx=1.0, sy=1.0):
+        return sprite_components(texture, w, h, x=x, y=y, color=color, sx=sx, sy=sy)
+
+    leaf = entity(1009, "Leaf", sprite("sprites/plane-sheet.png", 88, 73, x=0, y=180, color=(0.4, 1, 0.4, 1)), [
+        entity(1010, "Petal", sprite("sprites/rock.png", 30, 60, x=60, y=0, color=(1, 0.6, 0.8, 1))),
+        entity(1011, "Bud", dict(sprite("sprites/rock.png", 20, 40, x=-60, y=0, color=(1, 1, 0.4, 1)), **action_components())),
+        entity(1013, "Thorn", sprite("sprites/rock-down.png", 20, 30, x=0, y=-40)),
+        entity(1012, "LeafCam", camera_components(0, 0)),
+    ])
+    branch = entity(1006, "Branch", sprite("sprites/rock-down.png", 60, 140, x=120, y=150, color=(0.7, 0.5, 0.3, 1)), [
+        entity(1007, "Twig", sprite("sprites/rock.png", 30, 80, x=60, y=40)),
+        entity(1008, "Screen", sprite("sprites/ground.png", 120, 40, x=-80, y=40)),
+        leaf,
+    ])
+    tree = entity(1003, "Tree", sprite("sprites/rock.png", 120, 260, x=0, y=60), [
+        entity(1004, "Trunk", sprite("sprites/ground.png", 80, 40, x=0, y=-20, color=(0.5, 0.35, 0.2, 1))),
+        entity(1005, "Rope", {"transform": transform(-60, 100)}),
+        branch,
+    ])
+    forest = entity(1001, "Forest", sprite("sprites/ground.png", 400, 60, x=250, y=60), [
+        entity(1002, "Wind", dict({"transform": transform(0, 0)}, **action_components())),
+        tree,
+    ])
+    entities = [
+        forest,
+        entity(1020, "Pointer", action_components()),
+        entity(1021, "Cross", action_components()),
+        entity(1022, "Field", sprite("sprites/ground.png", 300, 30, x=900, y=30)),
+    ]
+
+    scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
+    scene["name"] = "Nested Scene"
+    scene["id"] = 1
+    scene.pop("childScenes", None)
+    scene.pop("cppScripts", None)
+    scene["prefabs"] = []
+    scene["entities"] = entities
+    write_yaml(os.path.join(out, "Nested Scene.scene"), scene)
+
+    F, T, B, L = "Forest", "Forest/Tree", "Forest/Tree/Branch", "Forest/Tree/Branch/Leaf"
+    color = "submeshes[0].material.baseColorFactor"
+    ops = [
+        # ---- Leaf, then an instance of it inside Branch with overrides of every kind ----
+        {"op": "createPrefab", "entity": L, "path": "prefabs/Leaf.prefab"},
+        {"op": "dump", "out": "@/0-leaf.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Leaf.prefab", "below": True},
+        {"op": "dump", "out": "@/0-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Leaf 2"},
+        {"op": "set", "entity": L + "/Petal", "component": "mesh", "property": color, "value": [1, 0, 0, 1], "shared": False},
+        {"op": "recordProperty", "entity": L + "/Petal", "component": "mesh", "properties": [color]},
+        {"op": "setStateLocal", "entity": L + "/Bud", "layer": 2},
+        {"op": "recordState", "entity": L + "/Bud", "state": 8},
+        {"op": "removeLocalComponent", "entity": L + "/Bud", "component": "action"},
+        {"op": "recordRemovedComponent", "entity": L + "/Bud", "component": "action"},
+        {"op": "addLocalComponent", "entity": L + "/Petal", "component": "action"},
+        {"op": "recordAddedComponent", "entity": L + "/Petal", "component": "action"},
+        {"op": "setRef", "entity": L + "/Petal", "component": "action", "property": "target", "target": L + "/LeafCam", "shared": False},
+        {"op": "delete", "entity": L + "/Thorn"},
+        {"op": "create", "entity": L + "/Petal", "name": "Dew"},
+        # references from Branch into the Leaf instance
+        {"op": "setRef", "entity": B + "/Screen", "component": "mesh", "property": "submeshes[0].material.baseColorTexture", "target": L + "/LeafCam"},
+        {"op": "addComponent", "entity": B + "/Twig", "component": "action"},
+        {"op": "setRef", "entity": B + "/Twig", "component": "action", "property": "target", "target": L + "/Petal"},
+        {"op": "dump", "out": "@/1-before-branch.yaml"},
+        {"op": "createPrefab", "entity": B, "path": "prefabs/Branch.prefab"},
+        {"op": "dump", "out": "@/2-branch.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Branch.prefab", "below": True},
+        {"op": "dump", "out": "@/2-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Branch 2"},
+
+        # ---- an instance of Branch inside Tree with overrides at both of its levels ----
+        {"op": "set", "entity": B + "/Twig", "component": "mesh", "property": color, "value": [0, 0, 1, 1], "shared": False},
+        {"op": "recordProperty", "entity": B + "/Twig", "component": "mesh", "properties": [color]},
+        {"op": "set", "entity": L + "/Petal", "component": "transform", "property": "scale", "value": [2, 2, 1], "shared": False},
+        {"op": "recordProperty", "entity": L + "/Petal", "component": "transform", "properties": ["scale"]},
+        {"op": "delete", "entity": L + "/Bud"},
+        {"op": "create", "entity": L + "/Petal/Dew", "name": "Moss"},
+        {"op": "create", "entity": B + "/Twig", "name": "Knot"},
+        {"op": "addComponent", "entity": T + "/Rope", "component": "joint2d"},
+        {"op": "setRef", "entity": T + "/Rope", "component": "joint2d", "property": "bodyA", "target": B + "/Twig"},
+        {"op": "setRef", "entity": T + "/Rope", "component": "joint2d", "property": "bodyB", "target": L + "/Petal"},
+        {"op": "dump", "out": "@/3-before-tree.yaml"},
+        {"op": "createPrefab", "entity": T, "path": "prefabs/Tree.prefab"},
+        {"op": "dump", "out": "@/4-tree.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Tree.prefab", "below": True},
+        {"op": "dump", "out": "@/4-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Tree 2"},
+
+        # ---- an instance of Tree inside Forest: overrides three levels down ----
+        {"op": "setStateLocal", "entity": L + "/Petal", "tag": "Enemy"},
+        {"op": "recordState", "entity": L + "/Petal", "state": 4},
+        {"op": "setStateLocal", "entity": B + "/Screen", "active": False},
+        {"op": "recordState", "entity": B + "/Screen", "state": 2},
+        {"op": "set", "entity": T + "/Trunk", "component": "transform", "property": "scale", "value": [1.5, 1, 1], "shared": False},
+        {"op": "recordProperty", "entity": T + "/Trunk", "component": "transform", "properties": ["scale"]},
+        {"op": "delete", "entity": B + "/Twig/Knot"},
+        {"op": "create", "entity": L, "name": "Nest"},
+        {"op": "setRef", "entity": F + "/Wind", "component": "action", "property": "target", "target": L + "/Petal/Dew/Moss"},
+        {"op": "dump", "out": "@/5-before-forest.yaml"},
+        {"op": "createPrefab", "entity": F, "path": "prefabs/Forest.prefab"},
+        {"op": "dump", "out": "@/6-forest.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Forest.prefab", "below": True},
+        {"op": "dump", "out": "@/6-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Forest 2"},
+
+        # ---- the scene: references into deep members, overrides at every depth ----
+        {"op": "setRef", "entity": "Pointer", "component": "action", "property": "target", "target": L + "/Petal"},
+        {"op": "set", "entity": L + "/LeafCam", "component": "transform", "property": "position", "value": [5, 5, 0], "shared": False},
+        {"op": "recordProperty", "entity": L + "/LeafCam", "component": "transform", "properties": ["position"]},
+        {"op": "create", "entity": T + "/Trunk", "name": "Squirrel"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Forest.prefab", "below": True},
+        {"op": "set", "entity": "Field/Forest 2/Tree/Branch/Leaf/Petal", "component": "mesh", "property": color, "value": [0, 1, 1, 1], "shared": False},
+        {"op": "recordProperty", "entity": "Field/Forest 2/Tree/Branch/Leaf/Petal", "component": "mesh", "properties": [color]},
+        {"op": "delete", "entity": "Field/Forest 2/Tree/Branch/Leaf/Nest"},
+        {"op": "setRef", "entity": "Cross", "component": "action", "property": "target", "target": "Field/Forest 2/Tree/Branch/Twig"},
+        {"op": "addLocalComponent", "entity": F + "/Wind", "component": "joint2d"},
+        {"op": "recordAddedComponent", "entity": F + "/Wind", "component": "joint2d"},
+        {"op": "setRef", "entity": F + "/Wind", "component": "joint2d", "property": "bodyA", "target": "Field/Forest 2/Tree/Trunk", "shared": False},
+
+        # ---- Create Prefab from a multi-selection of instances (one original each) ----
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Leaf.prefab"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Branch.prefab"},
+        {"op": "set", "entity": "Leaf 2", "component": "transform", "property": "position", "value": [700, 300, 0], "shared": False},
+        {"op": "set", "entity": "Branch 2", "component": "transform", "property": "position", "value": [900, 300, 0], "shared": False},
+        {"op": "set", "entity": "Branch 2/Leaf/Petal", "component": "mesh", "property": color, "value": [1, 1, 1, 0.5], "shared": False},
+        {"op": "recordProperty", "entity": "Branch 2/Leaf/Petal", "component": "mesh", "properties": [color]},
+        {"op": "createPrefabs", "entity": "Field", "entities": ["Leaf 2", "Branch 2"], "dir": "prefabs/multi"},
+
+        # ---- an instance put into a prefab (Add to Prefab) ----
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Leaf.prefab"},
+        {"op": "set", "entity": "Leaf 3", "component": "transform", "property": "position", "value": [-150, 200, 0], "shared": False},
+        {"op": "set", "entity": "Leaf 3/Bud", "component": "transform", "property": "scale", "value": [3, 3, 1], "shared": False},
+        {"op": "recordProperty", "entity": "Leaf 3/Bud", "component": "transform", "properties": ["scale"]},
+        {"op": "create", "entity": "Leaf 3/Petal", "name": "Drop"},
+        {"op": "addToPrefab", "entity": "Leaf 3", "parent": T},
+        {"op": "dump", "out": "@/7-final.yaml"},
+        {"op": "bake", "out": "@/bake"},
+        {"op": "save"},
+    ]
+    os.makedirs(out + ".ops", exist_ok=True)
+    write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy",):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "nested"):
         sys.exit(__doc__)
     globals()[sys.argv[1]](sys.argv[2])

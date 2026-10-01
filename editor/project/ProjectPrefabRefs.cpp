@@ -6,8 +6,11 @@
 
 #include "Project.h"
 #include "ProjectPrefabInternal.h"
+#include "Out.h"
 #include "util/CameraTextureLink.h"
 #include "texture/Texture.h"
+
+#include <filesystem>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -164,6 +167,194 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
 
         remapEntityRef(registry, property, entityMap, true);
     }
+}
+
+// ---- References into nested prefabs: stripped objects (PREFABS.md 12) ----
+
+std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot) {
+    std::unordered_set<Entity> objects;
+    SceneProject* sceneProject = getScene(sceneId);
+    std::vector<Entity> pending{instanceRoot};
+    for (size_t next = 0; next < pending.size() && next < 100000; next++) {
+        const Prefab::Instance* instance = findInstanceRootedAt(sceneProject, pending[next]);
+        if (!instance) {
+            continue;
+        }
+        objects.insert(instance->rootEntity);
+        for (const Prefab::EntityMember& member : instance->members) {
+            if (objects.insert(member.localEntity).second) {
+                pending.push_back(member.localEntity);
+            }
+        }
+    }
+    return objects;
+}
+
+namespace {
+
+    // The way from `instance` down to `target` (registry entities: the nested roots, then
+    // the GameObject in the innermost prefab); `instance`'s own GameObjects give a way of one
+    bool findWayDown(editor::Project* project, editor::SceneProject* sceneProject, const editor::Prefab::Instance& instance, Entity target,
+            std::vector<Entity>& way, size_t depth) {
+        const Entity own = instance.getRegistryEntity(target);
+        if (own != NULL_ENTITY) {
+            way.push_back(own);
+            return true;
+        }
+        if (depth > 64) {
+            return false;
+        }
+        for (const editor::Prefab::EntityMember& member : instance.members) {
+            const editor::Prefab::Instance* nested = project->findInstanceRootedAt(sceneProject, member.localEntity);
+            if (!nested) {
+                continue;
+            }
+            way.push_back(member.registryEntity);
+            if (findWayDown(project, sceneProject, *nested, target, way, depth + 1)) {
+                return true;
+            }
+            way.pop_back();
+        }
+        return false;
+    }
+
+    Entity referenceTarget(const editor::PropertyData& property, bool& crossScene) {
+        crossScene = false;
+        if (!property.ref) {
+            return NULL_ENTITY;
+        }
+        if (property.type == editor::PropertyType::EntityReference) {
+            const EntityReference* ref = static_cast<const EntityReference*>(property.ref);
+            if (ref->sceneId != 0) {
+                crossScene = ref->entity != NULL_ENTITY;
+                return NULL_ENTITY;
+            }
+            return ref->entity;
+        }
+        if (property.type == editor::PropertyType::Entity) {
+            return *static_cast<const Entity*>(property.ref);
+        }
+        if (property.type == editor::PropertyType::Texture) {
+            return editor::CameraTextureLink::parse(static_cast<const Texture*>(property.ref)->getId());
+        }
+        return NULL_ENTITY;
+    }
+
+}
+
+Entity editor::Project::makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget) {
+    SceneProject* sceneProject = getScene(sceneId);
+    std::filesystem::path path;
+    const Prefab::Instance* instance = findInstanceRootedAt(sceneProject, instanceRoot, &path);
+    Prefab* prefab = instance ? getPrefab(path) : nullptr;
+    if (!prefab || localTarget == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    std::vector<Entity> way;
+    if (!findWayDown(this, sceneProject, *instance, localTarget, way, 0)) {
+        return NULL_ENTITY;
+    }
+    if (way.size() == 1) {
+        return way[0];
+    }
+    Entity id = prefab->findStripped(way);
+    if (id == NULL_ENTITY) {
+        id = prefab->addStripped(way);
+        prefab->isModified = true;
+    }
+    return id;
+}
+
+Entity editor::Project::resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId) {
+    const std::unordered_map<Entity, Entity> map = getPrefabReferenceMap(sceneId, instanceRoot);
+    auto it = map.find(prefabId);
+    return it != map.end() ? it->second : NULL_ENTITY;
+}
+
+bool editor::Project::remapReferencesToPrefab(uint32_t sceneId, Entity instanceRoot, EntityRegistry* registry, Entity entity, ComponentType type,
+        const std::vector<std::string>& properties) {
+    if (!registry || !registry->isEntityCreated(entity)) {
+        return true;
+    }
+    bool inside = true;
+    std::unordered_map<Entity, Entity> map;
+    for (auto& [propertyName, property] : Catalog::findEntityProperties(registry, entity, type)) {
+        if (!properties.empty() && !propertyRequested(propertyName, properties)) {
+            continue;
+        }
+        bool crossScene = false;
+        const Entity target = referenceTarget(property, crossScene);
+        if (crossScene) {
+            inside = false;
+        }
+        if (target == NULL_ENTITY || map.count(target)) {
+            continue;
+        }
+        const Entity id = makePrefabReference(sceneId, instanceRoot, target);
+        if (id != NULL_ENTITY) {
+            map[target] = id;
+        } else {
+            inside = false;
+        }
+    }
+    remapEntityPropertiesInComponent(registry, entity, type, properties, map);
+    return inside;
+}
+
+YAML::Node editor::Project::encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (outside) {
+        *outside = false;
+    }
+    if (!sceneProject || !sceneProject->scene || !prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
+        return YAML::Node();
+    }
+    prefabinternal::ScratchEntity scratch;
+    scratch.takeComponents(sceneProject->scene, entity, Catalog::componentTypeToSignature(sceneProject->scene, type));
+    const bool inside = remapReferencesToPrefab(sceneId, instanceRoot, scratch.registry.get(), scratch.entity, type);
+    if (outside) {
+        *outside = !inside;
+    }
+    return prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
+}
+
+bool editor::Project::componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return false;
+    }
+    return componentHasExternalEntityRef(sceneProject->scene, entity, type, collectInstanceTreeObjects(sceneId, instanceRoot));
+}
+
+Entity editor::Project::findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target) {
+    SceneProject* sceneProject = getScene(sceneId);
+    Entity current = instanceRoot;
+    for (size_t depth = 0; depth < 64 && current != NULL_ENTITY; depth++) {
+        std::filesystem::path path;
+        if (!findInstanceRootedAt(sceneProject, current, &path)) {
+            return NULL_ENTITY;
+        }
+        if (path == target) {
+            return current;
+        }
+        Entity holder = NULL_ENTITY;
+        for (auto& [otherPath, other] : prefabAssets) {
+            auto sceneIt = other.instances.find(sceneId);
+            if (sceneIt == other.instances.end()) continue;
+            for (const Prefab::Instance& instance : sceneIt->second) {
+                for (const Prefab::EntityMember& member : instance.members) {
+                    if (member.localEntity == current) {
+                        holder = instance.rootEntity;
+                        break;
+                    }
+                }
+                if (holder != NULL_ENTITY) break;
+            }
+            if (holder != NULL_ENTITY) break;
+        }
+        current = holder;
+    }
+    return NULL_ENTITY;
 }
 
 void editor::Project::overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance) {

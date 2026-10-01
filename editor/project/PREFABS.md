@@ -3,8 +3,10 @@
 Developer notes for the prefab system (`editor/project/ProjectPrefab*.cpp`,
 `editor/StreamPrefab.cpp`, `editor/util/Prefab.*`, `editor/util/AssetDatabase.*`).
 Sections 1-5: files, identity, GUIDs, Missing Prefab (A1). Sections 6-11: the real root,
-the override model v2 and its APIs (A2). `tools/prefab-fixtures.py` makes test projects,
-`jasperengine-editor scene-dump --project <dir> [--save]` dumps what loading them gives.
+the override model v2 and its APIs (A2). Section 12: nested prefabs in assets, stripped
+objects (references into nested prefabs), the layered import and the baked export (B).
+`tools/prefab-fixtures.py` makes test projects, `jasperengine-editor scene-dump --project
+<dir> [--save] [--ops <file>]` dumps what loading them gives.
 Read this before changing how prefabs are identified, stored or loaded.
 
 ## 1. Prefab file format (version 3)
@@ -22,13 +24,24 @@ members:                                  # the root first; GameObjects without 
     components: {...}
     children:
       - type: Entity
-        entity: 1004                      # a nested prefab instance: its root only, no children,
-        name: Wheel                       # its components as this prefab has them,
-        components: {prefab: {name, path, guid}, transform: {...}, ...}
-        prefabInstance: {...}             # and what this prefab overrides of it (section 7)
+        entity: 1004                      # a nested prefab instance: its root (its GameObjects
+        name: Wheel                       # are the nested prefab's), its components as this
+        components: {prefab: {name, path, guid}, transform: {...}, ...}   # prefab has them,
+        prefabInstance: {...}             # what this prefab overrides of it (section 7)
+        children:                         # and the GameObjects this prefab adds to it (12)
+          - type: Entity
+            entity: 1010
+            addedTo: 1012                 # below that nested GameObject (a stripped id)
+            childIndex: 1                 # at that place among its children
+            name: Flag
+            components: {...}
+stripped:                                 # GameObjects of nested instances it refers to (12)
+  - entity: 1012
+    source: [1004, 2003]                  # nested root here, ..., the GameObject's id inside
 ```
 
-- The header is always written (`Project::encodePrefabNode`).
+- The header is always written (`Project::encodePrefabNode`). `stripped` only when the
+  prefab has some.
 - Version 2 (A1) had the header but the old wrapper-root model; version 1 (no header) is
   the root entity node itself (`type: Entity ...`) or `{type: Prefab, members: [...]}`.
   The project-load scan inserts a `guid:` line into version 1 files and changes nothing
@@ -217,14 +230,17 @@ Everything else on the root is asset data, overridable like on any GameObject.
   `CreatePrefabCmd` creates them as one undo step. A selected prefab instance root is
   unpacked first and becomes an original prefab (Unity's "Original Prefab"; nested
   instances inside stay nested; undo repacks it). A GameObject of an instance (a member)
-  is refused (unpack the instance first). Prefab instances nested in the selection: what
-  their scene data overrides becomes the new prefab's asset-level data
-  (`moveNestedInstanceDataToAsset`; their added GameObjects stay the scene's; undo puts
-  their scene data back). The same happens when a prefab instance is put into a prefab
-  (`addEntityToPrefab`).
+  is refused (unpack the instance first). Prefab instances nested in the selection keep
+  everything the scene had for them, as the new prefab's: their overrides at every depth
+  become its asset-level data, the GameObjects added to them its added GameObjects, the
+  references into them its stripped objects (section 12, `moveNestedInstancesToAsset`;
+  undo puts their scene data back). The same happens when a prefab instance is put into a
+  prefab (`addEntityToPrefab`, `AddEntityToPrefabCmd` undoes it the same way).
 - **Drop a prefab** (`ImportPrefabCmd`): the new root has only its PrefabComponent and the
   prefab root's name (made unique); the import gives it the prefab root's components, at the
-  prefab root's position (Unity); dropped on a parent it keeps that local placement.
+  prefab root's position (Unity); dropped on a parent it keeps that local placement. Dropped
+  on a GameObject of an instance it is a GameObject added to that instance (Unity); only
+  `setAddToParentPrefab(true)` (Prefab Mode) nests it in that instance's prefab.
 - **Edit-shared editing on the root** (today's Inspector default, kept until C switches to
   Unity semantics): root edits stay per-instance as before, now recorded as overrides:
   `prefabPropertyChanged` on a root records the properties that differ from the prefab's
@@ -267,7 +283,9 @@ Everything else on the root is asset data, overridable like on any GameObject.
   GameObjects below the root or a member that are not members (unchanged).
 - `Prefab::nestedInstances`: per nested root registry entity, the **asset-level** data of
   that nested instance (what this prefab overrides of it): a `PrefabInstanceData`
-  (section 8), written as the nested root's `prefabInstance` block in the prefab file.
+  (section 8), written as the nested root's `prefabInstance` block in the prefab file. Its
+  values' references are in **this prefab's** ids (its registry entities and stripped
+  ids, section 12), at any depth of `nested`.
 
 ### `PrefabInstanceData` (the serialized form, `editor/util/Prefab.h`)
 
@@ -325,7 +343,9 @@ root's registry entity in this prefab; to any depth), `legacy`.
 - **Prefab files**: the nested root's node carries the same block (without `version`,
   `memberIds` and `addedGameObjects`): what that prefab overrides of the nested instance.
   The nested root's own values in the prefab registry play the root node's part (its
-  default overrides and overridden properties are read from it).
+  default overrides and overridden properties are read from it). The GameObjects a prefab
+  adds to a nested instance are its own registry entities, the nested root's `children`
+  (section 12).
 - A Missing Prefab record made by the import (a nested one, a cycle) holds
   `{prefabInstance: {..., legacyRoot: true}}` for data read from the older keys.
 - **Legacy reader** (no `prefabInstance` key): `prefabOverrides` entries

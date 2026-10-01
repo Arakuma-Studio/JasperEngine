@@ -199,7 +199,34 @@ size_t editor::Project::relinkMissingPrefabs() {
         }
 
         bool changed = false;
+        // A Missing Prefab nested in a live instance comes back with the instance holding it
+        // built again: the GameObjects the prefabs above add to it go below their nested
+        // parents, their references into it resolve (stripped objects, PREFABS.md 12)
+        std::vector<Entity> outerRoots;
         for (Entity root : roots) {
+            if (!getMissingPrefab(sceneProject.id, root)) {
+                continue;
+            }
+            const PrefabComponent& reference = scene->getComponent<PrefabComponent>(root);
+            if (resolvePrefabPath(reference.guid, reference.path).empty()) {
+                continue;
+            }
+            const Entity outer = getOutermostPrefabRoots(sceneProject.id, {root})[0];
+            if (outer != NULL_ENTITY && outer != root && std::find(outerRoots.begin(), outerRoots.end(), outer) == outerRoots.end()) {
+                outerRoots.push_back(outer);
+            }
+        }
+        for (Entity outer : outerRoots) {
+            if (reimportPrefabInstance(&sceneProject, outer, YAML::Node())) {
+                changed = true;
+            }
+        }
+        for (Entity root : roots) {
+            if (!outerRoots.empty() && scene->isEntityCreated(root) && isPrefabInstanceRoot(sceneProject.id, root)) {
+                sceneProject.missingPrefabs.erase(root); // relinked with its holder
+                relinked++;
+                continue;
+            }
             if (!getMissingPrefab(sceneProject.id, root)) {
                 sceneProject.missingPrefabs.erase(root); // its root is gone or changed
                 continue;

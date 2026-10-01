@@ -3549,24 +3549,28 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     node["alphaMode"] = materialAlphaModeToString(material.alphaMode);
     node["emissiveFactor"] = encodeVector3(material.emissiveFactor);
 
-    // Encode textures using the helper method
-    if (!material.baseColorTexture.empty()) {
+    // Encode textures using the helper method. A camera link is one even unbound (a prefab
+    // registry, its camera a stripped object or not resolved yet)
+    auto present = [](const Texture& texture) {
+        return !texture.empty() || CameraTextureLink::isCameraTexture(texture);
+    };
+    if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);
     }
 
-    if (!material.emissiveTexture.empty()) {
+    if (present(material.emissiveTexture)) {
         node["emissiveTexture"] = encodeTexture(material.emissiveTexture, embedTextureData);
     }
 
-    if (!material.metallicRoughnessTexture.empty()) {
+    if (present(material.metallicRoughnessTexture)) {
         node["metallicRoughnessTexture"] = encodeTexture(material.metallicRoughnessTexture, embedTextureData);
     }
 
-    if (!material.occlusionTexture.empty()) {
+    if (present(material.occlusionTexture)) {
         node["occlusionTexture"] = encodeTexture(material.occlusionTexture, embedTextureData);
     }
 
-    if (!material.normalTexture.empty()) {
+    if (present(material.normalTexture)) {
         node["normalTexture"] = encodeTexture(material.normalTexture, embedTextureData);
     }
 
