@@ -206,8 +206,8 @@ void editor::ModelClearCmd::unparkEntities(SceneProject* sceneProject){
 
 void editor::ModelClearCmd::overrideInPrefab(Entity target, ComponentType type){
     Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, target));
-    // A prefab root is not in the Prefab: its components are the instance's already
-    if (!prefab || prefab->getRegistryEntity(sceneId, target) == NULL_ENTITY) {
+    // The root's included: its components are the prefab root GameObject's
+    if (!prefab || prefab->getObjectRegistryEntity(sceneId, target) == NULL_ENTITY) {
         return;
     }
     prefabOverrides.push_back({target, type, prefab->hasComponentOverride(sceneId, target, type)});

@@ -14,23 +14,37 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor{
 
+    // Creates prefabs from GameObjects, one per root GameObject (Unity's way when several are
+    // dragged into the Project window), as one undo step. Each selected root becomes the root
+    // of its prefab and of the instance it turns into. A root that is a prefab instance root
+    // is unpacked first (Unity's "Original Prefab"): the new prefab holds its GameObjects,
+    // its nested instances staying nested.
     class CreatePrefabCmd: public Command{
 
     private:
+        struct Item {
+            fs::path filepath;
+            YAML::Node prefabNode;   // the GameObject (with GameObjects without a Transform)
+            std::string guid;        // the asset GUID the first execute gave the file, kept by a redo
+            bool created = false;
+            // An instance root selected: its unpack, put back by the undo
+            std::vector<PrefabUnpackRecord> unpacked;
+            // The prefab instances nested in the selection, as they were (their overrides
+            // become the new prefab's)
+            std::vector<std::pair<Entity, YAML::Node>> nestedRoots;
+        };
+
         Project* project;
         uint32_t sceneId;
-        fs::path filepath;
-        YAML::Node prefabNode; // Optional: if provided, use this instead of encoding
-        std::string guid;      // the asset GUID the first execute gave the file, kept by a redo
+        std::vector<Item> items;
 
         // For undo
         bool wasModified;
         std::vector<Entity> lastSelected;
-        YAML::Node savedEntityNode;
-        bool wasSuccessful;
 
     public:
         CreatePrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& prefabNode);
+        CreatePrefabCmd(Project* project, uint32_t sceneId, const std::vector<std::pair<fs::path, YAML::Node>>& prefabs);
 
         bool execute() override;
         void undo() override;

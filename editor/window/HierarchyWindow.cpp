@@ -1223,7 +1223,9 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
     } else {
         // Embed the full export data (including virtual action children) in the entity payload.
         // Hierarchy uses the EntityPayload header for reparenting; Resources uses the YAML tail.
-        entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene);
+        // With the project: prefab instances in it stay instances (their members are not
+        // copied as plain GameObjects).
+        entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene, project, sceneProject);
     }
 
     std::string yamlString = YAML::Dump(entityData);

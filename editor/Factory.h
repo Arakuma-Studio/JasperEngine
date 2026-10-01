@@ -23,9 +23,15 @@ namespace jasperengine::editor{
 
     class Project;
 
+    // An instance's overrides of one of its GameObjects (not its root): the scene's values
+    // of what it overrides go over what build_prefab_* made
     struct PrefabOverrideInfo {
         Entity sceneEntity;       // entity in the scene with override data
+        // components with any property overridden: assigned whole from the scene
         std::vector<ComponentType> overriddenComponents;
+        std::vector<ComponentType> addedComponents;
+        std::vector<ComponentType> removedComponents;
+        uint8_t state = 0;        // PrefabObjectOverrides::State bits
     };
 
     struct PrefabInstanceInfo {
@@ -33,6 +39,9 @@ namespace jasperengine::editor{
         Entity rootEntity;
         std::set<Entity> memberEntities;
         std::vector<PrefabOverrideInfo> overrides;
+        // Components of the prefab's root GameObject the instance root removed: the root is
+        // a scene entity with its own components, which build_prefab_* only completes
+        std::vector<ComponentType> rootRemovedComponents;
         // Members in the order build_prefab_* appends them, NULL_ENTITY when missing here
         std::vector<Entity> orderedMembers;
         // Entities the nested factory of each member appends, 0 for a plain member
@@ -102,13 +111,15 @@ namespace jasperengine::editor{
 
         static std::string beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName);
         static void addComponentCode(std::ostringstream& code, const std::string& ind, const std::string& sceneName, const std::string& entityName, Entity entity, const std::string& componentType, const std::string& varName, bool assignExisting = false);
+        static std::string guardComponentCode(ComponentType type, const std::string& code);
         static std::string guardPhysicsCode(const std::string& code, const char* backendMacro);
 
     public:
         Factory();
 
         // Registry members in build_prefab_* order, children of nested roots excluded
-        static std::vector<Entity> getPrefabMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities);
+        // (the prefab's root GameObject left out: it is the root build_prefab_* is given)
+        static std::vector<Entity> getPrefabMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities, Entity root = NULL_ENTITY);
 
         static std::string toIdentifier(const std::string& name);
         // C++ string literal of the value, quotes included
@@ -130,8 +141,11 @@ namespace jasperengine::editor{
         // prefabGuid: the asset GUID of a prefab path, empty for a prefab that is missing (its
         // nested instances are then built as their root alone); not given, every nested
         // prefab is taken as present
+        // root: the prefab's root GameObject. nestedRootOverrides: what this prefab overrides of
+        // the root of each prefab nested in it (Prefab::nestedInstances), by nested root
         static std::string createPrefab(const std::filesystem::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath,
-            const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr);
+            const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr, Entity root = NULL_ENTITY,
+            const std::map<Entity, PrefabObjectOverrides>& nestedRootOverrides = {});
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
         // Binds each camera-linked texture of the entities to its camera's framebuffer; with
         // namedCamerasOnly, only links to cameras that have a variable in entityVarNames

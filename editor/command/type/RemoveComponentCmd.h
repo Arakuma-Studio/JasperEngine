@@ -20,6 +20,9 @@ namespace jasperengine::editor {
         Entity entity = NULL_ENTITY;
         YAML::Node oldComponent; // For no shared entities and no override components
         bool hasOverride = false;
+        std::set<std::string> overriddenProperties; // what the instance overrode of it
+        bool recordedRemoval = false;               // a removed component override was recorded
+        bool wasAdded = false;                      // it was a component the instance added
         ComponentRecovery recovery; // For shared entities
     };
 

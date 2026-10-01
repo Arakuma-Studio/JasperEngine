@@ -1305,7 +1305,7 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
         subtreeSizes[path] = 0; // also stops a cycle
         EntityRegistry* registry = it->second.registry.get();
         size_t total = 0;
-        for (Entity member : Factory::getPrefabMemberEntities(registry, it->second.registryEntities)) {
+        for (Entity member : Factory::getPrefabMemberEntities(registry, it->second.registryEntities, it->second.root)) {
             total++;
             PrefabComponent* bc = registry->findComponent<PrefabComponent>(member);
             if (bc && !bc->path.empty()) total += self(self, bc->path);
@@ -1325,29 +1325,30 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
                     info.memberEntities.insert(member.localEntity);
                 }
                 if (prefab.registry) {
-                    for (Entity regEntity : Factory::getPrefabMemberEntities(prefab.registry.get(), prefab.registryEntities)) {
+                    for (Entity regEntity : Factory::getPrefabMemberEntities(prefab.registry.get(), prefab.registryEntities, prefab.root)) {
                         info.orderedMembers.push_back(prefab.getLocalEntity(sceneId, instance.instanceId, regEntity));
                         PrefabComponent* bc = prefab.registry->findComponent<PrefabComponent>(regEntity);
                         info.nestedSizes.push_back((bc && !bc->path.empty()) ? subtreeSize(subtreeSize, bc->path) : 0);
                     }
                 }
 
-                // Build override info from instance overrides
-                if (!instance.overrides.empty()) {
-                    for (const auto& [sceneEntity, bitmask] : instance.overrides) {
-                        PrefabOverrideInfo ovr;
-                        ovr.sceneEntity = sceneEntity;
-
-                        // Decode bitmask to ComponentType list
-                        for (int bit = 0; bit < 64; bit++) {
-                            if (bitmask & (1ULL << bit)) {
-                                ovr.overriddenComponents.push_back(static_cast<ComponentType>(bit));
-                            }
-                        }
-
-                        if (!ovr.overriddenComponents.empty()) {
-                            info.overrides.push_back(std::move(ovr));
-                        }
+                // Build override info from instance overrides. The root is a scene entity
+                // written with its own components: only what it removed is left to do.
+                for (const auto& [sceneEntity, objectOverrides] : instance.overrides) {
+                    if (sceneEntity == instance.rootEntity) {
+                        info.rootRemovedComponents.assign(objectOverrides.removedComponents.begin(), objectOverrides.removedComponents.end());
+                        continue;
+                    }
+                    PrefabOverrideInfo ovr;
+                    ovr.sceneEntity = sceneEntity;
+                    for (const auto& [componentType, properties] : objectOverrides.properties) {
+                        ovr.overriddenComponents.push_back(componentType);
+                    }
+                    ovr.addedComponents.assign(objectOverrides.addedComponents.begin(), objectOverrides.addedComponents.end());
+                    ovr.removedComponents.assign(objectOverrides.removedComponents.begin(), objectOverrides.removedComponents.end());
+                    ovr.state = objectOverrides.state;
+                    if (!ovr.overriddenComponents.empty() || !ovr.addedComponents.empty() || !ovr.removedComponents.empty() || ovr.state != 0) {
+                        info.overrides.push_back(std::move(ovr));
                     }
                 }
 
@@ -1361,7 +1362,22 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
 
         // Write prefab .h and .cpp files
         std::string headerContent = Factory::createPrefabHeader(prefabPath);
-        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath, prefabGuid);
+        // What this prefab overrides of the roots of the prefabs nested in it
+        std::map<Entity, PrefabObjectOverrides> nestedRootOverrides;
+        for (const auto& [nestedRoot, data] : prefab.nestedInstances) {
+            const PrefabComponent* component = prefab.registry->isEntityCreated(nestedRoot) ?
+                prefab.registry->findComponent<PrefabComponent>(nestedRoot) : nullptr;
+            auto nested = component ? prefabAssets.find(component->path) : prefabAssets.end();
+            if (nested == prefabAssets.end()) {
+                continue;
+            }
+            auto entry = data.objects.find(nested->second.root);
+            if (entry != data.objects.end()) {
+                nestedRootOverrides[nestedRoot] = entry->second.overrides;
+            }
+        }
+        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath, prefabGuid,
+            prefab.root, nestedRootOverrides);
 
         std::string prefabFileName = Factory::prefabToFileName(prefabPath);
         FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".h"), headerContent);

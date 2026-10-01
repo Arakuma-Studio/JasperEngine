@@ -168,17 +168,24 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
 
 void editor::Project::overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance) {
     std::unordered_set<Entity> memberLocals;
+    std::vector<Entity> objects;
+    if (instance.rootEntity != NULL_ENTITY) {
+        memberLocals.insert(instance.rootEntity);
+        objects.push_back(instance.rootEntity);
+    }
     for (const auto& member : instance.members) {
         memberLocals.insert(member.localEntity);
+        objects.push_back(member.localEntity);
     }
 
     // An entity reference pointing outside the prefab is per-instance data that cannot
     // be shared through the registry. Promote each component that holds one to a
     // per-instance override so the value is kept on this instance and persisted.
-    for (const auto& member : instance.members) {
-        for (ComponentType componentType : Catalog::findComponents(scene, member.localEntity)) {
-            if (componentHasExternalEntityRef(scene, member.localEntity, componentType, memberLocals)) {
-                instance.overrides[member.localEntity] |= 1ULL << static_cast<int>(componentType);
+    for (Entity object : objects) {
+        for (ComponentType componentType : Catalog::findComponents(scene, object)) {
+            if (componentType != ComponentType::PrefabComponent &&
+                componentHasExternalEntityRef(scene, object, componentType, memberLocals)) {
+                instance.overrides[object].addWholeComponent(componentType);
             }
         }
     }

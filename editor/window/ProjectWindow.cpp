@@ -38,6 +38,7 @@
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
 #include "util/EntityPayload.h"
+#include "util/ProjectUtils.h"
 
 #include "imgui_internal.h"
 
@@ -2623,20 +2624,72 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
 
     YAML::Node entityNode = YAML::Load(yamlString);
 
-    std::string entityName = "Prefab";
-    if (entityNode["name"]) {
-        entityName = entityNode["name"].as<std::string>();
-    } else if (entityNode["members"] && entityNode["members"].IsSequence() && entityNode["members"].size() > 0) {
-        YAML::Node firstMember = entityNode["members"][0];
-        if (firstMember["name"]) {
-            entityName = firstMember["name"].as<std::string>();
+    // A prefab has one root GameObject: several dragged roots make one prefab each (Unity's
+    // way), a GameObject without a Transform (an action of one) going with the root it acts
+    // on, else with the first
+    const std::string transformKey = Catalog::getComponentName(ComponentType::Transform, true);
+    const std::string actionKey = Catalog::getComponentName(ComponentType::ActionComponent, true);
+    std::vector<YAML::Node> roots;
+    std::vector<YAML::Node> loose;
+    if (entityNode["members"] && entityNode["members"].IsSequence()) {
+        for (YAML::Node member : entityNode["members"]) {
+            const YAML::Node components = member["components"];
+            (components && components.IsMap() && components[transformKey] ? roots : loose).push_back(member);
         }
+    } else {
+        roots.push_back(entityNode);
+    }
+    if (roots.empty() && !loose.empty()) {
+        roots.push_back(loose.front());
+        loose.erase(loose.begin());
+    }
+    std::vector<std::vector<YAML::Node>> groups(roots.size());
+    for (YAML::Node& node : loose) {
+        size_t owner = 0;
+        const YAML::Node action = node["components"] ? node["components"][actionKey] : YAML::Node();
+        if (action && action["target"]) {
+            const Entity target = action["target"].as<Entity>();
+            for (size_t i = 0; i < roots.size(); i++) {
+                std::vector<Entity> ids;
+                ProjectUtils::collectEntities(roots[i], ids);
+                if (std::find(ids.begin(), ids.end(), target) != ids.end()) {
+                    owner = i;
+                    break;
+                }
+            }
+        }
+        groups[owner].push_back(node);
     }
 
-    std::string baseName = entityName.empty() ? "Prefab" : entityName;
-    fs::path relativePath = uniqueRelativePath(directory, baseName, ".prefab");
+    std::vector<std::pair<fs::path, YAML::Node>> prefabs;
+    std::set<std::string> usedNames;
+    for (size_t i = 0; i < roots.size(); i++) {
+        // (a new node: assigning to a yaml-cpp node writes into the one it refers to)
+        YAML::Node prefabNode = YAML::Clone(roots[i]);
+        if (!groups[i].empty()) {
+            YAML::Node group(YAML::NodeType::Map);
+            group["type"] = "Prefab";
+            YAML::Node members(YAML::NodeType::Sequence);
+            members.push_back(YAML::Clone(roots[i]));
+            for (const YAML::Node& node : groups[i]) {
+                members.push_back(YAML::Clone(node));
+            }
+            group["members"] = members;
+            prefabNode.reset(group);
+        }
+        std::string baseName = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string("Prefab");
+        if (baseName.empty()) {
+            baseName = "Prefab";
+        }
+        fs::path relativePath = uniqueRelativePath(directory, baseName, ".prefab");
+        for (int counter = 1; usedNames.count(relativePath.generic_string()); counter++) {
+            relativePath = uniqueRelativePath(directory, baseName + "_" + std::to_string(counter), ".prefab");
+        }
+        usedNames.insert(relativePath.generic_string());
+        prefabs.emplace_back(relativePath, prefabNode);
+    }
 
-    CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, project->getSelectedSceneId(), relativePath, entityNode);
+    CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, project->getSelectedSceneId(), prefabs);
     CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(createPrefabCmd);
 
     scanDirectory(currentPath);

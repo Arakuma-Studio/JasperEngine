@@ -183,8 +183,8 @@ namespace jasperengine::editor {
             const Project* project = nullptr, const SceneProject* sceneProject = nullptr,
             const std::filesystem::path& prefabPathOverride = {});
 
-        // Prefab instance data next to its root (StreamPrefab.cpp): prefabOverrides,
-        // prefabRemovedGameObjects and prefabLocalEntities, and the import that rebuilds it
+        // Prefab instance data next to its root (StreamPrefab.cpp): the `prefabInstance`
+        // block, and the import that rebuilds the instance from it
         static void encodePrefabInstance(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry,
             const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
         static void decodePrefabInstance(const YAML::Node& entityNode, Entity entity, EntityRegistry* registry,
@@ -194,17 +194,22 @@ namespace jasperengine::editor {
         // was loaded with (Project::getMissingPrefab), nothing otherwise
         static void encodeMissingPrefab(YAML::Node& entityNode, Entity entity, const Project* project, const SceneProject* sceneProject);
 
-        // GameObject state next to the name: active, tag and layer
-        static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
-        static void decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode);
-
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
-        // The keys a scene writes next to a prefab instance root (prefabOverrides,
-        // prefabRemovedGameObjects, prefabLocalEntities), relative to it: what a Missing
-        // Prefab instance keeps of a live one
+        // GameObject state next to the name: active, tag and layer
+        static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
+        static void decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode);
+
+        // An instance's data relative to its prefab from a node holding it: an instance root
+        // node, a Missing Prefab record or a nested root of a prefab file. Reads the
+        // `prefabInstance` block, or the keys written before it (`legacy` set then).
+        static PrefabInstanceData decodePrefabInstanceData(const YAML::Node& node);
+        // The `prefabInstance` block of parsed data (without `version`)
+        static YAML::Node encodePrefabInstanceBlock(const PrefabInstanceData& data);
+        // The keys a scene writes next to a prefab instance root (`prefabInstance`), relative
+        // to it: what a Missing Prefab instance keeps of a live one
         static YAML::Node encodePrefabInstanceData(const Entity root, const EntityRegistry* registry,
             const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
         // The GameObject keys of an entity node, the ones a Missing Prefab does not keep raw

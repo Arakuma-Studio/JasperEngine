@@ -10,6 +10,14 @@
 #include "Out.h"
 #include "Platform.h"
 #include "Project.h"
+#include "Stream.h"
+#include "Catalog.h"
+#include "command/type/AddComponentCmd.h"
+#include "command/type/CreatePrefabCmd.h"
+#include "command/type/ImportPrefabCmd.h"
+#include "command/type/EntityStateCmd.h"
+#include "command/type/PrefabOverrideCmd.h"
+#include "command/type/RemoveComponentCmd.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 
@@ -18,6 +26,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -198,7 +208,8 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << "                          Open the editor.\n"
         << "  " << commandName << " export [options]         Export a project.\n"
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
-        << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n\n"
+        << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
+        << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -561,6 +572,352 @@ int CommandLine::runBenchmarkHelp(int argc, char** argv, const char* executableN
     (void)argc;
     (void)argv;
     return 0;
+}
+
+
+// ---- scene-dump: a developer check of what loading a project gives ----
+//
+// Loads every scene of a project headless and writes, per scene, every GameObject by its
+// hierarchy path (names, and an index among same-named siblings): name, state, parent and
+// components as Stream encodes them, the entity references by target path, and its prefab
+// link. Two dumps of the same project (an older and a newer editor, or before and after a
+// save) compare GameObject by GameObject. --save saves every scene (and so the modified
+// prefabs) after the dump.
+namespace {
+
+std::string dumpPath(Scene* scene, Entity entity, std::map<Entity, std::string>& cache, int depth = 0) {
+    auto it = cache.find(entity);
+    if (it != cache.end()) return it->second;
+    std::string parentPath;
+    Entity parent = NULL_ENTITY;
+    if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
+    if (parent != NULL_ENTITY && depth < 256) parentPath = dumpPath(scene, parent, cache, depth + 1) + "/";
+    // index among the earlier siblings of the same name, in Transform order
+    std::string name = scene->getEntityName(entity);
+    int index = 0;
+    if (scene->findComponent<Transform>(entity)) {
+        auto transforms = scene->getComponentArray<Transform>();
+        size_t own = transforms->getIndex(entity);
+        for (size_t i = 0; i < own; i++) {
+            Entity other = transforms->getEntity(i);
+            if (transforms->getComponentFromIndex(i).parent == parent && scene->getEntityName(other) == name) index++;
+        }
+    }
+    std::string path = parentPath + name + (index ? "#" + std::to_string(index) : "");
+    cache[entity] = path;
+    return path;
+}
+
+}
+
+static void writeSceneDump(Project& project, const fs::path& outPath) {
+    auto& scenes = project.getScenes();
+    YAML::Emitter out;
+    out << YAML::BeginMap << YAML::Key << "scenes" << YAML::Value << YAML::BeginSeq;
+    for (SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) continue;
+        Scene* scene = sceneProject.scene;
+        std::map<Entity, std::string> paths;
+        std::map<std::string, YAML::Node> nodes;
+        for (Entity entity : sceneProject.entities) {
+            if (!scene->isEntityCreated(entity)) continue;
+            YAML::Node node;
+            node["id"] = entity;
+            node["name"] = scene->getEntityName(entity);
+            if (!scene->isEntityActive(entity)) node["active"] = false;
+            if (scene->getEntityTag(entity) != DEFAULT_ENTITY_TAG) node["tag"] = scene->getEntityTag(entity);
+            if (scene->getEntityLayer(entity) != 0) node["layer"] = scene->getEntityLayer(entity);
+            Entity parent = NULL_ENTITY;
+            if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
+            node["parent"] = parent != NULL_ENTITY ? dumpPath(scene, parent, paths) : std::string();
+            node["components"] = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
+            for (ComponentType type : Catalog::findComponents(scene, entity)) {
+                for (auto& [name, property] : Catalog::findEntityProperties(scene, entity, type)) {
+                    if (!property.ref) continue;
+                    Entity target = NULL_ENTITY;
+                    if (property.type == PropertyType::Entity) target = *static_cast<Entity*>(property.ref);
+                    else if (property.type == PropertyType::EntityReference) target = static_cast<EntityReference*>(property.ref)->entity;
+                    else continue;
+                    if (target == NULL_ENTITY) continue;
+                    node["refs"][Catalog::getComponentName(type, true) + "." + name] =
+                        scene->isEntityCreated(target) ? dumpPath(scene, target, paths) : "<missing " + std::to_string(target) + ">";
+                }
+            }
+            std::string prefab = project.findPrefabPathFor(sceneProject.id, entity).generic_string();
+            if (!prefab.empty()) node["prefab"] = prefab;
+            if (project.isMissingPrefab(sceneProject.id, entity)) node["missingPrefab"] = true;
+            // what the owning instance level overrides of it
+            const Prefab::ObjectOverrides overrides = project.getPrefabObjectOverrides(sceneProject.id, entity);
+            if (!overrides.empty()) {
+                YAML::Node o;
+                for (const auto& [type, names] : overrides.properties) {
+                    for (const std::string& name : names) o["properties"][Catalog::getComponentName(type, true)].push_back(name);
+                }
+                if (overrides.state) o["state"] = static_cast<int>(overrides.state);
+                for (ComponentType type : overrides.addedComponents) o["added"].push_back(Catalog::getComponentName(type, true));
+                for (ComponentType type : overrides.removedComponents) o["removed"].push_back(Catalog::getComponentName(type, true));
+                node["overrides"] = o;
+            }
+            std::string path = dumpPath(scene, entity, paths);
+            if (nodes.count(path)) path += "@" + std::to_string(entity);
+            nodes[path] = node;
+        }
+        out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << sceneProject.name;
+        out << YAML::Key << "entities" << YAML::Value << YAML::BeginMap;
+        for (auto& [path, node] : nodes) out << YAML::Key << path << YAML::Value << node;
+        out << YAML::EndMap << YAML::EndMap;
+    }
+    out << YAML::EndSeq << YAML::EndMap;
+
+    if (outPath.empty()) {
+        std::cout << out.c_str() << "\n";
+    } else {
+        std::ofstream file(outPath);
+        file << out.c_str() << "\n";
+    }
+}
+
+// The GameObject of the first loaded scene (or `scene`) at a dump path
+static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProject*& sceneOut) {
+    const std::string sceneName = op["scene"] ? op["scene"].as<std::string>() : std::string();
+    const std::string path = op["entity"] ? op["entity"].as<std::string>() : std::string();
+    for (SceneProject& sceneProject : project.getScenes()) {
+        if (!sceneProject.scene || (!sceneName.empty() && sceneProject.name != sceneName)) continue;
+        std::map<Entity, std::string> paths;
+        for (Entity entity : sceneProject.entities) {
+            if (sceneProject.scene->isEntityCreated(entity) && dumpPath(sceneProject.scene, entity, paths) == path) {
+                sceneOut = &sceneProject;
+                return entity;
+            }
+        }
+    }
+    std::cerr << "scene-dump: no GameObject at " << path << "\n";
+    return NULL_ENTITY;
+}
+
+// --ops <file>: a list of operations run on the loaded project before the dump, to check
+// the prefab APIs headless. Each is a map with `op` and its arguments (`entity` is a dump
+// path; `component` a Stream component key):
+//   save | dump {out} | refresh {prefab, reload} | copy {from, to} / remove {path} (outside edits) |
+//   refreshAssets (the asset database refresh) | undo (the last command) | redo |
+//   set {entity, component, property, value, shared}  (a PropertyCmd-like edit: value set,
+//       then prefabPropertyChanged when shared, the Inspector's edit-shared path) |
+//   setState {entity, active|tag|layer}  (EntityStateCmd's path) |
+//   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
+//   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
+//   record|revert|apply Property|State|AddedComponent|RemovedComponent
+//       {entity, component, properties, state, target}  (PrefabOverrideCmd)
+static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
+    std::vector<std::unique_ptr<Command>> done;
+    std::vector<std::unique_ptr<Command>> undone;
+    static const std::map<std::string, PrefabOverrideCmd::Operation> operations = {
+        {"recordProperty", PrefabOverrideCmd::Operation::RecordProperty}, {"revertProperty", PrefabOverrideCmd::Operation::RevertProperty},
+        {"applyProperty", PrefabOverrideCmd::Operation::ApplyProperty}, {"recordState", PrefabOverrideCmd::Operation::RecordState},
+        {"revertState", PrefabOverrideCmd::Operation::RevertState}, {"applyState", PrefabOverrideCmd::Operation::ApplyState},
+        {"recordAddedComponent", PrefabOverrideCmd::Operation::RecordAddedComponent}, {"revertAddedComponent", PrefabOverrideCmd::Operation::RevertAddedComponent},
+        {"applyAddedComponent", PrefabOverrideCmd::Operation::ApplyAddedComponent}, {"recordRemovedComponent", PrefabOverrideCmd::Operation::RecordRemovedComponent},
+        {"revertRemovedComponent", PrefabOverrideCmd::Operation::RevertRemovedComponent}, {"applyRemovedComponent", PrefabOverrideCmd::Operation::ApplyRemovedComponent},
+    };
+    for (const YAML::Node& op : ops) {
+        const std::string name = op["op"].as<std::string>();
+        std::cout << "op " << name << (op["entity"] ? " " + op["entity"].as<std::string>() : std::string()) << "\n";
+        auto runCommand = [&](Command* command) {
+            std::unique_ptr<Command> owned(command);
+            if (!owned->execute()) {
+                std::cout << "  (failed)\n";
+                return;
+            }
+            done.push_back(std::move(owned));
+            undone.clear();
+        };
+        if (name == "save") {
+            for (SceneProject& sceneProject : project.getScenes()) {
+                if (sceneProject.scene && !sceneProject.filepath.empty()) {
+                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                }
+            }
+            continue;
+        }
+        if (name == "dump") {
+            writeSceneDump(project, op["out"].as<std::string>());
+            continue;
+        }
+        if (name == "copy") {
+            // an edit outside the editor: a file of the project replaced
+            std::error_code ec;
+            fs::copy_file(project.getProjectPath() / op["from"].as<std::string>(), project.getProjectPath() / op["to"].as<std::string>(),
+                fs::copy_options::overwrite_existing, ec);
+            continue;
+        }
+        if (name == "remove") {
+            std::error_code ec;
+            fs::remove(project.getProjectPath() / op["path"].as<std::string>(), ec);
+            continue;
+        }
+        if (name == "refreshAssets") {
+            project.refreshAssetDatabase(true);
+            continue;
+        }
+        if (name == "refresh") {
+            project.refreshPrefabInstances(op["prefab"].as<std::string>(), op["reload"] && op["reload"].as<bool>());
+            continue;
+        }
+        if (name == "undo") {
+            if (!done.empty()) {
+                done.back()->undo();
+                undone.push_back(std::move(done.back()));
+                done.pop_back();
+            }
+            continue;
+        }
+        if (name == "redo") {
+            if (!undone.empty()) {
+                undone.back()->execute();
+                done.push_back(std::move(undone.back()));
+                undone.pop_back();
+            }
+            continue;
+        }
+        SceneProject* sceneProject = nullptr;
+        const Entity entity = findDumpEntity(project, op, sceneProject);
+        if (entity == NULL_ENTITY) {
+            return false;
+        }
+        Scene* scene = sceneProject->scene;
+        const ComponentType type = op["component"] ? Catalog::getComponentType(op["component"].as<std::string>()) : ComponentType::Transform;
+        std::vector<std::string> properties;
+        if (op["properties"]) {
+            for (const YAML::Node& property : op["properties"]) properties.push_back(property.as<std::string>());
+        }
+        if (name == "set") {
+            const std::string property = op["property"].as<std::string>();
+            PropertyData data = Catalog::findProperty(scene, entity, type, property);
+            if (!data.ref) {
+                std::cerr << "scene-dump: no property " << property << "\n";
+                return false;
+            }
+            const YAML::Node value = op["value"];
+            switch (data.type) {
+                case PropertyType::Float: *static_cast<float*>(data.ref) = value.as<float>(); break;
+                case PropertyType::Bool: *static_cast<bool*>(data.ref) = value.as<bool>(); break;
+                case PropertyType::Int: *static_cast<int*>(data.ref) = value.as<int>(); break;
+                case PropertyType::UInt: *static_cast<unsigned int*>(data.ref) = value.as<unsigned int>(); break;
+                case PropertyType::Vector3: *static_cast<Vector3*>(data.ref) = Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>()); break;
+                case PropertyType::Vector4: *static_cast<Vector4*>(data.ref) = Vector4(value[0].as<float>(), value[1].as<float>(), value[2].as<float>(), value[3].as<float>()); break;
+                default: std::cerr << "scene-dump: unsupported property type\n"; return false;
+            }
+            Catalog::updateEntity(scene, entity, data.updateFlags);
+            if (project.isEntityInPrefab(sceneProject->id, entity) && (!op["shared"] || op["shared"].as<bool>())) {
+                project.prefabPropertyChanged(sceneProject->id, entity, type, {property});
+            }
+            sceneProject->isModified = true;
+            continue;
+        }
+        if (name == "setState") {
+            if (op["active"]) runCommand(EntityStateCmd::active(&project, sceneProject->id, {entity}, op["active"].as<bool>()));
+            if (op["tag"]) runCommand(EntityStateCmd::tag(&project, sceneProject->id, {entity}, op["tag"].as<std::string>()));
+            if (op["layer"]) runCommand(EntityStateCmd::layer(&project, sceneProject->id, {entity}, op["layer"].as<int>()));
+            continue;
+        }
+        if (name == "createPrefab") {
+            // as the Hierarchy's Create Prefab: the GameObject (with its project context)
+            runCommand(new CreatePrefabCmd(&project, sceneProject->id, op["path"].as<std::string>(),
+                Stream::encodeEntity(entity, scene, &project, sceneProject)));
+            continue;
+        }
+        if (name == "instantiate") {
+            // a prefab dropped on the GameObject (ImportPrefabCmd)
+            ImportPrefabCmd* command = new ImportPrefabCmd(&project, sceneProject->id, op["prefab"].as<std::string>(),
+                op["below"] && op["below"].as<bool>() ? entity : NULL_ENTITY, true);
+            command->setQuiet(true);
+            runCommand(command);
+            continue;
+        }
+        if (name == "addComponent") {
+            runCommand(new AddComponentCmd(&project, sceneProject->id, entity, type));
+            continue;
+        }
+        if (name == "removeComponent") {
+            runCommand(new RemoveComponentCmd(&project, sceneProject->id, entity, type));
+            continue;
+        }
+        auto operation = operations.find(name);
+        if (operation == operations.end()) {
+            std::cerr << "scene-dump: unknown op " << name << "\n";
+            return false;
+        }
+        runCommand(new PrefabOverrideCmd(&project, sceneProject->id, entity, operation->second, type, properties,
+            op["state"] ? static_cast<uint8_t>(op["state"].as<int>()) : 0,
+            op["target"] ? fs::path(op["target"].as<std::string>()) : fs::path()));
+    }
+    return true;
+}
+
+static int runSceneDump(int argc, char** argv, const std::string& commandName) {
+    fs::path projectArg;
+    fs::path outPath;
+    fs::path opsPath;
+    bool save = false;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = argv[++i];
+        else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = argv[++i];
+        else if (arg == "--ops" && i + 1 < argc) opsPath = argv[++i];
+        else if (arg == "--save") save = true;
+        else {
+            std::cerr << commandName << " scene-dump --project <dir> [--out <file>] [--ops <file>] [--save]\n";
+            return 2;
+        }
+    }
+    if (projectArg.empty()) {
+        std::cerr << commandName << " scene-dump: --project is required\n";
+        return 2;
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    EngineRuntimeGuard engineRuntime;
+    Engine::systemInit(argc, argv, platform.get());
+    engineRuntime.initialized = true;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    fs::path projectPath = fs::absolute(projectArg);
+    if (projectPath.filename() == "project.yaml") projectPath = projectPath.parent_path();
+    if (!project.loadProject(projectPath, false)) {
+        return 1;
+    }
+
+    auto& scenes = project.getScenes();
+    for (size_t i = 0; i < scenes.size(); i++) {
+        if (!scenes[i].filepath.empty() && !scenes[i].scene) {
+            project.loadScene(scenes[i].filepath, false, false, true);
+        }
+    }
+
+    if (!opsPath.empty() && !runSceneDumpOps(project, YAML::LoadFile(opsPath.string()))) {
+        return 1;
+    }
+
+    writeSceneDump(project, outPath);
+
+    if (save) {
+        for (SceneProject& sceneProject : scenes) {
+            if (sceneProject.scene && !sceneProject.filepath.empty()) {
+                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+            }
+        }
+    }
+    return 0;
+}
+
+int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runSceneDump(argc, argv, getCommandName(executableName));
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {

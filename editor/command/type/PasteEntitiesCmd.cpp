@@ -17,6 +17,27 @@ using namespace jasperengine;
 
 namespace {
 
+    template<typename Fn>
+    void forEachEntityNode(YAML::Node node, Fn&& fn);
+
+    // The GameObjects added to a prefab instance, at every nested level of its block
+    template<typename Fn>
+    void forEachAddedNode(YAML::Node block, Fn&& fn) {
+        if (!block || !block.IsMap()) {
+            return;
+        }
+        if (YAML::Node added = block["addedGameObjects"]; added && added.IsSequence()) {
+            for (YAML::Node node : added) {
+                forEachEntityNode(node, fn);
+            }
+        }
+        if (YAML::Node nested = block["nested"]; nested && nested.IsSequence()) {
+            for (YAML::Node entry : nested) {
+                forEachAddedNode(entry, fn);
+            }
+        }
+    }
+
     // Calls fn(node) for every entity node the decoder creates from `node`: the node itself,
     // its children and the scene-local entities of a prefab instance
     template<typename Fn>
@@ -37,6 +58,7 @@ namespace {
                 forEachEntityNode(local, fn);
             }
         }
+        forEachAddedNode(node["prefabInstance"], fn);
     }
 
     // Last index of the branch of `entity` in the Transform array. Linear, unlike
@@ -286,7 +308,7 @@ bool editor::PasteEntitiesCmd::execute(){
 
     // Repoint entity references. A prefab member holds copied values only in its overridden
     // components; the rest came from the prefab, already in this scene's ids.
-    std::unordered_map<Entity, uint64_t> memberOverrides;
+    std::unordered_map<Entity, Prefab::ObjectOverrides> memberOverrides;
     for (Entity entity : createdEntities) {
         const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
         if (!component || component->path.empty()) {
@@ -299,7 +321,7 @@ bool editor::PasteEntitiesCmd::execute(){
         }
         for (const Prefab::EntityMember& member : instance->members) {
             auto overrides = instance->overrides.find(member.localEntity);
-            memberOverrides[member.localEntity] = overrides != instance->overrides.end() ? overrides->second : 0;
+            memberOverrides[member.localEntity] = overrides != instance->overrides.end() ? overrides->second : Prefab::ObjectOverrides();
         }
     }
 
@@ -314,7 +336,7 @@ bool editor::PasteEntitiesCmd::execute(){
         auto member = memberOverrides.find(entity);
         uint64_t updateFlags = 0;
         for (ComponentType type : Catalog::findComponents(scene, entity)) {
-            if (member != memberOverrides.end() && !(member->second & (1ULL << static_cast<int>(type)))) {
+            if (member != memberOverrides.end() && !member->second.hasComponent(type) && !member->second.addedComponents.count(type)) {
                 continue;
             }
             updateFlags |= EntityClipboard::remapReferences(scene, entity, type, remap);
