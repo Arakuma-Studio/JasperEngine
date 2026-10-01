@@ -199,7 +199,7 @@ namespace jasperengine{
         // USE_MIRROR shader for projective sampling of the reflection texture
         Matrix4 mirrorViewProjection;
 
-        float morphWeights[MAX_MORPHTARGETS];
+        float morphWeights[MAX_MORPHTARGETS] = {};
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances
