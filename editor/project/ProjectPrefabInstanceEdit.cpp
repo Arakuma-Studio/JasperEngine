@@ -69,7 +69,7 @@ namespace jasperengine::editor::prefabinternal {
 }
 
 bool editor::Project::isEditingPrefabAsset(uint32_t sceneId, Entity entity) const {
-    // Prefab Mode (PREFABS.md section 13): a stage's own GameObjects are the asset's, so their
+    // Prefab Mode (PREFABS.md section 16): a stage's own GameObjects are the asset's, so their
     // edits are asset edits. The GameObjects of the instances nested in it are not: their
     // edits are overrides, which the stage saves as the asset's overrides of them.
     return isPrefabStage(sceneId) && entity != NULL_ENTITY && findPrefabPathFor(sceneId, entity).empty();

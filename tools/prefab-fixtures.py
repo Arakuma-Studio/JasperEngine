@@ -183,7 +183,40 @@ def legacy(out):
     write_yaml(os.path.join(out, "Prefab Scene.scene"), scene)
 
 
+def replace(out):
+    """The legacy project plus prefabs to replace its instances with (Replace Prefab, PREFABS.md
+    section 12): Boulder (a Rock under another prefab name, its Pebble at another id, no
+    Shadow, a Moss), Bastion (a Tower with its ids shifted, a Rock nested as in Tower and a
+    Gem in place of Top) and Pebbles (a Rock whose Pebble has no sprite: a component the
+    instance overrides is gone)."""
+    legacy(out)
+    boulder = {"type": "Prefab", "members": [
+        entity(2001, "Rock", sprite_components("sprites/rock.png", 160, 320, color=(0.8, 0.8, 0.8, 1)), [
+            entity(2002, "Moss", sprite_components("sprites/rock-down.png", 60, 40, x=-50, color=(0.3, 0.8, 0.3, 1))),
+            entity(2005, "Pebble", sprite_components("sprites/rock.png", 30, 60, x=70)),
+        ]),
+    ]}
+    write_yaml(os.path.join(out, "prefabs", "Boulder.prefab"), boulder)
+
+    bastion = {"type": "Prefab", "members": [
+        entity(3001, "Base", sprite_components("sprites/ground.png", 320, 80), [
+            entity(3002, "Gem", {"prefab": prefab_ref("Gem", "prefabs/Gem.prefab"), "transform": transform(0, 200)}),
+            entity(3003, "Rock", {"prefab": prefab_ref("Rock", "prefabs/Rock.prefab"),
+                                   "transform": transform(-120, 80, 0.5, 0.5)}),
+        ]),
+    ]}
+    write_yaml(os.path.join(out, "prefabs", "Bastion.prefab"), bastion)
+
+    pebble = {"transform": transform(90, 0)}
+    pebbles = {"type": "Prefab", "members": [
+        entity(4001, "Rock", sprite_components("sprites/rock.png", 140, 303), [
+            entity(4002, "Pebble", pebble),
+        ]),
+    ]}
+    write_yaml(os.path.join(out, "prefabs", "Pebbles.prefab"), pebbles)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy",):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace"):
         sys.exit(__doc__)
     globals()[sys.argv[1]](sys.argv[2])

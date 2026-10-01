@@ -113,6 +113,17 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    if (hasDropPosition){
+        if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
+            const float z = rootTransform->position.z;
+            rootTransform->position = dropPosition;
+            if (dropKeepsZ){
+                rootTransform->position.z = z;
+            }
+            rootTransform->needUpdate = true;
+        }
+    }
+
     // If parent is part of a prefab, add the new root as a nested prefab member. A brush
     // placement never does: it drops props into the scene, not into a shared prefab asset.
     addedToParentPrefab = false;
@@ -182,4 +193,14 @@ void editor::ImportPrefabCmd::setPlacement(const Vector3& position, const Quater
 
 void editor::ImportPrefabCmd::setQuiet(bool quiet){
     this->quiet = quiet;
+}
+
+void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keepZ){
+    hasDropPosition = true;
+    dropKeepsZ = keepZ;
+    dropPosition = position;
+}
+
+Entity editor::ImportPrefabCmd::getRootEntity() const{
+    return rootEntity;
 }

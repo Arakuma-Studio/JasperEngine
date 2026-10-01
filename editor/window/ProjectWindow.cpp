@@ -37,6 +37,7 @@
 #include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
+#include "thread/ResourceProgress.h"
 #include "util/EntityPayload.h"
 #include "util/ProjectUtils.h"
 
@@ -145,6 +146,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::Util::isModelFile(extension)) {
         return editor::FileType::MODEL;
+    }
+    if (editor::Util::isPrefabFile(extension)) {
+        return editor::FileType::PREFAB;
     }
 
     return editor::FileType::NONE;
@@ -257,6 +261,7 @@ void editor::ProjectWindow::cancelThumbnailWork(){
     if (modelScene) {
         Engine::removeScene(modelScene);
     }
+    cancelPrefabThumbnails();
     {
         std::lock_guard<std::mutex> lock(modelRenderMutex);
         modelRender.clearScene();
@@ -326,7 +331,7 @@ bool editor::ProjectWindow::hasPendingThumbnailWork() {
     std::lock_guard<std::mutex> lock(thumbnailMutex);
     // Any pending thumbnail work needs the shared systemDraw pass to keep running.
     return thumbnailWorkerBusy || hasPendingModelRender || hasPendingMaterialRender ||
-           !thumbnailQueue.empty();
+           !thumbnailQueue.empty() || hasActivePrefabThumbnail || !prefabThumbnailQueue.empty();
 }
 
 void editor::ProjectWindow::processMaterialThumbnails() {
@@ -503,6 +508,188 @@ void editor::ProjectWindow::processModelThumbnails() {
 
         thumbnailCondition.notify_one();
     }
+}
+
+// ---- Prefab thumbnails (main thread) ----
+
+std::filesystem::path editor::ProjectWindow::prefabStampPath(const fs::path& thumbnailPath) {
+    fs::path stampPath = thumbnailPath;
+    stampPath += ".deps";
+    return stampPath;
+}
+
+std::string editor::ProjectWindow::prefabThumbnailStamp(const fs::path& prefabPath) {
+    const std::string key = thumbnailRequestKey(prefabPath);
+    std::error_code ec;
+    const auto writeTime = fs::last_write_time(prefabPath, ec);
+    if (ec) {
+        return std::string();
+    }
+    const uintmax_t size = fs::file_size(prefabPath, ec);
+    PrefabDependencies& dependencies = prefabDependencies[key];
+    if (dependencies.files.empty() || dependencies.writeTime != writeTime || dependencies.size != size) {
+        dependencies.writeTime = writeTime;
+        dependencies.size = ec ? 0 : size;
+        const fs::path relative = prefabPath.lexically_relative(project->getProjectPath());
+        dependencies.files = project->getPrefabDependencies(relative);
+        if (dependencies.files.empty()) {
+            dependencies.files.push_back(relative);
+        }
+    }
+    std::string stamp;
+    for (const fs::path& file : dependencies.files) {
+        const fs::path full = project->getProjectPath() / file;
+        std::error_code fileEc;
+        const auto fileTime = fs::last_write_time(full, fileEc);
+        const uintmax_t fileSize = fileEc ? 0 : fs::file_size(full, fileEc);
+        stamp += file.generic_string() + "|" + (fileEc ? std::string("missing") :
+            std::to_string(fileSize) + "|" + std::to_string(fileTime.time_since_epoch().count())) + "\n";
+    }
+    return stamp;
+}
+
+void editor::ProjectWindow::checkPrefabThumbnailStamps() {
+    std::vector<fs::path> changed;
+    for (const FileEntry& file : files) {
+        if (file.type != FileType::PREFAB || file.isDirectory) {
+            continue;
+        }
+        const fs::path path = (currentPath / file.name).lexically_normal();
+        auto known = prefabThumbnailStamps.find(thumbnailRequestKey(path));
+        if (known != prefabThumbnailStamps.end() && known->second != prefabThumbnailStamp(path)) {
+            changed.push_back(path);
+        }
+    }
+    if (changed.empty()) {
+        return;
+    }
+    // A file changed outside the editor: the loaded prefabs read it again first, so the
+    // thumbnails show what is on disk
+    project->refreshAssetDatabase(true);
+    for (const fs::path& path : changed) {
+        notifyResourceFileChanged(path);
+    }
+}
+
+void editor::ProjectWindow::cancelPrefabThumbnails() {
+    std::queue<ThumbnailRequest> empty;
+    std::swap(prefabThumbnailQueue, empty);
+    if (hasActivePrefabThumbnail) {
+        if (Scene* scene = prefabRender.getScene()) {
+            Engine::removeScene(scene);
+        }
+        prefabRender.clear();
+        hasActivePrefabThumbnail = false;
+    }
+    prefabThumbnailFrames = 0;
+}
+
+void editor::ProjectWindow::processPrefabThumbnails() {
+    if (!hasActivePrefabThumbnail) {
+        if (!Engine::isViewLoaded()) {
+            return;
+        }
+        ThumbnailRequest next;
+        {
+            std::lock_guard<std::mutex> lock(thumbnailMutex);
+            if (thumbnailWorkSuspended || prefabThumbnailQueue.empty()) {
+                return;
+            }
+            next = prefabThumbnailQueue.front();
+            prefabThumbnailQueue.pop();
+            if (next.generation != thumbnailGeneration) {
+                pendingThumbnailRequests.erase(thumbnailRequestKey(next.path));
+                return;
+            }
+        }
+        bool built = false;
+        try {
+            built = prefabRender.build(project, next.path.lexically_relative(project->getProjectPath()));
+        } catch (const std::exception& e) {
+            Log::error("Failed to build prefab thumbnail '%s': %s", next.path.string().c_str(), e.what());
+        }
+        if (!built) {
+            prefabRender.clear();
+            std::lock_guard<std::mutex> lock(thumbnailMutex);
+            pendingThumbnailRequests.erase(thumbnailRequestKey(next.path));
+            return;
+        }
+        prefabThumbnailActive = next;
+        hasActivePrefabThumbnail = true;
+        prefabThumbnailFrames = 0;
+        Engine::executeSceneOnce(prefabRender.getScene());
+        return;
+    }
+
+    Scene* scene = prefabRender.getScene();
+    if (!scene || Engine::isSceneRunning(scene)) {
+        return;  // not drawn yet
+    }
+    prefabThumbnailFrames++;
+    if (prefabThumbnailFrames == 1) {
+        prefabRender.frame();  // the systems know the world bounds after a frame
+    }
+    // a few frames, more while textures or models still load
+    if (prefabThumbnailFrames < 3 || (ResourceProgress::hasActiveBuilds() && prefabThumbnailFrames < 60)) {
+        Engine::executeSceneOnce(scene);
+        return;
+    }
+
+    const ThumbnailRequest pending = prefabThumbnailActive;
+    const fs::path thumbnailPath = project->getThumbnailPath(pending.path);
+    std::error_code ec;
+    fs::create_directories(thumbnailPath.parent_path(), ec);
+    const std::string stamp = prefabThumbnailStamps[thumbnailRequestKey(pending.path)];
+
+    bool saveStarted = false;
+    if (Framebuffer* framebuffer = prefabRender.getFramebuffer()) {
+        {
+            std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+            ++activeThumbnailSaves;
+        }
+        saveStarted = GraphicUtils::saveFramebufferImage(framebuffer, thumbnailPath, false,
+            [this, pending, thumbnailPath, stamp]() {
+                {
+                    std::ofstream stampFile(prefabStampPath(thumbnailPath), std::ios::trunc);
+                    stampFile << stamp;
+                }
+                bool publish = false;
+                {
+                    std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+                    if (pending.generation == thumbnailGeneration) {
+                        pendingThumbnailRequests.erase(thumbnailRequestKey(pending.path));
+                        publish = true;
+                    }
+                }
+                if (publish) {
+                    std::lock_guard<std::mutex> completedLock(completedThumbnailMutex);
+                    completedThumbnailQueue.push(pending);
+                }
+                {
+                    std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+                    --activeThumbnailSaves;
+                    // touch no members after this block (see processModelThumbnails)
+                    thumbnailCondition.notify_all();
+                }
+            });
+        if (!saveStarted) {
+            std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+            --activeThumbnailSaves;
+            thumbnailCondition.notify_all();
+        }
+    } else {
+        Log::warn("Thumbnail render produced no framebuffer for prefab: %s", pending.path.string().c_str());
+    }
+    if (!saveStarted) {
+        std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+        pendingThumbnailRequests.erase(thumbnailRequestKey(pending.path));
+    }
+
+    // The pixels were read already: the preview scene goes
+    Engine::removeScene(scene);
+    prefabRender.clear();
+    hasActivePrefabThumbnail = false;
+    prefabThumbnailFrames = 0;
 }
 
 void editor::ProjectWindow::refreshProjectFiles(){
@@ -1856,7 +2043,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
             fileEntry.icon = fontIcon.getRender();
         }
 
-        if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL) {
+        if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
+            fileEntry.type == FileType::PREFAB) {
             queueThumbnailGeneration(entry.path(), fileEntry.type);
         }
     } else {
@@ -2287,7 +2475,16 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
 
     ThumbnailRequest thumbFile = {normalizedPath, type, 0};
     ec.clear();
-    if (!forceRegenerate && fs::exists(thumbnailPath, ec) && !ec) {
+    // A prefab's thumbnail also shows its nested prefabs: their changes count too
+    bool stampCurrent = true;
+    std::string stamp;
+    if (type == FileType::PREFAB) {
+        stamp = prefabThumbnailStamp(normalizedPath);
+        std::ifstream stampFile(prefabStampPath(thumbnailPath));
+        std::string written((std::istreambuf_iterator<char>(stampFile)), std::istreambuf_iterator<char>());
+        stampCurrent = !stamp.empty() && written == stamp;
+    }
+    if (!forceRegenerate && stampCurrent && fs::exists(thumbnailPath, ec) && !ec) {
         std::error_code imageTimeEc;
         std::error_code thumbTimeEc;
         auto imageTime = fs::last_write_time(normalizedPath, imageTimeEc);
@@ -2302,6 +2499,9 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
             }
             // Thumbnail is up-to-date, queue it for loading. Consumers verify
             // the generation in case a project switch races this push.
+            if (type == FileType::PREFAB) {
+                prefabThumbnailStamps[requestKey] = stamp;
+            }
             std::lock_guard<std::mutex> lock(completedThumbnailMutex);
             completedThumbnailQueue.push(thumbFile);
             return;
@@ -2316,6 +2516,12 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
             return;
         }
         thumbFile.generation = thumbnailGeneration;
+        if (type == FileType::PREFAB) {
+            // the main thread renders these (processPrefabThumbnails)
+            prefabThumbnailStamps[requestKey] = stamp;
+            prefabThumbnailQueue.push(thumbFile);
+            return;
+        }
         thumbnailQueue.push(thumbFile);
     }
     thumbnailCondition.notify_one();
@@ -2852,6 +3058,8 @@ void editor::ProjectWindow::show() {
             } else {
                 // The project can change without touching this directory
                 refreshProjectFiles();
+                // a prefab saved in place (or one it nests) does not touch it either
+                checkPrefabThumbnailStamps();
             }
         } catch (const fs::filesystem_error& e) {
             // Handle potential filesystem errors silently

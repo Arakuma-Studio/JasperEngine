@@ -146,22 +146,16 @@ void editor::HierarchyWindow::drawPrefabRowButtons(const TreeNode& node, bool re
             editor::getEditorHost().enqueueMainThreadTask([proj, depth]() { proj->closePrefabStages(depth > 0 ? depth - 1 : 0); });
         }
         ImGui::SetItemTooltip(depth > 1 ? "Back to the previous prefab" : "Back to the scene (exits Prefab Mode)");
-        return;
     }
+    // An instance root's open arrow is showPrefabRowArrow's (HierarchyPrefabRows.cpp), which
+    // opens through openPrefabFromHierarchy below
+}
 
-    // An instance root: Unity's open arrow, Prefab Mode in context
-    if (!node.isPrefabRoot) {
-        return;
-    }
-    std::filesystem::path path;
-    Entity instanceRoot = NULL_ENTITY;
-    if (!getOpenPrefabTarget(node, path, instanceRoot)) {
-        return;
-    }
-    ImGui::PushID(static_cast<int>(node.id));
-    if (rowIconButton("OpenPrefab", ICON_FA_ANGLE_RIGHT, ImGui::GetWindowContentRegionMax().x, Theme::Colors::PrefabText)) {
+void editor::HierarchyWindow::openPrefabFromHierarchy(const std::filesystem::path& path, Entity instanceRoot) {
+    // Unity: from an instance, Prefab Mode in context of it; from inside a stage it goes on top
+    if (instanceRoot != NULL_ENTITY) {
         editor::getEditorHost().openPrefabAsset(path, project->getSelectedSceneId(), instanceRoot, true);
+    } else {
+        editor::getEditorHost().openPrefabAsset(path);
     }
-    ImGui::PopID();
-    ImGui::SetItemTooltip("Open %s in Prefab Mode (in context)", path.generic_string().c_str());
 }

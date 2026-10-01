@@ -5,7 +5,7 @@
 // Project::scenes, reached through getScene) holding the prefab asset's GameObjects with
 // their file ids as entity ids, so it is edited with the Hierarchy, the Inspector, the
 // Scene view and the commands like any scene, and saving it writes the asset. See
-// editor/project/PREFABS.md, section 12.
+// editor/project/PREFABS.md, section 16.
 
 #include "PrefabStage.h"
 

@@ -3,28 +3,74 @@
 
 #include "PrefabsWindow.h"
 #include "Theme.h"
+#include "util/UIUtils.h"
+#include "external/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace jasperengine::editor {
 
-static constexpr float dialogWidth = 600.0f;
-static constexpr float dialogHeight = 420.0f;
+static constexpr float dialogWidth = 820.0f;
+static constexpr float dialogHeight = 520.0f;
 static constexpr float dialogButtonWidth = 120.0f;
 static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+
+static const ImVec4 MISSING_COLOR = ImVec4(0.96f, 0.36f, 0.36f, 1.0f);
+
+static std::string lowered(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return text;
+}
+
+// "Level 1 (2), Level 2 (closed, 1 + 3 nested)"
+static std::string usageText(const PrefabUsage& usage, bool missing) {
+    std::string text;
+    for (const PrefabSceneUsage& scene : usage.scenes) {
+        const size_t count = missing ? scene.missing : scene.instances;
+        if (count == 0 && (missing || scene.nested == 0)) {
+            continue;
+        }
+        std::string item = scene.sceneName + " (";
+        if (!scene.loaded) {
+            item += "closed, ";
+        }
+        item += std::to_string(count);
+        if (!missing && scene.nested > 0) {
+            item += " + " + std::to_string(scene.nested) + " nested";
+        }
+        item += ")";
+        text += text.empty() ? item : ", " + item;
+    }
+    return text;
+}
 
 void PrefabsWindow::open(Project* project) {
     m_isOpen = true;
     m_project = project;
     m_entries.clear();
+    m_missing.clear();
+    m_filter[0] = '\0';
+
+    std::map<std::string, PrefabUsage> usage = project->collectPrefabUsage();
+    std::set<std::string> listed;
 
     for (const fs::path& prefabPath : project->findPrefabFiles()) {
         PrefabEntry entry;
         entry.path = prefabPath;
+        entry.guid = project->getPrefabGuid(prefabPath);
+        const std::string key = entry.guid.empty() ? "path:" + prefabPath.generic_string() : entry.guid;
+        auto found = usage.find(key);
+        if (found != usage.end()) {
+            entry.usage = found->second;
+            listed.insert(key);
+        }
 
         for (const SceneProject& sceneProject : project->getScenes()) {
             const bool usesPrefab = std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(),
-                [&](const PrefabSceneInfo& info) { return info.prefabPath == prefabPath; });
+                [&](const PrefabSceneInfo& info) {
+                    return (!entry.guid.empty() && info.guid == entry.guid) || info.prefabPath == prefabPath;
+                });
             if (usesPrefab) {
                 entry.usedBy += entry.usedBy.empty() ? sceneProject.name : ", " + sceneProject.name;
             }
@@ -32,6 +78,13 @@ void PrefabsWindow::open(Project* project) {
 
         entry.included = !entry.usedBy.empty() || project->isStandalonePrefab(prefabPath);
         m_entries.push_back(std::move(entry));
+    }
+
+    // References to prefabs no file has: Missing Prefab instances
+    for (const auto& [key, entry] : usage) {
+        if (!listed.count(key) && (entry.totalMissing() > 0 || !entry.nestedIn.empty())) {
+            m_missing.push_back(entry);
+        }
     }
 }
 
@@ -63,39 +116,131 @@ void PrefabsWindow::show() {
     }
 }
 
+void PrefabsWindow::drawUsage(const PrefabUsage& usage, bool missing) {
+    const std::string text = usageText(usage, missing);
+    std::string nestedIn;
+    for (const fs::path& path : usage.nestedIn) {
+        nestedIn += (nestedIn.empty() ? "" : ", ") + path.stem().string();
+    }
+    if (text.empty() && nestedIn.empty()) {
+        ImGui::TextDisabled("-");
+        return;
+    }
+    if (!text.empty()) {
+        ImGui::TextUnformatted(text.c_str());
+    }
+    if (!nestedIn.empty()) {
+        ImGui::TextDisabled("in %s", nestedIn.c_str());
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) || (!text.empty() && ImGui::IsItemHovered())) {
+        ImGui::BeginTooltip();
+        for (const PrefabSceneUsage& scene : usage.scenes) {
+            const size_t count = missing ? scene.missing : scene.instances;
+            if (count == 0 && (missing || scene.nested == 0)) {
+                continue;
+            }
+            ImGui::Text("%s%s: %zu instance%s%s", scene.sceneName.c_str(), scene.loaded ? "" : " (closed, from its file)",
+                count, count == 1 ? "" : "s", missing ? " (missing)" : "");
+            if (!missing && scene.nested > 0) {
+                ImGui::Text("    %zu inside other prefab instances", scene.nested);
+            }
+        }
+        for (const fs::path& path : usage.nestedIn) {
+            ImGui::Text("Nested in %s", path.generic_string().c_str());
+        }
+        ImGui::EndTooltip();
+    }
+}
+
 void PrefabsWindow::drawPrefabs() {
     const ImGuiStyle& style = ImGui::GetStyle();
 
     ImGui::TextWrapped("Prefabs used by a scene are always in the build. Check the others to include them too, "
-                       "so scripts can instantiate them by name.");
+                       "so scripts can instantiate them by name. Prefabs are identified by their asset GUID: "
+                       "instances follow a prefab that is renamed or moved.");
+    ImGui::Spacing();
+    UIUtils::searchInput("##PrefabsFilter", "Search prefabs", m_filter, sizeof(m_filter), false, nullptr, Theme::dpi(260.0f));
+    const std::string filter = lowered(m_filter);
     ImGui::Spacing();
 
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     const float listHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
     if (ImGui::BeginChild("##PrefabsList", ImVec2(0, listHeight), ImGuiChildFlags_Borders)) {
-        if (m_entries.empty()) {
+        if (m_entries.empty() && m_missing.empty()) {
             ImGui::TextDisabled("No Prefab found in this project.");
-        } else if (ImGui::BeginTable("##PrefabsTable", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-            ImGui::TableSetupColumn("Prefab", ImGuiTableColumnFlags_WidthStretch, 0.6f);
-            ImGui::TableSetupColumn("Used by", ImGuiTableColumnFlags_WidthStretch, 0.4f);
+        } else if (ImGui::BeginTable("##PrefabsTable", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV)) {
+            ImGui::TableSetupColumn("Prefab", ImGuiTableColumnFlags_WidthStretch, 0.40f);
+            ImGui::TableSetupColumn("GUID", ImGuiTableColumnFlags_WidthStretch, 0.14f);
+            ImGui::TableSetupColumn("Instances", ImGuiTableColumnFlags_WidthStretch, 0.10f);
+            ImGui::TableSetupColumn("Used by", ImGuiTableColumnFlags_WidthStretch, 0.36f);
             ImGui::TableHeadersRow();
 
             for (PrefabEntry& entry : m_entries) {
+                if (!filter.empty() && lowered(entry.path.generic_string()).find(filter) == std::string::npos &&
+                        lowered(entry.guid).find(filter) == std::string::npos) {
+                    continue;
+                }
                 const bool locked = !entry.usedBy.empty();
+                ImGui::PushID(entry.path.generic_string().c_str());
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-
                 ImGui::BeginDisabled(locked);
                 ImGui::Checkbox(entry.path.generic_string().c_str(), &entry.included);
                 ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip("%s\n%s", entry.path.generic_string().c_str(),
+                        locked ? ("In the build: listed by " + entry.usedBy).c_str() : "Check to build it without a scene instance");
+                }
 
                 ImGui::TableNextColumn();
-                if (locked) {
-                    ImGui::TextUnformatted(entry.usedBy.c_str());
+                const std::string shortGuid = entry.guid.size() > 8 ? entry.guid.substr(0, 8) + "..." : (entry.guid.empty() ? "-" : entry.guid);
+                if (ImGui::Selectable(shortGuid.c_str(), false) && !entry.guid.empty()) {
+                    ImGui::SetClipboardText(entry.guid.c_str());
+                }
+                if (!entry.guid.empty()) {
+                    ImGui::SetItemTooltip("%s\nClick to copy", entry.guid.c_str());
+                }
+
+                ImGui::TableNextColumn();
+                const size_t total = entry.usage.totalInstances();
+                if (total > 0) {
+                    ImGui::Text("%zu", total);
                 } else {
-                    ImGui::TextDisabled("-");
+                    ImGui::TextDisabled("0");
+                }
+
+                ImGui::TableNextColumn();
+                drawUsage(entry.usage, false);
+                ImGui::PopID();
+            }
+
+            if (!m_missing.empty()) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Spacing();
+                ImGui::TextColored(MISSING_COLOR, ICON_FA_TRIANGLE_EXCLAMATION "  Missing Prefabs");
+                for (const PrefabUsage& missing : m_missing) {
+                    ImGui::PushID(missing.guid.empty() ? missing.path.generic_string().c_str() : missing.guid.c_str());
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextColored(MISSING_COLOR, "%s", missing.path.empty() ? "(unknown path)" : missing.path.generic_string().c_str());
+                    ImGui::SetItemTooltip("No prefab file has this GUID: its instances are Missing Prefabs.\n"
+                        "Put a .prefab with this GUID back (or use Replace in the Hierarchy) to relink them.");
+                    ImGui::TableNextColumn();
+                    const std::string shortGuid = missing.guid.size() > 8 ? missing.guid.substr(0, 8) + "..." : (missing.guid.empty() ? "-" : missing.guid);
+                    if (ImGui::Selectable(shortGuid.c_str(), false) && !missing.guid.empty()) {
+                        ImGui::SetClipboardText(missing.guid.c_str());
+                    }
+                    if (!missing.guid.empty()) {
+                        ImGui::SetItemTooltip("%s\nClick to copy", missing.guid.c_str());
+                    }
+                    ImGui::TableNextColumn();
+                    ImGui::TextColored(MISSING_COLOR, "%zu", missing.totalMissing());
+                    ImGui::TableNextColumn();
+                    drawUsage(missing, true);
+                    ImGui::PopID();
                 }
             }
 
