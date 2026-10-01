@@ -273,6 +273,9 @@ namespace jasperengine::editor{
 
         // Unity Inspector header: active checkbox, icon and name, then Tag and Layer
         void drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly);
+        // Unity's Prefab bar of the GameObject header (InspectorPrefabBar.cpp), when every
+        // selected GameObject is in a prefab instance; gap is the header's column gap
+        void drawPrefabBar(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float gap);
         // Unity's Overrides dropdown of the prefab bar, for the instance rooted at root
         void drawPrefabOverridesPopup(SceneProject* sceneProject, Entity root, bool readOnly);
         void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);

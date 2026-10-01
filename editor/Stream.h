@@ -183,6 +183,14 @@ namespace jasperengine::editor {
             const Project* project = nullptr, const SceneProject* sceneProject = nullptr,
             const std::filesystem::path& prefabPathOverride = {});
 
+        // Prefab instance data next to its root (StreamPrefab.cpp): prefabOverrides,
+        // prefabRemovedGameObjects and prefabLocalEntities, and the import that rebuilds it
+        static void encodePrefabInstance(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry,
+            const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
+        static void decodePrefabInstance(const YAML::Node& entityNode, Entity entity, EntityRegistry* registry,
+            std::vector<Entity>* entities, Project* project, SceneProject* sceneProject,
+            std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allEntities);
+
         // GameObject state next to the name: active, tag and layer
         static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
         static void decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode);
