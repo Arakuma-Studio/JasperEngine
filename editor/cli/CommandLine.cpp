@@ -11,8 +11,14 @@
 #include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
+#include "Factory.h"
 #include "Catalog.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/AddEntityToPrefabCmd.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "util/CameraTextureLink.h"
+#include "util/ProjectUtils.h"
+#include "texture/Texture.h"
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/EntityStateCmd.h"
@@ -649,6 +655,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
                     Entity target = NULL_ENTITY;
                     if (property.type == PropertyType::Entity) target = *static_cast<Entity*>(property.ref);
                     else if (property.type == PropertyType::EntityReference) target = static_cast<EntityReference*>(property.ref)->entity;
+                    else if (property.type == PropertyType::Texture) target = CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
                     else continue;
                     if (target == NULL_ENTITY) continue;
                     node["refs"][Catalog::getComponentName(type, true) + "." + name] =
@@ -740,6 +747,12 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   canApply {entity, component, properties, target}  (prints whether Apply is allowed) |
 //   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
 //   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
+//   createPrefabs {entities, dir} (a multi-selection dragged into the Project window: one prefab
+//       per root, from the Hierarchy's payload) | addToPrefab {entity, parent, target} (AddEntityToPrefabCmd) |
+//   addObject {entity (the parent, may be empty), name} (a plain child GameObject with a Transform) |
+//   setRef {entity, component, property, target (a dump path or empty)} (an override on an
+//       instance's GameObject) | addLocalComponent / removeLocalComponent {entity, component} (the
+//       GameObject only, for record*Component) | bake {out} (each prefab's generated source) |
 //   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
 //   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
 //   usage (the Prefabs dialog's usage scan, listed) | close {scene} (unloads it: usage reads its file) |
@@ -752,6 +765,15 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //       createChild {entity, name}, deleteEntity {entity} (through the undo history),
 //       create {scene | stage: true, name, kind: empty|box|sphere|light, position};
 //       `stage: true` makes `entity` a path in the shown stage
+// "@/x" in an op's path: x next to the ops file
+static fs::path sceneDumpOpsDir;
+static fs::path resolveOpsPath(const std::string& path) {
+    if (path.rfind("@/", 0) == 0) {
+        return sceneDumpOpsDir / path.substr(2);
+    }
+    return path;
+}
+
 // The GameObject menu entry an op's `kind` names (create, createChild)
 static EntityCreationType creationKind(const YAML::Node& op) {
     static const std::map<std::string, EntityCreationType> kinds = {
@@ -798,7 +820,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             continue;
         }
         if (name == "dump") {
-            writeSceneDump(project, op["out"].as<std::string>());
+            writeSceneDump(project, resolveOpsPath(op["out"].as<std::string>()));
             continue;
         }
         if (name == "copy") {
@@ -888,6 +910,52 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
             continue;
         }
+        if (name == "bake") {
+            // what the export generates for each prefab (build_prefab_*), from its baked instance
+            const fs::path out = resolveOpsPath(op["out"].as<std::string>());
+            fs::create_directories(out);
+            for (const auto& [path, baked] : project.bakePrefabsForExport()) {
+                std::ofstream file(out / (Factory::prefabToFileName(path) + ".cpp"));
+                file << Factory::createPrefab(path, *baked, project.getProjectPath(), out,
+                    [&project](const fs::path& p) { return project.getPrefabGuid(p); });
+            }
+            continue;
+        }
+        if (name == "spawn") {
+            // what a script's createPrefab does in Play (the editor's PrefabManager factories)
+            SceneProject* first = nullptr;
+            for (SceneProject& candidate : project.getScenes()) {
+                if (candidate.scene) { first = &candidate; break; }
+            }
+            if (!first) return false;
+            // (Project::registerPrefabManager's factory: a bare root, the import onto it)
+            const fs::path prefabPath = op["prefab"].as<std::string>();
+            const Entity spawned = first->scene->createUserEntity();
+            PrefabComponent link;
+            link.name = prefabPath.stem().string();
+            link.path = prefabPath.string();
+            link.guid = project.getPrefabGuid(prefabPath);
+            first->scene->addComponent<PrefabComponent>(spawned, link);
+            first->entities.push_back(spawned);
+            if (op["name"]) {
+                first->scene->setEntityName(spawned, op["name"].as<std::string>());
+            }
+            project.importPrefab(first, &first->entities, prefabPath, spawned, false);
+            continue;
+        }
+        if (name == "addObject" && (!op["entity"] || op["entity"].as<std::string>().empty())) {
+            SceneProject* first = nullptr;
+            for (SceneProject& candidate : project.getScenes()) {
+                if (candidate.scene) { first = &candidate; break; }
+            }
+            if (!first) return false;
+            const Entity created = first->scene->createUserEntity();
+            first->scene->setEntityName(created, op["name"].as<std::string>());
+            first->scene->addComponent<Transform>(created, {});
+            first->entities.push_back(created);
+            first->isModified = true;
+            continue;
+        }
         // ---- Prefab Mode ----
         if (name == "openPrefab" && !op["entity"]) {
             // from the Project window: in isolation
@@ -974,6 +1042,18 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         const Entity entity = findDumpEntity(project, op, sceneProject);
         if (entity == NULL_ENTITY) {
             return false;
+        }
+        if (name == "addObject") {
+            // a plain GameObject below one (an added GameObject when that is a prefab's)
+            Scene* targetScene = sceneProject->scene;
+            const Entity created = targetScene->createUserEntity();
+            targetScene->setEntityName(created, op["name"].as<std::string>());
+            targetScene->addComponent<Transform>(created, {});
+            targetScene->addEntityChild(entity, created, false);
+            sceneProject->entities.push_back(created);
+            ProjectUtils::sortEntitiesByTransformOrder(targetScene, sceneProject->entities);
+            sceneProject->isModified = true;
+            continue;
         }
         if (name == "openPrefab") {
             // from an instance (Hierarchy / Inspector Open): in context unless inContext: false
@@ -1144,6 +1224,97 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             runCommand(new AddComponentCmd(&project, sceneProject->id, entity, type));
             continue;
         }
+        if (name == "createPrefabs") {
+            // the Hierarchy's multi-selection payload (with the project), split per root as
+            // ProjectWindow::saveEntityFile does
+            std::vector<Entity> selection;
+            for (const YAML::Node& path : op["entities"]) {
+                YAML::Node pick;
+                pick["entity"] = path.as<std::string>();
+                SceneProject* pickedScene = nullptr;
+                const Entity picked = findDumpEntity(project, pick, pickedScene);
+                if (picked == NULL_ENTITY) return false;
+                selection.push_back(picked);
+            }
+            const YAML::Node payload = Stream::encodeEntitySelection(selection, scene, &project, sceneProject);
+            std::vector<std::pair<fs::path, YAML::Node>> prefabs;
+            const std::string dir = op["dir"] ? op["dir"].as<std::string>() : std::string("prefabs");
+            std::error_code dirError;
+            fs::create_directories(project.getProjectPath() / dir, dirError);
+            auto addRoot = [&](const YAML::Node& node) {
+                const std::string base = node["name"] ? node["name"].as<std::string>() : std::string("Prefab");
+                prefabs.emplace_back(fs::path(dir) / (base + ".prefab"), YAML::Clone(node));
+            };
+            if (payload["members"] && payload["members"].IsSequence()) {
+                for (const YAML::Node& member : payload["members"]) addRoot(member);
+            } else {
+                addRoot(payload);
+            }
+            runCommand(new CreatePrefabCmd(&project, sceneProject->id, prefabs));
+            continue;
+        }
+        if (name == "addToPrefab") {
+            YAML::Node pick;
+            pick["entity"] = op["parent"].as<std::string>();
+            SceneProject* parentScene = nullptr;
+            const Entity parent = findDumpEntity(project, pick, parentScene);
+            if (parent == NULL_ENTITY) return false;
+            runCommand(new AddEntityToPrefabCmd(&project, sceneProject->id, entity, parent,
+                op["target"] ? fs::path(op["target"].as<std::string>()) : fs::path()));
+            continue;
+        }
+        if (name == "setStateLocal") {
+            // the GameObject only, for recordState
+            if (op["active"]) scene->setEntityActive(entity, op["active"].as<bool>());
+            if (op["tag"]) scene->setEntityTag(entity, op["tag"].as<std::string>());
+            if (op["layer"]) scene->setEntityLayer(entity, op["layer"].as<int>());
+            if (op["name"]) scene->setEntityName(entity, op["name"].as<std::string>());
+            sceneProject->isModified = true;
+            continue;
+        }
+        if (name == "addLocalComponent") {
+            ProjectUtils::addEntityComponent(scene, entity, type, sceneProject->entities);
+            sceneProject->isModified = true;
+            continue;
+        }
+        if (name == "removeLocalComponent") {
+            ProjectUtils::removeEntityComponent(scene, entity, type, sceneProject->entities);
+            sceneProject->isModified = true;
+            continue;
+        }
+        if (name == "setRef") {
+            const std::string property = op["property"].as<std::string>();
+            Entity target = NULL_ENTITY;
+            if (op["target"] && !op["target"].as<std::string>().empty()) {
+                YAML::Node pick;
+                pick["entity"] = op["target"].as<std::string>();
+                if (op["stage"]) pick["stage"] = op["stage"];
+                SceneProject* targetScene = nullptr;
+                target = findDumpEntity(project, pick, targetScene);
+                if (target == NULL_ENTITY) return false;
+            }
+            PropertyData data = Catalog::findProperty(scene, entity, type, property);
+            if (!data.ref) {
+                std::cerr << "scene-dump: no property " << property << "\n";
+                return false;
+            }
+            if (data.type == PropertyType::Entity) {
+                *static_cast<Entity*>(data.ref) = target;
+            } else if (data.type == PropertyType::EntityReference) {
+                static_cast<EntityReference*>(data.ref)->entity = target;
+                static_cast<EntityReference*>(data.ref)->sceneId = 0;
+            } else if (data.type == PropertyType::Texture) {
+                CameraTextureLink::retarget(scene, *static_cast<Texture*>(data.ref), target);
+            } else {
+                std::cerr << "scene-dump: " << property << " is not a reference\n";
+                return false;
+            }
+            Catalog::updateEntity(scene, entity, data.updateFlags);
+            // an instance edit: an override (Unity semantics, section 12)
+            project.recordPrefabEdit(sceneProject->id, entity, type, {property});
+            sceneProject->isModified = true;
+            continue;
+        }
         if (name == "removeComponent") {
             runCommand(new RemoveComponentCmd(&project, sceneProject->id, entity, type));
             continue;
@@ -1206,6 +1377,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
         }
     }
 
+    sceneDumpOpsDir = opsPath.empty() ? fs::path() : fs::absolute(opsPath).parent_path();
     if (!opsPath.empty() && !runSceneDumpOps(project, YAML::LoadFile(opsPath.string()))) {
         return 1;
     }

@@ -164,9 +164,11 @@ namespace jasperengine::editor {
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;
         static unsigned int getAutomaticParallelBuildJobs();
         static unsigned int getMaxParallelBuildJobs();
-        // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab)
+        // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab).
+        // baked: each prefab's instance as the editor makes it (Project::bakePrefabsForExport),
+        // what its build_prefab_* source is generated from
         std::vector<PrefabInstanceInfo> writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
-            const std::function<std::string(const fs::path&)>& prefabGuid = nullptr);
+            const std::function<std::string(const fs::path&)>& prefabGuid, const std::map<fs::path, std::shared_ptr<BakedPrefab>>& baked);
         void writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const;

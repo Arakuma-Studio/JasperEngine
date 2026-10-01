@@ -6,8 +6,11 @@ Sections 1-5: files, identity, GUIDs, Missing Prefab (A1). Sections 6-11: the re
 the override model v2 and its APIs (A2). Section 12: editing instances the Unity way (edits
 are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C). Sections 13-15:
 Replace Prefab, the Hierarchy rows, the Scene view drop, thumbnails and the Prefabs dialog (F).
-Section 16: Prefab Mode (D, `editor/PrefabStage.*`). `tools/prefab-fixtures.py` makes test projects,
-`jasperengine-editor scene-dump --project <dir> [--save]` dumps what loading them gives.
+Section 16: Prefab Mode (D, `editor/PrefabStage.*`). Section 17: nested prefabs in assets,
+stripped objects (references into nested prefabs), the layered import and the baked export
+(B). `tools/prefab-fixtures.py` makes test projects, `jasperengine-editor scene-dump --project
+<dir> [--save] [--ops <file>]` dumps what loading them gives (and runs prefab operations
+headless).
 Read this before changing how prefabs are identified, stored or loaded.
 
 ## 1. Prefab file format (version 3)
@@ -25,13 +28,24 @@ members:                                  # the root first; GameObjects without 
     components: {...}
     children:
       - type: Entity
-        entity: 1004                      # a nested prefab instance: its root only, no children,
-        name: Wheel                       # its components as this prefab has them,
-        components: {prefab: {name, path, guid}, transform: {...}, ...}
-        prefabInstance: {...}             # and what this prefab overrides of it (section 7)
+        entity: 1004                      # a nested prefab instance: its root (its GameObjects
+        name: Wheel                       # are the nested prefab's), its components as this
+        components: {prefab: {name, path, guid}, transform: {...}, ...}   # prefab has them,
+        prefabInstance: {...}             # what this prefab overrides of it (section 7)
+        children:                         # and the GameObjects this prefab adds to it (17)
+          - type: Entity
+            entity: 1010
+            addedTo: 1012                 # below that nested GameObject (a stripped id)
+            childIndex: 1                 # at that place among its children
+            name: Flag
+            components: {...}
+stripped:                                 # GameObjects of nested instances it refers to (17)
+  - entity: 1012
+    source: [1004, 2003]                  # nested root here, ..., the GameObject's id inside
 ```
 
-- The header is always written (`Project::encodePrefabNode`).
+- The header is always written (`Project::encodePrefabNode`). `stripped` only when the
+  prefab has some.
 - Version 2 (A1) had the header but the old wrapper-root model; version 1 (no header) is
   the root entity node itself (`type: Entity ...`) or `{type: Prefab, members: [...]}`.
   The project-load scan inserts a `guid:` line into version 1 files and changes nothing
@@ -220,14 +234,18 @@ Everything else on the root is asset data, overridable like on any GameObject.
   `CreatePrefabCmd` creates them as one undo step. A selected prefab instance root is
   unpacked first and becomes an original prefab (Unity's "Original Prefab"; nested
   instances inside stay nested; undo repacks it). A GameObject of an instance (a member)
-  is refused (unpack the instance first). Prefab instances nested in the selection: what
-  their scene data overrides becomes the new prefab's asset-level data
-  (`moveNestedInstanceDataToAsset`; their added GameObjects stay the scene's; undo puts
-  their scene data back). The same happens when a prefab instance is put into a prefab
-  (`addEntityToPrefab`).
+  is refused (unpack the instance first). Prefab instances nested in the selection keep
+  everything the scene had for them, as the new prefab's: their overrides at every depth
+  become its asset-level data, the GameObjects added to them its added GameObjects, the
+  references into them its stripped objects (section 17, `moveNestedInstancesToAsset`;
+  undo puts their scene data back). The same happens when a prefab instance is put into a
+  prefab (`addEntityToPrefab`, `AddEntityToPrefabCmd` undoes it the same way).
 - **Drop a prefab** (`ImportPrefabCmd`): the new root has only its PrefabComponent and the
   prefab root's name (made unique); the import gives it the prefab root's components, at the
-  prefab root's position (Unity); dropped on a parent it keeps that local placement.
+  prefab root's position (Unity); dropped on a parent it keeps that local placement. Dropped
+  on a GameObject of an instance it is a GameObject added to that instance (Unity); in
+  Prefab Mode (`isEditingPrefabAsset`) or with `setAddToParentPrefab(true)` it is nested in
+  that instance's prefab.
 - **Editing the root**: like any GameObject of the instance (section 12): an edit records
   an override, but for the default overrides above, which stay the instance's own.
 - **Upgrade of old instances**: an instance written before (no `prefabInstance` block) has
@@ -265,7 +283,9 @@ Everything else on the root is asset data, overridable like on any GameObject.
   GameObjects below the root or a member that are not members (unchanged).
 - `Prefab::nestedInstances`: per nested root registry entity, the **asset-level** data of
   that nested instance (what this prefab overrides of it): a `PrefabInstanceData`
-  (section 8), written as the nested root's `prefabInstance` block in the prefab file.
+  (section 8), written as the nested root's `prefabInstance` block in the prefab file. Its
+  values' references are in **this prefab's** ids (its registry entities and stripped
+  ids, section 17), at any depth of `nested`.
 
 ### `PrefabInstanceData` (the serialized form, `editor/util/Prefab.h`)
 
@@ -323,7 +343,9 @@ root's registry entity in this prefab; to any depth), `legacy`.
 - **Prefab files**: the nested root's node carries the same block (without `version`,
   `memberIds` and `addedGameObjects`): what that prefab overrides of the nested instance.
   The nested root's own values in the prefab registry play the root node's part (its
-  default overrides and overridden properties are read from it).
+  default overrides and overridden properties are read from it). The GameObjects a prefab
+  adds to a nested instance are its own registry entities, the nested root's `children`
+  (section 17).
 - A Missing Prefab record made by the import (a nested one, a cycle) holds
   `{prefabInstance: {..., legacyRoot: true}}` for data read from the older keys.
 - **Legacy reader** (no `prefabInstance` key): `prefabOverrides` entries
@@ -344,29 +366,37 @@ root's registry entity in this prefab; to any depth), `legacy`.
 ## 9. Import: layers and validation
 
 `importPrefab(sceneProject, entities, path, root, needSave, instanceData, entityRemap,
-preferredIds, assetLayers)` builds the instance in layers:
+preferredIds, assetLayers)` builds the instance in two phases (section 17 has the details):
 
-1. the prefab registry (decoded, its references remapped to this instance's ids),
-2. `assetLayers`: what the prefabs holding this instance as a nested one override of it,
-   innermost first (the containing prefab's `nestedInstances[root]`, then the next one's
-   `findNested` chain); not recorded on the instance, **the hook for B**,
-3. `instanceData`: the scene's own data, the only layer recorded in `Instance::overrides` /
-   `removed`.
+1. **The GameObjects**: the prefab root's components on the root, the registry's
+   GameObjects below it (what any layer removes left out: `assetLayers` and `instanceData`
+   removals), then each nested root imported (recursively, as a *deferred* import: GameObjects
+   only), then the GameObjects this prefab adds to that nested instance. Then this level's
+   references, its registry ids and stripped ids, become local; the nested roots keep their
+   prefab's values.
+2. **The values, in layers**: the prefab registry (phase 1); each prefab's asset-level data
+   for the instances nested in it (`Prefab::nestedInstances`), applied by that prefab's own
+   import once everything below it exists, inner prefabs first, so an outer prefab's
+   override wins, its values' references made local through that prefab's map; then, by the
+   outermost import only, `instanceData` (the scene's data, values in local ids) for the
+   whole tree, the only layer recorded in `Instance::overrides` / `removed`, and the
+   GameObjects the scene added to it (`decodeSceneAddedGameObjects`).
 
-Removals of every layer are left out; overrides of a layer apply after the instances
-nested in it are built (so they win over the nested prefab). A nested root imported on its
-own later (a relinked Missing Prefab, a reverted removal) also keeps from its own values
-what the instance holding it overrides of it. Every entry is validated
+`assetLayers` (innermost first: the containing prefab's `nestedInstances[root]`, then the next
+one's `findNested` chain) tell a nested import what the levels above remove. A nested root
+imported on its own later (`instantiatePrefabBranch` of a reverted removal) is built as a
+deferred import too, then its holder's data and the levels above are applied as above
+(`applyHolderData`, `applyLayersAbove`); a relinked Missing Prefab nested in a live instance
+comes back with that instance re-imported (`relinkMissingPrefabs`). Every entry is validated
 against the GameObject it names (registry entity -> this instance's local entity): a
 property or whole-component override needs the component on that GameObject, a removed
 component the prefab GameObject's component, an added one only adds when absent (when the
 prefab has it now, the instance's values become a `"*"` override); a GameObject the prefab
 lost or a property that no longer exists is dropped and logged, never applied to whatever
-else holds that id. Values of the scene layer are in the scene's local ids; values in
-asset layers are copied as written (references into nested prefabs: B's stripped proxies).
-A legacy nested root (prefab file older than v3) is converted once by `nestedAssetLayer`:
-its values in the containing registry diffed against the nested prefab's root become that
-prefab's asset-level overrides (written on its next save).
+else holds that id. A legacy nested root (prefab file older than v3) is converted once by
+`nestedAssetLayer`: its values in the containing registry diffed against the nested prefab's
+root become that prefab's asset-level overrides (written on its next save); the copies of
+the nested prefab's GameObjects such files held below it are dropped when read.
 
 ## 10. APIs
 
@@ -399,12 +429,16 @@ GameObject of an instance, resolved to its owning level.
 | `capturePlayPrefabState` / `restorePlayPrefabState`, `restorePlaySnapshot` | Play mode (section 12) |
 | `loadPrefabAsset(path)` | the asset, read when not loaded |
 | `getPrefabAssetLayers(sceneId, instanceRoot)` | the `assetLayers` of a (nested) instance, innermost first: pass them when importing a nested root on its own (relink does) |
-| `nestedAssetLayerFor`, `applyTargetLayer`, `recordNestedRootAssetOverride` | asset-level nested data (B) |
+| `nestedAssetLayerFor`, `applyTargetLayer`, `recordNestedRootAssetOverride` | asset-level nested data (section 17) |
+| `makePrefabReference`, `resolvePrefabObjectId`, `remapReferencesToPrefab`, `encodeComponentForPrefab`, `componentReferencesOutside`, `getPrefabReferenceMap`, `findHolderInstanceRoot` | references held by a prefab, stripped objects included (section 17) |
+| `moveNestedInstancesToAsset`, `promoteNestedAssetData`, `bakePrefabsForExport` | nested instances into an asset, out of it (unpack), the export (section 17) |
 
 Apply to the owning prefab writes the registry (refused for a reference outside the
-instance), clears the override and refreshes the prefab's instances; apply to an outer
+instance and the instances nested in it; references into nested instances become stripped
+objects), clears the override and refreshes the prefab's instances; apply to an outer
 prefab records the value in that prefab's asset-level data for the nested instance
-(`Prefab::nestedInstances`, nested chain) and refreshes it. External edits: the asset
+(`Prefab::nestedInstances`, nested chain), references in that prefab's ids
+(`encodeComponentForPrefab`), and refreshes it. External edits: the asset
 database reports `Modified` for a prefab file changed on disk; a loaded prefab without
 unsaved changes is re-read and refreshed (`applyAssetChanges`).
 
@@ -419,14 +453,18 @@ bookkeeping helpers (whole component, no undo).
 - `build_prefab_X(scene, root, members)` makes `root` the prefab's root GameObject: a bare
   root (PrefabManager) takes its name, state, PrefabComponent and every component; a root
   that already has a PrefabComponent (a scene instance, written with its own components
-  first) only gets the components it lacks. Nested prefabs are built first on their roots
-  (bare then), then the outer prefab's values over them: position/rotation (default
-  overrides), the overridden state and components, removals (`nestedRootOverrides` from
-  `Prefab::nestedInstances`). Members are appended as before (root excluded).
+  first) only gets the components it lacks. Its source is generated from the prefab
+  **baked** (section 17): one instance of it made by the editor's import, so every nested
+  prefab at any depth with what each level overrides of it, the GameObjects each adds, and
+  every reference into nested prefabs (stripped objects, camera links) come out as the
+  editor shows them. `members` gets every GameObject, nested ones included, in the order
+  Generator counts them (`Factory::getPrefabMemberEntities` of the prefab, then each nested
+  prefab's, recursively); a GameObject a layer removed keeps its slot as `NULL_ENTITY`.
 - Scene code: per member override, removed components are removed, added ones added,
   overridden ones assigned whole from the scene's values (exact: the editor's values are
   the prefab's plus the overrides), overridden state set; the root's removed components are
-  removed after its build.
+  removed after its build. References to members, nested ones included, go through the
+  members vector.
 - Play (`registerPrefabManager`): the factory names a bare root after the prefab root and
   imports onto it (the import adds the root's components), as the export does.
 
@@ -714,7 +752,185 @@ shader path changes, terrain maps, tools) use `getScenesAndPrefabStages()`.
   stage. Headless: `scene-dump` ops `openPrefab`, `closePrefab`, `savePrefab`, `autoSave`,
   `tickPrefab`, `undoStage`/`redoStage`, `setCmd`, `create`, `createChild`, `deleteEntity`
   (`stage: true` addresses the shown stage); the dump lists the stages.
-- **Not covered yet** (other streams): GameObjects added below a nested instance's
-  GameObjects inside a stage are written as the nested block's `addedGameObjects`, which
-  instances do not import from asset layers yet (B); references from the asset's
-  GameObjects into nested instances are cleared on save until B's stripped proxies.
+- **Nested data** (section 17): on load the GameObjects the asset adds to its nested
+  instances become those instances' added GameObjects in the stage
+  (`prefabNodeToStage`) and its stripped references resolve to the nested GameObjects
+  (`resolveStageStrippedReferences`); on save GameObjects added below a nested instance's
+  GameObjects become the asset's (`addedObjects`, stripped parents), and references into
+  nested instances become stripped objects, the ones the asset had keeping their ids
+  (`stageToPrefabAsset`).
+
+## 17. Nested prefabs in assets, stripped objects, the baked export (B)
+
+### What a prefab holds of the instances nested in it
+
+A nested prefab instance is, in its holding prefab X, its root (a registry entity with a
+`PrefabComponent`) and three kinds of asset-level data, at any depth:
+
+| | in memory | in the file |
+|---|---|---|
+| overrides of its GameObjects (properties, state, added / removed components), removed GameObjects, the same for the instances nested in it (`nested`) | `Prefab::nestedInstances[nestedRoot]` (`PrefabInstanceData`) | the nested root's `prefabInstance` block |
+| GameObjects X adds to it | registry entities of X, children of the nested root; `Prefab::addedObjects[top]` = the nested GameObject they go below (a stripped id, NULL for the nested root) and their place among its children (`childIndex`, -1 last) | the nested root's `children`, the top of each with `addedTo` / `childIndex` |
+| references from X's values into it | stripped ids (below) | `stripped:` |
+
+Values of that data, at any depth, are in **X's ids**: X's registry entities and X's
+stripped ids. The nested root's own values (its default overrides, the properties X
+overrides of the nested prefab's root, the components X adds to it) are the nested root's
+registry entity's (A2's rule).
+
+### Stripped objects (Unity's)
+
+`Prefab::stripped`: stripped id -> `source`, the way down: the nested root's registry entity
+in X, then the registry entity of the next nested root in that prefab, ..., then the
+GameObject's registry entity in the innermost prefab (a GameObject of an instance nested
+in a nested instance is reached without the middle prefab knowing). A stripped id is never
+a registry entity: it comes from the same never-reused counter (`Prefab::allocateId`,
+`nextEntity` counts them). Any reference a value of X holds can be one: an entity property
+(action target, joint bodies, bone / model links, UI links), a script's entity reference, a
+camera texture link (`camera|<id>`; written even unbound). The file lists the ones whose
+first step is still a nested root of X.
+
+- `makePrefabReference(sceneId, instanceRoot, localTarget)`: the id X (the prefab of the
+  instance rooted at instanceRoot) uses for a scene GameObject: its registry entity, else
+  the stripped id of the way down to it (made, X modified), else NULL_ENTITY (outside: no
+  prefab can hold it). `remapReferencesToPrefab` does it for a component's references in
+  place (false when one was outside, now None); `encodeComponentForPrefab` gives the
+  component's YAML as X stores it; `componentReferencesOutside` checks first (the
+  instance's tree: `collectInstanceTreeObjects`). Apply paths, Create Prefab and Add to
+  Prefab use these.
+- Resolution: `getPrefabReferenceMap(sceneId, instanceRoot)` (registry entities and
+  stripped ids -> local), `resolvePrefabObjectId`; the import builds the same map once the
+  nested instances exist (`addStrippedToMap`, `resolveStrippedObject`). A stripped object
+  whose GameObject is not there (removed by a layer, a Missing Prefab) resolves to nothing:
+  the reference is None.
+
+### Import (section 9)
+
+`importPrefab` phase 1 (`prepareBranch` leaves out a nested root's children) decodes this
+prefab's GameObjects, then for each nested root in order: imports it with
+`nextImportDeferred` (GameObjects only), then decodes the GameObjects X adds to it below
+their resolved parent at their `childIndex` (nested roots among them join the queue). Then
+the map with stripped objects; every reference of X's GameObjects but its nested roots is
+made local (`remapEntityProperties`, anything unmapped None). Then X applies its data to
+each nested instance (`applyHolderData`): its root takes, from X's nested root entity
+(references mapped by X's map), the default overrides and the properties / components X
+overrides; its other GameObjects and deeper nested instances take the entries' values,
+references mapped by X's map. A deferred import returns there; the outermost then applies
+the scene's data to the whole tree (`applySceneData`, recorded) and decodes the scene's
+added GameObjects (`decodeSceneAddedGameObjects`).
+
+### Into an asset: Create Prefab, Add to Prefab
+
+`createPrefab` and `addEntityToPrefab` encode the selection with the project (a prefab
+instance in it is its root and its block; Hierarchy payloads, single and multiple, do the
+same), decode it into the registry, then `moveNestedInstancesToAsset` for its nested roots:
+
+1. the scene GameObjects added below each nested instance's GameObjects (at any depth, not a
+   GameObject of any instance) become X's registry entities below the nested root, with
+   `addedTo` (a stripped id made from the scene parent) and `childIndex`; the scene
+   GameObjects become members of X's instance; prefab instances among them are nested roots
+   of X too and go the same way;
+2. what the scene's data overrides of each (`Instance::overrides` / `removed` of the nested
+   instance and the ones in it, a nested root's root overrides as its root entry) becomes
+   `nestedInstances[nestedRoot]`, values encoded with references in X's ids; a component
+   referring outside stays a scene override (and out of the asset);
+3. the scene's data of those instances is cleared (the import makes the same values from
+   the asset).
+
+Then every reference of X's registry is made X's (`remapReferencesToPrefab`); components of
+X's instance referring outside its tree become whole-component scene overrides
+(`overrideOutsideReferences`). Add to Prefab then re-imports every instance of X
+(`refreshPrefabInstances`; ids kept). Undo: `CreatePrefabCmd` and `AddEntityToPrefabCmd`
+re-import the nested instances from their nodes taken before.
+
+Apply of an added GameObject (`AddEntityToPrefabCmd(..., target)`,
+`addEntityToPrefab(..., target)`): to the prefab whose GameObject its parent is (empty
+target), or to a prefab holding that instance (`getPrefabApplyTargets(parent)`; the
+Overrides dropdown offers them, Apply All uses the instance's own prefab):
+`addEntityToOuterPrefab` makes it a GameObject that prefab adds to its nested instance
+(below the nested root, `addedTo` the parent's stripped id, at its `childIndex`).
+
+### Out of an asset: Unpack
+
+`unpackPrefabInstances` calls `promoteNestedAssetData` before dropping an instance: what its
+prefab (down its chain) overrides of the instances nested in it becomes their scene
+overrides and removed GameObjects (a nested root's root entry and what the instance held
+of that root become the root's own, it is a top-level instance now); the GameObjects the
+prefab added to them are added GameObjects of theirs by themselves. `repackPrefabInstances`
+puts their previous state back (`PrefabUnpackRecord::nestedBefore`).
+
+### Source values of a nested root
+
+`buildPrefabSource` / `getPrefabSourceValue` / `getPrefabSourceState` of a nested instance
+root (owned by the instance holding it): the nested prefab's root's value, the holding
+prefab's overridden properties and default overrides from its nested root entity, then the
+layers above, never the holding prefab's whole stored copy (stale after the nested prefab
+changed).
+
+### Export: baked prefabs
+
+`Project::bakePrefabsForExport` imports each loaded prefab once into a scratch scene (its
+own scene id, dropped right after) and lists its GameObjects in build order
+(`BakedPrefab::slots`: the prefab's members, then each nested root's prefab's slots,
+recursively; a GameObject a layer removed keeps an empty slot). `Factory::createPrefab`
+generates `build_prefab_*` from it: every GameObject created, named, its state, its
+components (references through the slot variables), nested roots keep their
+`PrefabComponent`, the hierarchy in Transform order, camera texture links into and out of
+nested prefabs. Generator's scene side counts the same slots (`getPrefabMemberEntities`
+includes the GameObjects a prefab adds to its nested instances). Play imports with the
+editor (`registerPrefabManager`), the same code the bake uses.
+
+### Prefab Mode
+
+A stage (section 16) is a scene holding the asset's GameObjects with their file ids and its
+nested prefabs as instances whose scene data is the asset's nested data. `prefabNodeToStage`
+turns the GameObjects the asset adds to a nested instance into that instance's added
+GameObjects (`addedGameObjects` of its block or of the nested entry `addedTo` leads to, at
+`childIndex`, ids kept) before the stage is decoded; `resolveStageStrippedReferences` then
+maps stripped ids to the nested GameObjects (only those ids: everything else keeps its id).
+On save, after `loadRegistry` of the stage's encoding, `stageToPrefabAsset` makes the added
+GameObjects of the nested instances (at any depth) the asset's again (`addedObjects`,
+stripped parents; prefab instances among them nested roots with their data) and every
+reference the asset's (its GameObjects', stripped objects for the nested instances' with the
+ids the asset had, None outside), in its registry and in its nested data's values.
+
+### Notes for Variants
+
+- Everything here is keyed by a registry entity of the holding prefab that is a nested root
+  (`Prefab::isNestedRoot`: a `PrefabComponent`, not the prefab's root). A Variant (a prefab
+  whose root is an instance of its base) is the same model with the root as that nested
+  root: its asset-level data `nestedInstances[root]`, its added GameObjects the root's
+  registry children, its references into the base stripped ids whose way starts at the
+  root. `importPrefab` would import the base onto the root first (deferred), decode the
+  variant's added GameObjects, then `applyHolderData(root, nestedInstances[root], map,
+  registry, root)`; the scene layer stays as is.
+- Writing an edited instance back to its asset uses the same pieces as Create Prefab,
+  Apply and Prefab Mode: GameObjects below a nested instance become `addedObjects` with
+  `makePrefabReference` parents, values go through `encodeComponentForPrefab` /
+  `remapReferencesToPrefab`.
+
+### Tests
+
+`tools/prefab-fixtures.py nested <dir>` writes a project of plain GameObjects four levels
+deep and `<dir>.ops/build.yaml`, the scene-dump ops making Leaf, Branch (holding Leaf), Tree
+and Forest bottom-up with overrides of every kind, added / removed GameObjects and
+references (camera link, action targets, joint bodies) at every level, a fresh instance of
+each compared with what it was made from (`prefab-dump-compare.py --subtree=A:B`), scene
+references into deep members and between instances, a multi-selection of instances made
+prefabs (unpacked to originals), an instance put into a prefab, and `bake` (the generated
+`build_prefab_*` sources). A Lua script (`Watcher.lua`) with an entity property points into
+nested prefabs from Branch and Tree and logs its target when the game starts (`WATCH ...` in
+an exported game's log). Scene-dump ops added for this: `createPrefabs`, `addToPrefab`,
+`create`, `setRef`, `setStateLocal`, `addLocalComponent` / `removeLocalComponent`, `spawn`
+(Play's factory: a bare root imported), `bake`; `@/x` in a path is next to the ops file.
+
+`FIXTURE=<TappyPlane fixture> tools/prefab-nested-test.py [work-dir]` runs all of it and
+checks: a fresh instance of each level equals what it was made from (by
+`prefab-dump-compare.py --subtree`), the references at every level, a reload equal with
+member ids, a second save byte for byte the same, Play's spawn equal to an instantiated
+instance, Apply of a reference into a nested prefab to the owning and to an outer prefab,
+undo / redo of Create Prefab holding an instance, a nested prefab going missing and coming
+back, Revert of a nested root after its prefab changed, an added GameObject applied to an
+outer prefab, Prefab Mode (open and save changes nothing; a GameObject added below a nested
+GameObject and a reference into a nested prefab are kept), and the generated sources.
+`tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
