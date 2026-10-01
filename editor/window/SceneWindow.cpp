@@ -1763,8 +1763,6 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (disabled) ImGui::EndDisabled();
     };
 
-    bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
-
     if (beginSection("Overlays")) {
         drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints);
         drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones);
@@ -1787,7 +1785,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
 
     if (beginSection("Rendering")) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
-            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling, notStopped);
+            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
 

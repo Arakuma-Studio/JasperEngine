@@ -230,9 +230,10 @@ namespace jasperengine{
 		// selectTilemapChunks and consumed by the draw right after it
 		std::vector<TilemapDrawRange> tilemapDrawRanges;
 
-		// Editor-only viewport debug override that forces all meshes to render
-		// without face culling. Defaults to false and is never set at runtime, so
-		// exported games are unaffected.
+		// Editor-only viewport debug override: the scene camera's passes of draw() cull no
+		// face (the frame is the Scene view in edit mode; a secondary view has its own,
+		// see ViewDesc). Defaults to false and is never set at runtime, so exported games
+		// are unaffected.
 		bool disableFaceCulling = false;
 
 		// editor-only, draws as if the scene had no fog
@@ -336,6 +337,100 @@ namespace jasperengine{
 			BACK_TO_FRONT  // ascending along a direction, full detail: blended batches
 		};
 
+		// shadow cameras of one light fitted to a camera (directional cascades, near/far)
+		struct LightCameraSet{
+			LightCamera cameras[6];
+			unsigned int numCascades = 1;
+		};
+
+		static constexpr int SHADOW_KEY_SLOTS = (MAX_SHADOW_ATLAS_SLOTS > MAX_POINT_SHADOW_ATLAS_SLOTS) ? MAX_SHADOW_ATLAS_SLOTS : MAX_POINT_SHADOW_ATLAS_SLOTS;
+
+		// What a shadow atlas holds: the shadow camera of each slot and the layers whose
+		// casters went into it. Two atlases drawn after the same update() with the same key
+		// hold the same depths, so a camera wanting one can sample the other.
+		struct ShadowAtlasKey{
+			// update() the atlas was drawn after, 0 when it holds nothing
+			uint64_t epoch = 0;
+			int slots = 0;
+			Matrix4 viewProjection[SHADOW_KEY_SLOTS];
+			uint32_t casterMask[SHADOW_KEY_SLOTS] = {};
+			// the camera whose terrain cut, billboards and instance lists the casters were
+			// drawn with, when such camera-dependent casters are in the masks
+			const void* cameraCasters = nullptr;
+
+			bool sameDepths(const ShadowAtlasKey& other) const;
+		};
+
+		// The lighting a camera's passes read and the shadow maps they sample: the scene
+		// camera's, a render-to-texture, mirror or probe face camera's, an editor view's.
+		// Directional cascades are fitted to the camera; spot and point shadow cameras are
+		// the lights' own, so only the layers the camera draws can tell its maps apart. A
+		// camera samples another camera's maps drawn after the same update() when they hold
+		// the same depths, and draws its own otherwise.
+		struct CameraShadows{
+			fs_lighting_t fs_lighting;
+			vs_shadows_t vs_shadows;
+			fs_shadows_t fs_shadows;
+			fs_point_shadows_t fs_point_shadows;
+
+			// the cascades below, else the lights' own (the scene camera)
+			bool ownLightCameras = false;
+			std::array<LightCameraSet, MAX_LIGHTS> lightCameras;
+
+			// layers the camera draws, so the layers that cast into its maps
+			uint32_t cameraMask = LAYER_MASK_EVERYTHING;
+			// terrain cut its shadow passes draw
+			int terrainView = 0;
+
+			// what its own atlases hold (the frame's atlases for the scene camera)
+			ShadowAtlasKey projectiveKey;
+			ShadowAtlasKey pointKey;
+			// update() projectiveKey and pointKey were last computed for
+			uint64_t keysEpoch = 0;
+
+			// atlases its passes sample: its own, another camera's, or null for the frame's
+			FramebufferRender* projectiveAtlas = nullptr;
+			FramebufferRender* pointAtlas = nullptr;
+			// its own, created on first need, resized with the frame's layout (the point atlas
+			// keeps only the rows the point lights use), freed when unused
+			FramebufferRender ownProjective;
+			FramebufferRender ownPoint;
+			int ownProjectiveWidth = 0;
+			int ownProjectiveHeight = 0;
+			int ownPointWidth = 0;
+			int ownPointHeight = 0;
+			// its own atlases are drawn for this update()
+			bool drawProjective = false;
+			bool drawPoint = false;
+
+			// culled casters of each projective slot, when its own maps are drawn from the
+			// frame's instance lists (render-to-texture, mirror and probe cameras)
+			bool ownShadowInstances = false;
+			InstanceView instanceViews[MAX_SHADOW_ATLAS_SLOTS];
+			struct InstanceRanges{
+				std::array<InstanceViewRange, MAX_SHADOW_ATLAS_SLOTS> slots;
+				uint64_t build = 0;
+			};
+			std::unordered_map<Entity, InstanceRanges> instanceRanges;
+			uint64_t instanceBuild = 0;
+			uint64_t instanceRevision = 0;
+			uint64_t instanceShadowHash = 0;
+
+			// draw count it was last prepared in (unused ones are freed)
+			uint64_t lastUsed = 0;
+
+			CameraShadows() = default;
+			~CameraShadows();
+			CameraShadows(const CameraShadows&) = delete;
+			CameraShadows& operator=(const CameraShadows&) = delete;
+
+			void releaseProjective();
+			void releasePoint();
+			void releaseInstances();
+			// every GPU resource it holds
+			void release();
+		};
+
 		// one camera's color pass (see renderCameraPass)
 		struct CameraPass{
 			CameraComponent* camera = nullptr;
@@ -377,12 +472,6 @@ namespace jasperengine{
 			Matrix4 skyViewProjection;
 		};
 
-		// shadow cameras a view fits to its own camera (directional cascades, near/far)
-		struct LightCameraSet{
-			LightCamera cameras[6];
-			unsigned int numCascades = 1;
-		};
-
 		// instances a view culls from: its own list when they depend on the camera
 		// (billboards, distance fade), else the component's
 		struct ViewInstanceSource{
@@ -407,6 +496,8 @@ namespace jasperengine{
 			Transform transform;
 			PassObjects objects;
 			Matrix4 viewProjection; // oblique, for the mirror surface's projective lookup
+			// lighting and shadow maps of the reflection camera
+			CameraShadows shadows;
 			bool ready = false;
 
 			MirrorView();
@@ -425,10 +516,8 @@ namespace jasperengine{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
 
-			fs_lighting_t fs_lighting;
-			vs_shadows_t vs_shadows;
-			fs_shadows_t fs_shadows;
-			fs_point_shadows_t fs_point_shadows;
+			// lighting and shadow maps of the view camera
+			CameraShadows shadows;
 
 			unsigned int ssaoWidth = 0;
 			unsigned int ssaoHeight = 0;
@@ -463,6 +552,8 @@ namespace jasperengine{
 			bool fixedResolution = false;
 			// draws as if the scene had no fog (the fog variant stays, its factor is 1)
 			bool disableFog = false;
+			// its camera passes cull no face (the Scene view's debug toggle)
+			bool disableFaceCulling = false;
 			// the view's copy of its camera, sized for the view: the scene's camera
 			// component is never touched (it may be drawn by the frame or another view)
 			CameraComponent camera;
@@ -471,19 +562,6 @@ namespace jasperengine{
 			bool sharesPrimaryCamera = false;
 
 			PassObjects objects;
-			std::vector<LightCameraSet> lightCameras; // by light index
-			// own shadow maps, used when the view's shadow cameras differ from the frame's
-			FramebufferRender shadowAtlas;
-			FramebufferRender shadowPointAtlas;
-			int shadowAtlasWidth = 0;
-			int shadowAtlasHeight = 0;
-			int shadowPointAtlasWidth = 0;
-			int shadowPointAtlasHeight = 0;
-			bool ownShadowAtlas = false;
-			bool ownShadowPointAtlas = false;
-			// layers whose meshes cast into this view's shadow maps: its camera's culling
-			// mask (a view with another mask cannot share the frame's maps)
-			uint32_t shadowCameraMask = LAYER_MASK_EVERYTHING;
 
 			std::unordered_map<Entity, std::array<InstanceViewRange, 1 + MAX_SHADOW_ATLAS_SLOTS>> instanceRanges;
 			std::unordered_map<Entity, ViewInstanceSource> instanceSources;
@@ -513,6 +591,30 @@ namespace jasperengine{
 		};
 
 		RenderView primaryView;
+
+		// lighting and shadow maps of each render-to-texture, mirror and probe face camera
+		// draw() renders, by camera (or probe) entity; freed some draws after its last use
+		std::unordered_map<Entity, std::unique_ptr<CameraShadows>> cameraShadows;
+		// what the camera pass being drawn reads in place of the view's (null: rv().shadows)
+		CameraShadows* passShadows = nullptr;
+		// bumped by update(): maps drawn after the same one hold the same scene
+		uint64_t shadowEpoch = 1;
+		// drawCameras() calls, the clock of cameraShadows' lastUsed
+		uint64_t drawCount = 0;
+		// layers holding shadow casters this epoch, and those holding casters that depend on
+		// the camera drawing them (terrain cut, billboards, instance lists culled from it)
+		uint32_t shadowCasterLayers = 0;
+		uint32_t cameraCasterLayers = 0;
+		// by light: layers holding casters that can reach its maps (all casters for a
+		// directional light, those inside its shadow frustums for a spot or point light)
+		uint32_t lightCasterLayers[MAX_LIGHTS] = {};
+		uint64_t casterLayersEpoch = 0;
+		// what a camera being prepared wants its atlases to hold
+		ShadowAtlasKey wantedProjectiveKey;
+		ShadowAtlasKey wantedPointKey;
+		// bumped each time the frame's instance views are rebuilt
+		uint64_t instanceRevision = 0;
+
 #ifdef JASPERENGINE_EDITOR
 		RenderView* activeView = &primaryView;
 		std::unordered_map<uint32_t, std::unique_ptr<RenderView>> secondaryViews;
@@ -530,9 +632,18 @@ namespace jasperengine{
 		uint16_t viewPipelines = 0;
 		// draw() ran since the last update(): the frame's shared passes are done
 		bool frameDrawn = false;
-		// bumped each time the frame's instance views are rebuilt
-		uint64_t instanceRevision = 0;
+		// the camera pass being drawn culls no face (a Scene view's debug toggle)
+		bool passDisablesFaceCulling = false;
 #endif
+
+		// whether the pass being drawn culls no face (always false outside the editor)
+		bool passNoFaceCulling() const{
+#ifdef JASPERENGINE_EDITOR
+			return passDisablesFaceCulling;
+#else
+			return false;
+#endif
+		}
 
 		// the view being drawn: primaryView in draw(), a secondary view in drawView()
 		RenderView& rv(){
@@ -550,12 +661,22 @@ namespace jasperengine{
 #endif
 		}
 
+		// the lighting and shadow maps of the camera pass being drawn
+		CameraShadows& ps(){
+			return passShadows ? *passShadows : rv().shadows;
+		}
+		const CameraShadows& ps() const{
+			return passShadows ? *passShadows : rv().shadows;
+		}
+
 		struct ShadowSlot{
 			int slot;
 			LightComponent* light;
 			int lightIndex;
 			int cameraIndex;
 		};
+		// collectShadowSlots' list, kept so collecting allocates nothing once warm
+		std::vector<ShadowSlot> shadowSlots;
 
 		// what one pass draws of a mesh
 		struct MeshDraw{
@@ -719,7 +840,8 @@ namespace jasperengine{
 		void createEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
-		void processLights(int numLights, CameraComponent& camera, Transform& cameraTransform);
+		// the lighting block and shadow uniforms of target for camera
+		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
 		void loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render);
 		bool loadLights2D();
@@ -809,11 +931,34 @@ namespace jasperengine{
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
 		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
-		std::vector<ShadowSlot> collectShadowSlots();
+		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
+		const std::vector<ShadowSlot>& collectShadowSlots();
+
+		// per-camera shadows
+		CameraShadows& getCameraShadows(Entity entity);
+		// fits target's cascades to camera, fills its lighting and shadow uniforms and picks
+		// the atlases it samples: maps holding the same depths drawn after this update(),
+		// else its own (drawn by renderCameraShadows)
+		void prepareCameraShadows(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform, int terrainView, bool ownInstances);
+		void renderCameraShadows(CameraShadows& target);
+		// culled casters of target's projective slots, from the frame's instance lists
+		void buildCameraShadowInstances(CameraShadows& target);
+		void ensureCasterLayers();
+		void computeShadowKeys(const CameraShadows& target, ShadowAtlasKey& projective, ShadowAtlasKey& point);
+		FramebufferRender* findShadowSource(CameraShadows& target, const ShadowAtlasKey& wanted, bool projective);
+		bool ensureOwnShadowAtlas(CameraShadows& target, bool projective);
+		// rows of point atlas slots the point lights use (a camera's own point atlas holds no more)
+		int ownPointAtlasRows() const;
+		// frees the camera shadows unused for a while
+		void releaseUnusedCameraShadows();
+		// the CDLOD cut camera draws (and its shadow passes) into terrain view terrainView
+		void selectCameraTerrain(CameraComponent& camera, Transform& cameraTransform, int terrainView);
 
 		// instance views
 		void buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform);
-		void buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order);
+		// limitDistance drops instances past the batch's cull distance from eye
+		void buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance = true);
+		void uploadInstanceViews(InstanceView* views, size_t count);
 		bool selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw);
 		void bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first);
 		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
@@ -840,8 +985,11 @@ namespace jasperengine{
 		Framebuffer* targetFramebuffer() const;
 		Rect targetViewRect() const;
 		bool isBaseLayer() const;
+		// shadow cameras of the pass being drawn, or of shadows
 		const LightCamera& lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const;
 		unsigned int lightCascades(int lightIndex, const LightComponent& light) const;
+		const LightCamera& lightCamera(const CameraShadows& shadows, int lightIndex, const LightComponent& light, int cameraIndex) const;
+		unsigned int lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const;
 		const InstanceViewRange& instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
 		BufferRender* instanceBuffer(int instanceView);
 		Vector3 instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
@@ -858,8 +1006,8 @@ namespace jasperengine{
 		const Matrix4& passSkyViewProjection(const SkyboxComponent& sky) const;
 		FramebufferRender& shadowAtlasTarget();
 		FramebufferRender& shadowPointAtlasTarget();
-		// binds a secondary view's own shadow maps to a lit submesh (restore puts the
-		// frame's back); false when the view shares the frame's
+		// binds the shadow maps the pass being drawn samples to a lit submesh when they are
+		// not the frame's (restore puts the frame's back); false when they are the frame's
 		bool bindViewShadowMaps(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool restore);
 		// 1/viewport size, SSAO debug and flip flags of fs_lighting for camera in the view being drawn
 		Vector4 lightingViewportInfo(const CameraComponent& camera) const;
@@ -875,8 +1023,6 @@ namespace jasperengine{
 		void destroyRenderView(RenderView& view);
 		void buildPassObjects(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
 		void selectPassTerrain(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
-		void prepareViewLights(RenderView& view, int numLights, CameraComponent& camera, Transform& cameraTransform);
-		bool ensureViewShadowAtlases(RenderView& view);
 		void buildViewInstances(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
 		void buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source);
 		void renderViewMirrors(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
@@ -965,8 +1111,8 @@ namespace jasperengine{
 		RenderSystem(Scene* scene);
 		virtual ~RenderSystem();
 
-		// Editor-only viewport debug override (see member declaration). Toggling it
-		// reloads every mesh, since cull mode is baked into the pipeline at load time.
+		// Editor-only viewport debug override (see member declaration). Free to toggle:
+		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
 
 		void setDisableFog(bool disableFog);
@@ -1051,6 +1197,8 @@ namespace jasperengine{
 			bool fixedResolution = false;
 			// draws as if the scene had no fog
 			bool disableFog = false;
+			// the view camera's passes cull no face (the Scene view's debug toggle)
+			bool disableFaceCulling = false;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;

@@ -41,7 +41,10 @@ namespace jasperengine {
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
-        bool beginDraw(PipelineType pipType);
+        // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
+        // first use and released by destroy() (the editor's Scene view debug toggle; ignored
+        // outside the editor)
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
         void applyUniformBlock(int slot, unsigned int count, void* data);
         // baseElement skips that many elements of the bound index (or vertex) range,
         // used to draw a single sub-range of a submesh, like one tilemap chunk

@@ -428,6 +428,8 @@ namespace jasperengine {
             // the camera component itself is left alone
             float canvasWidth = 0.0f;
             float canvasHeight = 0.0f;
+            // the camera's passes cull no face (the Scene view's debug toggle)
+            bool disableFaceCulling = false;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

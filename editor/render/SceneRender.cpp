@@ -542,8 +542,11 @@ void editor::SceneRender::activate(){
 void editor::SceneRender::activateGame(Framebuffer* target){
     Engine::setFramebuffer(target);
     Engine::setScene(scene);
-    // the game never shows the gizmos and icons living in its scene
+    // the game never shows the gizmos and icons living in its scene, nor the Scene view's
+    // debug toggles (update() may not run before this frame: the Scene view can be hidden)
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+    scene->getSystem<RenderSystem>()->setDisableFaceCulling(false);
+    scene->getSystem<RenderSystem>()->setDisableFog(false);
 
     Engine::removeAllSceneLayers(false);
     engineLayersActive = false;
@@ -612,9 +615,11 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     const Entity viewCamera = previewing ? previewCameraEntity : camera->getEntity();
 
     std::vector<Engine::ViewLayer> layers;
-    // the Scene view's own fog toggle holds while playing too; a previewed scene camera
-    // covers the view as the Engine's native canvas would size it
-    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height});
+    // the Scene view's own fog and face culling toggles hold while playing too, and in this
+    // view only (the Game view and the game keep the scene's culling); a previewed scene
+    // camera covers the view as the Engine's native canvas would size it
+    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
+                      displaySettings.disableFaceCulling});
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -715,10 +720,10 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }), toolEntities.end());
     }
 
-    // Editor-only viewport debug override: forces meshes to render without face
-    // culling while editing, but reverts to the normal per-object culling during
-    // play so the running game looks as it actually will. The setter only reloads
-    // meshes when the value changes, so this is a no-op every frame once settled.
+    // Editor-only viewport debug override, for the Scene view only. In edit mode the
+    // Engine's frame is the Scene view, so its camera passes cull no face; while playing
+    // the frame is the game, which keeps its culling, and the Scene view asks for it as a
+    // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
 
@@ -2157,6 +2162,8 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
     Engine::setFramebuffer(target);
     Engine::setScene(scene);
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+    // the Game view culls as the game does, whatever the Scene view shows
+    scene->getSystem<RenderSystem>()->setDisableFaceCulling(false);
 
     // Only the game's own layers: no gizmo, overlay or view-gizmo scenes
     Engine::removeAllSceneLayers(false);
