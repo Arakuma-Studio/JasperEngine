@@ -13,6 +13,7 @@
 #include "yaml-cpp/node/ptr.h"
 #include "yaml-cpp/node/type.h"
 #include <set>
+#include <string>
 #include <atomic>
 
 namespace YAML {
@@ -24,7 +25,7 @@ class node {
   };
 
  public:
-  node() : m_pRef(new node_ref), m_dependencies{}, m_index{} {}
+  node() : m_pRef(std::make_shared<node_ref>()), m_dependencies{}, m_index{} {}
   node(const node&) = delete;
   node& operator=(const node&) = delete;
 
@@ -41,7 +42,14 @@ class node {
 
   template <typename T>
   bool equals(const T& rhs, shared_memory_holder pMemory);
-  bool equals(const char* rhs, shared_memory_holder pMemory);
+  // Map key lookups: what convert<std::string>::decode accepts (a scalar),
+  // compared without building a Node and copying the scalar
+  bool equals(const std::string& rhs, const shared_memory_holder&) {
+    return type() == NodeType::Scalar && scalar() == rhs;
+  }
+  bool equals(const char* rhs, const shared_memory_holder&) {
+    return type() == NodeType::Scalar && scalar() == rhs;
+  }
 
   void mark_defined() {
     if (is_defined())

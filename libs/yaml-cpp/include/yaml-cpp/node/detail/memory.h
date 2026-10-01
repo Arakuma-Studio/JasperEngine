@@ -7,7 +7,7 @@
 #pragma once
 #endif
 
-#include <set>
+#include <vector>
 
 #include "yaml-cpp/dll.h"
 #include "yaml-cpp/node/ptr.h"
@@ -20,25 +20,41 @@ class node;
 
 namespace YAML {
 namespace detail {
+// Owns the nodes of one tree. Merging two memories (assigning a node of one
+// tree into another) moves the smaller node list into the larger one and
+// leaves the emptied memory forwarding to the merged one, so a node moves at
+// most O(log n) times however the tree is assembled.
 class YAML_CPP_API memory {
  public:
-  memory() : m_nodes{} {}
+  memory() : m_nodes{}, m_pForward{} {}
+  memory(const memory&) = delete;
+  memory& operator=(const memory&) = delete;
+  ~memory();
+
   node& create_node();
-  void merge(const memory& rhs);
+  // Takes over the nodes of rhs, which must not be forwarded
+  void merge(memory& rhs);
 
  private:
-  using Nodes = std::set<shared_node>;
+  using Nodes = std::vector<shared_node>;
   Nodes m_nodes;
+  // Set when this memory was merged into another one, which now holds its nodes
+  shared_memory m_pForward;
+
+  friend class memory_holder;
 };
 
 class YAML_CPP_API memory_holder {
  public:
-  memory_holder() : m_pMemory(new memory) {}
+  memory_holder() : m_pMemory(std::make_shared<memory>()) {}
 
-  node& create_node() { return m_pMemory->create_node(); }
+  node& create_node() { return resolve().create_node(); }
   void merge(memory_holder& rhs);
 
  private:
+  // The memory the nodes live in now, following (and shortening) forwards
+  memory& resolve();
+
   shared_memory m_pMemory;
 };
 }  // namespace detail

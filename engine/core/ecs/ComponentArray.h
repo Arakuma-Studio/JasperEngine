@@ -12,6 +12,7 @@
 #include <functional>
 #include <stdexcept>
 #include <numeric>
+#include <limits>
 #include <memory>
 #include <utility>
 #include "Entity.h"
@@ -28,10 +29,23 @@ namespace jasperengine {
 
     template<typename T>
     class ComponentArray : public ComponentArrayBase{
+        template<typename> friend class ComponentArray;
+
     private:
         std::vector<T> componentArray{};
         std::unordered_map<Entity, size_t> entityToIndexMap{};
-        std::unordered_map<size_t, Entity> indexToEntityMap{};
+        std::vector<Entity> indexToEntity{}; // parallel to componentArray
+
+        // Grows by moving the components: a component type without a noexcept move
+        // (most of them) would otherwise be copied whole on every reallocation
+        void grow(){
+            std::vector<T> bigger;
+            bigger.reserve(std::max<size_t>(16, componentArray.capacity() * 2));
+            for (T& component : componentArray){
+                bigger.emplace_back(std::move(component));
+            }
+            componentArray.swap(bigger);
+        }
 
         template<typename... Args>
         void emplace(Entity entity, Args&&... args) {
@@ -41,23 +55,38 @@ namespace jasperengine {
             }
 
             size_t newIndex = componentArray.size();
-            componentArray.emplace_back(std::forward<Args>(args)...);
+            if (componentArray.size() == componentArray.capacity()){
+                // Built before growing: the arguments may name a component of this array
+                T component(std::forward<Args>(args)...);
+                grow();
+                componentArray.emplace_back(std::move(component));
+            }else{
+                componentArray.emplace_back(std::forward<Args>(args)...);
+            }
             entityToIndexMap[entity] = newIndex;
-            indexToEntityMap[newIndex] = entity;
+            indexToEntity.push_back(entity);
+        }
+
+        void reindex(size_t first, size_t last){
+            for (size_t i = first; i < last; i++){
+                entityToIndexMap[indexToEntity[i]] = i;
+            }
         }
 
         void moveRange(size_t start, size_t length, size_t dst){
-            typename std::vector<T>::iterator first, middle, last;
+            size_t first, middle, last;
             if (start < dst){
-                first  = componentArray.begin() + start;
-                middle = first + length;
-                last   = componentArray.begin() + dst + length;
+                first  = start;
+                middle = start + length;
+                last   = dst + length;
             }else{
-                first  = componentArray.begin() + dst;
-                middle = componentArray.begin() + start;
-                last   = middle + length;
+                first  = dst;
+                middle = start;
+                last   = start + length;
             }
-            std::rotate(first, middle, last);
+            std::rotate(componentArray.begin() + first, componentArray.begin() + middle, componentArray.begin() + last);
+            std::rotate(indexToEntity.begin() + first, indexToEntity.begin() + middle, indexToEntity.begin() + last);
+            reindex(first, last);
         }
 
     public:
@@ -74,23 +103,17 @@ namespace jasperengine {
         }
 
         void remove(Entity entity) {
-
-            if (entityToIndexMap.find(entity) != entityToIndexMap.end()){
+            auto it = entityToIndexMap.find(entity);
+            if (it != entityToIndexMap.end()){
 
                 // Remove component
-                size_t indexOfRemovedEntity = entityToIndexMap[entity];
-                componentArray.erase(componentArray. begin() + indexOfRemovedEntity);
-                size_t componentSize = componentArray.size();
-                
+                size_t indexOfRemovedEntity = it->second;
+                entityToIndexMap.erase(it);
+                componentArray.erase(componentArray.begin() + indexOfRemovedEntity);
+                indexToEntity.erase(indexToEntity.begin() + indexOfRemovedEntity);
+
                 // Update maps
-                for (size_t i = indexOfRemovedEntity; i < componentSize; i++){
-                    Entity temp = indexToEntityMap[i+1];
-                    entityToIndexMap[temp] = i;
-                    indexToEntityMap[i] = temp;
-                }
-                
-                entityToIndexMap.erase(entity);
-                indexToEntityMap.erase(componentSize);
+                reindex(indexOfRemovedEntity, indexToEntity.size());
 
             } else {
                 Log::error("Removing non-existent component");
@@ -102,104 +125,70 @@ namespace jasperengine {
             size_t startIndex = entityToIndexMap[start];
             size_t endIndex = entityToIndexMap[end];
             size_t length = endIndex - startIndex + 1;
-            size_t oldIndex = startIndex;
 
-            if (newIndex < 0 || (newIndex + length) > componentArray.size()){
+            if ((newIndex + length) > componentArray.size()){
                 Log::error("Cannot move entity range out of array");
                 return;
             }
 
-            std::vector<Entity> tmp(length);
-            for (int i = 0; i < length; i++){
-                tmp[i] = indexToEntityMap[oldIndex+i];
-            }
-
-            if (oldIndex > newIndex){
-                for (size_t i = oldIndex+length-1; i > newIndex+length-1; i--){
-                    Entity moved = indexToEntityMap[i-length];
-                    entityToIndexMap[moved] = i;
-                    indexToEntityMap[i] = moved;
-                }
-            }else{
-                for (size_t i = oldIndex; i < newIndex; i++){
-                    Entity moved = indexToEntityMap[i+length];
-                    entityToIndexMap[moved] = i;
-                    indexToEntityMap[i] = moved;
-                }
-            }
-
-            for (int i = 0; i < tmp.size(); i++){
-                entityToIndexMap[tmp[i]] = newIndex+i;
-                indexToEntityMap[newIndex+i] = tmp[i];
-            }
-
-            moveRange(oldIndex, length, newIndex);
+            moveRange(startIndex, length, newIndex);
         }
 
         void moveEntityToIndex(Entity entity, size_t newIndex){
 
             size_t oldIndex = entityToIndexMap[entity];
 
-            if (oldIndex > newIndex){
-                for (size_t i = oldIndex; i > newIndex; i--){
-                    Entity moved = indexToEntityMap[i-1];
-                    entityToIndexMap[moved] = i;
-                    indexToEntityMap[i] = moved;
-                }
-            }else{
-                for (size_t i = oldIndex; i < newIndex; i++){
-                    Entity moved = indexToEntityMap[i+1];
-                    entityToIndexMap[moved] = i;
-                    indexToEntityMap[i] = moved;
-                }
-            }
-
-            entityToIndexMap[entity] = newIndex;
-            indexToEntityMap[newIndex] = entity;
-
             moveRange(oldIndex, 1, newIndex);
         }
 
         template<typename C>
         void sortByComponent(ComponentArray<C>* otherComponent) {
-            // Create a vector of indices [0, 1, ..., N-1]
-            std::vector<size_t> indices(componentArray.size());
-            std::iota(indices.begin(), indices.end(), 0);
-
-            // Sort indices based on the key in otherComponent
-            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-                Entity ea = indexToEntityMap[a];
-                Entity eb = indexToEntityMap[b];
-
-                bool hasA = otherComponent->hasEntity(ea);
-                bool hasB = otherComponent->hasEntity(eb);
-
-                if (!hasA && !hasB) return false;
-                if (!hasA) return false;
-                if (!hasB) return true;
-
-                size_t indexA = otherComponent->getIndex(ea);
-                size_t indexB = otherComponent->getIndex(eb);
-                return indexA < indexB;
-            });
-
-            // Create new arrays/maps
-            std::vector<T> newComponentArray(componentArray.size());
-            std::unordered_map<Entity, size_t> newEntityToIndexMap;
-            std::unordered_map<size_t, Entity> newIndexToEntityMap;
-
-            for (size_t newIndex = 0; newIndex < indices.size(); ++newIndex) {
-                size_t oldIndex = indices[newIndex];
-                Entity entity = indexToEntityMap[oldIndex];
-                newComponentArray[newIndex] = componentArray[oldIndex];
-                newEntityToIndexMap[entity] = newIndex;
-                newIndexToEntityMap[newIndex] = entity;
+            // Key: index in the other array; entities without it go last
+            const size_t count = componentArray.size();
+            const size_t missing = std::numeric_limits<size_t>::max();
+            std::vector<size_t> keys(count);
+            for (size_t i = 0; i < count; i++){
+                auto it = otherComponent->entityToIndexMap.find(indexToEntity[i]);
+                keys[i] = it != otherComponent->entityToIndexMap.end() ? it->second : missing;
             }
 
-            // Assign new arrays/maps back
-            componentArray = std::move(newComponentArray);
-            entityToIndexMap = std::move(newEntityToIndexMap);
-            indexToEntityMap = std::move(newIndexToEntityMap);
+            // Create a vector of indices [0, 1, ..., N-1]
+            std::vector<size_t> indices(count);
+            std::iota(indices.begin(), indices.end(), 0);
+
+            auto less = [&keys, missing](size_t a, size_t b) {
+                if (keys[a] == missing) return false;
+                if (keys[b] == missing) return true;
+                return keys[a] < keys[b];
+            };
+
+            // Most calls find the array in order already (a block appended at the end)
+            if (std::is_sorted(indices.begin(), indices.end(), less)){
+                return;
+            }
+
+            // Sort indices based on the key in otherComponent
+            std::sort(indices.begin(), indices.end(), less);
+
+            // Only the span that changed is moved, component by component
+            size_t first = 0;
+            while (first < count && indices[first] == first) first++;
+            size_t last = count;
+            while (last > first && indices[last - 1] == last - 1) last--;
+
+            std::vector<T> moved;
+            moved.reserve(last - first);
+            std::vector<Entity> movedEntities;
+            movedEntities.reserve(last - first);
+            for (size_t newIndex = first; newIndex < last; ++newIndex) {
+                moved.emplace_back(std::move(componentArray[indices[newIndex]]));
+                movedEntities.push_back(indexToEntity[indices[newIndex]]);
+            }
+            for (size_t newIndex = first; newIndex < last; ++newIndex) {
+                componentArray[newIndex] = std::move(moved[newIndex - first]);
+                indexToEntity[newIndex] = movedEntities[newIndex - first];
+            }
+            reindex(first, last);
         }
 
         bool hasEntity(Entity entity) {
@@ -264,12 +253,12 @@ namespace jasperengine {
         }
 
         Entity getEntity(size_t index){
-            if (indexToEntityMap.find(index) == indexToEntityMap.end()){
+            if (index >= indexToEntity.size()){
                 Log::error("Entity not found");
                 return NULL_ENTITY;
             }
 
-            return indexToEntityMap[index];
+            return indexToEntity[index];
         }
 
         size_t size(){

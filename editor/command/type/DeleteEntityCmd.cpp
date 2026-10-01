@@ -7,6 +7,8 @@
 #include "Out.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/BackgroundRelease.h"
+#include "util/EntityClipboard.h"
 
 #include <algorithm>
 #include <functional>
@@ -60,6 +62,23 @@ editor::DeleteEntityCmd::DeleteEntityCmd(Project* project, uint32_t sceneId, con
     }
 
     this->wasModified = project->getScene(sceneId)->isModified;
+}
+
+editor::DeleteEntityCmd::~DeleteEntityCmd(){
+    // The snapshots of a large delete take long to free: the background thread does it
+    std::vector<YAML::Node> snapshots;
+    snapshots.reserve(entities.size() + preEncoded.size());
+    for (DeleteEntityData& entityData : entities) {
+        snapshots.emplace_back();
+        snapshots.back().reset(entityData.data);
+        entityData.data.reset(YAML::Node());
+    }
+    for (auto& [entity, node] : preEncoded) {
+        snapshots.emplace_back();
+        snapshots.back().reset(node);
+        node.reset(YAML::Node());
+    }
+    BackgroundRelease::release(std::move(snapshots));
 }
 
 bool editor::DeleteEntityCmd::appendEntityData(Entity entity){
@@ -248,11 +267,12 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
     // Keep only roots not already contained by another root's hierarchy or prefab instance.
     std::unordered_set<Entity> coveredRoots;
     std::vector<Entity> roots = rootEntities();
+    const std::unordered_set<Entity> rootSet(roots.begin(), roots.end());
     for (Entity root : roots) {
         DeleteCoverage rootCoverage = collectCoverage({root});
-        for (Entity candidate : roots) {
-            if (candidate != root && rootCoverage.entityToRoot.find(candidate) != rootCoverage.entityToRoot.end()) {
-                coveredRoots.insert(candidate);
+        for (Entity covered : rootCoverage.allEntities) {
+            if (covered != root && rootSet.count(covered)) {
+                coveredRoots.insert(covered);
             }
         }
     }
@@ -340,8 +360,11 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
 
 void editor::DeleteEntityCmd::snapshotEntities(){
     SceneProject* sceneProject = project->getScene(sceneId);
+    snapshotsShared = !preEncoded.empty();
     for (DeleteEntityData& entityData : entities) {
-        entityData.data = YAML::Node();
+        // Rebound, not assigned: an assignment would write through to the node it held,
+        // which may be shared (a Cut's clipboard copy)
+        entityData.data.reset(YAML::Node());
         entityData.recoveryPrefabData.clear();
         entityData.isPrefabRoot = false;
         entityData.prefabPath.clear();
@@ -355,13 +378,18 @@ void editor::DeleteEntityCmd::snapshotEntities(){
 
         if (prefab) {
             entityData.isPrefabRoot = entityData.entity == prefab->getRootEntity(sceneId, entityData.entity);
-            if (entityData.isPrefabRoot) {
-                entityData.data = Stream::encodeEntity(entityData.entity, sceneProject->scene, project, sceneProject);
+        }
+        if (!prefab || entityData.isPrefabRoot) {
+            auto encoded = preEncoded.find(entityData.entity);
+            if (encoded != preEncoded.end()) {
+                entityData.data.reset(encoded->second);
+            } else {
+                entityData.data.reset(Stream::encodeEntity(entityData.entity, sceneProject->scene, project, sceneProject));
             }
-        } else {
-            entityData.data = Stream::encodeEntity(entityData.entity, sceneProject->scene, project, sceneProject);
         }
     }
+    // Only true for the first run: a redo snapshots the scene as it is then
+    preEncoded.clear();
 }
 
 void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity entity, std::vector<Entity>& entities, Project* project, uint32_t sceneId){
@@ -371,22 +399,26 @@ void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity ent
 
 void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
         const std::vector<Entity>& entitiesToDestroy, std::vector<Entity>& entities,
-        Project* project, uint32_t sceneId) {
+        Project* project, uint32_t sceneId, bool reconcile) {
     if (entitiesToDestroy.empty()) {
         return;
     }
     for (Entity entity : entitiesToDestroy) {
         destroyEntityWithoutReconcile(registry, entity);
     }
-    ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    if (reconcile) {
+        ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    }
 }
 
 bool editor::DeleteEntityCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     std::vector<Entity> entitiesToDelete;
+    std::unordered_set<Entity> entitiesToDeleteSet;
+    const std::unordered_set<Entity> requestedSet(requestedEntities.begin(), requestedEntities.end());
     auto isRequestedEntity = [&](Entity entity) {
-        return std::find(requestedEntities.begin(), requestedEntities.end(), entity) != requestedEntities.end();
+        return requestedSet.count(entity) != 0;
     };
 
     auto it = entities.begin();
@@ -396,7 +428,7 @@ bool editor::DeleteEntityCmd::execute(){
         if (lockedParent != NULL_ENTITY){
             canDelete = (allowLockedRoots && isRequestedEntity(it->entity))
                 || isRequestedEntity(lockedParent)
-                || std::find(entitiesToDelete.begin(), entitiesToDelete.end(), lockedParent) != entitiesToDelete.end();
+                || entitiesToDeleteSet.count(lockedParent);
         }
 
         // Imported parts and the groups holding them only go away with their own model
@@ -404,7 +436,7 @@ bool editor::DeleteEntityCmd::execute(){
             Entity modelOwner = ProjectUtils::getModelBranchOwner(sceneProject->scene, it->entity);
             canDelete = modelOwner == NULL_ENTITY
                 || isRequestedEntity(modelOwner)
-                || std::find(entitiesToDelete.begin(), entitiesToDelete.end(), modelOwner) != entitiesToDelete.end();
+                || entitiesToDeleteSet.count(modelOwner);
         }
 
         if (!canDelete){
@@ -412,6 +444,7 @@ bool editor::DeleteEntityCmd::execute(){
              it = entities.erase(it);
         } else {
              entitiesToDelete.push_back(it->entity);
+             entitiesToDeleteSet.insert(it->entity);
              ++it;
         }
     }
@@ -421,8 +454,27 @@ bool editor::DeleteEntityCmd::execute(){
     }
 
     lastSelected = project->getSelectedEntities(sceneId);
+    trackedBeforeDelete = sceneProject->entities;
     std::vector<size_t> deleteOrder = prepareDeleteSet();
     snapshotEntities();
+
+    Scene* scene = sceneProject->scene;
+    // Only a deleted camera changes what render-to-texture links resolve to
+    std::vector<Entity> cameras;
+    auto cameraArray = scene->getComponentArray<CameraComponent>();
+    for (size_t i = 0; i < cameraArray->size(); i++) {
+        cameras.push_back(cameraArray->getEntity(i));
+    }
+
+    // The tracked list is reconciled once after a run of destroyed GameObjects and instances,
+    // and always before removing a prefab member, whose bookkeeping reads it
+    bool reconcilePending = false;
+    auto reconcile = [&]() {
+        if (reconcilePending) {
+            ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
+            reconcilePending = false;
+        }
+    };
 
     for (size_t index : deleteOrder){
         DeleteEntityData& entityData = entities[index];
@@ -443,8 +495,10 @@ bool editor::DeleteEntityCmd::execute(){
                         memberEntities.push_back(member.localEntity);
                     }
                 }
-                project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities);
+                project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities, false);
+                reconcilePending = true;
             } else {
+                reconcile();
                 if (!entityData.hasTransform) {
                     entityData.parent = prefab->getRootEntity(sceneId, entityData.entity);
                 }
@@ -473,17 +527,24 @@ bool editor::DeleteEntityCmd::execute(){
                 for (const Prefab::EntityMember& member : instance->members) {
                     members.push_back(member.localEntity);
                 }
-                project->unimportPrefab(sceneId, nestedPath, nestedRoot, members);
+                project->unimportPrefab(sceneId, nestedPath, nestedRoot, members, false);
+                reconcilePending = true;
             }
 
-            destroyEntities(sceneProject->scene, allEntities, sceneProject->entities, project, sceneId);
+            for (Entity entity : allEntities) {
+                destroyEntityWithoutReconcile(scene, entity);
+                reconcilePending = true;
+            }
         }
 
         sceneProject->isModified = true;
     }
+    reconcile();
 
     // unbind framebuffers of textures linked to deleted render-to-texture cameras
-    CameraTextureLink::resolve(sceneProject->scene);
+    if (std::any_of(cameras.begin(), cameras.end(), [scene](Entity camera) { return !scene->isEntityCreated(camera); })) {
+        CameraTextureLink::resolve(scene);
+    }
     survivingEntities = sceneProject->entities;
 
     return true;
@@ -491,8 +552,22 @@ bool editor::DeleteEntityCmd::execute(){
 
 void editor::DeleteEntityCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
+    if (snapshotsShared) {
+        // Decoding is not only reads: it runs once the clipboard's worker is done with them
+        EntityClipboard::finishPendingWrite();
+    }
     std::unordered_map<Entity, Entity> entityRemap;
     std::vector<Entity> restoredEntities;
+
+    // A GameObject put back at its Transform index leaves the tracked list to be sorted
+    // once, before the steps that read its order and at the end, instead of per GameObject
+    bool sortPending = false;
+    auto sortTracked = [&]() {
+        if (sortPending) {
+            ProjectUtils::sortEntitiesByTransformOrder(sceneProject->scene, sceneProject->entities);
+            sortPending = false;
+        }
+    };
 
     for (DeleteEntityData& entityData : entities){
         Entity restoredParent = entityData.parent;
@@ -513,11 +588,20 @@ void editor::DeleteEntityCmd::undo(){
             restoredEntities.insert(restoredEntities.end(), allEntities.begin(), allEntities.end());
             entityData.entity = allEntities[0];
 
-            ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities,
-                entityData.entity, restoredParent, entityData.entityIndex, entityData.hasTransform);
+            if (entityData.hasTransform) {
+                ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities,
+                    entityData.entity, restoredParent, entityData.entityIndex, true, false);
+                sortPending = true;
+            } else {
+                // Its index is a position in the sorted list
+                sortTracked();
+                ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities,
+                    entityData.entity, restoredParent, entityData.entityIndex, false);
+            }
 
         }else{
 
+            sortTracked();
             if (!project->addEntityToPrefab(sceneId, entityData.recoveryPrefabData, restoredParent,
                 true, &entityRemap, &restoredEntities)) {
                 Out::error("Could not restore deleted prefab entity %u in scene %u; undo stopped before remapping",
@@ -528,6 +612,7 @@ void editor::DeleteEntityCmd::undo(){
         }
     }
 
+    sortTracked();
     // Prefab imports allocate scene-local member IDs outside Stream's YAML decoder. Snapshots
     // are stored outer-first, so each nested root is mapped before its own instance is visited.
     for (const PrefabInstanceSnapshot& saved : prefabInstanceSnapshots) {
@@ -588,14 +673,36 @@ void editor::DeleteEntityCmd::undo(){
         for (Entity& entity : requestedEntities) remapEntity(entity);
         for (Entity& entity : preservedEntities) remapEntity(entity);
         for (Entity& entity : lastSelected) remapEntity(entity);
+        for (Entity& entity : trackedBeforeDelete) remapEntity(entity);
+    }
+
+    // The tracked list back as it was: placing each GameObject back by index keeps the
+    // Transform order, but moves the Transform-less ones (sorted first, or left where the
+    // last one was put). Whatever is tracked now and was not then keeps its current order.
+    if (!trackedBeforeDelete.empty()) {
+        std::vector<Entity>& tracked = sceneProject->entities;
+        std::unordered_set<Entity> current(tracked.begin(), tracked.end());
+        std::vector<Entity> restored;
+        restored.reserve(tracked.size());
+        for (Entity entity : trackedBeforeDelete) {
+            if (current.erase(entity)) {
+                restored.push_back(entity);
+            }
+        }
+        for (Entity entity : tracked) {
+            if (current.count(entity)) {
+                restored.push_back(entity);
+            }
+        }
+        tracked.swap(restored);
     }
 
     if (lastSelected.size() > 0){
         project->replaceSelectedEntities(sceneId, lastSelected);
     }
 
-    // recreated cameras get a new framebuffer; rebind linked textures
-    CameraTextureLink::resolve(sceneProject->scene);
+    // recreated cameras get a new framebuffer, recreated textures are bound to theirs
+    CameraTextureLink::resolve(sceneProject->scene, restoredEntities);
 
     sceneProject->isModified = wasModified;
 }
@@ -606,6 +713,8 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
         if (project == otherCmd->project && sceneId == otherCmd->sceneId && allowLockedRoots == otherCmd->allowLockedRoots){
 
             lastSelected = otherCmd->lastSelected;
+            // Undone together, back to before the older one
+            trackedBeforeDelete = otherCmd->trackedBeforeDelete;
 
             for (DeleteEntityData& otherEntityData :  otherCmd->entities){
                 entities.push_back(otherEntityData);

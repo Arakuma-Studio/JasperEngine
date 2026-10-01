@@ -1722,10 +1722,9 @@ void editor::App::deleteSelection() {
 
         Command* lastCmd = nullptr;
         if (!selectedEntities.empty()) {
-            for (const Entity& entity : selectedEntities){
-                lastCmd = new DeleteEntityCmd(&project, targetSceneId, entity);
-                CommandHandle::get(sceneId)->addCommand(lastCmd);
-            }
+            // One command for the whole selection: one snapshot pass and one undo step
+            lastCmd = new DeleteEntityCmd(&project, targetSceneId, selectedEntities);
+            CommandHandle::get(sceneId)->addCommand(lastCmd);
         } else {
             if (selectedSceneForProperties != NULL_PROJECT_SCENE &&
                 selectedSceneForProperties != sceneId &&

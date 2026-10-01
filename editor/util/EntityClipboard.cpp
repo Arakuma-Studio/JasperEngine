@@ -11,6 +11,7 @@
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/BackgroundRelease.h"
 
 #include "imgui.h"
 
@@ -65,6 +66,17 @@ namespace {
         uint64_t foreignWrites = 0;
     };
     std::optional<PendingText> pendingText;
+
+    // Replaces an entry, the copy it held freed on the background thread
+    void replaceEntry(Entry& entry, Entry replacement) {
+        if (entry.objects) {
+            editor::BackgroundRelease::release(std::move(entry.objects));
+        }
+        if (entry.component) {
+            editor::BackgroundRelease::release(std::move(entry.component));
+        }
+        entry = std::move(replacement);
+    }
 
     // Any other SetClipboardText (a text field, the Console) replaces our data
     void setClipboardTextHook(ImGuiContext* ctx, const char* text) {
@@ -200,7 +212,7 @@ namespace {
         pendingText.reset();
         if (!stillOurs) {
             // Something else was copied meanwhile and is the clipboard now
-            ownEntry = Entry();
+            replaceEntry(ownEntry, Entry());
             return;
         }
         ownEntry.text = std::move(text);
@@ -223,7 +235,7 @@ namespace {
                 } else if (readEntry.text.size() == length && std::memcmp(readEntry.text.data(), text, length) == 0) {
                     result = readEntry.kind != Kind::None ? &readEntry : nullptr;
                 } else {
-                    readEntry = parseText(text, length);
+                    replaceEntry(readEntry, parseText(text, length));
                     result = readEntry.kind != Kind::None ? &readEntry : nullptr;
                 }
             }
@@ -232,8 +244,10 @@ namespace {
         return result;
     }
 
-    // The doc shares its nodes with the copy's snapshot, which the main thread does not read
-    // until flushPendingText has joined the worker (every read goes through readClipboard)
+    // The doc shares its nodes with the copy's snapshot, which the main thread does not
+    // change until flushPendingText has joined the worker (every paste goes through
+    // readClipboard). A Cut's delete snapshot is the same nodes, only read meanwhile: const
+    // reads of yaml-cpp nodes change nothing the emitter reads.
     void writeClipboard(Entry entry, YAML::Node doc) {
         flushPendingText(true);
 
@@ -252,7 +266,7 @@ namespace {
         });
         pendingText = std::move(pending);
 
-        ownEntry = std::move(entry);
+        replaceEntry(ownEntry, std::move(entry));
         setProbed(&ownEntry);
     }
 
@@ -340,6 +354,9 @@ namespace {
     void collectExternalNames(Scene* scene, uint32_t sceneId, Entity entity, const std::vector<editor::ComponentType>& types,
                               const std::unordered_set<Entity>& covered, std::unordered_map<Entity, std::string>& names) {
         for (editor::ComponentType type : types) {
+            if (!editor::Catalog::mayHoldReferences(scene, entity, type, true, true)) {
+                continue;
+            }
             for (auto& [propertyName, property] : editor::Catalog::findEntityProperties(scene, entity, type)) {
                 if (!property.ref) {
                     continue;
@@ -466,6 +483,11 @@ std::vector<Entity> editor::EntityClipboard::getCopyableSelection(Project* proje
 }
 
 bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& requested) {
+    return copyGameObjects(project, sceneId, requested, nullptr);
+}
+
+bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& requested,
+                                              std::unordered_map<Entity, YAML::Node>* encodedRoots) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
         return false;
@@ -586,9 +608,13 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
         // below it still paste as instances
         const bool member = !instanceRootedAt(project, scene, sceneId, root) &&
             !project->findPrefabPathFor(sceneId, root).empty();
-        rootsNode.push_back(member ?
+        YAML::Node encoded = member ?
             Stream::encodeEntity(root, scene, project, sceneProject, true) :
-            Stream::encodeEntity(root, scene, project, sceneProject));
+            Stream::encodeEntity(root, scene, project, sceneProject);
+        if (encodedRoots && !member) {
+            encodedRoots->emplace(root, encoded);
+        }
+        rootsNode.push_back(encoded);
     }
     doc["selected_roots"] = userRoots;
     doc["roots"] = rootsNode;
@@ -654,12 +680,16 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
 }
 
 bool editor::EntityClipboard::cutGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& entities) {
-    if (!copyGameObjects(project, sceneId, entities)) {
+    std::unordered_map<Entity, YAML::Node> encodedRoots;
+    if (!copyGameObjects(project, sceneId, entities, &encodedRoots)) {
         return false;
     }
-    // The delete command handles what the copy took along (branches, instances, actions)
+    // The delete command handles what the copy took along (branches, instances, actions).
+    // What it snapshots was just encoded for the copy, unchanged since: it takes those.
     std::vector<Entity> roots = Project::getTopLevelEntities(project->getScene(sceneId)->scene, entities);
-    CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, roots));
+    DeleteEntityCmd* deleteCmd = new DeleteEntityCmd(project, sceneId, roots);
+    deleteCmd->setPreEncoded(std::move(encodedRoots));
+    CommandHandle::get(sceneId)->addCommandNoMerge(deleteCmd);
     return true;
 }
 
@@ -774,6 +804,10 @@ bool editor::EntityClipboard::hasComponent(const Project* project, ComponentType
     return true;
 }
 
+void editor::EntityClipboard::finishPendingWrite() {
+    flushPendingText(true);
+}
+
 void editor::EntityClipboard::refresh() {
     readClipboard();
 }
@@ -844,6 +878,9 @@ uint64_t editor::EntityClipboard::remapReferences(Scene* scene, Entity entity, C
         return value;
     };
 
+    if (!Catalog::mayHoldReferences(scene, entity, type, true, true)) {
+        return 0;
+    }
     for (auto& [propertyName, property] : Catalog::findEntityProperties(scene, entity, type)) {
         if (!property.ref) {
             continue;
@@ -915,6 +952,9 @@ uint64_t editor::EntityClipboard::remapReferences(Scene* scene, Entity entity, C
 
 uint64_t editor::EntityClipboard::bindCameraTextures(EntityRegistry* registry, Entity entity, ComponentType type) {
     uint64_t updateFlags = 0;
+    if (!Catalog::mayHoldReferences(registry, entity, type, false, true)) {
+        return updateFlags;
+    }
     for (auto& [propertyName, property] : Catalog::findEntityProperties(registry, entity, type)) {
         if (property.type != PropertyType::Texture || !property.ref) {
             continue;

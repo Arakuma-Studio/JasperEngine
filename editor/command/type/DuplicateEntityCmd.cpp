@@ -8,6 +8,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/BackgroundRelease.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -89,6 +90,8 @@ bool editor::DuplicateEntityCmd::execute(){
     // empty (and saving the broken state could hang).
     std::unordered_map<Entity, Entity> entityRemap;
     createdEntities = Stream::decodeEntitySelection(encoded, scene, &sceneProject->entities, project, sceneProject, NULL_ENTITY, true, &entityRemap);
+    // Only needed for the decode: freed away from the main thread
+    BackgroundRelease::release(encoded);
     if (createdEntities.empty()){
         return false;
     }
@@ -97,8 +100,8 @@ bool editor::DuplicateEntityCmd::execute(){
     // false so references outside the duplicated set keep pointing at their original target.
     Project::remapEntityProperties(scene, createdEntities, entityRemap, false);
 
-    // bind framebuffers of duplicated camera-linked textures
-    CameraTextureLink::resolve(scene);
+    // bind framebuffers of duplicated camera-linked textures (all of them for a duplicated camera)
+    CameraTextureLink::resolve(scene, createdEntities);
 
     // The remap pairs each source root with its copy: a parentless scan cannot, now that
     // transform-less virtual children are copied too.
@@ -110,34 +113,55 @@ bool editor::DuplicateEntityCmd::execute(){
     }
 
     lastSelected = project->getSelectedEntities(sceneId);
-    project->clearSelectedEntities(sceneId);
 
     std::unordered_set<std::string> existingNames;
     for (Entity e : sceneProject->entities) {
         existingNames.insert(scene->getEntityName(e));
     }
+    UniqueEntityNames uniqueNames(std::move(existingNames));
 
-    // Re-parent, reorder, rename, and select top-level duplicates
-    for (size_t i = 0; i < topLevel.size() && i < createdTopLevel.size(); i++) {
+    // Re-parent, rename, and select top-level duplicates
+    const size_t pairs = std::min(topLevel.size(), createdTopLevel.size());
+    std::vector<Entity> selection;
+    std::unordered_set<Entity> selected;
+    selection.reserve(pairs);
+    for (size_t i = 0; i < pairs; i++) {
         Entity duplicated = createdTopLevel[i];
 
         if (sourceParents[i] != NULL_ENTITY)
             scene->addEntityChild(sourceParents[i], duplicated, false);
 
-        // Insert duplicate right after source in entities list
-        auto& entities = sceneProject->entities;
-        auto dupIt = std::find(entities.begin(), entities.end(), duplicated);
-        if (dupIt != entities.end()) {
-            entities.erase(dupIt);
-            auto srcIt = std::find(entities.begin(), entities.end(), topLevel[i]);
-            if (srcIt != entities.end())
-                entities.insert(srcIt + 1, duplicated);
-        }
+        scene->setEntityName(duplicated, uniqueNames.make(scene->getEntityName(topLevel[i])));
+        // Distinct copies of top-level sources: none holds another, so none drops out of
+        // the selection as a selected child would
+        if (selected.insert(duplicated).second)
+            selection.push_back(duplicated);
+    }
+    project->replaceSelectedEntities(sceneId, selection);
 
-        std::string newName = ProjectUtils::makeUniqueEntityName(scene->getEntityName(topLevel[i]), existingNames);
-        existingNames.insert(newName);
-        scene->setEntityName(duplicated, newName);
-        project->addSelectedEntity(sceneId, duplicated);
+    // Each duplicate right after its source in the tracked list (dropped when the source
+    // is not in it), in one pass
+    {
+        std::unordered_map<Entity, Entity> duplicateOf;
+        std::unordered_set<Entity> placed;
+        for (size_t i = 0; i < pairs; i++) {
+            duplicateOf[topLevel[i]] = createdTopLevel[i];
+            placed.insert(createdTopLevel[i]);
+        }
+        std::vector<Entity>& entities = sceneProject->entities;
+        std::vector<Entity> ordered;
+        ordered.reserve(entities.size());
+        for (Entity entity : entities) {
+            if (placed.count(entity)) {
+                continue;
+            }
+            ordered.push_back(entity);
+            auto duplicate = duplicateOf.find(entity);
+            if (duplicate != duplicateOf.end()) {
+                ordered.push_back(duplicate->second);
+            }
+        }
+        entities.swap(ordered);
     }
 
     // Update all created entities (exclude scene-wide flags which reload ALL meshes and recapture ALL probes)
@@ -162,10 +186,34 @@ void editor::DuplicateEntityCmd::undo(){
             sceneProject->entities, project, sceneId);
 
         if (!lastSelected.empty()){
-            project->clearSelectedEntities(sceneId);
+            // What adding them one by one gives: each once, without the ones inside the
+            // Transform branch of another
+            Scene* scene = sceneProject->scene;
+            auto transforms = scene->getComponentArray<Transform>();
+            std::vector<Entity> selection;
+            std::unordered_set<Entity> selected;
             for (Entity entity : lastSelected){
-                project->addSelectedEntity(sceneId, entity);
+                if (entity != NULL_ENTITY && selected.insert(entity).second){
+                    selection.push_back(entity);
+                }
             }
+            std::unordered_set<Entity> nested;
+            for (Entity entity : selection){
+                if (scene->getSignature(entity).test(scene->getComponentId<Transform>())){
+                    size_t firstIndex = transforms->getIndex(entity);
+                    size_t branchIndex = scene->findBranchLastIndex(entity);
+                    for (size_t t = firstIndex + 1; t <= branchIndex; t++){
+                        Entity child = transforms->getEntity(t);
+                        if (selected.count(child)){
+                            nested.insert(child);
+                        }
+                    }
+                }
+            }
+            selection.erase(std::remove_if(selection.begin(), selection.end(), [&nested](Entity entity) {
+                return nested.count(entity) != 0;
+            }), selection.end());
+            project->replaceSelectedEntities(sceneId, selection);
         }
 
         sceneProject->isModified = wasModified;

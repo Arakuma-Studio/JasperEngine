@@ -303,6 +303,9 @@ void editor::Project::remapEntityProperties(EntityRegistry* registry, const std:
     }
     for (Entity entity : entities) {
         for (ComponentType componentType : Catalog::findComponents(registry, entity)) {
+            if (!Catalog::mayHoldReferences(registry, entity, componentType, true, false)) {
+                continue;
+            }
             uint64_t updateFlags = 0;
 
             for (auto& [propertyName, property] : Catalog::findEntityProperties(registry, entity, componentType)) {
@@ -6732,6 +6735,28 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
     return Stream::encodeEntitySelection(topLevelEntities, prefab->registry.get(), this);
 }
 
+YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath) {
+    // What YAML::LoadFile gives, parsed again only when the file changed
+    std::error_code timeError;
+    std::error_code sizeError;
+    const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(fullPath, timeError);
+    const std::uintmax_t size = std::filesystem::file_size(fullPath, sizeError);
+    if (timeError || sizeError) {
+        prefabFileCache.erase(fullPath);
+        return YAML::LoadFile(fullPath.string()); // throws as before for a missing file
+    }
+    auto cached = prefabFileCache.find(fullPath);
+    if (cached != prefabFileCache.end() && cached->second.writeTime == writeTime && cached->second.size == size) {
+        return cached->second.node;
+    }
+    YAML::Node node = YAML::LoadFile(fullPath.string());
+    PrefabFileCache& entry = prefabFileCache[fullPath];
+    entry.writeTime = writeTime;
+    entry.size = size;
+    entry.node.reset(node);
+    return node;
+}
+
 std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap) {
     if (!filepath.is_relative()) {
         Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
@@ -6784,7 +6809,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     } else {
         try {
             std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
-            node = YAML::LoadFile(fullPrefabPath.string());
+            node = loadPrefabFile(fullPrefabPath);
             prefab.registry->clear();
             prefab.registryEntities.clear();
             Stream::decodeEntitySelection(node, prefab.registry.get(), &prefab.registryEntities);
@@ -7076,7 +7101,8 @@ void editor::Project::removePrefabInstanceTracking(uint32_t sceneId, Entity root
     updateScenePrefabs(sceneProject);
 }
 
-bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities) {
+bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
+                                     bool reconcileTracked) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -7131,18 +7157,14 @@ bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::pa
         removePrefabInstanceTracking(sceneId, entity);
     }
 
-    // Destroy local entities first (they may reference members as parents)
-    DeleteEntityCmd::destroyEntities(scene, allEntitiesToDestroy,
-        sceneProject->entities, this, sceneId);
-
-    // Destroy all imported member entities
-    DeleteEntityCmd::destroyEntities(scene, memberEntities,
-        sceneProject->entities, this, sceneId);
-
-    // Destroy root entity
-    if (rootEntity != NULL_ENTITY && scene->isEntityCreated(rootEntity)) {
-        DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
+    // Local entities first (they may reference members as parents), then the imported
+    // members, then the root; the tracked list is reconciled once after all of them
+    std::vector<Entity> destroyOrder = std::move(allEntitiesToDestroy);
+    destroyOrder.insert(destroyOrder.end(), memberEntities.begin(), memberEntities.end());
+    if (rootEntity != NULL_ENTITY) {
+        destroyOrder.push_back(rootEntity);
     }
+    DeleteEntityCmd::destroyEntities(scene, destroyOrder, sceneProject->entities, this, sceneId, reconcileTracked);
 
     updateScenePrefabs(sceneProject);
 

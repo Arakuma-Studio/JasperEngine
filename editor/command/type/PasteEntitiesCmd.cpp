@@ -8,6 +8,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/BackgroundRelease.h"
 
 #include <algorithm>
 #include <unordered_set>
@@ -60,6 +61,11 @@ editor::PasteEntitiesCmd::PasteEntitiesCmd(Project* project, uint32_t sceneId, s
     this->clip = std::move(clip);
     this->placement = placement;
     this->anchor = anchor;
+}
+
+editor::PasteEntitiesCmd::~PasteEntitiesCmd(){
+    // The last holder of a large copy frees it on the background thread
+    BackgroundRelease::release(std::move(clip));
 }
 
 bool editor::PasteEntitiesCmd::hasCamera(Scene* scene) const{
@@ -139,7 +145,7 @@ void editor::PasteEntitiesCmd::destroyCreated(SceneProject* sceneProject){
                 members.push_back(member.localEntity);
             }
         }
-        project->unimportPrefab(sceneId, path, root, members);
+        project->unimportPrefab(sceneId, path, root, members, false);
     }
 
     std::vector<Entity> remaining;
@@ -149,7 +155,9 @@ void editor::PasteEntitiesCmd::destroyCreated(SceneProject* sceneProject){
             remaining.push_back(*it);
         }
     }
-    DeleteEntityCmd::destroyEntities(scene, remaining, sceneProject->entities, project, sceneId);
+    // One pass over the tracked list for the instances and the rest
+    DeleteEntityCmd::destroyEntities(scene, remaining, sceneProject->entities, project, sceneId, false);
+    ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
 }
 
 bool editor::PasteEntitiesCmd::execute(){

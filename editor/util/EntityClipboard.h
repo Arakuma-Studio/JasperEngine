@@ -117,6 +117,10 @@ namespace jasperengine::editor {
         static bool hasGameObjects(const Project* project) { return getKind(project) == Kind::GameObjects; }
         static bool hasComponent(const Project* project, ComponentType* type = nullptr);
 
+        // Waits for the text of the last copy to be written: its nodes are then only the
+        // main thread's (a Cut's delete snapshot shares them, and decoding may add to them)
+        static void finishPendingWrite();
+
         // Reads the system clipboard now. Called when a menu offering Paste opens and when
         // the editor regains focus; never every frame, a foreign clipboard owner can block.
         static void refresh();
@@ -156,6 +160,12 @@ namespace jasperengine::editor {
         static void applyComponentValue(EntityRegistry* registry, Entity entity, ComponentType type, YAML::Node value);
         // The encode of a default-constructed component, what Add Component gives
         static YAML::Node encodeDefaultComponent(ComponentType type);
+
+    private:
+        // copyGameObjects, also handing back the encode of each copied root that is not a
+        // lone prefab member: the same Stream::encodeEntity a delete snapshots it with
+        static bool copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
+                                    std::unordered_map<Entity, YAML::Node>* encodedRoots);
     };
 
 }
