@@ -3,137 +3,154 @@
 
 #include "PrefabManager.h"
 #include "Scene.h"
-#include "EntityHandle.h"
 #include "Log.h"
 
 #include <exception>
-#include <unordered_set>
 
 using namespace jasperengine;
 
 std::vector<PrefabManager::PrefabEntry> PrefabManager::entries;
-std::vector<PrefabManager::PrefabInstance> PrefabManager::instances;
+std::unordered_map<uint32_t, size_t> PrefabManager::byId;
+std::unordered_map<std::string, size_t> PrefabManager::byName;
+std::unordered_map<std::string, size_t> PrefabManager::byGuid;
+uint32_t PrefabManager::revision = 1;
 
 namespace {
 
-void rollbackSpawnedEntities(Scene* scene, const std::unordered_set<Entity>& beforeSet, Entity root) {
-    if (!scene)
-        return;
+std::string withoutPrefabExtension(const std::string& name) {
+    static const std::string extension = ".prefab";
+    if (name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
+        return name.substr(0, name.size() - extension.size());
+    }
+    return name;
+}
 
-    std::vector<Entity> afterEntities = scene->getEntityList();
-    for (auto it = afterEntities.rbegin(); it != afterEntities.rend(); ++it) {
-        Entity e = *it;
-        if (e != root && beforeSet.find(e) == beforeSet.end() && scene->isEntityCreated(e))
+std::string fileStem(const std::string& name) {
+    size_t slash = name.find_last_of("/\\");
+    return slash == std::string::npos ? name : name.substr(slash + 1);
+}
+
+// Entities a failed factory left: user ids are handed out counting up, so whatever it
+// made has an id above the counter as it was before the call
+void rollbackSpawnedEntities(Scene* scene, Entity lastBefore, Entity root) {
+    const Entity lastAfter = scene->getLastEntity();
+    for (Entity e = lastAfter; e > lastBefore; e--) {
+        if (e != root && scene->isEntityCreated(e)) {
             scene->destroyEntity(e);
+        }
     }
-
-    if (root != NULL_ENTITY && scene->isEntityCreated(root))
+    if (root != NULL_ENTITY && scene->isEntityCreated(root)) {
         scene->destroyEntity(root);
-}
-
-}
-
-PrefabManager::PrefabEntry* PrefabManager::findEntry(uint32_t id) {
-    for (auto& entry : entries) {
-        if (entry.id == id)
-            return &entry;
     }
-    return nullptr;
 }
 
-PrefabManager::PrefabEntry* PrefabManager::findEntry(const std::string& name) {
-    for (auto& entry : entries) {
-        if (entry.name == name)
-            return &entry;
+}
+
+void PrefabManager::rebuildIndex() {
+    byId.clear();
+    byName.clear();
+    byGuid.clear();
+    for (size_t i = 0; i < entries.size(); i++) {
+        byId[entries[i].id] = i;
+        byName[entries[i].name] = i;
+        if (!entries[i].guid.empty()) {
+            byGuid[entries[i].guid] = i;
+        }
     }
-    return nullptr;
-}
-
-void PrefabManager::registerPrefab(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer) {
-    if (PrefabEntry* entry = findEntry(id)) {
-        entry->name = name;
-        entry->factory = std::move(factory);
-        entry->destroyer = std::move(destroyer);
-        return;
+    revision++;
+    if (revision == 0) {
+        revision = 1;
     }
-    entries.push_back({id, name, std::move(factory), std::move(destroyer)});
 }
 
-Entity PrefabManager::createPrefab(const std::string& name, Scene* scene) {
-    return createPrefab(name, scene, NULL_ENTITY);
+const PrefabManager::PrefabEntry* PrefabManager::findEntry(uint32_t id) {
+    auto it = byId.find(id);
+    return it != byId.end() ? &entries[it->second] : nullptr;
 }
 
-Entity PrefabManager::createPrefab(uint32_t id, Scene* scene) {
-    return instantiate(id, scene, NULL_ENTITY);
-}
-
-Entity PrefabManager::createPrefab(const std::string& name, Scene* scene, const std::string& parentName) {
-    PrefabEntry* entry = findEntry(name);
-    if (!entry) {
-        Log::error("PrefabManager: prefab '%s' not found", name.c_str());
-        return NULL_ENTITY;
+void PrefabManager::registerPrefab(uint32_t id, const std::string& name, const std::string& guid, std::function<bool(Scene*, Entity)> factory) {
+    const std::string cleanName = withoutPrefabExtension(name);
+    auto it = byId.find(id);
+    if (it != byId.end()) {
+        PrefabEntry& entry = entries[it->second];
+        entry.name = cleanName;
+        entry.guid = guid;
+        entry.factory = std::move(factory);
+    } else {
+        entries.push_back({id, cleanName, guid, std::move(factory)});
     }
-    return createPrefab(entry->id, scene, parentName);
+    rebuildIndex();
 }
 
-Entity PrefabManager::createPrefab(uint32_t id, Scene* scene, const std::string& parentName) {
+void PrefabManager::registerPrefab(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory) {
+    registerPrefab(id, name, std::string(), std::move(factory));
+}
+
+uint32_t PrefabManager::findPrefabByGuid(const std::string& guid) {
+    if (guid.empty()) {
+        return 0;
+    }
+    auto it = byGuid.find(guid);
+    return it != byGuid.end() ? entries[it->second].id : 0;
+}
+
+uint32_t PrefabManager::findPrefab(const std::string& nameOrGuid) {
+    if (nameOrGuid.empty()) {
+        return 0;
+    }
+    if (uint32_t id = findPrefabByGuid(nameOrGuid)) {
+        return id;
+    }
+
+    std::string name = withoutPrefabExtension(nameOrGuid);
+    for (char& c : name) {
+        if (c == '\\') c = '/';
+    }
+    while (name.compare(0, 2, "./") == 0) {
+        name.erase(0, 2);
+    }
+    auto it = byName.find(name);
+    if (it != byName.end()) {
+        return entries[it->second].id;
+    }
+
+    // a bare file name, when it names one prefab only
+    if (name.find('/') == std::string::npos) {
+        uint32_t found = 0;
+        for (const PrefabEntry& entry : entries) {
+            if (fileStem(entry.name) == name) {
+                if (found != 0) {
+                    Log::error("PrefabManager: more than one prefab is named '%s', use its path", name.c_str());
+                    return 0;
+                }
+                found = entry.id;
+            }
+        }
+        return found;
+    }
+    return 0;
+}
+
+Entity PrefabManager::instantiate(uint32_t id, Scene* scene) {
     if (!scene) {
         Log::error("PrefabManager: scene is null");
         return NULL_ENTITY;
     }
-    Entity parent = scene->findEntity(parentName);
-    if (parent == NULL_ENTITY) {
-        Log::error("PrefabManager: parent entity '%s' not found in the given scene", parentName.c_str());
-        return NULL_ENTITY;
-    }
-    return instantiate(id, scene, parent);
-}
 
-Entity PrefabManager::createPrefab(const std::string& name, Scene* scene, Entity parent) {
-    PrefabEntry* entry = findEntry(name);
-    if (!entry) {
-        Log::error("PrefabManager: prefab '%s' not found", name.c_str());
-        return NULL_ENTITY;
-    }
-    return instantiate(entry->id, scene, parent);
-}
-
-Entity PrefabManager::createPrefab(uint32_t id, Scene* scene, Entity parent) {
-    return instantiate(id, scene, parent);
-}
-
-Entity PrefabManager::createPrefab(const std::string& name, const EntityHandle& parent) {
-    return createPrefab(name, parent.getScene(), parent.getEntity());
-}
-
-Entity PrefabManager::createPrefab(uint32_t id, const EntityHandle& parent) {
-    return instantiate(id, parent.getScene(), parent.getEntity());
-}
-
-Entity PrefabManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
-    if (!scene) {
-        Log::error("PrefabManager: scene is null");
-        return NULL_ENTITY;
-    }
-    if (parent != NULL_ENTITY && !scene->isEntityCreated(parent)) {
-        Log::error("PrefabManager: parent entity %u does not exist in the given scene", parent);
-        return NULL_ENTITY;
-    }
-
-    PrefabEntry* entry = findEntry(id);
+    const PrefabEntry* entry = findEntry(id);
     if (!entry) {
         Log::error("PrefabManager: prefab id %u not found", id);
         return NULL_ENTITY;
     }
+    // the factory may register again (the editor's do not), invalidating the entry
+    std::function<bool(Scene*, Entity)> factory = entry->factory;
 
-    std::vector<Entity> beforeEntities = scene->getEntityList();
-    std::unordered_set<Entity> beforeSet(beforeEntities.begin(), beforeEntities.end());
-
+    const Entity lastBefore = scene->getLastEntity();
     Entity root = scene->createEntity();
 
     bool ok = false;
     try {
-        ok = entry->factory && entry->factory(scene, root);
+        ok = factory && factory(scene, root);
     } catch (const std::exception& e) {
         Log::error("PrefabManager: factory for prefab id %u threw an exception: %s", id, e.what());
     } catch (...) {
@@ -142,61 +159,29 @@ Entity PrefabManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
 
     if (!ok) {
         Log::error("PrefabManager: factory failed for prefab id %u", id);
-        rollbackSpawnedEntities(scene, beforeSet, root);
+        rollbackSpawnedEntities(scene, lastBefore, root);
         return NULL_ENTITY;
     }
 
-    // after the factory, which is what gives the root its Transform
-    if (parent != NULL_ENTITY)
-        scene->addEntityChild(parent, root, false);
-
-    PrefabInstance instance;
-    instance.rootEntity = root;
-    instance.scene = scene;
-    instance.prefabId = id;
-    instance.entities.push_back(root);
-    for (Entity e : scene->getEntityList()) {
-        if (e != root && beforeSet.find(e) == beforeSet.end())
-            instance.entities.push_back(e);
-    }
-
-    instances.push_back(std::move(instance));
     return root;
 }
 
-bool PrefabManager::destroyPrefab(Scene* scene, Entity rootEntity) {
-    for (auto it = instances.begin(); it != instances.end(); ++it) {
-        if (it->scene == scene && it->rootEntity == rootEntity) {
-            uint32_t prefabId = it->prefabId;
-
-            for (auto& entry : entries) {
-                if (entry.id == prefabId && entry.destroyer) {
-                    bool result = entry.destroyer(scene, rootEntity);
-                    instances.erase(it);
-                    return result;
-                }
-            }
-
-            for (auto eit = it->entities.rbegin(); eit != it->entities.rend(); ++eit) {
-                if (scene->isEntityCreated(*eit))
-                    scene->destroyEntity(*eit);
-            }
-            instances.erase(it);
-            return true;
-        }
-    }
-    Log::error("PrefabManager: prefab instance with root %u not found in scene", rootEntity);
-    return false;
+bool PrefabManager::hasPrefab(uint32_t id) {
+    return findEntry(id) != nullptr;
 }
 
 uint32_t PrefabManager::getPrefabId(const std::string& name) {
-    PrefabEntry* entry = findEntry(name);
-    return entry ? entry->id : 0;
+    return findPrefab(name);
 }
 
 std::string PrefabManager::getPrefabName(uint32_t id) {
-    PrefabEntry* entry = findEntry(id);
+    const PrefabEntry* entry = findEntry(id);
     return entry ? entry->name : "";
+}
+
+std::string PrefabManager::getPrefabGuid(uint32_t id) {
+    const PrefabEntry* entry = findEntry(id);
+    return entry ? entry->guid : "";
 }
 
 std::vector<std::string> PrefabManager::getPrefabNames() {
@@ -211,17 +196,11 @@ int PrefabManager::getPrefabCount() {
     return (int)entries.size();
 }
 
-void PrefabManager::destroyAllInstances(Scene* scene) {
-    std::vector<Entity> roots;
-    for (const auto& inst : instances) {
-        if (inst.scene == scene)
-            roots.push_back(inst.rootEntity);
-    }
-    for (Entity root : roots)
-        destroyPrefab(scene, root);
+uint32_t PrefabManager::getRevision() {
+    return revision;
 }
 
 void PrefabManager::clearAll() {
     entries.clear();
-    instances.clear();
+    rebuildIndex();
 }

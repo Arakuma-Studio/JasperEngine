@@ -769,7 +769,28 @@ namespace jasperengine::editor{
             Entity registryEntity, Entity localEntity, Entity localParent, bool keepWorldTransform);
 
         std::vector<SceneScriptSource> collectAllSceneCppScripts() const;
+        // The prefabs of the build, sorted by path (PrefabManager ids are their positions +
+        // 1, in Play and in the export alike): every prefab a scene instantiates or a script
+        // property references, the standalone ones, and the prefabs those nest or reference
         std::vector<PrefabSceneInfo> collectAllPrefabs() const;
+        // Loads every prefab of the build, so their sources are generated
+        void loadBuildPrefabs();
+        // The prefabs the Prefab script properties of a registry reference (resolved paths)
+        std::vector<std::filesystem::path> findScriptPrefabReferences(EntityRegistry* registry) const;
+        // Lists them in the scene's prefabs (written in its file, read by the build)
+        void addScriptPrefabReferences(SceneProject* sceneProject);
+        // The C++ scripts of the build's prefabs, which no scene may hold an instance of
+        void appendPrefabCppScripts(std::vector<SceneScriptSource>& scripts, std::unordered_set<std::string>& uniquePaths) const;
+
+        // Play: a prefab instantiated by a script is copied from a template, imported once
+        // per Play into a scene nobody sees (no YAML read per instance)
+        struct PlayPrefabTemplate {
+            std::vector<Entity> entities; // the root first, hierarchy order
+        };
+        std::unique_ptr<SceneProject> playTemplateProject;
+        std::map<std::filesystem::path, PlayPrefabTemplate> playPrefabTemplates;
+        const PlayPrefabTemplate* getPlayPrefabTemplate(const std::filesystem::path& prefabPath);
+        void clearPlayPrefabTemplates();
 
         void pauseEngineScene(Scene* scene, bool pause) const;
 
@@ -856,6 +877,9 @@ namespace jasperengine::editor{
         void buildStandaloneShaderCache();
 
     public:
+        // The C++ scripts the build compiles: every scene's and the build prefabs'
+        std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
+
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include <unordered_map>
 #include "LuaBinding.h"
 
 #include "Log.h"
@@ -8,6 +9,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "SceneManager.h"
+#include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
 #include "object/EntityHandle.h"
@@ -530,7 +532,24 @@ void LuaBinding::registerHelpersFunctions(lua_State *L){
 }
 
 
+namespace {
+    // Compiled script files by path (registry refs): a script instantiated many times is
+    // read and compiled once. The chunk still runs for every instance, which gets a module
+    // table of its own as before.
+    std::unordered_map<std::string, int> scriptChunks;
+
+    void clearScriptChunks(lua_State* L) {
+        if (L) {
+            for (const auto& [path, ref] : scriptChunks) {
+                luaL_unref(L, LUA_REGISTRYINDEX, ref);
+            }
+        }
+        scriptChunks.clear();
+    }
+}
+
 void LuaBinding::cleanup(){
+    clearScriptChunks(luastate);
     if (luastate) {
         lua_close(luastate);
         luastate = NULL;
@@ -656,6 +675,8 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
 
 void LuaBinding::clearLoadedProjectModules() {
     lua_State* L = luastate;
+    // scripts may have changed since: compiled again
+    clearScriptChunks(L);
     if (!L) return;
 
     std::set<std::string> loadedModules;
@@ -672,6 +693,177 @@ void LuaBinding::clearLoadedProjectModules() {
     }
 
     lua_pop(L, 1);
+}
+
+bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity entity, ScriptEntry& scriptEntry) {
+    auto chunk = scriptChunks.find(scriptEntry.path);
+    if (chunk == scriptChunks.end()) {
+        std::string luaFile = std::string("lua://") + scriptEntry.path;
+        Data filedata;
+        if (filedata.open(luaFile.c_str()) != FileErrors::FILEDATA_OK) {
+            Log::error("Lua script file not found: %s", scriptEntry.path.c_str());
+            return false;
+        }
+
+        int loadStatus = luaL_loadbuffer(L, (const char*)filedata.getMemPtr(), filedata.length(), scriptEntry.path.c_str());
+        if (loadStatus != LUA_OK) {
+            Log::error("Failed to load Lua file '%s': %s", scriptEntry.path.c_str(), getLuaStackErrorString(L, -1).c_str());
+            lua_pop(L, 1);
+            return false;
+        }
+        chunk = scriptChunks.emplace(scriptEntry.path, luaL_ref(L, LUA_REGISTRYINDEX)).first;
+    }
+    lua_rawgeti(L, LUA_REGISTRYINDEX, chunk->second);
+
+    int status = pcallWithTraceback(L, 0, 1);
+    if (status != LUA_OK) {
+        Log::error("Failed to execute Lua module '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
+        lua_pop(L, 1);
+        return false;
+    }
+
+    if (!lua_istable(L, -1)) {
+        Log::error("Lua module '%s' did not return a table", scriptEntry.className.c_str());
+        lua_pop(L, 1);
+        return false;
+    }
+
+    // Create instance table with module as prototype
+    lua_newtable(L);
+    lua_newtable(L);
+    lua_pushvalue(L, -3);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
+
+    lua_pushstring(L, scriptEntry.className.c_str());
+    lua_setfield(L, -2, "__name");
+
+    if (!luabridge::push<Scene*>(L, scene)) {
+        Log::error("Failed to push scene to Lua");
+        lua_pop(L, 2);
+        return false;
+    }
+    lua_setfield(L, -2, "scene");
+
+    lua_pushinteger(L, static_cast<lua_Integer>(entity));
+    lua_setfield(L, -2, "entity");
+
+    // Set script properties (EntityReference ones are resolved in a second pass)
+    for (auto& prop : scriptEntry.properties) {
+        if (prop.type == ScriptPropertyType::EntityReference) {
+            lua_pushnil(L);
+            lua_setfield(L, -2, prop.name.c_str());
+            continue;
+        }
+        if (std::holds_alternative<bool>(prop.value)) {
+            lua_pushboolean(L, std::get<bool>(prop.value));
+        } else if (std::holds_alternative<int>(prop.value)) {
+            lua_pushinteger(L, std::get<int>(prop.value));
+        } else if (std::holds_alternative<float>(prop.value)) {
+            lua_pushnumber(L, std::get<float>(prop.value));
+        } else if (std::holds_alternative<std::string>(prop.value)) {
+            lua_pushstring(L, std::get<std::string>(prop.value).c_str());
+        } else if (std::holds_alternative<Vector2>(prop.value)) {
+            if (!luabridge::push<Vector2>(L, std::get<Vector2>(prop.value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector3>(prop.value)) {
+            if (!luabridge::push<Vector3>(L, std::get<Vector3>(prop.value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector4>(prop.value)) {
+            if (!luabridge::push<Vector4>(L, std::get<Vector4>(prop.value))) lua_pushnil(L);
+        } else if (std::holds_alternative<PrefabAsset>(prop.value) && !std::get<PrefabAsset>(prop.value).isEmpty()) {
+            // a prefab property left at None stays nil
+            if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(prop.value))) lua_pushnil(L);
+        } else {
+            lua_pushnil(L);
+        }
+        lua_setfield(L, -2, prop.name.c_str());
+    }
+
+    int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
+
+    // lets RegisterEngineEvent find this entry to honour its enabled flag
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    lua_pushinteger(L, ref);
+    lua_setfield(L, -2, "__scriptRef");
+    lua_pop(L, 1);
+    for (auto& prop : scriptEntry.properties) {
+        prop.luaRef = ref;
+    }
+
+    lua_pop(L, 1); // pop module
+    return true;
+}
+
+bool LuaBinding::pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className) {
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
+        return false;
+    }
+    if (ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity)) {
+        for (auto& script : scriptComp->scripts) {
+            if (script.type == ScriptType::LUA && script.enabled && script.instance &&
+                    (className.empty() || script.className == className)) {
+                lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(script.instance)));
+                return true;
+            }
+        }
+    }
+    return pushEntityHandleByType(L, scene, entity, className);
+}
+
+void LuaBinding::resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEntry& scriptEntry) {
+    int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+
+    for (auto& prop : scriptEntry.properties) {
+        if (prop.type != ScriptPropertyType::EntityReference) continue;
+
+        if (!std::holds_alternative<EntityReference>(prop.value)) {
+            lua_pushnil(L);
+            lua_setfield(L, -2, prop.name.c_str());
+            continue;
+        }
+
+        const auto& entRef = std::get<EntityReference>(prop.value);
+        bool found = false;
+        if (entRef.entity != NULL_ENTITY) {
+            Scene* targetScene = scene;
+            if (entRef.sceneId != 0) {
+                targetScene = SceneManager::getScenePtr(entRef.sceneId);
+            }
+            found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
+        }
+
+        if (!found) lua_pushnil(L);
+        lua_setfield(L, -2, prop.name.c_str());
+    }
+
+    lua_pop(L, 1);
+}
+
+void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, const char* function) {
+    int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    lua_getfield(L, -1, function);
+    if (lua_isfunction(L, -1)) {
+        lua_pushvalue(L, -2);
+        if (pcallWithTraceback(L, 1, 0) != LUA_OK) {
+            Log::error("Lua %s() failed for '%s': %s", function, scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
+            lua_pop(L, 1);
+        }
+    } else {
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+
+void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
+    int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+    removeScriptSubscriptions(scene, ref);
+    releaseLuaRef(ref);
+    scriptEntry.instance = nullptr;
+    for (auto& prop : scriptEntry.properties) {
+        prop.luaRef = 0;
+    }
 }
 
 void LuaBinding::initializeLuaScripts(Scene* scene) {
@@ -693,94 +885,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
         for (auto& scriptEntry : scriptComp.scripts) {
             if (!scriptEntry.enabled) continue;
             if (scriptEntry.type != ScriptType::LUA) continue;
-
-            std::string luaFile = std::string("lua://") + scriptEntry.path;
-            Data filedata;
-            if (filedata.open(luaFile.c_str()) != FileErrors::FILEDATA_OK) {
-                Log::error("Lua script file not found: %s", scriptEntry.path.c_str());
-                continue;
-            }
-
-            int status = luaL_loadbuffer(L, (const char*)filedata.getMemPtr(), filedata.length(), scriptEntry.path.c_str());
-            if (status != LUA_OK) {
-                Log::error("Failed to load Lua file '%s': %s", scriptEntry.path.c_str(), getLuaStackErrorString(L, -1).c_str());
-                lua_pop(L, 1);
-                continue;
-            }
-
-            status = pcallWithTraceback(L, 0, 1);
-            if (status != LUA_OK) {
-                Log::error("Failed to execute Lua module '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
-                lua_pop(L, 1);
-                continue;
-            }
-
-            if (!lua_istable(L, -1)) {
-                Log::error("Lua module '%s' did not return a table", scriptEntry.className.c_str());
-                lua_pop(L, 1);
-                continue;
-            }
-
-            // Create instance table with module as prototype
-            lua_newtable(L);
-            lua_newtable(L);
-            lua_pushvalue(L, -3);
-            lua_setfield(L, -2, "__index");
-            lua_setmetatable(L, -2);
-
-            lua_pushstring(L, scriptEntry.className.c_str());
-            lua_setfield(L, -2, "__name");
-
-            if (!luabridge::push<Scene*>(L, scene)) {
-                Log::error("Failed to push scene to Lua");
-                lua_pop(L, 2);
-                continue;
-            }
-            lua_setfield(L, -2, "scene");
-
-            lua_pushinteger(L, static_cast<lua_Integer>(entity));
-            lua_setfield(L, -2, "entity");
-
-            // Set script properties (skip EntityReference for now — resolved in PASS 2)
-            for (auto& prop : scriptEntry.properties) {
-                if (prop.type == ScriptPropertyType::EntityReference) {
-                    lua_pushnil(L);
-                    lua_setfield(L, -2, prop.name.c_str());
-                    continue;
-                }
-                if (std::holds_alternative<bool>(prop.value)) {
-                    lua_pushboolean(L, std::get<bool>(prop.value));
-                } else if (std::holds_alternative<int>(prop.value)) {
-                    lua_pushinteger(L, std::get<int>(prop.value));
-                } else if (std::holds_alternative<float>(prop.value)) {
-                    lua_pushnumber(L, std::get<float>(prop.value));
-                } else if (std::holds_alternative<std::string>(prop.value)) {
-                    lua_pushstring(L, std::get<std::string>(prop.value).c_str());
-                } else if (std::holds_alternative<Vector2>(prop.value)) {
-                    if (!luabridge::push<Vector2>(L, std::get<Vector2>(prop.value))) lua_pushnil(L);
-                } else if (std::holds_alternative<Vector3>(prop.value)) {
-                    if (!luabridge::push<Vector3>(L, std::get<Vector3>(prop.value))) lua_pushnil(L);
-                } else if (std::holds_alternative<Vector4>(prop.value)) {
-                    if (!luabridge::push<Vector4>(L, std::get<Vector4>(prop.value))) lua_pushnil(L);
-                } else {
-                    lua_pushnil(L);
-                }
-                lua_setfield(L, -2, prop.name.c_str());
-            }
-
-            int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-            scriptEntry.instance = reinterpret_cast<void*>(static_cast<intptr_t>(ref));
-
-            // lets RegisterEngineEvent find this entry to honour its enabled flag
-            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
-            lua_pushinteger(L, ref);
-            lua_setfield(L, -2, "__scriptRef");
-            lua_pop(L, 1);
-            for (auto& prop : scriptEntry.properties) {
-                prop.luaRef = ref;
-            }
-
-            lua_pop(L, 1); // pop module
+            createLuaScriptInstance(L, scene, entity, scriptEntry);
         }
     }
 
@@ -792,93 +897,66 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
             if (scriptEntry.type != ScriptType::LUA || !scriptEntry.enabled) continue;
             // PASS 1 skips missing or broken files: indexing a nil instance panics Lua
             if (!scriptEntry.instance) continue;
-
-            int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
-            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
-
-            for (auto& prop : scriptEntry.properties) {
-                if (prop.type != ScriptPropertyType::EntityReference) continue;
-
-                if (!std::holds_alternative<EntityReference>(prop.value)) {
-                    lua_pushnil(L);
-                    lua_setfield(L, -2, prop.name.c_str());
-                    continue;
-                }
-
-                const auto& entRef = std::get<EntityReference>(prop.value);
-                Entity targetEntity = entRef.entity;
-                bool foundScript = false;
-
-                if (targetEntity != NULL_ENTITY) {
-                    Scene* targetScene = scene;
-                    if (entRef.sceneId != 0) {
-                        targetScene = SceneManager::getScenePtr(entRef.sceneId);
-                    }
-                    if (targetScene) {
-                        ScriptComponent* targetScriptComp = targetScene->findComponent<ScriptComponent>(targetEntity);
-                        if (targetScriptComp) {
-                            if (!prop.ptrTypeName.empty()) {
-                                for (auto& targetScript : targetScriptComp->scripts) {
-                                    if (targetScript.type == ScriptType::LUA &&
-                                        targetScript.className == prop.ptrTypeName &&
-                                        targetScript.enabled && targetScript.instance) {
-                                        int targetRef = static_cast<int>(reinterpret_cast<intptr_t>(targetScript.instance));
-                                        lua_rawgeti(L, LUA_REGISTRYINDEX, targetRef);
-                                        foundScript = true;
-                                        break;
-                                    }
-                                }
-                                if (!foundScript)
-                                    foundScript = pushEntityHandleByType(L, targetScene, targetEntity, prop.ptrTypeName);
-                            } else {
-                                for (auto& targetScript : targetScriptComp->scripts) {
-                                    if (targetScript.type == ScriptType::LUA &&
-                                        targetScript.enabled && targetScript.instance) {
-                                        int targetRef = static_cast<int>(reinterpret_cast<intptr_t>(targetScript.instance));
-                                        lua_rawgeti(L, LUA_REGISTRYINDEX, targetRef);
-                                        foundScript = true;
-                                        break;
-                                    }
-                                }
-                                if (!foundScript)
-                                    foundScript = pushEntityHandleByType(L, targetScene, targetEntity, prop.ptrTypeName);
-                            }
-                        } else {
-                            foundScript = pushEntityHandleByType(L, targetScene, targetEntity, prop.ptrTypeName);
-                        }
-                    }
-                }
-
-                if (!foundScript) lua_pushnil(L);
-                lua_setfield(L, -2, prop.name.c_str());
-            }
-
-            lua_pop(L, 1);
+            resolveLuaScriptReferences(L, scene, scriptEntry);
         }
     }
 
-    // PASS 3: Call init() methods
-    for (size_t i = 0; i < scriptsArray->size(); i++) {
-        ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);
-        for (auto& scriptEntry : scriptComp.scripts) {
+    // PASS 3: Call init() methods. A script instantiating in init() appends to the array
+    // (its new scripts start there), so the component is read again by index each time.
+    // What they instantiate goes to their scene, not yet the Engine's.
+    ObjectManager::pushActiveScene(scene);
+    const size_t count = scriptsArray->size();
+    for (size_t i = 0; i < count && i < scriptsArray->size(); i++) {
+        for (size_t s = 0; s < scriptsArray->getComponentFromIndex(i).scripts.size(); s++) {
+            ScriptEntry& scriptEntry = scriptsArray->getComponentFromIndex(i).scripts[s];
             if (scriptEntry.type != ScriptType::LUA || !scriptEntry.enabled) continue;
             if (!scriptEntry.instance) continue;
-
-            int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
-            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
-            lua_getfield(L, -1, "init");
-            if (lua_isfunction(L, -1)) {
-                lua_pushvalue(L, -2);
-                if (pcallWithTraceback(L, 1, 0) != LUA_OK) {
-                    Log::error("Lua init() failed for '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
-                    lua_pop(L, 1);
-                }
-            } else {
-                lua_pop(L, 1);
-            }
-            lua_pop(L, 1);
+            callLuaScriptFunction(L, scriptEntry, "init");
         }
     }
+    ObjectManager::popActiveScene();
+}
+
+void LuaBinding::initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities) {
+    if (!scene) return;
+
+    lua_State* L = luastate;
+    if (!L) {
+        Log::error("Lua state not initialized");
+        return;
+    }
+
+    // The component is looked up again for every script: a script can make GameObjects
+    // (instantiate in init()), which moves the components of the array
+    auto forEachEntry = [&](auto&& callback) {
+        for (Entity entity : entities) {
+            if (!scene->isEntityCreated(entity)) continue;
+            ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity);
+            for (size_t s = 0; scriptComp && s < scriptComp->scripts.size(); s++) {
+                ScriptEntry& scriptEntry = scriptComp->scripts[s];
+                if (scriptEntry.type == ScriptType::LUA && scriptEntry.enabled) {
+                    callback(entity, scriptEntry);
+                }
+                scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            }
+        }
+    };
+
+    forEachEntry([&](Entity entity, ScriptEntry& scriptEntry) {
+        if (!scriptEntry.instance) {
+            createLuaScriptInstance(L, scene, entity, scriptEntry);
+        }
+    });
+    forEachEntry([&](Entity, ScriptEntry& scriptEntry) {
+        if (scriptEntry.instance) {
+            resolveLuaScriptReferences(L, scene, scriptEntry);
+        }
+    });
+    forEachEntry([&](Entity, ScriptEntry& scriptEntry) {
+        if (scriptEntry.instance) {
+            callLuaScriptFunction(L, scriptEntry, "init");
+        }
+    });
 }
 
 void LuaBinding::cleanupLuaScripts(Scene* scene) {
@@ -891,13 +969,36 @@ void LuaBinding::cleanupLuaScripts(Scene* scene) {
         for (auto& scriptEntry : scriptComp.scripts) {
             if (scriptEntry.type != ScriptType::LUA) continue;
             if (scriptEntry.instance) {
-                int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
-                removeScriptSubscriptions(scene, ref);
-                releaseLuaRef(ref);
-                scriptEntry.instance = nullptr;
-                for (auto& prop : scriptEntry.properties) {
-                    prop.luaRef = 0;
-                }
+                releaseLuaScriptInstance(scene, scriptEntry);
+            }
+        }
+    }
+}
+
+void LuaBinding::cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities) {
+    if (!scene) return;
+
+    lua_State* L = luastate;
+
+    // onDestroy() of every script first (Unity's OnDestroy), while the others still run
+    for (Entity entity : entities) {
+        if (!L || !scene->isEntityCreated(entity)) continue;
+        ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity);
+        for (size_t s = 0; scriptComp && s < scriptComp->scripts.size(); s++) {
+            if (scriptComp->scripts[s].type == ScriptType::LUA && scriptComp->scripts[s].instance) {
+                callLuaScriptFunction(L, scriptComp->scripts[s], "onDestroy");
+            }
+            scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+        }
+    }
+
+    for (Entity entity : entities) {
+        if (!scene->isEntityCreated(entity)) continue;
+        ScriptComponent* scriptComp = scene->findComponent<ScriptComponent>(entity);
+        if (!scriptComp) continue;
+        for (auto& scriptEntry : scriptComp->scripts) {
+            if (scriptEntry.type == ScriptType::LUA && scriptEntry.instance) {
+                releaseLuaScriptInstance(scene, scriptEntry);
             }
         }
     }

@@ -667,6 +667,7 @@ std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
         case ScriptPropertyType::Color3: return "ScriptPropertyType::Color3";
         case ScriptPropertyType::Color4: return "ScriptPropertyType::Color4";
         case ScriptPropertyType::EntityReference: return "ScriptPropertyType::EntityReference";
+        case ScriptPropertyType::Prefab: return "ScriptPropertyType::Prefab";
         default: return "ScriptPropertyType::Bool";
     }
 }
@@ -690,6 +691,10 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
         const auto& ref = std::get<EntityReference>(value);
         // only a same-scene reference can point at a prefab member
         return "EntityReference{Entity(" + formatEntity(ref.entity, ref.sceneId == 0 ? entityVarNames : nullptr) + "), " + std::to_string(ref.sceneId) + "}";
+    } else if (std::holds_alternative<PrefabAsset>(value)) {
+        // found by GUID in PrefabManager, as in Play
+        const auto& prefab = std::get<PrefabAsset>(value);
+        return "PrefabAsset(" + formatString(prefab.getGuid()) + ", " + formatString(prefab.getPath()) + ")";
     }
     return "ScriptPropertyValue{}";
 }

@@ -813,6 +813,8 @@ set(JASPERENGINE_SRCS
     core/io/File.cpp
     core/io/FileData.cpp
     core/io/ResourcePack.cpp
+    core/manager/ObjectManager.cpp
+    core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
@@ -866,6 +868,7 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp

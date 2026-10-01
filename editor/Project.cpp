@@ -53,6 +53,7 @@
 #include "shader/ShaderVariantCollector.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
+#include "ObjectManager.h"
 
 using namespace jasperengine;
 
@@ -138,6 +139,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const EntityReference* a = std::get_if<EntityReference>(&lhs);
             const EntityReference* b = std::get_if<EntityReference>(&rhs);
             return a && b && a->entity == b->entity;
+        }
+        case ScriptPropertyType::Prefab: {
+            const PrefabAsset* a = std::get_if<PrefabAsset>(&lhs);
+            const PrefabAsset* b = std::get_if<PrefabAsset>(&rhs);
+            return a && b && a->getGuid() == b->getGuid() && a->getPath() == b->getPath();
         }
     }
 
@@ -3894,6 +3900,9 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
         }
     }
 
+    // and the ones of prefabs only scripts instantiate
+    appendPrefabCppScripts(mergedScripts, uniquePaths);
+
     return mergedScripts;
 }
 
@@ -4115,6 +4124,34 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
         }
     }
 
+    // A GameObject a script destroyed (GameObject.destroy) comes back at the end of its
+    // parent's branch: siblings go back to the snapshot's order
+    Scene* scene = sceneProject->scene;
+    std::function<void(const YAML::Node&)> restoreOrder = [&](const YAML::Node& list) {
+        if (!list || !list.IsSequence()) {
+            return;
+        }
+        Entity previous = NULL_ENTITY;
+        for (const auto& node : list) {
+            if (!node.IsMap() || !node["entity"]) {
+                continue;
+            }
+            const Entity entity = node["entity"].as<Entity>();
+            if (!scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity)) {
+                continue;
+            }
+            if (previous != NULL_ENTITY) {
+                auto transforms = scene->getComponentArray<Transform>();
+                if (transforms->getIndex(entity) < transforms->getIndex(previous)) {
+                    scene->moveChildToIndex(entity, scene->findBranchLastIndex(previous) + 1);
+                }
+            }
+            previous = entity;
+            restoreOrder(node["children"]);
+        }
+    };
+    restoreOrder(entitiesNode);
+
     destroyPlayCreatedEntities(sceneProject);
 
     deselectDestroyedEntities(sceneProject);
@@ -4178,8 +4215,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
 
-        // Destroy all prefab instances created during play before restoring snapshot
-        PrefabManager::destroyAllInstances(sceneProject->scene);
+        // GameObject.destroy calls still pending; what the game made goes with the snapshot
+        ObjectManager::forgetScene(sceneProject->scene);
 
         // Stop scene audio before restoring snapshot to prevent stale SoLoud handles on the next play
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
@@ -4256,9 +4293,11 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
-    editor::getEditorHost().enqueueMainThreadTask([]() {
+    editor::getEditorHost().enqueueMainThreadTask([this]() {
         SceneManager::clearAll();
         PrefabManager::clearAll();
+        ObjectManager::clearAll();
+        clearPlayPrefabTemplates();
         editor::getEditorHost().resetLastActivatedScene();
     });
 
@@ -4964,6 +5003,8 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 }
 
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
+    // prefabs only scripts reference or other prefabs nest get their sources too
+    loadBuildPrefabs();
     const auto baked = bakePrefabsForExport();
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
         [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
@@ -6498,6 +6539,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         SceneManager::clearAll();
         PrefabManager::clearAll();
+        ObjectManager::clearAll();
+        clearPlayPrefabTemplates();
         jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
@@ -6617,6 +6660,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     return;
                 }
 
+                // prefabs only scripts reference or other prefabs nest get their sources too
+                loadBuildPrefabs();
                 const auto baked = bakePrefabsForExport();
                 std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
                     [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
@@ -7275,6 +7320,8 @@ void editor::Project::stop(uint32_t sceneId) {
                 cleanupPlaySession(session);
                 SceneManager::clearAll();
                 PrefabManager::clearAll();
+                ObjectManager::clearAll();
+                clearPlayPrefabTemplates();
                 editor::getEditorHost().resetLastActivatedScene();
                 if (mainSceneProject) {
                     mainSceneProject->playState = ScenePlayState::STOPPED;

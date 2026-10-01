@@ -7,6 +7,7 @@
 #include "Export.h"
 #include "ecs/Entity.h"
 #include <string>
+#include <vector>
 
 typedef struct lua_State lua_State;
 typedef int (*lua_CFunction) (lua_State *L);
@@ -14,6 +15,7 @@ typedef int (*lua_CFunction) (lua_State *L);
 namespace jasperengine {
 
     class Scene;
+    struct ScriptEntry;
 
     class JASPERENGINE_API LuaBinding {
         
@@ -55,6 +57,11 @@ namespace jasperengine {
         static bool pushEntityHandleTyped(lua_State* L, Scene* scene, Entity entity);
         static bool pushEntityHandleByType(lua_State* L, Scene* scene, Entity entity, const std::string& ptrTypeName);
 
+        static bool createLuaScriptInstance(lua_State* L, Scene* scene, Entity entity, ScriptEntry& scriptEntry);
+        static void resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEntry& scriptEntry);
+        static void callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, const char* function);
+        static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
+
     public:
         LuaBinding();
         virtual ~LuaBinding();
@@ -77,6 +84,15 @@ namespace jasperengine {
         // For editor scripts use
         static void initializeLuaScripts(Scene* scene);
         static void cleanupLuaScripts(Scene* scene);
+
+        // The scripts of some GameObjects only: ones a script instantiated, ones destroyed
+        // (their onDestroy() is called first)
+        static void initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities);
+        static void cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities);
+
+        // Pushes what a script sees for a GameObject: its Lua script instance of class
+        // `className` (its first one when empty), else a handle typed after className
+        static bool pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className);
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);

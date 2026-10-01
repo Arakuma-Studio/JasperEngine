@@ -38,6 +38,9 @@
 #include "InputField.h"
 #include "LayoutGroup.h"
 #include "AudioSource.h"
+#include "Engine.h"
+#include "ObjectManager.h"
+#include "PrefabAsset.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Joint2D.h"
@@ -63,6 +66,179 @@ static lua_Integer getLuaCullingMask(const T* self){
 template<typename T>
 static void setLuaCullingMask(T* self, lua_Integer mask){
     self->setCullingMask((uint32_t)mask);
+}
+
+
+// ---- GameObject.instantiate / destroy / destroyImmediate (Unity's Object.Instantiate...) ----
+
+namespace {
+
+// A GameObject argument: any GameObject handle (EntityHandle and what derives from it), or
+// a Lua script instance (its self: a table with scene and entity), whose class is returned
+bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::string* scriptClass = nullptr){
+    if (luabridge::isInstance<EntityHandle>(L, index)){
+        auto handle = luabridge::get<EntityHandle*>(L, index);
+        if (!handle || !handle.value()){
+            return false;
+        }
+        scene = handle.value()->getScene();
+        entity = handle.value()->getEntity();
+        return true;
+    }
+    if (lua_istable(L, index)){
+        const int top = lua_gettop(L);
+        lua_getfield(L, index, "scene");
+        lua_getfield(L, index, "entity");
+        bool ok = false;
+        if (luabridge::isInstance<Scene*>(L, -2) && lua_isinteger(L, -1)){
+            auto sceneResult = luabridge::get<Scene*>(L, -2);
+            if (sceneResult && sceneResult.value()){
+                scene = sceneResult.value();
+                entity = (Entity)lua_tointeger(L, -1);
+                ok = true;
+            }
+        }
+        if (ok && scriptClass){
+            lua_getfield(L, index, "__name");
+            if (lua_isstring(L, -1)){
+                *scriptClass = lua_tostring(L, -1);
+            }
+        }
+        lua_settop(L, top);
+        return ok;
+    }
+    return false;
+}
+
+template<typename T>
+bool luaValueArg(lua_State* L, int index, T& value){
+    if (!luabridge::isInstance<T>(L, index)){
+        return false;
+    }
+    auto result = luabridge::get<T>(L, index);
+    if (!result){
+        return false;
+    }
+    value = result.value();
+    return true;
+}
+
+// GameObject.instantiate(original [, ...]): original is a PrefabAsset, a prefab path or
+// name, a prefab id, a GameObject or a script (self). Then:
+//   (parent [, instantiateInWorldSpace])     parent: a GameObject or a script
+//   (position, rotation [, parent])          world values
+//   (scene [, position, rotation])           a prefab in that scene
+// Returns the new GameObject (for a script, the copy's script of the same class), or nil.
+int luaInstantiate(lua_State* L){
+    const int argc = lua_gettop(L);
+
+    PrefabAsset prefab;
+    bool fromPrefab = false;
+    Scene* originalScene = nullptr;
+    Entity original = NULL_ENTITY;
+    std::string scriptClass;
+
+    if (luaValueArg<PrefabAsset>(L, 1, prefab)){
+        fromPrefab = true;
+    }else if (lua_type(L, 1) == LUA_TSTRING){
+        prefab = PrefabAsset::load(std::string(lua_tostring(L, 1)));
+        fromPrefab = true;
+    }else if (lua_type(L, 1) == LUA_TNUMBER){
+        prefab = PrefabAsset::load((uint32_t)lua_tointeger(L, 1));
+        fromPrefab = true;
+    }else if (!luaObjectArg(L, 1, originalScene, original, &scriptClass)){
+        return luaL_error(L, "GameObject.instantiate: argument 1 must be a PrefabAsset, a prefab path, a GameObject or a script");
+    }
+    if (fromPrefab && prefab.getId() == 0){
+        lua_pushnil(L);
+        return 1;
+    }
+
+    Scene* scene = nullptr;
+    Scene* parentScene = nullptr;
+    Entity parent = NULL_ENTITY;
+    bool worldSpace = false;
+    bool placed = false;
+    Vector3 position;
+    Quaternion rotation;
+
+    int next = 2;
+    if (argc >= next && luaValueArg<Scene*>(L, next, scene)){
+        if (!fromPrefab){
+            return luaL_error(L, "GameObject.instantiate: a scene is given with a prefab only; a copy goes to its parent's scene");
+        }
+        next++;
+    }
+    if (argc >= next && luabridge::isInstance<Vector3>(L, next)){
+        if (!luaValueArg<Vector3>(L, next, position) || !luaValueArg<Quaternion>(L, next + 1, rotation)){
+            return luaL_error(L, "GameObject.instantiate: a position goes with a rotation (Quaternion)");
+        }
+        placed = true;
+        next += 2;
+    }
+    if (argc >= next && !lua_isnil(L, next)){
+        if (!luaObjectArg(L, next, parentScene, parent)){
+            return luaL_error(L, "GameObject.instantiate: argument %d must be the parent GameObject", next);
+        }
+        if (!placed && argc >= next + 1){
+            worldSpace = lua_toboolean(L, next + 1) != 0;
+        }
+    }
+
+    Entity root = NULL_ENTITY;
+    Scene* resultScene = nullptr;
+    if (fromPrefab){
+        resultScene = parent != NULL_ENTITY ? parentScene : (scene ? scene : ObjectManager::getActiveScene());
+        root = placed ? ObjectManager::instantiate(prefab, resultScene, position, rotation, parent)
+                      : ObjectManager::instantiate(prefab, resultScene, parent, worldSpace);
+    }else{
+        resultScene = parent != NULL_ENTITY ? parentScene : originalScene;
+        root = placed ? ObjectManager::instantiate(originalScene, original, resultScene, position, rotation, parent)
+                      : ObjectManager::instantiate(originalScene, original, resultScene, parent, worldSpace);
+    }
+
+    if (root == NULL_ENTITY){
+        lua_pushnil(L);
+        return 1;
+    }
+    if (!scriptClass.empty() && LuaBinding::pushScriptObject(L, resultScene, root, scriptClass)){
+        return 1;
+    }
+    if (!luabridge::push<GameObject>(L, GameObject(resultScene, root))){
+        lua_pushnil(L);
+    }
+    return 1;
+}
+
+// GameObject.destroy(object [, delay]) and GameObject.destroyImmediate(object): a
+// GameObject or a script (its GameObject goes)
+int luaDestroy(lua_State* L){
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    if (lua_isnil(L, 1)){
+        return 0;
+    }
+    if (!luaObjectArg(L, 1, scene, entity)){
+        return luaL_error(L, "GameObject.destroy: argument 1 must be a GameObject or a script");
+    }
+    const float delay = (float)luaL_optnumber(L, 2, 0.0);
+    ObjectManager::destroy(scene, entity, delay);
+    return 0;
+}
+
+int luaDestroyImmediate(lua_State* L){
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    if (lua_isnil(L, 1)){
+        return 0;
+    }
+    if (!luaObjectArg(L, 1, scene, entity)){
+        return luaL_error(L, "GameObject.destroyImmediate: argument 1 must be a GameObject or a script");
+    }
+    ObjectManager::destroyImmediate(scene, entity);
+    return 0;
+}
+
 }
 
 void LuaBinding::registerGameObjectClasses(lua_State *L){
@@ -226,6 +402,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .deriveClass<GameObject, EntityHandle>("GameObject")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addStaticFunction("instantiate", &luaInstantiate)
+        .addStaticFunction("destroy", &luaDestroy)
+        .addStaticFunction("destroyImmediate", &luaDestroyImmediate)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))

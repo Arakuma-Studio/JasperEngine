@@ -144,6 +144,14 @@ namespace jasperengine {
 				}
 			}
 		}
+
+		void entitiesDestroyed(const std::unordered_set<Entity>& entities) {
+			for (auto const& entry : entries) {
+				if (entry.array){
+					entry.array->entitiesDestroyed(entities);
+				}
+			}
+		}
 	};
 
 }

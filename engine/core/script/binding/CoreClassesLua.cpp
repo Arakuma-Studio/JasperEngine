@@ -13,6 +13,7 @@
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
+#include "PrefabAsset.h"
 #include "Input.h"
 #include "System.h"
 #include "registry/PhysicsLayers.h"
@@ -702,23 +703,30 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<PrefabManager>("PrefabManager")
-        // Lua reads a number as a string too, so the id and entity overloads have to be
-        // offered before the ones taking a name
-        .addStaticFunction("createPrefab",
-            luabridge::overload<uint32_t, Scene*>(&PrefabManager::createPrefab),
-            luabridge::overload<uint32_t, Scene*, Entity>(&PrefabManager::createPrefab),
-            luabridge::overload<uint32_t, Scene*, const std::string&>(&PrefabManager::createPrefab),
-            luabridge::overload<uint32_t, const EntityHandle&>(&PrefabManager::createPrefab),
-            luabridge::overload<const std::string&, Scene*>(&PrefabManager::createPrefab),
-            luabridge::overload<const std::string&, Scene*, Entity>(&PrefabManager::createPrefab),
-            luabridge::overload<const std::string&, Scene*, const std::string&>(&PrefabManager::createPrefab),
-            luabridge::overload<const std::string&, const EntityHandle&>(&PrefabManager::createPrefab))
-        .addStaticFunction("destroyPrefab", &PrefabManager::destroyPrefab)
+        .addStaticFunction("findPrefab", &PrefabManager::findPrefab)
         .addStaticFunction("getPrefabId", &PrefabManager::getPrefabId)
         .addStaticFunction("getPrefabName", &PrefabManager::getPrefabName)
+        .addStaticFunction("getPrefabGuid", &PrefabManager::getPrefabGuid)
         .addStaticFunction("getPrefabNames", &PrefabManager::getPrefabNames)
         .addStaticProperty("prefabCount", &PrefabManager::getPrefabCount)
-        .addStaticFunction("clearAll", &PrefabManager::clearAll)
+        .endClass();
+
+    // What a Prefab script property holds; GameObject.instantiate takes it
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PrefabAsset>("PrefabAsset")
+        .addConstructor<void (*) (), void (*) (const std::string&, const std::string&)>()
+        // Lua reads a number as a string too, so the id overload comes first
+        .addStaticFunction("load",
+            luabridge::overload<uint32_t>(&PrefabAsset::load),
+            luabridge::overload<const std::string&>(&PrefabAsset::load))
+        .addProperty("id", &PrefabAsset::getId)
+        .addProperty("valid", &PrefabAsset::isValid)
+        .addProperty("guid", [](const PrefabAsset* self) { return self->getGuid(); })
+        .addProperty("path", [](const PrefabAsset* self) { return self->getPath(); })
+        .addProperty("name", &PrefabAsset::getName)
+        .addFunction("isValid", &PrefabAsset::isValid)
+        .addFunction("__eq", &PrefabAsset::operator==)
+        .addFunction("__tostring", [](const PrefabAsset* self) { return "PrefabAsset(" + self->getPath() + ")"; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

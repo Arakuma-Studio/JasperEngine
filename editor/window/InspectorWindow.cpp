@@ -9090,6 +9090,92 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
     }
 }
 
+// The value of a script property of type Prefab (Unity's GameObject field holding a prefab):
+// the prefab's name, a drop target for a .prefab from the Project window, and a button back
+// to None. Kept by GUID (the path is a hint), so it follows the prefab when it is renamed or
+// moved.
+static void drawPrefabScriptProperty(editor::Project* project, editor::SceneProject* sceneProject, const std::vector<Entity>& entities,
+        editor::ComponentType cpType, const std::string& propertyId,
+        const std::function<void()>& onValueChanged, editor::Command*& cmd, bool& finishProperty) {
+    using namespace editor;
+
+    std::vector<PrefabAsset*> values;
+    for (Entity entity : entities) {
+        PropertyData data = Catalog::findProperty(sceneProject->scene, entity, cpType, propertyId);
+        if (data.ref) {
+            values.push_back(static_cast<PrefabAsset*>(data.ref));
+        }
+    }
+    if (values.empty()) {
+        return;
+    }
+    bool mixed = false;
+    for (const PrefabAsset* value : values) {
+        if (value->getGuid() != values[0]->getGuid() || value->getPath() != values[0]->getPath()) {
+            mixed = true;
+        }
+    }
+    const PrefabAsset& value = *values[0];
+
+    std::string label;
+    std::string tooltip;
+    if (mixed) {
+        label = "-";
+    } else if (value.isEmpty()) {
+        label = "None (Prefab)";
+    } else {
+        fs::path resolved = project->resolvePrefabPath(value.getGuid(), value.getPath());
+        if (resolved.empty()) {
+            label = "Missing (" + value.getName() + ")";
+            tooltip = "No prefab has this GUID: " + value.getGuid() + "\nLast path: " + value.getPath();
+        } else {
+            label = resolved.stem().string();
+            tooltip = resolved.generic_string();
+        }
+    }
+
+    auto assign = [&](const PrefabAsset& newValue) {
+        for (Entity entity : entities) {
+            cmd = new PropertyCmd<PrefabAsset>(project, sceneProject->id, entity, cpType, propertyId, newValue, onValueChanged);
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        }
+        finishProperty = true;
+    };
+
+    const float clearWidth = ImGui::GetFrameHeight();
+    const float fieldWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::PushID(propertyId.c_str());
+    ImGui::Button((std::string(ICON_FA_CUBE " ") + label + "##prefab_field").c_str(), ImVec2(fieldWidth, 0));
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip.empty() ? "Drag a prefab here from the Project window" : tooltip.c_str());
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
+            if (!dropped.empty()) {
+                fs::path relative = project->normalizeToProjectRelative(dropped[0]);
+                if (!relative.empty() && Util::isPrefabFile(relative.string())) {
+                    assign(PrefabAsset(project->getPrefabGuid(relative), relative.generic_string()));
+                    ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                } else {
+                    Out::warning("Only a prefab (.prefab) of this project can go in a Prefab property");
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!mixed && value.isEmpty());
+    if (ImGui::Button(ICON_FA_XMARK "##prefab_clear", ImVec2(clearWidth, 0))) {
+        assign(PrefabAsset());
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Set to None");
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+}
+
 void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.empty()) return;
 
@@ -9621,6 +9707,15 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                             }
                         }
                     };
+
+                    if (prop.type == ScriptPropertyType::Prefab) {
+                        // the label as the other rows draw it (a prefab instance's overrides shown)
+                        prefabRowProperty = propertyId;
+                        propertyHeader(displayName, -1, false, false);
+                        prefabRowProperty.clear();
+                        drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, propSettings.onValueChanged, cmd, finishProperty);
+                        continue;
+                    }
 
                     propertyRow(propType, cpType, propertyId, displayName, sceneProject, entities, propSettings);
                 }

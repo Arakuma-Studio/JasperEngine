@@ -11,6 +11,8 @@
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
+#include "PrefabAsset.h"
+#include "ObjectManager.h"
 #include "System.h"
 
 #include "action/Action.h"

@@ -1783,6 +1783,11 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
         // For now, leave as null entity. The editor will fill it later.
         return ScriptPropertyValue(EntityReference{NULL_ENTITY, 0});
     }
+
+    case ScriptPropertyType::Prefab: {
+        // None: a prefab is dragged onto the property in the Inspector
+        return ScriptPropertyValue(PrefabAsset());
+    }
     }
 
     return ScriptPropertyValue{};
@@ -1869,6 +1874,8 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                         prop.type = ScriptPropertyType::Color3;
                     }else if (typeLower == "color4"){
                         prop.type = ScriptPropertyType::Color4;
+                    }else if (typeLower == "prefab" || typeLower == "prefabasset"){
+                        prop.type = ScriptPropertyType::Prefab;
                     }else if (typeLower == "entity" || typeLower == "entitypointer" || typeLower == "pointer"){
                         prop.type = ScriptPropertyType::EntityReference;
                     }else{

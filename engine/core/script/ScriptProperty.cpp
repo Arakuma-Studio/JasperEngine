@@ -56,6 +56,13 @@ namespace jasperengine {
                 case ScriptPropertyType::EntityReference:
                     // Intentionally no-op for runtime member sync
                     break;
+                case ScriptPropertyType::Prefab:
+                    if (std::holds_alternative<PrefabAsset>(value)) {
+                        *static_cast<PrefabAsset*>(memberPtr) = std::get<PrefabAsset>(value);
+                    } else {
+                        *static_cast<PrefabAsset*>(memberPtr) = PrefabAsset();
+                    }
+                    break;
             }
         } else if (luaRef != 0 && !name.empty()) {
             lua_State* L = LuaBinding::getLuaState();
@@ -136,6 +143,13 @@ namespace jasperengine {
                         lua_pushnil(L);
                     }
                     break;
+                case ScriptPropertyType::Prefab:
+                    if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
+                        pushOrNil(std::get<PrefabAsset>(value));
+                    } else {
+                        lua_pushnil(L);
+                    }
+                    break;
             }
 
             lua_setfield(L, -2, name.c_str()); // instance[name] = value
@@ -171,6 +185,9 @@ namespace jasperengine {
                     break;
                 case ScriptPropertyType::EntityReference:
                     // Intentionally no-op for runtime member sync
+                    break;
+                case ScriptPropertyType::Prefab:
+                    value = *static_cast<PrefabAsset*>(memberPtr);
                     break;
             }
         } else if (luaRef != 0 && !name.empty()) {
@@ -234,6 +251,17 @@ namespace jasperengine {
                         }
                     }
                     break;
+                case ScriptPropertyType::Prefab: {
+                    if (lua_isnil(L, -1)) {
+                        value = PrefabAsset();
+                    } else {
+                        auto result = luabridge::Stack<PrefabAsset>::get(L, -1);
+                        if (result) {
+                            value = result.value();
+                        }
+                    }
+                    break;
+                }
                 case ScriptPropertyType::EntityReference: {
                     uint32_t sid = std::holds_alternative<EntityReference>(value) ? std::get<EntityReference>(value).sceneId : 0;
                     if (lua_isinteger(L, -1)) {

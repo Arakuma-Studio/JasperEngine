@@ -14,6 +14,7 @@
 #include <numeric>
 #include <limits>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 #include "Entity.h"
 #include "Log.h"
@@ -24,6 +25,8 @@ namespace jasperengine {
     public:
         virtual ~ComponentArrayBase() = default;
         virtual void entityDestroyed(Entity entity) = 0;
+        // Several at once: the array is compacted once instead of shifted per entity
+        virtual void entitiesDestroyed(const std::unordered_set<Entity>& entities) = 0;
     };
 
 
@@ -269,6 +272,37 @@ namespace jasperengine {
             if (entityToIndexMap.find(entity) != entityToIndexMap.end()) {
                 remove(entity);
             }
+        }
+
+        void entitiesDestroyed(const std::unordered_set<Entity>& entities) override {
+            // from the first one this array holds; the order of the others is kept
+            size_t first = componentArray.size();
+            for (Entity entity : entities) {
+                auto it = entityToIndexMap.find(entity);
+                if (it != entityToIndexMap.end() && it->second < first) {
+                    first = it->second;
+                }
+            }
+            if (first == componentArray.size()) {
+                return;
+            }
+
+            size_t write = first;
+            for (size_t read = first; read < componentArray.size(); read++) {
+                const Entity entity = indexToEntity[read];
+                if (entities.count(entity)) {
+                    entityToIndexMap.erase(entity);
+                    continue;
+                }
+                if (write != read) {
+                    componentArray[write] = std::move(componentArray[read]);
+                    indexToEntity[write] = entity;
+                }
+                write++;
+            }
+            componentArray.erase(componentArray.begin() + write, componentArray.end());
+            indexToEntity.resize(write);
+            reindex(first, write);
         }
 
         void iterateAll(std::function<void(T component)> lambda){
