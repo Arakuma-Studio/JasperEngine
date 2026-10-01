@@ -308,6 +308,9 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     // capped at B2_MAX_WORLDS (128) and is not thread-safe. Editor preview/thumbnail/gizmo scenes
     // (and pure-3D scenes) have no 2D bodies, so they must not consume a world slot.
     world2D = b2_nullWorldId;
+
+    Physics2D::getLayerCollisionMatrix().getRows(appliedLayerRows2D);
+    appliedLayerVersion2D = Physics2D::getLayerCollisionMatrix().getVersion();
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -320,9 +323,14 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     const unsigned int cMaxBodyPairs = 1024;
     const unsigned int cMaxContactConstraints = 1024;
 
-    broad_phase_layer_interface = new JPH::BroadPhaseLayerInterfaceMask(MAX_BROADPHASELAYER_3D);
-    object_vs_broadphase_layer_filter = new JPH::ObjectVsBroadPhaseLayerFilterMask(*broad_phase_layer_interface);
-    object_vs_object_layer_filter = new JPH::ObjectLayerPairFilterMask();
+    objectLayerTable3D = new JoltObjectLayerTable();
+    broad_phase_layer_interface = new JoltBroadPhaseLayers(MAX_BROADPHASELAYER_3D, *objectLayerTable3D);
+    object_vs_broadphase_layer_filter = new JoltObjectVsBroadPhaseLayerFilter(*broad_phase_layer_interface);
+    object_vs_object_layer_filter = new JoltObjectLayerPairFilter(*objectLayerTable3D, Physics::getLayerCollisionMatrix());
+
+    // Bodies made from now on read the live matrix; only later changes need waking bodies
+    Physics::getLayerCollisionMatrix().getRows(appliedLayerRows3D);
+    appliedLayerVersion3D = Physics::getLayerCollisionMatrix().getVersion();
 
     // Now we can create the actual physics system.
     world3D.Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs, cMaxContactConstraints, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
@@ -357,6 +365,10 @@ void PhysicsSystem::ensureWorld2D(){
         return;
     }
 
+    // shapes made from now on take the live matrix
+    Physics2D::getLayerCollisionMatrix().getRows(appliedLayerRows2D);
+    appliedLayerVersion2D = Physics2D::getLayerCollisionMatrix().getVersion();
+
     b2World_SetPreSolveCallback(world2D, Box2DAux::PreSolve, scene);
     // TODO: could there be a performance issue by checking this often?
     b2World_SetCustomFilterCallback(world2D, Box2DAux::CollisionFilter, scene);
@@ -383,6 +395,7 @@ PhysicsSystem::~PhysicsSystem(){
     delete broad_phase_layer_interface;
     delete object_vs_broadphase_layer_filter;
     delete object_vs_object_layer_filter;
+    delete objectLayerTable3D;
 
     //delete JPH::Factory::sInstance;
     //JPH::UnregisterTypes();
@@ -470,6 +483,97 @@ float PhysicsSystem::getPointsToMeterScale2D() const{
 void PhysicsSystem::setPointsToMeterScale2D(float pointsToMeterScale2D){
     this->pointsToMeterScale2D = pointsToMeterScale2D;
 }
+
+bool PhysicsSystem::isSteppingWorld2D() const{
+    return steppingWorld2D;
+}
+
+// Box2D drops a shape's contacts and pairs it again whenever its filter changes. With
+// toggleRefilterBit the filter only changes for that; with a layer, the shape's layer bit
+// is set to it. Chain segments are shapes of the body too.
+void PhysicsSystem::refilterShapes2D(b2BodyId bodyId, bool toggleRefilterBit, int layer){
+    const int count = b2Body_GetShapeCount(bodyId);
+    if (count <= 0){
+        return;
+    }
+    if (shapeScratch2D.size() < (size_t)count){
+        shapeScratch2D.resize((size_t)count);
+    }
+    const int returned = b2Body_GetShapes(bodyId, shapeScratch2D.data(), count);
+
+    bool changed = false;
+    for (int i = 0; i < returned; i++){
+        b2Filter filter = b2Shape_GetFilter(shapeScratch2D[i]);
+        uint64_t categoryBits = filter.categoryBits;
+        if (toggleRefilterBit){
+            categoryBits ^= Box2DLayers::REFILTER_BIT;
+        }
+        if (layer >= 0){
+            categoryBits = (categoryBits & ~(0xFFFFFFFFull << Box2DLayers::LAYER_SHIFT)) | Box2DLayers::layerBit(layer);
+        }
+        if (categoryBits != filter.categoryBits){
+            filter.categoryBits = categoryBits;
+            b2Shape_SetFilter(shapeScratch2D[i], filter);
+            changed = true;
+        }
+    }
+
+    // A sleeping body with no contact left would not look for new ones
+    if (changed && b2Body_GetType(bodyId) != b2_staticBody && b2Body_IsEnabled(bodyId)){
+        b2Body_SetAwake(bodyId, true);
+    }
+}
+
+void PhysicsSystem::refreshRigidbody2DLayer(Entity entity){
+    Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+    if (!body || !b2Body_IsValid(body->body)){
+        return;
+    }
+
+    // Box2D ignores filter changes while it steps
+    if (steppingWorld2D){
+        pendingLayerRefresh2D.push_back(entity);
+        return;
+    }
+
+    refilterShapes2D(body->body, false, scene->getEntityLayer(entity));
+}
+
+void PhysicsSystem::syncLayerCollisionMatrix2D(){
+    const LayerCollisionMatrix& matrix = Physics2D::getLayerCollisionMatrix();
+    const uint32_t version = matrix.getVersion();
+    if (version == appliedLayerVersion2D){
+        return;
+    }
+    appliedLayerVersion2D = version;
+
+    uint32_t rows[MAX_LAYERS];
+    matrix.getRows(rows);
+    uint32_t changedLayers = 0;
+    for (int layer = 0; layer < MAX_LAYERS; layer++){
+        if (rows[layer] != appliedLayerRows2D[layer]){
+            changedLayers |= 1u << layer;
+            appliedLayerRows2D[layer] = rows[layer];
+        }
+    }
+    if (changedLayers == 0 || !b2World_IsValid(world2D)){
+        return;
+    }
+
+    // New pairs read the matrix live, but Box2D keeps the contacts it has: shapes on a
+    // changed layer drop theirs and pair again (so a touching pair that still collides
+    // reports an end and a new begin, as Unity documents for IgnoreLayerCollision)
+    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
+    for (size_t i = 0; i < bodies2d->size(); i++){
+        const Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+        if (!b2Body_IsValid(body.body)){
+            continue;
+        }
+        if ((changedLayers >> scene->getEntityLayer(bodies2d->getEntity(i))) & 1u){
+            refilterShapes2D(body.body, true, -1);
+        }
+    }
+}
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -504,6 +608,10 @@ bool PhysicsSystem::isSteppingWorld3D() const{
     return steppingWorld3D;
 }
 
+std::recursive_mutex& PhysicsSystem::getCallbackMutex3D(){
+    return callbackMutex3D;
+}
+
 void PhysicsSystem::flushPendingDestroys3D(){
     for (const JPH::Ref<JPH::TwoBodyConstraint>& constraint : pendingJointDestroy3D){
         world3D.RemoveConstraint(constraint);
@@ -515,9 +623,104 @@ void PhysicsSystem::flushPendingDestroys3D(){
         if (body_interface.IsAdded(bodyId)){
             body_interface.RemoveBody(bodyId);
         }
+        releaseObjectLayer3D(bodyId);
         body_interface.DestroyBody(bodyId);
     }
     pendingBodyDestroy3D.clear();
+}
+
+const JoltObjectLayerTable& PhysicsSystem::getObjectLayerTable3D() const{
+    return *objectLayerTable3D;
+}
+
+void PhysicsSystem::releaseObjectLayer3D(const JPH::BodyID& bodyId){
+    objectLayerTable3D->release(getBodyInterface3D().GetObjectLayer(bodyId));
+}
+
+void PhysicsSystem::wakeAround3D(const JPH::BodyID& bodyId){
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    if (!body_interface.IsAdded(bodyId)){
+        return;
+    }
+
+    // a little beyond the bounds, as contacts start at the speculative distance
+    JPH::AABox bounds = body_interface.GetTransformedShape(bodyId).GetWorldSpaceBounds();
+    bounds.ExpandBy(JPH::Vec3::sReplicate(0.1f));
+
+    // the body itself is in the box; Jolt skips static bodies
+    body_interface.ActivateBodiesInAABox(bounds, JPH::BroadPhaseLayerFilter(), JPH::ObjectLayerFilter());
+}
+
+void PhysicsSystem::refreshRigidbodyFilter3D(Entity entity){
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body || body->body.IsInvalid()){
+        return;
+    }
+
+    // the broad phase and the table are in use until the step ends
+    if (steppingWorld3D){
+        pendingLayerRefresh3D.push_back(entity);
+        return;
+    }
+
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    const JPH::ObjectLayer current = body_interface.GetObjectLayer(body->body);
+    const JPH::ObjectLayer wanted = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body->categoryBits, body->maskBits);
+    if (wanted == current){
+        objectLayerTable3D->release(wanted);
+        return;
+    }
+
+    body_interface.SetObjectLayer(body->body, wanted);
+    objectLayerTable3D->release(current);
+
+    wakeAround3D(body->body);
+}
+
+void PhysicsSystem::syncLayerCollisionMatrix3D(){
+    const LayerCollisionMatrix& matrix = Physics::getLayerCollisionMatrix();
+    const uint32_t version = matrix.getVersion();
+    if (version == appliedLayerVersion3D){
+        return;
+    }
+    appliedLayerVersion3D = version;
+
+    uint32_t rows[MAX_LAYERS];
+    matrix.getRows(rows);
+    uint32_t changedLayers = 0;
+    for (int layer = 0; layer < MAX_LAYERS; layer++){
+        if (rows[layer] != appliedLayerRows3D[layer]){
+            changedLayers |= 1u << layer;
+            appliedLayerRows3D[layer] = rows[layer];
+        }
+    }
+    if (changedLayers == 0){
+        return;
+    }
+
+    // The pair filter reads the matrix live, so awake bodies follow it on this step;
+    // sleeping ones on a changed layer are woken to be tested again
+    bodyScratch3D.clear();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        const RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        if (body.body.IsInvalid() || body.type == BodyType::STATIC){
+            continue;
+        }
+        if ((changedLayers >> scene->getEntityLayer(bodies3d->getEntity(i))) & 1u){
+            bodyScratch3D.push_back(body.body);
+        }
+    }
+    if (!bodyScratch3D.empty()){
+        JPH::BodyInterface& body_interface = getBodyInterface3D();
+        size_t count = 0;
+        for (const JPH::BodyID& bodyId : bodyScratch3D){
+            if (body_interface.IsAdded(bodyId)){
+                bodyScratch3D[count++] = bodyId;
+            }
+        }
+        body_interface.ActivateBodies(bodyScratch3D.data(), (int)count);
+    }
 }
 #endif
 
@@ -798,6 +1001,8 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
         destroyCollider2D(body, i);
     }
 
+    const int layer = scene->getEntityLayer(entity);
+
     for (size_t i = 0; i < body.numColliders; i++){
         Collider2D& shapeData = body.colliders[i];
 
@@ -811,9 +1016,7 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
         shapeDef.enableContactEvents = shapeData.contactEvents;
         shapeDef.enablePreSolveEvents = shapeData.preSolveEvents;
         shapeDef.enableSensorEvents = shapeData.sensorEvents || shapeData.sensor;
-        shapeDef.filter.categoryBits = shapeData.categoryBits;
-        shapeDef.filter.maskBits = shapeData.maskBits;
-        shapeDef.filter.groupIndex = shapeData.groupIndex;
+        shapeDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
 
         shapeData.shape = b2_nullShapeId;
         shapeData.chain = b2_nullChainId;
@@ -929,9 +1132,9 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
             chainDef.points = &b2vertices[0];
             chainDef.count = (int)shapeData.numVertices;
             chainDef.isLoop = shapeData.loop;
-            chainDef.filter.categoryBits = shapeData.categoryBits;
-            chainDef.filter.maskBits = shapeData.maskBits;
-            chainDef.filter.groupIndex = shapeData.groupIndex;
+            // the segments report the collider index, like the other shapes
+            chainDef.userData = reinterpret_cast<void*>(i);
+            chainDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
             chainDef.friction = shapeData.friction;
             chainDef.restitution = shapeData.restitution;
 
@@ -1294,15 +1497,12 @@ static_assert((uint8_t)JPH::EAllowedDOFs::Plane2D == (RigidbodyAllowedDOF_Transl
     && (uint8_t)JPH::EAllowedDOFs::All == RigidbodyAllowedDOF_All, "RigidbodyAllowedDOFFlags must keep Jolt's bits");
 
 bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& body, const JPH::ShapeRefC shape){
-    JPH::ObjectLayer layer = JPH::ObjectLayerPairFilterMask::sGetObjectLayer(1);
     JPH::EMotionType joltType = JPH::EMotionType::Static;
     JPH::EActivation activation = JPH::EActivation::DontActivate;
     if (body.type == BodyType::DYNAMIC){
-        layer = JPH::ObjectLayerPairFilterMask::sGetObjectLayer(1);
         joltType = JPH::EMotionType::Dynamic;
         activation = JPH::EActivation::Activate;
     }else if (body.type == BodyType::KINEMATIC){
-        layer = JPH::ObjectLayerPairFilterMask::sGetObjectLayer(1);
         joltType = JPH::EMotionType::Kinematic;
         activation = JPH::EActivation::Activate;
     }
@@ -1315,6 +1515,8 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         joltType = JPH::EMotionType::Static;
         activation = JPH::EActivation::DontActivate;
     }
+
+    const JPH::ObjectLayer layer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body.categoryBits, body.maskBits);
 
     JPH::BodyCreationSettings settings(shape, JPH::Vec3(0.0, 0.0, 0.0), JPH::Quat::sIdentity(), joltType, layer);
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
@@ -1331,6 +1533,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
 
     JPH::Body* jbody = body_interface.CreateBody(settings);
     if (!jbody){
+        objectLayerTable3D->release(layer);
         Log::error("Cannot create 3D Body for entity %u: body limit reached", entity);
         return false;
     }
@@ -1512,6 +1715,7 @@ void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
         if (body_interface.IsAdded(body.body)){
             body_interface.RemoveBody(body.body);
         }
+        releaseObjectLayer3D(body.body);
         body_interface.DestroyBody(body.body);
     }
 
@@ -1534,6 +1738,9 @@ int PhysicsSystem::loadCollider2D(Rigidbody2DComponent& body, void* shape, Colli
             return -1;
         }
 
+        const int layer = scene->getEntityLayer(static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(body.body))));
+        shapeDef.filter = Box2DLayers::makeFilter(layer, (uint16_t)shapeDef.filter.categoryBits, (uint16_t)shapeDef.filter.maskBits, shapeDef.filter.groupIndex);
+
         body.colliders[body.numColliders].shape = b2_nullShapeId;
         body.colliders[body.numColliders].chain = b2_nullChainId;
 
@@ -1546,7 +1753,9 @@ int PhysicsSystem::loadCollider2D(Rigidbody2DComponent& body, void* shape, Colli
         }else if (type == Collider2DType::SEGMENT){
             body.colliders[body.numColliders].shape = b2CreateSegmentShape(body.body, &shapeDef, (b2Segment*)shape);
         }else if (type == Collider2DType::CHAIN){
-            body.colliders[body.numColliders].chain = b2CreateChain(body.body, (b2ChainDef*)shape);
+            b2ChainDef chainDef = *(b2ChainDef*)shape;
+            chainDef.filter = Box2DLayers::makeFilter(layer, (uint16_t)chainDef.filter.categoryBits, (uint16_t)chainDef.filter.maskBits, chainDef.filter.groupIndex);
+            body.colliders[body.numColliders].chain = b2CreateChain(body.body, &chainDef);
         }
 
         body.numColliders++;
@@ -2771,10 +2980,20 @@ void PhysicsSystem::fixedUpdate(double dt){
 
     // With no 2D bodies the world was never created (lazy): skip all Box2D stepping/events.
     if (b2World_IsValid(world2D)){
+        syncLayerCollisionMatrix2D();
+
         if (bodies2d->size() > 0){
             int32_t subSteps = 4;
+            steppingWorld2D = true;
             b2World_Step(world2D, fixedStep, subSteps);
+            steppingWorld2D = false;
         }
+
+        // layers changed by callbacks inside the step
+        for (size_t i = 0; i < pendingLayerRefresh2D.size(); i++){
+            refreshRigidbody2DLayer(pendingLayerRefresh2D[i]);
+        }
+        pendingLayerRefresh2D.clear();
 
         b2BodyEvents events = b2World_GetBodyEvents(world2D);
         for (int i = 0; i < events.moveCount; ++i){
@@ -2868,6 +3087,8 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
     }
 
+    syncLayerCollisionMatrix3D();
+
     if (bodies3d->size() > 0){
 		const int cCollisionSteps = 1;
 
@@ -2882,6 +3103,12 @@ void PhysicsSystem::fixedUpdate(double dt){
 		StepScope stepScope(this);
 		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
 	}
+
+    // layers and filter bits changed by callbacks inside the step
+    for (size_t i = 0; i < pendingLayerRefresh3D.size(); i++){
+        refreshRigidbodyFilter3D(pendingLayerRefresh3D[i]);
+    }
+    pendingLayerRefresh3D.clear();
 
 	for (int i = 0; i < bodies3d->size(); i++){
 		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
@@ -2930,6 +3157,15 @@ void PhysicsSystem::draw(){
 
 void PhysicsSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 
+}
+
+void PhysicsSystem::onEntityLayerChanged(Entity entity) {
+#ifdef JASPERENGINE_PHYSICS_2D
+    refreshRigidbody2DLayer(entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    refreshRigidbodyFilter3D(entity);
+#endif
 }
 
 void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {

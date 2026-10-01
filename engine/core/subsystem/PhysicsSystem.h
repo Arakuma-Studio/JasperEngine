@@ -29,13 +29,21 @@
 #include "Jolt/Physics/Collision/ObjectLayerPairFilterMask.h"
 #endif
 
+#include "registry/TagManager.h"
+
+#include <mutex>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace jasperengine{
 
 	class JoltActivationListener;
 	class JoltContactListener;
+	class JoltObjectLayerTable;
+	class JoltBroadPhaseLayers;
+	class JoltObjectVsBroadPhaseLayerFilter;
+	class JoltObjectLayerPairFilter;
 	
 
 	class JASPERENGINE_API PhysicsSystem : public SubSystem {
@@ -47,6 +55,14 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_2D
 		b2WorldId world2D;
 		float pointsToMeterScale2D;
+		bool steppingWorld2D = false;
+
+		// Layer Collision Matrix rows the 2D world last applied, and GameObjects whose
+		// layer changed inside a step (Box2D is locked then), applied after it
+		uint32_t appliedLayerRows2D[MAX_LAYERS];
+		uint32_t appliedLayerVersion2D = 0;
+		std::vector<Entity> pendingLayerRefresh2D;
+		std::vector<b2ShapeId> shapeScratch2D;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
@@ -69,9 +85,21 @@ namespace jasperengine{
 		std::vector<JPH::BodyID> pendingBodyDestroy3D;
 		std::vector<JPH::Ref<JPH::TwoBodyConstraint>> pendingJointDestroy3D;
 
-		JPH::BroadPhaseLayerInterfaceMask* broad_phase_layer_interface;
-		JPH::ObjectVsBroadPhaseLayerFilterMask* object_vs_broadphase_layer_filter;
-		JPH::ObjectLayerPairFilterMask* object_vs_object_layer_filter;
+		// ObjectLayers index this table (GameObject layer, category and mask bits)
+		JoltObjectLayerTable* objectLayerTable3D;
+		JoltBroadPhaseLayers* broad_phase_layer_interface;
+		JoltObjectVsBroadPhaseLayerFilter* object_vs_broadphase_layer_filter;
+		JoltObjectLayerPairFilter* object_vs_object_layer_filter;
+
+		// as for 2D: matrix rows last applied, and filter changes made inside a step
+		uint32_t appliedLayerRows3D[MAX_LAYERS];
+		uint32_t appliedLayerVersion3D = 0;
+		std::vector<Entity> pendingLayerRefresh3D;
+		std::vector<JPH::BodyID> bodyScratch3D;
+
+		// Jolt runs contact and activation callbacks on its job threads; the subscribers
+		// (Lua above all) take turns on this
+		std::recursive_mutex callbackMutex3D;
 
 		std::unordered_set<Entity> warnedNonNormalizedRotations;
 		std::unordered_set<Entity> reportedInvalidRotations;
@@ -84,6 +112,10 @@ namespace jasperengine{
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body);
 		static Vector2 absScale2D(const Vector2& scale);
 		static float maxScaleXY(const Vector2& scale);
+
+		// Re-pairs the shapes on layers whose matrix row changed since the last step
+		void syncLayerCollisionMatrix2D();
+		void refilterShapes2D(b2BodyId bodyId, bool toggleRefilterBit, int layer);
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		void updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body);
@@ -97,6 +129,12 @@ namespace jasperengine{
 		static Vector3 absScale(const Vector3& scale);
 		static float maxScaleXZ(const Vector3& scale);
 		static float maxScaleXYZ(const Vector3& scale);
+
+		// Wakes the bodies on layers whose matrix row changed since the last step
+		void syncLayerCollisionMatrix3D();
+		void releaseObjectLayer3D(const JPH::BodyID& bodyId);
+		// Wakes a body and whatever overlaps it, so resting pairs are tested again
+		void wakeAround3D(const JPH::BodyID& bodyId);
 #endif
 
 	public:
@@ -123,6 +161,11 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_2D
 		float getPointsToMeterScale2D() const;
 		void setPointsToMeterScale2D(float pointsToMeterScale2D);
+
+		bool isSteppingWorld2D() const;
+		// Re-applies the GameObject layer to the shapes of the entity's Rigidbody 2D;
+		// inside a step, right after it
+		void refreshRigidbody2DLayer(Entity entity);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -140,6 +183,12 @@ namespace jasperengine{
         // phase and the constraint list locked for the whole step, so a body or joint
         // cannot be created then (refused, retried next update) and teardown is queued.
         bool isSteppingWorld3D() const;
+        std::recursive_mutex& getCallbackMutex3D();
+
+        const JoltObjectLayerTable& getObjectLayerTable3D() const;
+        // Re-applies the GameObject layer and the category/mask bits of the entity's
+        // Rigidbody to its Jolt body; inside a step, right after it
+        void refreshRigidbodyFilter3D(Entity entity);
 
 		static JPH::EMotionQuality getRigidbodyMotionQualityToJolt(RigidbodyMotionQuality motionQuality);
 #endif
@@ -250,6 +299,7 @@ namespace jasperengine{
 
 		void onComponentAdded(Entity entity, ComponentId componentId) override;
 		void onComponentRemoved(Entity entity, ComponentId componentId) override;
+		void onEntityLayerChanged(Entity entity) override;
 	};
 
 }

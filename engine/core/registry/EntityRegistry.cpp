@@ -298,7 +298,11 @@ std::string EntityRegistry::getEntityTag(Entity entity) const {
 }
 
 void EntityRegistry::setEntityLayer(Entity entity, int layer) {
+    const int previous = entityManager.getLayer(entity);
     entityManager.setLayer(entity, layer);
+    if (entityManager.getLayer(entity) != previous) {
+        onEntityLayerChanged(entity);
+    }
 }
 
 int EntityRegistry::getEntityLayer(Entity entity) const {

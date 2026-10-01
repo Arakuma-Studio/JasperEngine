@@ -16,6 +16,10 @@ namespace jasperengine{
     inline constexpr int MAX_LAYERS = 32;
     inline constexpr uint32_t LAYER_MASK_NOTHING = 0u;
     inline constexpr uint32_t LAYER_MASK_EVERYTHING = 0xFFFFFFFFu;
+    // Built-in layer 2, which ray casts skip unless their layer mask names it
+    inline constexpr int IGNORE_RAYCAST_LAYER_INDEX = 2;
+    // Unity's Physics.DefaultRaycastLayers: every layer but Ignore Raycast
+    inline constexpr uint32_t LAYER_MASK_DEFAULT_RAYCAST = ~(1u << IGNORE_RAYCAST_LAYER_INDEX);
 
     // Project-wide tags and layer names, Unity's Tags and Layers settings. The built-in
     // tags and layers are fixed; the editor sets the user ones from project.yaml and an

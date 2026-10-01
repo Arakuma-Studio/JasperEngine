@@ -318,6 +318,9 @@ namespace jasperengine::editor{
         // entries, empty for built-in and unnamed layers)
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
+        // Layer Collision Matrices of Physics (3D) and Physics 2D, all layers collide by default
+        LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
+        LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
@@ -613,6 +616,16 @@ namespace jasperengine::editor{
         const std::vector<std::string>& getTags() const;
         // MAX_LAYERS entries, index = layer; empty for built-in and unnamed layers
         const std::vector<std::string>& getLayerNames() const;
+
+        // Project Settings > Physics and Physics 2D > Layer Collision Matrix. Kept symmetric
+        // (a pair collides only when both rows say so) and applied to the engine's
+        // Physics and Physics2D, which the editor's Play reads.
+        void setLayerCollisionMatrices(const LayerCollisionRows& matrix3D, const LayerCollisionRows& matrix2D);
+        const LayerCollisionRows& getLayerCollisionMatrix3D() const;
+        const LayerCollisionRows& getLayerCollisionMatrix2D() const;
+        // Puts the project's matrices back into the engine, undoing what scripts changed
+        // with Physics.ignoreLayerCollision during a Play
+        void applyLayerCollisionMatrices() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").

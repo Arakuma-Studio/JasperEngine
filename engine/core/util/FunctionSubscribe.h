@@ -201,6 +201,10 @@ namespace jasperengine {
             return enabled;
         }
 
+        bool hasSubscribers() const {
+            return !functions.empty();
+        }
+
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
             addImpl(tag, function);

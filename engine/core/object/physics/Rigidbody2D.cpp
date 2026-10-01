@@ -9,6 +9,7 @@
 #include "box2d/box2d.h"
 #include "object/physics/Contact2D.h"
 #include "util/Angle.h"
+#include "util/Box2DAux.h"
 
 #include <algorithm>
 #include <cmath>
@@ -849,7 +850,7 @@ void Rigidbody2D::setBitsFilter(size_t colliderIndex, uint16_t categoryBits, uin
 
         if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
             b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
-            filter.categoryBits = categoryBits;
+            filter.categoryBits = Box2DLayers::withUserCategory(filter.categoryBits, categoryBits);
             filter.maskBits = maskBits;
 
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
@@ -879,7 +880,7 @@ void Rigidbody2D::setCategoryBitsFilter(size_t colliderIndex, uint16_t categoryB
         if (b2Shape_IsValid(body.colliders[colliderIndex].shape)){
             b2Filter filter = b2Shape_GetFilter(body.colliders[colliderIndex].shape);
 
-            filter.categoryBits = categoryBits;
+            filter.categoryBits = Box2DLayers::withUserCategory(filter.categoryBits, categoryBits);
 
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }

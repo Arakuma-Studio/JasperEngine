@@ -165,6 +165,7 @@
 
 #include "registry/EntityRegistry.h"
 #include "registry/TagManager.h"
+#include "registry/PhysicsLayers.h"
 
 #include "render/BufferRender.h"
 #include "render/CameraRender.h"

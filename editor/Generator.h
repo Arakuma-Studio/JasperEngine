@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 #include <filesystem>
 #include <future>
@@ -12,6 +13,7 @@
 #include <unordered_set>
 #include <map>
 #include "Scene.h"
+#include "registry/TagManager.h"
 #include "Factory.h"
 #include "util/Prefab.h"
 #include "util/CommandRunner.h"
@@ -91,10 +93,23 @@ namespace jasperengine::editor {
         bool asyncLoading = false;
     };
 
-    // Project Settings > Tags and Layers, baked into the generated init()
+    // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
+    // bit j set when that layer and layer j collide (kept symmetric)
+    using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
+
+    inline LayerCollisionRows allLayersCollide() {
+        LayerCollisionRows rows;
+        rows.fill(LAYER_MASK_EVERYTHING);
+        return rows;
+    }
+
+    // Project Settings > Tags and Layers, and the layer collision matrices of Physics and
+    // Physics 2D, baked into the generated init()
     struct TagsAndLayers {
         std::vector<std::string> tags;        // user tags
         std::vector<std::string> layerNames;  // index = layer, empty when built-in or unnamed
+        LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
+        LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
     };
 
     class Generator {

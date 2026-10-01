@@ -105,6 +105,10 @@ namespace jasperengine::editor {
         std::vector<std::string> m_layerNames;
         char m_newTagBuffer[128] = {0};
 
+        // Layer Collision Matrices being edited (Physics and Physics 2D)
+        LayerCollisionRows m_layerCollision3D = allLayersCollide();
+        LayerCollisionRows m_layerCollision2D = allLayersCollide();
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -115,6 +119,9 @@ namespace jasperengine::editor {
         void drawQualitySettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
+        // Unity's triangular Layer Collision Matrix over the named layers (as typed in
+        // Tags and Layers, not yet applied)
+        void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)

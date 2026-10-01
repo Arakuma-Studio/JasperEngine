@@ -1918,6 +1918,32 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             root["layers"] = layersNode;
         }
     }
+    {
+        // Layer Collision Matrices: the layer pairs that do not collide, e.g. [8, 9]
+        auto encodeIgnoredPairs = [](const LayerCollisionRows& rows) {
+            YAML::Node pairs;
+            for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                for (int other = layer; other < MAX_LAYERS; other++) {
+                    if (((rows[layer] >> other) & 1u) == 0) {
+                        YAML::Node pair;
+                        pair.push_back(layer);
+                        pair.push_back(other);
+                        pair.SetStyle(YAML::EmitterStyle::Flow);
+                        pairs.push_back(pair);
+                    }
+                }
+            }
+            return pairs;
+        };
+        YAML::Node ignoredNode;
+        YAML::Node pairs3D = encodeIgnoredPairs(project->getLayerCollisionMatrix3D());
+        YAML::Node pairs2D = encodeIgnoredPairs(project->getLayerCollisionMatrix2D());
+        if (pairs3D.size() != 0) ignoredNode["physics"] = pairs3D;
+        if (pairs2D.size() != 0) ignoredNode["physics2D"] = pairs2D;
+        if (ignoredNode.size() != 0) {
+            root["ignoredLayerCollisions"] = ignoredNode;
+        }
+    }
 
     {
         YAML::Node exportNode;
@@ -2266,6 +2292,40 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setTagsAndLayers(tags, layerNames);
+    }
+
+    {
+        // "ignoredLayerCollisions" lists, for Physics and Physics 2D, the layer pairs that
+        // do not collide; every other pair does
+        auto decodeIgnoredPairs = [](const YAML::Node& pairsNode, const char* key) {
+            LayerCollisionRows rows = allLayersCollide();
+            if (!pairsNode || pairsNode.IsNull()) return rows;
+            if (!pairsNode.IsSequence()) {
+                Out::warning("Ignoring ignoredLayerCollisions.%s in project settings: not a list", key);
+                return rows;
+            }
+            for (const auto& pairNode : pairsNode) {
+                int layer1 = -1;
+                int layer2 = -1;
+                if (!pairNode.IsSequence() || pairNode.size() != 2 ||
+                    !YAML::convert<int>::decode(pairNode[0], layer1) || !YAML::convert<int>::decode(pairNode[1], layer2) ||
+                    layer1 < 0 || layer1 >= MAX_LAYERS || layer2 < 0 || layer2 >= MAX_LAYERS) {
+                    Out::warning("Ignoring an ignoredLayerCollisions.%s entry in project settings: expected [layer, layer] with layers 0 to %d", key, MAX_LAYERS - 1);
+                    continue;
+                }
+                rows[layer1] &= ~(1u << layer2);
+                rows[layer2] &= ~(1u << layer1);
+            }
+            return rows;
+        };
+        const YAML::Node ignoredNode = node["ignoredLayerCollisions"];
+        const bool isMap = ignoredNode && ignoredNode.IsMap();
+        if (ignoredNode && !isMap) {
+            Out::warning("Ignoring ignoredLayerCollisions in project settings: not a map");
+        }
+        project->setLayerCollisionMatrices(
+            decodeIgnoredPairs(isMap ? ignoredNode["physics"] : YAML::Node(), "physics"),
+            decodeIgnoredPairs(isMap ? ignoredNode["physics2D"] : YAML::Node(), "physics2D"));
     }
 
     if (node["export"] && node["export"].IsMap()) {

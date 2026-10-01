@@ -95,10 +95,14 @@ namespace jasperengine {
 
     private:
 
-        RayReturn intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities) const;
-#ifdef JASPERENGINE_PHYSICS_3D
-        RayReturn intersects(Scene* scene, uint8_t broadPhaseLayer3D, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities) const;
-#endif
+        // Closest hit of the bodies (or mesh bounds) on a layer in layerMask; with allHits,
+        // also every hit into it, nearest first and one per collider. broadPhaseLayer3D < 0
+        // searches every 3D broad phase layer. The scene queries above skip the Ignore
+        // Raycast layer (LAYER_MASK_DEFAULT_RAYCAST); Physics and Physics2D take a mask.
+        RayReturn cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits) const;
+
+        friend class Physics;
+        friend class Physics2D;
     };
     
 }
