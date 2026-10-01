@@ -94,6 +94,8 @@ namespace jasperengine::editor{
         static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 
         static std::string formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath);
+        // attributes, settings and bytes of a saved buffer; nothing for an empty one
+        static std::string formatBufferContents(const std::string& ind, const std::string& target, const Buffer& buffer, const Buffer& defaults);
 
         static std::string formatPropertyValue(const PropertyData& property, const std::string& propertyName);
 
