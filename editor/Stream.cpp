@@ -2109,7 +2109,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
-            prefabsNode.push_back(prefabPath.generic_string());
+            YAML::Node prefabNode;
+            prefabNode["path"] = prefabPath.generic_string();
+            const std::string guid = project->getPrefabGuid(prefabPath);
+            if (!guid.empty()) {
+                prefabNode["guid"] = guid;
+            }
+            prefabsNode.push_back(prefabNode);
         }
         root["standalonePrefabs"] = prefabsNode;
     }
@@ -2476,7 +2482,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["standalonePrefabs"]) {
         std::vector<fs::path> prefabPaths;
         for (const auto& pathNode : node["standalonePrefabs"]) {
-            prefabPaths.push_back(pathNode.as<std::string>());
+            // {path, guid}, or a plain path from an older file
+            fs::path path = pathNode.IsMap() ? fs::path(pathNode["path"].as<std::string>("")) : fs::path(pathNode.as<std::string>());
+            const std::string guid = pathNode.IsMap() && pathNode["guid"] ? pathNode["guid"].as<std::string>() : std::string();
+            fs::path resolved = project->resolvePrefabPath(guid, path);
+            prefabPaths.push_back(resolved.empty() ? path : resolved);
         }
         project->setStandalonePrefabs(std::move(prefabPaths));
     }
@@ -2656,7 +2666,13 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     if (!sceneProject->prefabs.empty()) {
         YAML::Node prefabsNode;
         for (const auto& prefab : sceneProject->prefabs) {
-            prefabsNode.push_back(prefab.prefabPath.generic_string());
+            // the GUID finds the prefab, the path is a hint (a plain path in older files)
+            YAML::Node prefabNode;
+            prefabNode["path"] = prefab.prefabPath.generic_string();
+            if (!prefab.guid.empty()) {
+                prefabNode["guid"] = prefab.guid;
+            }
+            prefabsNode.push_back(prefabNode);
         }
         root["prefabs"] = prefabsNode;
     }
@@ -2778,7 +2794,12 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     if (node["prefabs"]) {
         for (const auto& pathNode : node["prefabs"]) {
             PrefabSceneInfo info;
-            info.prefabPath = pathNode.as<std::string>();
+            if (pathNode.IsMap()) {
+                if (pathNode["path"]) info.prefabPath = pathNode["path"].as<std::string>();
+                if (pathNode["guid"]) info.guid = pathNode["guid"].as<std::string>();
+            } else {
+                info.prefabPath = pathNode.as<std::string>();
+            }
             info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
         }
@@ -2819,6 +2840,8 @@ Entity lastSerializedEntity(const YAML::Node& entityNode) {
 void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* sceneProject, const YAML::Node& node){
     sceneProject->entities.clear();
     sceneProject->selectedEntities.clear();
+    sceneProject->missingPrefabs.clear();
+    sceneProject->prefabRefsChanged = false;
 
     auto entitiesNode = node["entities"];
 
@@ -3140,6 +3163,7 @@ YAML::Node editor::Stream::encodeEntity(const Entity entity, const EntityRegistr
         YAML::Node& currentNode = entityNodes[entity];
         currentNode = ignoreContainingPrefab ? encodeEntityAux(entity, registry) :
             encodeEntityAux(entity, registry, project, sceneProject, currentPrefabPath);
+        encodeMissingPrefab(currentNode, entity, project, sceneProject);
 
         // Imported children are represented by the prefab root and its overrides.
         if (!ignoreContainingPrefab && project && registry->getSignature(entity).test(registry->getComponentId<PrefabComponent>()) &&
@@ -3178,6 +3202,7 @@ YAML::Node editor::Stream::encodeEntity(const Entity entity, const EntityRegistr
                     currentNode = ignoreContainingPrefab && currentPrefabPath.empty() ?
                         encodeEntityAux(currentEntity, registry) :
                         encodeEntityAux(currentEntity, registry, project, sceneProject, currentPrefabPath);
+                    encodeMissingPrefab(currentNode, currentEntity, project, sceneProject);
 
                     if (!parentNode["children"]) {
                         parentNode["children"] = YAML::Node();

@@ -101,6 +101,10 @@ void editor::DeleteFileCmd::undo(){
                 fs::rename(file.trashFile, file.originalFile);
                 restoredShaderSource |= fs::is_directory(file.originalFile) ||
                                         Util::isShaderFile(file.originalFile.string());
+                // Prefabs come back with their GUIDs: their Missing Prefab instances relink
+                if (project) {
+                    project->importPrefabFiles(file.originalFile);
+                }
             }
         } catch (const fs::filesystem_error& e) {
             printf("Error: Restoring %s: %s\n", file.originalFile.string().c_str(), e.what());

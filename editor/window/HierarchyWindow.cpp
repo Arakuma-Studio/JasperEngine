@@ -48,6 +48,7 @@ using namespace jasperengine;
 // Unity's prefab-instance blue, for rows that belong to a prefab
 static const ImVec4 PREFAB_TEXT_COLOR = ImVec4(0.48f, 0.68f, 0.98f, 1.0f); // Theme::Colors::PrefabText, #7BAEFA
 static const ImVec4 PREFAB_MEMBER_TEXT_COLOR = ImVec4(0.49f, 0.67f, 0.97f, 0.82f);
+static const ImVec4 MISSING_PREFAB_TEXT_COLOR = ImVec4(0.96f, 0.36f, 0.36f, 1.0f); // Unity's red Missing Prefab row
 
 static bool hasScripts(Scene* scene, Entity entity) {
     ScriptComponent* scriptComponent = scene->findComponent<ScriptComponent>(entity);
@@ -1361,6 +1362,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     } else if (node.isChildScene) {
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
         pushedHighlightColor = true;
+    } else if (node.isMissingPrefab) {
+        ImGui::PushStyleColor(ImGuiCol_Text, MISSING_PREFAB_TEXT_COLOR); // Missing Prefab instance root
+        pushedHighlightColor = true;
     } else if ((node.isPrefab && !node.isParentPrefab) || (node.isPrefabRoot && node.isParentPrefab)) {
         ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_TEXT_COLOR); // Prefab instance root
         pushedHighlightColor = true;
@@ -1440,7 +1444,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             ImGui::SetItemTooltip("Child Scene\nPath: %s", pathText.c_str());
         }
     }else{
-        if (node.isPrefab) {
+        if (node.isMissingPrefab) {
+            const MissingPrefabInstance* missing = project->getMissingPrefab(getNodeSceneId(node), node.id);
+            ImGui::SetItemTooltip("GameObject: %u\nMissing Prefab: %s\nGUID: %s", node.id,
+                missing ? missing->path.c_str() : node.nestedPrefabFilepath.string().c_str(),
+                missing && !missing->guid.empty() ? missing->guid.c_str() : "none");
+        } else if (node.isPrefab) {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                 std::filesystem::path tooltipPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
                 Prefab* prefab = project->getPrefab(tooltipPath);
@@ -2323,6 +2332,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 enode.hasScript = hasScripts(contentRegistry, entity);
                 enode.isBone = signature.test(contentRegistry->getComponentId<BoneComponent>());
                 enode.isPrefabRoot = signature.test(contentRegistry->getComponentId<PrefabComponent>());
+                enode.isMissingPrefab = enode.isPrefabRoot && project->isMissingPrefab(contentSceneId, entity);
                 enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
                 enode.order = order++;
                 enode.name = contentRegistry->getEntityName(entity);
@@ -2347,6 +2357,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                 enode.hasScript = hasScripts(contentRegistry, entity);
                 enode.isBone = signature.test(contentRegistry->getComponentId<BoneComponent>());
                 enode.isPrefabRoot = signature.test(contentRegistry->getComponentId<PrefabComponent>());
+                enode.isMissingPrefab = enode.isPrefabRoot && project->isMissingPrefab(contentSceneId, entity);
                 enode.hasTransform = true;
                 enode.isPlayCreated = contentPlayCreatedSet.count(entity) > 0;
                 enode.isLocked = enode.isPlayCreated || ProjectUtils::isEntityLocked(contentRegistry, entity);
@@ -2480,6 +2491,9 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
                     child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
                 }
             }
+            if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
+                child.isMissingPrefab = project->isMissingPrefab(sceneProject->id, entity);
+            }
 
             bool addedAsVirtualChild = false;
             Entity actionTarget = ProjectUtils::getVirtualParent(sceneProject->scene, entity);
@@ -2566,6 +2580,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             if (signature.test(sceneProject->scene->getComponentId<PrefabComponent>())) {
                 child.isPrefabRoot = true;
                 child.nestedPrefabFilepath = sceneProject->scene->getComponent<PrefabComponent>(entity).path;
+                child.isMissingPrefab = project->isMissingPrefab(sceneProject->id, entity);
             }
             auto parentIt = entityNodeMap.find(transform.parent);
             TreeNode* parent = parentIt != entityNodeMap.end() ? parentIt->second : nullptr;

@@ -31,6 +31,26 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
             PrefabSceneInfo info;
             info.prefabPath = prefabPath;
             info.functionName = Factory::prefabToFunctionName(prefabPath);
+            info.guid = getPrefabGuid(prefabPath);
+            sceneProject->prefabs.push_back(std::move(info));
+        }
+    }
+
+    // Missing Prefabs stay listed (by their GUID): the scene still uses them, and its
+    // generated source is written again when they come back (no file, no build entry)
+    for (const auto& [root, missing] : sceneProject->missingPrefabs) {
+        if (missing.path.empty() || !getMissingPrefab(sceneProject->id, root)) {
+            continue;
+        }
+        const bool listed = std::any_of(sceneProject->prefabs.begin(), sceneProject->prefabs.end(),
+            [&missing](const PrefabSceneInfo& info) {
+                return (!missing.guid.empty() && info.guid == missing.guid) || info.prefabPath == fs::path(missing.path);
+            });
+        if (!listed) {
+            PrefabSceneInfo info;
+            info.prefabPath = missing.path;
+            info.functionName = Factory::prefabToFunctionName(info.prefabPath);
+            info.guid = missing.guid;
             sceneProject->prefabs.push_back(std::move(info));
         }
     }
@@ -75,18 +95,90 @@ std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const 
     return result;
 }
 
-std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap, const YAML::Node& prefabRemovals) {
+namespace {
+
+    // The local ids an instance's members should take: each node's registry id replaced by
+    // the preferred local id where that one is free in the scene
+    void applyPreferredIds(YAML::Node node, const std::unordered_map<Entity, Entity>& preferred, const EntityRegistry* scene) {
+        if (!node || !node.IsMap()) {
+            return;
+        }
+        if (node["members"] && node["members"].IsSequence()) {
+            for (YAML::Node member : node["members"]) {
+                applyPreferredIds(member, preferred, scene);
+            }
+            return;
+        }
+        if (node["entity"]) {
+            const Entity registryEntity = node["entity"].as<Entity>();
+            auto it = preferred.find(registryEntity);
+            if (it != preferred.end() && it->second != NULL_ENTITY && !scene->isEntityCreated(it->second)) {
+                node["entity"] = it->second;
+            }
+        }
+        if (node["children"] && node["children"].IsSequence()) {
+            for (YAML::Node child : node["children"]) {
+                applyPreferredIds(child, preferred, scene);
+            }
+        }
+    }
+
+    // Nested instance entries of an instance's overrides, added GameObjects and removed
+    // GameObjects are tagged with the nested root's registry entity in the prefab
+    // (prefabRootRegistryEntity) and its prefab path; the registry entity alone names the
+    // nested root, so a nested prefab renamed since still finds its entries. Entries of
+    // the oldest files have no registry entity and go by path.
+    std::string nestedEntryKey(const YAML::Node& entry) {
+        if (entry["prefabRootRegistryEntity"]) {
+            return "#" + std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
+        }
+        return "path:" + entry["prefabPath"].as<std::string>();
+    }
+
+}
+
+std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& requestedPath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap, const YAML::Node& prefabRemovals, const PrefabMemberIds* preferredIds) {
+    std::filesystem::path filepath = requestedPath;
+
+    // Prefabs being imported up the call stack: nested imports, and cycle detection
+    static thread_local std::unordered_set<std::string> loadingPaths;
+    const bool nestedImport = !loadingPaths.empty();
+
+    // Which prefab: the root's PrefabComponent names it by GUID, its path is only a hint.
+    // One that cannot be found leaves a Missing Prefab instance holding the instance data.
+    auto missingPrefab = [&]() -> std::vector<Entity> {
+        YAML::Node data(YAML::NodeType::Map);
+        if (prefabOverrides) data["prefabOverrides"] = YAML::Clone(prefabOverrides);
+        if (prefabLocalEntities) data["prefabLocalEntities"] = YAML::Clone(prefabLocalEntities);
+        if (prefabRemovals) data["prefabRemovedGameObjects"] = YAML::Clone(prefabRemovals);
+        setMissingPrefab(sceneProject, rootEntity, data, preferredIds);
+        return {};
+    };
+    if (sceneProject && sceneProject->scene) {
+        if (PrefabComponent* rootComponent = sceneProject->scene->findComponent<PrefabComponent>(rootEntity)) {
+            bool pathChanged = false;
+            if (!resolvePrefabReference(*rootComponent, &pathChanged)) {
+                return missingPrefab();
+            }
+            // A path the scene itself wrote (not one inside a prefab file) makes it modified
+            if (pathChanged && !nestedImport) {
+                Out::info("Prefab \"%s\" is now at \"%s\"", filepath.string().c_str(), rootComponent->path.c_str());
+                sceneProject->prefabRefsChanged = true;
+            }
+            filepath = rootComponent->path;
+        }
+    }
+
     if (!filepath.is_relative()) {
         Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return {};
     }
 
     // Cycle detection for nested prefabs
-    static thread_local std::unordered_set<std::string> loadingPaths;
     std::string pathStr = filepath.string();
     if (loadingPaths.count(pathStr)) {
         Out::error("Circular prefab reference detected: %s", pathStr.c_str());
-        return {};
+        return missingPrefab();
     }
     loadingPaths.insert(pathStr);
     struct LoadingPathGuard {
@@ -97,6 +189,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
     auto it = prefabAssets.find(filepath);
 
+    bool createdAsset = false;
     if (it == prefabAssets.end()) {
         Prefab newGroup;
         newGroup.registry = std::make_unique<EntityRegistry>();
@@ -104,12 +197,10 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
         auto [newIt, inserted] = prefabAssets.emplace(filepath, std::move(newGroup));
         it = newIt;
+        createdAsset = true;
     }
 
     auto& prefab = it->second;
-
-    Prefab::Instance newInstance;
-    newInstance.instanceId = prefab.nextInstanceId++;
 
     YAML::Node node;
     if (prefab.isModified) {
@@ -128,19 +219,32 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         try {
             std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
             node = loadPrefabFile(fullPrefabPath);
-            prefab.registry->clear();
-            prefab.registryEntities.clear();
-            Stream::decodeEntitySelection(node, prefab.registry.get(), &prefab.registryEntities);
+            prefab.loadRegistry(node);
+            resolveRegistryPrefabRefs(prefab.registry.get());
         } catch (const std::exception& e) {
             Out::error("Failed to load prefab file: %s", e.what());
-            return {};
+            if (createdAsset) {
+                prefabAssets.erase(it);
+            }
+            return missingPrefab();
         }
     }
 
+    Prefab::Instance newInstance;
+    newInstance.instanceId = prefab.nextInstanceId++;
+
     Scene* scene = sceneProject->scene;
 
-    // Decode prefab entities into the scene
-    std::vector<Entity> newEntities = Stream::decodeEntitySelection(node, scene, entities);
+    // Decode prefab entities into the scene, members taking the ids they are asked to
+    YAML::Node sceneNode = node;
+    if (preferredIds) {
+        auto preferred = preferredIds->find(rootEntity);
+        if (preferred != preferredIds->end() && !preferred->second.empty()) {
+            sceneNode = YAML::Clone(node);
+            applyPreferredIds(sceneNode, preferred->second, scene);
+        }
+    }
+    std::vector<Entity> newEntities = Stream::decodeEntitySelection(sceneNode, scene, entities);
 
     // Reparent top-level transformed prefab entities under root
     bool hasTopLevelTransform = scene->getSignature(rootEntity).test(scene->getComponentId<Transform>());
@@ -163,8 +267,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
             if (!entry.IsMap()) continue;
             if (entry["prefabPath"]) {
                 if (!entry["prefabRootRegistryEntity"]) continue;
-                std::string key = entry["prefabPath"].as<std::string>() + "_" +
-                    std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
+                const std::string key = nestedEntryKey(entry);
                 if (entry["nested"]) {
                     nestedRemovalsMap[key].push_back(entry["nested"]);
                 } else if (entry["registryEntity"]) {
@@ -289,14 +392,10 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     if (prefabOverrides && prefabOverrides.IsSequence()) {
         for (const auto& entry : prefabOverrides) {
             if (entry["prefabPath"]) {
-                std::string bp = entry["prefabPath"].as<std::string>();
-                if (entry["prefabRootRegistryEntity"]) {
-                    bp += "_" + std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
-                }
                 YAML::Node cleanEntry;
                 cleanEntry["registryEntity"] = entry["registryEntity"];
                 if (entry["components"]) cleanEntry["components"] = entry["components"];
-                nestedOverridesMap[bp].push_back(cleanEntry);
+                nestedOverridesMap[nestedEntryKey(entry)].push_back(cleanEntry);
             }
         }
     }
@@ -304,14 +403,11 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     if (prefabLocalEntities && prefabLocalEntities.IsSequence()) {
         for (const auto& entry : prefabLocalEntities) {
             if (entry["prefabPath"]) {
-                std::string bp = entry["prefabPath"].as<std::string>();
-                if (entry["prefabRootRegistryEntity"]) {
-                    bp += "_" + std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
-                }
+                const std::string key = nestedEntryKey(entry);
                 YAML::Node cleanEntry = YAML::Clone(entry);
                 cleanEntry.remove("prefabPath");
                 cleanEntry.remove("prefabRootRegistryEntity");
-                nestedLocalEntitiesMap[bp].push_back(cleanEntry);
+                nestedLocalEntitiesMap[key].push_back(cleanEntry);
             }
         }
     }
@@ -356,7 +452,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     // Recursively import nested prefabs
     for (Entity ent : newEntities) {
         PrefabComponent* prefabComp = scene->findComponent<PrefabComponent>(ent);
-        if (prefabComp && !prefabComp->path.empty()) {
+        if (prefabComp && (!prefabComp->path.empty() || !prefabComp->guid.empty())) {
             // Find the registry entity for this nested prefab root in the parent prefab
             Entity nestedRegEntity = NULL_ENTITY;
             for (const auto& member : newInstance.members) {
@@ -366,19 +462,28 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
                 }
             }
 
-            std::string nestedKey = prefabComp->path;
+            // By the nested root's registry entity, else (the oldest entries) by its path
+            std::vector<std::string> nestedKeys;
             if (nestedRegEntity != NULL_ENTITY) {
-                nestedKey += "_" + std::to_string(nestedRegEntity);
+                nestedKeys.push_back("#" + std::to_string(nestedRegEntity));
             }
+            nestedKeys.push_back("path:" + prefabComp->path);
 
             YAML::Node nestedOvr, nestedLoc, nestedRem;
-            auto ovrIt = nestedOverridesMap.find(nestedKey);
-            if (ovrIt != nestedOverridesMap.end()) nestedOvr = ovrIt->second;
-            auto locIt = nestedLocalEntitiesMap.find(nestedKey);
-            if (locIt != nestedLocalEntitiesMap.end()) nestedLoc = locIt->second;
-            auto remIt = nestedRemovalsMap.find(nestedKey);
-            if (remIt != nestedRemovalsMap.end()) nestedRem = remIt->second;
-            std::vector<Entity> nestedEntities = importPrefab(sceneProject, entities, prefabComp->path, ent, false, nestedOvr, nestedLoc, entityRemap, nestedRem);
+            auto pick = [&nestedKeys](const std::map<std::string, YAML::Node>& entries) {
+                for (const std::string& key : nestedKeys) {
+                    auto found = entries.find(key);
+                    if (found != entries.end()) {
+                        return found->second;
+                    }
+                }
+                return YAML::Node();
+            };
+            nestedOvr = pick(nestedOverridesMap);
+            nestedLoc = pick(nestedLocalEntitiesMap);
+            nestedRem = pick(nestedRemovalsMap);
+            const fs::path nestedPath = prefabComp->path;
+            std::vector<Entity> nestedEntities = importPrefab(sceneProject, entities, nestedPath, ent, false, nestedOvr, nestedLoc, entityRemap, nestedRem, preferredIds);
             allResult.insert(allResult.end(), nestedEntities.begin(), nestedEntities.end());
         }
     }
@@ -505,7 +610,7 @@ void editor::Project::removePrefabInstanceTracking(uint32_t sceneId, Entity root
 }
 
 bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
-                                     bool reconcileTracked) {
+                                     bool reconcileTracked, bool keepRoot) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -564,7 +669,7 @@ bool editor::Project::unimportPrefab(uint32_t sceneId, const std::filesystem::pa
     // members, then the root; the tracked list is reconciled once after all of them
     std::vector<Entity> destroyOrder = std::move(allEntitiesToDestroy);
     destroyOrder.insert(destroyOrder.end(), memberEntities.begin(), memberEntities.end());
-    if (rootEntity != NULL_ENTITY) {
+    if (rootEntity != NULL_ENTITY && !keepRoot) {
         destroyOrder.push_back(rootEntity);
     }
     DeleteEntityCmd::destroyEntities(scene, destroyOrder, sceneProject->entities, this, sceneId, reconcileTracked);
@@ -809,7 +914,7 @@ std::vector<editor::Prefab::EntityMember> editor::Project::instantiatePrefabBran
     // Nested prefab roots bring their own GameObjects
     for (Entity entity : decoded) {
         const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
-        if (component && !component->path.empty()) {
+        if (component && (!component->path.empty() || !component->guid.empty())) {
             const fs::path nestedPath = component->path;
             importPrefab(sceneProject, &sceneProject->entities, nestedPath, entity, false);
         }
@@ -897,6 +1002,7 @@ void editor::Project::registerPrefabManager() {
                     PrefabComponent prefabComp;
                     prefabComp.name = capturablePrefabPath.stem().string();
                     prefabComp.path = capturablePrefabPath.string();
+                    prefabComp.guid = getPrefabGuid(capturablePrefabPath);
                     scene->addComponent<PrefabComponent>(root, prefabComp);
                 }
 

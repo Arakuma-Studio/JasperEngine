@@ -2899,10 +2899,11 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
             content.entities = prefab->registryEntities;
         } else {
             try {
-                auto registry = std::make_unique<EntityRegistry>();
-                Stream::decodeEntitySelection(YAML::LoadFile((getProjectPath() / info.prefabPath).string()), registry.get(), &content.entities);
-                content.registry = registry.get();
-                fileRegistries.push_back(std::move(registry));
+                Prefab loaded;
+                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / info.prefabPath).string()));
+                content.entities = loaded.registryEntities;
+                content.registry = loaded.registry.get();
+                fileRegistries.push_back(std::move(loaded.registry));
             } catch (const std::exception& e) {
                 Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
                 continue;
@@ -3095,6 +3096,8 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         Stream::decodeSceneProject(targetScene, sceneNode, loadSceneData);
+        // the build's prefab list of a closed scene follows the prefabs' GUIDs too
+        resolveScenePrefabInfos(*targetScene);
 
         // Before the renderer exists, so the camera restore below picks it up
         applyRetainedSceneState(*targetScene);
@@ -3170,7 +3173,9 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         targetScene->needUpdateRender = opened;
-        targetScene->isModified = false;
+        // A prefab its file names by an old path (moved since, found by GUID) is saved
+        // with the new one
+        targetScene->isModified = loadSceneData && targetScene->prefabRefsChanged;
         targetScene->opened = opened;
 
         if (opened) {
@@ -3524,7 +3529,7 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
 
         childScene->expandedInline = true;
         childScene->needUpdateRender = true;
-        childScene->isModified = false;
+        childScene->isModified = childScene->prefabRefsChanged;
 
         removeMissingChildSceneReferences(*childScene);
 
@@ -3738,6 +3743,7 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
     sceneProject->entities.clear();
     sceneProject->selectedEntities.clear();
+    sceneProject->missingPrefabs.clear();
 }
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
@@ -3817,6 +3823,8 @@ void editor::Project::resetConfigs() {
     terrainEditorSettings = {};
     simulateTouch = false;
     projectPath.clear();
+    assetDatabase.close();
+    pendingAssetChanges.clear();
     materialFileLinks.clear();
     tabs.clear();
     lastMaterialRefreshTime = std::chrono::steady_clock::time_point{};
@@ -4292,6 +4300,7 @@ bool editor::Project::createTempProject(std::string projectName, bool deleteIfEx
             }
 
             modelLoaded = true;
+            assetDatabase.open(projectPath);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -4555,6 +4564,11 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
         }
     }
 
+    // The asset files (and their GUIDs) are under the new root now
+    if (oldPath != path) {
+        assetDatabase.open(projectPath);
+    }
+
     if (!saveProjectFile()) {
         return false;
     }
@@ -4599,6 +4613,11 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
 
         resetConfigs();
         projectPath = path;
+
+        // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
+        // upgrade of files written before them) and references resolve through it
+        editor::getEditorHost().reportLoadingProgress("Scanning assets...");
+        assetDatabase.open(projectPath);
 
         // Per-user state comes from .jasperengine/user/, falling back to the copy an older
         // editor left in project.yaml
@@ -4904,7 +4923,8 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 }
 
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
-    std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath());
+    std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
+        [this](const fs::path& path) { return getPrefabGuid(path); });
     generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
@@ -6536,7 +6556,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     return;
                 }
 
-                std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath());
+                std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
+                    [this](const fs::path& path) { return getPrefabGuid(path); });
                 generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {

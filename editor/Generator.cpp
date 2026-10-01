@@ -1289,7 +1289,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     FileUtils::writeIfChanged(agentsFile, agentsContent);
 }
 
-std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath) {
+std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
+        const std::function<std::string(const fs::path&)>& prefabGuid) {
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::vector<PrefabInstanceInfo> prefabInstances;
@@ -1360,7 +1361,7 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
 
         // Write prefab .h and .cpp files
         std::string headerContent = Factory::createPrefabHeader(prefabPath);
-        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath);
+        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath, prefabGuid);
 
         std::string prefabFileName = Factory::prefabToFileName(prefabPath);
         FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".h"), headerContent);

@@ -3,7 +3,66 @@
 
 #include "Prefab.h"
 
+#include "Stream.h"
+#include "util/YamlNumbers.h"
+
 namespace jasperengine::editor {
+
+Prefab::FileHeader Prefab::readHeader(const YAML::Node& node) {
+    FileHeader header;
+    if (!node || !node.IsMap()) {
+        return header;
+    }
+    try {
+        if (node["version"]) {
+            header.version = YamlNumbers::as<int>(node["version"]);
+        }
+        if (node["guid"]) {
+            header.guid = node["guid"].as<std::string>();
+        }
+        if (node["nextEntity"]) {
+            header.nextEntity = YamlNumbers::as<Entity>(node["nextEntity"]);
+        }
+    } catch (const std::exception&) {
+        // read as a legacy header: the ids in the file still bound the counter
+    }
+    return header;
+}
+
+Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node) {
+    Entity counter = NULL_ENTITY;
+    if (registry) {
+        counter = registry->getLastEntity();
+        registry->clear();
+    } else {
+        registry = std::make_unique<EntityRegistry>();
+    }
+    registryEntities.clear();
+
+    Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
+
+    const FileHeader header = readHeader(node);
+    Entity highest = counter;
+    for (Entity entity : registryEntities) {
+        highest = std::max(highest, entity);
+    }
+    if (header.nextEntity != NULL_ENTITY) {
+        highest = std::max<Entity>(highest, header.nextEntity - 1);
+    }
+    registry->setLastEntity(highest);
+    return header;
+}
+
+Entity Prefab::getNextEntity() const {
+    if (!registry) {
+        return NULL_ENTITY;
+    }
+    Entity highest = registry->getLastEntity();
+    for (Entity entity : registryEntities) {
+        highest = std::max(highest, entity);
+    }
+    return highest + 1;
+}
 
 uint32_t Prefab::getInstanceId(uint32_t sceneId, Entity entity) const {
 	auto it = instances.find(sceneId);

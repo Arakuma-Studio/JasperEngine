@@ -19,7 +19,7 @@
 using namespace jasperengine;
 using editor::prefabinternal::componentHasExternalEntityRef;
 
-bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode){
+bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid){
     if (!filepath.is_relative()) {
         Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return false;
@@ -49,7 +49,8 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     std::vector<Entity> branchEntities;
     ProjectUtils::collectEntities(entityNode, branchEntities);
 
-    std::vector<Entity> regEntities = Stream::decodeEntitySelection(clearEntitiesNode(entityNode), newGroup.registry.get(), &newGroup.registryEntities);
+    // A clone: the node is the command's, and a redo reads its entity ids again
+    std::vector<Entity> regEntities = Stream::decodeEntitySelection(clearEntitiesNode(YAML::Clone(entityNode)), newGroup.registry.get(), &newGroup.registryEntities);
     if (branchEntities.size() == regEntities.size()) {
         std::unordered_map<Entity, Entity> localToRegistry;
         for (size_t i = 0; i < branchEntities.size(); ++i) {
@@ -67,9 +68,18 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     Scene* scene = sceneProject->scene;
     Entity rootEntity = scene->createUserEntity();
 
+    // A new asset, a new GUID; a redo gives the file the one it had
+    std::string assetGuid = guid;
+    if (!AssetDatabase::isGuid(assetGuid) || !assetDatabase.getPath(assetGuid).empty()) {
+        do {
+            assetGuid = AssetDatabase::generateGuid();
+        } while (!assetDatabase.getPath(assetGuid).empty());
+    }
+
     PrefabComponent prefabComp;
     prefabComp.name = filepath.stem().string();
     prefabComp.path = filepath.string();
+    prefabComp.guid = assetGuid;
     scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
     // Only create a transform root when prefab top-level entities use hierarchy.
@@ -140,7 +150,7 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
 
     newInstance.rootEntity = rootEntity;
 
-    for (int i = 0; i < regEntities.size(); i++) {
+    for (size_t i = 0; i < regEntities.size() && i < branchEntities.size(); i++) {
         newInstance.members.push_back({branchEntities[i], regEntities[i]});
     }
 
@@ -152,7 +162,8 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
 
     prefabAssets.emplace(filepath, std::move(newGroup));
 
-    // Set up event subscriptions for this shared group
+    // The file is written with the GUID the database gives its path
+    assetDatabase.registerAsset(filepath, assetGuid);
     savePrefabToDisk(filepath);
 
     updateScenePrefabs(sceneProject);

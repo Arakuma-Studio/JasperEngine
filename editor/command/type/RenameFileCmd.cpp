@@ -52,7 +52,8 @@ bool editor::RenameFileCmd::execute(){
                 if (isDir || Util::isSceneFile(extension)) {
                     project->remapSceneFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isPrefabFile(extension)) {
+                // either name: a file renamed to or from .prefab starts or stops being one
+                if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
                     project->remapPrefabFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isScriptFile(extension)) {
@@ -93,7 +94,8 @@ void editor::RenameFileCmd::undo(){
                 if (isDir || Util::isSceneFile(extension)) {
                     project->remapSceneFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isPrefabFile(extension)) {
+                // either name: a file renamed to or from .prefab starts or stops being one
+                if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
                     project->remapPrefabFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isScriptFile(extension)) {

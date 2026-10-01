@@ -10,7 +10,8 @@ namespace jasperengine{
 
     struct PrefabComponent {
         std::string name;
-        std::string path;
+        std::string path;   // project-relative .prefab path; with a guid, only a hint
+        std::string guid;   // the prefab asset's GUID (editor AssetDatabase), empty if unknown
     };
 
 }

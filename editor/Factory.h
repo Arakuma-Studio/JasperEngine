@@ -7,6 +7,7 @@
 #include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
+#include <functional>
 #include <string>
 #include <sstream>
 #include <filesystem>
@@ -126,7 +127,11 @@ namespace jasperengine::editor{
 
         static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
 
-        static std::string createPrefab(const std::filesystem::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath);
+        // prefabGuid: the asset GUID of a prefab path, empty for a prefab that is missing (its
+        // nested instances are then built as their root alone); not given, every nested
+        // prefab is taken as present
+        static std::string createPrefab(const std::filesystem::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath,
+            const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr);
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
         // Binds each camera-linked texture of the entities to its camera's framebuffer; with
         // namedCamerasOnly, only links to cameras that have a variable in entityVarNames

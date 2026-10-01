@@ -21,6 +21,7 @@ namespace jasperengine::editor{
         Project* project;
         uint32_t sceneId;
         fs::path filepath;
+        std::string guid;   // the prefab's asset GUID, taken on the first execute
         Entity parent;
         bool needSaveScene;
 

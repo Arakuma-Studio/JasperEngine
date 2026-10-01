@@ -3039,18 +3039,25 @@ std::vector<Entity> editor::Factory::getPrefabMemberEntities(EntityRegistry* reg
     return memberEntities;
 }
 
-std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath) {
+std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath,
+        const std::function<std::string(const fs::path&)>& prefabGuid) {
     std::string funcName = prefabToFunctionName(prefabPath);
     std::string buildFuncName = prefabToBuildFunctionName(prefabPath);
     std::string fileName = prefabToFileName(prefabPath);
 
     std::ostringstream out;
 
+    // A nested prefab whose asset is missing (a Missing Prefab) has no build function: its
+    // root is built as a plain GameObject, as an exported Unity scene keeps the placeholder
+    auto nestedBuilt = [&](const PrefabComponent* bc) {
+        return bc && !bc->path.empty() && (!prefabGuid || !prefabGuid(bc->path).empty());
+    };
+
     // Identify nested prefab roots and their includes
     std::set<std::string> nestedPrefabIncludes;
     for (Entity entity : registryEntities) {
         PrefabComponent* bc = registry->findComponent<PrefabComponent>(entity);
-        if (bc && !bc->path.empty()) {
+        if (nestedBuilt(bc)) {
             nestedPrefabIncludes.insert(prefabToFileName(bc->path));
         }
     }
@@ -3112,7 +3119,13 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
     out << ind1 << "if (!scene->findComponent<PrefabComponent>(root)) {\n";
     out << ind1 << "    PrefabComponent prefab;\n";
     out << ind1 << "    prefab.name = " << formatString(stem) << ";\n";
-    out << ind1 << "    prefab.path = " << formatString(prefabPath.string()) << ";\n";
+    out << ind1 << "    prefab.path = " << formatString(prefabPath.generic_string()) << ";\n";
+    if (prefabGuid) {
+        const std::string guid = prefabGuid(prefabPath);
+        if (!guid.empty()) {
+            out << ind1 << "    prefab.guid = " << formatString(guid) << ";\n";
+        }
+    }
     out << ind1 << "    scene->addComponent<PrefabComponent>(root, prefab);\n";
     out << ind1 << "}\n\n";
 
@@ -3186,7 +3199,7 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
     bool hasNestedPrefabs = false;
     for (Entity entity : memberEntities) {
         PrefabComponent* bc = registry->findComponent<PrefabComponent>(entity);
-        if (bc && !bc->path.empty()) {
+        if (nestedBuilt(bc)) {
             if (!hasNestedPrefabs) {
                 out << "\n";
                 out << ind1 << "// Nested prefabs\n";

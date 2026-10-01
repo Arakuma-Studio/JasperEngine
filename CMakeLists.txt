@@ -517,6 +517,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Project.cpp
     ${EDITOR_DIR}/project/ProjectPrefabEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabImport.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabMissing.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
@@ -551,6 +552,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp

@@ -10,6 +10,9 @@
 # that. All three take the same space separated steps:
 #   X,Y or X,Y,B   click (button B: 1 left, 3 right, 4/5 wheel up/down)
 #   r:X,Y          right click          m:X,Y       move the mouse (hover)
+#   dbl:X,Y        double click (opens a scene or prefab in the Project window)
+#   run:SCRIPT     run bash SCRIPT (a path under the repo) from the run directory, whose
+#                  project/ is the open project: a change made outside the editor
 #   drag:X1,Y1,X2,Y2  left drag         wheel:X,Y,N scroll N notches (N<0: up)
 #   k:K, key:K, K  press xdotool key K (e.g. F5, ctrl+s, space)
 #   kd:K, ku:K     hold / release key K, for chords the editor must see across
@@ -23,7 +26,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -67,6 +70,8 @@ steps() {
             m:*) IFS=, read -r x y <<< "${t#m:}"; xdotool mousemove "$x" "$y" ;;
             r:*) IFS=, read -r x y <<< "${t#r:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 3 ;;
             click:*) IFS=, read -r x y <<< "${t#click:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 1 ;;
+            dbl:*) IFS=, read -r x y <<< "${t#dbl:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click --repeat 2 --delay 80 1 ;;
+            run:*) bash "/src/${t#run:}" ;;
             wheel:*) IFS=, read -r x y n <<< "${t#wheel:}"; xdotool mousemove "$x" "$y"; sleep 0.2
                 if (( n > 0 )); then xdotool click --repeat "$n" --delay 100 5; else xdotool click --repeat $(( -n )) --delay 100 4; fi ;;
             drag:*) IFS=, read -r x1 y1 x2 y2 <<< "${t#drag:}"
