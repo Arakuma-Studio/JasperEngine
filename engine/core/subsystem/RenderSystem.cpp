@@ -9242,6 +9242,12 @@ void RenderSystem::drawCameras(bool includeMain){
     // render-to-texture camera = 1..N-1; cameras past the cap reuse the main view
     int terrainViewCounter = 0;
 
+    // Like Unity, cameras rendering into a texture draw before the camera that shows the
+    // frame: whatever displays their image (a mesh, a UI image) then shows this frame's,
+    // not the previous one, and the first frame of a scene does not sample a texture
+    // nothing has rendered into yet (fully transparent, so those objects vanished).
+    // The render-to-texture cameras keep their component order among themselves.
+    for (int round = 0; round < 2; round++)
     for (int i = 0; i < cameras->size(); i++){
         Entity cameraEntity = cameras->getEntity(i);
         CameraComponent& camera = cameras->getComponentFromIndex(i);
@@ -9250,6 +9256,10 @@ void RenderSystem::drawCameras(bool includeMain){
             continue;
 
         bool isMainCamera = (cameraEntity == scene->getCamera());
+
+        if (isMainCamera != (round == 1)){
+            continue; // render-to-texture cameras in the first round, the main one in the second
+        }
 
         if (!isMainCamera && !camera.renderToTexture){
             continue; // camera is not used

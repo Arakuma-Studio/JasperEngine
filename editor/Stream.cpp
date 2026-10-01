@@ -4856,6 +4856,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
     node["transparent"] = YamlNumbers::text(mesh.transparent);
+    node["autoTransparency"] = YamlNumbers::text(mesh.autoTransparency);
 
     node["cullingMode"] = cullingModeToString(mesh.cullingMode);
     node["windingOrder"] = windingOrderToString(mesh.windingOrder);
@@ -4947,6 +4948,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
+    if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
 
     if (node["cullingMode"]) mesh.cullingMode = stringToCullingMode(node["cullingMode"].as<std::string>());
     if (node["windingOrder"]) mesh.windingOrder = stringToWindingOrder(node["windingOrder"].as<std::string>());
