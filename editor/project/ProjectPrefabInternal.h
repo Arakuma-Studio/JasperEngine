@@ -72,11 +72,8 @@ namespace jasperengine::editor::prefabinternal {
     // missing are dropped from `names`, logged with `context`)
     void copyProperties(ScratchEntity& from, EntityRegistry* target, Entity entity, ComponentType type,
             std::set<std::string>& names, const std::string& context);
-    // The prefab's value of a component onto an instance's GameObject: the requested
-    // properties (all for an empty list) but the ones that GameObject overrides and, on an
-    // instance root, the default overrides (defined in ProjectPrefabEdit.cpp)
-    void copyPrefabValueToInstance(EntityRegistry* registry, Entity registryEntity, EntityRegistry* scene, Entity local,
-        ComponentType type, const std::vector<std::string>& properties, const PrefabObjectOverrides* overrides, bool isRoot,
-        const std::unordered_map<Entity, Entity>& registryToLocal);
+    // The properties of a component that differ between two GameObjects having it ("*" when
+    // the component differs in something no single property holds, an array size say)
+    std::vector<std::string> diffComponentProperties(EntityRegistry* a, Entity aEntity, EntityRegistry* b, Entity bEntity, ComponentType type);
 
 }

@@ -55,9 +55,9 @@ void editor::TerrainMapPatchCmd::apply(const std::vector<unsigned char>& regionP
                                std::vector<unsigned char>(pixels, pixels + mapBytes));
     TerrainMapUtils::refresh(sceneProject, entity, ref);
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        project->prefabPropertyChanged(sceneId, entity, ComponentType::TerrainComponent, {TerrainMapUtils::getPropertyName(ref)});
-    }
+    // Painting writes the map's file, an asset like Unity's TerrainData: no override, every
+    // terrain using that file follows
+    TerrainMapUtils::refreshSharing(project, sceneId, entity, ref);
 
     if (restoreModifiedState){
         sceneProject->isModified = wasModified;

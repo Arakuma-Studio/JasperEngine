@@ -53,25 +53,6 @@ namespace jasperengine::editor{
         bool mergeWith(Command* otherCommand) override;
     };
 
-    // Apply to Prefab of an overridden component: the instance's values become the Prefab's,
-    // and the component follows the Prefab again
-    class ApplyPrefabComponentCmd: public Command{
-    private:
-        Project* project;
-        uint32_t sceneId;
-        Entity entity;
-        ComponentType componentType;
-        ComponentRecovery recovery;
-        bool wasModified = false;
-
-    public:
-        ApplyPrefabComponentCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
-
-        bool execute() override;
-        void undo() override;
-        bool mergeWith(Command* otherCommand) override;
-    };
-
     // Revert All / Apply All: the steps run in order as one undo step, undone in reverse.
     // A step with nothing left to do (an earlier one covered it) is skipped.
     class PrefabOverridesCmd: public Command{
@@ -85,6 +66,14 @@ namespace jasperengine::editor{
 
     public:
         PrefabOverridesCmd(Project* project, uint32_t sceneId, std::vector<std::unique_ptr<Command>> steps);
+
+        // The Overrides dropdown's Revert All: every override of the instance rooted at root
+        // (and of the ones nested in it) reverted
+        static PrefabOverridesCmd* revertAll(Project* project, uint32_t sceneId, Entity root);
+        // Apply All: every override applied to the instance's prefab (the outermost; overrides
+        // of nested instances become its overrides of them), but values referencing
+        // GameObjects outside it; null in Play mode
+        static PrefabOverridesCmd* applyAll(Project* project, uint32_t sceneId, Entity root);
 
         bool execute() override;
         void undo() override;

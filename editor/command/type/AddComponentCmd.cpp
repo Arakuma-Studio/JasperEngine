@@ -24,6 +24,7 @@ bool editor::AddComponentCmd::execute() {
         Scene* scene = sceneProject->scene;
 
         for (Entity& entity : entities){
+            prefabUndo.capture(project, sceneId, entity);
             ProjectUtils::addEntityComponent(scene, entity, componentType, sceneProject->entities);
 
             if (componentType == ComponentType::InstancedMeshComponent &&
@@ -34,9 +35,7 @@ bool editor::AddComponentCmd::execute() {
                     scene->getEntityName(entity).c_str());
             }
 
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->addComponentToPrefab(sceneId, entity, componentType, false);
-            }
+            project->recordPrefabComponentAdded(sceneId, entity, componentType);
         }
 
         sceneProject->isModified = true;
@@ -54,11 +53,8 @@ void editor::AddComponentCmd::undo() {
             // Undoing an add removes only the component introduced by this command. Any
             // ownership configured later belongs to later commands and must not broaden undo.
             ProjectUtils::removeEntityComponent(scene, entity, componentType, sceneProject->entities);
-
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->removeComponentFromPrefab(sceneId, entity, componentType, false, false);
-            }
         }
+        prefabUndo.restore(project, sceneId);
 
         ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
 
@@ -78,6 +74,7 @@ bool editor::AddComponentCmd::mergeWith(Command* otherCommand){
             for (Entity& otherEntity :  otherCmd->entities){
                 entities.push_back(otherEntity);
             }
+            prefabUndo.mergeOlder(otherCmd->prefabUndo);
 
             wasModified = wasModified && otherCmd->wasModified;
 

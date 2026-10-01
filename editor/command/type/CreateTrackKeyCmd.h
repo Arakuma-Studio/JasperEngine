@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/PrefabEditUndo.h"
 #include "component/AnimationComponent.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -34,6 +35,7 @@ namespace jasperengine::editor {
         Entity trackEntity = NULL_ENTITY;
         std::vector<ActionFrame> oldActions;
         bool wasModified = false;
+        PrefabEditUndo prefabUndo;
 
     public:
         CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,

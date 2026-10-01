@@ -29,7 +29,7 @@
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
-#include "command/type/ComponentToPrefabLocalCmd.h"
+#include "command/type/PrefabOverrideCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/type/CreateDirCmd.h"
@@ -2092,7 +2092,7 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "import_prefab_instance") return importPrefabInstance(arguments);
     if (name == "add_entity_to_prefab") return addEntityToPrefab(arguments);
     if (name == "remove_entity_from_prefab") return removeEntityFromPrefab(arguments);
-    if (name == "make_prefab_component_unique") return makePrefabComponentUnique(arguments);
+    if (name == "apply_prefab_component") return applyPrefabComponent(arguments);
     if (name == "revert_prefab_component") return revertPrefabComponent(arguments);
     if (name == "set_standalone_prefab") return setStandalonePrefab(arguments);
     if (name == "export_project") return exportProject(arguments, cancel);
@@ -4124,7 +4124,7 @@ ActionResult EditorActionExecutor::removeEntityFromPrefab(const Json& arguments)
     return okResult("Removed GameObject from Prefab through the command history.");
 }
 
-ActionResult EditorActionExecutor::makePrefabComponentUnique(const Json& arguments) {
+ActionResult EditorActionExecutor::applyPrefabComponent(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
@@ -4133,8 +4133,25 @@ ActionResult EditorActionExecutor::makePrefabComponentUnique(const Json& argumen
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToPrefabLocalCmd(project, sceneId, entity, component));
-    return okResult("Made Prefab component a local override through the command history.");
+    const Prefab::ObjectOverrides overrides = project->getPrefabObjectOverrides(sceneId, entity);
+    PrefabOverrideCmd::Operation operation = PrefabOverrideCmd::Operation::ApplyProperty;
+    std::vector<std::string> properties;
+    if (overrides.addedComponents.count(component)) {
+        operation = PrefabOverrideCmd::Operation::ApplyAddedComponent;
+    } else if (overrides.removedComponents.count(component)) {
+        operation = PrefabOverrideCmd::Operation::ApplyRemovedComponent;
+    } else if (overrides.properties.count(component)) {
+        properties.assign(overrides.properties.at(component).begin(), overrides.properties.at(component).end());
+    } else {
+        return failResult("The component has no Prefab overrides on this GameObject.");
+    }
+    std::string reason;
+    if (operation == PrefabOverrideCmd::Operation::ApplyProperty && !project->canApplyPrefabOverride(sceneId, entity, component, properties, {}, &reason)) {
+        return failResult(reason);
+    }
+    if (!project->canApplyPrefabOverrides(&reason)) return failResult(reason);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new PrefabOverrideCmd(project, sceneId, entity, operation, component, properties));
+    return okResult("Applied the component's overrides to the Prefab through the command history.");
 }
 
 ActionResult EditorActionExecutor::revertPrefabComponent(const Json& arguments) {
@@ -4146,8 +4163,17 @@ ActionResult EditorActionExecutor::revertPrefabComponent(const Json& arguments) 
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) return failResult("Unknown component type.");
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToPrefabSharedCmd(project, sceneId, entity, component));
-    return okResult("Reverted Prefab component override through the command history.");
+    const Prefab::ObjectOverrides overrides = project->getPrefabObjectOverrides(sceneId, entity);
+    if (overrides.addedComponents.count(component)) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(new PrefabOverrideCmd(project, sceneId, entity, PrefabOverrideCmd::Operation::RevertAddedComponent, component));
+    } else if (overrides.removedComponents.count(component)) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(new PrefabOverrideCmd(project, sceneId, entity, PrefabOverrideCmd::Operation::RevertRemovedComponent, component));
+    } else if (overrides.properties.count(component)) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToPrefabSharedCmd(project, sceneId, entity, component));
+    } else {
+        return failResult("The component has no Prefab overrides on this GameObject.");
+    }
+    return okResult("Reverted the component's Prefab overrides through the command history.");
 }
 
 ActionResult EditorActionExecutor::setStandalonePrefab(const Json& arguments) {

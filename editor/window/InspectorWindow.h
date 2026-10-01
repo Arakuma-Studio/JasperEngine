@@ -269,7 +269,7 @@ namespace jasperengine::editor{
         void dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
 
         // popupId: opened by the header's right click or its kebab button
-        void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool& headerOpen, bool readOnly);
+        void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool& headerOpen, bool readOnly);
 
         // Unity Inspector header: active checkbox, icon and name, then Tag and Layer
         void drawGameObjectHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& names, bool readOnly);
@@ -278,10 +278,52 @@ namespace jasperengine::editor{
         void drawPrefabBar(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float gap);
         // Unity's Overrides dropdown of the prefab bar, for the instance rooted at root
         void drawPrefabOverridesPopup(SceneProject* sceneProject, Entity root, bool readOnly);
+
+        // ---- Prefab overrides in the Inspector (InspectorPrefabBar.cpp) ----
+        // Unity: an overridden value has a bold label and a blue bar in the margin; a right
+        // click on it (or on a component header, or the GameObject's name, active state, tag
+        // or layer) offers Apply to the prefab(s) and Revert.
+        struct PrefabRowContext{
+            SceneProject* sceneProject = nullptr;
+            std::vector<Entity> entities;       // the selection
+            ComponentType type = ComponentType::Transform;
+            bool active = false;                // some of them are GameObjects of prefab instances
+            bool readOnly = false;
+            // their overrides, read once per component drawn
+            std::map<Entity, Prefab::ObjectOverrides> overrides;
+        };
+        PrefabRowContext prefabRow;
+        // The property the next propertyHeader draws (propertyRow sets it), cleared by it
+        std::string prefabRowProperty;
+        // The Overrides dropdown's selected item and the root it belongs to
+        std::string prefabOverridesSelection;
+        Entity prefabOverridesRoot = NULL_ENTITY;
+
+        void beginPrefabComponent(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, bool readOnly);
+        void endPrefabComponent();
+        // The overridden names matching a property row (exact, "*", or nested in it), per entity
+        std::vector<std::string> prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const;
+        bool isPrefabPropertyOverridden(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, const std::string& property) const;
+        // Unity's blue bar at the Inspector's left margin, from y0 to y1
+        void drawPrefabOverrideBar(float y0, float y1, bool added = false);
+        // The Apply / Revert entries for a property, a component or GameObject state, into the
+        // menu being drawn; stateBits for state (type ignored), property empty for a whole component
+        void drawPrefabApplyRevertItems(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type,
+            const std::string& property, uint8_t stateBits, bool readOnly);
+        // A property row's label: bold with the bar when overridden, right click for the menu
+        void drawPrefabPropertyLabel(const std::string& label);
+        // Context menu of a GameObject header field (name, active, tag, layer) under the last item
+        void prefabStateContext(SceneProject* sceneProject, const std::vector<Entity>& entities, uint8_t stateBit, bool readOnly,
+            float barTop, float barBottom);
+        // Unity's "(Removed)" component entries after the components
+        void drawRemovedPrefabComponents(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly);
+        // The Overrides dropdown's comparison of one item (Prefab Source | Override)
+        void drawPrefabComparison(SceneProject* sceneProject, const PrefabOverrideEntry& entry, Entity root, bool locked);
+        std::string formatPrefabValue(EntityRegistry* registry, const PropertyData& prop);
         void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         void drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         // Unity component header: foldout, icon, enable checkbox, name and a kebab menu; true when open
-        bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool readOnly);
+        bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
         void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);

@@ -334,11 +334,9 @@ void editor::ModelLoadCmd::finalizeLoad(){
 
     sceneProject->isModified = true;
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        std::vector<std::string> properties = {"filename"};
-        if (mergeStaticMeshesChanged) properties.push_back("mergeStaticMeshes");
-        project->prefabPropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
-    }
+    // The model's file, node mappings and the mesh it built are the instance's now
+    project->recordPrefabEdit(sceneId, entity, ComponentType::ModelComponent, {});
+    project->recordPrefabEdit(sceneId, entity, ComponentType::MeshComponent, {});
 }
 
 void editor::ModelLoadCmd::schedulePoll(){
@@ -504,10 +502,12 @@ bool editor::ModelLoadCmd::execute(){
     if (!reuseHierarchy) {
         oldSubEntityRoots = collectModelDeleteRoots(scene, model);
     }
+    prefabUndo.capture(project, sceneId, entity);
     if (!oldSubEntityRoots.empty()) {
+        // Unity: loading a model on a prefab instance's GameObject is an instance edit: its old
+        // nodes that are prefab GameObjects become removed GameObject overrides, the new ones
+        // added GameObjects (DeleteEntityCmd's default)
         oldSubEntitiesDeleteCmd = new DeleteEntityCmd(project, sceneId, oldSubEntityRoots, true);
-        // Loading a model on a Prefab GameObject is a Prefab edit: its old nodes leave the Prefab
-        oldSubEntitiesDeleteCmd->setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
         if (!oldSubEntitiesDeleteCmd->execute()) {
             delete oldSubEntitiesDeleteCmd;
             oldSubEntitiesDeleteCmd = nullptr;
@@ -581,7 +581,6 @@ void editor::ModelLoadCmd::undo(){
         }
         if (!newSubEntityRoots.empty()) {
             DeleteEntityCmd newSubEntitiesDeleteCmd(project, sceneId, newSubEntityRoots, true);
-            newSubEntitiesDeleteCmd.setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
             newSubEntitiesDeleteCmd.execute();
         }
     }
@@ -600,11 +599,7 @@ void editor::ModelLoadCmd::undo(){
 
     sceneProject->isModified = wasModified;
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        std::vector<std::string> properties = {"filename"};
-        if (mergeStaticMeshesChanged) properties.push_back("mergeStaticMeshes");
-        project->prefabPropertyChanged(sceneId, entity, ComponentType::ModelComponent, properties);
-    }
+    prefabUndo.restore(project, sceneId);
 
     if (createEntityCmd) {
         createEntityCmd->undo();

@@ -169,7 +169,7 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
     }
 }
 
-// ---- References into nested prefabs: stripped objects (PREFABS.md 12) ----
+// ---- References into nested prefabs: stripped objects (PREFABS.md 16) ----
 
 std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot) {
     std::unordered_set<Entity> objects;

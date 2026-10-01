@@ -22,10 +22,13 @@ bool editor::EntityNameCmd::execute(){
     oldName = sceneProject->scene->getEntityName(entity);
     wasModified = project->getScene(sceneId)->isModified;
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        project->prefabNameChanged(sceneId, entity, newName, false);
-    }
+    prefabUndo.capture(project, sceneId, entity);
     sceneProject->scene->setEntityName(entity, newName);
+    // Unity: a prefab instance's GameObject renamed is a name override (an instance root's
+    // name is its own anyway)
+    if (oldName != newName){
+        project->recordPrefabStateEdit(sceneId, entity, PrefabObjectOverrides::StateName);
+    }
 
     sceneProject->isModified = true;
 
@@ -38,10 +41,8 @@ void editor::EntityNameCmd::undo(){
         return;
     }
 
-    if (project->isEntityInPrefab(sceneId, entity)){
-        project->prefabNameChanged(sceneId, entity, oldName, false);
-    }
     sceneProject->scene->setEntityName(entity, oldName);
+    prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;
 }
@@ -51,6 +52,7 @@ bool editor::EntityNameCmd::mergeWith(editor::Command* otherCommand){
     if (otherCmd != nullptr){
         if (sceneId == otherCmd->sceneId && entity == otherCmd->entity){
             this->oldName = otherCmd->oldName;
+            prefabUndo.mergeOlder(otherCmd->prefabUndo);
 
             this->wasModified = this->wasModified && otherCmd->wasModified;
             return true;

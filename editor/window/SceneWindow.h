@@ -12,9 +12,12 @@
 #include "command/type/PropertyCmd.h"
 #include "render/gizmo/ViewportGizmo.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
 
 namespace jasperengine::editor {
+
+    class ImportPrefabCmd;
 
     enum class ScenePropertyType {
         CHECKBOX,
@@ -63,6 +66,17 @@ namespace jasperengine::editor {
         void handleResourceFileDragDrop(SceneProject* sceneProject);
         Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
         void handleTileRectDragDrop(SceneProject* sceneProject);
+
+        // Prefab dragged from the Project window over a Scene view (Unity's way): an instance
+        // follows the pointer (on what it points at in 3D, at its world position in 2D), the
+        // drop makes it for real as one undo step, leaving the view takes it away
+        ImportPrefabCmd* prefabDragPreview = nullptr;
+        uint32_t prefabDragSceneId = NULL_PROJECT_SCENE;
+        std::string prefabDragPath;
+        std::unordered_set<Entity> prefabDragEntities;
+        void updatePrefabDrag(SceneProject* sceneProject, const std::vector<std::string>& paths, float x, float y, bool delivery);
+        void cancelPrefabDrag();
+        Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ);
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth, int canvasHeight);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;

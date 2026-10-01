@@ -82,7 +82,7 @@ void editor::Project::setMissingPrefab(SceneProject* sceneProject, Entity root, 
     }
     sceneProject->missingPrefabs[root] = std::move(missing);
 
-    if (!known) {
+    if (!known && !sceneProject->prefabPreview) {
         Out::warning("Missing Prefab \"%s\" (GUID %s) on GameObject '%s' in scene '%s': its instance data is kept and comes back with the prefab",
             component ? component->path.c_str() : "", component && !component->guid.empty() ? component->guid.c_str() : "none",
             sceneProject->scene->getEntityName(root).c_str(), sceneProject->name.c_str());
@@ -201,7 +201,7 @@ size_t editor::Project::relinkMissingPrefabs() {
         bool changed = false;
         // A Missing Prefab nested in a live instance comes back with the instance holding it
         // built again: the GameObjects the prefabs above add to it go below their nested
-        // parents, their references into it resolve (stripped objects, PREFABS.md 12)
+        // parents, their references into it resolve (stripped objects, PREFABS.md 16)
         std::vector<Entity> outerRoots;
         for (Entity root : roots) {
             if (!getMissingPrefab(sceneProject.id, root)) {

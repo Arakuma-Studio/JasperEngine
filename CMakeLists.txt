@@ -495,7 +495,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Project.cpp
     ${EDITOR_DIR}/project/ProjectPrefabEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabImport.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabInstanceEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabMissing.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabReplace.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
@@ -549,6 +551,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
+    ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
@@ -595,6 +598,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/MeshPreviewRender.cpp
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
+    ${EDITOR_DIR}/render/preview/PrefabRender.cpp
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp
@@ -628,11 +632,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
-    ${EDITOR_DIR}/command/type/ComponentToPrefabLocalCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/PrefabOverridesCmd.cpp
     ${EDITOR_DIR}/command/type/PrefabOverrideCmd.cpp
+    ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
 

@@ -399,7 +399,7 @@ namespace {
 
 }
 
-// ---- Nested instances, stripped objects and the layers of nested data (PREFABS.md 12) ----
+// ---- Nested instances, stripped objects and the layers of nested data (PREFABS.md 16) ----
 
 editor::Prefab::Instance* editor::Project::findInstanceRootedAt(SceneProject* sceneProject, Entity root, std::filesystem::path* path) {
     if (!sceneProject || !sceneProject->scene || root == NULL_ENTITY || !sceneProject->scene->isEntityCreated(root)) {

@@ -39,6 +39,9 @@ namespace jasperengine::editor{
         Vector3 placementPosition;
         Quaternion placementRotation;
         Vector3 placementScale = Vector3::UNIT_SCALE;
+        bool hasDropPosition = false;
+        bool dropKeepsZ = false;
+        Vector3 dropPosition;
 
     public:
         ImportPrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent = NULL_ENTITY, bool needSaveScene = true);
@@ -57,6 +60,10 @@ namespace jasperengine::editor{
         // The new instance becomes a GameObject of the prefab of the instance it is dropped
         // on (nested in that prefab), not an added GameObject of that instance
         void setAddToParentPrefab(bool add);
+        // Scene view drop: the root goes to this world position, keeping the prefab root's
+        // rotation and scale (keepZ: its z too, a 2D drop), on every execute
+        void setDropPosition(const Vector3& position, bool keepZ = false);
+        Entity getRootEntity() const;
     };
 
 }

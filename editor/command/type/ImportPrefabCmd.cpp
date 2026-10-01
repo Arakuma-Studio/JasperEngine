@@ -107,11 +107,24 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    if (hasDropPosition){
+        if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
+            const float z = rootTransform->position.z;
+            rootTransform->position = dropPosition;
+            if (dropKeepsZ){
+                rootTransform->position.z = z;
+            }
+            rootTransform->needUpdate = true;
+        }
+    }
+
     // Dropped below a GameObject of a prefab instance it is a GameObject added to that
-    // instance (Unity), unless asked to nest it in that prefab (Prefab Mode). A brush
+    // instance (Unity), unless the prefab itself is edited (Prefab Mode) or asked to nest
+    // it in that prefab. A brush
     // placement never does: it drops props into the scene, not into a shared prefab asset.
     addedToParentPrefab = false;
-    if (addToParentPrefab && parent != NULL_ENTITY && !hasPlacement && project->isEntityInPrefab(sceneId, parent)) {
+    if ((addToParentPrefab || project->isEditingPrefabAsset(sceneId, parent)) && parent != NULL_ENTITY && !hasPlacement &&
+            project->isEntityInPrefab(sceneId, parent)) {
         addedToParentPrefab = project->addEntityToPrefab(sceneId, rootEntity, parent, false);
     }
 
@@ -181,4 +194,14 @@ void editor::ImportPrefabCmd::setQuiet(bool quiet){
 
 void editor::ImportPrefabCmd::setAddToParentPrefab(bool add){
     this->addToParentPrefab = add;
+}
+
+void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keepZ){
+    hasDropPosition = true;
+    dropKeepsZ = keepZ;
+    dropPosition = position;
+}
+
+Entity editor::ImportPrefabCmd::getRootEntity() const{
+    return rootEntity;
 }
