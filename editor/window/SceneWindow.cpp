@@ -2101,8 +2101,12 @@ void editor::SceneWindow::show() {
                 // A stage opened in isolation shows its prefab whole once the view has a size
                 if (isStage && activeStage->frameOnOpen && widthNew > 0 && heightNew > 0
                         && sceneProject.scene->isEntityCreated(activeStage->root)) {
-                    activeStage->frameOnOpen = false;
-                    focusOnEntities(&sceneProject, {activeStage->root});
+                    // after a few drawn frames: the bounds and the camera's direction exist
+                    sceneProject.needUpdateRender = true;
+                    if (--activeStage->frameDelay <= 0) {
+                        activeStage->frameOnOpen = false;
+                        focusOnEntities(&sceneProject, {activeStage->root});
+                    }
                 }
 
                 ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());

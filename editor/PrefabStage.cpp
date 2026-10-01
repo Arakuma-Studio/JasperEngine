@@ -681,8 +681,13 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
     }
 
     // Every loaded instance (scenes and other stages) follows; scenes not loaded read the
-    // file when they load
+    // file when they load. A playing scene is put back by Stop from its snapshot: it
+    // follows once stopped.
     refreshPrefabInstances(path, false);
+    if (isAnyScenePlaying()) {
+        prefabsSavedWhilePlaying.insert(path);
+        prefabsSavedWhilePlaying.insert(nestedChanged.begin(), nestedChanged.end());
+    }
 
     sceneProject.isModified = false;
     stage->outsideChangeWarned = false;
@@ -838,6 +843,11 @@ void editor::Project::closePrefabStages(size_t depth, std::function<void(bool)> 
     auto cancel = [done]() {
         if (done) done(false);
     };
+    // With Auto Save on a change not written yet (its delay running) is just saved: Unity
+    // asks only when Auto Save is off
+    if (choice == 0 && prefabAutoSave) {
+        choice = 1;
+    }
     switch (choice) {
         case 1: save(); return;
         case 2: discard(); return;
@@ -875,10 +885,19 @@ void editor::Project::setPrefabContextVisibility(PrefabContextVisibility visibil
 }
 
 void editor::Project::updatePrefabStages(bool userEditing) {
+    // Prefabs saved in Prefab Mode during Play: the scenes Stop restored follow them now
+    if (!prefabsSavedWhilePlaying.empty() && !isAnyScenePlaying()) {
+        const std::set<std::filesystem::path> saved = std::move(prefabsSavedWhilePlaying);
+        prefabsSavedWhilePlaying.clear();
+        for (const std::filesystem::path& path : saved) {
+            refreshPrefabInstances(path, false);
+        }
+    }
     if (prefabStages.empty()) {
         return;
     }
     const auto now = Clock::now();
+    size_t lostFrom = prefabStages.size();
 
     for (size_t i = 0; i < prefabStages.size(); i++) {
         PrefabStage& stage = *prefabStages[i];
@@ -922,6 +941,18 @@ void editor::Project::updatePrefabStages(bool userEditing) {
         // an unmodified stage reloads, a modified one keeps its version (written on save)
         if (!userEditing && now - stage.lastSyncCheck >= OUTSIDE_CHANGE_INTERVAL) {
             stage.lastSyncCheck = now;
+            // Renamed or moved: the stage follows its asset's GUID; deleted: it closes
+            const std::filesystem::path current = resolvePrefabPath(stage.guid, stage.assetPath);
+            if (current.empty()) {
+                lostFrom = std::min(lostFrom, i);
+                continue;
+            }
+            if (current.lexically_normal() != stage.assetPath.lexically_normal()) {
+                Out::info("Prefab Mode: \"%s\" is now \"%s\"", stage.assetPath.generic_string().c_str(), current.generic_string().c_str());
+                stage.assetPath = current;
+                sceneProject.name = current.stem().string();
+                sceneProject.structureVersion++;
+            }
             if (getPrefab(stage.assetPath)) {
                 const std::string current = YAML::Dump(encodePrefabNode(stage.assetPath));
                 if (current != stage.syncedAsset) {
@@ -949,6 +980,13 @@ void editor::Project::updatePrefabStages(bool userEditing) {
                 }
             }
         }
+    }
+
+    // An asset deleted under its stage (and the stages above it, which it held) ends Prefab
+    // Mode there, as Unity does; nothing can be saved into it any more
+    if (lostFrom < prefabStages.size()) {
+        Out::warning("Prefab \"%s\" was deleted: its Prefab Mode closed", prefabStages[lostFrom]->assetPath.generic_string().c_str());
+        closePrefabStages(lostFrom, nullptr, 2);
     }
 }
 

@@ -182,6 +182,7 @@ namespace jasperengine::editor{
         std::shared_ptr<PrefabContextOverlay> overlay; // the Gray context's veil
         std::vector<Entity> environment;               // system entities: light, sky (never saved)
         bool frameOnOpen = true;                       // the Scene view frames the root once sized
+        int frameDelay = 3;                            // ... and drawn (bounds and camera settled)
         bool changePending = false;                    // a change Auto Save has not written yet
         bool autoSaveFailed = false;                   // retried after the next change only
         std::chrono::steady_clock::time_point lastChange{};
@@ -523,6 +524,8 @@ namespace jasperengine::editor{
         std::vector<std::unique_ptr<PrefabStage>> prefabStages;
         bool prefabAutoSave = true;
         PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
+        // Saved from a stage while a scene played: the scene restored by Stop follows them then
+        std::set<std::filesystem::path> prefabsSavedWhilePlaying;
         SceneProject* findPrefabStageScene(uint32_t sceneId) const;
         bool pushPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId, Entity contextRoot, bool inContext);
         bool loadPrefabStageContent(PrefabStage& stage);
