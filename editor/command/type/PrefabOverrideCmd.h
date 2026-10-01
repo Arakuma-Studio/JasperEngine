@@ -35,7 +35,6 @@ namespace jasperengine::editor{
         uint8_t stateBits;                    // PrefabObjectOverrides::State bits
         std::filesystem::path target;         // apply: the prefab (empty: the owning one)
         PrefabUndoState before;
-        bool wasModified = false;
 
         bool isApply() const;
 

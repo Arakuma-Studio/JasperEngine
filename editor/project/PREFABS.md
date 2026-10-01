@@ -3,7 +3,8 @@
 Developer notes for the prefab system (`editor/project/ProjectPrefab*.cpp`,
 `editor/StreamPrefab.cpp`, `editor/util/Prefab.*`, `editor/util/AssetDatabase.*`).
 Sections 1-5: files, identity, GUIDs, Missing Prefab (A1). Sections 6-11: the real root,
-the override model v2 and its APIs (A2). `tools/prefab-fixtures.py` makes test projects,
+the override model v2 and its APIs (A2). Section 12: editing instances the Unity way (edits
+are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C). `tools/prefab-fixtures.py` makes test projects,
 `jasperengine-editor scene-dump --project <dir> [--save]` dumps what loading them gives.
 Read this before changing how prefabs are identified, stored or loaded.
 
@@ -225,13 +226,8 @@ Everything else on the root is asset data, overridable like on any GameObject.
 - **Drop a prefab** (`ImportPrefabCmd`): the new root has only its PrefabComponent and the
   prefab root's name (made unique); the import gives it the prefab root's components, at the
   prefab root's position (Unity); dropped on a parent it keeps that local placement.
-- **Edit-shared editing on the root** (today's Inspector default, kept until C switches to
-  Unity semantics): root edits stay per-instance as before, now recorded as overrides:
-  `prefabPropertyChanged` on a root records the properties that differ from the prefab's
-  value and clears the ones equal again (`syncRootPropertyOverrides`), adding/removing a
-  component on a root records an added/removed component (`addComponentToPrefab` /
-  `removeComponentFromPrefab`), active/tag/layer likewise (`prefabStateChanged`). The
-  name is a default override.
+- **Editing the root**: like any GameObject of the instance (section 12): an edit records
+  an override, but for the default overrides above, which stay the instance's own.
 - **Upgrade of old instances**: an instance written before (no `prefabInstance` block) has
   a root whose components and state were the per-instance wrapper's: `importPrefab` diffs
   them against the prefab root (`diffAgainstRoot`): a component the root lacks is removed,
@@ -257,8 +253,8 @@ Everything else on the root is asset data, overridable like on any GameObject.
   `shaderUniforms`, materials) are whole properties (Catalog::copyPropertyValue copies them
   whole; a Script property copies the whole ScriptComponent). Array sizes are not property
   overrides: a change of size goes through a whole-component change (`"*"`). Files written
-  before property overrides, "Override Prefab Component" (ComponentToPrefabLocalCmd) and
-  a reference pointing outside the instance record `"*"`.
+  before property overrides, an edit that rewrites a whole component (a mesh changed, a
+  model loaded or cleared) and a reference pointing outside the instance record `"*"`.
 - **Which level owns an override** (`Project::findPrefabObject`, `PrefabObjectRef`): the
   instance the GameObject is a member of, else the instance it is the root of. So a
   nested instance root's overrides belong to the instance holding it (where it is a
@@ -383,7 +379,9 @@ GameObject of an instance, resolved to its owning level.
 | `isPropertyOverridden`, `isComponentOverridden`, `getOverriddenProperties` (`"*"` = whole), `getPrefabObjectOverrides` | queries |
 | `getPrefabSourceValue(sceneId, entity, type, property, PrefabSourceValue&)` | the value without the instance's own override (prefab + containing prefabs' layers), in a scratch registry with a `PropertyData`, references in local ids |
 | `getPrefabSourceComponent(...)` | the same, whole component YAML |
-| `getPrefabApplyTargets(sceneId, entity)` | the owning prefab, then each prefab holding that instance, outwards (apply-target choice) |
+| `getPrefabApplyTargets(sceneId, entity)` | innermost first: for a nested instance root its own prefab, then the owning prefab, then each prefab holding that instance, outwards (apply-target choice; the first is Unity's "Apply to Prefab", the others "Apply as Override in Prefab") |
+| `getPrefabSourceState(sceneId, entity, name, active, tag, layer)` | the source of name / active / tag / layer (comparison view, revert) |
+| `canApplyPrefabOverrides(reason)`, `canApplyPrefabOverride(sceneId, entity, type, properties, target, reason)` | Apply allowed: not in Play mode, `target` one of the apply targets, no reference outside what `target` holds |
 | `recordPropertyOverride` / `clearPropertyOverride` / `revertPropertyOverride` / `applyPropertyOverride(..., target)` | property overrides (empty list = whole component) |
 | `recordStateOverride` / `revertStateOverride` / `applyStateOverride` | name/active/tag/layer bits |
 | `recordAddedComponent` / `revertAddedComponent` / `applyAddedComponent` | added components |
@@ -392,7 +390,11 @@ GameObject of an instance, resolved to its owning level.
 | `reimportPrefabInstance(sceneProject, root, rootNode)` | rebuilds one outermost instance from a root node |
 | `capturePrefabUndoState(sceneId, entity, targets)` / `restorePrefabUndoState` | undo snapshots: the outermost instance, and for targets the assets (and the prefabs nesting them) plus every instance using them |
 | `PrefabOverrideCmd` (`command/type/`) | any primitive above as one undo step |
-| `prefabStateChanged(sceneId, entity, bits)` | edit-shared active/tag/layer (EntityStateCmd) |
+| `recordPrefabEdit`, `recordPrefabComponentEdit`, `recordPrefabStateEdit`, `recordPrefabComponentAdded` / `Removed` | instance edits (section 12) |
+| `getPrefabEditOverrides` / `setPrefabEditOverrides` | a GameObject's overrides as they are / put back (edit undo, `PrefabEditUndo`) |
+| `getPrefabOverrideEntries(sceneId, instanceRoot)` | every override of an instance and the ones nested in it, by GameObject in hierarchy order (`PrefabOverrideEntry`: property, state, added/removed component, added/removed GameObject) |
+| `isEditingPrefabAsset(sceneId, entity)` | Prefab Mode's GameObjects (agent D; false until then): their edits are no overrides |
+| `capturePlayPrefabState` / `restorePlayPrefabState`, `restorePlaySnapshot` | Play mode (section 12) |
 | `loadPrefabAsset(path)` | the asset, read when not loaded |
 | `getPrefabAssetLayers(sceneId, instanceRoot)` | the `assetLayers` of a (nested) instance, innermost first: pass them when importing a nested root on its own (relink does) |
 | `nestedAssetLayerFor`, `applyTargetLayer`, `recordNestedRootAssetOverride` | asset-level nested data (B) |
@@ -404,11 +406,11 @@ prefab records the value in that prefab's asset-level data for the nested instan
 database reports `Modified` for a prefab file changed on disk; a loaded prefab without
 unsaved changes is re-read and refreshed (`applyAssetChanges`).
 
-Kept from before for the current Inspector: `Prefab::setComponentOverride` /
-`clearComponentOverride` / `hasComponentOverride` (whole component, "any property"),
-`getPrefabComponentOverrides` (components with any override, root included),
-`canApplyComponentOverride` / `applyComponentOverride` (whole component; the root's
-default overrides are kept).
+Apply to the prefab of a nested instance root (`isNestedRootApplyTarget`, the first apply
+target of such a root) writes onto that prefab's root GameObject (its default overrides
+left out) and refreshes it. Every apply primitive refuses in Play mode.
+`Prefab::setComponentOverride` / `clearComponentOverride` / `hasComponentOverride` stay as
+bookkeeping helpers (whole component, no undo).
 
 ## 11. Export and Play
 
@@ -425,3 +427,85 @@ default overrides are kept).
   removed after its build.
 - Play (`registerPrefabManager`): the factory names a bare root after the prefab root and
   imports onto it (the import adds the root's components), as the export does.
+
+## 12. Editing instances (Unity semantics)
+
+**An edit on a GameObject of a prefab instance (its root included) is an override of that
+instance only.** The prefab asset changes through Apply (section 10's primitives, the
+Inspector's menus and Overrides dropdown) or in Prefab Mode; other instances and other
+scenes never see an instance edit. There is no "edit shared" path any more
+(`prefabPropertyChanged`, `prefabNameChanged`, `prefabStateChanged`,
+`addComponentToPrefab`, `removeComponentFromPrefab`, `applyComponentOverride` and
+"Override Prefab Component" are gone).
+
+| edit | override recorded (`ProjectPrefabInstanceEdit.cpp`) |
+|---|---|
+| a property (PropertyCmd, MultiPropertyCmd, gizmos: ObjectTransformCmd records only what moved) | the property (`recordPrefabEdit`) |
+| a whole component rewritten: Reset, Paste Component Values (ComponentValuesCmd) | the properties that now differ (`recordPrefabComponentEdit`, `diffComponentProperties`; `"*"` when no single property holds the change) |
+| mesh changed (MeshChangeCmd), model loaded (ModelLoadCmd) or cleared (ModelClearCmd) | `"*"` on the Mesh / Model; the model's old nodes that are prefab GameObjects become removed GameObject overrides, its new ones added GameObjects |
+| material linked / unlinked, animation track key created, terrain map created or deleted (its path) | that property |
+| terrain map painted (TerrainMapPatchCmd, the edit window's snapshots) | none: the map file is an asset (Unity's TerrainData); every loaded terrain using it is refreshed (`TerrainMapUtils::refreshSharing`) |
+| name, active, tag, layer (EntityNameCmd, EntityStateCmd) | the state bit (`recordPrefabStateEdit`) |
+| component added (AddComponentCmd) | an added component; one of the prefab's this instance had removed comes back as a `"*"` override |
+| component removed (RemoveComponentCmd) | a removed component; an added one is simply gone. What the component owned (an Action's or Animation's GameObjects) leaves this instance only (removed GameObject overrides) |
+
+- Not overrides: an instance root's default overrides (section 6), a component the
+  instance added (it is the instance's already), GameObjects added to the instance, edits in
+  Prefab Mode (`isEditingPrefabAsset`). A value set back equal to the prefab's stays
+  overridden until Revert (Unity).
+- **Undo**: each command keeps the GameObjects' overrides from before its first run
+  (`command/PrefabEditUndo.h`: `capture` before the edit, `restore` after the undo,
+  `mergeOlder` when commands merge, e.g. a drag), so one undo step puts values and
+  override state back together; a redo records again. Multi-selection edits are one step.
+- **Apply / Revert** run as `PrefabOverrideCmd` (one undo step each, snapshots of the
+  instances and the assets); several at once (multi-selection, Revert All, Apply All) as
+  one `PrefabOverridesCmd` (`PrefabOverridesCmd::revertAll` / `applyAll`: added GameObjects,
+  removed GameObjects, then state and components; Apply All goes to the instance's prefab,
+  the outermost, so nested instances' overrides become its overrides of them).
+- **Play mode**: edits while playing record overrides like at edit time, and Apply is
+  refused (`canApplyPrefabOverrides`; reordering an instance's GameObjects, which edits the
+  asset, too).
+  Play's snapshot of the played scene takes its instances' bookkeeping with it
+  (`capturePlayPrefabState`: every prefab's `instances[scene]` and the Missing Prefab
+  records); Stop's `restorePlaySnapshot` puts entities, components and that bookkeeping back,
+  so nothing done while playing reaches the asset, another scene or the scene after Stop.
+- **Prefab Mode (D)**: `Project::isEditingPrefabAsset(sceneId, entity)` (stub: false) says
+  which GameObjects' edits are asset edits; the record calls ignore those. The Prefab bar's
+  Open button waits for `App::openPrefabAsset(path)` (`PREFAB-MODE-WIRE` in
+  InspectorPrefabBar.cpp: set `prefabModeAvailable`, uncomment the call).
+
+### Inspector (`editor/window/InspectorPrefabBar.cpp`)
+
+- An overridden value: bold label (the UI font's bold, `App::getBoldFont`) and Unity's blue
+  bar in the left margin; right click on it: "Apply as Override in Prefab 'Outer'" ...
+  "Apply to Prefab 'Inner'" (the apply targets, outermost first) and "Revert", for every
+  selected GameObject overriding it. `propertyRow` names its property for the label
+  (`prefabRowProperty`); a custom row sets `prefabRowProperty` before `propertyHeader`.
+  An override of `submeshes[0].material` marks that row and the rows inside it.
+- A component: blue bar on its header when some property is overridden, plus a "+" badge
+  when the instance added it; its menu (right click or kebab) has the same Apply / Revert
+  entries for the whole component (added and removed ones included). A removed component
+  shows after the others as a struck-through "Name (Removed)" entry whose menu applies or
+  reverts the removal. Components following the prefab are drawn like any other.
+- The GameObject header: name, active, tag and layer bold with the bar when overridden,
+  right click for Apply / Revert.
+- The Prefab bar: "Prefab", Open, Select, Overrides. The Overrides dropdown: a tree by
+  GameObject of every override (GameObject state, modified / added / removed components,
+  added and removed GameObjects); the selected one shows a Prefab Source | Override
+  comparison, property by property, with its Revert and Apply (a menu of targets for nested
+  ones); Revert All / Apply All below.
+
+### Checking it headless
+
+`jasperengine-editor scene-dump --ops` runs, besides section 10's ops: `set` (a real
+PropertyCmd per GameObject, `also` for a multi-selection), `setName`, `setState`,
+`addComponent` / `removeComponent`, `delete`, `revertComponent`, `revertAll` / `applyAll`,
+`canApply` (prints whether and the targets), `playStart` / `playStop` (Play's snapshot and
+Stop's restore without running the game), `undo` / `redo`. The dump lists each
+GameObject's `overrides`. `tools/prefab-instance-edit-test.py` (FIXTURE=<TappyPlane
+fixture>) runs these checks on the `legacy` fixture (tools/prefab-fixtures.py): a member
+edit is recorded on that instance only and the asset file stays the same until Apply; Apply
+to the inner prefab or as an override in the outer one reaches exactly the instances it
+should; Revert, undo and redo restore values and overrides; edits while playing are gone
+after `playStop`; overrides survive a save and a reload.
+

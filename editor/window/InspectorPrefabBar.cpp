@@ -73,10 +73,10 @@ void editor::InspectorWindow::beginPrefabComponent(SceneProject* sceneProject, c
     prefabRow.type = type;
     prefabRow.readOnly = readOnly;
     for (Entity entity : entities){
-        PrefabObjectRef ref;
-        if (project->findPrefabObject(sceneProject->id, entity, ref)){
+        Prefab::ObjectOverrides overrides;
+        if (project->getPrefabEditOverrides(sceneProject->id, entity, overrides)){
             prefabRow.active = true;
-            break;
+            prefabRow.overrides[entity] = overrides;
         }
     }
 }
@@ -88,7 +88,16 @@ void editor::InspectorWindow::endPrefabComponent(){
 
 std::vector<std::string> editor::InspectorWindow::prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const{
     std::vector<std::string> matching;
-    const std::set<std::string> names = project->getOverriddenProperties(sceneProject->id, entity, type);
+    std::set<std::string> names;
+    auto cached = prefabRow.sceneProject == sceneProject ? prefabRow.overrides.find(entity) : prefabRow.overrides.end();
+    if (cached != prefabRow.overrides.end()){
+        auto found = cached->second.properties.find(type);
+        if (found != cached->second.properties.end()){
+            names = found->second;
+        }
+    }else{
+        names = project->getOverriddenProperties(sceneProject->id, entity, type);
+    }
     if (names.empty() || property.empty()){
         return matching;
     }

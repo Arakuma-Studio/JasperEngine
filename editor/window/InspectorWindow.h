@@ -289,6 +289,8 @@ namespace jasperengine::editor{
             ComponentType type = ComponentType::Transform;
             bool active = false;                // some of them are GameObjects of prefab instances
             bool readOnly = false;
+            // their overrides, read once per component drawn
+            std::map<Entity, Prefab::ObjectOverrides> overrides;
         };
         PrefabRowContext prefabRow;
         // The property the next propertyHeader draws (propertyRow sets it), cleared by it

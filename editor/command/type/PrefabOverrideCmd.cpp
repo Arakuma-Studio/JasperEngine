@@ -39,11 +39,9 @@ bool editor::PrefabOverrideCmd::execute(){
             targets.push_back(ref.path);
         }
     }
-    SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject){
+    if (!project->getScene(sceneId)){
         return false;
     }
-    wasModified = sceneProject->isModified;
     before = project->capturePrefabUndoState(sceneId, entity, targets);
 
     switch (operation){
