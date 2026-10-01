@@ -6,6 +6,7 @@
 #include "Stream.h"
 #include "Out.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -184,10 +185,12 @@ namespace {
     }
 
     // A model is its file: applying one loads it (ModelLoadCmd rebuilds the generated
-    // children into the GameObject's Transform and Mesh), the other two values are plain
-    // properties. `current` is null for a Model component added by the same command.
+    // children into the GameObject's Transform and Mesh), and applying no file unloads the
+    // current one (ModelClearCmd); the other two values are plain properties. `current` is
+    // null for a Model component added by the same command. A reset also puts back the
+    // references the user can set on an empty Model, its skeleton and animations.
     void addModelCommands(editor::MultiPropertyCmd* multi, editor::Project* project, uint32_t sceneId, Scene* scene, Entity entity,
-                          const ModelValue& model, const ModelComponent* current) {
+                          const ModelValue& model, const ModelComponent* current, bool reset = false) {
         const std::string currentFile = current ? current->filename : std::string();
         const bool currentMerge = current ? current->mergeStaticMeshes : false;
         if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge)) {
@@ -198,9 +201,27 @@ namespace {
             }
             multi->addCommand(std::make_unique<editor::ModelLoadCmd>(project, sceneId, entity, model.filename, model.mergeStaticMeshes));
         } else if (model.filename.empty()) {
+            if (current && editor::ModelClearCmd::hasContent(*current)) {
+                multi->addCommand(std::make_unique<editor::ModelClearCmd>(project, sceneId, entity));
+            }
             multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "mergeStaticMeshes", model.mergeStaticMeshes);
+            if (reset) {
+                multi->addPropertyCmd<Entity>(project, sceneId, entity, editor::ComponentType::ModelComponent, "skeleton", NULL_ENTITY);
+                multi->addPropertyCmd<std::vector<Entity>>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animations", std::vector<Entity>());
+            }
         }
         multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "enabled", model.enabled);
+    }
+
+    // A Model with a loaded file takes no file only by being emptied
+    bool canEmptyModels(editor::Project* project, uint32_t sceneId, Scene* scene, const std::vector<Entity>& entities, std::string* reason) {
+        for (Entity entity : entities) {
+            const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+            if (editor::ModelClearCmd::hasContent(model) && !editor::ModelClearCmd::canClear(project, sceneId, entity, reason)) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }
@@ -338,11 +359,7 @@ bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t scene
         }
     }
     if (type == ComponentType::ModelComponent && readModelValue(clip->value).filename.empty()) {
-        for (Entity entity : entities) {
-            if (!sceneProject->scene->getComponent<ModelComponent>(entity).filename.empty()) {
-                return fail("The copied Model has no file, and a loaded model cannot be emptied: remove the component instead");
-            }
-        }
+        return canEmptyModels(project, sceneId, sceneProject->scene, entities, reason);
     }
     return true;
 }
@@ -391,9 +408,9 @@ bool editor::ComponentValuesCmd::canReset(Project* project, uint32_t sceneId, co
         if (!hasComponent(sceneProject->scene, entity, type)) {
             return fail("Not every selected GameObject has a " + displayName(type));
         }
-        if (type == ComponentType::ModelComponent && !sceneProject->scene->getComponent<ModelComponent>(entity).filename.empty()) {
-            return fail("A loaded model cannot be emptied: load another model file or remove the component");
-        }
+    }
+    if (type == ComponentType::ModelComponent) {
+        return canEmptyModels(project, sceneId, sceneProject->scene, entities, reason);
     }
     return true;
 }
@@ -450,11 +467,11 @@ editor::Command* editor::ComponentValuesCmd::buildReset(Project* project, uint32
         return new ComponentValuesCmd(project, sceneId, entities, type, nullptr);
     }
 
-    // Only a model without a file resets (canReset): its two plain values
+    // A loaded model is emptied, then every value goes back to its default
     Scene* scene = project->getScene(sceneId)->scene;
     MultiPropertyCmd* multi = new MultiPropertyCmd();
     for (Entity entity : entities) {
-        addModelCommands(multi, project, sceneId, scene, entity, ModelValue(), nullptr);
+        addModelCommands(multi, project, sceneId, scene, entity, ModelValue(), &scene->getComponent<ModelComponent>(entity), true);
     }
     return multi;
 }

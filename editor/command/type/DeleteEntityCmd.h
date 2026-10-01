@@ -36,6 +36,7 @@ namespace jasperengine::editor{
     friend class Project;
     friend class CreateEntityCmd;
     friend class DuplicateEntityCmd;
+    friend class ModelClearCmd;
     friend class PasteEntitiesCmd;
     friend class RemoveComponentCmd;
 

@@ -13,7 +13,9 @@
 #include "yaml-cpp/yaml.h"
 
 #include <atomic>
+#include <map>
 #include <memory>
+#include <utility>
 
 namespace jasperengine::editor{
 
@@ -92,6 +94,11 @@ namespace jasperengine::editor{
         void finalizeLoad();
         void schedulePoll();
 
+        // Loads still running on a worker, by scene and Model entity
+        static std::map<std::pair<uint32_t, Entity>, ModelLoadCmd*>& getPendingLoads();
+        void setAsyncPending(bool pending);
+        void finishPendingLoad();
+
     public:
         ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath);
         ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath, bool mergeStaticMeshes);
@@ -104,6 +111,11 @@ namespace jasperengine::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // Whether a load into this Model is still running on a worker
+        static bool isLoadPending(uint32_t sceneId, Entity entity);
+        // Waits for a load into this Model still running on a worker and finishes it now
+        static void completePendingLoad(uint32_t sceneId, Entity entity);
     };
 
 }

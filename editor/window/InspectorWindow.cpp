@@ -21,6 +21,7 @@
 #include "command/type/EntityStateCmd.h"
 #include "command/type/SceneNameCmd.h"
 #include "command/type/MeshChangeCmd.h"
+#include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "command/type/AddComponentCmd.h"
@@ -6868,10 +6869,11 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 
         float availWidth = ImGui::GetContentRegionAvail().x;
         float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2;
+        float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_XMARK).x + ImGui::GetStyle().FramePadding.x * 2;
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
-        ImGui::BeginChild("modelfilename", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
+        ImGui::BeginChild("modelfilename", ImVec2(availWidth - buttonWidth - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x * 2, ImGui::GetFrameHeight()),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
         float childAvail = ImGui::GetContentRegionAvail().x;
@@ -6905,6 +6907,19 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
                     CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, relative.string()));
                 }
             }
+        }
+
+        // Unity's None: unloads the model and leaves the Model without a file
+        ImGui::SameLine();
+        std::string clearReason;
+        const bool canClearModel = ModelClearCmd::canClear(project, sceneProject->id, entity, &clearReason);
+        ImGui::BeginDisabled(!canClearModel);
+        if (ImGui::Button(ICON_FA_XMARK "##model_clear")) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelClearCmd(project, sceneProject->id, entity));
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", canClearModel ? "None: unload the model" : clearReason.c_str());
         }
 
         if (ImGui::BeginPopupModal("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
