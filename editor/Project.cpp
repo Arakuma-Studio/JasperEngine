@@ -4084,6 +4084,54 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     }
 }
 
+bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
+    if (!sceneProject) {
+        return false;
+    }
+    if (!sceneProject->scene || !sceneProject->playStateSnapshot || sceneProject->playStateSnapshot.IsNull()) {
+        sceneProject->playPrefabState = PlayPrefabState();
+        return false;
+    }
+    Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
+
+    // entities are still live, so the decode also removes components added during play
+    auto entitiesNode = sceneProject->playStateSnapshot["entities"];
+    size_t insertAt = 0;
+    for (const auto& entityNode : entitiesNode) {
+        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+
+        // A script can destroy entities while playing and the decode recreates them, but
+        // only the tracked list makes them visible to the editor again
+        for (Entity entity : restored) {
+            auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
+            if (it != sceneProject->entities.end()) {
+                insertAt = std::distance(sceneProject->entities.begin(), it) + 1;
+                continue;
+            }
+
+            insertAt = std::min(insertAt, sceneProject->entities.size());
+            sceneProject->entities.insert(sceneProject->entities.begin() + insertAt, entity);
+            insertAt++;
+        }
+    }
+
+    destroyPlayCreatedEntities(sceneProject);
+
+    deselectDestroyedEntities(sceneProject);
+
+    // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
+    CameraTextureLink::resolve(sceneProject->scene);
+
+    // Clear the snapshot
+    sceneProject->playStateSnapshot = YAML::Node();
+    sceneProject->playStateEntities.clear();
+
+    // The prefab instances' bookkeeping goes back with them: an override recorded, a
+    // GameObject removed or added while playing does not outlive Play
+    restorePlayPrefabState(sceneProject);
+    return true;
+}
+
 void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
@@ -4171,42 +4219,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         // Restore snapshot if present
-        const bool restoredFromSnapshot = sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull();
-        if (restoredFromSnapshot) {
-            Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
-
-            // entities are still live, so the decode also removes components added during play
-            auto entitiesNode = sceneProject->playStateSnapshot["entities"];
-            size_t insertAt = 0;
-            for (const auto& entityNode : entitiesNode) {
-                std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
-
-                // A script can destroy entities while playing and the decode recreates them, but
-                // only the tracked list makes them visible to the editor again
-                for (Entity entity : restored) {
-                    auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
-                    if (it != sceneProject->entities.end()) {
-                        insertAt = std::distance(sceneProject->entities.begin(), it) + 1;
-                        continue;
-                    }
-
-                    insertAt = std::min(insertAt, sceneProject->entities.size());
-                    sceneProject->entities.insert(sceneProject->entities.begin() + insertAt, entity);
-                    insertAt++;
-                }
-            }
-
-            destroyPlayCreatedEntities(sceneProject);
-
-            deselectDestroyedEntities(sceneProject);
-
-            // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
-            CameraTextureLink::resolve(sceneProject->scene);
-
-            // Clear the snapshot
-            sceneProject->playStateSnapshot = YAML::Node();
-            sceneProject->playStateEntities.clear();
-        }
+        const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {
@@ -6630,6 +6643,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         registerPrefabManager();
 
         YAML::Node playSnapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
+        // with what describes its prefab instances, which Stop puts back with it
+        PlayPrefabState playPrefabState = capturePlayPrefabState(mainSceneProject);
 
         // Play reuses the edit-time Scene, so anything alive now is authored or engine
         // owned. Whatever appears later belongs to the play session.
@@ -6694,7 +6709,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         // constructors observing a current GL context behave correctly,
         // and so that finalizeStart is invoked from the UI thread.
         editor::getEditorHost().enqueueMainThreadTask(
-            [this, session, sceneId, hasCppScripts, playSnapshot = std::move(playSnapshot), playEntities = std::move(playEntities)]() mutable {
+            [this, session, sceneId, hasCppScripts, playSnapshot = std::move(playSnapshot), playEntities = std::move(playEntities),
+             playPrefabState = std::move(playPrefabState)]() mutable {
                 if (session->cancelled.load(std::memory_order_acquire)) {
                     session->startupThreadDone.store(true, std::memory_order_release);
                     return;
@@ -6713,6 +6729,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                 sceneProject->playStateSnapshot = std::move(playSnapshot);
                 sceneProject->playStateEntities = std::move(playEntities);
+                sceneProject->playPrefabState = std::move(playPrefabState);
                 sceneProject->playStateModified = sceneProject->isModified;
 
                 std::vector<PlayRuntimeScene> runtimeScenesToInitialize;

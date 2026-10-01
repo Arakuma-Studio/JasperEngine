@@ -27,6 +27,7 @@
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
 #include "resources/fonts/jetbrains-mono-regular_ttf.h"
+#include "resources/fonts/roboto-latin-bold_ttf.h"
 //#include "recources/fonts/roboto-v20-latin-regular_ttf.h"
 #include "util/DefaultFont.h"
 #include "util/DefaultFontArabic.h"
@@ -91,6 +92,7 @@ void scaleDockChildren(ImGuiDockNode* node, float ratio) {
 }
 
 ImFont* editor::App::codeFont = nullptr;
+ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
     mainThreadId = std::this_thread::get_id();
@@ -1554,6 +1556,10 @@ ImFont* editor::App::getCodeFont() {
     return codeFont ? codeFont : ImGui::GetIO().Fonts->Fonts[0];
 }
 
+ImFont* editor::App::getBoldFont() {
+    return boldFont ? boldFont : ImGui::GetFont();
+}
+
 void editor::App::setup() {
     mainThreadId = std::this_thread::get_id();
 
@@ -1625,6 +1631,18 @@ void editor::App::setup() {
     configArabic.OversampleH = 2;
     configArabic.OversampleV = 2;
     configArabic.RasterizerMultiply = 1.5f;
+    io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, uiFontSize, &configArabic);
+
+    // The same, bold, with the same icons (the Inspector's overridden prefab values)
+    ImFontConfig configBold;
+    strcpy(configBold.Name, "roboto-bold (15 px)");
+    configBold.FontDataOwnedByAtlas = false;
+    configBold.OversampleH = 2;
+    configBold.OversampleV = 2;
+    configBold.RasterizerMultiply = 1.5f;
+    boldFont = io.Fonts->AddFontFromMemoryTTF(roboto_bold_ttf, roboto_bold_ttf_len, uiFontSize, &configBold);
+    ImFontConfig configBoldIcons = config2;
+    io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, uiFontSize, &configBoldIcons, icon_ranges2);
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, uiFontSize, &configArabic);
 
     ImFontConfig config3;

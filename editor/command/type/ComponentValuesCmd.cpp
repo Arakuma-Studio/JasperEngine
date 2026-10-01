@@ -261,8 +261,7 @@ bool editor::ComponentValuesCmd::execute(){
         }
 
         target.before = EntityClipboard::encodeComponent(scene, target.entity, type);
-        const Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, target.entity));
-        target.overridden = prefab && prefab->hasComponentOverride(sceneId, target.entity, type);
+        prefabUndo.capture(project, sceneId, target.entity);
 
         std::vector<std::string> skip;
         YAML::Node source = clip ? clip->value :
@@ -284,9 +283,9 @@ bool editor::ComponentValuesCmd::execute(){
             }
         }
 
-        if (project->isEntityInPrefab(sceneId, target.entity)) {
-            project->prefabPropertyChanged(sceneId, target.entity, type, {});
-        }
+        YAML::Node before(YAML::NodeType::Map);
+        before[Catalog::getComponentName(type, true)] = target.before;
+        project->recordPrefabComponentEdit(sceneId, target.entity, type, before);
         changed = true;
     }
 
@@ -317,15 +316,8 @@ void editor::ComponentValuesCmd::undo(){
             Catalog::updateEntity(scene, it->entity, updateFlags);
         }
 
-        // A reference the paste pointed outside the prefab made the component an override
-        Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, it->entity));
-        if (prefab && !it->overridden && prefab->hasComponentOverride(sceneId, it->entity, type)) {
-            prefab->clearComponentOverride(sceneId, it->entity, type);
-        }
-        if (project->isEntityInPrefab(sceneId, it->entity)) {
-            project->prefabPropertyChanged(sceneId, it->entity, type, {});
-        }
     }
+    prefabUndo.restore(project, sceneId);
 
     if (type == ComponentType::CameraComponent) {
         CameraTextureLink::resolve(scene);

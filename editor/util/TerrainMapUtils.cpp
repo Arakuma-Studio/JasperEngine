@@ -106,6 +106,34 @@ void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity,
     }
 }
 
+void editor::TerrainMapUtils::refreshSharing(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
+    Texture* texture = terrain ? findTexture(*terrain, ref) : nullptr;
+    if (!texture || texture->getPath(0).empty()){
+        return;
+    }
+    const std::string path = texture->getPath(0);
+    for (SceneProject& other : project->getScenes()){
+        if (!other.scene){
+            continue;
+        }
+        auto terrains = other.scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++){
+            const Entity otherEntity = terrains->getEntity(i);
+            if (other.id == sceneId && otherEntity == entity){
+                continue;
+            }
+            Texture* otherTexture = findTexture(terrains->getComponentFromIndex(i), ref);
+            if (otherTexture && otherTexture->getPath(0) == path){
+                *otherTexture = *texture;
+                refresh(&other, otherEntity, ref);
+                other.needUpdateRender = true;
+            }
+        }
+    }
+}
+
 std::vector<unsigned char> editor::TerrainMapUtils::copyRegion(const unsigned char* pixels, int mapWidth, int bytesPerTexel, const TerrainMapRegion& region){
     const size_t rowBytes = static_cast<size_t>(region.width()) * static_cast<size_t>(bytesPerTexel);
     std::vector<unsigned char> regionPixels(rowBytes * static_cast<size_t>(region.height()));

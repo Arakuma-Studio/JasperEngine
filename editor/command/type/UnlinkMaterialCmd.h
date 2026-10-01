@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "command/PrefabEditUndo.h"
 #include "Catalog.h"
 #include <string>
 #include <map>
@@ -21,6 +22,7 @@ namespace jasperengine::editor{
         std::string propertyName;
         unsigned int submeshIndex;
         bool wasModified;
+        PrefabEditUndo prefabUndo;
         std::function<void()> onValueChanged;
 
         struct EntityData {

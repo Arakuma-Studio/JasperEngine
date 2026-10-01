@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "command/PrefabEditUndo.h"
 #include <cstdint>
 #include <string>
 
@@ -21,6 +22,7 @@ namespace jasperengine::editor{
         Entity entity;
 
         bool wasModified;
+        PrefabEditUndo prefabUndo;
 
     public:
         EntityNameCmd(Project* project, uint32_t sceneId, Entity entity, std::string name);

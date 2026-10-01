@@ -36,6 +36,7 @@ bool editor::LinkMaterialCmd::execute(){
 
     PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, componentType, propertyName);
     if (prop.ref) {
+        prefabUndo.capture(project, sceneId, entity);
         Material* matRef = static_cast<Material*>(prop.ref);
         *matRef = newMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
@@ -47,9 +48,8 @@ bool editor::LinkMaterialCmd::execute(){
             *overrideMask |= propertyFields;
         }
 
-        if (project->isEntityInPrefab(sceneId, entity)){
-            project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
-        }
+        // Unity: a prefab instance's material changed is an override of it
+        project->recordPrefabEdit(sceneId, entity, componentType, {propertyName});
     }
 
     // Link the new material file
@@ -86,11 +86,8 @@ void editor::LinkMaterialCmd::undo(){
         if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
             *overrideMask = oldOverrideFields;
         }
-
-        if (project->isEntityInPrefab(sceneId, entity)){
-            project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
-        }
     }
+    prefabUndo.restore(project, sceneId);
 
     // Re-link old file if there was one
     if (!oldLinkedFilePath.empty()) {

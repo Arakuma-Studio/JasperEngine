@@ -83,11 +83,11 @@ bool editor::CreateTrackKeyCmd::execute(){
         trackEntity = NULL_ENTITY;
         return false;
     }
+    prefabUndo.capture(project, sceneId, animEntity);
     *actionsRef = newActions;
     Catalog::updateEntity(scene, animEntity, prop.updateFlags);
-    if (project->isEntityInPrefab(sceneId, animEntity)){
-        project->prefabPropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
-    }
+    // Unity: the animation of a prefab instance's GameObject edited is an override of it
+    project->recordPrefabEdit(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
 
     sceneProject->isModified = true;
     return true;
@@ -105,9 +105,6 @@ void editor::CreateTrackKeyCmd::undo(){
         if (auto* actionsRef = static_cast<std::vector<ActionFrame>*>(prop.ref)){
             *actionsRef = oldActions;
             Catalog::updateEntity(scene, animEntity, prop.updateFlags);
-            if (project->isEntityInPrefab(sceneId, animEntity)){
-                project->prefabPropertyChanged(sceneId, animEntity, ComponentType::AnimationComponent, {"actions"});
-            }
         }else{
             anim->actions = oldActions;
         }
@@ -116,6 +113,7 @@ void editor::CreateTrackKeyCmd::undo(){
     if (createCmd){
         createCmd->undo();
     }
+    prefabUndo.restore(project, sceneId);
     trackEntity = NULL_ENTITY;
     sceneProject->isModified = wasModified;
 }

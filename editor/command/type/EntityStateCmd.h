@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "command/PrefabEditUndo.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -34,6 +35,8 @@ namespace jasperengine::editor{
         EntityStateValue newValue;
         std::map<Entity, EntityStateValue> oldValues;
         bool wasModified = false;
+        // Unity: a prefab instance's GameObject state edited is an override of it
+        PrefabEditUndo prefabUndo;
 
         static EntityStateValue read(Scene* scene, Entity entity){
             EntityStateValue value;
@@ -48,11 +51,6 @@ namespace jasperengine::editor{
                 case EntityStateField::Active: scene->setEntityActive(entity, value.active); break;
                 case EntityStateField::Tag: scene->setEntityTag(entity, value.tag); break;
                 case EntityStateField::Layer: scene->setEntityLayer(entity, value.layer); break;
-            }
-            // Shared with the prefab like a name (an instance root's is an override), so it
-            // is saved and other instances follow
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->prefabStateChanged(sceneId, entity, stateBit());
             }
         }
 
@@ -109,7 +107,15 @@ namespace jasperengine::editor{
                     continue;
                 }
                 oldValue = read(sceneProject->scene, entity);
+                prefabUndo.capture(project, sceneId, entity);
                 write(sceneProject->scene, entity, newValue);
+                const EntityStateValue now = read(sceneProject->scene, entity);
+                const bool differs = (field == EntityStateField::Active && now.active != oldValue.active) ||
+                    (field == EntityStateField::Tag && now.tag != oldValue.tag) ||
+                    (field == EntityStateField::Layer && now.layer != oldValue.layer);
+                if (differs){
+                    project->recordPrefabStateEdit(sceneId, entity, stateBit());
+                }
                 changed = true;
             }
 
@@ -131,6 +137,7 @@ namespace jasperengine::editor{
                     write(sceneProject->scene, entity, oldValue);
                 }
             }
+            prefabUndo.restore(project, sceneId);
 
             sceneProject->isModified = wasModified;
         }

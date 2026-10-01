@@ -495,6 +495,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Project.cpp
     ${EDITOR_DIR}/project/ProjectPrefabEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabImport.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabInstanceEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabMissing.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
@@ -631,7 +632,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
-    ${EDITOR_DIR}/command/type/ComponentToPrefabLocalCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/PrefabOverridesCmd.cpp

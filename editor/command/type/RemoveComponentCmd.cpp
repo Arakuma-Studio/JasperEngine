@@ -61,106 +61,25 @@ bool editor::RemoveComponentCmd::execute() {
         if (!ownedEntitiesCaptured) {
             ownedEntitiesCaptured = true;
 
-            std::map<uint32_t, std::vector<Entity>> ownersByScene;
-            // Owners whose component goes from this instance only (not a Prefab edit): what they
-            // own of the Prefab is removed from the instance only too
-            std::set<std::pair<uint32_t, Entity>> instanceOwners;
-            auto addOwner = [&](uint32_t ownerSceneId, Entity owner) {
-                SceneProject* ownerScene = project->getScene(ownerSceneId);
-                if (ownerScene && hasOwnedComponent(ownerScene->scene, owner, componentType)) {
-                    appendUnique(ownersByScene[ownerSceneId], owner);
-                }
-            };
-
+            // What the removed component owns goes with it, from this scene only: on a prefab
+            // instance that is an instance edit too, so the owned prefab GameObjects become
+            // removed GameObject overrides (DeleteEntityCmd's default)
+            std::vector<Entity> owners;
             for (const RemoveComponentData& entityData : entities) {
-                fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
-                Prefab* prefab = project->getPrefab(prefabPath);
-                bool sharedComponent = prefab &&
-                    !prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
-                if (!sharedComponent) {
-                    addOwner(sceneId, entityData.entity);
-                    instanceOwners.insert({sceneId, entityData.entity});
-                    continue;
+                if (hasOwnedComponent(scene, entityData.entity, componentType)) {
+                    appendUnique(owners, entityData.entity);
                 }
-
-                Entity registryEntity = prefab->getRegistryEntity(sceneId, entityData.entity);
-                if (registryEntity == NULL_ENTITY) {
-                    continue;
-                }
-                for (const auto& [otherSceneId, instances] : prefab->instances) {
-                    SceneProject* otherScene = project->getScene(otherSceneId);
-                    if (!otherScene || !otherScene->scene) {
-                        continue;
-                    }
-                    for (const Prefab::Instance& instance : instances) {
-                        Entity otherOwner = prefab->getLocalEntity(
-                            otherSceneId, instance.instanceId, registryEntity);
-                        if (otherOwner != NULL_ENTITY &&
-                            !prefab->hasComponentOverride(otherSceneId, otherOwner, componentType)) {
-                            addOwner(otherSceneId, otherOwner);
-                        }
+            }
+            std::vector<Entity> targets;
+            for (Entity owner : owners) {
+                for (Entity target : ProjectUtils::getOwnedCascadeEntities(scene, owner, componentType)) {
+                    if (scene->isEntityCreated(target) && std::find(owners.begin(), owners.end(), target) == owners.end()) {
+                        appendUnique(targets, target);
                     }
                 }
             }
-
-            std::vector<uint32_t> orderedSceneIds;
-            if (ownersByScene.count(sceneId)) {
-                orderedSceneIds.push_back(sceneId);
-            }
-            for (const auto& [ownerSceneId, owners] : ownersByScene) {
-                if (ownerSceneId != sceneId) {
-                    orderedSceneIds.push_back(ownerSceneId);
-                }
-            }
-
-            std::map<uint32_t, std::vector<Entity>> targetsByScene;
-            std::map<uint32_t, std::vector<Entity>> instanceTargetsByScene;
-            std::set<std::pair<fs::path, Entity>> sharedTargets;
-            std::set<std::pair<uint32_t, Entity>> localTargets;
-
-            for (uint32_t ownerSceneId : orderedSceneIds) {
-                SceneProject* ownerScene = project->getScene(ownerSceneId);
-                const std::vector<Entity>& preservedOwners = ownersByScene.at(ownerSceneId);
-                for (Entity owner : preservedOwners) {
-                    const bool instanceOwner = instanceOwners.count({ownerSceneId, owner}) != 0;
-                    for (Entity target : ProjectUtils::getOwnedCascadeEntities(
-                            ownerScene->scene, owner, componentType)) {
-                        if (!ownerScene->scene->isEntityCreated(target)) {
-                            continue;
-                        }
-                        if (std::find(preservedOwners.begin(), preservedOwners.end(), target) != preservedOwners.end()) {
-                            continue;
-                        }
-
-                        fs::path targetPrefabPath = project->findPrefabPathFor(ownerSceneId, target);
-                        Prefab* targetPrefab = project->getPrefab(targetPrefabPath);
-                        Entity registryTarget = targetPrefab ?
-                            targetPrefab->getRegistryEntity(ownerSceneId, target) : NULL_ENTITY;
-                        if (registryTarget != NULL_ENTITY && !instanceOwner) {
-                            if (sharedTargets.insert({targetPrefabPath, registryTarget}).second) {
-                                targetsByScene[ownerSceneId].push_back(target);
-                            }
-                        } else if (localTargets.insert({ownerSceneId, target}).second) {
-                            (instanceOwner ? instanceTargetsByScene : targetsByScene)[ownerSceneId].push_back(target);
-                        }
-                    }
-                }
-            }
-
-            for (uint32_t ownerSceneId : orderedSceneIds) {
-                auto targets = targetsByScene.find(ownerSceneId);
-                if (targets != targetsByScene.end() && !targets->second.empty()) {
-                    DeleteEntityCmd* ownedDelete = new DeleteEntityCmd(project,
-                        ownerSceneId, targets->second, true, ownersByScene.at(ownerSceneId));
-                    // The owner's component leaves the Prefab, and so do what it owns there
-                    ownedDelete->setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
-                    ownedEntityDeletes.emplace_back(ownedDelete);
-                }
-                auto instanceTargets = instanceTargetsByScene.find(ownerSceneId);
-                if (instanceTargets != instanceTargetsByScene.end() && !instanceTargets->second.empty()) {
-                    ownedEntityDeletes.emplace_back(new DeleteEntityCmd(project,
-                        ownerSceneId, instanceTargets->second, true, ownersByScene.at(ownerSceneId)));
-                }
+            if (!targets.empty()) {
+                ownedEntityDeletes.emplace_back(new DeleteEntityCmd(project, sceneId, targets, true, owners));
             }
         }
 
@@ -169,47 +88,20 @@ bool editor::RemoveComponentCmd::execute() {
         }
 
         for (RemoveComponentData& entityData : entities){
-
-            fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
-            Prefab* prefab = project->getPrefab(prefabPath);
-
-            if (prefab && componentType == ComponentType::Transform){
+            entityData.removed = false;
+            if (!scene->isEntityCreated(entityData.entity)) {
+                continue;
+            }
+            PrefabObjectRef ref;
+            if (componentType == ComponentType::Transform && project->findPrefabObject(sceneId, entityData.entity, ref)){
                 Out::error("Cannot remove Transform component from prefab entity '%s' in scene '%s'", scene->getEntityName(entityData.entity).c_str(), sceneProject->name.c_str());
                 continue;
             }
 
-            if (prefab && !prefab->hasComponentOverride(sceneId, entityData.entity, componentType)){
-
-                entityData.recovery = project->removeComponentFromPrefab(sceneId, entityData.entity, componentType);
-
-            }else{
-
-                entityData.oldComponent = ProjectUtils::removeEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, true);
-
-                if (prefab){
-                    entityData.hasOverride = prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
-                    if (entityData.hasOverride){
-                        entityData.overriddenProperties = project->getOverriddenProperties(sceneId, entityData.entity, componentType);
-                        prefab->clearComponentOverride(sceneId, entityData.entity, componentType);
-                    }
-                    // The prefab GameObject still has it: this instance removed it (or, added
-                    // by the instance, it is simply gone)
-                    PrefabObjectRef ref;
-                    if (project->findPrefabObject(sceneId, entityData.entity, ref)) {
-                        auto overrides = ref.instance->overrides.find(entityData.entity);
-                        if (overrides != ref.instance->overrides.end() && overrides->second.addedComponents.erase(componentType)) {
-                            entityData.recordedRemoval = false;
-                            entityData.wasAdded = true;
-                            if (overrides->second.empty()) {
-                                ref.instance->overrides.erase(overrides);
-                            }
-                        } else {
-                            entityData.recordedRemoval = project->recordRemovedComponent(sceneId, entityData.entity, componentType);
-                        }
-                    }
-                }
-
-            }
+            prefabUndo.capture(project, sceneId, entityData.entity);
+            entityData.oldComponent = ProjectUtils::removeEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, true);
+            entityData.removed = true;
+            project->recordPrefabComponentRemoved(sceneId, entityData.entity, componentType);
         }
 
         ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
@@ -230,36 +122,11 @@ void editor::RemoveComponentCmd::undo() {
         Scene* scene = sceneProject->scene;
 
         for (RemoveComponentData& entityData : entities){
-            if (entityData.recovery.size() > 0){
-
-                project->addComponentToPrefab(sceneId, entityData.entity, componentType, entityData.recovery, true);
-
-            }else{
-
+            if (entityData.removed && scene->isEntityCreated(entityData.entity)){
                 ProjectUtils::addEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, entityData.oldComponent);
-
-                PrefabObjectRef ref;
-                if (project->findPrefabObject(sceneId, entityData.entity, ref)) {
-                    if (entityData.recordedRemoval) {
-                        auto overrides = ref.instance->overrides.find(entityData.entity);
-                        if (overrides != ref.instance->overrides.end()) {
-                            overrides->second.removedComponents.erase(componentType);
-                            if (overrides->second.empty()) {
-                                ref.instance->overrides.erase(overrides);
-                            }
-                        }
-                    }
-                    if (entityData.wasAdded) {
-                        ref.instance->overrides[entityData.entity].addedComponents.insert(componentType);
-                    }
-                    if (entityData.hasOverride) {
-                        project->recordPropertyOverride(sceneId, entityData.entity, componentType,
-                            std::vector<std::string>(entityData.overriddenProperties.begin(), entityData.overriddenProperties.end()));
-                    }
-                }
-
             }
         }
+        prefabUndo.restore(project, sceneId);
 
         // Restore owned entities after their owner components are back. DeleteEntityCmd then
         // also repairs those components if an occupied ID forced a replacement allocation.
@@ -296,6 +163,7 @@ bool editor::RemoveComponentCmd::mergeWith(Command* otherCommand){
             for (RemoveComponentData& otherEntityData :  otherCmd->entities){
                 entities.push_back(otherEntityData);
             }
+            prefabUndo.mergeOlder(otherCmd->prefabUndo);
 
             wasModified = wasModified && otherCmd->wasModified;
 

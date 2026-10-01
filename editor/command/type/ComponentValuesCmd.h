@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "Project.h"
 #include "Catalog.h"
+#include "command/PrefabEditUndo.h"
 #include "util/EntityClipboard.h"
 
 #include <cstdint>
@@ -26,7 +27,6 @@ namespace jasperengine::editor {
         struct Target {
             Entity entity = NULL_ENTITY;
             YAML::Node before;          // The component as it was, for undo
-            bool overridden = false;    // Prefab override state before the change
         };
 
         Project* project;
@@ -35,6 +35,9 @@ namespace jasperengine::editor {
         std::shared_ptr<const ComponentClip> clip; // Null: reset to defaults
         std::vector<Target> targets;
         bool wasModified = false;
+        // Unity: the properties a reset or paste changes on a prefab instance's GameObject
+        // are overrides of it
+        PrefabEditUndo prefabUndo;
 
     public:
         ComponentValuesCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities, ComponentType type,
