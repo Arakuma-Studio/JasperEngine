@@ -162,7 +162,7 @@ void ConsoleWindow::clear() {
 ConsoleWindow::Severity ConsoleWindow::severityOf(LogType type) {
     switch (type) {
         case LogType::Warning: return SEVERITY_WARNING;
-        case LogType::Error:   return SEVERITY_ERROR;
+        case LogType::Error:   return SEVERITY_ERROR_MESSAGE;
         default:               return SEVERITY_LOG;
     }
 }
@@ -463,7 +463,7 @@ void ConsoleWindow::showToolbar() {
     const Counter counters[] = {
         { SEVERITY_LOG, LogType::Info, "Show log messages" },
         { SEVERITY_WARNING, LogType::Warning, "Show warnings" },
-        { SEVERITY_ERROR, LogType::Error, "Show errors" },
+        { SEVERITY_ERROR_MESSAGE, LogType::Error, "Show errors" },
     };
     const float iconGap = Theme::dpi(4.0f);
     std::string counterLabels[SEVERITY_COUNT];

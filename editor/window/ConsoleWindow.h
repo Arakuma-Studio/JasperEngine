@@ -32,7 +32,7 @@ namespace jasperengine::editor {
     private:
         // Severity buckets the counters and filters work on. Info and Success
         // are "Log"; Build (compiler/shader output) folds into Log as well.
-        enum Severity { SEVERITY_LOG = 0, SEVERITY_WARNING = 1, SEVERITY_ERROR = 2, SEVERITY_COUNT = 3 };
+        enum Severity { SEVERITY_LOG = 0, SEVERITY_WARNING = 1, SEVERITY_ERROR_MESSAGE = 2, SEVERITY_COUNT = 3 };
 
         struct Row {
             size_t logIndex;                 // entry shown (the first occurrence when collapsed)
