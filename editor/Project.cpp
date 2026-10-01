@@ -4124,6 +4124,34 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
         }
     }
 
+    // A GameObject a script destroyed (GameObject.destroy) comes back at the end of its
+    // parent's branch: siblings go back to the snapshot's order
+    Scene* scene = sceneProject->scene;
+    std::function<void(const YAML::Node&)> restoreOrder = [&](const YAML::Node& list) {
+        if (!list || !list.IsSequence()) {
+            return;
+        }
+        Entity previous = NULL_ENTITY;
+        for (const auto& node : list) {
+            if (!node.IsMap() || !node["entity"]) {
+                continue;
+            }
+            const Entity entity = node["entity"].as<Entity>();
+            if (!scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity)) {
+                continue;
+            }
+            if (previous != NULL_ENTITY) {
+                auto transforms = scene->getComponentArray<Transform>();
+                if (transforms->getIndex(entity) < transforms->getIndex(previous)) {
+                    scene->moveChildToIndex(entity, scene->findBranchLastIndex(previous) + 1);
+                }
+            }
+            previous = entity;
+            restoreOrder(node["children"]);
+        }
+    };
+    restoreOrder(entitiesNode);
+
     destroyPlayCreatedEntities(sceneProject);
 
     deselectDestroyedEntities(sceneProject);

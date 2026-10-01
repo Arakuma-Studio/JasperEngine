@@ -9090,11 +9090,12 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
     }
 }
 
-// A script property of type Prefab (Unity's GameObject field holding a prefab): the prefab's
-// name, a drop target for a .prefab from the Project window, and a button back to None. Kept
-// by GUID (the path is a hint), so it follows the prefab when it is renamed or moved.
+// The value of a script property of type Prefab (Unity's GameObject field holding a prefab):
+// the prefab's name, a drop target for a .prefab from the Project window, and a button back
+// to None. Kept by GUID (the path is a hint), so it follows the prefab when it is renamed or
+// moved.
 static void drawPrefabScriptProperty(editor::Project* project, editor::SceneProject* sceneProject, const std::vector<Entity>& entities,
-        editor::ComponentType cpType, const std::string& propertyId, const std::string& displayName,
+        editor::ComponentType cpType, const std::string& propertyId,
         const std::function<void()>& onValueChanged, editor::Command*& cmd, bool& finishProperty) {
     using namespace editor;
 
@@ -9140,12 +9141,6 @@ static void drawPrefabScriptProperty(editor::Project* project, editor::SceneProj
         }
         finishProperty = true;
     };
-
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(displayName.c_str());
-    ImGui::TableNextColumn();
 
     const float clearWidth = ImGui::GetFrameHeight();
     const float fieldWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth - ImGui::GetStyle().ItemSpacing.x);
@@ -9714,7 +9709,11 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     };
 
                     if (prop.type == ScriptPropertyType::Prefab) {
-                        drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, displayName, propSettings.onValueChanged, cmd, finishProperty);
+                        // the label as the other rows draw it (a prefab instance's overrides shown)
+                        prefabRowProperty = propertyId;
+                        propertyHeader(displayName, -1, false, false);
+                        prefabRowProperty.clear();
+                        drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, propSettings.onValueChanged, cmd, finishProperty);
                         continue;
                     }
 

@@ -172,6 +172,25 @@ function PrefabRuntimeTest:onUpdate()
     if self.frame == 1 then
         -- destroy() waits for the end of the frame
         check(scene:isEntityCreated(self.atEnd), "destroy removed the GameObject before the end of the frame")
+
+        -- a copy of the prefab instance placed in the scene (its scripts started after init)
+        local placed = scene:findEntity("Enemy")
+        if check(placed ~= NULL_ENTITY, "the scene's Enemy instance is missing") then
+            check(PRT.enemies[placed] ~= nil, "the scene's Enemy instance script did not start")
+            PRT.enemies[placed].speed = 3
+            local instanceCopy = GameObject.instantiate(GameObject(scene, placed))
+            check(instanceCopy.name == "Enemy(Clone)", "the instance's copy is named %s", instanceCopy.name)
+            checkVector(instanceCopy.position, 1, 2, 3, "the instance's copy position")
+            check(scene:findEntity("Hub", instanceCopy.entity) ~= NULL_ENTITY, "the instance's copy has no nested Hub")
+            local copyScript = PRT.enemies[instanceCopy.entity]
+            if check(copyScript ~= nil, "the instance's copy script did not start") then
+                check(near(copyScript.speed, 3), "the instance's copy speed is %s, not 3", tostring(copyScript.speed))
+                check(scene:isParentOf(instanceCopy.entity, copyScript.body.entity), "the instance's copy body is not its own")
+            end
+            self.instanceCopy = instanceCopy.entity
+            GameObject.destroyImmediate(instanceCopy)
+            self.expectedDestroyed = self.expectedDestroyed + 1
+        end
         self.frameStart = os.clock()
     elseif self.frame == 2 then
         log("the frame destroying %d GameObjects (destroy) took %.1f ms", COUNT + 1, (os.clock() - self.frameStart) * 1000)
