@@ -221,11 +221,11 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
     // The layers between the prefab and this instance (when it is nested)
     for (PrefabInstanceData* layer : assetLayersOf(this, prefabAssets, sceneProject, ref.instance->rootEntity)) {
         auto entry = layer->objects.find(ref.registryEntity);
-        if (entry == layer->objects.end() || !entry->second.values) {
+        if (entry == layer->objects.end() || !entry->second.values.IsMap()) {
             continue;
         }
         auto names = entry->second.overrides.properties.find(type);
-        const YAML::Node value = entry->second.values["components"] ? entry->second.values["components"][componentKey(type)] : YAML::Node();
+        const YAML::Node value = entry->second.values["components"] ? entry->second.values["components"][componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
         if (names == entry->second.overrides.properties.end() || !value) {
             continue;
         }
@@ -586,7 +586,7 @@ bool editor::Project::revertStateOverride(uint32_t sceneId, Entity entity, uint8
     int layerValue = registry->getEntityLayer(ref.registryEntity);
     for (PrefabInstanceData* layer : assetLayersOf(this, prefabAssets, sceneProject, ref.instance->rootEntity)) {
         auto entry = layer->objects.find(ref.registryEntity);
-        if (entry == layer->objects.end() || !entry->second.values) continue;
+        if (entry == layer->objects.end() || !entry->second.values.IsMap()) continue;
         const YAML::Node values = entry->second.values;
         const uint8_t state = entry->second.overrides.state;
         if ((state & PrefabObjectOverrides::StateName) && values["name"]) name = values["name"].as<std::string>();

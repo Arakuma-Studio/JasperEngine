@@ -13,6 +13,8 @@
 #include "Stream.h"
 #include "Catalog.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/CreatePrefabCmd.h"
+#include "command/type/ImportPrefabCmd.h"
 #include "command/type/EntityStateCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
 #include "command/type/RemoveComponentCmd.h"
@@ -766,6 +768,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //       then prefabPropertyChanged when shared, the Inspector's edit-shared path) |
 //   setState {entity, active|tag|layer}  (EntityStateCmd's path) |
 //   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
+//   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
 //   record|revert|apply Property|State|AddedComponent|RemovedComponent
 //       {entity, component, properties, state, target}  (PrefabOverrideCmd)
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
@@ -873,6 +876,20 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             if (op["active"]) runCommand(EntityStateCmd::active(&project, sceneProject->id, {entity}, op["active"].as<bool>()));
             if (op["tag"]) runCommand(EntityStateCmd::tag(&project, sceneProject->id, {entity}, op["tag"].as<std::string>()));
             if (op["layer"]) runCommand(EntityStateCmd::layer(&project, sceneProject->id, {entity}, op["layer"].as<int>()));
+            continue;
+        }
+        if (name == "createPrefab") {
+            // as the Hierarchy's Create Prefab: the GameObject (with its project context)
+            runCommand(new CreatePrefabCmd(&project, sceneProject->id, op["path"].as<std::string>(),
+                Stream::encodeEntity(entity, scene, &project, sceneProject)));
+            continue;
+        }
+        if (name == "instantiate") {
+            // a prefab dropped on the GameObject (ImportPrefabCmd)
+            ImportPrefabCmd* command = new ImportPrefabCmd(&project, sceneProject->id, op["prefab"].as<std::string>(),
+                op["below"] && op["below"].as<bool>() ? entity : NULL_ENTITY, true);
+            command->setQuiet(true);
+            runCommand(command);
             continue;
         }
         if (name == "addComponent") {

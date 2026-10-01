@@ -50,14 +50,16 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     }
     const std::string transformKey = Catalog::getComponentName(ComponentType::Transform, true);
     const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
-    YAML::Node rootNode;
+    // (by index: a default yaml-cpp node is a defined Null one, and assigning to a node
+    // writes into what it refers to)
+    size_t rootIndex = topNodes.size();
     size_t transformRoots = 0;
-    for (YAML::Node& top : topNodes) {
-        const YAML::Node components = top["components"];
+    for (size_t i = 0; i < topNodes.size(); i++) {
+        const YAML::Node components = topNodes[i]["components"];
         if (components && components.IsMap() && components[transformKey]) {
             transformRoots++;
-            if (!rootNode) {
-                rootNode = top;
+            if (rootIndex == topNodes.size()) {
+                rootIndex = i;
             }
         }
     }
@@ -65,9 +67,10 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
         Out::error("A prefab has one root GameObject: make one prefab per selected root (%s)", filepath.string().c_str());
         return false;
     }
-    if (!rootNode) {
-        rootNode = topNodes.front();
+    if (rootIndex == topNodes.size()) {
+        rootIndex = 0;
     }
+    const YAML::Node rootNode = topNodes[rootIndex];
     if (!rootNode["entity"]) {
         Out::error("createPrefab(%s): the root GameObject has no id", filepath.string().c_str());
         return false;

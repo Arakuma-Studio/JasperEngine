@@ -24,7 +24,7 @@ namespace {
                 return member;
             }
         }
-        return node["members"].size() > 0 ? node["members"][0] : YAML::Node();
+        return node["members"].size() > 0 ? node["members"][0] : YAML::Node(YAML::NodeType::Undefined);
     }
 
     // Entity nodes of a selection that are prefab instance roots (nested ones stay opaque)

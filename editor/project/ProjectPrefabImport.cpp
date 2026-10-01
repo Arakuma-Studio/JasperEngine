@@ -123,7 +123,7 @@ namespace jasperengine::editor::prefabinternal {
 
     YAML::Node encodeComponent(const EntityRegistry* registry, Entity entity, ComponentType type) {
         YAML::Node components = Stream::encodeComponents(entity, registry, Catalog::componentTypeToSignature(registry, type));
-        return components.IsMap() ? components[componentKey(type)] : YAML::Node();
+        return components.IsMap() ? components[componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
     }
 
     bool samePropertyValue(const PropertyData& a, const PropertyData& b) {
@@ -248,7 +248,7 @@ namespace {
         Scene* scene = sceneProject->scene;
         PrefabObjectOverrides overrides = object.overrides;
         const YAML::Node values = object.values;
-        const YAML::Node components = values ? values["components"] : YAML::Node();
+        const YAML::Node components = values.IsMap() ? values["components"] : YAML::Node(YAML::NodeType::Undefined);
 
         for (auto it = overrides.removedComponents.begin(); it != overrides.removedComponents.end();) {
             if (!hasComponent(prefabRegistry, registryEntity, *it)) {
@@ -264,7 +264,7 @@ namespace {
         }
 
         for (auto it = overrides.addedComponents.begin(); it != overrides.addedComponents.end();) {
-            const YAML::Node value = components ? components[componentKey(*it)] : YAML::Node();
+            const YAML::Node value = components ? components[componentKey(*it)] : YAML::Node(YAML::NodeType::Undefined);
             if (!value) {
                 editor::Out::warning("Added component override %s on '%s' (%s) has no value, dropped",
                     componentKey(*it).c_str(), scene->getEntityName(local).c_str(), context.c_str());
@@ -284,7 +284,7 @@ namespace {
 
         for (auto it = overrides.properties.begin(); it != overrides.properties.end();) {
             const editor::ComponentType type = it->first;
-            const YAML::Node value = components ? components[componentKey(type)] : YAML::Node();
+            const YAML::Node value = components ? components[componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
             if (!hasComponent(scene, local, type) || !value) {
                 editor::Out::warning("Override of %s on '%s' (%s): %s, dropped", componentKey(type).c_str(),
                     scene->getEntityName(local).c_str(), context.c_str(),
@@ -305,7 +305,7 @@ namespace {
 
         const uint8_t requested = overrides.state;
         overrides.state = 0;
-        if (values) {
+        if (values.IsMap()) {
             if ((requested & PrefabObjectOverrides::StateName) && values["name"]) {
                 scene->setEntityName(local, values["name"].as<std::string>());
                 overrides.state |= PrefabObjectOverrides::StateName;
@@ -581,7 +581,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
             }
             continue;
         }
-        const YAML::Node value = rootComponents ? rootComponents[componentKey(type)] : YAML::Node();
+        const YAML::Node value = rootComponents ? rootComponents[componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
         if (!value) {
             continue;
         }
@@ -776,7 +776,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
             return;
         }
         auto entry = layer->objects.find(registryRoot);
-        if (entry == layer->objects.end() || !entry->second.values) {
+        if (entry == layer->objects.end() || !entry->second.values.IsMap()) {
             return;
         }
         PrefabObjectOverrides applied = applyObjectEntry(sceneProject, rootEntity, entry->second, registry, registryRoot, context);

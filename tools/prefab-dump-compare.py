@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compares two `jasperengine-editor scene-dump` outputs GameObject by GameObject.
 
-    tools/prefab-dump-compare.py <a.yaml> <b.yaml> [--ignore-prefab-info] [--ids]
+    tools/prefab-dump-compare.py <a.yaml> <b.yaml> [--ignore-prefab-info] [--ids] [--ignore-derived]
 
 GameObjects are matched by hierarchy path. Compared: name, state, parent, components (as
 Stream encodes them, matrices and other derived fields included) and references (by target
@@ -16,6 +16,10 @@ import yaml
 
 # MeshComponent::morphWeights is uninitialized memory when a file does not hold it
 IGNORED_FIELDS = {("mesh", "morphWeights")}
+# --ignore-derived: what the engine computes when it runs (a dump of a project saved by the
+# GUI against one that never ran)
+DERIVED_FIELDS = {("mesh", k) for k in ("aabb", "verticesAABB", "worldAABB", "submeshes", "transparent")} | \
+    {("transform", k) for k in ("localMatrix", "modelMatrix", "normalMatrix", "worldPosition", "worldRotation", "worldScale")}
 
 
 def load(path):
@@ -37,6 +41,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     ignore_prefab = "--ignore-prefab-info" in sys.argv
     ids = "--ids" in sys.argv
+    ignored = IGNORED_FIELDS | (DERIVED_FIELDS if "--ignore-derived" in sys.argv else set())
     if len(args) != 2:
         sys.exit(__doc__)
     a, b = load(args[0]), load(args[1])
@@ -59,8 +64,8 @@ def main():
                     for comp in sorted(set(ca) | set(cb)):
                         va, vb = ca.get(comp), cb.get(comp)
                         if isinstance(va, dict) and isinstance(vb, dict):
-                            va = {k: v for k, v in va.items() if (comp, k) not in IGNORED_FIELDS}
-                            vb = {k: v for k, v in vb.items() if (comp, k) not in IGNORED_FIELDS}
+                            va = {k: v for k, v in va.items() if (comp, k) not in ignored}
+                            vb = {k: v for k, v in vb.items() if (comp, k) not in ignored}
                         if va != vb:
                             detail = ""
                             if isinstance(va, dict) and isinstance(vb, dict):

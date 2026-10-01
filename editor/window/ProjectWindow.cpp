@@ -2664,16 +2664,18 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
     std::vector<std::pair<fs::path, YAML::Node>> prefabs;
     std::set<std::string> usedNames;
     for (size_t i = 0; i < roots.size(); i++) {
-        YAML::Node prefabNode = roots[i];
+        // (a new node: assigning to a yaml-cpp node writes into the one it refers to)
+        YAML::Node prefabNode = YAML::Clone(roots[i]);
         if (!groups[i].empty()) {
-            prefabNode = YAML::Node();
-            prefabNode["type"] = "Prefab";
+            YAML::Node group(YAML::NodeType::Map);
+            group["type"] = "Prefab";
             YAML::Node members(YAML::NodeType::Sequence);
-            members.push_back(roots[i]);
+            members.push_back(YAML::Clone(roots[i]));
             for (const YAML::Node& node : groups[i]) {
-                members.push_back(node);
+                members.push_back(YAML::Clone(node));
             }
-            prefabNode["members"] = members;
+            group["members"] = members;
+            prefabNode.reset(group);
         }
         std::string baseName = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string("Prefab");
         if (baseName.empty()) {
