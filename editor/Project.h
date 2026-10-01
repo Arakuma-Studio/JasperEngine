@@ -110,6 +110,8 @@ namespace jasperengine::editor{
         ScenePlayState playState = ScenePlayState::STOPPED;
         YAML::Node playStateSnapshot;
         std::set<Entity> playStateEntities;
+        // isModified when the snapshot was taken: Stop puts both back
+        bool playStateModified = false;
         SceneMaxValues maxValues;
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
@@ -382,6 +384,27 @@ namespace jasperengine::editor{
         float stepSavedMaxDeltatime = 0.0f;
 
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
+
+        // Play copies (the child scenes of the played scene run as copies, see PlaySession)
+        // answer to ids of their own while the session lasts, so getScene(), selection,
+        // the Hierarchy, the Inspector and commands reach them like any scene. Guarded by
+        // its own mutex: getScene() runs under playSessionMutex in places.
+        mutable std::mutex playRuntimeIdMutex;
+        std::unordered_map<uint32_t, SceneProject*> playRuntimeIds;
+        std::atomic<bool> hasPlayRuntimeIds{false};
+        SceneProject* findPlayRuntimeScene(uint32_t sceneId) const;
+        // Gives a Play copy its id (any thread)
+        void assignPlayRuntimeId(SceneProject* runtime);
+        // Takes it back before the copy goes: the copy has its source's id again (any thread)
+        void releasePlayRuntimeId(SceneProject* runtime, uint32_t sourceSceneId);
+        // What the editor kept for a Play copy id: selection, prefab instances, history
+        void discardPlayRuntimeState(uint32_t runtimeId, uint32_t sourceSceneId, uint32_t mainSceneId);
+        std::vector<SceneProject*> getPlayRuntimeScenesOf(uint32_t sceneId);
+        // A selection change redraws the scene and the scenes it is an inline child of
+        void markSelectionChanged(SceneProject* sceneProject);
+        // The GameObjects a click and the box select from in a scene the Scene view draws:
+        // the authored ones, and while it runs what the game made in it
+        std::vector<Entity> getPickableEntities(const SceneProject* sceneProject) const;
         void prepareRuntimeScene(PlayRuntimeScene& entry);
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
@@ -391,7 +414,9 @@ namespace jasperengine::editor{
         Entity createDefaultCamera(SceneType type, Scene* scene) const;
         AABB getEntityWorldAABB(Scene* scene, Entity entity, Scene* mainScene) const;
         AABB getEntityLocalAABB(Scene* scene, Entity entity) const;
-        Entity findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* mainScene, SceneType sceneType, float& distance, size_t& index) const;
+        // sizeScene sizes the handles of points and lines; iconsDrawn: lights, cameras and
+        // audio sources show icons in this view (only the view's own scene draws them)
+        Entity findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* sizeScene, SceneType sceneType, float& distance, size_t& index, bool iconsDrawn = true) const;
         bool selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end);
         uint32_t selectedScene;
         uint32_t selectedSceneForProperties;
@@ -766,12 +791,47 @@ namespace jasperengine::editor{
         void setChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId, bool startActive);
         std::vector<uint32_t> getChildScenes(uint32_t sceneId) const;
 
+        // A scene as the Scene view of another draws it, see getSceneViewLayers()
+        struct SceneViewLayer{
+            uint32_t sceneId = NULL_PROJECT_SCENE;   // a scene, or a Play copy (getScene() takes both)
+            SceneProject* sceneProject = nullptr;
+            bool base = false;      // the view's own scene, through its editor camera
+            bool running = false;   // a scene of the running game
+            LayerView view;         // the others: their camera as the view draws them
+        };
+        // The scenes the Scene view of sceneId draws, bottom first: the scene itself, then
+        // its inline child scenes while it is stopped, or the running game's layer scenes
+        // (child scenes nested at any depth, and those scripts added) while it plays
+        std::vector<SceneViewLayer> getSceneViewLayers(uint32_t sceneId);
+        // A scene whose GameObjects the Scene view of viewSceneId shows as a layer
+        bool isSceneViewLayer(uint32_t viewSceneId, uint32_t sceneId);
+
+        // The topmost GameObject drawn at (x, y) of the Scene view of sceneId: layers over
+        // the scene first, as drawn. Without outSceneId only the scene itself is tested.
         Entity findObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);
         // A viewport click only lands on entities with a Transform and bounds of their own
         bool isEntityPickable(uint32_t sceneId, Entity entity) const;
 
         bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed);
         bool selectObjectsByRect(uint32_t sceneId, Vector2 start, Vector2 end);
+
+        // The scene the transform tools of sceneId's Scene view work on: a layer whose
+        // GameObjects are selected (the properties scene), else sceneId. Sets the edit
+        // layer of its SceneRender to match and returns that scene's id.
+        uint32_t syncSceneRenderEditLayer(uint32_t sceneId);
+        // syncSceneRenderEditLayer(), then the SceneRender's update with the scene's selection
+        void updateSceneRender(uint32_t sceneId);
+
+        // The Play copy of sourceSceneId in the active session, NULL_PROJECT_SCENE if none
+        uint32_t getPlayRuntimeSceneId(uint32_t sourceSceneId) const;
+        // The scene a Play copy id is a copy of; any other id is returned as is
+        uint32_t getPlaySourceSceneId(uint32_t sceneId) const;
+        bool isPlayRuntimeScene(uint32_t sceneId) const;
+        // The Play copies of sceneId's running game layers, as the Scene view draws them
+        std::vector<SceneProject*> getRunningRuntimeLayerScenes(uint32_t sceneId);
+        // Once a frame: a Play copy no longer running, or its GameObjects destroyed, are
+        // no longer selected
+        void syncPlayRuntimeSelections();
 
         std::vector<SceneProject>& getScenes();
         const std::vector<SceneProject>& getScenes() const;

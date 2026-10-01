@@ -62,6 +62,17 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
 editor::SceneRender::~SceneRender(){
     framebuffer.destroy();
 
+    for (int i = 0; i < 2; i++){
+        if (!layerTools[i]){
+            continue;
+        }
+        if (Engine::isSceneRunning(layerTools[i]->getScene())){
+            Engine::removeScene(layerTools[i]->getScene());
+        }
+        delete layerSelLines[i];
+        layerSelLines[i] = nullptr;
+    }
+
     delete terrainBrushLines;
     delete camera;
 }
@@ -70,26 +81,26 @@ AABB editor::SceneRender::getMeshLocalAABB(const MeshComponent& mesh){
     return mesh.skinnedAABB.isNull() ? mesh.aabb : mesh.skinnedAABB;
 }
 
-AABB editor::SceneRender::getAABB(Entity entity, bool local){
-    Signature signature = scene->getSignature(entity);
-    if (signature.test(scene->getComponentId<MeshComponent>())){
-        MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+AABB editor::SceneRender::getAABB(Scene* target, Entity entity, bool local){
+    Signature signature = target->getSignature(entity);
+    if (signature.test(target->getComponentId<MeshComponent>())){
+        MeshComponent& mesh = target->getComponent<MeshComponent>(entity);
         if (local){
             return getMeshLocalAABB(mesh);
         }else{
             return mesh.worldAABB;
         }
-    }else if (signature.test(scene->getComponentId<UIComponent>())){
-        if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
-            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+    }else if (signature.test(target->getComponentId<UIComponent>())){
+        if (!signature.test(target->getComponentId<PolygonComponent>()) && signature.test(target->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(target, entity, layout);
                 AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                 if (local){
                     return aabb;
                 }else{
-                    if (signature.test(scene->getComponentId<Transform>())){
-                        Transform& transform = scene->getComponent<Transform>(entity);
+                    if (signature.test(target->getComponentId<Transform>())){
+                        Transform& transform = target->getComponent<Transform>(entity);
                         return transform.modelMatrix * aabb;
                     }
                     return aabb;
@@ -97,35 +108,34 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
             }
         }
 
-        UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        UIComponent& ui = target->getComponent<UIComponent>(entity);
         if (local){
             return ui.aabb;
         }else{
             return ui.worldAABB;
         }
-    }else if (signature.test(scene->getComponentId<RectTransformComponent>())){
-        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+    }else if (signature.test(target->getComponentId<RectTransformComponent>())){
+        RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
         if (layout.width > 0 && layout.height > 0){
-            Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
+            Vector2 center = GraphicUtils::getRectTransformCenter(target, entity, layout);
             AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
             if (local){
                 return aabb;
             }else{
-                if (signature.test(scene->getComponentId<Transform>())){
-                    Transform& transform = scene->getComponent<Transform>(entity);
+                if (signature.test(target->getComponentId<Transform>())){
+                    Transform& transform = target->getComponent<Transform>(entity);
                     return transform.modelMatrix * aabb;
                 }
                 return aabb;
             }
         }
-    }else if ((signature.test(scene->getComponentId<CameraComponent>()) ||
-               signature.test(scene->getComponentId<LightComponent>()) ||
-               signature.test(scene->getComponentId<Light2DComponent>()) ||
-               signature.test(scene->getComponentId<AudioSourceComponent>())) && signature.test(scene->getComponentId<Transform>())){
-        Transform& transform = scene->getComponent<Transform>(entity);
-        CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
-        float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
-        AABB aabb = (sceneCamera.type == CameraType::CAMERA_ORTHO)
+    }else if ((signature.test(target->getComponentId<CameraComponent>()) ||
+               signature.test(target->getComponentId<LightComponent>()) ||
+               signature.test(target->getComponentId<Light2DComponent>()) ||
+               signature.test(target->getComponentId<AudioSourceComponent>())) && signature.test(target->getComponentId<Transform>())){
+        Transform& transform = target->getComponent<Transform>(entity);
+        float halfSize = targetBillboardScale(target, transform.worldPosition, 16.0f);
+        AABB aabb = isOrthographicView(target)
             ? AABB(-halfSize, -halfSize, -1, halfSize, halfSize, 1)
             : AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
 
@@ -134,9 +144,9 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
         }else{
             return transform.modelMatrix * aabb;
         }
-    }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
-        ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
-        Transform& transform = scene->getComponent<Transform>(entity);
+    }else if (signature.test(target->getComponentId<ShadowCaster2DComponent>()) && signature.test(target->getComponentId<Transform>())){
+        ShadowCaster2DComponent& occluder = target->getComponent<ShadowCaster2DComponent>(entity);
+        Transform& transform = target->getComponent<Transform>(entity);
 
         // hug the polygon points; the entity origin is only the fallback when
         // there is nothing else to bound
@@ -156,12 +166,12 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
         }else{
             return transform.modelMatrix * aabb;
         }
-    }else if ((signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())) && signature.test(scene->getComponentId<Transform>())){
-        Transform& transform = scene->getComponent<Transform>(entity);
+    }else if ((signature.test(target->getComponentId<PointsComponent>()) || signature.test(target->getComponentId<LineRendererComponent>())) && signature.test(target->getComponentId<Transform>())){
+        Transform& transform = target->getComponent<Transform>(entity);
         AABB aabb(Vector3::ZERO, Vector3::ZERO);
 
-        if (signature.test(scene->getComponentId<PointsComponent>())){
-            PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+        if (signature.test(target->getComponentId<PointsComponent>())){
+            PointsComponent& points = target->getComponent<PointsComponent>(entity);
             for (const PointData& pt : points.points){
                 if (pt.visible){
                     aabb.merge(pt.position);
@@ -169,8 +179,8 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
             }
         }
 
-        if (signature.test(scene->getComponentId<LineRendererComponent>())){
-            LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
+        if (signature.test(target->getComponentId<LineRendererComponent>())){
+            LineRendererComponent& lines = target->getComponent<LineRendererComponent>(entity);
             for (const LineData& line : lines.lines){
                 aabb.merge(line.pointA);
                 aabb.merge(line.pointB);
@@ -187,10 +197,10 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
     return AABB();
 }
 
-AABB editor::SceneRender::getFamilyAABB(Entity entity, float offset){
-    Signature signature = scene->getSignature(entity);
-    if (!signature.test(scene->getComponentId<Transform>())) {
-        AABB entityAABB = getAABB(entity, false);
+AABB editor::SceneRender::getFamilyAABB(Scene* target, Entity entity, float offset){
+    Signature signature = target->getSignature(entity);
+    if (!signature.test(target->getComponentId<Transform>())) {
+        AABB entityAABB = getAABB(target, entity, false);
         if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
             Vector3 min = entityAABB.getMinimum() - Vector3(offset);
             Vector3 max = entityAABB.getMaximum() + Vector3(offset);
@@ -199,7 +209,7 @@ AABB editor::SceneRender::getFamilyAABB(Entity entity, float offset){
         return entityAABB;
     }
 
-    auto transforms = scene->getComponentArray<Transform>();
+    auto transforms = target->getComponentArray<Transform>();
     size_t index = transforms->getIndex(entity);
 
     AABB aabb;
@@ -217,7 +227,7 @@ AABB editor::SceneRender::getFamilyAABB(Entity entity, float offset){
         entity = transforms->getEntity(i);
         parentList.push_back(entity);
 
-        AABB entityAABB = getAABB(entity, false);
+        AABB entityAABB = getAABB(target, entity, false);
 
         if (!entityAABB.isNull() && !entityAABB.isInfinite()){
             Vector3 min = entityAABB.getMinimum() - Vector3(offset);
@@ -234,7 +244,7 @@ AABB editor::SceneRender::getFamilyAABB(Entity entity, float offset){
 AABB editor::SceneRender::getEntitiesAABB(const std::vector<Entity>& entities){
     AABB aabb;
     for (Entity entity : entities) {
-        AABB entityAABB = getFamilyAABB(entity, 0.0f);
+        AABB entityAABB = getFamilyAABB(scene, entity, 0.0f);
         if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
             aabb.merge(entityAABB);
         }
@@ -282,16 +292,16 @@ OBB editor::SceneRender::transformAABBPreservingShear(const Matrix4& modelMatrix
     return result;
 }
 
-OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
-    Signature signature = scene->getSignature(entity);
+OBB editor::SceneRender::getOBB(Scene* target, Entity entity, bool local, bool visual){
+    Signature signature = target->getSignature(entity);
 
     Matrix4 modelMatrix;
-    if (signature.test(scene->getComponentId<Transform>())){
-        Transform& transform = scene->getComponent<Transform>(entity);
+    if (signature.test(target->getComponentId<Transform>())){
+        Transform& transform = target->getComponent<Transform>(entity);
         modelMatrix = transform.modelMatrix;
 
-        if (signature.test(scene->getComponentId<MeshComponent>())){
-            MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        if (signature.test(target->getComponentId<MeshComponent>())){
+            MeshComponent& mesh = target->getComponent<MeshComponent>(entity);
             AABB meshAABB = getMeshLocalAABB(mesh);
             if (local){
                 return meshAABB.getOBB();
@@ -299,11 +309,11 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, meshAABB)
                               : modelMatrix * meshAABB.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<UIComponent>())){
-            if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<RectTransformComponent>())){
-                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        }else if (signature.test(target->getComponentId<UIComponent>())){
+            if (!signature.test(target->getComponentId<PolygonComponent>()) && signature.test(target->getComponentId<RectTransformComponent>())){
+                RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
                 if (layout.width > 0 && layout.height > 0){
-                    Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
+                    Vector2 center = GraphicUtils::getRectTransformCenter(target, entity, layout);
                     AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                     if (local){
                         return aabb.getOBB();
@@ -314,17 +324,17 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 }
             }
 
-            UIComponent& ui = scene->getComponent<UIComponent>(entity);
+            UIComponent& ui = target->getComponent<UIComponent>(entity);
             if (local){
                 return ui.aabb.getOBB();
             }else{
                 return visual ? transformAABBPreservingShear(modelMatrix, ui.aabb)
                               : modelMatrix * ui.aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<RectTransformComponent>())){
-            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        }else if (signature.test(target->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
             if (layout.width > 0 && layout.height > 0){
-                Vector2 center = GraphicUtils::getRectTransformCenter(scene, entity, layout);
+                Vector2 center = GraphicUtils::getRectTransformCenter(target, entity, layout);
                 AABB aabb = AABB(-center.x, -center.y, 0, layout.width-center.x, layout.height-center.y, 0);
                 if (local){
                     return aabb.getOBB();
@@ -333,13 +343,12 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                               : modelMatrix * aabb.getOBB();
                 }
             }
-        }else if (signature.test(scene->getComponentId<CameraComponent>()) ||
-                   signature.test(scene->getComponentId<LightComponent>()) ||
-                   signature.test(scene->getComponentId<Light2DComponent>()) ||
-                   signature.test(scene->getComponentId<AudioSourceComponent>())){
-            CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
-            float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
-            AABB aabb = (sceneCamera.type == CameraType::CAMERA_ORTHO)
+        }else if (signature.test(target->getComponentId<CameraComponent>()) ||
+                   signature.test(target->getComponentId<LightComponent>()) ||
+                   signature.test(target->getComponentId<Light2DComponent>()) ||
+                   signature.test(target->getComponentId<AudioSourceComponent>())){
+            float halfSize = targetBillboardScale(target, transform.worldPosition, 16.0f);
+            AABB aabb = isOrthographicView(target)
                 ? AABB(-halfSize, -halfSize, -1, halfSize, halfSize, 1)
                 : AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
             if (local){
@@ -348,8 +357,8 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, aabb)
                               : modelMatrix * aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
-            ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
+        }else if (signature.test(target->getComponentId<ShadowCaster2DComponent>())){
+            ShadowCaster2DComponent& occluder = target->getComponent<ShadowCaster2DComponent>(entity);
 
             // hug the polygon points; the entity origin is only the fallback when
             // there is nothing else to bound
@@ -370,11 +379,11 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 return visual ? transformAABBPreservingShear(modelMatrix, aabb)
                           : modelMatrix * aabb.getOBB();
             }
-        }else if (signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>())){
+        }else if (signature.test(target->getComponentId<PointsComponent>()) || signature.test(target->getComponentId<LineRendererComponent>())){
             AABB aabb(Vector3::ZERO, Vector3::ZERO);
 
-            if (signature.test(scene->getComponentId<PointsComponent>())){
-                PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+            if (signature.test(target->getComponentId<PointsComponent>())){
+                PointsComponent& points = target->getComponent<PointsComponent>(entity);
                 for (const PointData& pt : points.points){
                     if (pt.visible){
                         aabb.merge(pt.position);
@@ -382,8 +391,8 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                 }
             }
 
-            if (signature.test(scene->getComponentId<LineRendererComponent>())){
-                LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
+            if (signature.test(target->getComponentId<LineRendererComponent>())){
+                LineRendererComponent& lines = target->getComponent<LineRendererComponent>(entity);
                 for (const LineData& line : lines.lines){
                     aabb.merge(line.pointA);
                     aabb.merge(line.pointB);
@@ -417,17 +426,17 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
 // entity's matrix. The box is oriented to the selected node and tightly bounds the
 // whole subtree (and reduces to the exact single-mesh box for a leaf). A singular
 // selected transform falls back to an axis-aligned world-space box.
-OBB editor::SceneRender::getFamilyVisualOBB(Entity entity, float offset){
-    Signature signature = scene->getSignature(entity);
-    if (!signature.test(scene->getComponentId<Transform>())) {
-        OBB entityOBB = getOBB(entity, false, /*visual*/ true);
+OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float offset){
+    Signature signature = target->getSignature(entity);
+    if (!signature.test(target->getComponentId<Transform>())) {
+        OBB entityOBB = getOBB(target, entity, false, /*visual*/ true);
         if (!entityOBB.isNull()){
             entityOBB.setHalfExtents(entityOBB.getHalfExtents() + Vector3(offset));
         }
         return entityOBB;
     }
 
-    const Matrix4& selectedMatrix = scene->getComponent<Transform>(entity).modelMatrix;
+    const Matrix4& selectedMatrix = target->getComponent<Transform>(entity).modelMatrix;
     const float selectedDeterminant = selectedMatrix.linear().determinant();
     const bool useSelectedFrame = selectedMatrix.isValid()
         && std::isfinite(selectedDeterminant)
@@ -435,7 +444,7 @@ OBB editor::SceneRender::getFamilyVisualOBB(Entity entity, float offset){
 
     const Matrix4 worldToBounds = useSelectedFrame ? selectedMatrix.inverse() : Matrix4();
 
-    auto transforms = scene->getComponentArray<Transform>();
+    auto transforms = target->getComponentArray<Transform>();
     size_t index = transforms->getIndex(entity);
 
     AABB familyBounds;
@@ -453,7 +462,7 @@ OBB editor::SceneRender::getFamilyVisualOBB(Entity entity, float offset){
         Entity member = transforms->getEntity(i);
         parentList.push_back(member);
 
-        OBB memberOBB = getOBB(member, false, /*visual*/ true);
+        OBB memberOBB = getOBB(target, member, false, /*visual*/ true);
         if (memberOBB.isNull()){
             continue;
         }
@@ -482,6 +491,12 @@ void editor::SceneRender::hideAllGizmos(){
     selLines->setVisible(false);
     terrainBrushLines->setVisible(false);
     toolslayer.setGizmoVisible(false);
+    for (int i = 0; i < 2; i++){
+        if (layerTools[i]){
+            layerTools[i]->setGizmoVisible(false);
+            layerSelLines[i]->setVisible(false);
+        }
+    }
     uilayer.setViewGizmoImageVisible(false);
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
@@ -516,7 +531,12 @@ void editor::SceneRender::activate(){
     }
 
     Engine::addSceneLayer(toolslayer.getScene());
+    engineLayerTools = editLayer.active ? layerToolsIndex() : -1;
+    if (engineLayerTools >= 0){
+        Engine::addSceneLayer(layerTools[engineLayerTools]->getScene());
+    }
     Engine::addSceneLayer(uilayer.getScene());
+    engineLayersActive = true;
 }
 
 void editor::SceneRender::activateGame(Framebuffer* target){
@@ -526,6 +546,8 @@ void editor::SceneRender::activateGame(Framebuffer* target){
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
 
     Engine::removeAllSceneLayers(false);
+    engineLayersActive = false;
+    engineLayerTools = -1;
 }
 
 void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height){
@@ -535,6 +557,13 @@ void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layer
     toolsScene->getSystem<RenderSystem>()->updateCameraSizeForCanvas(toolsScene->getCamera(), (float)width, (float)height);
     toolsScene->update(Engine::getDeltatime());
     layers.push_back({toolsScene, toolsScene->getCamera(), full, false, false});
+
+    // the edit layer's gizmos, through its camera made to cover the view
+    if (editLayer.active){
+        Scene* layerToolsScene = layerTools[layerToolsIndex()]->getScene();
+        layerToolsScene->update(Engine::getDeltatime());
+        layers.push_back({layerToolsScene, layerToolsScene->getCamera(), full, false, false});
+    }
 
     Scene* uiScene = uilayer.getScene();
     uiScene->getSystem<RenderSystem>()->updateCameraSizeForCanvas(uiScene->getCamera(), (float)width, (float)height);
@@ -590,15 +619,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
         // canvas aspect as the editor frames a child scene over the scene
-        const float canvasWidth = (float)Engine::getCanvasWidth();
-        const float canvasHeight = (float)Engine::getCanvasHeight();
-        Rect gameRect = full;
-        if (canvasWidth > 0.0f && canvasHeight > 0.0f){
-            const float fit = std::min((float)width / canvasWidth, (float)height / canvasHeight);
-            const float rectWidth = std::floor(canvasWidth * fit);
-            const float rectHeight = std::floor(canvasHeight * fit);
-            gameRect = Rect(std::floor(((float)width - rectWidth) * 0.5f), std::floor(((float)height - rectHeight) * 0.5f), rectWidth, rectHeight);
-        }
+        const Rect gameRect = getGameLayerRect(width, height);
         for (Scene* gameLayer : layerScenes){
             if (gameLayer && gameLayer != scene){
                 layers.push_back({gameLayer, gameLayer->getCamera(), gameRect, false, false});
@@ -676,11 +697,22 @@ void editor::SceneRender::updateRenderSystem(){
 void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     displaySettings = settings;
 
+    // The tools work on this scene's selection, or on the edit layer's while one is set.
+    // selEntities stays this scene's: the overlays of subclasses highlight from it.
+    Scene* const target = gizmoScene();
+    ToolsLayer& tools = gizmoTools();
+    std::vector<Entity> toolEntities = editLayer.active ? editLayer.selection : selEntities;
+    const std::vector<Entity>& authoredEntities = editLayer.active ? editLayer.entities : entities;
+    if (editLayer.active){
+        // the toolbar sets the tool on this scene's tools layer
+        tools.setGizmoSelected(toolslayer.getGizmoSelected());
+    }
+
     // while playing, what the running scene created is read-only: no gizmo moves it
-    if (isPlaying){
-        selEntities.erase(std::remove_if(selEntities.begin(), selEntities.end(), [&entities](Entity entity){
-            return std::find(entities.begin(), entities.end(), entity) == entities.end();
-        }), selEntities.end());
+    if (editLayer.active ? editLayer.running : isPlaying){
+        toolEntities.erase(std::remove_if(toolEntities.begin(), toolEntities.end(), [&authoredEntities](Entity entity){
+            return std::find(authoredEntities.begin(), authoredEntities.end(), entity) == authoredEntities.end();
+        }), toolEntities.end());
     }
 
     // Editor-only viewport debug override: forces meshes to render without face
@@ -718,19 +750,19 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     std::vector<OBB> selBB;
     OBB totalSelBB;
 
-    multipleEntitiesSelected = selEntities.size() > 1;
+    multipleEntitiesSelected = toolEntities.size() > 1;
 
     bool showAnchorGizmo = false;
     Vector4 anchorData = Vector4::ZERO; // x: left, y: top, z: right, w: bottom
     Rect anchorArea = Rect(0.0f, 0.0f, 0.0f, 0.0f);
 
-    for (Entity& entity: selEntities){
-        if (Transform* transform = scene->findComponent<Transform>(entity)){
+    for (Entity& entity: toolEntities){
+        if (Transform* transform = target->findComponent<Transform>(entity)){
             numTEntities++;
 
-            if (selEntities.size() == 1){
-                Entity entity = selEntities[0];
-                if (RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity)){
+            if (toolEntities.size() == 1){
+                Entity entity = toolEntities[0];
+                if (RectTransformComponent* layout = target->findComponent<RectTransformComponent>(entity)){
                     if (layout->usingAnchors){
                         showAnchorGizmo = true;
                     }
@@ -739,7 +771,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
                     anchorData.z = layout->anchorPointRight;
                     anchorData.w = layout->anchorPointBottom;
 
-                    anchorArea = scene->getSystem<UISystem>()->getAnchorReferenceRect(*layout, *transform, true);
+                    anchorArea = target->getSystem<UISystem>()->getAnchorReferenceRect(*layout, *transform, true);
                 }
             }
 
@@ -752,53 +784,53 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
                 sameRotation = false;
             }
 
-            if ((!useGlobalTransform && selEntities.size() == 1) || toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
+            if ((!useGlobalTransform && toolEntities.size() == 1) || tools.getGizmoSelected() == GizmoSelected::OBJECT2D){
                 gizmoRotation = transform->worldRotation;
             }
 
-            selBB.push_back(getFamilyVisualOBB(entity, selectionOffset));
+            selBB.push_back(getFamilyVisualOBB(target, entity, selectionOffset));
 
-            totalSelBB.enclose(getOBB(entity, false));
+            totalSelBB.enclose(getOBB(target, entity, false));
         }
 
     }
 
-    toolslayer.setShowAnchorGizmo(showAnchorGizmo);
+    tools.setShowAnchorGizmo(showAnchorGizmo);
 
     auto syncObject2DGizmoMode = [&](){
-        if (toolslayer.getGizmoSelected() != GizmoSelected::OBJECT2D){
+        if (tools.getGizmoSelected() != GizmoSelected::OBJECT2D){
             return;
         }
 
         bool showRects = true;
         bool showCross = false;
 
-        if (selEntities.size() == 1){
-            Signature signature = scene->getSignature(selEntities[0]);
-            bool isCamera = signature.test(scene->getComponentId<CameraComponent>());
-            bool isInstancedMesh = signature.test(scene->getComponentId<InstancedMeshComponent>());
-            bool canResize2D = signature.test(scene->getComponentId<RectTransformComponent>())
-                || signature.test(scene->getComponentId<SpriteComponent>())
-                || (signature.test(scene->getComponentId<TilemapComponent>()) && selectedTileIndex >= 0);
+        if (toolEntities.size() == 1){
+            Signature signature = target->getSignature(toolEntities[0]);
+            bool isCamera = signature.test(target->getComponentId<CameraComponent>());
+            bool isInstancedMesh = signature.test(target->getComponentId<InstancedMeshComponent>());
+            bool canResize2D = signature.test(target->getComponentId<RectTransformComponent>())
+                || signature.test(target->getComponentId<SpriteComponent>())
+                || (signature.test(target->getComponentId<TilemapComponent>()) && selectedTileIndex >= 0);
 
-            showCross = signature.test(scene->getComponentId<PointsComponent>()) || signature.test(scene->getComponentId<LineRendererComponent>());
+            showCross = signature.test(target->getComponentId<PointsComponent>()) || signature.test(target->getComponentId<LineRendererComponent>());
 
             // a selected occluder / polygon / track point is a size-less target: show the move cross
-            if (selectedOccluderPointIndex >= 0 && selEntities[0] == selectedOccluderPointEntity){
+            if (selectedOccluderPointIndex >= 0 && toolEntities[0] == selectedOccluderPointEntity){
                 showCross = true;
             }
-            if (selectedPolygonPointIndex >= 0 && selEntities[0] == selectedPolygonPointEntity){
+            if (selectedPolygonPointIndex >= 0 && toolEntities[0] == selectedPolygonPointEntity){
                 showCross = true;
             }
-            if (selectedTrackPointIndex >= 0 && selEntities[0] == selectedTrackPointEntity){
+            if (selectedTrackPointIndex >= 0 && toolEntities[0] == selectedTrackPointEntity){
                 showCross = true;
             }
 
             showRects = canResize2D && !isCamera && !isInstancedMesh && !showCross;
         }
 
-        toolslayer.setShowObject2DRects(showRects);
-        toolslayer.setShowObject2DCross(showCross);
+        tools.setShowObject2DRects(showRects);
+        tools.setShowObject2DCross(showCross);
     };
 
     syncObject2DGizmoMode();
@@ -813,7 +845,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // position instead of reusing the entity-derived scale (otherwise the gizmo
     // is sized for the entity's distance and looks wrong).
     auto computeGizmoScale = [&](const Vector3& worldPos) -> float {
-        return billboardScreenScale(worldPos, gizmoScale);
+        return targetBillboardScale(target, worldPos, gizmoScale);
     };
 
     bool selectionVisibility = false;
@@ -824,29 +856,29 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
         float scale = computeGizmoScale(gizmoPosition);
 
-        toolslayer.updateGizmo(camera, gizmoPosition, gizmoRotation, scale, totalSelBB, mouseRay, mouseClicked, anchorData, anchorArea);
+        tools.updateGizmo(camera, gizmoPosition, gizmoRotation, scale, totalSelBB, mouseRay, mouseClicked, anchorData, anchorArea);
 
         // Override gizmo for selected tile within tilemap
-        if (selectedTileIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedTileEntity
-            && toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
+        if (selectedTileIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedTileEntity
+            && tools.getGizmoSelected() == GizmoSelected::OBJECT2D){
             OBB tileOBB = getTileOBB(selectedTileEntity, selectedTileIndex, true);
             if (!tileOBB.isNull()){
                 Vector3 tileCenter = tileOBB.getCenter();
-                toolslayer.updateGizmo(camera, tileCenter, gizmoRotation, computeGizmoScale(tileCenter), tileOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+                tools.updateGizmo(camera, tileCenter, gizmoRotation, computeGizmoScale(tileCenter), tileOBB, mouseRay, mouseClicked, anchorData, anchorArea);
             }
         }
 
         // Override gizmo for selected instance within instanced mesh
-        if (selectedInstanceIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedInstanceEntity){
-            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(selectedInstanceEntity);
-            Transform* instTransform = scene->findComponent<Transform>(selectedInstanceEntity);
+        if (selectedInstanceIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedInstanceEntity){
+            InstancedMeshComponent* instmesh = target->findComponent<InstancedMeshComponent>(selectedInstanceEntity);
+            Transform* instTransform = target->findComponent<Transform>(selectedInstanceEntity);
             if (instmesh && instTransform && selectedInstanceIndex < (int)instmesh->instances.size()){
                 OBB instOBB = getInstanceOBB(selectedInstanceEntity, selectedInstanceIndex, true);
                 if (!instOBB.isNull()){
                     const InstanceData& inst = instmesh->instances[selectedInstanceIndex];
                     Quaternion instWorldRotation = getInstanceWorldRotation(*instTransform, *instmesh, inst);
                     Vector3 instCenter = instOBB.getCenter();
-                    toolslayer.updateGizmo(camera, instCenter, instWorldRotation, computeGizmoScale(instCenter), instOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+                    tools.updateGizmo(camera, instCenter, instWorldRotation, computeGizmoScale(instCenter), instOBB, mouseRay, mouseClicked, anchorData, anchorArea);
                     // Replace selection outline with the instance OBB
                     selBB.clear();
                     selBB.push_back(instOBB);
@@ -855,12 +887,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
 
         // Override gizmo for selected occluder polygon point
-        if (selectedOccluderPointIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedOccluderPointEntity
-            && toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
+        if (selectedOccluderPointIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedOccluderPointEntity
+            && tools.getGizmoSelected() == GizmoSelected::OBJECT2D){
             OBB pointOBB = getOccluderPointOBB(selectedOccluderPointEntity, selectedOccluderPointIndex);
             if (!pointOBB.isNull()){
                 Vector3 pointCenter = pointOBB.getCenter();
-                toolslayer.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
             }else{
                 // point removed or shape changed: drop the stale sub-selection
                 clearOccluderPointSelection();
@@ -868,12 +900,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
 
         // Override gizmo for selected line endpoint (2D gizmo or 3D translate)
-        if (selectedLinePointIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedLinePointEntity
-            && (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D || toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE)){
+        if (selectedLinePointIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedLinePointEntity
+            && (tools.getGizmoSelected() == GizmoSelected::OBJECT2D || tools.getGizmoSelected() == GizmoSelected::TRANSLATE)){
             OBB pointOBB = getLinePointOBB(selectedLinePointEntity, selectedLinePointIndex);
             if (!pointOBB.isNull()){
                 Vector3 pointCenter = pointOBB.getCenter();
-                toolslayer.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
             }else{
                 // line removed: drop the stale sub-selection
                 clearLinePointSelection();
@@ -881,12 +913,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
 
         // Override gizmo for selected polygon/mesh-polygon vertex (2D gizmo or 3D translate)
-        if (selectedPolygonPointIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedPolygonPointEntity
-            && (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D || toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE)){
+        if (selectedPolygonPointIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedPolygonPointEntity
+            && (tools.getGizmoSelected() == GizmoSelected::OBJECT2D || tools.getGizmoSelected() == GizmoSelected::TRANSLATE)){
             OBB pointOBB = getPolygonPointOBB(selectedPolygonPointEntity, selectedPolygonPointIsMesh, selectedPolygonPointIndex);
             if (!pointOBB.isNull()){
                 Vector3 pointCenter = pointOBB.getCenter();
-                toolslayer.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
             }else{
                 // vertex removed: drop the stale sub-selection
                 clearPolygonPointSelection();
@@ -894,19 +926,23 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
 
         if (selBB.size() > 0) {
-            updateSelLines(selBB);
+            if (editLayer.active){
+                fillSelectionLines(layerSelLines[layerToolsIndex()], selBB, !editLayer.view.isOrthographic());
+            }else{
+                updateSelLines(selBB);
+            }
         }
     }
 
     // Gizmo for a selected TranslateTracks keyframe point. The tracks entity has
     // no Transform (numTEntities is 0 for it), so this runs as its own branch.
-    if (selectedTrackPointIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedTrackPointEntity
-        && (toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE || toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D)){
+    if (selectedTrackPointIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedTrackPointEntity
+        && (tools.getGizmoSelected() == GizmoSelected::TRANSLATE || tools.getGizmoSelected() == GizmoSelected::OBJECT2D)){
         OBB pointOBB = getTrackPointOBB(selectedTrackPointEntity, selectedTrackPointIndex);
         if (!pointOBB.isNull()){
             Vector3 pointCenter = pointOBB.getCenter();
 
-            toolslayer.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
             selectionVisibility = true;
         }else{
             // point removed or values changed: drop the stale sub-selection
@@ -915,22 +951,37 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     }
 
     toolslayer.updateCamera(cameracomp, cameratransform);
+    if (editLayer.active){
+        tools.updateCamera(editLayer.view);
+    }
 
     // Determine selLines visibility: hide for single entity with OBJECT2D gizmo or empty selBB
     bool showSelLines = selectionVisibility;
-    if (!multipleEntitiesSelected && (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D || selBB.size() == 0)) {
+    if (!multipleEntitiesSelected && (tools.getGizmoSelected() == GizmoSelected::OBJECT2D || selBB.size() == 0)) {
         if (selectedTileIndex < 0 && selectedInstanceIndex < 0) {
             showSelLines = false;
         }
     }
-    selLines->setVisible(showSelLines && !displaySettings.hideSelectionOutline);
+    LineRenderer* outline = editLayer.active ? layerSelLines[layerToolsIndex()] : selLines;
+    outline->setVisible(showSelLines && !displaySettings.hideSelectionOutline);
+    if (editLayer.active){
+        // this scene's own gizmo and outline give way to the layer's
+        selLines->setVisible(false);
+        toolslayer.setGizmoVisible(false);
+    }
+    for (int i = 0; i < 2; i++){
+        if (layerTools[i] && (!editLayer.active || i != layerToolsIndex())){
+            layerTools[i]->setGizmoVisible(false);
+            layerSelLines[i]->setVisible(false);
+        }
+    }
 
     if (terrainEditing){
-        toolslayer.setGizmoVisible(false);
-    }else if (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D && !sameRotation){
-        toolslayer.setGizmoVisible(false);
+        tools.setGizmoVisible(false);
+    }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D && !sameRotation){
+        tools.setGizmoVisible(false);
     }else{
-        toolslayer.setGizmoVisible(selectionVisibility);
+        tools.setGizmoVisible(selectionVisibility);
     }
 
     if (!terrainEditing && terrainBrushLines){
@@ -943,7 +994,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 }
 
 void editor::SceneRender::mouseHoverEvent(float x, float y){
-    mouseRay = screenToRay(x, y);
+    ownerMouseRay = screenToRay(x, y);
+    mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
     updateTerrainBrushCursor();
 }
 
@@ -952,16 +1004,23 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
-            terrainEditWindow->beginStroke(scene, mouseRay);
+            terrainEditWindow->beginStroke(scene, ownerMouseRay);
             updateTerrainBrushCursor();
             return;
         }
     }
 
-    Vector3 viewDir = camera->getWorldDirection();
+    // the tools work on the edit layer's selection while one is set
+    Scene* const target = gizmoScene();
+    ToolsLayer& tools = gizmoTools();
+    if (editLayer.active){
+        selEntities = editLayer.selection;
+    }
 
-    Vector3 gizmoPosition = toolslayer.getGizmoPosition();
-    Quaternion gizmoRotation = toolslayer.getGizmoRotation();
+    Vector3 viewDir = gizmoViewDirection();
+
+    Vector3 gizmoPosition = tools.getGizmoPosition();
+    Quaternion gizmoRotation = tools.getGizmoRotation();
     Matrix4 gizmoRMatrix = gizmoRotation.getRotationMatrix();
     Matrix4 gizmoMatrix = Matrix4::translateMatrix(gizmoPosition) * gizmoRMatrix * Matrix4::scaleMatrix(Vector3(1,1,1));
 
@@ -969,44 +1028,45 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
     float dotY = viewDir.dotProduct(gizmoRMatrix * Vector3(0,1,0));
     float dotZ = viewDir.dotProduct(gizmoRMatrix * Vector3(0,0,1));
 
-    if (toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE || toolslayer.getGizmoSelected() == GizmoSelected::SCALE){
-        if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XYZ){
+    if (tools.getGizmoSelected() == GizmoSelected::TRANSLATE || tools.getGizmoSelected() == GizmoSelected::SCALE){
+        if (tools.getGizmoSideSelected() == GizmoSideSelected::XYZ){
             cursorPlane = Plane((gizmoRMatrix * Vector3(dotX, dotY, dotZ).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::X){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
             cursorPlane = Plane((gizmoRMatrix * Vector3(0, dotY, dotZ).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::Y){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::Y){
             cursorPlane = Plane((gizmoRMatrix * Vector3(dotX, 0, dotZ).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::Z){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::Z){
             cursorPlane = Plane((gizmoRMatrix * Vector3(dotX, dotY, 0).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XY){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XY){
             cursorPlane = Plane((gizmoRMatrix * Vector3(0, 0, dotZ).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XZ){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XZ){
             cursorPlane = Plane((gizmoRMatrix * Vector3(0, dotY, 0).normalize()), gizmoPosition);
-        }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::YZ){
+        }else if (tools.getGizmoSideSelected() == GizmoSideSelected::YZ){
             cursorPlane = Plane((gizmoRMatrix * Vector3(dotX, 0, 0).normalize()), gizmoPosition);
         }
     }
 
-    if (toolslayer.getGizmoSelected() == GizmoSelected::ROTATE){
+    if (tools.getGizmoSelected() == GizmoSelected::ROTATE){
         cursorPlane = Plane((gizmoRMatrix * Vector3(dotX, dotY, dotZ).normalize()), gizmoPosition);
 
-        if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::X){
+        if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
             rotationAxis = gizmoRMatrix * Vector3(dotX, 0.0, 0.0).normalize();
-        }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Y){
+        }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Y){
             rotationAxis = gizmoRMatrix * Vector3(0.0, dotY, 0.0).normalize();
-        }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Z){
+        }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Z){
             rotationAxis = gizmoRMatrix * Vector3(0.0, 0.0, dotZ).normalize();
         }else{
             rotationAxis = cursorPlane.normal;
         }
     }
 
-    if (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
+    if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D){
         cursorPlane = Plane(Vector3(0, 0, 1), gizmoPosition);
     }
 
     RayReturn rretrun = mouseRay.intersects(cursorPlane);
     objectMatrixOffset.clear();
+    anchoredMoveStart.clear();
     if (rretrun){
         gizmoStartPosition = gizmoPosition;
         cursorStartOffset = gizmoPosition - rretrun.point;
@@ -1014,28 +1074,31 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         scaleStartOffset = Vector3(1,1,1);
 
         for (Entity& entity: selEntities){
-            Signature signature = scene->getSignature(entity);
-            if (signature.test(scene->getComponentId<Transform>())){
-                Transform& transform = scene->getComponent<Transform>(entity);
+            Signature signature = target->getSignature(entity);
+            if (signature.test(target->getComponentId<Transform>())){
+                Transform& transform = target->getComponent<Transform>(entity);
                 objectMatrixOffset[entity] = gizmoMatrix.inverse() * transform.modelMatrix;
             }
-            if (signature.test(scene->getComponentId<SpriteComponent>())){
-                SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
+            if (signature.test(target->getComponentId<SpriteComponent>())){
+                SpriteComponent& sprite = target->getComponent<SpriteComponent>(entity);
                 objectSizeOffset[entity] = Vector2(sprite.width, sprite.height);
             }
-            if (signature.test(scene->getComponentId<TilemapComponent>())){
-                TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
+            if (signature.test(target->getComponentId<TilemapComponent>())){
+                TilemapComponent& tilemap = target->getComponent<TilemapComponent>(entity);
                 objectSizeOffset[entity] = Vector2(tilemap.width, tilemap.height);
             }
-            if (signature.test(scene->getComponentId<RectTransformComponent>())){
-                RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+            if (signature.test(target->getComponentId<RectTransformComponent>())){
+                RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
                 objectSizeOffset[entity] = Vector2(layout.width, layout.height);
+                if (layout.usingAnchors && layout.anchorPreset != AnchorPreset::NONE && signature.test(target->getComponentId<Transform>())){
+                    anchoredMoveStart[entity] = {layout.positionOffset, target->getComponent<Transform>(entity).position};
+                }
             }
         }
 
         // Store tile start state for tile sub-selection drag
         if (selectedTileIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedTileEntity){
-            TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(selectedTileEntity);
+            TilemapComponent* tilemap = target->findComponent<TilemapComponent>(selectedTileEntity);
             if (tilemap && selectedTileIndex < (int)tilemap->numTiles){
                 tileStartPosition = tilemap->tiles[selectedTileIndex].position;
                 tileStartWidth = tilemap->tiles[selectedTileIndex].width;
@@ -1089,8 +1152,8 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
 
         // Store instance start state for instance sub-selection drag
         if (selectedInstanceIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedInstanceEntity){
-            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(selectedInstanceEntity);
-            Transform* instTransform = scene->findComponent<Transform>(selectedInstanceEntity);
+            InstancedMeshComponent* instmesh = target->findComponent<InstancedMeshComponent>(selectedInstanceEntity);
+            Transform* instTransform = target->findComponent<Transform>(selectedInstanceEntity);
             if (instmesh && instTransform && selectedInstanceIndex < (int)instmesh->instances.size()){
                 const InstanceData& inst = instmesh->instances[selectedInstanceIndex];
                 instanceStartPosition = inst.position;
@@ -1133,6 +1196,11 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     mouseClicked = false;
 
     toolslayer.mouseRelease();
+    for (auto& tools : layerTools){
+        if (tools){
+            tools->mouseRelease();
+        }
+    }
 
     if (lastCommand){
         lastCommand->setNoMerge();
@@ -1181,38 +1249,48 @@ Vector2 editor::SceneRender::lockObject2DAspectRatio(const Vector2& startSize, c
 }
 
 void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
-    mouseRay = screenToRay(x, y);
+    ownerMouseRay = screenToRay(x, y);
+    mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
-            terrainEditWindow->paintStroke(scene, mouseRay);
+            terrainEditWindow->paintStroke(scene, ownerMouseRay);
             updateTerrainBrushCursor();
             return;
         }
     }
 
-    if (!disableSelection && !isPlaying){
+    // the box selects while playing too, as on release (Project::selectObjectsByRect)
+    if (!disableSelection){
         uilayer.setSelectionBoxVisible(true);
         uilayer.updateRect(Vector2(origX, origY), Vector2(x, y) - Vector2(origX, origY));
     }
 
-    Vector3 gizmoPosition = toolslayer.getGizmoPosition();
-    Matrix4 gizmoRMatrix = toolslayer.getGizmoRotation().getRotationMatrix();
+    // the tools work on the edit layer's selection while one is set, and its commands
+    // target the layer; this scene's history keeps them all the same
+    Scene* const target = gizmoScene();
+    ToolsLayer& tools = gizmoTools();
+    const uint32_t commandSceneId = editLayer.active ? editLayer.sceneId : (uint32_t)sceneId;
+    if (editLayer.active){
+        selEntities = editLayer.selection;
+    }
+
+    Vector3 gizmoPosition = tools.getGizmoPosition();
+    Matrix4 gizmoRMatrix = tools.getGizmoRotation().getRotationMatrix();
 
     // TranslateTracks keyframe point drag: the tracks entity has no Transform,
     // so it is handled outside the per-entity transform loop below.
     if (selectedTrackPointIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedTrackPointEntity){
         Entity trackEntity = selectedTrackPointEntity;
-        TranslateTracksComponent* tracks = scene->findComponent<TranslateTracksComponent>(trackEntity);
+        TranslateTracksComponent* tracks = target->findComponent<TranslateTracksComponent>(trackEntity);
         RayReturn rretrun = mouseRay.intersects(cursorPlane);
-        SceneProject* sceneProject = project->getScene(sceneId);
 
         if (tracks && rretrun && selectedTrackPointIndex < (int)tracks->values.size()){
             std::string pointProp = "values[" + std::to_string(selectedTrackPointIndex) + "]";
 
-            if (toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE
-                && toolslayer.getGizmoSideSelected() != GizmoSideSelected::NONE){
-                toolslayer.mouseDrag(rretrun.point);
+            if (tools.getGizmoSelected() == GizmoSelected::TRANSLATE
+                && tools.getGizmoSideSelected() != GizmoSideSelected::NONE){
+                tools.mouseDrag(rretrun.point);
 
                 Vector3 deltaPos = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
 
@@ -1226,30 +1304,30 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 }
 
                 Vector3 newPos = gizmoStartPosition;
-                if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XYZ){
+                if (tools.getGizmoSideSelected() == GizmoSideSelected::XYZ){
                     newPos = gizmoStartPosition + (gizmoRMatrix * deltaPos);
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::X){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, 0, 0));
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::Y){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::Y){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, deltaPos.y, 0));
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::Z){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::Z){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, 0, deltaPos.z));
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XY){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XY){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, deltaPos.y, 0));
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XZ){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XZ){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, 0, deltaPos.z));
-                }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::YZ){
+                }else if (tools.getGizmoSideSelected() == GizmoSideSelected::YZ){
                     newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, deltaPos.y, deltaPos.z));
                 }
 
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newPos;
-                lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, trackEntity,
+                lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
                 CommandHandle::get(sceneId)->addCommand(lastCommand);
 
-            }else if (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D
-                && toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
-                toolslayer.mouseDrag(rretrun.point);
+            }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D
+                && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+                tools.mouseDrag(rretrun.point);
 
                 // new world position of the point, following the cursor
                 Vector3 newWorldPos = rretrun.point + cursorStartOffset;
@@ -1267,7 +1345,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newWorldPos;
                 newLocalPos.z = oldLocal.z;
 
-                lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, trackEntity,
+                lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
                 CommandHandle::get(sceneId)->addCommand(lastCommand);
             }
@@ -1279,15 +1357,14 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
             // the drag targets the track keyframe point (handled above), not the entity
             continue;
         }
-        Transform* transform = scene->findComponent<Transform>(entity);
+        Transform* transform = target->findComponent<Transform>(entity);
         if (transform){
             RayReturn rretrun = mouseRay.intersects(cursorPlane);
 
-            SceneProject* sceneProject = project->getScene(sceneId);
-
+    
             bool isInstanceDrag = selectedInstanceIndex >= 0 && selEntities.size() == 1
                                   && entity == selectedInstanceEntity
-                                  && scene->findComponent<InstancedMeshComponent>(entity) != nullptr;
+                                  && target->findComponent<InstancedMeshComponent>(entity) != nullptr;
 
             auto emitInstanceTransformCmd = [&](const Matrix4& worldMatrix){
                 Matrix4 instLocalMatrix = transform->modelMatrix.inverse() * worldMatrix;
@@ -1297,27 +1374,27 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                 std::string prefix = "instances[" + std::to_string(selectedInstanceIndex) + "]";
                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                GizmoSelected gz = toolslayer.getGizmoSelected();
+                GizmoSelected gz = tools.getGizmoSelected();
                 if (gz == GizmoSelected::TRANSLATE || gz == GizmoSelected::OBJECT2D){
-                    multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entity, ComponentType::InstancedMeshComponent, prefix + ".position", newPos);
+                    multiCmd->addPropertyCmd<Vector3>(project, commandSceneId, entity, ComponentType::InstancedMeshComponent, prefix + ".position", newPos);
                 }else if (gz == GizmoSelected::ROTATE){
-                    multiCmd->addPropertyCmd<Quaternion>(project, sceneProject->id, entity, ComponentType::InstancedMeshComponent, prefix + ".rotation", newRot);
+                    multiCmd->addPropertyCmd<Quaternion>(project, commandSceneId, entity, ComponentType::InstancedMeshComponent, prefix + ".rotation", newRot);
                 }else if (gz == GizmoSelected::SCALE){
-                    multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entity, ComponentType::InstancedMeshComponent, prefix + ".scale", newScale);
+                    multiCmd->addPropertyCmd<Vector3>(project, commandSceneId, entity, ComponentType::InstancedMeshComponent, prefix + ".scale", newScale);
                 }
                 lastCommand = multiCmd;
             };
 
             if (rretrun){
 
-                toolslayer.mouseDrag(rretrun.point);
+                tools.mouseDrag(rretrun.point);
 
-                Transform* transformParent = scene->findComponent<Transform>(transform->parent);
+                Transform* transformParent = target->findComponent<Transform>(transform->parent);
 
                 // Emit a transform command for the active drag target (instance or entity).
                 // worldMatrix is the new object world matrix built by the current gizmo branch.
                 auto applyObjectTransform = [&](const Matrix4& worldMatrix){
-                    if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::NONE) return;
+                    if (tools.getGizmoSideSelected() == GizmoSideSelected::NONE) return;
                     if (isInstanceDrag){
                         emitInstanceTransformCmd(worldMatrix);
                     }else{
@@ -1325,11 +1402,27 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         if (transformParent){
                             m = transformParent->modelMatrix.inverse() * m;
                         }
-                        lastCommand = new ObjectTransformCmd(project, sceneProject->id, entity, m);
+                        RectTransformComponent* layout = target->findComponent<RectTransformComponent>(entity);
+                        if (layout && anchoredMoveStart.count(entity)){
+                            // the move goes to positionOffset; rotation and scale stay the Transform's
+                            Vector3 newPosition, newScale;
+                            Quaternion newRotation;
+                            m.decomposeStandard(newPosition, newScale, newRotation);
+                            newPosition -= getUIPivotShift(*layout, newRotation, newScale);
+
+                            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+                            multiCmd->addPropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::RectTransformComponent,
+                                "positionOffset", getAnchoredPositionOffset(target, entity, newPosition, Vector2(layout->width, layout->height)));
+                            multiCmd->addCommand(std::make_unique<ObjectTransformCmd>(project, commandSceneId, entity,
+                                transform->position, newRotation, newScale));
+                            lastCommand = multiCmd;
+                        }else{
+                            lastCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
+                        }
                     }
                 };
 
-                if (toolslayer.getGizmoSelected() == GizmoSelected::TRANSLATE){
+                if (tools.getGizmoSelected() == GizmoSelected::TRANSLATE){
                     Vector3 deltaPos = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
 
                     if (displaySettings.snapToGrid){
@@ -1342,43 +1435,43 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     Vector3 newPos;
-                    if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XYZ){
+                    if (tools.getGizmoSideSelected() == GizmoSideSelected::XYZ){
                         newPos = gizmoStartPosition + (gizmoRMatrix * deltaPos);
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::X){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, 0, 0));
-                    }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Y){
+                    }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Y){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, deltaPos.y, 0));
-                    }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Z){
+                    }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Z){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, 0, deltaPos.z));
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XY){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XY){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, deltaPos.y, 0));
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XZ){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XZ){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, 0, deltaPos.z));
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::YZ){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::YZ){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, deltaPos.y, deltaPos.z));
                     }
 
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
                         // move the selected line endpoint instead of the entity (the
                         // gizmo sits on the point, so newPos is its new world position)
-                        LineRendererComponent* linesComp = scene->findComponent<LineRendererComponent>(entity);
-                        Transform* lineTransform = scene->findComponent<Transform>(entity);
+                        LineRendererComponent* linesComp = target->findComponent<LineRendererComponent>(entity);
+                        Transform* lineTransform = target->findComponent<Transform>(entity);
                         int lineIndex = selectedLinePointIndex / 2;
                         if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()){
                             bool isPointA = (selectedLinePointIndex % 2 == 0);
                             Vector3 newLocalPos = lineTransform->modelMatrix.inverse() * newPos;
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
-                            lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
+                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else if (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity){
                         // move the selected polygon vertex instead of the entity
-                        Transform* polyTransform = scene->findComponent<Transform>(entity);
+                        Transform* polyTransform = target->findComponent<Transform>(entity);
                         if (polyTransform){
                             Vector3 newLocalPos = polyTransform->modelMatrix.inverse() * newPos;
                             std::string pointProp = "points[" + std::to_string(selectedPolygonPointIndex) + "].position";
-                            lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
+                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 selectedPolygonPointIsMesh ? ComponentType::MeshPolygonComponent : ComponentType::PolygonComponent,
                                 pointProp, newLocalPos);
                         }
@@ -1390,7 +1483,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
                 }
 
-                if (toolslayer.getGizmoSelected() == GizmoSelected::ROTATE){
+                if (tools.getGizmoSelected() == GizmoSelected::ROTATE){
                     Vector3 lastPoint = gizmoPosition - rretrun.point;
 
                     float dot = cursorStartOffset.dotProduct(lastPoint);
@@ -1412,7 +1505,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     applyObjectTransform(objMatrix);
                 }
 
-                if (toolslayer.getGizmoSelected() == GizmoSelected::SCALE){
+                if (tools.getGizmoSelected() == GizmoSelected::SCALE){
                     Vector3 lastPoint = gizmoPosition - rretrun.point;
 
                     Vector3 startRotPoint = gizmoRMatrix.inverse() * cursorStartOffset;
@@ -1423,19 +1516,19 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     float radioZ = (startRotPoint.z != 0) ? (lastRotPoint.z / startRotPoint.z) : 1;
 
                     Vector3 newScale;
-                    if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XYZ){
+                    if (tools.getGizmoSideSelected() == GizmoSideSelected::XYZ){
                         newScale = Vector3((lastPoint.length() / cursorStartOffset.length()));
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::X){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
                         newScale = Vector3(radioX, 1, 1);
-                    }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Y){
+                    }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Y){
                         newScale = Vector3(1, radioY, 1);
-                    }else if(toolslayer.getGizmoSideSelected() == GizmoSideSelected::Z){
+                    }else if(tools.getGizmoSideSelected() == GizmoSideSelected::Z){
                         newScale = Vector3(1, 1, radioZ);
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XY){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XY){
                         newScale = Vector3(radioX, radioY, 1);
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::XZ){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::XZ){
                         newScale = Vector3(radioX, 1, radioZ);
-                    }else if (toolslayer.getGizmoSideSelected() == GizmoSideSelected::YZ){
+                    }else if (tools.getGizmoSideSelected() == GizmoSideSelected::YZ){
                         newScale = Vector3(1, radioY, radioZ);
                     }
 
@@ -1448,13 +1541,13 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     applyObjectTransform(objMatrix);
                 }
 
-                if (toolslayer.getGizmoSelected() == GizmoSelected::OBJECT2D){
+                if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D){
                     // Handle occluder polygon point sub-selection drag
                     if (selectedOccluderPointIndex >= 0 && entity == selectedOccluderPointEntity){
-                        ShadowCaster2DComponent* occluder = scene->findComponent<ShadowCaster2DComponent>(entity);
-                        Transform* occTransform = scene->findComponent<Transform>(entity);
+                        ShadowCaster2DComponent* occluder = target->findComponent<ShadowCaster2DComponent>(entity);
+                        Transform* occTransform = target->findComponent<Transform>(entity);
                         if (occluder && occTransform && selectedOccluderPointIndex < (int)occluder->points.size()
-                            && toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+                            && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
 
                             // new world position of the point, following the cursor
                             Vector3 newWorldPos = rretrun.point + cursorStartOffset;
@@ -1472,17 +1565,17 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             std::vector<Vector2> newPoints = occluder->points;
                             newPoints[selectedOccluderPointIndex] = Vector2(newLocalPos.x, newLocalPos.y);
 
-                            lastCommand = new PropertyCmd<std::vector<Vector2>>(project, sceneProject->id, entity,
+                            lastCommand = new PropertyCmd<std::vector<Vector2>>(project, commandSceneId, entity,
                                 ComponentType::ShadowCaster2DComponent, "points", newPoints);
                         }
                     }else
                     // Handle line endpoint sub-selection drag
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
-                        LineRendererComponent* linesComp = scene->findComponent<LineRendererComponent>(entity);
-                        Transform* lineTransform = scene->findComponent<Transform>(entity);
+                        LineRendererComponent* linesComp = target->findComponent<LineRendererComponent>(entity);
+                        Transform* lineTransform = target->findComponent<Transform>(entity);
                         int lineIndex = selectedLinePointIndex / 2;
                         if (linesComp && lineTransform && lineIndex < (int)linesComp->lines.size()
-                            && toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+                            && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
 
                             // new world position of the endpoint, following the cursor
                             Vector3 newWorldPos = rretrun.point + cursorStartOffset;
@@ -1503,16 +1596,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             newLocalPos.z = localPoint.z;
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
-                            lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
+                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else
                     // Handle polygon/mesh-polygon vertex sub-selection drag
                     if (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity){
-                        Transform* polyTransform = scene->findComponent<Transform>(entity);
+                        Transform* polyTransform = target->findComponent<Transform>(entity);
                         Vector3 worldOld;
                         bool hasPoint = getPolygonPointWorld(entity, selectedPolygonPointIsMesh, selectedPolygonPointIndex, worldOld);
-                        if (polyTransform && hasPoint && toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+                        if (polyTransform && hasPoint && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
                             // new world position of the vertex, following the cursor
                             Vector3 newWorldPos = rretrun.point + cursorStartOffset;
 
@@ -1531,15 +1624,15 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             newLocalPos.z = oldLocal.z;
 
                             std::string pointProp = "points[" + std::to_string(selectedPolygonPointIndex) + "].position";
-                            lastCommand = new PropertyCmd<Vector3>(project, sceneProject->id, entity,
+                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 selectedPolygonPointIsMesh ? ComponentType::MeshPolygonComponent : ComponentType::PolygonComponent,
                                 pointProp, newLocalPos);
                         }
                     }else
                     // Handle tile sub-selection drag
                     if (selectedTileIndex >= 0 && entity == selectedTileEntity){
-                        TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-                        Transform* tileTransform = scene->findComponent<Transform>(entity);
+                        TilemapComponent* tilemap = target->findComponent<TilemapComponent>(entity);
+                        Transform* tileTransform = target->findComponent<Transform>(entity);
                         if (tilemap && tileTransform && selectedTileIndex < (int)tilemap->numTiles){
                             Vector3 delta = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
                             Vector3 sizeDelta = gizmoRMatrix.inverse() * -(gizmoStartPosition - rretrun.point - cursorStartOffset);
@@ -1558,7 +1651,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             const float tileMaxX = tileStartPosition.x + tileStartWidth;
                             const float tileMaxY = tileStartPosition.y + tileStartHeight;
 
-                            Gizmo2DSideSelected side = toolslayer.getGizmo2DSideSelected();
+                            Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
                             if (side == Gizmo2DSideSelected::CENTER){
                                 newTilePos = tileStartPosition + localDelta;
                             }else if (side == Gizmo2DSideSelected::NX){
@@ -1690,18 +1783,18 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             if (side != Gizmo2DSideSelected::NONE){
                                 std::string prefix = "tiles[" + std::to_string(selectedTileIndex) + "]";
                                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                                multiCmd->addPropertyCmd<Vector2>(project, sceneProject->id, entity, ComponentType::TilemapComponent,
+                                multiCmd->addPropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::TilemapComponent,
                                     prefix + ".position", newTilePos);
-                                multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, ComponentType::TilemapComponent,
+                                multiCmd->addPropertyCmd<float>(project, commandSceneId, entity, ComponentType::TilemapComponent,
                                     prefix + ".width", newTileW);
-                                multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, ComponentType::TilemapComponent,
+                                multiCmd->addPropertyCmd<float>(project, commandSceneId, entity, ComponentType::TilemapComponent,
                                     prefix + ".height", newTileH);
                                 lastCommand = multiCmd;
                             }
                         }
                     }else if (isInstanceDrag){
                         // Instance CENTER drag (position only) for OBJECT2D
-                        if (toolslayer.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+                        if (tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
                             Vector3 newPos = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
                             newPos = gizmoStartPosition + (gizmoRMatrix * newPos);
                             if (displaySettings.snapToGrid) {
@@ -1717,12 +1810,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         }
                     }else{
                     // Original entity-level OBJECT2D handling
-                    bool isSprite = scene->getComponentArray<SpriteComponent>()->hasEntity(entity);
-                    bool isTilemap = scene->getComponentArray<TilemapComponent>()->hasEntity(entity);
-                    bool isLayout = scene->getComponentArray<RectTransformComponent>()->hasEntity(entity);
-                    bool isText = scene->getComponentArray<TextComponent>()->hasEntity(entity);
+                    bool isSprite = target->getComponentArray<SpriteComponent>()->hasEntity(entity);
+                    bool isTilemap = target->getComponentArray<TilemapComponent>()->hasEntity(entity);
+                    bool isLayout = target->getComponentArray<RectTransformComponent>()->hasEntity(entity);
+                    bool isText = target->getComponentArray<TextComponent>()->hasEntity(entity);
 
-                    Gizmo2DSideSelected side = toolslayer.getGizmo2DSideSelected();
+                    Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
                     Vector3 deltaPos = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
                     Vector3 deltaSize = gizmoRMatrix.inverse() * -(gizmoStartPosition - rretrun.point - cursorStartOffset);
 
@@ -1802,15 +1895,15 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                     if (isLayout){
                         // the matrix origin of a pivoted UI element is not its position
-                        RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+                        RectTransformComponent& layout = target->getComponent<RectTransformComponent>(entity);
                         pos -= getUIPivotShift(layout.pivot, size, transform->rotation, transform->scale);
                     }
 
                     if (isText){
-                        TextComponent& text = scene->getComponent<TextComponent>(entity);
+                        TextComponent& text = target->getComponent<TextComponent>(entity);
                         if (text.pivotCentered){
                             float widthDelta = size.x - objectSizeOffset[entity].x;
-                            Gizmo2DSideSelected side = toolslayer.getGizmo2DSideSelected();
+                            Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
                             if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY) {
                                 pos.x += widthDelta * 0.5f;
                             }else if (side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
@@ -1822,28 +1915,34 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (side != Gizmo2DSideSelected::NONE){
                         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                         if (isLayout){
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::RectTransformComponent, "width", static_cast<unsigned int>(size.x));
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::RectTransformComponent, "height", static_cast<unsigned int>(size.y));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::RectTransformComponent, "width", static_cast<unsigned int>(size.x));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::RectTransformComponent, "height", static_cast<unsigned int>(size.y));
                             if (isText){
                                 if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::PX || 
                                     side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY || 
                                     side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
-                                    multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::TextComponent, "fixedWidth", true);
+                                    multiCmd->addPropertyCmd<bool>(project, commandSceneId, entity, ComponentType::TextComponent, "fixedWidth", true);
                                 }
                                 if (side == Gizmo2DSideSelected::NY || side == Gizmo2DSideSelected::PY || 
                                     side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY || 
                                     side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
-                                    multiCmd->addPropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::TextComponent, "fixedHeight", true);
+                                    multiCmd->addPropertyCmd<bool>(project, commandSceneId, entity, ComponentType::TextComponent, "fixedHeight", true);
                                 }
                             }
                         }else if (isSprite){
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::SpriteComponent, "width", static_cast<unsigned int>(size.x));
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::SpriteComponent, "height", static_cast<unsigned int>(size.y));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::SpriteComponent, "width", static_cast<unsigned int>(size.x));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::SpriteComponent, "height", static_cast<unsigned int>(size.y));
                         }else if (isTilemap){
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::TilemapComponent, "width", static_cast<unsigned int>(size.x));
-                            multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entity, ComponentType::TilemapComponent, "height", static_cast<unsigned int>(size.y));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::TilemapComponent, "width", static_cast<unsigned int>(size.x));
+                            multiCmd->addPropertyCmd<unsigned int>(project, commandSceneId, entity, ComponentType::TilemapComponent, "height", static_cast<unsigned int>(size.y));
                         }
-                        multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entity, ComponentType::Transform, "position", pos);
+                        if (isLayout && anchoredMoveStart.count(entity)){
+                            // placed by its anchor preset: the move goes to positionOffset
+                            multiCmd->addPropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::RectTransformComponent,
+                                "positionOffset", getAnchoredPositionOffset(target, entity, pos, size));
+                        }else{
+                            multiCmd->addPropertyCmd<Vector3>(project, commandSceneId, entity, ComponentType::Transform, "position", pos);
+                        }
                         lastCommand = multiCmd;
                     }
                     } // end else (entity-level OBJECT2D)
@@ -1857,8 +1956,64 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     }
 }
 
+// positionOffset that puts entity at localPosition (in its parent's space) once it is size
+// big: the offset lives in the space of its nearest RectTransform ancestor (UISystem's
+// layout space), the canvas at the root, and the preset moves the corner as the size changes
+Vector2 editor::SceneRender::getAnchoredPositionOffset(Scene* target, Entity entity, const Vector3& localPosition, const Vector2& size) const{
+    auto start = anchoredMoveStart.find(entity);
+    const RectTransformComponent* layout = target->findComponent<RectTransformComponent>(entity);
+    if (start == anchoredMoveStart.end() || !layout){
+        return Vector2::ZERO;
+    }
+
+    // the corner offset UISystem::applyAnchorPreset gives a size between two anchor points
+    auto presetCornerOffset = [](float anchorLow, float anchorHigh, float extent) -> float {
+        if (anchorLow != anchorHigh || anchorLow == 0.0f){
+            return 0.0f;
+        }
+        return (anchorLow == 1.0f) ? -extent : -std::floor(extent / 2.0f);
+    };
+    auto startSizeIt = objectSizeOffset.find(entity);
+    const Vector2 startSize = (startSizeIt != objectSizeOffset.end()) ? startSizeIt->second : size;
+    const Vector2 presetShift(
+        presetCornerOffset(layout->anchorPointLeft, layout->anchorPointRight, std::floor(size.x)) -
+            presetCornerOffset(layout->anchorPointLeft, layout->anchorPointRight, std::floor(startSize.x)),
+        presetCornerOffset(layout->anchorPointTop, layout->anchorPointBottom, std::floor(size.y)) -
+            presetCornerOffset(layout->anchorPointTop, layout->anchorPointBottom, std::floor(startSize.y)));
+
+    Matrix4 parentToWorld;
+    Matrix4 layoutToWorld;
+    const Transform& transform = target->getComponent<Transform>(entity);
+    if (transform.parent != NULL_ENTITY){
+        if (const Transform* parentTransform = target->findComponent<Transform>(transform.parent)){
+            parentToWorld = parentTransform->modelMatrix;
+        }
+        layoutToWorld = parentToWorld;
+        for (Entity ancestor = transform.parent; ancestor != NULL_ENTITY; ){
+            const Transform* ancestorTransform = target->findComponent<Transform>(ancestor);
+            if (target->findComponent<RectTransformComponent>(ancestor)){
+                if (ancestorTransform){
+                    layoutToWorld = ancestorTransform->modelMatrix;
+                }
+                break;
+            }
+            ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+        }
+    }
+
+    Matrix4 worldToLayout = layoutToWorld.inverse();
+    if (!worldToLayout.isValid()){
+        worldToLayout = Matrix4();
+    }
+    const Matrix4 parentToLayout = worldToLayout * parentToWorld;
+    const Vector3 from = parentToLayout * start->second.second;
+    const Vector3 to = parentToLayout * localPosition;
+    return start->second.first + Vector2(to.x - from.x, to.y - from.y) - presetShift;
+}
+
 bool editor::SceneRender::isAnyGizmoSideSelected() const{
-    return (toolslayer.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || toolslayer.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
+    const ToolsLayer& tools = gizmoTools();
+    return (tools.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || tools.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
 }
 
 bool editor::SceneRender::isTerrainEditing() const{
@@ -1889,7 +2044,7 @@ void editor::SceneRender::updateTerrainBrushCursor(){
 
     TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow();
     TerrainBrushCursor cursor;
-    if (!terrainEditWindow || !terrainEditWindow->updateCursor(scene, mouseRay, cursor) || !cursor.visible || cursor.outerPoints.size() < 2){
+    if (!terrainEditWindow || !terrainEditWindow->updateCursor(scene, ownerMouseRay, cursor) || !cursor.visible || cursor.outerPoints.size() < 2){
         terrainBrushLines->setVisible(false);
         return;
     }
@@ -2005,6 +2160,8 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
 
     // Only the game's own layers: no gizmo, overlay or view-gizmo scenes
     Engine::removeAllSceneLayers(false);
+    engineLayersActive = false;
+    engineLayerTools = -1;
     for (Scene* childScene : childSceneLayers) {
         Engine::addSceneLayer(childScene);
     }
@@ -2015,6 +2172,217 @@ void editor::SceneRender::endGameViewPass(){
     if (!isPlaying){
         syncSceneCamera();
     }
+}
+
+Scene* editor::SceneRender::gizmoScene() const{
+    return editLayer.active ? editLayer.scene : scene;
+}
+
+int editor::SceneRender::layerToolsIndex() const{
+    return editLayer.view.isOrthographic() ? 0 : 1;
+}
+
+editor::ToolsLayer& editor::SceneRender::getLayerTools(int index){
+    if (!layerTools[index]){
+        layerTools[index] = std::make_unique<ToolsLayer>(index == 0);
+        ScopedDefaultEntityPool sys(*layerTools[index]->getScene(), EntityPool::System);
+        layerSelLines[index] = new LineRenderer(layerTools[index]->getScene());
+        layerSelLines[index]->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
+        layerSelLines[index]->setVisible(false);
+        layerTools[index]->setGizmoVisible(false);
+        // drawn through Engine::drawView before (or without) the Engine ever adding it
+        if (Engine::isViewLoaded()){
+            layerTools[index]->getScene()->load();
+        }
+    }
+    return *layerTools[index];
+}
+
+editor::ToolsLayer& editor::SceneRender::gizmoTools(){
+    return editLayer.active ? *layerTools[layerToolsIndex()] : toolslayer;
+}
+
+const editor::ToolsLayer& editor::SceneRender::gizmoTools() const{
+    return editLayer.active ? *layerTools[layerToolsIndex()] : toolslayer;
+}
+
+editor::ToolsLayer* editor::SceneRender::getActiveToolsLayer(){
+    return &gizmoTools();
+}
+
+Ray editor::SceneRender::gizmoRay(float x, float y){
+    return editLayer.active ? editLayer.view.ray(x, y) : screenToRay(x, y);
+}
+
+Vector3 editor::SceneRender::gizmoViewDirection() const{
+    return editLayer.active ? editLayer.view.worldDirection : camera->getWorldDirection();
+}
+
+bool editor::SceneRender::isOrthographicView(Scene* target) const{
+    if (editLayer.active && target == editLayer.scene && target != scene){
+        return editLayer.view.isOrthographic();
+    }
+    return scene->getComponent<CameraComponent>(camera->getEntity()).type == CameraType::CAMERA_ORTHO;
+}
+
+float editor::SceneRender::targetBillboardScale(Scene* target, const Vector3& worldPos, float logicalScale) const{
+    if (editLayer.active && target == editLayer.scene && target != scene){
+        return overlayPx(logicalScale) * editLayer.view.worldPerPixel(worldPos);
+    }
+    return billboardScreenScale(worldPos, logicalScale);
+}
+
+// The outline of each box: its near face (2D views), or all twelve edges
+void editor::SceneRender::fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes){
+    static const OBB::CornerEnum edges[12][2] = {
+        {OBB::NEAR_LEFT_BOTTOM, OBB::NEAR_LEFT_TOP}, {OBB::NEAR_LEFT_TOP, OBB::NEAR_RIGHT_TOP},
+        {OBB::NEAR_RIGHT_TOP, OBB::NEAR_RIGHT_BOTTOM}, {OBB::NEAR_RIGHT_BOTTOM, OBB::NEAR_LEFT_BOTTOM},
+        {OBB::FAR_LEFT_BOTTOM, OBB::FAR_LEFT_TOP}, {OBB::FAR_LEFT_TOP, OBB::FAR_RIGHT_TOP},
+        {OBB::FAR_RIGHT_TOP, OBB::FAR_RIGHT_BOTTOM}, {OBB::FAR_RIGHT_BOTTOM, OBB::FAR_LEFT_BOTTOM},
+        {OBB::FAR_LEFT_BOTTOM, OBB::NEAR_LEFT_BOTTOM}, {OBB::FAR_LEFT_TOP, OBB::NEAR_LEFT_TOP},
+        {OBB::FAR_RIGHT_TOP, OBB::NEAR_RIGHT_TOP}, {OBB::FAR_RIGHT_BOTTOM, OBB::NEAR_RIGHT_BOTTOM}
+    };
+    const Vector4 color = Vector4(1.0, 0.6, 0.0, 1.0);
+    const size_t edgesPerBox = boxes ? 12 : 4;
+
+    if (lines->getNumLines() != obbs.size() * edgesPerBox){
+        lines->clearLines();
+        for (const OBB& obb : obbs){
+            for (size_t e = 0; e < edgesPerBox; e++){
+                lines->addLine(obb.getCorner(edges[e][0]), obb.getCorner(edges[e][1]), color);
+            }
+        }
+    }else{
+        size_t line = 0;
+        for (const OBB& obb : obbs){
+            for (size_t e = 0; e < edgesPerBox; e++){
+                lines->updateLine(line++, obb.getCorner(edges[e][0]), obb.getCorner(edges[e][1]));
+            }
+        }
+    }
+}
+
+// The Engine draws this scene's editor layers while activate() set them: the edit
+// layer's tools join them, or leave, as it comes and goes
+void editor::SceneRender::syncEngineLayerTools(){
+    const int wanted = editLayer.active ? layerToolsIndex() : -1;
+    if (wanted == engineLayerTools){
+        return;
+    }
+    if (!engineLayersActive || Engine::getScene() != scene){
+        // the Engine draws another view now; activate() adds them when it is this one again
+        engineLayerTools = -1;
+        engineLayersActive = false;
+        return;
+    }
+    if (engineLayerTools >= 0 && layerTools[engineLayerTools]){
+        Engine::removeScene(layerTools[engineLayerTools]->getScene());
+    }
+    if (wanted >= 0){
+        Engine::addSceneLayer(layerTools[wanted]->getScene());
+    }
+    engineLayerTools = wanted;
+}
+
+void editor::SceneRender::setEditLayer(uint32_t sceneId, Scene* layerScene, const LayerView& view, const std::vector<Entity>& selection,
+                                       const std::vector<Entity>& entities, bool running){
+    if (!layerScene || layerScene == scene){
+        clearEditLayer();
+        return;
+    }
+
+    const bool wasActive = editLayer.active;
+    const int previousTools = wasActive ? layerToolsIndex() : -1;
+
+    if (!wasActive){
+        // the sub-selections (tile, instance, points) are of this scene's GameObjects
+        clearTileSelection();
+        clearInstanceSelection();
+        clearOccluderPointSelection();
+        clearLinePointSelection();
+        clearPolygonPointSelection();
+        clearTrackPointSelection();
+    }
+    if (!wasActive || editLayer.sceneId != sceneId){
+        // a drag that began on another target does not carry over
+        mouseClicked = false;
+    }
+
+    editLayer.active = true;
+    editLayer.sceneId = sceneId;
+    editLayer.scene = layerScene;
+    editLayer.view = view;
+    editLayer.selection = selection;
+    editLayer.entities = entities;
+    editLayer.running = running;
+
+    ToolsLayer& tools = getLayerTools(layerToolsIndex());
+    tools.setGizmoSelected(toolslayer.getGizmoSelected());
+    tools.updateCamera(view);
+
+    if (previousTools >= 0 && previousTools != layerToolsIndex()){
+        layerTools[previousTools]->setGizmoVisible(false);
+        layerSelLines[previousTools]->setVisible(false);
+    }
+    if (!wasActive){
+        // this scene's own gizmo stays hidden until the tools come back to it
+        toolslayer.setGizmoVisible(false);
+        selLines->setVisible(false);
+    }
+
+    syncEngineLayerTools();
+}
+
+void editor::SceneRender::clearEditLayer(){
+    if (!editLayer.active){
+        return;
+    }
+
+    for (int i = 0; i < 2; i++){
+        if (layerTools[i]){
+            layerTools[i]->mouseRelease();
+            layerTools[i]->setGizmoVisible(false);
+            layerSelLines[i]->setVisible(false);
+        }
+    }
+    editLayer = EditLayer();
+    mouseClicked = false;
+
+    syncEngineLayerTools();
+}
+
+bool editor::SceneRender::hasEditLayer() const{
+    return editLayer.active;
+}
+
+uint32_t editor::SceneRender::getEditLayerSceneId() const{
+    return editLayer.active ? editLayer.sceneId : 0;
+}
+
+bool editor::SceneRender::isEditLayerYDown() const{
+    return editLayer.active && editLayer.view.type == CameraType::CAMERA_UI;
+}
+
+Rect editor::SceneRender::getGameLayerRect(int width, int height) const{
+    const Rect full(0, 0, (float)width, (float)height);
+    const float canvasWidth = (float)Engine::getCanvasWidth();
+    const float canvasHeight = (float)Engine::getCanvasHeight();
+    if (canvasWidth <= 0.0f || canvasHeight <= 0.0f || width <= 0 || height <= 0){
+        return full;
+    }
+
+    const float fit = std::min((float)width / canvasWidth, (float)height / canvasHeight);
+    float rectWidth = std::max(1.0f, std::floor(canvasWidth * fit));
+    float rectHeight = std::max(1.0f, std::floor(canvasHeight * fit));
+    // whole margins on both sides: the rect stays exactly centered, which a layer
+    // camera's whole-view equivalent (LayerView) needs for a perspective camera
+    if ((width - (int)rectWidth) % 2 != 0 && rectWidth > 1.0f){
+        rectWidth -= 1.0f;
+    }
+    if ((height - (int)rectHeight) % 2 != 0 && rectHeight > 1.0f){
+        rectHeight -= 1.0f;
+    }
+    return Rect(((float)width - rectWidth) * 0.5f, ((float)height - rectHeight) * 0.5f, rectWidth, rectHeight);
 }
 
 editor::ToolsLayer* editor::SceneRender::getToolsLayer(){

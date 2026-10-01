@@ -90,7 +90,16 @@ namespace jasperengine::editor {
         void beginStructureVisibilityUpdate(uint32_t sceneId);
         void setStructureSelectionParent(uint32_t sceneId, Entity entity, Entity selectionParent);
 
+        // Frames entities of the scene itself in its Scene view: the editor camera moves
+        // to show them whole (3D: around them, 2D: centered and zoomed to fit)
         void focusOnEntities(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // Frame Selected (F) in the Scene view of sceneId: the GameObjects selected in it
+        // or in one of its layer scenes (inline child scenes, a running game's layers)
+        void frameSelection(uint32_t sceneId);
+        // Frames entities of entitySceneId (the scene itself or one of its layer scenes)
+        void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
+        // The selection Frame Selected works on in the Scene view of sceneId
+        bool hasFrameableSelection(uint32_t sceneId);
         bool viewThroughCamera(uint32_t sceneId, Entity cameraEntity);
         void stopViewingCamera(uint32_t sceneId);
 

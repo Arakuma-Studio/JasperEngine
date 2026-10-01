@@ -433,7 +433,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     // editor or a running game (native menus own their key equivalents)
     const bool sceneContext = !textInput && !isProjectBusy && lastFocusedWindow == LastFocusedWindow::AnySceneWindow;
     const size_t selectedCount = hasSelectedScene ? project.getSelectedEntities(selectedSceneId).size() : 0;
-    const bool canFrame = sceneContext && selectedCount > 0 && selectedScene->sceneType == SceneType::SCENE_3D;
+    // the selection may be of a scene layered over the selected one (Scene view picks)
+    const bool canFrame = sceneContext && hasSelectedScene && sceneWindow->hasFrameableSelection(selectedSceneId);
     const bool canRename = sceneContext && selectedCount == 1;
     const bool canCreate = hasSelectedScene && selectedScene->scene;
     const bool canCreateChild = canCreate && hierarchyWindow->getSelectedParentForCreate() != NULL_ENTITY;
@@ -701,7 +702,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::FrameSelected:
             if (SceneProject* scene = project.getSelectedScene()) {
-                sceneWindow->focusOnEntities(scene, project.getSelectedEntities(scene->id));
+                sceneWindow->frameSelection(scene->id);
             }
             break;
         case AppMenuCommand::ToggleHierarchy:
@@ -1857,6 +1858,8 @@ void editor::App::show(){
             project.deselectDestroyedEntities(&sceneProject);
         }
     }
+    // and the same for the running copies of child scenes, which also go when the game drops them
+    project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
         if (projectWindow->isFocused()) {
@@ -2494,7 +2497,7 @@ void editor::App::engineRender(){
             sceneRender->updateRenderSystem();
 
             //TODO: avoid calling every frame
-            sceneRender->update(project.getSelectedEntities(sceneProject.id), project.getEntities(sceneProject.id), sceneProject.mainCamera, sceneProject.displaySettings);
+            project.updateSceneRender(sceneProject.id);
 
             // A paused game advances one frame here when Step was pressed
             const bool steppingFrame = project.beginStepFrame(sceneProject.id);
@@ -2607,7 +2610,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the gizmos follow the objects where this frame's update left them
     if (sceneViewShown){
-        sceneRender->update(project.getSelectedEntities(sceneProject.id), project.getEntities(sceneProject.id), sceneProject.mainCamera, sceneProject.displaySettings);
+        project.updateSceneRender(sceneProject.id);
         sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
     }
 
@@ -2648,7 +2651,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
     if (sceneRender->getViewWidth() != width || sceneRender->getViewHeight() != height) {
         sceneRender->updateSize(width, height);
     }
-    sceneRender->update(project.getSelectedEntities(sceneProject.id), project.getEntities(sceneProject.id), sceneProject.mainCamera, sceneProject.displaySettings);
+    project.updateSceneRender(sceneProject.id);
     sceneRender->updateRenderSystem();
     sceneProject.scene->update(Engine::getDeltatime());
 

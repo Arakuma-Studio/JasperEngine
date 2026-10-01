@@ -10,6 +10,8 @@
 #include "RenderUtil.h"
 #include "command/Command.h"
 
+#include <memory>
+
 namespace jasperengine::editor{
 
     constexpr float DEFAULT_EDITOR_CAMERA_NEAR = 0.3f;
@@ -79,6 +81,11 @@ namespace jasperengine::editor{
         Vector3 scaleStartOffset;
         std::map<Entity, Matrix4> objectMatrixOffset;
         std::map<Entity, Vector2> objectSizeOffset;
+        // RectTransforms whose anchor preset places them: their positionOffset and position
+        // when the drag began. Their layout puts the position back, so a move goes to the
+        // positionOffset, as Unity's tools move a RectTransform's anchoredPosition.
+        std::map<Entity, std::pair<Vector2, Vector3>> anchoredMoveStart;
+        Vector2 getAnchoredPositionOffset(Scene* target, Entity entity, const Vector3& localPosition, const Vector2& size) const;
 
         Ray mouseRay;
         bool mouseClicked;
@@ -130,15 +137,52 @@ namespace jasperengine::editor{
 
         bool getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint);
 
-        AABB getAABB(Entity entity, bool local);
-        AABB getFamilyAABB(Entity entity, float offset);
+        // Bounds of an entity of target: this scene, or the edit layer's scene
+        AABB getAABB(Scene* target, Entity entity, bool local);
+        AABB getFamilyAABB(Scene* target, Entity entity, float offset);
 
         // visual=true returns a shear-preserving box (parallelepiped) that hugs the
         // rendered geometry, for the selection outline / gizmo handles only.
         // visual=false (default) returns an orthonormal OBB, required by ray picking
         // (Ray::intersects) and OBB::enclose, which assume orthonormal axes.
-        OBB getOBB(Entity entity, bool local, bool visual = false);
-        OBB getFamilyVisualOBB(Entity entity, float offset);
+        OBB getOBB(Scene* target, Entity entity, bool local, bool visual = false);
+        OBB getFamilyVisualOBB(Scene* target, Entity entity, float offset);
+
+        // A scene drawn over this one in the Scene view (an inline child scene, a running
+        // game's layer scene) whose GameObjects the transform tools edit, see setEditLayer().
+        // Its gizmos and outline live in a tools layer of their own, seen through the
+        // layer's camera; this scene's tools layer keeps the icons of this scene.
+        struct EditLayer{
+            bool active = false;
+            uint32_t sceneId = 0;
+            Scene* scene = nullptr;
+            LayerView view;
+            std::vector<Entity> selection;
+            std::vector<Entity> entities;
+            bool running = false;
+        };
+        EditLayer editLayer;
+        // [0] with 2D gizmos (orthographic layers), [1] with 3D gizmos; made on first use
+        std::unique_ptr<ToolsLayer> layerTools[2];
+        LineRenderer* layerSelLines[2] = {nullptr, nullptr};
+        // activate() put the editor layers in the Engine, and which layer tools it added
+        bool engineLayersActive = false;
+        int engineLayerTools = -1;
+
+        // the mouse through this scene's camera, for the terrain brush (mouseRay follows
+        // the edit layer while one is set)
+        Ray ownerMouseRay;
+
+        Scene* gizmoScene() const;
+        ToolsLayer& gizmoTools();
+        const ToolsLayer& gizmoTools() const;
+        int layerToolsIndex() const;
+        ToolsLayer& getLayerTools(int index);
+        void syncEngineLayerTools();
+        Ray gizmoRay(float x, float y);
+        Vector3 gizmoViewDirection() const;
+        bool isOrthographicView(Scene* target) const;
+        float targetBillboardScale(Scene* target, const Vector3& worldPos, float logicalScale) const;
         static OBB transformAABBPreservingShear(const Matrix4& modelMatrix, const AABB& localAABB);
         void updateTerrainBrushCursor();
         float snapRotationAngle(float angle, bool invertRotationSnap) const;
@@ -156,6 +200,9 @@ namespace jasperengine::editor{
         int viewHeight = 0;
 
     protected:
+        // selection outline of boxes: their near face (2D views), or all twelve edges
+        static void fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes);
+
         void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
         void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
         void setupCameraIcon(CameraObjects& co);
@@ -235,9 +282,30 @@ namespace jasperengine::editor{
         virtual void mouseHoverEvent(float x, float y);
         virtual void mouseClickEvent(float x, float y, std::vector<Entity> selEntities);
         virtual void mouseReleaseEvent(float x, float y);
+        // sceneId is this scene: its history takes the commands. While an edit layer is set
+        // the tools work on the layer's selection, and its commands target the layer.
         virtual void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio);
 
         virtual bool isAnyGizmoSideSelected() const;
+
+        // The transform tools edit the GameObjects selected in a scene layered over this
+        // one: layerScene (sceneId, a scene or a play runtime id) as view shows it. entities
+        // are its authored GameObjects; while running, only those take the tools, like the
+        // running scene's own. Called every frame the view updates; clearEditLayer() hands
+        // the tools back to this scene.
+        void setEditLayer(uint32_t sceneId, Scene* layerScene, const LayerView& view, const std::vector<Entity>& selection,
+                          const std::vector<Entity>& entities, bool running);
+        void clearEditLayer();
+        bool hasEditLayer() const;
+        uint32_t getEditLayerSceneId() const;
+        // the edit layer is seen through a UI camera, whose y runs down the view
+        bool isEditLayerYDown() const;
+        // The tools layer the gizmo the mouse works is in: the edit layer's while one is set
+        ToolsLayer* getActiveToolsLayer();
+
+        // Where the Scene view draws a running game's layer scenes: the game's canvas,
+        // fitted and centered in a view of width x height
+        Rect getGameLayerRect(int width, int height) const;
         bool isTerrainEditing() const;
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
