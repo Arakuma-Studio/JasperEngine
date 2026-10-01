@@ -8586,6 +8586,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -8618,6 +8619,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -8805,6 +8807,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8844,6 +8847,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8889,6 +8893,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8931,6 +8936,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8972,6 +8978,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -9007,6 +9014,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";

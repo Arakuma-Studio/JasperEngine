@@ -153,6 +153,17 @@ function RuntimeShaders:onUpdate()
         if ShaderPool.isShaderFailed("mesh:Ult,Vc3") then
             fail("mesh:Ult,Vc3 failed")
         end
+        -- everything the build ships and every variant this device compiled before
+        local notReady = ShaderPool.warmUpAllShaders()
+        log("warmUpAllShaders: %d not ready yet", notReady)
+        self.stage = 4
+        self.allFrame = self.frames
+    end
+
+    if self.stage == 4 and self.frames >= self.allFrame + 5 then
+        self.stage = 5
+        log("warmUpAllShaders after 5 frames: %d not ready, %d compiling",
+            ShaderPool.warmUpAllShaders(), ShaderPool.getPendingShaderCount())
     end
 end
 
