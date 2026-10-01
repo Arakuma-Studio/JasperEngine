@@ -14,6 +14,25 @@
 using namespace jasperengine;
 
 namespace {
+    // Entries a Missing Prefab nested in an instance kept (relative to its root), written
+    // the way the instance writes a live nested one's: tagged with the nested root's
+    // prefabPath and prefabRootRegistryEntity. Like those, one level deep only (an entry
+    // already tagged belongs to a level below, which the format does not hold).
+    void appendNestedEntries(YAML::Node& entries, const YAML::Node& kept, const std::string& prefabPath, Entity prefabRootRegistryEntity) {
+        if (!kept || !kept.IsSequence()) {
+            return;
+        }
+        for (const YAML::Node& entry : kept) {
+            if (!entry.IsMap() || entry["prefabPath"]) {
+                continue;
+            }
+            YAML::Node tagged = YAML::Clone(entry);
+            tagged["prefabPath"] = prefabPath;
+            tagged["prefabRootRegistryEntity"] = prefabRootRegistryEntity;
+            entries.push_back(tagged);
+        }
+    }
+
     // Removed GameObject overrides of an instance and of the instances nested in it, as
     // `prefabRemovedGameObjects` entries relative to it: {registryEntity} for its own, and
     // for a nested instance's the nested root's prefabPath and prefabRootRegistryEntity,
@@ -43,11 +62,20 @@ namespace {
             const PrefabComponent* component = &registry->getComponent<PrefabComponent>(member.localEntity);
             const editor::Prefab* nestedPrefab = component && !component->path.empty() ? project->getPrefab(component->path) : nullptr;
             const editor::Prefab::Instance* nestedInstance = nestedPrefab ? nestedPrefab->getInstance(sceneId, member.localEntity) : nullptr;
-            if (!nestedInstance || nestedInstance->rootEntity != member.localEntity) {
+            YAML::Node nestedEntries(YAML::NodeType::Sequence);
+            if (nestedInstance && nestedInstance->rootEntity == member.localEntity) {
+                encodeRemovedGameObjects(project, sceneId, registry, *nestedInstance, nestedEntries, depth + 1);
+            } else if (const editor::MissingPrefabInstance* missing = project->getMissingPrefab(sceneId, member.localEntity)) {
+                // a Missing Prefab nested here keeps its entries as they were loaded
+                const YAML::Node kept = missing->data["prefabRemovedGameObjects"];
+                if (kept && kept.IsSequence()) {
+                    for (const YAML::Node& entry : kept) {
+                        nestedEntries.push_back(YAML::Clone(entry));
+                    }
+                }
+            } else {
                 continue;
             }
-            YAML::Node nestedEntries(YAML::NodeType::Sequence);
-            encodeRemovedGameObjects(project, sceneId, registry, *nestedInstance, nestedEntries, depth + 1);
             for (const YAML::Node& nestedEntry : nestedEntries) {
                 YAML::Node entry;
                 if (nestedEntry["prefabPath"]) {
@@ -92,7 +120,13 @@ void editor::Stream::encodePrefabInstance(YAML::Node& entityNode, const Entity e
             for (const auto& member : instance.members) {
                 if (!registry->getSignature(member.localEntity).test(registry->getComponentId<PrefabComponent>())) continue;
                 const PrefabComponent& nestedBC = registry->getComponent<PrefabComponent>(member.localEntity);
-                if (nestedBC.path.empty()) continue;
+                if (nestedBC.path.empty() && nestedBC.guid.empty()) continue;
+
+                // A Missing Prefab nested here keeps its overrides as they were loaded
+                if (const MissingPrefabInstance* missing = project->getMissingPrefab(sceneProject->id, member.localEntity)) {
+                    appendNestedEntries(overridesNode, missing->data["prefabOverrides"], nestedBC.path, member.registryEntity);
+                    continue;
+                }
 
                 const Prefab* nestedPrefab = project->getPrefab(nestedBC.path);
                 if (!nestedPrefab) continue;
@@ -201,7 +235,40 @@ void editor::Stream::encodePrefabInstance(YAML::Node& entityNode, const Entity e
             for (const auto& member : instance.members) {
                 if (!registry->getSignature(member.localEntity).test(registry->getComponentId<PrefabComponent>())) continue;
                 const PrefabComponent& nestedBCLoc = registry->getComponent<PrefabComponent>(member.localEntity);
-                if (nestedBCLoc.path.empty()) continue;
+                if (nestedBCLoc.path.empty() && nestedBCLoc.guid.empty()) continue;
+
+                if (const MissingPrefabInstance* missing = project->getMissingPrefab(sceneProject->id, member.localEntity)) {
+                    // A Missing Prefab nested here keeps the GameObjects added to it as they
+                    // were loaded; ones added below its root since go after them
+                    const YAML::Node kept = missing->data["prefabLocalEntities"];
+                    appendNestedEntries(localEntsNode, kept, nestedBCLoc.path, member.registryEntity);
+                    size_t keptAtRoot = 0;
+                    if (kept && kept.IsSequence()) {
+                        for (const YAML::Node& entry : kept) {
+                            if (!entry["prefabPath"] && (!entry["parentRegistryEntity"] || entry["parentRegistryEntity"].as<Entity>() == NULL_ENTITY)) {
+                                keptAtRoot++;
+                            }
+                        }
+                    }
+                    if (registry->getSignature(member.localEntity).test(registry->getComponentId<Transform>())) {
+                        auto transforms = registry->getComponentArray<Transform>();
+                        size_t childPos = keptAtRoot;
+                        for (size_t ti = transforms->getIndex(member.localEntity) + 1; ti < transforms->size(); ti++) {
+                            const Transform& t = transforms->getComponentFromIndex(ti);
+                            if (t.parent != member.localEntity) {
+                                if (t.parent == NULL_ENTITY) break;
+                                continue;
+                            }
+                            YAML::Node localEntNode = encodeEntity(transforms->getEntity(ti), registry, project, sceneProject);
+                            localEntNode["parentRegistryEntity"] = NULL_ENTITY;
+                            localEntNode["childIndex"] = childPos++;
+                            localEntNode["prefabPath"] = nestedBCLoc.path;
+                            localEntNode["prefabRootRegistryEntity"] = member.registryEntity;
+                            localEntsNode.push_back(localEntNode);
+                        }
+                    }
+                    continue;
+                }
 
                 const Prefab* nestedPrefab = project->getPrefab(nestedBCLoc.path);
                 if (!nestedPrefab) continue;
@@ -263,16 +330,63 @@ void editor::Stream::encodePrefabInstance(YAML::Node& entityNode, const Entity e
 void editor::Stream::decodePrefabInstance(const YAML::Node& entityNode, Entity entity, EntityRegistry* registry,
         std::vector<Entity>* entities, Project* project, SceneProject* sceneProject,
         std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allEntities) {
-    // If entity has PrefabComponent, import prefab children from its path
+    // If entity has PrefabComponent, import prefab children from the prefab its GUID names
     if (project && sceneProject) {
         PrefabComponent* prefabComp = registry->findComponent<PrefabComponent>(entity);
-        if (prefabComp && !prefabComp->path.empty()) {
+        if (prefabComp && (!prefabComp->path.empty() || !prefabComp->guid.empty())) {
+            const std::filesystem::path path = prefabComp->path;
             std::vector<Entity> prefabEntities = project->importPrefab(
-                sceneProject, entities, prefabComp->path, entity, false,
+                sceneProject, entities, path, entity, false,
                 entityNode["prefabOverrides"], entityNode["prefabLocalEntities"], entityRemap,
                 entityNode["prefabRemovedGameObjects"]);
             allEntities.insert(allEntities.end(), prefabEntities.begin(), prefabEntities.end());
+
+            // Missing Prefab: every key the file holds for the instance is kept as written,
+            // the ones this version does not know too
+            const PrefabComponent* component = registry->findComponent<PrefabComponent>(entity);
+            const Prefab* prefab = component ? project->getPrefab(component->path) : nullptr;
+            const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneProject->id, entity) : nullptr;
+            if (!instance || instance->rootEntity != entity) {
+                project->setMissingPrefab(sceneProject, entity, entityNode);
+            }
         }
+    }
+}
+
+bool editor::Stream::isGameObjectKey(const std::string& key) {
+    static const std::unordered_set<std::string> keys = {
+        "type", "entity", "name", "active", "tag", "layer", "components", "children"
+    };
+    return keys.count(key) != 0;
+}
+
+YAML::Node editor::Stream::encodePrefabInstanceData(const Entity root, const EntityRegistry* registry,
+        const Project* project, const SceneProject* sceneProject, const Prefab* prefab) {
+    YAML::Node data(YAML::NodeType::Map);
+    if (project && sceneProject && prefab) {
+        encodePrefabInstance(data, root, registry, project, sceneProject, prefab);
+    }
+    return data;
+}
+
+void editor::Stream::encodeMissingPrefab(YAML::Node& entityNode, Entity entity, const Project* project, const SceneProject* sceneProject) {
+    if (!project || !sceneProject || !entityNode.IsMap()) {
+        return;
+    }
+    const YAML::Node& readNode = entityNode;
+    if (!readNode["type"]) {
+        return;
+    }
+    const MissingPrefabInstance* missing = project->getMissingPrefab(sceneProject->id, entity);
+    if (!missing || !missing->data.IsMap()) {
+        return;
+    }
+    for (auto it = missing->data.begin(); it != missing->data.end(); ++it) {
+        const std::string key = it->first.as<std::string>();
+        if (isGameObjectKey(key) || readNode[key]) {
+            continue;
+        }
+        entityNode[key] = YAML::Clone(it->second);
     }
 }
 
@@ -284,6 +398,9 @@ YAML::Node editor::Stream::encodePrefabComponent(const PrefabComponent& prefab) 
     YAML::Node node;
     node["name"] = prefab.name;
     node["path"] = prefab.path;
+    if (!prefab.guid.empty()) {
+        node["guid"] = prefab.guid;
+    }
     return node;
 }
 
@@ -296,6 +413,12 @@ PrefabComponent editor::Stream::decodePrefabComponent(const YAML::Node& node, co
 
     if (node["name"]) prefab.name = node["name"].as<std::string>();
     if (node["path"]) prefab.path = node["path"].as<std::string>();
+    // A component written before GUIDs gets the one its path resolves to on import
+    if (node["guid"]) {
+        prefab.guid = node["guid"].as<std::string>();
+    } else if (node["path"]) {
+        prefab.guid.clear();
+    }
 
     return prefab;
 }

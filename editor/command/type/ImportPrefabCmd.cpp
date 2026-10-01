@@ -31,6 +31,16 @@ bool editor::ImportPrefabCmd::execute(){
 
     Scene* scene = sceneProject->scene;
 
+    // The prefab is the asset with this GUID: a redo after it was renamed finds it
+    if (guid.empty()) {
+        guid = project->getPrefabGuid(filepath);
+    } else {
+        std::filesystem::path current = project->resolvePrefabPath(guid, filepath);
+        if (!current.empty()) {
+            filepath = current;
+        }
+    }
+
     // Create root entity with PrefabComponent (Preserve ID for Undo/Redo)
     if (rootEntity == NULL_ENTITY){
         rootEntity = scene->createUserEntity();
@@ -43,6 +53,7 @@ bool editor::ImportPrefabCmd::execute(){
     PrefabComponent prefabComp;
     prefabComp.name = filepath.stem().string();
     prefabComp.path = filepath.string();
+    prefabComp.guid = guid;
     scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
     // Check if prefab has top-level entities with transforms to decide if root needs one
@@ -55,12 +66,11 @@ bool editor::ImportPrefabCmd::execute(){
             std::filesystem::path fullPrefabPath = project->getProjectPath() / filepath;
             YAML::Node node = YAML::LoadFile(fullPrefabPath.string());
             // Temporarily decode to check for transforms
-            EntityRegistry tempRegistry;
-            std::vector<Entity> tempEntities;
-            Stream::decodeEntitySelection(node, &tempRegistry, &tempEntities);
-            std::vector<Entity> topLevel = Project::getTopLevelEntities(&tempRegistry, tempEntities);
+            Prefab temp;
+            temp.loadRegistry(node);
+            std::vector<Entity> topLevel = Project::getTopLevelEntities(temp.registry.get(), temp.registryEntities);
             for (Entity e : topLevel) {
-                if (tempRegistry.getSignature(e).test(tempRegistry.getComponentId<Transform>())) {
+                if (temp.registry->getSignature(e).test(temp.registry->getComponentId<Transform>())) {
                     hasTopLevelTransform = true;
                     break;
                 }
@@ -105,6 +115,7 @@ bool editor::ImportPrefabCmd::execute(){
 
     if (importedEntities.empty()){
         // Clean up root if import failed
+        project->clearMissingPrefab(sceneId, rootEntity);
         scene->destroyEntity(rootEntity);
         auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), rootEntity);
         if (it != sceneProject->entities.end()) {
@@ -157,7 +168,14 @@ void editor::ImportPrefabCmd::undo(){
         addedToParentPrefab = false;
     }
 
-    // Unimport the prefab (removes instance + destroys entities)
+    // Unimport the prefab (removes instance + destroys entities), at its path now
+    if (sceneProject->scene) {
+        if (const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(rootEntity)) {
+            if (!component->path.empty()) {
+                filepath = component->path;
+            }
+        }
+    }
     project->unimportPrefab(sceneId, filepath, rootEntity, importedEntities);
 
     // Restore previous selection

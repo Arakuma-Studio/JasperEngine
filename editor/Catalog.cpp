@@ -374,6 +374,7 @@ namespace {
     static const FastPropertyDescriptor kPrefabProperties[] = {
         makeFastProperty<PrefabComponent, std::string, &PrefabComponent::name>("name", PropertyType::String, UpdateFlags_None),
         makeFastProperty<PrefabComponent, std::string, &PrefabComponent::path>("path", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<PrefabComponent, std::string, &PrefabComponent::guid>("guid", PropertyType::String, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kBoneProperties[] = {

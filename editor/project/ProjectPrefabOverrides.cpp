@@ -281,6 +281,17 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
     }
     Scene* scene = sceneProject->scene;
 
+    // The prefab of each record is the asset its GUID names, renamed or moved since or not
+    for (PrefabUnpackRecord& record : records) {
+        if (record.hadComponent && !record.component.guid.empty()) {
+            const fs::path current = resolvePrefabPath(record.component.guid, record.path);
+            if (!current.empty() && current != record.path) {
+                record.path = current;
+                record.component.path = current.string();
+            }
+        }
+    }
+
     // A prefab's records come together in ascending list position, so each list is
     // rebuilt with one merge that puts every instance back where it was
     for (size_t begin = 0, end = 0; begin < records.size(); begin = end) {
@@ -296,9 +307,8 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
             // registry entity IDs the members map to
             try {
                 Prefab loaded;
-                loaded.registry = std::make_unique<EntityRegistry>();
-                YAML::Node node = YAML::LoadFile((getProjectPath() / path).string());
-                Stream::decodeEntitySelection(node, loaded.registry.get(), &loaded.registryEntities);
+                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / path).string()));
+                resolveRegistryPrefabRefs(loaded.registry.get());
                 prefab = &prefabAssets.emplace(path, std::move(loaded)).first->second;
             } catch (const std::exception& e) {
                 Out::error("Failed to load prefab %s to restore its instances: %s", path.string().c_str(), e.what());

@@ -13230,6 +13230,7 @@ void editor::InspectorWindow::drawPrefabComponent(ComponentType cpType, ScenePro
     beginTable(cpType, getLabelSize("Path"));
     propertyRow(RowPropertyType::Label, cpType, "name", "Name", sceneProject, entities);
     propertyRow(RowPropertyType::Label, cpType, "path", "Path", sceneProject, entities);
+    propertyRow(RowPropertyType::Label, cpType, "guid", "GUID", sceneProject, entities);
     endTable();
 }
 

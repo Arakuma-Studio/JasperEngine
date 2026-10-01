@@ -21,6 +21,7 @@ namespace jasperengine::editor{
         uint32_t sceneId;
         fs::path filepath;
         YAML::Node prefabNode; // Optional: if provided, use this instead of encoding
+        std::string guid;      // the asset GUID the first execute gave the file, kept by a redo
 
         // For undo
         bool wasModified;

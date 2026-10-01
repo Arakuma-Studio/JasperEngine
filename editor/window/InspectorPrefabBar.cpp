@@ -30,6 +30,30 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
     Scene* scene = sceneProject->scene;
     const ImGuiStyle& style = ImGui::GetStyle();
 
+    // Unity's Missing Prefab bar: the asset of this instance is gone; the scene keeps what
+    // it stored for the instance and rebuilds it when the asset comes back
+    if (!entities.empty() && std::all_of(entities.begin(), entities.end(), [&](Entity entity) {
+            return project->isMissingPrefab(sceneProject->id, entity);
+        })) {
+        const MissingPrefabInstance* missing = project->getMissingPrefab(sceneProject->id, entities[0]);
+        const ImVec4 missingColor(0.96f, 0.36f, 0.36f, 1.0f);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Prefab");
+        ImGui::SameLine(0.0f, gap);
+        ImGui::TextColored(missingColor, ICON_FA_TRIANGLE_EXCLAMATION " Missing Prefab");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            ImGui::SetTooltip("The Prefab asset of this instance cannot be found.\n"
+                "Last known path: %s\nGUID: %s\n"
+                "Its overrides are kept, and it is relinked when the asset comes back.",
+                missing ? missing->path.c_str() : "", missing && !missing->guid.empty() ? missing->guid.c_str() : "none");
+        }
+        if (missing && !missing->path.empty()) {
+            ImGui::SameLine(0.0f, gap);
+            ImGui::TextDisabled("%s", missing->path.c_str());
+        }
+        return;
+    }
+
     const std::vector<Entity> prefabRoots = project->getOutermostPrefabRoots(sceneProject->id, entities);
     if (std::none_of(prefabRoots.begin(), prefabRoots.end(), [](Entity root) { return root == NULL_ENTITY; })) {
         std::string assetPath;

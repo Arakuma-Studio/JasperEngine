@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <string>
 #include <filesystem>
 #include <future>
@@ -47,6 +48,7 @@ namespace jasperengine::editor {
     struct PrefabSceneInfo {
         std::filesystem::path prefabPath; // relative path of the .prefab file
         std::string functionName;         // generated C++ function name (e.g. create_prefab_X)
+        std::string guid;                 // the prefab's asset GUID (the path follows it)
     };
 
     // Which cmake the editor would run, and where it came from.
@@ -162,7 +164,9 @@ namespace jasperengine::editor {
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;
         static unsigned int getAutomaticParallelBuildJobs();
         static unsigned int getMaxParallelBuildJobs();
-        std::vector<PrefabInstanceInfo> writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath);
+        // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab)
+        std::vector<PrefabInstanceInfo> writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
+            const std::function<std::string(const fs::path&)>& prefabGuid = nullptr);
         void writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const;

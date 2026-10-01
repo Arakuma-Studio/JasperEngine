@@ -25,6 +25,7 @@ namespace jasperengine::editor{
         bool isChildScene = false;
         bool isPrefab = false;
         bool isPrefabRoot = false;
+        bool isMissingPrefab = false;       // Unity's Missing Prefab: its asset is gone (red)
         bool hasPrefabParent = false;
         bool isParentPrefab = false;
         bool isMainCamera = false;

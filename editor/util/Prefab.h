@@ -13,10 +13,32 @@
 #include "Scene.h"     // Entity, EntityRegistry, NULL_ENTITY
 #include "Catalog.h"   // ComponentType
 
+#include "yaml-cpp/yaml.h"
+
 namespace jasperengine::editor {
 
 class Prefab {
 public:
+    // Prefab file format, see editor/project/PREFABS.md:
+    // {type: Prefab, version: 2, guid, nextEntity, members: [...]}
+    static constexpr int FILE_VERSION = 2;
+
+    struct FileHeader {
+        int version = 1;                  // 1: a file written before the header
+        std::string guid;                 // empty when the file has none
+        Entity nextEntity = NULL_ENTITY;  // the id the next new GameObject of the Prefab takes
+    };
+    static FileHeader readHeader(const YAML::Node& node);
+
+    // The one way a prefab file becomes a registry: decodes it into `registry` (made, or
+    // cleared first) and `registryEntities`, then raises the registry's id counter to the
+    // file's nextEntity, past its highest id and past what the counter already was. A
+    // registry entity id is the GameObject's persistent file id: scenes key their overrides
+    // by it, so an id is never handed out twice, whatever was deleted since.
+    FileHeader loadRegistry(const YAML::Node& node);
+    // The id the next GameObject added to the Prefab takes (the file's nextEntity)
+    Entity getNextEntity() const;
+
     struct EntityMember {
         Entity localEntity;     // Entity in the scene
         Entity registryEntity;  // Corresponding entity in the shared registry

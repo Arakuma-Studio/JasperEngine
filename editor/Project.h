@@ -12,6 +12,7 @@
 #include "Generator.h"
 #include "Configs.h"
 #include "util/Prefab.h"
+#include "util/AssetDatabase.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
@@ -83,6 +84,26 @@ namespace jasperengine::editor{
         bool startActive = true;
     };
 
+    // Local ids the GameObjects of prefab instances had, by instance root then registry
+    // entity: an instance made again (a Missing Prefab relinked) takes them back where free
+    using PrefabMemberIds = std::unordered_map<Entity, std::unordered_map<Entity, Entity>>;
+
+    // Unity's Missing Prefab: a prefab instance root whose asset cannot be found (deleted,
+    // or a GUID no file has). The root stays with its own components; everything the scene
+    // stored for the instance is kept as written and saved again unchanged, and the
+    // instance is rebuilt from it when the asset comes back. See editor/project/PREFABS.md.
+    struct MissingPrefabInstance {
+        std::string guid;      // of the PrefabComponent when it went missing
+        std::string path;      // last known path
+        // The instance's keys, relative to this root: prefabOverrides, prefabLocalEntities,
+        // prefabRemovedGameObjects and any other key a scene file holds next to a prefab
+        // root, everything but the root's own GameObject keys (type, entity, name, active,
+        // tag, layer, components, children)
+        YAML::Node data;
+        PrefabMemberIds memberIds;  // the ids its GameObjects had, when it went missing in this session
+        Entity mainCamera = NULL_ENTITY;  // the scene's main camera, when it was one of them
+    };
+
     struct SceneProject{
         uint32_t id = NULL_PROJECT_SCENE;
         std::string name = "Unknown";
@@ -118,6 +139,11 @@ namespace jasperengine::editor{
         std::vector<SceneScriptSource> cppScripts;
         std::vector<PrefabSceneInfo> prefabs;
         YAML::Node editorCameraState;
+        // Missing Prefab instances by root entity (Project::getMissingPrefab validates them)
+        std::map<Entity, MissingPrefabInstance> missingPrefabs;
+        // Set while decoding when a prefab reference resolved to another path by its GUID:
+        // the loaded scene is then marked modified
+        bool prefabRefsChanged = false;
     };
 
     struct NestedPrefabRecovery {
@@ -497,6 +523,32 @@ namespace jasperengine::editor{
         std::map<std::filesystem::path, PrefabFileCache> prefabFileCache;
         YAML::Node loadPrefabFile(const std::filesystem::path& fullPath);
         std::vector<std::filesystem::path> standalonePrefabs;  // built without a scene instance
+
+        // GUID <-> path of the prefab files (and later other asset types)
+        AssetDatabase assetDatabase;
+        std::chrono::steady_clock::time_point lastAssetRefreshTime;
+        // Found while resolving references (in the middle of an import), applied on refresh
+        std::vector<AssetDatabase::Change> pendingAssetChanges;
+
+        // What the database reports changed: moved prefabs get their new path everywhere in
+        // memory, removed ones leave Missing Prefab instances behind, added ones relink them
+        void applyAssetChanges(const std::vector<AssetDatabase::Change>& changes);
+        // The in-memory part of a prefab rename or move (a file or a directory): prefab assets,
+        // scene and prefab PrefabComponents, scene prefab lists and the standalone list
+        void remapPrefabPathsInMemory(const fs::path& oldRelative, const fs::path& newRelative);
+        // Every instance of the prefab in the loaded scenes becomes a Missing Prefab
+        // instance (its root and what the scene stored for it stay), then the asset is dropped
+        void convertPrefabInstancesToMissing(const std::filesystem::path& filepath);
+        void collectPrefabMemberIds(uint32_t sceneId, const Prefab::Instance& instance, PrefabMemberIds& ids, size_t depth = 0) const;
+        // A listed standalone prefab not loaded yet (its file came back)
+        void loadStandalonePrefab(const std::filesystem::path& filepath);
+        // Prefab lists and the nested prefab references of a loaded prefab registry follow
+        // their GUIDs (in memory only: the files keep the old path as a hint until saved)
+        void resolveScenePrefabInfos(SceneProject& sceneProject);
+        void resolveRegistryPrefabRefs(EntityRegistry* registry);
+        // The generated source of a closed scene calls its prefabs by path-derived names:
+        // one whose prefab moved, went or came back is written again (from its file)
+        void invalidateClosedSceneSources(const std::function<bool(const PrefabSceneInfo&)>& affected);
 
         std::string libName;
 
@@ -1012,7 +1064,37 @@ namespace jasperengine::editor{
 
         //=== Prefab part ===
 
-        bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode);
+        // Asset GUIDs (editor/project/PREFABS.md)
+        AssetDatabase& getAssetDatabase() { return assetDatabase; }
+        const AssetDatabase& getAssetDatabase() const { return assetDatabase; }
+        // The GUID of a prefab file: the database's, else the one an upgrade would give it
+        std::string getPrefabGuid(const std::filesystem::path& filepath) const;
+        // Where a prefab reference points now: by GUID (a GUID no file has is missing, even
+        // when a file sits at the path), else, for a reference written before GUIDs, by the
+        // GUID its path was upgraded to, else by the path. Empty when missing.
+        // A file not in the database yet (made outside the editor a moment ago) is added.
+        std::filesystem::path resolvePrefabPath(const std::string& guid, const std::filesystem::path& pathHint);
+        // Resolves a PrefabComponent in place (path updated, a missing guid filled in);
+        // false when missing. pathChanged reports a path the GUID moved.
+        bool resolvePrefabReference(PrefabComponent& component, bool* pathChanged = nullptr);
+        // External changes to prefab files (moved, copied, deleted or edited outside the
+        // editor). Called every frame, looks at most every two seconds unless forced; does
+        // nothing while a scene plays.
+        void refreshAssetDatabase(bool force = false);
+        // A prefab file or a directory holding some appeared (a copy, a deleted file put back
+        // by an undo): they are registered, and Missing Prefab instances they resolve relinked
+        void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);
+
+        // Missing Prefab instances (SceneProject::missingPrefabs)
+        const MissingPrefabInstance* getMissingPrefab(uint32_t sceneId, Entity entity) const;
+        bool isMissingPrefab(uint32_t sceneId, Entity entity) const;
+        void setMissingPrefab(SceneProject* sceneProject, Entity root, const YAML::Node& data, const PrefabMemberIds* memberIds = nullptr);
+        void clearMissingPrefab(uint32_t sceneId, Entity root);
+        // Rebuilds the Missing Prefab instances whose asset resolves again; returns how many
+        size_t relinkMissingPrefabs();
+
+        // guid: the asset GUID to give the new file (a redo), empty for a new one
+        bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid = std::string());
         bool removePrefab(const std::filesystem::path& filepath);
 
         const std::vector<std::filesystem::path>& getStandalonePrefabs() const;
@@ -1030,12 +1112,17 @@ namespace jasperengine::editor{
         YAML::Node encodePrefabNode(const std::filesystem::path& filepath) const;
 
         // prefabRemovals: the instance's `prefabRemovedGameObjects` (see Stream), the Prefab
-        // GameObjects left out of it and of the instances nested in it
-        std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr, const YAML::Node& prefabRemovals = YAML::Node());
+        // GameObjects left out of it and of the instances nested in it. The root's
+        // PrefabComponent, when it has one, says which prefab (by GUID) over filepath; a
+        // prefab that cannot be found or read makes the root a Missing Prefab instance
+        // holding the given instance data, and nothing is imported. preferredIds: local ids
+        // for the members (of this instance and the nested ones), taken where free.
+        std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr, const YAML::Node& prefabRemovals = YAML::Node(), const PrefabMemberIds* preferredIds = nullptr);
         // reconcileTracked false leaves dropping the destroyed entities from the scene's
-        // tracked list to the caller (one pass after unimporting many instances)
+        // tracked list to the caller (one pass after unimporting many instances); keepRoot
+        // leaves the root entity in the scene (a Missing Prefab conversion)
         bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
-                            bool reconcileTracked = true);
+                            bool reconcileTracked = true, bool keepRoot = false);
 
         bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
         bool addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,

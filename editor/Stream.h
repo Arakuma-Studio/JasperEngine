@@ -190,6 +190,9 @@ namespace jasperengine::editor {
         static void decodePrefabInstance(const YAML::Node& entityNode, Entity entity, EntityRegistry* registry,
             std::vector<Entity>* entities, Project* project, SceneProject* sceneProject,
             std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allEntities);
+        // A Missing Prefab root encoded as a plain GameObject gets back the instance keys it
+        // was loaded with (Project::getMissingPrefab), nothing otherwise
+        static void encodeMissingPrefab(YAML::Node& entityNode, Entity entity, const Project* project, const SceneProject* sceneProject);
 
         // GameObject state next to the name: active, tag and layer
         static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
@@ -199,6 +202,14 @@ namespace jasperengine::editor {
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
+        // The keys a scene writes next to a prefab instance root (prefabOverrides,
+        // prefabRemovedGameObjects, prefabLocalEntities), relative to it: what a Missing
+        // Prefab instance keeps of a live one
+        static YAML::Node encodePrefabInstanceData(const Entity root, const EntityRegistry* registry,
+            const Project* project, const SceneProject* sceneProject, const Prefab* prefab);
+        // The GameObject keys of an entity node, the ones a Missing Prefab does not keep raw
+        static bool isGameObjectKey(const std::string& key);
+
         // True when a mesh's geometry is regenerated from a model's source file on load
         // (the ModelComponent root or one of a multi-node model's generated child meshes),
         // so its buffers/embedded textures/bones must not be serialized, and replacing its

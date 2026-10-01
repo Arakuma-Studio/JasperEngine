@@ -50,6 +50,10 @@ bool editor::CopyFileCmd::execute(){
                 if (isDir) {
                     if (copy){
                         fs::copy(sourceFs, destFs, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+                        // copied prefabs are new assets: new GUIDs, the same ones on a redo
+                        if (project) {
+                            project->importPrefabFiles(destFs, true, &copyGuids);
+                        }
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {
@@ -64,6 +68,9 @@ bool editor::CopyFileCmd::execute(){
                 } else {
                     if (copy){
                         fs::copy(sourceFs, destFs, fs::copy_options::overwrite_existing);
+                        if (project && Util::isPrefabFile(extension)) {
+                            project->importPrefabFiles(destFs, true, &copyGuids);
+                        }
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {
@@ -120,6 +127,10 @@ void editor::CopyFileCmd::undo(){
                 if (isDir) {
                     if (copy) {
                         fs::remove_all(sourceFs);
+                        // instances of the copies made since become Missing Prefabs
+                        if (project) {
+                            project->cleanupPrefabFilePath(sourceFs);
+                        }
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {
@@ -134,6 +145,9 @@ void editor::CopyFileCmd::undo(){
                 } else {
                     if (copy) {
                         fs::remove(sourceFs);
+                        if (project && Util::isPrefabFile(extension)) {
+                            project->cleanupPrefabFilePath(sourceFs);
+                        }
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {

@@ -40,9 +40,10 @@ bool editor::CreatePrefabCmd::execute(){
 
 
     // Mark the entity as shared (this will also save it to disk)
-    wasSuccessful = project->createPrefab(sceneId, filepath, prefabNode);
+    wasSuccessful = project->createPrefab(sceneId, filepath, prefabNode, guid);
 
     if (wasSuccessful) {
+        guid = project->getPrefabGuid(filepath);
         editor::Out::info("Created Prefab at '%s'", filepath.string().c_str());
         return true;
     }
@@ -60,6 +61,14 @@ void editor::CreatePrefabCmd::undo(){
         return;
     }
 
+    // The file it made, wherever it was moved since
+    if (!guid.empty()) {
+        fs::path current = project->resolvePrefabPath(guid, filepath);
+        if (!current.empty()) {
+            filepath = current;
+        }
+    }
+
     // Delete the shared entity file from disk if it exists
     try {
         fs::path fullPath = project->getProjectPath() / filepath;
@@ -67,6 +76,7 @@ void editor::CreatePrefabCmd::undo(){
             fs::remove(fullPath);
             editor::Out::info("Removed shared entity file: %s", fullPath.string().c_str());
         }
+        project->getAssetDatabase().removeAssets(fullPath);
     } catch (const std::exception& e) {
         editor::Out::warning("Failed to remove shared entity file: %s", e.what());
     }
