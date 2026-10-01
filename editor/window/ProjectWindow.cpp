@@ -1335,18 +1335,18 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (isSelected) drawList->AddRectFilled(itemMin, itemMax, selectionCol);
                     else if (hovered) drawList->AddRectFilled(itemMin, itemMax, hoverCol);
                     const float rowH = itemMax.y - itemMin.y;
-                    const float small = std::min(lineHeight, rowH);
-                    float w = small, h = small;
+                    const float iconExtent = std::min(lineHeight, rowH);
+                    float w = iconExtent, h = iconExtent;
                     if (dispW > 0.0f && dispH > 0.0f){
-                        float scale = std::min(small / dispW, small / dispH);
+                        float scale = std::min(iconExtent / dispW, iconExtent / dispH);
                         w = dispW * scale;
                         h = dispH * scale;
                     }
-                    ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (small - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
+                    ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (iconExtent - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
                         drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
                     }
-                    ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + small, itemMin.y + (rowH - lineHeight) * 0.5f);
+                    ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + iconExtent, itemMin.y + (rowH - lineHeight) * 0.5f);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
                                               file.displayName.c_str(), nullptr, nullptr);
