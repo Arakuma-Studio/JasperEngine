@@ -3,7 +3,7 @@
 
     tools/prefab-fixtures.py legacy <out-dir>
 
-`legacy` writes a project in the formats written before the real-root model (prefab
+`legacy` writes a project (FIXTURE: the TappyPlane fixture project, for its sprites) in the formats written before the real-root model (prefab
 files version 1 and 2, wrapper-root instances with whole-component overrides): a
 multi-root prefab, prefabs nested three levels deep, instance overrides, added and removed
 GameObjects at every depth, instance roots with their own scale, tag and layer, a scene
@@ -86,10 +86,11 @@ def write_yaml(path, data):
 
 
 def legacy(out):
+    # the sprites and scene settings come from the TappyPlane fixture project
     here = os.path.dirname(os.path.abspath(__file__))
-    fixture = os.path.join(here, "..", "build", "a2", "fixture")
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-project"))
     if not os.path.isdir(fixture):
-        sys.exit("needs the fixture project at build/a2/fixture (a copy of the TappyPlane fixture)")
+        sys.exit("needs the TappyPlane fixture project (build/fixture-project, or FIXTURE=<dir>)")
     os.makedirs(out, exist_ok=True)
     os.system('cp -r "%s/assets" "%s/"' % (fixture, out))
     project = yaml.safe_load(open(os.path.join(fixture, "project.yaml")))
