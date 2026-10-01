@@ -195,8 +195,8 @@ public:
     Instance* getInstanceById(uint32_t sceneId, uint32_t instanceId);
     const Instance* getInstanceById(uint32_t sceneId, uint32_t instanceId) const;
 
-    // Component-level override management (every property of the component: the
-    // "Override Prefab Component" model the edit-shared Inspector uses)
+    // Whole-component overrides ("*": every property of the component), on the owning
+    // instance's bookkeeping, without undo (Project::recordPrefabEdit is the edit path)
     void setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
     void clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
     // Any property of the component is overridden

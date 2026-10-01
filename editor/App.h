@@ -129,6 +129,7 @@ namespace jasperengine::editor{
         ImGuiID dock_id_middle_top;
 
         static ImFont* codeFont;
+        static ImFont* boldFont;
 
         HierarchyWindow* hierarchyWindow;
         InspectorWindow* inspectorWindow;
@@ -329,6 +330,8 @@ namespace jasperengine::editor{
 
         // Monospace font used by the code editor
         static ImFont* getCodeFont();
+        // The UI font, bold (Unity's overridden prefab values); the UI font when not loaded
+        static ImFont* getBoldFont();
 
         // ImGui sizes fonts by their line box (ascent-descent) while CSS/VSCode use the em size.
         // JetBrains Mono's line box is (1020 - -300) / 1000upm = 1.32em; multiply a CSS-like

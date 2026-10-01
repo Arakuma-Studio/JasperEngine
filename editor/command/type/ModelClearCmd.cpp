@@ -205,25 +205,15 @@ void editor::ModelClearCmd::unparkEntities(SceneProject* sceneProject){
 }
 
 void editor::ModelClearCmd::overrideInPrefab(Entity target, ComponentType type){
-    Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, target));
-    // The root's included: its components are the prefab root GameObject's
-    if (!prefab || prefab->getObjectRegistryEntity(sceneId, target) == NULL_ENTITY) {
-        return;
-    }
-    prefabOverrides.push_back({target, type, prefab->hasComponentOverride(sceneId, target, type)});
-    prefab->setComponentOverride(sceneId, target, type);
+    // Unity: the cleared component of a prefab instance's GameObject (its root included) is an
+    // override of that instance, all of it
+    prefabUndo.capture(project, sceneId, target);
+    project->recordPrefabEdit(sceneId, target, type, {});
 }
 
 void editor::ModelClearCmd::restorePrefabOverrides(){
-    for (auto it = prefabOverrides.rbegin(); it != prefabOverrides.rend(); ++it) {
-        if (it->wasOverridden) {
-            continue;
-        }
-        if (Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, it->entity))) {
-            prefab->clearComponentOverride(sceneId, it->entity, it->type);
-        }
-    }
-    prefabOverrides.clear();
+    prefabUndo.restore(project, sceneId);
+    prefabUndo.clear();
 }
 
 void editor::ModelClearCmd::releasePendingLoad(Scene* scene, const ModelComponent& model){
@@ -337,7 +327,7 @@ bool editor::ModelClearCmd::execute(){
     roots.insert(roots.end(), transformRoots.begin(), transformRoots.end());
 
     retargetedActions.clear();
-    prefabOverrides.clear();
+    prefabUndo.clear();
     if (!roots.empty()) {
         // Deleting a node also deletes the actions aimed at it. The ones that are not the
         // model's (a user's Action on a node) stay, aimed at no GameObject until an undo.

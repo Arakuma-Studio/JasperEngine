@@ -832,8 +832,8 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
-            "make_prefab_component_unique",
-            "Convert a component shared with the Prefab into a local override on this instance through ComponentToPrefabLocalCmd.",
+            "apply_prefab_component",
+            "Apply a Prefab instance's overrides of a component (its overridden properties, or the added or removed component) to the Prefab asset that owns the GameObject, through PrefabOverrideCmd. Edits on Prefab instances are per-instance overrides until applied.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
@@ -844,7 +844,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "revert_prefab_component",
-            "Revert a local component override back to the Prefab's shared component through ComponentToPrefabSharedCmd.",
+            "Revert a Prefab instance's overrides of a component (its overridden properties, or the added or removed component) back to the Prefab's values through the command history.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("GameObject id")},
@@ -1353,7 +1353,7 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         return hasEntitySelector(arguments) ? ok() : fail(name + " requires entity_id or entity_name.");
     }
     if (name == "inspect_component" || name == "add_component" || name == "remove_component" ||
-        name == "make_prefab_component_unique" || name == "revert_prefab_component") {
+        name == "apply_prefab_component" || name == "revert_prefab_component") {
         if (!hasEntitySelector(arguments)) return fail(name + " requires entity_id or entity_name.");
         return hasString(arguments, "component") ? ok() : fail(name + " requires component.");
     }
@@ -1950,11 +1950,11 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     if (name == "remove_entity_from_prefab") {
         return "Remove GameObject from Prefab";
     }
-    if (name == "make_prefab_component_unique") {
-        return "Override Prefab component";
+    if (name == "apply_prefab_component") {
+        return "Apply Prefab component overrides";
     }
     if (name == "revert_prefab_component") {
-        return "Revert Prefab component override";
+        return "Revert Prefab component overrides";
     }
     if (name == "set_standalone_prefab") {
         return "Set standalone Prefab " + arguments.value("prefab_path", "");

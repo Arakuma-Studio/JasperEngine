@@ -25,15 +25,22 @@ bool editor::PrefabOverrideCmd::isApply() const{
 bool editor::PrefabOverrideCmd::execute(){
     std::vector<std::filesystem::path> targets;
     if (isApply()){
+        if (!project->canApplyPrefabOverrides()){
+            return false;
+        }
         if (!target.empty()){
             targets.push_back(target);
         }else{
-            std::vector<std::filesystem::path> candidates = project->getPrefabApplyTargets(sceneId, entity);
-            if (candidates.empty()){
+            // the owning prefab (what an empty target means to the primitives)
+            PrefabObjectRef ref;
+            if (!project->findPrefabObject(sceneId, entity, ref)){
                 return false;
             }
-            targets.push_back(candidates.front());
+            targets.push_back(ref.path);
         }
+    }
+    if (!project->getScene(sceneId)){
+        return false;
     }
     before = project->capturePrefabUndoState(sceneId, entity, targets);
 

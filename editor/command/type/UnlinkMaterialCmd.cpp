@@ -37,6 +37,7 @@ bool editor::UnlinkMaterialCmd::execute(){
     }
 
     for (auto& [entity, data] : entities) {
+        prefabUndo.capture(project, sceneId, entity);
         // Unlink the material file
         project->unlinkMaterialFile(sceneId, entity, submeshIndex);
 
@@ -54,9 +55,7 @@ bool editor::UnlinkMaterialCmd::execute(){
                 *overrideMask |= propertyFields;
             }
 
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
-            }
+            project->recordPrefabEdit(sceneId, entity, componentType, {propertyName});
         }
     }
 
@@ -87,10 +86,6 @@ void editor::UnlinkMaterialCmd::undo(){
             if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
                 *overrideMask = data.oldOverrideFields;
             }
-
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->prefabPropertyChanged(sceneId, entity, componentType, {propertyName});
-            }
         }
 
         // Re-link the material file if it was linked
@@ -98,6 +93,8 @@ void editor::UnlinkMaterialCmd::undo(){
             project->linkMaterialFile(sceneId, entity, submeshIndex, data.linkedFilePath);
         }
     }
+
+    prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;
 

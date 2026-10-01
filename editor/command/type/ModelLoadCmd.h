@@ -7,6 +7,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "Project.h"
+#include "command/PrefabEditUndo.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "subsystem/MeshSystem.h"
@@ -38,6 +39,7 @@ namespace jasperengine::editor{
         bool mergeStaticMeshesChanged = false;
 
         bool wasModified;
+        PrefabEditUndo prefabUndo;
         bool isNewModel = false;
         bool reuseHierarchy = false;
         bool asyncPending = false;

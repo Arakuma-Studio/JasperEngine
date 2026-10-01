@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/PrefabEditUndo.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "Project.h"
 #include "math/Vector3.h"
@@ -42,12 +43,8 @@ namespace jasperengine::editor{
             Entity entity = NULL_ENTITY;
             Entity target = NULL_ENTITY;
         };
-        // A component of a Prefab instance this command made the instance's own
-        struct PrefabOverride {
-            Entity entity = NULL_ENTITY;
-            ComponentType type = ComponentType::Transform;
-            bool wasOverridden = false;
-        };
+        // The overrides of the Prefab instance GameObjects whose components this command
+        // made the instance's own, from before it
 
         Project* project;
         uint32_t sceneId;
@@ -58,7 +55,7 @@ namespace jasperengine::editor{
         bool hadMesh = false;
         std::vector<ParkedEntity> parkedEntities;
         std::vector<RetargetedAction> retargetedActions;
-        std::vector<PrefabOverride> prefabOverrides;
+        PrefabEditUndo prefabUndo;
         DeleteEntityCmd* deleteCmd = nullptr;
 
         bool executed = false;

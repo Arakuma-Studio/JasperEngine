@@ -41,14 +41,21 @@ bool editor::ObjectTransformCmd::execute(){
             property.oldRotation = transform->rotation;
             property.oldScale = transform->scale;
 
+            prefabUndo.capture(project, sceneId, entity);
+
             transform->position = property.newPosition;
             transform->rotation = property.newRotation;
             transform->scale = property.newScale;
 
             transform->needUpdate = true;
 
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->prefabPropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
+            // Unity: what moved on a prefab instance's GameObject is an override of it
+            std::vector<std::string> changed;
+            if (property.newPosition != property.oldPosition) changed.push_back("position");
+            if (property.newRotation != property.oldRotation) changed.push_back("rotation");
+            if (property.newScale != property.oldScale) changed.push_back("scale");
+            if (!changed.empty()){
+                project->recordPrefabEdit(sceneId, entity, ComponentType::Transform, changed);
             }
         }
     }
@@ -70,12 +77,9 @@ void editor::ObjectTransformCmd::undo(){
             transform->scale = property.oldScale;
 
             transform->needUpdate = true;
-
-            if (project->isEntityInPrefab(sceneId, entity)){
-                project->prefabPropertyChanged(sceneId, entity, ComponentType::Transform, {"position", "rotation", "scale"});
-            }
         }
     }
+    prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;
 }
@@ -95,6 +99,7 @@ bool editor::ObjectTransformCmd::mergeWith(editor::Command* otherCommand){
                 }
             }
 
+            prefabUndo.mergeOlder(otherCmd->prefabUndo);
             wasModified = wasModified && otherCmd->wasModified;
 
             return true;
