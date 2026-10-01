@@ -95,7 +95,24 @@ bool editor::ModelClearCmd::canClear(Project* project, uint32_t sceneId, Entity 
     if (ModelLoadCmd::isLoadPending(sceneId, entity)) {
         return fail("The model is still loading");
     }
+    const std::string blocker = prefabNodesBlocker(project, sceneId, collectOwnedEntities(scene, *model));
+    if (!blocker.empty()) {
+        return fail(blocker);
+    }
     return true;
+}
+
+std::string editor::ModelClearCmd::prefabNodesBlocker(Project* project, uint32_t sceneId, const std::vector<Entity>& owned){
+    // A Prefab instance holds every GameObject of its Prefab: one cannot be left out of a single
+    // instance, and deleting it deletes it from the Prefab and all its instances
+    for (Entity owner : owned) {
+        const std::filesystem::path prefabPath = project->findPrefabPathFor(sceneId, owner);
+        if (!prefabPath.empty()) {
+            return "The model's GameObjects are part of Prefab '" + prefabPath.stem().string() +
+                "': unpack the instance to empty its Model without changing the Prefab";
+        }
+    }
+    return std::string();
 }
 
 std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, const ModelComponent& model){
@@ -186,6 +203,28 @@ void editor::ModelClearCmd::unparkEntities(SceneProject* sceneProject){
     parkedEntities.clear();
 }
 
+void editor::ModelClearCmd::overrideInPrefab(Entity target, ComponentType type){
+    Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, target));
+    // A prefab root is not in the Prefab: its components are the instance's already
+    if (!prefab || prefab->getRegistryEntity(sceneId, target) == NULL_ENTITY) {
+        return;
+    }
+    prefabOverrides.push_back({target, type, prefab->hasComponentOverride(sceneId, target, type)});
+    prefab->setComponentOverride(sceneId, target, type);
+}
+
+void editor::ModelClearCmd::restorePrefabOverrides(){
+    for (auto it = prefabOverrides.rbegin(); it != prefabOverrides.rend(); ++it) {
+        if (it->wasOverridden) {
+            continue;
+        }
+        if (Prefab* prefab = project->getPrefab(project->findPrefabPathFor(sceneId, it->entity))) {
+            prefab->clearComponentOverride(sceneId, it->entity, it->type);
+        }
+    }
+    prefabOverrides.clear();
+}
+
 void editor::ModelClearCmd::releasePendingLoad(Scene* scene, const ModelComponent& model){
     // A reload of this file still parsing on a worker (an undo or a scene open starts one) is
     // dropped with the model, unless another Model of the scene waits for the same file
@@ -259,7 +298,9 @@ bool editor::ModelClearCmd::execute(){
 
     const std::vector<Entity> owned = collectOwnedEntities(scene, model);
     const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
-
+    if (!prefabNodesBlocker(project, sceneId, owned).empty()) {
+        return false;
+    }
 
     // What the user hung on a model node stays, on the GameObject and where it is in the world
     parkedEntities = collectParkedEntities(scene, owned, entity);
@@ -293,9 +334,11 @@ bool editor::ModelClearCmd::execute(){
     std::vector<Entity> roots = flatRoots;
     roots.insert(roots.end(), transformRoots.begin(), transformRoots.end());
 
+    retargetedActions.clear();
+    prefabOverrides.clear();
     if (!roots.empty()) {
         // Deleting a node also deletes the actions aimed at it. The ones that are not the
-        // model's (a user's Action on a node) stay, aimed at the missing node until an undo.
+        // model's (a user's Action on a node) stay, aimed at no GameObject until an undo.
         std::vector<Entity> preserved;
         for (Entity virtualChild : ProjectUtils::getVirtualChildren(scene, roots)) {
             if (!ownedSet.count(virtualChild)) {
@@ -310,9 +353,25 @@ bool editor::ModelClearCmd::execute(){
             unparkEntities(sceneProject);
             return false;
         }
+
+        for (Entity kept : preserved) {
+            ActionComponent* action = scene->findComponent<ActionComponent>(kept);
+            if (action && ownedSet.count(action->target)) {
+                retargetedActions.push_back({kept, action->target});
+                action->target = NULL_ENTITY;
+                overrideInPrefab(kept, ComponentType::ActionComponent);
+            }
+        }
     }
 
     clearComponents(scene);
+
+    // In a Prefab instance the emptied Model is this instance's own: an override, as an
+    // edit after Override Prefab Component, so the Prefab and its other instances keep theirs
+    overrideInPrefab(entity, ComponentType::ModelComponent);
+    if (hadMesh) {
+        overrideInPrefab(entity, ComponentType::MeshComponent);
+    }
 
     sceneProject->isModified = true;
     executed = true;
@@ -348,6 +407,14 @@ void editor::ModelClearCmd::undo(){
         delete deleteCmd;
         deleteCmd = nullptr;
     }
+
+    for (const RetargetedAction& retargeted : retargetedActions) {
+        if (ActionComponent* action = scene->findComponent<ActionComponent>(retargeted.entity)) {
+            action->target = retargeted.target;
+        }
+    }
+    retargetedActions.clear();
+    restorePrefabOverrides();
 
     unparkEntities(sceneProject);
 

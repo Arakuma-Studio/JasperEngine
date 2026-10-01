@@ -19,8 +19,11 @@ namespace jasperengine::editor{
     // (the node, part and bone entities, the animations and their tracks, the geometry, materials
     // and textures it put in the GameObject's mesh, the parsed file), leaving a Model with no file.
     // The GameObject, its own components and the entities the user hung on model nodes stay, the
-    // latter moved to the GameObject. Undo brings the model back as it was: the same entity ids,
-    // the per-node edits, the user's entities back on their nodes.
+    // latter moved to the GameObject; a user's Action aimed at a node stays, aimed at no
+    // GameObject. Undo brings the model back as it was: the same entity ids, the per-node edits,
+    // the user's entities back on their nodes. On a Prefab instance the emptied Model and Mesh
+    // are overrides of that instance; a model whose GameObjects belong to the Prefab cannot be
+    // emptied in one instance (see canClear).
     class ModelClearCmd: public Command{
 
     private:
@@ -33,6 +36,18 @@ namespace jasperengine::editor{
             Vector3 scale;
         };
 
+        // A user's Action that was aimed at a model node, and that node
+        struct RetargetedAction {
+            Entity entity = NULL_ENTITY;
+            Entity target = NULL_ENTITY;
+        };
+        // A component of a Prefab instance this command made the instance's own
+        struct PrefabOverride {
+            Entity entity = NULL_ENTITY;
+            ComponentType type = ComponentType::Transform;
+            bool wasOverridden = false;
+        };
+
         Project* project;
         uint32_t sceneId;
         Entity entity;
@@ -41,6 +56,8 @@ namespace jasperengine::editor{
         YAML::Node oldMesh;
         bool hadMesh = false;
         std::vector<ParkedEntity> parkedEntities;
+        std::vector<RetargetedAction> retargetedActions;
+        std::vector<PrefabOverride> prefabOverrides;
         DeleteEntityCmd* deleteCmd = nullptr;
 
         bool executed = false;
@@ -50,8 +67,12 @@ namespace jasperengine::editor{
         static std::vector<Entity> collectOwnedEntities(Scene* scene, const ModelComponent& model);
         // Entities other than the model's own that sit on its nodes, which the delete would take along
         static std::vector<ParkedEntity> collectParkedEntities(Scene* scene, const std::vector<Entity>& owned, Entity entity);
+        // Why the model's own entities cannot be deleted from this scene alone, empty when they can
+        static std::string prefabNodesBlocker(Project* project, uint32_t sceneId, const std::vector<Entity>& owned);
 
         void unparkEntities(SceneProject* sceneProject);
+        void overrideInPrefab(Entity target, ComponentType type);
+        void restorePrefabOverrides();
         void clearComponents(Scene* scene);
         void releasePendingLoad(Scene* scene, const ModelComponent& model);
 
