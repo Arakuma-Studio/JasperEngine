@@ -69,11 +69,10 @@ namespace jasperengine::editor::prefabinternal {
 }
 
 bool editor::Project::isEditingPrefabAsset(uint32_t sceneId, Entity entity) const {
-    // Prefab Mode (agent D) answers here: its stage's GameObjects are the asset's, so their
-    // edits are asset edits. Until it exists no GameObject is.
-    (void)sceneId;
-    (void)entity;
-    return false;
+    // Prefab Mode (PREFABS.md section 16): a stage's own GameObjects are the asset's, so their
+    // edits are asset edits. The GameObjects of the instances nested in it are not: their
+    // edits are overrides, which the stage saves as the asset's overrides of them.
+    return isPrefabStage(sceneId) && entity != NULL_ENTITY && findPrefabPathFor(sceneId, entity).empty();
 }
 
 bool editor::Project::recordPrefabEdit(uint32_t sceneId, Entity entity, ComponentType type, const std::vector<std::string>& properties) {
@@ -219,7 +218,7 @@ bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, Co
     }
     // A value referencing a GameObject outside the Prefab cannot go into the Prefab: the
     // GameObjects the target prefab holds (its instance, below the GameObject's own), the
-    // ones of the instances nested in it included (stripped objects, section 16)
+    // ones of the instances nested in it included (stripped objects, section 17)
     const std::filesystem::path resolved = target.empty() ? ref.path : target;
     Project* self = const_cast<Project*>(this);
     const Entity holderRoot = isNestedRootApplyTarget(sceneId, ref, resolved) ? entity :

@@ -16,6 +16,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
+#include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
@@ -2869,7 +2870,7 @@ void collectSerializedEntities(const YAML::Node& entityNode, std::unordered_set<
 
 }
 
-void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* sceneProject, const YAML::Node& node){
+void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* sceneProject, const YAML::Node& node, Entity reservedBelow){
     sceneProject->entities.clear();
     sceneProject->selectedEntities.clear();
     sceneProject->missingPrefabs.clear();
@@ -2887,6 +2888,15 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     Entity lastEntity = NULL_ENTITY;
     for (Entity entity : serialized) {
         lastEntity = std::max(lastEntity, entity);
+    }
+    if (reservedBelow > EntityManager::firstUserEntity()) {
+        // bounded: a huge counter only keeps new ids above it
+        if (reservedBelow - EntityManager::firstUserEntity() <= 1000000) {
+            for (Entity id = EntityManager::firstUserEntity(); id < reservedBelow; id++) {
+                serialized.insert(id);
+            }
+        }
+        lastEntity = std::max(lastEntity, reservedBelow - 1);
     }
     sceneProject->scene->setLastEntity(lastEntity);
     sceneProject->reservedEntityIds = std::move(serialized);

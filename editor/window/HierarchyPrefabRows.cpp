@@ -164,7 +164,9 @@ void editor::HierarchyWindow::showPrefabRowArrow(const TreeNode& node) {
         const PrefabComponent* component = sceneProject && sceneProject->scene ?
             sceneProject->scene->findComponent<PrefabComponent>(node.id) : nullptr;
         if (component) {
-            openPrefabFromHierarchy(component->path);
+            // a GameObject of a child scene shown inline opens its prefab alone
+            const bool shownScene = getNodeSceneId(node) == project->getSelectedSceneId();
+            openPrefabFromHierarchy(component->path, shownScene ? static_cast<Entity>(node.id) : NULL_ENTITY);
         }
     }
     if (ImGui::IsItemHovered()) {
@@ -173,12 +175,6 @@ void editor::HierarchyWindow::showPrefabRowArrow(const TreeNode& node) {
     ImGui::PopID();
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor(4);
-}
-
-void editor::HierarchyWindow::openPrefabFromHierarchy(const std::filesystem::path& path) {
-    // [D] Prefab Mode: the lead wires this line to D's entry point, openPrefabAsset(path)
-    // (Prefab Mode in context of this instance). Until then the asset is shown in the Project window.
-    revealInProject(path);
 }
 
 bool editor::HierarchyWindow::isPrefabVariantAsset(const std::filesystem::path& path) const {

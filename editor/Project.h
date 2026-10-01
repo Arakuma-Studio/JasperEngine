@@ -165,6 +165,48 @@ namespace jasperengine::editor{
         bool prefabPreview = false;
     };
 
+    // Unity's Prefab Mode, Context: how the scene an In Context prefab stage was opened from
+    // shows behind it
+    enum class PrefabContextVisibility {
+        Normal,
+        Gray,
+        Hidden
+    };
+
+    class PrefabContextOverlay;  // editor/PrefabStage.h
+
+    // Unity's prefab stage (Prefab Mode): a prefab asset opened for editing in a scene of its
+    // own. Its GameObjects are the asset's (their ids are the asset's file ids), so every
+    // edit made in it is an edit of the asset; the instances nested in it are instances, and
+    // what they override is the asset's override of them. Stages stack (a nested prefab
+    // opened from inside one goes on top, Unity's breadcrumbs); the top one is shown. See
+    // editor/PrefabStage.cpp and editor/project/PREFABS.md, section 16.
+    struct PrefabStage {
+        SceneProject sceneProject;                     // the stage's scene (never in Project::scenes)
+        std::filesystem::path assetPath;               // project-relative .prefab
+        std::string guid;
+        Entity root = NULL_ENTITY;                     // the prefab's root GameObject
+        uint32_t returnSceneId = NULL_PROJECT_SCENE;   // the scene Prefab Mode was entered from
+        // In Context: the instance it was opened from, drawn behind the stage
+        uint32_t contextSceneId = NULL_PROJECT_SCENE;
+        Entity contextRoot = NULL_ENTITY;
+        Entity contextCamera = NULL_ENTITY;            // a system camera in the context scene
+        bool contextHidden = false;                    // the instance is hidden while drawn
+        bool contextWasActive = true;
+        std::shared_ptr<PrefabContextOverlay> overlay; // the Gray context's veil
+        std::vector<Entity> environment;               // system entities: light, sky (never saved)
+        bool frameOnOpen = true;                       // the Scene view frames the root once sized
+        int frameDelay = 3;                            // ... and drawn (bounds and camera settled)
+        bool changePending = false;                    // a change Auto Save has not written yet
+        bool autoSaveFailed = false;                   // retried after the next change only
+        std::chrono::steady_clock::time_point lastChange{};
+        std::chrono::steady_clock::time_point lastSyncCheck{};
+        std::string syncedAsset;                       // the asset as the stage last read or wrote it
+        bool outsideChangeWarned = false;
+
+        bool inContext() const { return contextSceneId != NULL_PROJECT_SCENE; }
+    };
+
     struct NestedPrefabRecovery {
         std::filesystem::path path;
         Entity rootEntity = NULL_ENTITY;
@@ -552,6 +594,21 @@ namespace jasperengine::editor{
         std::atomic<bool> generatedSourcesDirty{false};
 
         std::vector<SceneProject> scenes;
+
+        // Prefab Mode: the open prefab stages, bottom first (editor/PrefabStage.cpp)
+        std::vector<std::unique_ptr<PrefabStage>> prefabStages;
+        bool prefabAutoSave = true;
+        PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
+        // Saved from a stage while a scene played: the scene restored by Stop follows them then
+        std::set<std::filesystem::path> prefabsSavedWhilePlaying;
+        SceneProject* findPrefabStageScene(uint32_t sceneId) const;
+        bool pushPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId, Entity contextRoot, bool inContext);
+        bool loadPrefabStageContent(PrefabStage& stage);
+        void destroyPrefabStageContent(PrefabStage& stage);
+        void popPrefabStage();
+        YAML::Node encodePrefabStage(PrefabStage& stage);
+        void fixPrefabStageRoots(PrefabStage& stage);
+        void releasePrefabStageContext(PrefabStage& stage);
 
         // Scenes project.yaml lists that could not be loaded, the position they held
         // in that list and the view state kept for them. They never become a
@@ -1107,6 +1164,9 @@ namespace jasperengine::editor{
 
         std::vector<SceneProject>& getScenes();
         const std::vector<SceneProject>& getScenes() const;
+        // The scenes, then the prefab stages' scenes (Prefab Mode): for what applies to every
+        // GameObject being edited (script refreshes, asset path changes, tools)
+        std::vector<SceneProject*> getScenesAndPrefabStages();
 
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
@@ -1301,7 +1361,7 @@ namespace jasperengine::editor{
 
         // target: the prefab to add it to, the one whose GameObject `parent` is when empty; a
         // prefab holding that instance (one of getPrefabApplyTargets(parent)) gets it as a
-        // GameObject it adds to that nested instance (PREFABS.md 16)
+        // GameObject it adds to that nested instance (PREFABS.md 17)
         bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true, const std::filesystem::path& target = {});
         bool addEntityToOuterPrefab(uint32_t sceneId, Entity entity, Entity parent, const std::filesystem::path& target);
         bool addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
@@ -1491,7 +1551,7 @@ namespace jasperengine::editor{
         // Prefab instances (local root, registry entity in `prefab`) that became nested ones
         // of `prefab`, whose instance is rooted at holderRoot: the GameObjects added to them
         // in the scene (at any depth) become the prefab's (added GameObjects of those nested
-        // instances, PREFABS.md 16), what their scene data overrides becomes the prefab's
+        // instances, PREFABS.md 17), what their scene data overrides becomes the prefab's
         // asset-level data for them (references in the prefab's ids; what refers outside
         // stays overridden in the scene), out of the scene's
         void moveNestedInstancesToAsset(Prefab& prefab, const std::filesystem::path& prefabPath, SceneProject* sceneProject, Entity holderRoot,
@@ -1500,7 +1560,7 @@ namespace jasperengine::editor{
         // nested in it) become whole-component overrides: the prefab cannot hold them
         void overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot);
 
-        // ---- Nested prefabs in assets, stripped objects (editor/project/PREFABS.md 16) ----
+        // ---- Nested prefabs in assets, stripped objects (editor/project/PREFABS.md 17) ----
 
         // A reference held by the prefab of the instance rooted at instanceRoot to the scene
         // GameObject localTarget, in that prefab's ids: the registry entity of a GameObject of
@@ -1558,6 +1618,15 @@ namespace jasperengine::editor{
         // (repack puts it back); instances rooted in `skip` (unpacked too) are left alone.
         void promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
             std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip);
+        // Prefab Mode (PrefabStage): the asset's members as a stage reads them (the GameObjects
+        // the prefab adds to its nested instances become those instances' added GameObjects);
+        // once decoded, the stage's references to stripped objects made the nested GameObjects'
+        void prefabNodeToStage(const Prefab& prefab, YAML::Node members);
+        void resolveStageStrippedReferences(SceneProject* stage, const Prefab& prefab);
+        // A stage saved: `prefab` was just read from the stage's encoding; the GameObjects
+        // added to its nested instances become the prefab's, references its ids (stripped
+        // objects into the nested instances, the ones it had kept), anything else None
+        void stageToPrefabAsset(SceneProject* stage, Prefab& prefab, const std::map<Entity, std::vector<Entity>>& previousStripped);
         // Moves a GameObject at its place among its parent's children (-1: last)
         static void placeAtChildIndex(Scene* scene, Entity parent, Entity local, int childIndex);
         // The scene GameObjects of the instance rooted at instanceRoot and of every instance
@@ -1567,6 +1636,57 @@ namespace jasperengine::editor{
         // (every layer applied, like the editor's instances), its GameObjects in
         // build_prefab_* order (Factory::BakedPrefab)
         std::map<std::filesystem::path, std::shared_ptr<BakedPrefab>> bakePrefabsForExport();
+
+        //=== Prefab Mode (editor/PrefabStage.cpp, PREFABS.md section 16) ===
+
+        // Opens the prefab asset in a prefab stage. contextSceneId/contextRoot: the instance
+        // it is opened from (none: from the Project window); inContext draws that scene behind
+        // the stage (Unity's In Context), else the prefab is alone (In Isolation). Opened from
+        // an instance inside a stage, the new stage goes on top of that one (a breadcrumb);
+        // otherwise the open stages are closed first, each modified one asking to be saved.
+        // False when the asset cannot be opened (or a prompt was cancelled).
+        bool openPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId = NULL_PROJECT_SCENE,
+            Entity contextRoot = NULL_ENTITY, bool inContext = true);
+        // Closes the stages above `depth` (0: leaves Prefab Mode), top first; one with
+        // unsaved changes asks Save / Discard / Cancel (choice: 0 ask, 1 save, 2 discard, 3
+        // cancel, for scripted callers). done(false) when cancelled or a save failed.
+        void closePrefabStages(size_t depth, std::function<void(bool)> done = nullptr, int choice = 0);
+        // Writes the stage into its asset (version 3) and refreshes the asset's instances in
+        // every loaded scene; scenes not loaded read the file when they load
+        bool savePrefabStage(uint32_t sceneId);
+        bool isPrefabStage(uint32_t sceneId) const;
+        // Inside Prefab Mode every edit is an edit of the asset, not an instance override
+        bool isEditingPrefabAsset(const SceneProject* sceneProject) const;
+        PrefabStage* getPrefabStage(uint32_t sceneId);
+        const PrefabStage* getPrefabStage(uint32_t sceneId) const;
+        // The shown stage (the top one), nullptr outside Prefab Mode
+        PrefabStage* getActivePrefabStage();
+        size_t getPrefabStageCount() const { return prefabStages.size(); }
+        PrefabStage* getPrefabStageAt(size_t index) { return index < prefabStages.size() ? prefabStages[index].get() : nullptr; }
+        size_t getPrefabStageDepth(uint32_t sceneId) const;  // 1-based, 0 for a scene
+        bool hasUnsavedPrefabStage(uint32_t sceneId) const;
+        bool hasUnsavedPrefabStages() const;
+        // A regular scene for what needs one (Play, the build's start scene, the workspace):
+        // the scene Prefab Mode was entered from for a stage, sceneId itself otherwise
+        uint32_t getSceneBehindPrefabStage(uint32_t sceneId) const;
+        bool isPrefabStageRoot(uint32_t sceneId, Entity entity) const;
+        // Whether an instance of prefabPath may go into the scene: never into the stage of a
+        // prefab it holds (a prefab cannot contain itself)
+        bool canInstantiatePrefabIn(uint32_t sceneId, const std::filesystem::path& prefabPath);
+        // Once a frame: Auto Save (when the user is not in the middle of an edit), changes the
+        // asset got from outside the stage, the stage root kept single, lost contexts
+        void updatePrefabStages(bool userEditing);
+        // A command changed a scene (CommandHistory::onSceneModified)
+        void notePrefabStageChange(uint32_t sceneId);
+        bool isPrefabAutoSave() const { return prefabAutoSave; }
+        void setPrefabAutoSave(bool autoSave) { prefabAutoSave = autoSave; }
+        PrefabContextVisibility getPrefabContextVisibility() const { return prefabContextVisibility; }
+        void setPrefabContextVisibility(PrefabContextVisibility visibility);
+        // The Scene view of a stage In Context: before its activation (the context scene under
+        // it, its camera following the stage's), and around its draw (the instance edited hidden)
+        void preparePrefabStageView(uint32_t sceneId, int width, int height);
+        void beginPrefabStageDraw(uint32_t sceneId);
+        void endPrefabStageDraw(uint32_t sceneId);
 
         //=== end Prefab part ===
 

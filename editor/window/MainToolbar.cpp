@@ -62,7 +62,9 @@ bool editor::MainToolbar::canTogglePlay() const {
         return sceneProject && sceneProject->playState != ScenePlayState::CANCELLING
             && sceneProject->playState != ScenePlayState::SAVING;
     }
-    const SceneProject* selected = project->getSelectedScene();
+    // In Prefab Mode Play runs the scene Prefab Mode was entered from (Unity plays the open
+    // scenes; the stage stays open and editable)
+    const SceneProject* selected = project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()));
     return selected && selected->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying();
 }
 
@@ -81,7 +83,7 @@ void editor::MainToolbar::togglePlay() {
     const uint32_t playSceneId = project->getPlaySessionSceneId();
     if (playSceneId != NULL_PROJECT_SCENE) {
         project->stop(playSceneId);
-    } else if (SceneProject* selected = project->getSelectedScene()) {
+    } else if (SceneProject* selected = project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()))) {
         project->start(selected->id);
     }
 }
@@ -168,9 +170,9 @@ bool editor::MainToolbar::canUseTool(Tool tool) const {
 
 void editor::MainToolbar::setTool(Tool tool) {
     if (!canUseTool(tool)) return;
-    // Unity's tool is global, so every open Scene view follows it
-    for (SceneProject& sceneProject : project->getScenes()) {
-        if (sceneProject.opened) applyTool(sceneProject, tool);
+    // Unity's tool is global, so every open Scene view follows it (Prefab Mode's too)
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (sceneProject->opened) applyTool(*sceneProject, tool);
     }
 }
 
@@ -181,10 +183,10 @@ bool editor::MainToolbar::isGlobalTransform() const {
 
 void editor::MainToolbar::toggleGlobalTransform() {
     const bool global = !isGlobalTransform();
-    for (SceneProject& sceneProject : project->getScenes()) {
-        if (sceneProject.opened && sceneProject.sceneRender) {
-            sceneProject.sceneRender->setUseGlobalTransform(global);
-            sceneProject.needUpdateRender = true;
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (sceneProject->opened && sceneProject->sceneRender) {
+            sceneProject->sceneRender->setUseGlobalTransform(global);
+            sceneProject->needUpdateRender = true;
         }
     }
 }

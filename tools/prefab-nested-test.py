@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Scripted checks of nested prefabs in assets, stripped objects and the baked export
-(editor/project/PREFABS.md, section 16).
+(editor/project/PREFABS.md, section 17).
 
     FIXTURE=<TappyPlane fixture project> tools/prefab-nested-test.py [work-dir]
 
@@ -157,10 +157,10 @@ ops = [
     {'op': 'instantiate', 'entity': 'Field', 'prefab': 'prefabs/multi/Branch 2.prefab', 'below': True},
     {'op': 'dump', 'out': ex + '/apply-owning.yaml'},
     # Create Prefab of a selection holding an instance with overrides, undone and redone
-    {'op': 'create', 'entity': '', 'name': 'Holder'},
+    {'op': 'addObject', 'entity': '', 'name': 'Holder'},
     {'op': 'instantiate', 'entity': 'Holder', 'prefab': 'prefabs/Leaf.prefab', 'below': True},
     {'op': 'set', 'entity': 'Holder/Leaf 4/Petal', 'component': 'transform', 'property': 'scale', 'value': [4, 4, 1]},
-    {'op': 'create', 'entity': 'Holder/Leaf 4/Petal', 'name': 'Bead'},
+    {'op': 'addObject', 'entity': 'Holder/Leaf 4/Petal', 'name': 'Bead'},
     {'op': 'dump', 'out': ex + '/holder-before.yaml'},
     {'op': 'createPrefab', 'entity': 'Holder', 'path': 'prefabs/Holder.prefab'},
     {'op': 'dump', 'out': ex + '/holder-made.yaml'},
@@ -178,7 +178,7 @@ ops = [
     {'op': 'refreshAssets', 'entity': 'Field'},
     {'op': 'dump', 'out': ex + '/relinked.yaml'},
     # an added GameObject below a nested instance applied to the outer prefab
-    {'op': 'create', 'entity': 'Forest 3/Tree/Branch/Leaf/Petal', 'name': 'Sprout'},
+    {'op': 'addObject', 'entity': 'Forest 3/Tree/Branch/Leaf/Petal', 'name': 'Sprout'},
     {'op': 'addToPrefab', 'entity': 'Forest 3/Tree/Branch/Leaf/Petal/Sprout', 'parent': 'Forest 3/Tree/Branch/Leaf/Petal',
      'target': 'prefabs/Forest.prefab'},
     {'op': 'instantiate', 'entity': 'Field', 'prefab': 'prefabs/Forest.prefab', 'below': True},
@@ -229,6 +229,39 @@ src = open(os.path.join(ex, 'bake', 'prefab_prefabs_Forest.cpp')).read()
 check('joint2d.bodyA = e' in src and 'joint2d.bodyB = e' in src, 'export: joint bodies are member variables')
 check('.setFramebuffer(scene->getComponent<CameraComponent>(e' in src, 'export: a camera link into a nested prefab is bound')
 check('members.push_back(NULL_ENTITY);' in src, 'export: a GameObject a layer removed keeps its slot empty')
+
+print('== Prefab Mode: a prefab holding nested data opened, saved, edited')
+R = os.path.join(WORK, 'stage')
+shutil.copytree(P, R)
+sd = os.path.join(WORK, 'stage-dumps')
+os.makedirs(sd)
+ops = [
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': 'prefabs/Branch.prefab', 'below': True},
+    {'op': 'dump', 'out': sd + '/before.yaml'},
+    {'op': 'openPrefab', 'prefab': 'prefabs/Branch.prefab'},
+    {'op': 'savePrefab'},
+    {'op': 'closePrefab', 'choice': 'save'},
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': 'prefabs/Branch.prefab', 'below': True},
+    {'op': 'dump', 'out': sd + '/saved.yaml'},
+    {'op': 'openPrefab', 'prefab': 'prefabs/Branch.prefab'},
+    {'op': 'addObject', 'stage': True, 'entity': 'Branch/Leaf/Petal', 'name': 'Bloom'},
+    {'op': 'setRef', 'stage': True, 'entity': 'Branch/Twig', 'component': 'action', 'property': 'target', 'target': 'Branch/Leaf/LeafCam'},
+    {'op': 'savePrefab'},
+    {'op': 'closePrefab', 'choice': 'save'},
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': 'prefabs/Branch.prefab', 'below': True},
+    {'op': 'dump', 'out': sd + '/edited.yaml'},
+]
+editor(R, os.path.join(sd, 'final.yaml'), ops_file('stage', ops), name='stage')
+check(compare(sd + '/before.yaml', sd + '/saved.yaml', '--subtree=Field/Branch 3:Field/Branch 4'),
+      'Prefab Mode: opened and saved, a new instance is as before (added GameObjects, stripped references)')
+check(compare(sd + '/before.yaml', sd + '/saved.yaml', '--subtree=Forest:Forest'),
+      'Prefab Mode: and every instance holding it too')
+e = load(sd + '/edited.yaml')
+check(e.get('Field/Branch 5/Leaf/Petal/Bloom', {}).get('prefab') == 'prefabs/Branch.prefab' and
+      'Forest/Tree/Branch/Leaf/Petal/Bloom' in e,
+      'Prefab Mode: a GameObject added below a nested GameObject is the asset\'s')
+check(refs(e, 'Field/Branch 5/Twig').get('action.target') == 'Field/Branch 5/Leaf/LeafCam',
+      'Prefab Mode: a reference into a nested prefab is kept (a stripped object)')
 
 print('\n%d failure(s)' % len(FAILS))
 for f in FAILS:

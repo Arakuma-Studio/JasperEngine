@@ -499,7 +499,7 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
         topLevel.insert(topLevel.begin(), prefab->root);
     }
     // Without the project: the children of a nested root are written, they are the
-    // GameObjects this prefab adds to that nested instance (PREFABS.md 16)
+    // GameObjects this prefab adds to that nested instance (PREFABS.md 17)
     YAML::Node membersNode(YAML::NodeType::Sequence);
     for (Entity entity : topLevel) {
         membersNode.push_back(Stream::encodeEntity(entity, prefab->registry.get()));

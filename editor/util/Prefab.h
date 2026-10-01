@@ -234,7 +234,7 @@ public:
     // Whether a registry entity is the root of a prefab instance nested in this prefab
     bool isNestedRoot(Entity registryEntity) const;
 
-    // ---- Stripped objects and added GameObjects of nested instances (PREFABS.md 16) ----
+    // ---- Stripped objects and added GameObjects of nested instances (PREFABS.md 17) ----
 
     // A new id of this prefab (a GameObject or a stripped object): above every id it had
     bool isStripped(Entity id) const { return stripped.count(id) != 0; }

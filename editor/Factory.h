@@ -52,7 +52,7 @@ namespace jasperengine::editor{
     // A prefab as its instances are, for the export: one instance of it made by the editor's
     // import in a scratch scene (its nested prefabs at any depth, what it overrides of them,
     // the GameObjects it adds to them, references into them resolved), so the generated
-    // build_prefab_* creates exactly what the editor shows (editor/project/PREFABS.md 16)
+    // build_prefab_* creates exactly what the editor shows (editor/project/PREFABS.md 17)
     struct BakedPrefab {
         std::shared_ptr<Scene> scene;
         Entity root = NULL_ENTITY;

@@ -221,7 +221,7 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
 
     // A nested instance's root: its prefab's root, then what this prefab overrides of it
     // (the values of its nested root here, the default overrides always), never this
-    // prefab's whole copy, which only holds those (PREFABS.md 16)
+    // prefab's whole copy, which only holds those (PREFABS.md 17)
     std::filesystem::path nestedPath;
     Prefab::Instance* nestedInstance = ref.prefab->isNestedRoot(ref.registryEntity) ?
         findInstanceRootedAt(sceneProject, ref.localEntity, &nestedPath) : nullptr;

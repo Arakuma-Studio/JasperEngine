@@ -133,7 +133,7 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
     std::unordered_set<uint32_t> touchedScenes;
     // An instance nested in a live one goes missing with that instance built again once the
     // asset is gone: what the prefabs holding it add to it and override stays theirs
-    // (PREFABS.md 16). Their nodes are taken now, while the asset still answers.
+    // (PREFABS.md 17). Their nodes are taken now, while the asset still answers.
     std::vector<std::tuple<uint32_t, Entity, YAML::Node>> outerRoots;
     std::set<std::pair<uint32_t, Entity>> nestedRoots;
     for (const auto& [sceneId, root] : roots) {
@@ -237,7 +237,7 @@ size_t editor::Project::relinkMissingPrefabs() {
         bool changed = false;
         // A Missing Prefab nested in a live instance comes back with the instance holding it
         // built again: the GameObjects the prefabs above add to it go below their nested
-        // parents, their references into it resolve (stripped objects, PREFABS.md 16)
+        // parents, their references into it resolve (stripped objects, PREFABS.md 17)
         std::vector<Entity> outerRoots;
         for (Entity root : roots) {
             if (!getMissingPrefab(sceneProject.id, root)) {

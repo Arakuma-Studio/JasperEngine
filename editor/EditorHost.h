@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <string>
 
@@ -39,7 +40,17 @@ namespace jasperengine::editor {
         virtual void registerAlert(std::string title, std::string message);
         virtual void registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr);
         virtual void registerThreeButtonAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr, std::function<void()> onCancel = nullptr);
+        // Save / Discard Changes / Cancel (Unity's dialog for leaving modified content)
+        virtual void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave,
+            std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr);
         virtual void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr);
+
+        // Unity's Open Prefab: the asset in Prefab Mode. From an instance (contextSceneId,
+        // contextRoot) it opens In Context unless inContext is false; from inside a prefab
+        // stage it goes on top of it. The Project window, the Hierarchy and the Inspector's
+        // prefab bar all open prefabs through here.
+        virtual void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0,
+            uint32_t contextRoot = 0, bool inContext = true);
         virtual void registerProjectSaveDialog(std::function<void()> callback = nullptr);
 
         virtual InspectorWindow* getInspectorWindow() const;

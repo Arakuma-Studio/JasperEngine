@@ -635,7 +635,8 @@ void editor::CodeEditor::checkExternalScriptChanges() {
     }
 
     std::unordered_set<std::string> referenced;
-    for (auto& sceneProject : project->getScenes()) {
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene)
             continue;
 
@@ -769,8 +770,10 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
     const std::string relPathStr = relFilepath.string();
     const fs::path fullPath = resolveFilepath(relFilepath);
 
-    // Several entities can share the same script, so every one of them is refreshed
-    for (auto& sceneProject : project->getScenes()) {
+    // Several entities can share the same script, so every one of them is refreshed (the
+    // prefab stages' too)
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene)
             continue;
 
@@ -1337,7 +1340,8 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
     std::string inMemoryContent = headerInstance ? headerInstance->editor->GetText() : "";
 
     // Refresh every entity referencing this header and link the dropped one
-    for (auto& sceneProject : project->getScenes()) {
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) continue;
 
         for (Entity sceneEntity : sceneProject.entities) {

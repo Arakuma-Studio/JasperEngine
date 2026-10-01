@@ -57,6 +57,9 @@ namespace jasperengine::editor{
         std::string message;
         std::string note; // optional highlighted note rendered below the message
         AlertType type = AlertType::Info;
+        // ThreeButton labels (Unity's Save / Discard Changes / Cancel dialog renames them)
+        std::string yesLabel = "Yes";
+        std::string noLabel = "No";
         std::function<void()> onYes = nullptr;
         std::function<void()> onNo = nullptr;
         std::function<void()> onCancel = nullptr;
@@ -305,6 +308,8 @@ namespace jasperengine::editor{
         void registerOutsideAssetsAlert(const std::string& path);
         void registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr) override;
         void registerThreeButtonAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr, std::function<void()> onCancel = nullptr) override;
+        void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
+        void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
         void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
         void registerProjectSaveDialog(std::function<void()> callback = nullptr) override;
 

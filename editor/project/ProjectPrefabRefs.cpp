@@ -7,10 +7,14 @@
 #include "Project.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
+#include "Stream.h"
+#include "util/ProjectUtils.h"
+#include "util/YamlNumbers.h"
 #include "util/CameraTextureLink.h"
 #include "texture/Texture.h"
 
 #include <filesystem>
+#include <functional>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -169,7 +173,7 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
     }
 }
 
-// ---- References into nested prefabs: stripped objects (PREFABS.md 16) ----
+// ---- References into nested prefabs: stripped objects (PREFABS.md 17) ----
 
 std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot) {
     std::unordered_set<Entity> objects;
@@ -379,5 +383,269 @@ void editor::Project::overrideExternalRefComponents(EntityRegistry* scene, Prefa
                 instance.overrides[object].addWholeComponent(componentType);
             }
         }
+    }
+}
+
+// ---- Prefab Mode: a stage reads and writes the nested data of its asset (PREFABS.md 17) ----
+
+namespace {
+
+    // The nested entry of a `prefabInstance` block for the nested root `registryRoot`, made
+    // when missing
+    YAML::Node nestedBlockEntry(YAML::Node block, Entity registryRoot) {
+        if (block["nested"] && block["nested"].IsSequence()) {
+            for (YAML::Node entry : block["nested"]) {
+                const YAML::Node readEntry = entry;
+                if (readEntry["prefabRootRegistryEntity"] && editor::YamlNumbers::as<Entity>(readEntry["prefabRootRegistryEntity"]) == registryRoot) {
+                    return entry;
+                }
+            }
+        }
+        YAML::Node entry(YAML::NodeType::Map);
+        entry["prefabRootRegistryEntity"] = registryRoot;
+        block["nested"].push_back(entry);
+        return block["nested"][block["nested"].size() - 1];
+    }
+
+}
+
+void editor::Project::prefabNodeToStage(const Prefab& prefab, YAML::Node entities) {
+    const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
+    std::function<void(YAML::Node, size_t)> walk = [&](YAML::Node node, size_t depth) {
+        if (!node.IsMap() || depth > 256) {
+            return;
+        }
+        const YAML::Node readNode = node;
+        const YAML::Node components = readNode["components"];
+        const bool nestedRoot = components && components.IsMap() && components[prefabKey] && readNode["entity"];
+        const YAML::Node children = readNode["children"];
+        if (!children || !children.IsSequence()) {
+            return;
+        }
+        if (!nestedRoot) {
+            for (YAML::Node child : node["children"]) {
+                walk(child, depth + 1);
+            }
+            return;
+        }
+        // The GameObjects this prefab adds to the nested instance: in the stage they are
+        // GameObjects added to that instance, below the nested GameObject they go below
+        const Entity rootId = YamlNumbers::as<Entity>(readNode["entity"]);
+        YAML::Node block = readNode["prefabInstance"] ? node["prefabInstance"] : YAML::Node(YAML::NodeType::Map);
+        for (const YAML::Node& child : children) {
+            if (!child.IsMap()) {
+                continue;
+            }
+            YAML::Node entry = YAML::Clone(child);
+            walk(entry, depth + 1);
+            YAML::Node target = block;
+            Entity parentRegistry = NULL_ENTITY;
+            if (entry["addedTo"]) {
+                auto source = prefab.stripped.find(YamlNumbers::as<Entity>(entry["addedTo"]));
+                if (source != prefab.stripped.end() && source->second.size() >= 2 && source->second.front() == rootId) {
+                    for (size_t i = 1; i + 1 < source->second.size(); i++) {
+                        target = nestedBlockEntry(target, source->second[i]);
+                    }
+                    parentRegistry = source->second.back();
+                }
+            }
+            // last when the place is not known
+            const long long childIndex = entry["childIndex"] ? YamlNumbers::as<long long>(entry["childIndex"]) : -1;
+            entry.remove("addedTo");
+            entry.remove("childIndex");
+            entry["parentRegistryEntity"] = parentRegistry;
+            entry["childIndex"] = childIndex >= 0 ? childIndex : 1000000;
+            target["addedGameObjects"].push_back(entry);
+        }
+        node.remove("children");
+        node["prefabInstance"] = block;
+    };
+    for (YAML::Node member : entities) {
+        walk(member, 0);
+    }
+}
+
+void editor::Project::resolveStageStrippedReferences(SceneProject* stage, const Prefab& prefab) {
+    if (!stage || !stage->scene || prefab.stripped.empty()) {
+        return;
+    }
+    // The asset's GameObjects keep their file ids in a stage
+    std::unordered_map<Entity, Entity> own;
+    for (Entity entity : prefab.registryEntities) {
+        own[entity] = entity;
+    }
+    std::unordered_map<Entity, Entity> strippedToLocal;
+    for (const auto& [id, source] : prefab.stripped) {
+        const Entity local = resolveStrippedObject(stage, own, source);
+        if (local != NULL_ENTITY) {
+            strippedToLocal[id] = local;
+        }
+    }
+    // ids above nextEntity for the nested GameObjects: only stripped ids change
+    remapEntityProperties(stage->scene, stage->entities, strippedToLocal, false);
+    CameraTextureLink::resolve(stage->scene);
+}
+
+void editor::Project::stageToPrefabAsset(SceneProject* stage, Prefab& prefab, const std::map<Entity, std::vector<Entity>>& previousStripped) {
+    if (!stage || !stage->scene || !prefab.registry) {
+        return;
+    }
+    // stripped ids stay what they were (a new one only for a new way down)
+    for (const auto& [id, source] : previousStripped) {
+        prefab.stripped.emplace(id, source);
+    }
+    prefab.addedObjects.clear();
+    EntityRegistry* registry = prefab.registry.get();
+    const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
+
+    // 1. The GameObjects added to the nested instances in the stage become the prefab's
+    std::vector<Entity> pending;
+    for (const auto& [nestedRoot, data] : prefab.nestedInstances) {
+        pending.push_back(nestedRoot);
+    }
+    std::function<void(Entity, PrefabInstanceData&, std::vector<Entity>)> convert = [&](Entity nestedRoot, PrefabInstanceData& data, std::vector<Entity> chain) {
+        for (const YAML::Node& addedNode : data.addedGameObjects) {
+            const Entity parentRegistry = addedNode["parentRegistryEntity"] ? YamlNumbers::as<Entity>(addedNode["parentRegistryEntity"]) : NULL_ENTITY;
+            const int childIndex = addedNode["childIndex"] ? static_cast<int>(YamlNumbers::as<long long>(addedNode["childIndex"])) : -1;
+            YAML::Node clean = YAML::Clone(addedNode);
+            clean.remove("parentRegistryEntity");
+            clean.remove("childIndex");
+            std::vector<Entity> decoded = Stream::decodeEntity(clean, registry, &prefab.registryEntities);
+            if (decoded.empty()) {
+                continue;
+            }
+            if (registry->findComponent<Transform>(decoded[0])) {
+                ProjectUtils::moveEntityOrderByTransform(registry, prefab.registryEntities, decoded[0], nestedRoot, 0, false);
+            }
+            std::vector<Entity> source{nestedRoot};
+            source.insert(source.end(), chain.begin(), chain.end());
+            if (parentRegistry != NULL_ENTITY) {
+                source.push_back(parentRegistry);
+            }
+            Prefab::AddedObject added;
+            added.childIndex = childIndex < 1000000 ? childIndex : -1;
+            if (source.size() >= 2) {
+                added.parent = prefab.addStripped(source);
+            }
+            prefab.addedObjects[decoded[0]] = added;
+            // prefab instances among them: nested roots of the prefab, with their data
+            std::function<void(const YAML::Node&)> nestedIn = [&](const YAML::Node& node) {
+                if (!node.IsMap()) {
+                    return;
+                }
+                const YAML::Node components = node["components"];
+                if (node["entity"] && components && components.IsMap() && components[prefabKey]) {
+                    const Entity id = YamlNumbers::as<Entity>(node["entity"]);
+                    if (registry->isEntityCreated(id) && prefab.isNestedRoot(id)) {
+                        PrefabInstanceData nestedData = Stream::decodePrefabInstanceData(node);
+                        nestedData.present = true;
+                        nestedData.legacy = false;
+                        prefab.nestedInstances[id] = std::move(nestedData);
+                        pending.push_back(id);
+                    }
+                    return;
+                }
+                if (node["children"] && node["children"].IsSequence()) {
+                    for (const YAML::Node& child : node["children"]) {
+                        nestedIn(child);
+                    }
+                }
+            };
+            nestedIn(clean);
+        }
+        data.addedGameObjects.clear();
+        data.memberIds.clear();
+        for (PrefabInstanceData& entry : data.nested) {
+            if (entry.nestedRoot == NULL_ENTITY) {
+                continue;
+            }
+            std::vector<Entity> deeper = chain;
+            deeper.push_back(entry.nestedRoot);
+            convert(nestedRoot, entry, deeper);
+        }
+    };
+    for (size_t next = 0; next < pending.size(); next++) {
+        auto it = prefab.nestedInstances.find(pending[next]);
+        if (it != prefab.nestedInstances.end()) {
+            convert(pending[next], it->second, {});
+        }
+    }
+
+    // 2. References: the stage's ids, the prefab's own GameObjects' being their file ids,
+    //    into the instances nested in it stripped objects, anything else None
+    std::unordered_set<Entity> own(prefab.registryEntities.begin(), prefab.registryEntities.end());
+    std::unordered_map<Entity, Entity> resolved;
+    auto prefabId = [&](Entity target) -> Entity {
+        if (target == NULL_ENTITY || own.count(target)) {
+            return target;
+        }
+        auto known = resolved.find(target);
+        if (known != resolved.end()) {
+            return known->second;
+        }
+        Entity id = NULL_ENTITY;
+        for (Entity entity : prefab.registryEntities) {
+            const Prefab::Instance* nested = prefab.isNestedRoot(entity) ? findInstanceRootedAt(stage, entity) : nullptr;
+            std::vector<Entity> way;
+            if (nested && findWayDown(this, stage, *nested, target, way, 0)) {
+                way.insert(way.begin(), entity);
+                id = prefab.addStripped(way);
+                break;
+            }
+        }
+        resolved[target] = id;
+        return id;
+    };
+    auto remapComponent = [&](EntityRegistry* values, Entity entity, ComponentType type) {
+        std::unordered_map<Entity, Entity> map;
+        for (auto& [name, property] : Catalog::findEntityProperties(values, entity, type)) {
+            bool crossScene = false;
+            const Entity target = referenceTarget(property, crossScene);
+            if (target != NULL_ENTITY && !map.count(target)) {
+                const Entity id = prefabId(target);
+                if (id != NULL_ENTITY) {
+                    map[target] = id;
+                }
+            }
+        }
+        remapEntityPropertiesInComponent(values, entity, type, {}, map);
+    };
+    for (Entity entity : std::vector<Entity>(prefab.registryEntities)) {
+        for (ComponentType type : Catalog::findComponents(registry, entity)) {
+            if (type != ComponentType::PrefabComponent && Catalog::mayHoldReferences(registry, entity, type, true, true)) {
+                remapComponent(registry, entity, type);
+            }
+        }
+    }
+    std::function<void(PrefabInstanceData&, size_t)> remapData = [&](PrefabInstanceData& data, size_t depth) {
+        for (auto& [registryEntity, object] : data.objects) {
+            if (!object.values.IsMap() || !object.values["components"] || !object.values["components"].IsMap()) {
+                continue;
+            }
+            YAML::Node components = object.values["components"];
+            for (auto it = components.begin(); it != components.end(); ++it) {
+                ComponentType type;
+                try {
+                    type = Catalog::getComponentType(it->first.as<std::string>());
+                } catch (const std::exception&) {
+                    continue;
+                }
+                prefabinternal::ScratchEntity scratch;
+                scratch.decode(prefabinternal::singleComponent(type, it->second));
+                if (!scratch.has(type)) {
+                    continue;
+                }
+                remapComponent(scratch.registry.get(), scratch.entity, type);
+                it->second = prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
+            }
+        }
+        if (depth < 64) {
+            for (PrefabInstanceData& entry : data.nested) {
+                remapData(entry, depth + 1);
+            }
+        }
+    };
+    for (auto& [nestedRoot, data] : prefab.nestedInstances) {
+        remapData(data, 0);
     }
 }

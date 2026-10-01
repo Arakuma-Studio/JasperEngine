@@ -1293,6 +1293,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         imageViewerWindow->openFile(filePath);
                     else if (file.type == FileType::SCENE)
                         project->openScene(filePath);
+                    else if (Util::isPrefabFile(filePath.string()))
+                        editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
                     else
                         codeEditor->openFile(filePath.string(), true);
                 }
@@ -1633,6 +1635,16 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (file.type == FileType::SCENE){
                     if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Open (Add)")) {
                         project->openScene(currentPath / file.name, false);
+                    }
+                    ImGui::Separator();
+                }
+                if (!file.isDirectory && Util::isPrefabFile(file.name)){
+                    // Unity's Open Prefab: Prefab Mode in isolation; the YAML stays reachable
+                    if (ImGui::MenuItem(ICON_FA_CUBE " Open Prefab")) {
+                        editor::getEditorHost().openPrefabAsset(currentPath / file.name);
+                    }
+                    if (ImGui::MenuItem(ICON_FA_FILE_CODE " Open as Text")) {
+                        codeEditor->openFile((currentPath / file.name).string(), true);
                     }
                     ImGui::Separator();
                 }
@@ -3419,6 +3431,8 @@ void editor::ProjectWindow::assetsOpenSelected() {
         imageViewerWindow->openFile(filePath);
     } else if (it->type == FileType::SCENE) {
         project->openScene(filePath);
+    } else if (Util::isPrefabFile(filePath.string())) {
+        editor::getEditorHost().openPrefabAsset(filePath);
     } else {
         codeEditor->openFile(filePath.string(), true);
     }
