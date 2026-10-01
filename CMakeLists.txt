@@ -822,10 +822,12 @@ endif()
 
 add_custom_target(copy_jasperengine_editor_engine
     ${JASPERENGINE_CLEAN_STALE_ENGINE}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/engine
-        ${JASPERENGINE_EDITOR_ENGINE_DIR}
+    COMMAND ${CMAKE_COMMAND}
+        -DENGINE_SOURCE:PATH=${CMAKE_SOURCE_DIR}/engine
+        -DENGINE_DEST:PATH=${JASPERENGINE_EDITOR_ENGINE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake
     COMMENT "Copying engine next to the editor"
+    VERBATIM
 )
 
 add_dependencies(jasperengine-editor copy_jasperengine_editor_engine)
@@ -890,6 +892,10 @@ else()
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
             CONFIGURATIONS Release MinSizeRel
+            PATTERN ".cxx" EXCLUDE
+            PATTERN ".gradle" EXCLUDE
+            PATTERN "build" EXCLUDE
+            PATTERN ".git" EXCLUDE
     )
 endif()
 

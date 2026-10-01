@@ -7156,6 +7156,46 @@ std::filesystem::path editor::Project::findPrefabPathFor(uint32_t sceneId, Entit
     return std::filesystem::path();
 }
 
+std::unordered_map<Entity, std::filesystem::path> editor::Project::getPrefabPathsForScene(uint32_t sceneId) const {
+    std::unordered_map<Entity, std::filesystem::path> paths;
+
+    // Keep the same precedence as findPrefabPathFor: a member match wins over
+    // every root match, and the first prefab in path order wins ties.
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
+            continue;
+        }
+        for (const auto& instance : sceneIt->second) {
+            for (const auto& member : instance.members) {
+                paths.try_emplace(member.localEntity, filepath);
+            }
+        }
+    }
+
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
+            continue;
+        }
+        for (const auto& instance : sceneIt->second) {
+            paths.try_emplace(instance.rootEntity, filepath);
+        }
+    }
+
+    // Hierarchy previously ignored an empty result from findPrefabPathFor.
+    // Remove it only after all insertions so an empty earlier match still wins.
+    for (auto it = paths.begin(); it != paths.end();) {
+        if (it->second.empty()) {
+            it = paths.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    return paths;
+}
+
 YAML::Node editor::Project::clearEntitiesNode(YAML::Node node) {
     if (!node || !node.IsMap())
         return node;

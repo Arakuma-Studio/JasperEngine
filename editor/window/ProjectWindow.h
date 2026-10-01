@@ -96,6 +96,9 @@ namespace jasperengine::editor {
         fs::path currentPath;
         fs::path treeSelectedPath;
         std::vector<editor::FileEntry> files;
+        // Thumbnail completions arrive one at a time; resolve their file without
+        // walking the entire directory on every completed request.
+        std::unordered_map<fs::path, size_t> fileIndex;
 
         Texture folderIcon;
         Texture fileIcon;
@@ -211,6 +214,7 @@ namespace jasperengine::editor {
         const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
+        void rebuildFileIndex();
         FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
         void collectSearchResults();
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
@@ -291,4 +295,3 @@ namespace jasperengine::editor {
     };
 
 }
-

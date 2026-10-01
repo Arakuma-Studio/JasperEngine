@@ -298,12 +298,10 @@ void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) 
     fs::path thumbnailPath = project->getThumbnailPath(filePath);
     evictThumbnailTexture(thumbnailPath.string());
 
-    for (auto& file : files) {
-        if ((currentPath / file.name) == filePath) {
-            file.hasThumbnail = false;
-            file.thumbnailPath.clear();
-            break;
-        }
+    if (auto it = fileIndex.find(filePath); it != fileIndex.end()) {
+        FileEntry& file = files[it->second];
+        file.hasThumbnail = false;
+        file.thumbnailPath.clear();
     }
 
     queueThumbnailGeneration(filePath, type, true);
@@ -1764,10 +1762,12 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
     }
 
     files.clear();
+    fileIndex.clear();
 
     // A search lists matches from this folder and everything below it instead.
     if (!searchText.empty()) {
         collectSearchResults();
+        rebuildFileIndex();
         return;
     }
 
@@ -1789,6 +1789,15 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
         }
 
         files.push_back(makeFileEntry(entry, entry.path().filename().string()));
+    }
+    rebuildFileIndex();
+}
+
+void editor::ProjectWindow::rebuildFileIndex() {
+    fileIndex.clear();
+    fileIndex.reserve(files.size());
+    for (size_t i = 0; i < files.size(); ++i) {
+        fileIndex.emplace(currentPath / files[i].name, i);
     }
 }
 
@@ -2760,18 +2769,16 @@ void editor::ProjectWindow::show() {
         }
         // Find and mark the corresponding file entry; the texture itself is
         // created on demand when the item becomes visible
-        for (auto& file : files) {
-            if ((currentPath / file.name) == thumbFile.path) {
-                fs::path thumbnailPath = project->getThumbnailPath(thumbFile.path);
-                std::error_code ec;
-                if (fs::exists(thumbnailPath, ec) && !ec) {
-                    file.hasThumbnail = true;
-                    file.thumbnailPath = thumbnailPath.string();
-                } else {
-                    file.hasThumbnail = false;
-                    file.thumbnailPath.clear();
-                }
-                break;
+        if (auto it = fileIndex.find(thumbFile.path); it != fileIndex.end()) {
+            FileEntry& file = files[it->second];
+            fs::path thumbnailPath = project->getThumbnailPath(thumbFile.path);
+            std::error_code ec;
+            if (fs::exists(thumbnailPath, ec) && !ec) {
+                file.hasThumbnail = true;
+                file.thumbnailPath = thumbnailPath.string();
+            } else {
+                file.hasThumbnail = false;
+                file.thumbnailPath.clear();
             }
         }
     }
@@ -2830,6 +2837,7 @@ void editor::ProjectWindow::show() {
     // Folders first, then names (the listing has no sortable header)
     if (requestSort) {
         sortWithSortSpecs(nullptr, files);
+        rebuildFileIndex();
         requestSort = false;
     }
 

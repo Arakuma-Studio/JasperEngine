@@ -2274,16 +2274,10 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     Entity mainCamera = sceneProject->mainCamera;
     size_t order = 0;
     std::unordered_map<Entity, TreeNode*> entityNodeMap;
-    std::unordered_map<Entity, std::filesystem::path> prefabEntityPaths;
+    const std::unordered_map<Entity, std::filesystem::path> prefabEntityPaths =
+        project->getPrefabPathsForScene(sceneProject->id);
     std::unordered_map<Entity, std::list<TreeNode>> virtualPrefabChildren;
     std::unordered_map<Entity, std::list<TreeNode>> virtualActionChildren;
-
-    for (Entity entity : sceneProject->entities) {
-        std::filesystem::path prefabPath = project->findPrefabPathFor(sceneProject->id, entity);
-        if (!prefabPath.empty()) {
-            prefabEntityPaths.emplace(entity, std::move(prefabPath));
-        }
-    }
 
     root = TreeNode();
 

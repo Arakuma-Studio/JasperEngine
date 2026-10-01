@@ -1570,13 +1570,19 @@ bool editor::Exporter::copyAssets() {
     fs::create_directories(assetsDst, ec);
 
     // References are relative to this directory, so its contents become the export root
-    for (auto& entry : fs::recursive_directory_iterator(assetsSrc, fs::directory_options::skip_permission_denied, ec)) {
+    for (auto it = fs::recursive_directory_iterator(assetsSrc, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); ++it) {
+        auto& entry = *it;
         fs::path relPath = fs::relative(entry.path(), assetsSrc, ec);
         if (ec || relPath.empty()) continue;
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) continue;
+        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) {
+            std::error_code entryEc;
+            if (entry.is_directory(entryEc)) it.disable_recursion_pending();
+            continue;
+        }
 
         // The engine loads a "resources.pak" at the asset root, so the name is reserved.
         // Matched without case and before the regular-file skip: a directory aliases it too.

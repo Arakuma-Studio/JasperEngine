@@ -1022,6 +1022,8 @@ namespace jasperengine::editor{
         const Prefab* getPrefab(const std::filesystem::path& filepath) const;
         std::map<std::filesystem::path, const Prefab*> getPrefabs(uint32_t sceneId) const;
         std::filesystem::path findPrefabPathFor(uint32_t sceneId, Entity entity) const;
+        // Bulk lookup for UI passes that inspect every entity in a scene.
+        std::unordered_map<Entity, std::filesystem::path> getPrefabPathsForScene(uint32_t sceneId) const;
 
         YAML::Node encodePrefabNode(const std::filesystem::path& filepath) const;
 

@@ -118,34 +118,47 @@ namespace jasperengine{
             return list;
         }
 
+        bool getFirstEntity(Entity& entity) const {
+            if (metadata.empty())
+                return false;
+            entity = metadata.begin()->first;
+            return true;
+        }
+
         void setSignature(Entity entity, Signature signature) {
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to set signature");
+                it = metadata.try_emplace(entity).first;
             }
-            metadata[entity].signature = signature;
+            it->second.signature = signature;
         }
 
         Signature getSignature(Entity entity) const{
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to get signature");
                 return Signature();
             }
-            return metadata.at(entity).signature;
+            return it->second.signature;
         }
 
         void setName(Entity entity, const std::string& name) {
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to set name");
+                it = metadata.try_emplace(entity).first;
             }
-            metadata[entity].name = name;
+            it->second.name = name;
         }
 
         std::string getName(Entity entity) const{
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to get name");
                 return std::string();
             }
-            return metadata.at(entity).name;
+            return it->second.name;
         }
 
         // Returns true when the flag changed

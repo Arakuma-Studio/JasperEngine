@@ -71,11 +71,11 @@ EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
 }
 
 EntityRegistry::~EntityRegistry(){
-    std::vector<Entity> entityList = entityManager.getEntityList();
-    while(entityList.size() > 0){
-        destroyEntity(entityList.front());
-        // some entities can destroy other entities (ex: models)
-        entityList = entityManager.getEntityList();
+    Entity entity;
+    while (entityManager.getFirstEntity(entity)) {
+        // Destroy callbacks may remove other entities, so inspect the current first
+        // entity each time without copying the entire registry.
+        destroyEntity(entity);
     }
 }
 

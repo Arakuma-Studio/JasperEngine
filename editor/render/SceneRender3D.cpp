@@ -1896,11 +1896,33 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
     std::set<Entity> selectedEntities(selEntities.begin(), selEntities.end());
 
-    auto isDescendantSelected = [&](Entity ancestor) -> bool {
-        for (Entity sel : selectedEntities) {
-            if (sel == ancestor || scene->isParentOf(ancestor, sel)) return true;
+    // Several overlay types ask whether the same entity contains a selected child.
+    // Build that answer once per update instead of scanning the Transform array in
+    // isParentOf() for every body, line, polygon, joint and model. Keep the array
+    // order check used by isParentOf(), including its direct-parent exception.
+    std::unordered_set<Entity> selectedAncestors;
+    auto transforms = scene->getComponentArray<Transform>();
+    for (Entity selected : selectedEntities){
+        selectedAncestors.insert(selected);
+        Transform* selectedTransform = scene->findComponent<Transform>(selected);
+        if (!selectedTransform) continue;
+
+        size_t scanLimit = transforms->getIndex(selected);
+        Entity parent = selectedTransform->parent;
+        while (parent != NULL_ENTITY){
+            Transform* parentTransform = scene->findComponent<Transform>(parent);
+            if (!parentTransform) break;
+
+            selectedAncestors.insert(parent);
+            size_t parentIndex = transforms->getIndex(parent);
+            if (parentIndex >= scanLimit) break;
+            scanLimit = parentIndex;
+            parent = parentTransform->parent;
         }
-        return false;
+    }
+
+    auto isDescendantSelected = [&](Entity ancestor) -> bool {
+        return selectedAncestors.find(ancestor) != selectedAncestors.end();
     };
 
     std::set<Entity> currentIconLights;
@@ -1921,7 +1943,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             LightComponent& light = scene->getComponent<LightComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
 
-            bool isSelected = std::find(selEntities.begin(), selEntities.end(), entity) != selEntities.end();
+            bool isSelected = selectedEntities.find(entity) != selectedEntities.end();
 
             currentIconLights.insert(entity);
             bool newLight = instanciateLightObject(entity) || lightObjects[entity].type != light.type;
