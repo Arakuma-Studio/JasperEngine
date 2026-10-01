@@ -18,6 +18,7 @@
 #include "command/type/EntityStateCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
 #include "command/type/RemoveComponentCmd.h"
+#include "command/type/ReplacePrefabCmd.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 
@@ -705,6 +706,9 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   setState {entity, active|tag|layer}  (EntityStateCmd's path) |
 //   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
 //   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
+//   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
+//   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
+//   usage (the Prefabs dialog's usage scan, listed) | close {scene} (unloads it: usage reads its file) |
 //   record|revert|apply Property|State|AddedComponent|RemovedComponent
 //       {entity, component, properties, state, target}  (PrefabOverrideCmd)
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
@@ -756,6 +760,29 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         }
         if (name == "refreshAssets") {
             project.refreshAssetDatabase(true);
+            continue;
+        }
+        if (name == "close") {
+            // a scene closed (unloaded): what reads closed scenes from their file sees it (F)
+            for (SceneProject& sceneProject : project.getScenes()) {
+                if (sceneProject.scene && (!op["scene"] || sceneProject.name == op["scene"].as<std::string>())) {
+                    project.closeScene(sceneProject.id, true);
+                    break;
+                }
+            }
+            continue;
+        }
+        if (name == "usage") {
+            // the Prefabs dialog's usage scan (F)
+            for (const auto& [key, usage] : project.collectPrefabUsage()) {
+                std::cout << "  usage " << usage.path.generic_string() << " guid " << (usage.guid.empty() ? "-" : usage.guid) << ":";
+                for (const PrefabSceneUsage& scene : usage.scenes) {
+                    std::cout << " [" << scene.sceneName << (scene.loaded ? "" : " closed") << " instances " << scene.instances
+                              << " nested " << scene.nested << " missing " << scene.missing << "]";
+                }
+                for (const fs::path& path : usage.nestedIn) std::cout << " in " << path.generic_string();
+                std::cout << "\n";
+            }
             continue;
         }
         if (name == "refresh") {
@@ -831,6 +858,36 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 op["below"] && op["below"].as<bool>() ? entity : NULL_ENTITY, true);
             command->setQuiet(true);
             runCommand(command);
+            continue;
+        }
+        // ---- F: Replace Prefab, Missing Prefab unpack, previews, usage ----
+        if (name == "replace") {
+            // Prefab > Replace (ReplacePrefabCmd): match name|hierarchy|none, keepOverrides, renameRoot
+            PrefabReplaceSettings settings;
+            const std::string match = op["match"] ? op["match"].as<std::string>() : std::string("name");
+            settings.match = match == "hierarchy" ? PrefabReplaceSettings::Match::ByHierarchy :
+                match == "none" ? PrefabReplaceSettings::Match::None : PrefabReplaceSettings::Match::ByName;
+            settings.keepOverrides = !op["keepOverrides"] || op["keepOverrides"].as<bool>();
+            settings.renameRoot = !op["renameRoot"] || op["renameRoot"].as<bool>();
+            runCommand(new ReplacePrefabCmd(&project, sceneProject->id, {entity}, op["prefab"].as<std::string>(), settings));
+            continue;
+        }
+        if (name == "unpackMissing") {
+            runCommand(new UnpackMissingPrefabCmd(&project, sceneProject->id, {entity}));
+            continue;
+        }
+        if (name == "preview") {
+            // what a prefab thumbnail renders: an instance in a scene of its own, listed
+            Scene previewScene;
+            const Entity root = project.instantiatePrefabPreview(&previewScene, op["prefab"].as<std::string>());
+            std::map<Entity, std::string> paths;
+            std::vector<std::string> names;
+            for (Entity previewEntity : previewScene.getEntityList()) {
+                names.push_back(dumpPath(&previewScene, previewEntity, paths));
+            }
+            std::sort(names.begin(), names.end());
+            std::cout << "  preview root " << (root == NULL_ENTITY ? std::string("none") : dumpPath(&previewScene, root, paths)) << "\n";
+            for (const std::string& path : names) std::cout << "  preview " << path << "\n";
             continue;
         }
         if (name == "addComponent") {
