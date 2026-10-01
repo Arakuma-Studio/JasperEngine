@@ -1565,6 +1565,10 @@ YAML::Node editor::Stream::encodeExternalBuffer(const ExternalBuffer& buffer) {
 }
 
 void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node) {
+    // Decoded over a copy of a model's mesh, the buffer still points at that model's bytes
+    // and holds its attributes: the saved buffer replaces all of it, and its bytes are the
+    // buffer's own (importData), not written through that pointer
+    buffer.clearAll();
     decodeBuffer(buffer, node); // Use base Buffer decoding
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }

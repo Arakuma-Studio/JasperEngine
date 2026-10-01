@@ -2664,25 +2664,7 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
 
     // Camera render-to-texture links; deferred so every camera entity already exists
     std::ostringstream links;
-    for (Entity entity : entities) {
-        for (ComponentType cpType : Catalog::findComponents(scene, entity)) {
-            std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(scene, entity, cpType);
-            for (auto& [propName, prop] : properties) {
-                if (prop.type != PropertyType::Texture || !prop.ref)
-                    continue;
-
-                Texture* texture = static_cast<Texture*>(prop.ref);
-                Entity cameraEntity = CameraTextureLink::parse(texture->getId());
-                if (cameraEntity == NULL_ENTITY)
-                    continue;
-                if (!scene->findComponent<CameraComponent>(cameraEntity))
-                    continue;
-
-                links << ind2 << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, &memberVarNames) << ")."
-                      << propName << ".setFramebuffer(scene->getComponent<CameraComponent>(" << formatEntity(cameraEntity, &memberVarNames) << ").framebuffer);\n";
-            }
-        }
-    }
+    links << createCameraTextureLinks(indentSpaces+4, scene, entities, &memberVarNames, false);
 
     std::ostringstream cameraCode;
     if (camera != NULL_ENTITY){
@@ -2937,6 +2919,35 @@ std::string editor::Factory::prefabToFileName(const fs::path& prefabPath) {
     return "prefab_" + toIdentifier(pathStr);
 }
 
+std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly) {
+    std::ostringstream links;
+    const std::string ind = indentation(indentSpaces);
+    for (Entity entity : entities) {
+        for (ComponentType cpType : Catalog::findComponents(registry, entity)) {
+            if (!Catalog::mayHoldReferences(registry, entity, cpType, false, true))
+                continue;
+            std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(registry, entity, cpType);
+            for (auto& [propName, prop] : properties) {
+                if (prop.type != PropertyType::Texture || !prop.ref)
+                    continue;
+
+                Texture* texture = static_cast<Texture*>(prop.ref);
+                Entity cameraEntity = CameraTextureLink::parse(texture->getId());
+                if (cameraEntity == NULL_ENTITY)
+                    continue;
+                if (!registry->findComponent<CameraComponent>(cameraEntity))
+                    continue;
+                if (namedCamerasOnly && (!entityVarNames || !entityVarNames->count(cameraEntity)))
+                    continue;
+
+                links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
+                      << propName << ".setFramebuffer(scene->getComponent<CameraComponent>(" << formatEntity(cameraEntity, entityVarNames) << ").framebuffer);\n";
+            }
+        }
+    }
+    return links.str();
+}
+
 std::string editor::Factory::createPrefabHeader(const fs::path& prefabPath) {
     std::string funcName = prefabToFunctionName(prefabPath);
     std::string buildFuncName = prefabToBuildFunctionName(prefabPath);
@@ -3147,6 +3158,15 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
             std::string varName = entityVarNames[entity];
             out << ind1 << "if (!" << nestedFuncName << "(scene, " << varName << ", members)) return false;\n";
         }
+    }
+
+    // Phase 5: Camera render-to-texture links, once every member camera exists. A link to
+    // a camera outside the prefab is not in it (an instance keeps one as an override).
+    const std::string links = createCameraTextureLinks(4, registry, memberEntities, &entityVarNames, true);
+    if (!links.empty()) {
+        out << "\n";
+        out << ind1 << "// Render-to-texture cameras\n";
+        out << links;
     }
 
     out << ind1 << "return true;\n";

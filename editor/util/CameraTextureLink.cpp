@@ -43,6 +43,17 @@ Texture editor::CameraTextureLink::make(EntityRegistry* registry, Entity cameraE
     return texture;
 }
 
+void editor::CameraTextureLink::retarget(EntityRegistry* registry, Texture& texture, Entity cameraEntity){
+    if (cameraEntity == NULL_ENTITY){
+        texture = Texture();
+        return;
+    }
+
+    CameraComponent* camera = registry ? registry->findComponent<CameraComponent>(cameraEntity) : nullptr;
+    texture.setFramebuffer(camera ? camera->framebuffer : nullptr); // clears the id
+    texture.setId(makeId(cameraEntity));
+}
+
 std::string editor::CameraTextureLink::cameraName(EntityRegistry* registry, const Texture& texture){
     Entity cameraEntity = parse(texture.getId());
     if (cameraEntity == NULL_ENTITY)

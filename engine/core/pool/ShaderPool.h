@@ -41,7 +41,8 @@ namespace jasperengine{
         static void remove(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
 
         // True when the last get() attempt failed, either building the source or creating
-        // the backend resource. The pool stops re-invoking the (expensive, error-spamming)
+        // the backend resource, or (a game without the editor's builder) the build does not
+        // have the precompiled shader. The pool stops re-invoking the (expensive, error-spamming)
         // builder until the failure is cleared by remove()/destroyCustomShaders().
         static bool isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
 

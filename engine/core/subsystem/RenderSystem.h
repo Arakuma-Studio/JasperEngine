@@ -159,6 +159,69 @@ namespace jasperengine{
 		Entity entity;
 	} check_load_t;
 
+	// What the shader variant of a mesh depends on in its scene: the render system's state
+	// when the mesh loads. The editor fills it from a scene's content to know every variant
+	// a build has to ship.
+	struct MeshShaderEnvironment {
+		bool lights = false;            // punctual lights (Light components, or lighting forced on)
+		bool shadows = false;           // a light casts shadows
+		bool ibl = false;               // the skybox's environment maps are ready
+		bool reflectionProbes = false;
+		bool fog = false;
+		bool lights2D = false;
+		bool shadows2D = false;         // a shadow-casting 2D light and an occluder
+		bool ssao = false;
+		bool ssr = false;
+		bool depthPrepass = false;
+	};
+
+	// What the shader variant of a submesh depends on in its mesh and GameObject
+	struct SubmeshShaderInputs {
+		// vertex attributes, see RenderSystem::scanSubmeshAttributes
+		bool texCoord1 = false;
+		bool texCoord2 = false;
+		bool normal = false;
+		bool tangent = false;
+		bool vertexColor3 = false;
+		bool vertexColor4 = false;
+		bool textureRect = false;
+		bool skinning = false;
+		bool morphTarget = false;
+		bool morphNormal = false;
+		bool morphTangent = false;
+		// material
+		bool baseColorTexture = false;
+		bool metallicRoughnessTexture = false;
+		bool normalTexture = false;
+		bool occlusionTexture = false;
+		bool emissiveTexture = false;
+		MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
+		bool textureShadow = false;
+		// mesh
+		bool receiveLights = true;
+		bool receiveIBL = true;
+		bool receiveShadows = true;
+		bool castShadows = true;
+		bool customDepthShader = false;
+		// GameObject
+		bool terrain = false;
+		bool terrainBlendMaps = false;
+		bool terrainSurface = false;
+		bool instanced = false;
+		bool instanceFade = false;
+		bool mirror = false;
+	};
+
+	// The shaders one submesh draws with
+	struct SubmeshShaderVariant {
+		uint32_t properties = 0;        // ShaderType::MESH
+		bool depthPass = false;         // drawn into shadow maps and depth pre-passes
+		bool depth = false;             // has a depth shader: a depth pass, or a forked depth shader
+		uint32_t depthProperties = 0;   // ShaderType::DEPTH
+		bool gbuffer = false;           // drawn into the SSR G-buffer
+		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
+	};
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 	private:
 		enum class TransparentRenderType{
@@ -1125,6 +1188,17 @@ namespace jasperengine{
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
 		static bool usesAlphaMask(const Material& material, bool textureShadow);
+
+		// Shader variants, derived the same way by loadMesh and by the editor collecting the
+		// variants a build needs (from content, without loading anything on the GPU).
+		// Sets the submesh's vertex attribute flags (hasTexCoord1, hasNormal, ...) from the
+		// buffers it draws from and its own attributes, and hasNormalMap from its material.
+		static void scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers);
+		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror);
+		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Whether the lit or unlit shader samples the material's textures
+		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		MeshShaderEnvironment getMeshShaderEnvironment() const;
 
 		// copies the stacked scene composite to the swapchain (Engine::endCompositeFramebuffer)
 		void presentFramebufferToSwapchain(Framebuffer* source);

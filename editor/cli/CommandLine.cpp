@@ -281,7 +281,8 @@ static void printUsage(const std::string& commandName) {
         << "      --list-scenes           Print project scenes and exit.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "If no --backend is provided, all supported backends are used.\n"
-        << "If no --shader is provided, shaders discovered while regenerating scenes are exported.\n"
+        << "If no --shader is provided, the shaders the scenes and prefabs need are exported, with the\n"
+        << "shaders added to or removed from the build in the Build Settings window.\n"
         << "For standalone shader generation, use `" << commandName << " shaders`.\n";
 }
 
@@ -543,6 +544,12 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.packNativeResources = project.shouldPackNativeResources();
     config.selectedBackends   = options.backends;
     config.shaderKeysOverride = options.shaderKeys;
+    // What the Build Settings window adds to and removes from the collected shaders, as an
+    // export from the window does; an explicit --shader list is the whole set
+    if (options.shaderKeys.empty()) {
+        config.shaderAdditions = project.getShaderOverrides().additions;
+        config.shaderExclusions = project.getShaderOverrides().exclusions;
+    }
 
     if (!options.startScene.empty() && config.startSceneId == 0) {
         Out::warning("Start scene not found: %s", options.startScene.c_str());

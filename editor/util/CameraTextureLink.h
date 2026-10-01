@@ -19,6 +19,11 @@ namespace jasperengine::editor {
 
         static Texture make(EntityRegistry* registry, Entity cameraEntity);
 
+        // Points a camera-linked texture at another camera of the registry, bound to its
+        // framebuffer when it has a Camera (resolve() binds it later otherwise); NULL_ENTITY
+        // leaves no texture. For entity remaps: prefab boundaries, pastes, duplicates.
+        static void retarget(EntityRegistry* registry, Texture& texture, Entity cameraEntity);
+
         // display name for the texture slot ("camera|7" -> camera entity name)
         static std::string cameraName(EntityRegistry* registry, const Texture& texture);
 

@@ -279,6 +279,61 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     submesh.needUpdateTexture = true;
 }
 
+void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
+    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+    mesh.submeshes[0].hasTextureRect = true;
+    mesh.submeshes[0].textureShadow = true;
+    mesh.submeshes[0].faceCulling = false;
+    mesh.numSubmeshes = 1;
+
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
+    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+
+    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+}
+
+void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
+    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLE_STRIP;
+    mesh.submeshes[0].faceCulling = false;
+    mesh.numSubmeshes = 1;
+
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
+    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+}
+
+void MeshSystem::prepareTilemapMesh(MeshComponent& mesh){
+    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+    mesh.submeshes[0].hasTextureRect = true;
+
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
+    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+
+    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+}
+
+void MeshSystem::prepareTerrainMesh(MeshComponent& mesh){
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+}
+
+bool MeshSystem::usesTextureRect(const Submesh& submesh){
+    Rect textureRect = submesh.textureRect; // Rect compares non-const
+    return submesh.hasTextureRect || textureRect != Rect(0.0f, 0.0f, 1.0f, 1.0f);
+}
+
 bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, CameraComponent& camera){
     // Check texture loading state BEFORE clearing the buffer to avoid leaving
     // the mesh with an empty vertex buffer when the texture is still loading.
@@ -308,20 +363,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         }
     }
 
-    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
-    mesh.submeshes[0].hasTextureRect = true;
-    mesh.submeshes[0].textureShadow = true;
-    mesh.submeshes[0].faceCulling = false;
-    mesh.numSubmeshes = 1;
-
-    mesh.buffer.clear();
-    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
-    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
-    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
-    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
-
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    prepareSpriteMesh(mesh);
 
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
 
@@ -439,16 +481,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 }
 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
-    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLE_STRIP;
-    mesh.submeshes[0].faceCulling = false;
-    mesh.numSubmeshes = 1;
-
-    mesh.buffer.clear();
-    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
-    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
-    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
-    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+    prepareMeshPolygonMesh(mesh);
 
     // flat +Z polygon with u along +X (see texcoord generation below); handedness
     // (w) follows the V direction, which flipY inverts
@@ -545,17 +578,7 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         }
     }
 
-    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
-    mesh.submeshes[0].hasTextureRect = true;
-
-    mesh.buffer.clear();
-    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
-    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
-    mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
-    mesh.buffer.addAttribute(AttributeType::COLOR, 4);
-
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    prepareTilemapMesh(mesh);
 
     // Chunking reorders the index data whenever a tile crosses a chunk boundary, so
     // the indices must be updatable like the vertices — an immutable index buffer is
@@ -2963,9 +2986,7 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
         }
     }
 
-    mesh.buffer.clear();
-    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
-    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+    prepareTerrainMesh(mesh);
 
     mesh.indices.clear();
 
@@ -6224,7 +6245,7 @@ void MeshSystem::update(double dt){
         }
 
         for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-            if (!mesh.submeshes[s].hasTextureRect && mesh.submeshes[s].textureRect != Rect(0.0f, 0.0f, 1.0f, 1.0f)){
+            if (!mesh.submeshes[s].hasTextureRect && usesTextureRect(mesh.submeshes[s])){
                 mesh.submeshes[s].hasTextureRect = true;
                 mesh.needReload = true;
             }
@@ -6263,6 +6284,20 @@ void MeshSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 void MeshSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<ModelComponent>()) {
         ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+        // The meshes the model loaded stay, with its geometry: their external buffers point
+        // into the model's file data, which goes with it, so they keep copies of their own
+        // (drawn and saved as the meshes they are now)
+        auto keepGeometry = [this](Entity meshEntity){
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity)){
+                for (unsigned int i = 0; i < mesh->numExternalBuffers; i++){
+                    mesh->eBuffers[i].copyToOwnData();
+                }
+            }
+        };
+        keepGeometry(entity);
+        for (const auto& node : model.meshNodesMapping){
+            keepGeometry(node.second);
+        }
         destroyModel(model);
     }
     if (componentId == scene->getComponentId<TerrainComponent>()) {

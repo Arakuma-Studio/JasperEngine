@@ -600,7 +600,10 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t pr
             } else if (ShaderDataSerializer::readFromFile("shader://"+getShaderFile(shaderStr, ".sdat"), storageKey, tempShaderData)){
                 shared->createShader(tempShaderData);
             } else {
+                // Not in this build: reported once (RenderSystem::draw), and not looked
+                // for again every frame by whatever needs it
                 addMissingShader(shaderStr);
+                failedShaders().insert(shaderKey);
             }
         }
     }

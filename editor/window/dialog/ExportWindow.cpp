@@ -116,6 +116,7 @@ void ExportWindow::populateShaderList() {
     for (const auto& scene : m_project->getScenes()) {
         std::set<ShaderKey> sceneKeys = scene.shaderKeys;
         m_project->collectSceneShaderKeys(&scene, sceneKeys);
+        m_project->collectRequiredShaderKeys(&scene, sceneKeys);
         for (const auto& key : sceneKeys) {
             if (addedKeys.count(key)) continue;
             addedKeys.insert(key);
@@ -839,7 +840,7 @@ void ExportWindow::drawShaderSection() {
             if (isExcluded) ImGui::PopStyleColor();
             ImGui::SetItemTooltip("%s", isExcluded ? "Excluded from the build. Select this shader and click Restore to include it again."
                                        : isOverride ? "Shader override: manually added to the build."
-                                                    : "Collected from the scenes in the build.");
+                                                    : "Collected from the scenes and prefabs in the build.");
         }
     }
     ImGui::EndChild();
