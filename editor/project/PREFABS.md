@@ -4,7 +4,9 @@ Developer notes for the prefab system (`editor/project/ProjectPrefab*.cpp`,
 `editor/StreamPrefab.cpp`, `editor/util/Prefab.*`, `editor/util/AssetDatabase.*`).
 Sections 1-5: files, identity, GUIDs, Missing Prefab (A1). Sections 6-11: the real root,
 the override model v2 and its APIs (A2). Section 12: editing instances the Unity way (edits
-are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C). `tools/prefab-fixtures.py` makes test projects,
+are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C). Sections 13-15:
+Replace Prefab, the Hierarchy rows, the Scene view drop, thumbnails and the Prefabs dialog (F).
+`tools/prefab-fixtures.py` makes test projects,
 `jasperengine-editor scene-dump --project <dir> [--save]` dumps what loading them gives.
 Read this before changing how prefabs are identified, stored or loaded.
 
@@ -509,3 +511,111 @@ to the inner prefab or as an override in the outer one reaches exactly the insta
 should; Revert, undo and redo restore values and overrides; edits while playing are gone
 after `playStop`; overrides survive a save and a reload.
 
+## 13. Replace Prefab (Unity's Replace Prefab Asset)
+
+`editor/project/ProjectPrefabReplace.cpp`, `command/type/ReplacePrefabCmd.*`.
+
+- **Entry points**: Hierarchy, Prefab > Replace... (a popup: the project's prefabs with
+  their thumbnails and a search box, "Match Overrides" By Name / By Hierarchy / Root only,
+  "Keep Overrides", "Rename Root"); a `.prefab` dropped from the Project window on an
+  instance root row with **Alt** held (Alt+Shift: overrides cleared); a Missing Prefab
+  row's Prefab > Replace... (relinks it). The whole selection when the row is part of it.
+- **Which roots** (`Project::canReplacePrefab`): an outermost instance root, an added
+  prefab instance's root, or a Missing Prefab root that is not nested in a live instance;
+  never a nested instance root (it belongs to its prefab, as in Unity); not while playing.
+- **What it does** (Unity's `ReplacePrefabAssetOfPrefabInstance` with
+  `PrefabReplacingSettings`): the root GameObject stays (its id, parent, sibling place and
+  its default overrides: name, position, rotation, RectTransform placement) and becomes an
+  instance of the new prefab. Its instance data (`prefabInstance`, section 8) is carried
+  from the old prefab's registry entities to the new one's by a key
+  (`settings.match`): **ByName** the name path from the root (`Body/Wheel#1`: the second
+  sibling named Wheel; `~name` for top-level GameObjects without a Transform),
+  **ByHierarchy** the sibling index path, **None** the root alone.
+  - property overrides: kept for the components the matched GameObject has (or the
+    instance adds to it); removed-component overrides when it has the component; state
+    and added components always (an added one the new prefab has becomes a `"*"` override,
+    section 9);
+  - removed GameObjects: kept when matched;
+  - added GameObjects: below their matched parent, else below the root (logged);
+  - nested instances: the same nested asset (by GUID) keeps its data as it is, another
+    one is matched one level down the same way;
+  - member ids follow the keys, so references from the scene to a matched GameObject stay
+    (an unmatched one's GameObject is gone, as in Unity);
+  - Keep Overrides off (Unity's `ClearAllNonDefaultOverrides`): only the default
+    overrides stay; added GameObjects go too.
+  Everything dropped is logged as a warning, with a summary line per root.
+- **Rename Root** (`changeRootNameToAssetName`): a root still named after its old prefab's
+  root ("Crate", "Crate (2)") takes the new prefab root's name, made unique.
+- **Missing Prefab roots**: the old asset cannot be read, so only the root's entry matches
+  (the overridden object that is not in `memberIds`, else the one without values); the
+  GameObjects the scene added below it stay and become added GameObjects.
+- **Steps** (each a `Project` API): `capturePrefabInstanceState` (the root's node, as
+  `Stream::encodeEntity` writes it, and the member ids), `buildReplacedPrefabNode` (the
+  same node, PrefabComponent swapped, data and ids remapped, the dropped list in a
+  `PrefabReplaceReport`), `rebuildPrefabInstance` (the instance unimported keeping its
+  root, or the Missing record cleared; the root's name, state and components, its
+  PrefabComponent included, from the node; `importPrefab` with the node's data and the
+  ids; a result that is Missing keeps the whole node and gets its children back).
+  `ReplacePrefabCmd` replaces any number of roots as one undo step; undo rebuilds each from
+  its captured node, exactly (same ids: `scene-dump` before and after undo compare equal
+  with `--ids`).
+- `UnpackMissingPrefabCmd`: Unpack on a Missing Prefab: the root becomes a plain
+  GameObject (its PrefabComponent and record go); undo makes it Missing again.
+- `scene-dump --ops` has `replace {entity, prefab, match, keepOverrides, renameRoot}`,
+  `unpackMissing {entity}`, `preview {prefab}`, `usage`, `close {scene}`;
+  `tools/prefab-fixtures.py replace <dir>` makes a project with prefabs to replace the
+  legacy fixture's instances with.
+
+## 14. Hierarchy rows and the Scene view drop
+
+`editor/window/HierarchyPrefabRows.cpp` (`HierarchyWindow::markPrefabRows`, called after
+each tree rebuild), `SceneWindow::updatePrefabDrag`.
+
+- **Added GameObjects** (Unity's added GameObject override): a GameObject with a
+  Transform below an instance's root or member that is no member of any instance gets a
+  green "+" on its icon; below a Missing Prefab root the "+" is red. Removed GameObjects
+  are not in the scene, so not listed (as in Unity).
+- **Instance roots**: blue cube and blue name, members blue; a ">" button at the right end
+  of the row opens the prefab: `HierarchyWindow::openPrefabFromHierarchy(path)` is the one
+  line Prefab Mode (D, `openPrefabAsset`) wires; until then it shows the asset in the
+  Project window. `isPrefabVariantAsset(path)` is the hook Prefab Variants (E) fill.
+- **Missing Prefab roots**: red, "(Missing Prefab)" after the name, the last path and the
+  GUID in the tooltip; their Prefab submenu: the last path and GUID, Copy GUID, Select
+  Missing Asset Folder, Replace... (relink), Unpack (`UnpackMissingPrefabCmd`), Remove
+  (delete). The Inspector's Missing Prefab bar is A1's.
+- **Drop in the Scene view**: a `.prefab` dragged over a Scene view shows an instance
+  following the pointer (an `ImportPrefabCmd` run outside the undo history): in 3D on what
+  the pointer is over (the preview left out of the raycast,
+  `Project::findObjectByRayIgnoring`; a terrain at its surface, another GameObject at the
+  ray's hit on its bounds), else on the ground plane (y = 0), else at the camera's target;
+  in 2D and UI at the pointer's world position (z = 0 plane), the prefab keeping its own z.
+  The prefab root's rotation and scale stay. Leaving the view or ending the drag elsewhere
+  takes the preview away; the drop replaces it with `ImportPrefabCmd`s
+  (`setDropPosition`), one undo step, the new root selected. Not while playing. A drop on
+  a Hierarchy row works as before.
+
+## 15. Prefab thumbnails and the Prefabs dialog
+
+- **Thumbnails** (`ProjectWindow::processPrefabThumbnails`, `render/preview/PrefabRender`):
+  a `.prefab` in the Project window gets a rendered thumbnail, built on the main thread
+  (the instance comes from the project's prefab data: `Project::instantiatePrefabPreview`
+  imports it, nested prefabs and their overrides included, into a scene of its own,
+  `SceneProject::prefabPreview`, and forgets it: no instance list, Hierarchy or Missing
+  Prefab warning sees it). Framed like model thumbnails in perspective; a 2D or UI prefab
+  (sprites, tilemaps, polygons, UI, no 3D mesh) orthographic. At least 3 frames, more while
+  resources still build (60 at most), one prefab at a time. Cached as a PNG in the thumbs
+  directory (named from the file's path, size and time) with a `<png>.deps` stamp: the
+  relative path, size and time of the prefab file and of every prefab it nests. A
+  different stamp re-renders it: when the folder is listed and on the Project window's
+  1 Hz check of the current folder (a prefab saved in place, a nested prefab changed).
+- **Prefabs dialog** (Assets > Prefabs..., `PrefabsWindow`): every prefab file with its
+  path, GUID (click copies), instance count, and where: per scene "Scene (n + m nested)"
+  (closed scenes marked; their counts read from the scene file), "in X" for the prefab
+  files nesting it, and the build checkbox as before (a prefab a scene lists is always
+  built). A Missing Prefabs section lists referenced GUIDs no file has, with their last
+  path and Missing instances per scene. The counts come from
+  `Project::collectPrefabUsage`: loaded scenes from their instances (an instance whose
+  root is a member of another is "nested"), closed scenes from their file (each instance
+  root node, then the nested prefabs of its asset minus the removed GameObjects of the
+  scene's and the assets' layers, recursively, and the added GameObjects at every level),
+  keyed by GUID (a reference without one by the GUID its path was upgraded to).

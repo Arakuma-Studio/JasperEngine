@@ -26,6 +26,11 @@ namespace jasperengine::editor{
         bool isPrefab = false;
         bool isPrefabRoot = false;
         bool isMissingPrefab = false;       // Unity's Missing Prefab: its asset is gone (red)
+        // Prefab row states (HierarchyPrefabRows.cpp, markPrefabRows)
+        bool isAddedGameObject = false;     // Unity's added GameObject override ("+" badge)
+        bool isInMissingPrefab = false;     // below a Missing Prefab root (added to it)
+        bool isPrefabVariant = false;       // instance root of a Prefab Variant ([E] hook)
+        bool canOpenPrefab = false;         // an instance root: the ">" button opens its prefab
         bool hasPrefabParent = false;
         bool isParentPrefab = false;
         bool isMainCamera = false;
@@ -166,6 +171,37 @@ namespace jasperengine::editor{
         std::vector<char> buildEntityPayload(const TreeNode& node);
         std::filesystem::path getPrefabSaveDirectory() const;
         void saveNodeAsPrefab(const TreeNode& node);
+
+        // ---- Prefab rows (HierarchyPrefabRows.cpp): markers, ">" button, Missing Prefab
+        // menu, Replace Prefab (menu, popup, Alt-drop) ----
+        struct ReplacePrefabRequest {
+            uint32_t sceneId = NULL_PROJECT_SCENE;
+            std::vector<Entity> roots;
+        };
+        ReplacePrefabRequest replaceRequest;          // opens the popup next frame
+        ReplacePrefabRequest replaceTargets;          // what the open popup replaces
+        char replaceFilter[128] = "";
+        std::string replaceChoice;                    // project-relative prefab path
+        PrefabReplaceSettings replaceSettings;
+        std::vector<std::filesystem::path> replaceCandidates;
+
+        // Added GameObjects, rows below Missing Prefabs, variants and ">" buttons, after a rebuild
+        void markPrefabRows(SceneProject* sceneProject, TreeNode& root);
+        // The "+" badge on an added GameObject's icon, right after its row was drawn
+        void drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
+        // The ">" button at the right end of an instance root's row
+        void showPrefabRowArrow(const TreeNode& node);
+        // Missing Prefab rows: the Prefab submenu
+        void showMissingPrefabMenu(const TreeNode& node);
+        void requestReplacePrefab(uint32_t sceneId, const std::vector<Entity>& roots);
+        void showReplacePrefabPopup();
+        // Alt-drop of a prefab asset on an instance root row replaces it (Alt+Shift: and
+        // clears its overrides); true when it took the drop
+        bool handlePrefabReplaceDrop(const TreeNode& node);
+        // Prefab Mode entry point of the ">" button ([D] openPrefabAsset)
+        void openPrefabFromHierarchy(const std::filesystem::path& path);
+        // [E] Prefab Variants: whether the asset is a variant (its rows get the variant icon)
+        bool isPrefabVariantAsset(const std::filesystem::path& path) const;
 
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);

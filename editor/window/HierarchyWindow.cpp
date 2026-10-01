@@ -29,6 +29,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "command/type/ReplacePrefabCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityPayload.h"
@@ -703,6 +704,12 @@ void editor::HierarchyWindow::showSceneMenu(SceneProject* sceneProject){
 void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
     const uint32_t sceneId = project->getSelectedSceneId();
 
+    // Missing Prefab roots have a menu of their own (HierarchyPrefabRows.cpp)
+    if (node.isMissingPrefab) {
+        showMissingPrefabMenu(node);
+        return;
+    }
+
     if (!node.isPrefab && !node.isParentPrefab) {
         if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Create Prefab", nullptr, false, !node.isLocked && node.hasTransform)) {
             saveNodeAsPrefab(node);
@@ -763,6 +770,20 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         std::filesystem::path assetPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
+        }
+        // ---- Replace Prefab (HierarchyPrefabRows.cpp) ----
+        {
+            std::vector<Entity> replaceRoots = ReplacePrefabCmd::replaceableRoots(project, sceneId, targets);
+            const bool canReplace = project->canReplacePrefab(sceneId, node.id);
+            if (!canReplace) {
+                replaceRoots.clear();
+            }
+            if (ImGui::MenuItem(ICON_FA_RIGHT_LEFT "  Replace...", nullptr, false, !replaceRoots.empty())) {
+                requestReplacePrefab(sceneId, replaceRoots);
+            }
+            ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to replace" :
+                canReplace ? "Makes the instance an instance of another prefab, keeping the overrides that match (Alt-drop a prefab on it too)"
+                : "Only a Prefab instance's own root can be replaced: a nested one belongs to its prefab");
         }
         if (ImGui::MenuItem(ICON_FA_BOX_OPEN "  Unpack", nullptr, false, canUnpack)) {
             CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, false));
@@ -1385,6 +1406,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             nodeLabel += "*";
         }
     }
+    if (node.isMissingPrefab) {
+        nodeLabel += " (Missing Prefab)";   // Unity's red Missing Prefab row
+    }
     // Unity dims GameObjects that are inactive themselves or through a parent
     const bool dimInactive = (!node.isScene && !node.isChildScene && nodeSceneProject && nodeSceneProject->scene
         && nodeSceneProject->scene->hasInactiveEntities() && !nodeSceneProject->scene->isEntityActiveInHierarchy(node.id))
@@ -1416,6 +1440,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const ImGuiID nodeItemId = ImGui::GetItemID();
+    if (!renamingNode) {
+        drawPrefabRowOverlay(node, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    }
 
     // Pop color if we pushed it
     if (pushedHighlightColor) {
@@ -1677,6 +1704,11 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     offset += path.size() + 1;
                 }
             }
+        }
+
+        // Alt-drop of a prefab on an instance root: Replace Prefab (HierarchyPrefabRows.cpp)
+        if (allowResourceDragDrop && !node.isScene && handlePrefabReplaceDrop(node)) {
+            allowResourceDragDrop = false;
         }
 
         if (allowResourceDragDrop) {
@@ -2162,6 +2194,11 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::PopID();
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(4);
+    }
+
+    // ">" at the right end of an instance root's row: opens its prefab (HierarchyPrefabRows.cpp)
+    if (!renamingNode) {
+        showPrefabRowArrow(node);
     }
 
     if (nodeOpen) {
@@ -2653,6 +2690,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     } while (splicedNew);
 
     markPrefabScripts(root);
+    markPrefabRows(sceneProject, root);
 }
 
 void editor::HierarchyWindow::show(){
@@ -2873,6 +2911,8 @@ void editor::HierarchyWindow::show(){
         }
         ImGui::EndDragDropTarget();
     }
+
+    showReplacePrefabPopup();
 
     ImGui::End();
 

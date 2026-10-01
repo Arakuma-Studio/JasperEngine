@@ -2529,6 +2529,7 @@ void editor::App::engineRender(){
 
             projectWindow->processMaterialThumbnails();
             projectWindow->processModelThumbnails();
+            projectWindow->processPrefabThumbnails();
 
             // Only a real draw counts as activity, or the loop never idles.
             renderedSceneThisFrame = true;
@@ -2635,6 +2636,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     projectWindow->processMaterialThumbnails();
     projectWindow->processModelThumbnails();
+    projectWindow->processPrefabThumbnails();
 
     renderedSceneThisFrame = true;
     sceneProject.needUpdateRender = false;
