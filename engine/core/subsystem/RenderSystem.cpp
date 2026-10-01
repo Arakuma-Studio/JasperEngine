@@ -358,6 +358,9 @@ void RenderSystem::destroy(){
         view.capacity = 0;
     }
     instanceViewsDirty = true;
+    passShadows = nullptr;
+    cameraShadows.clear();
+    primaryView.shadows.release();
     shadowAtlasFramebuffer.destroyFramebuffer();
     shadowAtlasSlotResolution = 0;
     shadowAtlasCols = 0;
@@ -888,9 +891,8 @@ Vector4 RenderSystem::lightingViewportInfo(const CameraComponent& camera) const{
         isRenderingFlipped(camera) ? 1.0f : 0.0f);
 }
 
-void RenderSystem::processLights(int numLights, CameraComponent& camera, Transform& cameraTransform){
+void RenderSystem::processLights(CameraShadows& view, int numLights, const CameraComponent& camera, const Transform& cameraTransform){
     auto lights = scene->getComponentArray<LightComponent>();
-    RenderView& view = rv();
 
     hasLightCullingMasks = false;
     for (int i = 0; i < MAX_LIGHTS; i++){
@@ -919,13 +921,13 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
             if (light.shadowMapIndex >= 0){
                 size_t numMaps = 1;
                 if (light.type == LightType::DIRECTIONAL){
-                    numMaps = lightCascades(i, light);
+                    numMaps = lightCascades(view, i, light);
                 }else if (light.type == LightType::POINT){
                     numMaps = SHADOW_CUBE_FACES;
                 }
 
                 for (int c = 0; c < (int)numMaps; c++){
-                    const LightCamera& shadowCamera = lightCamera(i, light, c);
+                    const LightCamera& shadowCamera = lightCamera(view, i, light, c);
                     if (light.type == LightType::POINT){
                         view.fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
                             light.shadowBias,
@@ -959,7 +961,7 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
         const float intensity = isLightActive(entity, light) ? light.intensity : 0.0f;
         view.fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
         view.fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
-        view.fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, lightCascades(i, light));
+        view.fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, lightCascades(view, i, light));
         view.fs_lighting.spotUp_maskAspect[i] = Vector4(
             light.worldUp.x,
             light.worldUp.y,
@@ -1556,11 +1558,14 @@ void RenderSystem::renderReflectionProbeCapture(){
     captureCamera.cullingMask = probe->cullingMask;
     updateCamera(captureCamera, captureTransform);
 
-    Vector4 previousEye = rv().fs_lighting.eyePos;
-    Vector4 previousCameraDir = rv().fs_lighting.cameraDir;
-    rv().fs_lighting.eyePos = Vector4(capturePosition.x, capturePosition.y, capturePosition.z, 0.0f);
-    rv().fs_lighting.cameraDir = Vector4(captureCamera.worldDirection.x, captureCamera.worldDirection.y,
-                                    captureCamera.worldDirection.z, previousCameraDir.w);
+    // the face's own lighting and shadow maps: directional cascades fitted to the face,
+    // spot and point maps shared when its culling mask selects the same casters
+    CameraShadows& captureShadows = getCameraShadows(activeReflectionProbe);
+    prepareCameraShadows(captureShadows, captureCamera, captureTransform, mainTerrainView(), true);
+    buildCameraShadowInstances(captureShadows);
+    renderCameraShadows(captureShadows);
+    CameraShadows* previousShadows = passShadows;
+    passShadows = &captureShadows;
 
     capturingReflectionProbe = true;
     passResolution = Vector2((float)resolution, (float)resolution);
@@ -1577,9 +1582,6 @@ void RenderSystem::renderReflectionProbeCapture(){
     }
 
     auto transforms = scene->getComponentArray<Transform>();
-    // Point/spot shadows are light-space and can be reused here. Directional
-    // cascades are fitted to the main camera, so their coverage is a known
-    // limitation until probe-specific directional shadow rendering is added.
     for (int i = 0; i < transforms->size(); i++){
         Entity entity = transforms->getEntity(i);
         if (entity == activeReflectionProbe)
@@ -1599,8 +1601,7 @@ void RenderSystem::renderReflectionProbeCapture(){
 
     runtime.capturePass.endRenderPass();
     capturingReflectionProbe = false;
-    rv().fs_lighting.eyePos = previousEye;
-    rv().fs_lighting.cameraDir = previousCameraDir;
+    passShadows = previousShadows;
 
     delete captureCamera.framebuffer;
     captureCamera.framebuffer = nullptr;
@@ -1620,13 +1621,13 @@ void RenderSystem::renderReflectionProbeCapture(){
 void RenderSystem::initShadowAtlasRects(){
     for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
         if (s >= shadowAtlasUsedSlots || shadowAtlasCols < 1 || shadowAtlasRows < 1){
-            rv().fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            primaryView.shadows.fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
             continue;
         }
 
         int col = s % shadowAtlasCols;
         int row = s / shadowAtlasCols;
-        rv().fs_shadows.atlasRect[s] = Vector4(
+        primaryView.shadows.fs_shadows.atlasRect[s] = Vector4(
             (float)col / (float)shadowAtlasCols,
             (float)row / (float)shadowAtlasRows,
             1.0f / (float)shadowAtlasCols,
@@ -1638,7 +1639,7 @@ void RenderSystem::initShadowPointAtlasRects(){
     for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
         int col = s % SHADOW_POINT_ATLAS_COLS;
         int row = s / SHADOW_POINT_ATLAS_COLS;
-        rv().fs_point_shadows.atlasRect[s] = Vector4(
+        primaryView.shadows.fs_point_shadows.atlasRect[s] = Vector4(
             (float)col / (float)SHADOW_POINT_ATLAS_COLS,
             (float)row / (float)SHADOW_POINT_ATLAS_ROWS,
             1.0f / (float)SHADOW_POINT_ATLAS_COLS,
@@ -1956,31 +1957,25 @@ void RenderSystem::loadShadowTextures(ShaderData& shaderData, ObjectRender& rend
 }
 
 bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool restore){
-#ifdef JASPERENGINE_EDITOR
-    const RenderView& view = rv();
-    if (!view.secondary || (!view.ownShadowAtlas && !view.ownShadowPointAtlas) || !hasLights || !receiveLights)
+    const CameraShadows& shadows = ps();
+    const bool otherProjective = shadows.projectiveAtlas && shadows.projectiveAtlas != &shadowAtlasFramebuffer;
+    const bool otherPoint = shadows.pointAtlas && shadows.pointAtlas != &shadowPointAtlasFramebuffer;
+    if ((!otherProjective && !otherPoint) || !hasLights || !receiveLights)
         return false;
 
-    if (view.ownShadowAtlas){
+    if (otherProjective){
         TextureRender* atlas = restore
             ? (hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth)
-            : &rv().shadowAtlas.getDepthTexture();
+            : &shadows.projectiveAtlas->getDepthTexture();
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWATLAS), ShaderStageType::FRAGMENT, atlas);
     }
-    if (view.ownShadowPointAtlas){
+    if (otherPoint){
         TextureRender* atlas = restore
             ? (hasShadowPointAtlas ? &shadowPointAtlasFramebuffer.getColorTexture() : &emptyWhite)
-            : &rv().shadowPointAtlas.getColorTexture();
+            : &shadows.pointAtlas->getColorTexture();
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS), ShaderStageType::FRAGMENT, atlas);
     }
     return true;
-#else
-    (void)shaderData;
-    (void)render;
-    (void)receiveLights;
-    (void)restore;
-    return false;
-#endif
 }
 
 void RenderSystem::loadShadow2DTexture(ShaderData& shaderData, ObjectRender& render, bool receiveShadows2D){
@@ -2549,14 +2544,9 @@ void RenderSystem::updateAllTerrainRenderTextures(){
 }
 
 void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
-    if (this->disableFaceCulling == disableFaceCulling){
-        return;
-    }
+    // the camera passes pick no-culling pipeline variants at draw time (editor-only debug
+    // view), so nothing reloads
     this->disableFaceCulling = disableFaceCulling;
-
-    // Cull mode is baked into the pipeline at creation time, so every mesh must be
-    // reloaded for the override to take effect (editor-only debug view).
-    needReloadMeshes();
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
@@ -3097,7 +3087,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             mesh.submeshes[i].vertexCount = mesh.vertexCount;
         }
 
-        bool faceCulling = disableFaceCulling ? false : mesh.submeshes[i].faceCulling;
+        bool faceCulling = mesh.submeshes[i].faceCulling;
         if (!render.endLoad(pipelines, faceCulling, !alphaBlend,
                             mesh.cullingMode, mesh.windingOrder)){
             return false;
@@ -3656,8 +3646,9 @@ RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, i
 }
 
 // projective atlas slots the shadow pass draws this frame
-std::vector<RenderSystem::ShadowSlot> RenderSystem::collectShadowSlots(){
-    std::vector<ShadowSlot> slots;
+const std::vector<RenderSystem::ShadowSlot>& RenderSystem::collectShadowSlots(){
+    std::vector<ShadowSlot>& slots = shadowSlots;
+    slots.clear();
     if (!hasShadows || !hasShadowAtlas)
         return slots;
 
@@ -3685,7 +3676,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
         return;
     instanceViewsDirty = false;
 
-    std::vector<ShadowSlot> shadowSlots = collectShadowSlots();
+    collectShadowSlots();
     for (InstanceView& view : rv().instanceViews){
         view.data.clear();
     }
@@ -3727,15 +3718,13 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     for (InstanceView& view : rv().instanceViews){
         view.needUpload = !view.data.empty();
     }
-#ifdef JASPERENGINE_EDITOR
     instanceRevision++;
-#endif
 }
 
 // instances inside the frustum and the cull distance from the eye, appended to view with
 // their range. NEAREST: nearest first (along direction when given), grouped by level;
 // KEEP: list order at full detail; BACK_TO_FRONT: ascending along direction, full detail
-void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order){
+void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance){
     struct Candidate{
         unsigned int index;
         unsigned int lod;
@@ -3748,7 +3737,7 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
     const Vector3& worldScale = transform.worldScale;
     const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
-    const bool limitDistance = std::isfinite(instmesh.cullDistance) && instmesh.cullDistance > 0.0f;
+    limitDistance = limitDistance && std::isfinite(instmesh.cullDistance) && instmesh.cullDistance > 0.0f;
 
     for (unsigned int i = 0; i < count; i++){
         const InstanceBounds& bounds = instanceBounds[i];
@@ -3900,7 +3889,12 @@ void RenderSystem::updateInstanceBuffers(){
 
 // the culled lists a view rebuilt, each into its own buffer
 void RenderSystem::uploadInstanceViews(RenderView& renderView){
-    for (InstanceView& view : renderView.instanceViews){
+    uploadInstanceViews(renderView.instanceViews, sizeof(renderView.instanceViews) / sizeof(renderView.instanceViews[0]));
+}
+
+void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
+    for (size_t v = 0; v < count; v++){
+        InstanceView& view = views[v];
         if (!view.needUpload)
             continue;
         view.needUpload = false;
@@ -3966,14 +3960,17 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         Matrix4 objectScratch[3];
         const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
 
+        // the lighting and shadow maps of the camera this pass draws for
+        CameraShadows& passLighting = ps();
+
         // a light whose culling mask leaves out this layer adds nothing here
-        fs_lighting_t* lighting = &rv().fs_lighting;
+        fs_lighting_t* lighting = &passLighting.fs_lighting;
         if (hasLightCullingMasks){
             const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
             for (int l = 0; l < MAX_LIGHTS; l++){
                 if (!(lightCullingMasks[l] & layerBit)){
-                    if (lighting == &rv().fs_lighting){
-                        fs_lightingMasked = rv().fs_lighting;
+                    if (lighting == &passLighting.fs_lighting){
+                        fs_lightingMasked = passLighting.fs_lighting;
                         lighting = &fs_lightingMasked;
                     }
                     fs_lightingMasked.color_intensity[l].w = 0.0f;
@@ -4011,7 +4008,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 }
             }
 
-            if (!render.beginDraw(pipType)){
+            if (!render.beginDraw(pipType, passNoFaceCulling())){
                 mesh.needReload = true;
                 return false;
             }
@@ -4065,9 +4062,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 loadSpotMaskTexture(lightingShaderData, render);
                 render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), lighting);
                 if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
-                    render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &rv().vs_shadows);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &rv().fs_shadows);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &rv().fs_point_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &passLighting.vs_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &passLighting.fs_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &passLighting.fs_point_shadows);
                     viewShadowMapsBound = bindViewShadowMaps(lightingShaderData, render, mesh.receiveLights, false);
                 }
                 // USE_SSAO (property bit 21): bind the screen-space AO texture for
@@ -4214,7 +4211,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 mesh.submeshes[i].needUpdateDepthTexture = false;
             }
 
-            if (!depthRender.beginDraw(pipelineType)){
+            if (!depthRender.beginDraw(pipelineType, passNoFaceCulling())){
                 mesh.needReload = true;
                 return false;
             }
@@ -4578,7 +4575,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             }
         }
 
-        if (!gbufferRender.beginDraw(PIP_GBUFFER)){
+        if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
             mesh.needReload = true;
             return false;
         }
@@ -6995,7 +6992,10 @@ Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Mat
     float extension = shadowMaxDistance * 0.5f;
 
     Matrix4 t = viewMatrix * extendedSceneCameraInv;
-    std::vector<Vector4> frustumCorners = {
+    // Add additional points behind the camera
+    Vector3 backwardOffset = -lightDirection * extension;
+    // runs per camera and frame: a fixed array, no allocation
+    Vector4 frustumCorners[9] = {
         t * Vector4(-1.f, 1.f, -1.f, 1.f),
         t * Vector4(1.f, 1.f, -1.f, 1.f),
         t * Vector4(1.f, -1.f, -1.f, 1.f),
@@ -7003,13 +7003,9 @@ Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Mat
         t * Vector4(-1.f, 1.f, 1.f, 1.f),
         t * Vector4(1.f, 1.f, 1.f, 1.f),
         t * Vector4(1.f, -1.f, 1.f, 1.f),
-        t * Vector4(-1.f, -1.f, 1.f, 1.f)
+        t * Vector4(-1.f, -1.f, 1.f, 1.f),
+        viewMatrix * Vector4(cameraPosition + backwardOffset, 1.0f)
     };
-
-    // Add additional points behind the camera
-    Vector3 backwardOffset = -lightDirection * extension;
-    Vector4 backPoint = viewMatrix * Vector4(cameraPosition + backwardOffset, 1.0f);
-    frustumCorners.push_back(backPoint);
 
     float minX = std::numeric_limits<float>::max();
     float maxX = std::numeric_limits<float>::lowest();
@@ -7082,38 +7078,30 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
 
             viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, up);
 
-            //TODO: light directional cascades is only considering main camera
+            // cascades fitted to the frustum of the camera given (each camera's own)
             if (camera.type == CameraType::CAMERA_PERSPECTIVE) {
 
                 float zNear = shadowCameraNearFar.x;
                 float zFar = shadowCameraNearFar.y;
                 float planeFarOffset = (zFar - zNear) * 0.05f;
 
-                std::vector<float> splitFar;
-                std::vector<float> splitNear;
-
                 // Split perspective frustum to create cascades
                 Matrix4 projection = camera.projectionMatrix;
                 Matrix4 invProjection = projection.inverse();
 
-                std::vector<Vector4> v1 = {
-                    invProjection * Vector4(-1.f, 1.f, -1.f, 1.f),
-                    invProjection * Vector4(1.f, 1.f, -1.f, 1.f),
-                    invProjection * Vector4(1.f, -1.f, -1.f, 1.f),
-                    invProjection * Vector4(-1.f, -1.f, -1.f, 1.f),
-                    invProjection * Vector4(-1.f, 1.f, 1.f, 1.f),
-                    invProjection * Vector4(1.f, 1.f, 1.f, 1.f),
-                    invProjection * Vector4(1.f, -1.f, 1.f, 1.f),
-                    invProjection * Vector4(-1.f, -1.f, 1.f, 1.f)
-                };
+                // near and far corners of the camera frustum in view space
+                const Vector4 nearCorner = invProjection * Vector4(-1.f, 1.f, -1.f, 1.f);
+                const Vector4 farCorner = invProjection * Vector4(-1.f, 1.f, 1.f, 1.f);
 
-                zFar = std::min(zFar, -(v1[4] / v1[4].w).z);
-                zNear = -(v1[0] / v1[0].w).z;
+                zFar = std::min(zFar, -(farCorner / farCorner.w).z);
+                zNear = -(nearCorner / nearCorner.w).z;
                 float fov = atanf(1.f / projection[1][1]) * 2.f;
                 float ratio = projection[1][1] / projection[0][0];
 
-                splitFar.resize(numCascades);
-                splitNear.resize(numCascades);
+                // runs per camera and frame: fixed arrays, no allocation
+                numCascades = std::clamp(numCascades, 1u, (unsigned int)MAX_SHADOWCASCADES);
+                float splitFar[MAX_SHADOWCASCADES];
+                float splitNear[MAX_SHADOWCASCADES];
                 splitNear[0] = zNear;
                 splitFar[numCascades - 1] = zFar;
 
@@ -7388,22 +7376,35 @@ bool RenderSystem::isBaseLayer() const{
 }
 
 const LightCamera& RenderSystem::lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const{
-#ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && !rv().sharesPrimaryCamera && lightIndex >= 0 && lightIndex < (int)rv().lightCameras.size())
-        return rv().lightCameras[lightIndex].cameras[cameraIndex];
-#endif
-    return light.cameras[cameraIndex];
+    return lightCamera(ps(), lightIndex, light, cameraIndex);
 }
 
 unsigned int RenderSystem::lightCascades(int lightIndex, const LightComponent& light) const{
-#ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && !rv().sharesPrimaryCamera && lightIndex >= 0 && lightIndex < (int)rv().lightCameras.size())
-        return rv().lightCameras[lightIndex].numCascades;
-#endif
+    return lightCascades(ps(), lightIndex, light);
+}
+
+// only directional cascades follow the camera: spot and point lights keep their own cameras
+const LightCamera& RenderSystem::lightCamera(const CameraShadows& shadows, int lightIndex, const LightComponent& light, int cameraIndex) const{
+    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && lightIndex >= 0 && lightIndex < MAX_LIGHTS)
+        return shadows.lightCameras[lightIndex].cameras[cameraIndex];
+    return light.cameras[cameraIndex];
+}
+
+unsigned int RenderSystem::lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const{
+    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && lightIndex >= 0 && lightIndex < MAX_LIGHTS)
+        return shadows.lightCameras[lightIndex].numCascades;
     return light.numShadowCascades;
 }
 
 const InstanceViewRange& RenderSystem::instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const{
+    // a shadow slot of a camera culling its own casters
+    if (instanceView >= 1 && ps().ownShadowInstances){
+        auto it = ps().instanceRanges.find(entity);
+        if (it != ps().instanceRanges.end())
+            return it->second.slots[instanceView - 1];
+        static const InstanceViewRange emptyRange;
+        return emptyRange;
+    }
 #ifdef JASPERENGINE_EDITOR
     if (rv().secondary && !rv().sharesPrimaryCamera){
         auto it = rv().instanceRanges.find(entity);
@@ -7417,6 +7418,8 @@ const InstanceViewRange& RenderSystem::instanceRange(Entity entity, const Instan
 }
 
 BufferRender* RenderSystem::instanceBuffer(int instanceView){
+    if (instanceView >= 1 && ps().ownShadowInstances)
+        return ps().instanceViews[instanceView - 1].buffer.getRender();
 #ifdef JASPERENGINE_EDITOR
     if (rv().secondary && rv().sharesPrimaryCamera)
         return primaryView.instanceViews[instanceView].buffer.getRender();
@@ -7426,7 +7429,9 @@ BufferRender* RenderSystem::instanceBuffer(int instanceView){
 
 Vector3 RenderSystem::instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const{
 #ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && !rv().sharesPrimaryCamera && instanceView >= 0){
+    // a camera culling its own casters culls them from the frame's lists
+    const bool ownShadowSlot = instanceView >= 1 && ps().ownShadowInstances;
+    if (rv().secondary && !rv().sharesPrimaryCamera && instanceView >= 0 && !ownShadowSlot){
         auto it = rv().instanceSources.find(entity);
         if (it != rv().instanceSources.end())
             return it->second.fadeEyeLocal;
@@ -7443,8 +7448,10 @@ bool RenderSystem::isBatchVisible(Entity entity, const MeshComponent& mesh, cons
         // a billboard turned to this pass's camera left its frame bounds behind
         if (isObjectOverridden(transform))
             return true;
-        // instances rebuilt for this view have their own bounds
-        if (instmesh && instanceView >= 0 && rv().secondary && !rv().sharesPrimaryCamera){
+        // instances rebuilt for this view have their own bounds (not the shadow slots of a
+        // camera culling its own casters, which come from the frame's lists)
+        if (instmesh && instanceView >= 0 && rv().secondary && !rv().sharesPrimaryCamera &&
+                !(instanceView >= 1 && ps().ownShadowInstances)){
             auto it = rv().instanceSources.find(entity);
             if (it != rv().instanceSources.end() && it->second.own)
                 return isInsideCamera(cameraFar, frustumPlanes, it->second.worldAABB);
@@ -7467,6 +7474,9 @@ TerrainView& RenderSystem::terrainViewData(Entity entity, TerrainComponent& terr
 }
 
 int RenderSystem::mainTerrainView() const{
+    // the shadow (and color) passes of a camera with its own lighting draw its own cut
+    if (passShadows)
+        return passShadows->terrainView;
 #ifdef JASPERENGINE_EDITOR
     if (passObjects && !rv().sharesPrimaryCamera)
         return TERRAIN_PASS_VIEW;
@@ -7539,20 +7549,15 @@ const Matrix4& RenderSystem::passSkyViewProjection(const SkyboxComponent& sky) c
     return sky.skyViewProjectionMatrix;
 }
 
+// the frame's atlases are the scene camera's; any other camera draws into its own
 FramebufferRender& RenderSystem::shadowAtlasTarget(){
-#ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().ownShadowAtlas)
-        return rv().shadowAtlas;
-#endif
-    return shadowAtlasFramebuffer;
+    CameraShadows& shadows = ps();
+    return (&shadows == &primaryView.shadows) ? shadowAtlasFramebuffer : shadows.ownProjective;
 }
 
 FramebufferRender& RenderSystem::shadowPointAtlasTarget(){
-#ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().ownShadowPointAtlas)
-        return rv().shadowPointAtlas;
-#endif
-    return shadowPointAtlasFramebuffer;
+    CameraShadows& shadows = ps();
+    return (&shadows == &primaryView.shadows) ? shadowPointAtlasFramebuffer : shadows.ownPoint;
 }
 
 bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
@@ -7745,6 +7750,8 @@ void RenderSystem::update(double dt){
 #ifdef JASPERENGINE_EDITOR
     frameDrawn = false;
 #endif
+    // shadow maps drawn before this update hold another scene
+    shadowEpoch++;
 
     if (paused) {
         return;
@@ -8346,7 +8353,7 @@ void RenderSystem::update(double dt){
         }
     }
 
-    processLights(numLights, mainCamera, mainCameraTransform);
+    processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
     if (hasLights2D){
         processLights2D();
     }
@@ -8363,6 +8370,555 @@ void RenderSystem::update(double dt){
     }
 }
 
+//-----Per-camera lighting and shadow maps-----
+
+bool RenderSystem::ShadowAtlasKey::sameDepths(const ShadowAtlasKey& other) const{
+    if (slots != other.slots || cameraCasters != other.cameraCasters)
+        return false;
+    for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
+        if (casterMask[s] != other.casterMask[s] || viewProjection[s] != other.viewProjection[s])
+            return false;
+    }
+    return true;
+}
+
+RenderSystem::CameraShadows::~CameraShadows(){
+    release();
+}
+
+void RenderSystem::CameraShadows::releaseProjective(){
+    ownProjective.destroyFramebuffer();
+    ownProjectiveWidth = 0;
+    ownProjectiveHeight = 0;
+    projectiveKey.epoch = 0;
+    if (projectiveAtlas == &ownProjective)
+        projectiveAtlas = nullptr;
+}
+
+void RenderSystem::CameraShadows::releasePoint(){
+    ownPoint.destroyFramebuffer();
+    ownPointWidth = 0;
+    ownPointHeight = 0;
+    pointKey.epoch = 0;
+    if (pointAtlas == &ownPoint)
+        pointAtlas = nullptr;
+}
+
+void RenderSystem::CameraShadows::releaseInstances(){
+    for (InstanceView& view : instanceViews){
+        view.buffer.getRender()->destroyBuffer();
+        view.data.clear();
+        view.data.shrink_to_fit();
+        view.capacity = 0;
+        view.needUpload = false;
+    }
+    instanceRanges.clear();
+    instanceBuild = 0;
+}
+
+void RenderSystem::CameraShadows::release(){
+    releaseProjective();
+    releasePoint();
+    releaseInstances();
+    projectiveAtlas = nullptr;
+    pointAtlas = nullptr;
+    drawProjective = false;
+    drawPoint = false;
+    keysEpoch = 0;
+}
+
+RenderSystem::CameraShadows& RenderSystem::getCameraShadows(Entity entity){
+    std::unique_ptr<CameraShadows>& shadows = cameraShadows[entity];
+    if (!shadows){
+        shadows = std::make_unique<CameraShadows>();
+    }
+    return *shadows;
+}
+
+// A camera that stopped rendering keeps its maps a moment, so one that comes back
+// (re-enabled, a probe capturing again) reallocates nothing.
+void RenderSystem::releaseUnusedCameraShadows(){
+    static constexpr uint64_t KEEP_UNUSED_DRAWS = 120;
+    for (auto it = cameraShadows.begin(); it != cameraShadows.end();){
+        if (drawCount - it->second->lastUsed > KEEP_UNUSED_DRAWS){
+            it = cameraShadows.erase(it);
+        }else{
+            ++it;
+        }
+    }
+}
+
+// The layers holding meshes the shadow passes draw this update, and among them those whose
+// casters a camera draws its own way: a terrain through its CDLOD cut, a billboard turned
+// to it, instances culled or faded from its eye.
+void RenderSystem::ensureCasterLayers(){
+    if (casterLayersEpoch == shadowEpoch)
+        return;
+    casterLayersEpoch = shadowEpoch;
+    shadowCasterLayers = 0;
+    cameraCasterLayers = 0;
+    for (uint32_t& layers : lightCasterLayers){
+        layers = 0;
+    }
+
+    // the spot and point lights the shadow passes draw: their shadow cameras are the
+    // lights' own, so what reaches their maps is the same for every camera
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    int localLights[MAX_LIGHTS];
+    int numLocalLights = 0;
+    for (int l = 0; l < numLights; l++){
+        const LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type != LightType::DIRECTIONAL && light.shadows && light.intensity > 0 && light.shadowMapIndex >= 0 &&
+                isLightActive(lights->getEntity(l), light)){
+            localLights[numLocalLights++] = l;
+        }
+    }
+
+#ifdef JASPERENGINE_EDITOR
+    // what a shadow pass draws: never the editor's gizmos and icons, always a mirror
+    const bool drawsOverlays = passDrawsOverlays;
+    const Entity excludedEntity = passExcludedEntity;
+    passDrawsOverlays = false;
+    passExcludedEntity = NULL_ENTITY;
+#endif
+
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+            continue;
+        Entity entity = meshes->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform || !transform->visible || !isRenderActive(entity))
+            continue;
+
+        const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
+        shadowCasterLayers |= layerBit;
+
+        // a terrain's cut stays inside its bounds; a turned billboard or a camera's own
+        // instance list may not stay inside the frame's
+        const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+        bool unbounded = transform->billboard && !transform->fakeBillboard && !mesh.shadowsBillboard;
+        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        if (instmesh){
+            unbounded = unbounded || instmesh->instancedBillboard ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
+        }
+        if (terrain || unbounded){
+            cameraCasterLayers |= layerBit;
+        }
+
+        // the batch test of the depth passes (isBatchVisible), against each shadow camera
+        const bool everywhere = unbounded || !cullsBatch(mesh, instmesh);
+        for (int i = 0; i < numLocalLights; i++){
+            const int l = localLights[i];
+            if (lightCasterLayers[l] & layerBit)
+                continue;
+            const LightComponent& light = lights->getComponentFromIndex(l);
+            bool reaches = everywhere;
+            const int faces = (light.type == LightType::POINT) ? SHADOW_CUBE_FACES : 1;
+            for (int c = 0; c < faces && !reaches; c++){
+                reaches = isInsideCamera(light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, mesh.worldAABB);
+            }
+            if (reaches){
+                lightCasterLayers[l] |= layerBit;
+            }
+        }
+    }
+
+    for (int l = 0; l < numLights; l++){
+        if (lights->getComponentFromIndex(l).type == LightType::DIRECTIONAL){
+            lightCasterLayers[l] = shadowCasterLayers;
+        }
+    }
+
+#ifdef JASPERENGINE_EDITOR
+    passDrawsOverlays = drawsOverlays;
+    passExcludedEntity = excludedEntity;
+#endif
+}
+
+// What target's atlases hold once drawn: each slot's shadow camera and the layers casting
+// into it. A slot nothing casts into is plain clear depth, whatever its camera.
+void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey& projective, ShadowAtlasKey& point){
+    for (ShadowAtlasKey* key : {&projective, &point}){
+        key->slots = 0;
+        key->cameraCasters = nullptr;
+        for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
+            key->viewProjection[s] = Matrix4();
+            key->casterMask[s] = 0;
+        }
+    }
+    if (!hasShadows)
+        return;
+
+    ensureCasterLayers();
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    for (int l = 0; l < numLights; l++){
+        LightComponent& light = lights->getComponentFromIndex(l);
+        // the lights renderShadowMaps draws
+        if (light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
+                !isLightActive(lights->getEntity(l), light))
+            continue;
+
+        const uint32_t mask = target.cameraMask & light.cullingMask & lightCasterLayers[l];
+        const void* cameraCasters = (mask & cameraCasterLayers) ? (const void*)&target : nullptr;
+
+        if (light.type == LightType::POINT){
+            if (!hasShadowPointAtlas)
+                continue;
+            for (int c = 0; c < SHADOW_CUBE_FACES; c++){
+                const int slot = light.shadowMapIndex + c;
+                if (slot < 0 || slot >= MAX_POINT_SHADOW_ATLAS_SLOTS)
+                    continue;
+                point.slots++;
+                point.casterMask[slot] = mask;
+                if (mask)
+                    point.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
+                if (cameraCasters)
+                    point.cameraCasters = cameraCasters;
+            }
+        }else{
+            if (!hasShadowAtlas)
+                continue;
+            const int numCameras = (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(target, l, light) : 1;
+            for (int c = 0; c < numCameras; c++){
+                const int slot = light.shadowMapIndex + ((light.type == LightType::DIRECTIONAL) ? c : 0);
+                if (slot < 0 || slot >= shadowAtlasUsedSlots)
+                    continue;
+                projective.slots++;
+                projective.casterMask[slot] = mask;
+                if (mask)
+                    projective.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
+                if (cameraCasters)
+                    projective.cameraCasters = cameraCasters;
+            }
+        }
+    }
+}
+
+// An atlas drawn after this update holding what target wants: the frame's, target's own
+// from an earlier draw, or another camera's. Null when none does.
+FramebufferRender* RenderSystem::findShadowSource(CameraShadows& target, const ShadowAtlasKey& wanted, bool projective){
+    auto holds = [&](const CameraShadows& source){
+        const ShadowAtlasKey& key = projective ? source.projectiveKey : source.pointKey;
+        return key.epoch == shadowEpoch && key.sameDepths(wanted);
+    };
+
+    // the frame's maps, described the first time a camera asks after the update
+    CameraShadows& frame = primaryView.shadows;
+    if ((frame.projectiveKey.epoch == shadowEpoch || frame.pointKey.epoch == shadowEpoch) && frame.keysEpoch != shadowEpoch){
+        const uint64_t projectiveEpoch = frame.projectiveKey.epoch;
+        const uint64_t pointEpoch = frame.pointKey.epoch;
+        computeShadowKeys(frame, frame.projectiveKey, frame.pointKey);
+        frame.projectiveKey.epoch = projectiveEpoch;
+        frame.pointKey.epoch = pointEpoch;
+        frame.keysEpoch = shadowEpoch;
+    }
+    if (holds(frame))
+        return projective ? &shadowAtlasFramebuffer : &shadowPointAtlasFramebuffer;
+
+    if (holds(target))
+        return projective ? &target.ownProjective : &target.ownPoint;
+
+    auto other = [&](CameraShadows& source) -> FramebufferRender*{
+        if (&source == &target || !holds(source))
+            return nullptr;
+        return projective ? &source.ownProjective : &source.ownPoint;
+    };
+    for (auto& entry : cameraShadows){
+        if (FramebufferRender* atlas = other(*entry.second))
+            return atlas;
+    }
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : secondaryViews){
+        if (FramebufferRender* atlas = other(entry.second->shadows))
+            return atlas;
+        for (auto& mirror : entry.second->mirrors){
+            if (FramebufferRender* atlas = other(mirror.second->shadows))
+                return atlas;
+        }
+    }
+#endif
+    return nullptr;
+}
+
+int RenderSystem::ownPointAtlasRows() const{
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    int usedSlots = 0;
+    for (int l = 0; l < numLights; l++){
+        const LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type == LightType::POINT && light.shadows && light.shadowMapIndex >= 0){
+            usedSlots = std::max(usedSlots, std::min(light.shadowMapIndex + SHADOW_CUBE_FACES, MAX_POINT_SHADOW_ATLAS_SLOTS));
+        }
+    }
+    return std::max(1, (usedSlots + SHADOW_POINT_ATLAS_COLS - 1) / SHADOW_POINT_ATLAS_COLS);
+}
+
+// A camera's own projective atlas has the frame's layout, so the slots and their uniforms
+// line up; its own point atlas has the frame's slots in only the rows its lights use
+bool RenderSystem::ensureOwnShadowAtlas(CameraShadows& target, bool projective){
+    if (projective){
+        const int width = (int)shadowAtlasSlotResolution * shadowAtlasCols;
+        const int height = (int)shadowAtlasSlotResolution * shadowAtlasRows;
+        if (target.ownProjective.isCreated() && target.ownProjectiveWidth == width && target.ownProjectiveHeight == height)
+            return true;
+        target.releaseProjective();
+        // LINEAR on a comparison sampler is hardware PCF, as on the frame's atlas
+        if (width <= 0 || height <= 0 || !target.ownProjective.createDepthOnlyFramebuffer(
+                width, height,
+                TextureFilter::LINEAR, TextureFilter::LINEAR,
+                TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+            return false;
+        }
+        target.ownProjectiveWidth = width;
+        target.ownProjectiveHeight = height;
+        return true;
+    }
+
+    const int width = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_COLS;
+    const int height = (int)shadowPointAtlasSlotResolution * ownPointAtlasRows();
+    if (target.ownPoint.isCreated() && target.ownPointWidth == width && target.ownPointHeight == height)
+        return true;
+    target.releasePoint();
+    if (width <= 0 || height <= 0 || !target.ownPoint.createFramebuffer(
+            TextureType::TEXTURE_2D, width, height,
+            TextureFilter::NEAREST, TextureFilter::NEAREST,
+            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+        return false;
+    }
+    target.ownPointWidth = width;
+    target.ownPointHeight = height;
+    return true;
+}
+
+void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform, int terrainView, bool ownInstances){
+    target.lastUsed = drawCount;
+    target.cameraMask = camera.cullingMask;
+    target.terrainView = terrainView;
+    target.ownLightCameras = true;
+    target.ownShadowInstances = ownInstances;
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+
+    // directional cascades fitted to this camera's frustum
+    for (int i = 0; i < numLights; i++){
+        LightComponent& light = lights->getComponentFromIndex(i);
+        LightCameraSet& cameras = target.lightCameras[i];
+        cameras.numCascades = light.numShadowCascades;
+
+        if (light.type != LightType::DIRECTIONAL || !hasShadows || !light.shadows || light.intensity <= 0)
+            continue;
+
+        Transform* transform = scene->findComponent<Transform>(lights->getEntity(i));
+        if (!transform){
+            for (int c = 0; c < MAX_SHADOWCASCADES; c++){
+                cameras.cameras[c] = light.cameras[c];
+            }
+            continue;
+        }
+
+        Vector2 nearFar = light.shadowCameraNearFar;
+        if (light.automaticShadowCamera){
+            nearFar.x = camera.nearClip;
+            nearFar.y = (light.range == 0.0f) ? camera.farClip : light.range;
+        }
+        computeLightCameras(light, *transform, camera, cameraTransform, nearFar, cameras.cameras, cameras.numCascades);
+    }
+
+    // the atlas layout and every camera-independent value are the frame's
+    const CameraShadows& frame = primaryView.shadows;
+    target.fs_lighting = frame.fs_lighting;
+    target.vs_shadows = frame.vs_shadows;
+    target.fs_shadows = frame.fs_shadows;
+    target.fs_point_shadows = frame.fs_point_shadows;
+    processLights(target, numLights, camera, cameraTransform);
+
+    target.projectiveAtlas = nullptr;
+    target.pointAtlas = nullptr;
+    target.drawProjective = false;
+    target.drawPoint = false;
+
+    if (!hasShadows){
+        target.releaseProjective();
+        target.releasePoint();
+        target.releaseInstances();
+        return;
+    }
+
+    computeShadowKeys(target, wantedProjectiveKey, wantedPointKey);
+
+    if (wantedProjectiveKey.slots == 0){
+        target.releaseProjective();
+        target.releaseInstances();
+    }else if (FramebufferRender* source = findShadowSource(target, wantedProjectiveKey, true)){
+        target.projectiveAtlas = source;
+        if (source != &target.ownProjective){
+            target.releaseProjective();
+            target.releaseInstances();
+        }
+    }else if (ensureOwnShadowAtlas(target, true)){
+        target.projectiveKey = wantedProjectiveKey;
+        target.projectiveKey.epoch = 0; // until drawn
+        target.projectiveAtlas = &target.ownProjective;
+        target.drawProjective = true;
+    }
+
+    if (wantedPointKey.slots == 0){
+        target.releasePoint();
+    }else if (FramebufferRender* source = findShadowSource(target, wantedPointKey, false)){
+        target.pointAtlas = source;
+        if (source != &target.ownPoint){
+            target.releasePoint();
+        }
+    }else if (ensureOwnShadowAtlas(target, false)){
+        target.pointKey = wantedPointKey;
+        target.pointKey.epoch = 0; // until drawn
+        target.pointAtlas = &target.ownPoint;
+        target.drawPoint = true;
+    }
+
+    // a camera's own point atlas (this one's or another's) keeps only the rows in use
+    if (target.pointAtlas && target.pointAtlas != &shadowPointAtlasFramebuffer){
+        const int rows = ownPointAtlasRows();
+        for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
+            const int col = s % SHADOW_POINT_ATLAS_COLS;
+            const int row = s / SHADOW_POINT_ATLAS_COLS;
+            target.fs_point_shadows.atlasRect[s] = (row < rows) ? Vector4(
+                (float)col / (float)SHADOW_POINT_ATLAS_COLS,
+                (float)row / (float)rows,
+                1.0f / (float)SHADOW_POINT_ATLAS_COLS,
+                1.0f / (float)rows) : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+    }
+}
+
+void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
+    if (!target.drawProjective || !target.ownShadowInstances)
+        return;
+
+    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+    if (instmeshes->size() == 0){
+        if (target.instanceBuild != 0)
+            target.releaseInstances();
+        return;
+    }
+
+    // the slots, their cameras and detail levels are target's
+    CameraShadows* previousShadows = passShadows;
+    passShadows = &target;
+
+    const std::vector<ShadowSlot>& slots = collectShadowSlots();
+
+    uint64_t shadowHash = 1469598103934665603ULL;
+    for (const ShadowSlot& shadow : slots){
+        const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&shadowCamera.lightViewProjectionMatrix);
+        for (size_t b = 0; b < sizeof(Matrix4); b++){
+            shadowHash = (shadowHash ^ bytes[b]) * 1099511628211ULL;
+        }
+        shadowHash = (shadowHash ^ (uint64_t)(shadow.slot + 1)) * 1099511628211ULL;
+    }
+
+    if (target.instanceBuild != 0 && target.instanceRevision == instanceRevision && target.instanceShadowHash == shadowHash){
+        passShadows = previousShadows;
+        return;
+    }
+    target.instanceBuild++;
+    target.instanceRevision = instanceRevision;
+    target.instanceShadowHash = shadowHash;
+
+    for (InstanceView& view : target.instanceViews){
+        view.data.clear();
+    }
+
+    for (int i = 0; i < instmeshes->size(); i++){
+        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        Entity entity = instmeshes->getEntity(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        CameraShadows::InstanceRanges& ranges = target.instanceRanges[entity];
+        ranges.build = target.instanceBuild;
+        ranges.slots.fill(InstanceViewRange());
+        if (!mesh || !transform || !mesh->loaded || !mesh->castShadows)
+            continue;
+
+        // the frame's list, the one this camera's color pass draws
+        const InstanceRenderData* instances = instmesh.renderInstances.data();
+        const InstanceBounds* bounds = instmesh.renderBounds.data();
+        const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
+
+        for (const ShadowSlot& shadow : slots){
+            const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
+            LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
+            Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
+            buildInstanceView(target.instanceViews[shadow.slot], ranges.slots[shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+                shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, shadowLod.origin, shadowLod.origin, lightDirection, InstanceOrder::NEAREST, false);
+        }
+    }
+
+    // batches that went away
+    for (auto it = target.instanceRanges.begin(); it != target.instanceRanges.end();){
+        if (it->second.build != target.instanceBuild){
+            it = target.instanceRanges.erase(it);
+        }else{
+            ++it;
+        }
+    }
+
+    for (InstanceView& view : target.instanceViews){
+        view.needUpload = !view.data.empty();
+    }
+    uploadInstanceViews(target.instanceViews, MAX_SHADOW_ATLAS_SLOTS);
+
+    passShadows = previousShadows;
+}
+
+void RenderSystem::renderCameraShadows(CameraShadows& target){
+    if (!target.drawProjective && !target.drawPoint)
+        return;
+
+    CameraShadows* previousShadows = passShadows;
+    passShadows = &target;
+    renderShadowMaps(target.drawProjective, target.drawPoint);
+    passShadows = previousShadows;
+
+    if (target.drawProjective)
+        target.projectiveKey.epoch = shadowEpoch;
+    if (target.drawPoint)
+        target.pointKey.epoch = shadowEpoch;
+    target.drawProjective = false;
+    target.drawPoint = false;
+}
+
+// The CDLOD cut a render-to-texture camera draws, selected before its shadow passes so
+// they draw the same terrain its color pass does
+void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& cameraTransform, int terrainView){
+#ifdef JASPERENGINE_EDITOR
+    // a camera image never shows the editor's gizmos and icons
+    passDrawsOverlays = false;
+#endif
+    auto terrains = scene->getComponentArray<TerrainComponent>();
+    for (int i = 0; i < terrains->size(); i++){
+        TerrainComponent& terrain = terrains->getComponentFromIndex(i);
+        Entity entity = terrains->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!transform || !mesh || scene->findComponent<CameraComponent>(entity))
+            continue;
+        if (!transform->visible || samplesCameraTarget(camera, *mesh) || !isRenderActive(entity) || !isLayerVisible(entity, camera.cullingMask))
+            continue;
+        updateTerrain(terrain, *transform, camera, cameraTransform, terrain.views[terrainView]);
+    }
+}
+
 // Work the frame does once, whatever views draw it: texture and buffer uploads, the
 // culled instance lists of the scene camera, the shadow maps of its lights, the 2D
 // shadow rows and the reflection probe face of the frame.
@@ -8375,7 +8931,11 @@ void RenderSystem::drawFramePasses(){
 
     updateShadowBindings();
     updateAllTerrainRenderTextures();
+    // as in Unity, a layer the scene camera culls casts no shadow into its maps
+    CameraShadows& frameShadows = primaryView.shadows;
+    frameShadows.cameraMask = LAYER_MASK_EVERYTHING;
     if (CameraComponent* mainCamera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        frameShadows.cameraMask = mainCamera->cullingMask;
         if (Transform* mainCameraTransform = scene->findComponent<Transform>(scene->getCamera())){
             buildInstanceViews(*mainCamera, *mainCameraTransform);
         }
@@ -8391,6 +8951,10 @@ void RenderSystem::drawFramePasses(){
     }
 
     renderShadowMaps(true, true);
+    // the frame's maps hold this update's casters; what they hold is worked out only
+    // when another camera asks (computeShadowKeys)
+    frameShadows.projectiveKey.epoch = hasShadows ? shadowEpoch : 0;
+    frameShadows.pointKey.epoch = hasShadows ? shadowEpoch : 0;
     render2DShadows();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
@@ -8400,7 +8964,8 @@ void RenderSystem::drawFramePasses(){
 }
 
 // Depth passes of the shadow-casting lights into the projective and point atlases of
-// the view being drawn, through its shadow cameras.
+// the camera being drawn (ps(): the frame's for the scene camera, its own otherwise),
+// through its shadow cameras.
 void RenderSystem::renderShadowMaps(bool projective, bool point){
     if (!hasShadows)
         return;
@@ -8414,17 +8979,8 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     auto meshes = scene->getComponentArray<MeshComponent>();
     int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
 
-    // as in Unity, a layer the rendering camera or the light culls casts no shadow; a
-    // secondary view renders through its own camera (the editor's shows every layer)
-#ifdef JASPERENGINE_EDITOR
-    const CameraComponent* viewCamera = rv().secondary ? &rv().camera : scene->findComponent<CameraComponent>(scene->getCamera());
-#else
-    const CameraComponent* viewCamera = scene->findComponent<CameraComponent>(scene->getCamera());
-#endif
-    const uint32_t shadowCameraMask = viewCamera ? viewCamera->cullingMask : LAYER_MASK_EVERYTHING;
-#ifdef JASPERENGINE_EDITOR
-    rv().shadowCameraMask = shadowCameraMask;
-#endif
+    // as in Unity, a layer the rendering camera or the light culls casts no shadow
+    const uint32_t shadowCameraMask = ps().cameraMask;
 
     // a projective slot has its own culled instance view; point faces draw everything
     auto drawShadowCasters = [&](LightComponent& light, int lightIndex, int cameraIndex, PipelineType pipelineType, int instanceView){
@@ -8714,14 +9270,33 @@ void RenderSystem::drawCameras(bool includeMain){
             continue;
         }
 
+        // Any other camera sees the scene through its own frustum and culling mask: its
+        // terrain cut, then lighting and shadow maps fitted to it (shared where they
+        // would hold the same depths as maps already drawn), before its color pass
+        CameraShadows* cameraLighting = nullptr;
+        if (!isMainCamera){
+            if (terrainView != 0){
+                selectCameraTerrain(camera, *cameraTransformPtr, terrainView);
+            }
+            cameraLighting = &getCameraShadows(cameraEntity);
+            prepareCameraShadows(*cameraLighting, camera, *cameraTransformPtr, terrainView, true);
+            buildCameraShadowInstances(*cameraLighting);
+            renderCameraShadows(*cameraLighting);
+        }
+
         CameraPass pass;
         pass.camera = &camera;
         pass.cameraTransform = cameraTransformPtr;
         pass.isMain = isMainCamera;
         pass.renderToTexture = camera.renderToTexture;
         pass.terrainView = terrainView;
+        passShadows = cameraLighting;
         renderCameraPass(pass);
+        passShadows = nullptr;
     }
+
+    drawCount++;
+    releaseUnusedCameraShadows();
 }
 
 // One camera's color pass, with the effects its destination asks for: SSR, SSAO, the
@@ -8744,6 +9319,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     const bool primaryPass = (passObjects == nullptr);
     // editor gizmos and icons show in the editor's own view only, never in a camera image
     passDrawsOverlays = isMainCamera && !pass.renderToTexture && (rv().secondary ? rv().editorOverlays : drawEditorOverlays);
+    // so does the Scene view's face culling toggle: its camera's depth, G-buffer and color
+    // passes draw every face, a camera image or reflection keeps the game's culling
+    passDisablesFaceCulling = isMainCamera && !pass.renderToTexture && (rv().secondary ? rv().disableFaceCulling : disableFaceCulling);
 #else
     const bool primaryPass = true;
 #endif
@@ -8945,10 +9523,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
 
             InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+            // a render-to-texture camera's own cut was selected before its shadow passes
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-            if (terrain && primaryPass && terrainView != 0){
-                updateTerrain(*terrain, transform, camera, cameraTransform, terrain->views[terrainView]);
-            }
             TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
             if (!mesh.transparent){
@@ -9095,13 +9671,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
 
                 // Per-view CDLOD: the main camera's selection (view 0) is done in
-                // update(); each render-to-texture camera (mirror/RTT) selects its
-                // own node cut here into its own buffer, so the reflection shows
-                // complete, correctly-tessellated terrain.
+                // update(); each render-to-texture camera (mirror/RTT) selected its
+                // own node cut into its own buffer before its shadow passes (see
+                // drawCameras), so the reflection shows complete, correctly-tessellated
+                // terrain.
                 TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-                if (terrain && primaryPass && terrainView != 0){
-                    updateTerrain(*terrain, transform, camera, cameraTransform, terrain->views[terrainView]);
-                }
 
                 // chunk bounds are view-independent, so every camera reuses the
                 // ones refreshed in update()
@@ -9160,6 +9734,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     camera.render.endRenderPass();
+
+#ifdef JASPERENGINE_EDITOR
+    passDisablesFaceCulling = false;
+#endif
 
     // SSR: march the offscreen scene color and composite reflections into the
     // real destination (the swapchain or the captured framebuffer).
@@ -9224,6 +9802,8 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<CameraComponent>()) {
         CameraComponent& camera = scene->getComponent<CameraComponent>(entity);
         destroyCamera(camera, true);
+        // its shadow maps go with it
+        cameraShadows.erase(entity);
     } else if (componentId == scene->getComponentId<MirrorComponent>()) {
         destroyMirrorCamera(entity);
 
@@ -9233,6 +9813,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<ReflectionProbeComponent>()) {
         ReflectionProbeComponent& probe = scene->getComponent<ReflectionProbeComponent>(entity);
         destroyReflectionProbe(entity, probe);
+        cameraShadows.erase(entity);
         hasReflectionProbes = scene->getComponentArray<ReflectionProbeComponent>()->size() > 1;
         needReloadMeshes();
     }
@@ -9381,14 +9962,7 @@ void RenderSystem::destroyRenderView(RenderView& view){
     view.instanceSources.clear();
     view.instancesBuilt = false;
 
-    view.shadowAtlas.destroyFramebuffer();
-    view.shadowPointAtlas.destroyFramebuffer();
-    view.shadowAtlasWidth = 0;
-    view.shadowAtlasHeight = 0;
-    view.shadowPointAtlasWidth = 0;
-    view.shadowPointAtlasHeight = 0;
-    view.ownShadowAtlas = false;
-    view.ownShadowPointAtlas = false;
+    view.shadows.release();
 
     for (auto& entry : view.points){
         entry.second.buffer.getRender()->destroyBuffer();
@@ -9644,124 +10218,6 @@ void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& came
     }
 }
 
-// Shadow cameras fitted to the view camera and the lighting block that goes with them.
-// The frame's shadow maps are reused where every camera matches (they depend on the
-// camera only through directional cascades and automatic near/far).
-void RenderSystem::prepareViewLights(RenderView& view, int numLights, CameraComponent& camera, Transform& cameraTransform){
-    auto lights = scene->getComponentArray<LightComponent>();
-
-    view.lightCameras.resize((size_t)numLights);
-
-    // the frame's maps exist this frame only once its passes ran, and hold the casters
-    // of the layers its camera draws
-    const bool sameCasters = camera.cullingMask == primaryView.shadowCameraMask;
-    bool projectiveShared = frameDrawn && sameCasters;
-    bool pointShared = frameDrawn && sameCasters;
-
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        Entity entity = lights->getEntity(i);
-        Transform* transform = scene->findComponent<Transform>(entity);
-        LightCameraSet& cameras = view.lightCameras[i];
-        cameras.numCascades = light.numShadowCascades;
-
-        if (!hasShadows || !light.shadows || light.intensity <= 0 || !transform)
-            continue;
-
-        Vector2 nearFar = light.shadowCameraNearFar;
-        if (light.automaticShadowCamera){
-            nearFar.x = camera.nearClip;
-            nearFar.y = (light.range == 0.0) ? camera.farClip : light.range;
-        }
-        computeLightCameras(light, *transform, camera, cameraTransform, nearFar, cameras.cameras, cameras.numCascades);
-
-        if (light.shadowMapIndex < 0 || !isLightActive(entity, light))
-            continue;
-
-        if (light.type == LightType::POINT){
-            for (int c = 0; c < SHADOW_CUBE_FACES && pointShared; c++){
-                if (cameras.cameras[c].lightViewProjectionMatrix != light.cameras[c].lightViewProjectionMatrix ||
-                        cameras.cameras[c].nearFar != light.cameras[c].nearFar)
-                    pointShared = false;
-            }
-        }else{
-            int numCameras = (light.type == LightType::DIRECTIONAL) ? (int)cameras.numCascades : 1;
-            if (light.type == LightType::DIRECTIONAL && cameras.numCascades != light.numShadowCascades)
-                projectiveShared = false;
-            for (int c = 0; c < numCameras && projectiveShared; c++){
-                if (cameras.cameras[c].lightViewProjectionMatrix != light.cameras[c].lightViewProjectionMatrix ||
-                        cameras.cameras[c].nearFar != light.cameras[c].nearFar)
-                    projectiveShared = false;
-            }
-        }
-    }
-
-    view.ownShadowAtlas = hasShadows && hasShadowAtlas && !projectiveShared;
-    view.ownShadowPointAtlas = hasShadows && hasShadowPointAtlas && !pointShared;
-
-    // the atlas layout and every light-independent value are the frame's
-    view.fs_lighting = primaryView.fs_lighting;
-    view.vs_shadows = primaryView.vs_shadows;
-    view.fs_shadows = primaryView.fs_shadows;
-    view.fs_point_shadows = primaryView.fs_point_shadows;
-    processLights(numLights, camera, cameraTransform);
-}
-
-// The view's shadow atlases have the frame's layout, so the slots and their uniforms line up
-bool RenderSystem::ensureViewShadowAtlases(RenderView& view){
-    bool ready = true;
-
-    if (view.ownShadowAtlas){
-        const int width = (int)shadowAtlasSlotResolution * shadowAtlasCols;
-        const int height = (int)shadowAtlasSlotResolution * shadowAtlasRows;
-        if (!view.shadowAtlas.isCreated() || view.shadowAtlasWidth != width || view.shadowAtlasHeight != height){
-            view.shadowAtlas.destroyFramebuffer();
-            view.shadowAtlasWidth = 0;
-            view.shadowAtlasHeight = 0;
-            if (width > 0 && height > 0 && view.shadowAtlas.createDepthOnlyFramebuffer(
-                    width, height,
-                    TextureFilter::LINEAR, TextureFilter::LINEAR,
-                    TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-                view.shadowAtlasWidth = width;
-                view.shadowAtlasHeight = height;
-            }else{
-                view.ownShadowAtlas = false;
-                ready = false;
-            }
-        }
-    }else if (view.shadowAtlas.isCreated() && !hasShadowAtlas){
-        view.shadowAtlas.destroyFramebuffer();
-        view.shadowAtlasWidth = 0;
-        view.shadowAtlasHeight = 0;
-    }
-
-    if (view.ownShadowPointAtlas){
-        const int width = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_COLS;
-        const int height = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_ROWS;
-        if (!view.shadowPointAtlas.isCreated() || view.shadowPointAtlasWidth != width || view.shadowPointAtlasHeight != height){
-            view.shadowPointAtlas.destroyFramebuffer();
-            view.shadowPointAtlasWidth = 0;
-            view.shadowPointAtlasHeight = 0;
-            if (width > 0 && height > 0 && view.shadowPointAtlas.createFramebuffer(
-                    TextureType::TEXTURE_2D, width, height,
-                    TextureFilter::NEAREST, TextureFilter::NEAREST,
-                    TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-                view.shadowPointAtlasWidth = width;
-                view.shadowPointAtlasHeight = height;
-            }else{
-                view.ownShadowPointAtlas = false;
-                ready = false;
-            }
-        }
-    }else if (view.shadowPointAtlas.isCreated() && !hasShadowPointAtlas){
-        view.shadowPointAtlas.destroyFramebuffer();
-        view.shadowPointAtlasWidth = 0;
-        view.shadowPointAtlasHeight = 0;
-    }
-
-    return ready;
-}
-
 // The instances of a batch as seen from camera, when they depend on it: billboards face
 // it and the distance fade keeps those in range of it (updateInstancedMesh's rules).
 void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source){
@@ -9837,7 +10293,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         return;
     }
 
-    std::vector<ShadowSlot> shadowSlots = collectShadowSlots();
+    collectShadowSlots();
 
     // what the lists depend on besides the batches themselves
     uint64_t shadowHash = 1469598103934665603ULL;
@@ -10018,6 +10474,12 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera, 
         passObjects = &mirrorView.objects;
         buildPassObjects(mirrorView.objects, refCam, refCamTransform);
         selectPassTerrain(mirrorView.objects, refCam, refCamTransform);
+
+        // the reflection camera's lighting and shadow maps (the mirror itself still casts)
+        prepareCameraShadows(mirrorView.shadows, refCam, refCamTransform, TERRAIN_PASS_VIEW, true);
+        buildCameraShadowInstances(mirrorView.shadows);
+        renderCameraShadows(mirrorView.shadows);
+
         passExcludedEntity = entity;
 
         CameraPass pass;
@@ -10026,7 +10488,10 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera, 
         pass.isMain = false;
         pass.renderToTexture = true;
         pass.terrainView = TERRAIN_PASS_VIEW;
+        CameraShadows* viewShadows = passShadows;
+        passShadows = &mirrorView.shadows;
         renderCameraPass(pass);
+        passShadows = viewShadows;
 
         passExcludedEntity = NULL_ENTITY;
         passObjects = viewObjects;
@@ -10076,6 +10541,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.editorOverlays = desc.editorOverlays;
     view.fixedResolution = desc.fixedResolution;
     view.disableFog = desc.disableFog;
+    view.disableFaceCulling = desc.disableFaceCulling;
 
     activeView = &view;
 
@@ -10106,20 +10572,27 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
 
     view.lodView = computeLodView(camera, cameraTransform);
 
-    auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
-
     passObjects = &view.objects;
     buildPassObjects(view.objects, camera, cameraTransform);
 
+    CameraShadows& viewShadows = view.shadows;
     if (view.sharesPrimaryCamera){
-        view.fs_lighting = primaryView.fs_lighting;
-        view.vs_shadows = primaryView.vs_shadows;
-        view.fs_shadows = primaryView.fs_shadows;
-        view.fs_point_shadows = primaryView.fs_point_shadows;
-        view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
-        view.ownShadowAtlas = false;
-        view.ownShadowPointAtlas = false;
+        // the frame's lighting and maps, with this view's viewport
+        const CameraShadows& frameShadows = primaryView.shadows;
+        viewShadows.fs_lighting = frameShadows.fs_lighting;
+        viewShadows.vs_shadows = frameShadows.vs_shadows;
+        viewShadows.fs_shadows = frameShadows.fs_shadows;
+        viewShadows.fs_point_shadows = frameShadows.fs_point_shadows;
+        viewShadows.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+        viewShadows.ownLightCameras = false;
+        viewShadows.ownShadowInstances = false;
+        viewShadows.cameraMask = frameShadows.cameraMask;
+        viewShadows.projectiveAtlas = nullptr;
+        viewShadows.pointAtlas = nullptr;
+        viewShadows.drawProjective = false;
+        viewShadows.drawPoint = false;
+        viewShadows.releaseProjective();
+        viewShadows.releasePoint();
         if (!view.instanceRanges.empty() || !view.instanceSources.empty()){
             view.instanceRanges.clear();
             view.instanceSources.clear();
@@ -10127,13 +10600,11 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         }
         view.mirrors.clear();
     }else{
-        prepareViewLights(view, numLights, camera, cameraTransform);
-        ensureViewShadowAtlases(view);
+        // the view's shadow passes draw its terrain cut and cull its instance lists
+        prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
         buildViewInstances(view, camera, cameraTransform);
         selectPassTerrain(view.objects, camera, cameraTransform);
-        if (view.ownShadowAtlas || view.ownShadowPointAtlas){
-            renderShadowMaps(view.ownShadowAtlas, view.ownShadowPointAtlas);
-        }
+        renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera, cameraTransform);
     }
 

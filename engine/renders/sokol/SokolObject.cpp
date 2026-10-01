@@ -45,7 +45,24 @@ SokolObject::SokolObject(){
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
     pipeline_desc = {};
+    loadFaceCulling = false;
+    loadDepthWrite = true;
+    loadCullingMode = CullingMode::BACK;
+    loadWindingOrder = WindingOrder::CCW;
+    loadPrepassFaceCulling = true;
     bindSlotIndex = 0;
+    resetPipelines();
+}
+
+// Forgets the variants without destroying them: a copy of this object shares the
+// handles, as it shares the pipelines, and destroy() releases them once
+void SokolObject::resetPipelines(){
+#ifdef JASPERENGINE_EDITOR
+    for (sg_pipeline& variant : noCullPipelines){
+        variant.id = SG_INVALID_ID;
+    }
+    noCullSame = 0;
+#endif
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) {
@@ -63,6 +80,17 @@ SokolObject::SokolObject(const SokolObject& rhs) {
     zprepass_pip = rhs.zprepass_pip;
     zprepass_rtt_pip = rhs.zprepass_rtt_pip;
     pipeline_desc = rhs.pipeline_desc;
+    loadFaceCulling = rhs.loadFaceCulling;
+    loadDepthWrite = rhs.loadDepthWrite;
+    loadCullingMode = rhs.loadCullingMode;
+    loadWindingOrder = rhs.loadWindingOrder;
+    loadPrepassFaceCulling = rhs.loadPrepassFaceCulling;
+#ifdef JASPERENGINE_EDITOR
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        noCullPipelines[i] = rhs.noCullPipelines[i];
+    }
+    noCullSame = rhs.noCullSame;
+#endif
     bindSlotIndex = rhs.bindSlotIndex;
     bufferToBindSlot = rhs.bufferToBindSlot;
 }
@@ -82,6 +110,17 @@ SokolObject& SokolObject::operator=(const SokolObject& rhs) {
     zprepass_pip = rhs.zprepass_pip;
     zprepass_rtt_pip = rhs.zprepass_rtt_pip;
     pipeline_desc = rhs.pipeline_desc;
+    loadFaceCulling = rhs.loadFaceCulling;
+    loadDepthWrite = rhs.loadDepthWrite;
+    loadCullingMode = rhs.loadCullingMode;
+    loadWindingOrder = rhs.loadWindingOrder;
+    loadPrepassFaceCulling = rhs.loadPrepassFaceCulling;
+#ifdef JASPERENGINE_EDITOR
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        noCullPipelines[i] = rhs.noCullPipelines[i];
+    }
+    noCullSame = rhs.noCullSame;
+#endif
     bindSlotIndex = rhs.bindSlotIndex;
     bufferToBindSlot = rhs.bufferToBindSlot;
     
@@ -164,6 +203,7 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     rtt_invert_pip = {0};
     gbuffer_pip = {0};
     pipeline_desc = {0};
+    resetPipelines();
 
     pipeline_desc.primitive_type = getPrimitiveType(primitiveType);
 
@@ -278,235 +318,190 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     }
 }
 
-bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
+// The description of one pipeline type, from the load description and face state.
+// endLoad creates each pipeline from it, and a no-culling variant only changes its cull mode.
+sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
+    sg_pipeline_desc desc = pipeline_desc;
 
-    if (pipelines & (int)PipelineType::PIP_DEPTH) {
-        sg_pipeline_desc pip_depth_desc = pipeline_desc;
-
-        if (enableFaceCulling){
-            pip_depth_desc.cull_mode = getCullMode(cullingMode);
-            pip_depth_desc.face_winding = getFaceWinding(windingOrder);
-        }
-
-        pip_depth_desc.sample_count = 1;
-        pip_depth_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
-        pip_depth_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        pip_depth_desc.depth.write_enabled = true;
-        pip_depth_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-
-        depth_pip = makePipeline(pip_depth_desc);
-        if (depth_pip.id == SG_INVALID_ID){
-            return false;
-        }
+    // offscreen passes render with a Y-flipped projection on GL (top-left
+    // origin), which reverses the triangle winding
+    WindingOrder rttWinding = loadWindingOrder;
+    if (Engine::isOpenGL()){
+        rttWinding = (loadWindingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
     }
+
+    switch (pipType){
+    case PipelineType::PIP_DEPTH:
+        if (loadFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(loadWindingOrder);
+        }
+        desc.sample_count = 1;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = true;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        break;
 
     // Depth prepass: the depth shader writes only depth into the color pass target, so
     // formats and winding follow that target (PIP_DEFAULT or PIP_RTT) rather than PIP_DEPTH.
-    if (pipelines & ((int)PipelineType::PIP_ZPREPASS | (int)PipelineType::PIP_ZPREPASS_RTT)) {
-        sg_pipeline_desc pip_zprepass_desc = pipeline_desc;
-
-        pip_zprepass_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        pip_zprepass_desc.depth.write_enabled = true;
-        pip_zprepass_desc.colors[0].write_mask = SG_COLORMASK_NONE;
-
-        if (pipelines & (int)PipelineType::PIP_ZPREPASS){
-            if (prepassFaceCulling){
-                pip_zprepass_desc.cull_mode = getCullMode(cullingMode);
-                pip_zprepass_desc.face_winding = getFaceWinding(windingOrder);
-            }
-            zprepass_pip = makePipeline(pip_zprepass_desc);
-            if (zprepass_pip.id == SG_INVALID_ID){
-                return false;
-            }
+    case PipelineType::PIP_ZPREPASS:
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = true;
+        desc.colors[0].write_mask = SG_COLORMASK_NONE;
+        if (loadPrepassFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(loadWindingOrder);
         }
+        break;
 
-        if (pipelines & (int)PipelineType::PIP_ZPREPASS_RTT){
-            pip_zprepass_desc.sample_count = 1;
-            pip_zprepass_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
-            pip_zprepass_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-            WindingOrder rttWinding = windingOrder;
-            if (Engine::isOpenGL()){
-                rttWinding = (windingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
-            }
-            if (prepassFaceCulling){
-                pip_zprepass_desc.cull_mode = getCullMode(cullingMode);
-                pip_zprepass_desc.face_winding = getFaceWinding(rttWinding);
-            }
-            zprepass_rtt_pip = makePipeline(pip_zprepass_desc);
-            if (zprepass_rtt_pip.id == SG_INVALID_ID){
-                return false;
-            }
+    case PipelineType::PIP_ZPREPASS_RTT:
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = true;
+        desc.colors[0].write_mask = SG_COLORMASK_NONE;
+        desc.sample_count = 1;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        if (loadPrepassFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(rttWinding);
         }
-    }
+        break;
 
-    if (pipelines & (int)PipelineType::PIP_SHADOW_DEPTH) {
+    case PipelineType::PIP_SHADOW_DEPTH:
         // Depth-only pipeline (no color target); keeps the fragment stage for
         // alpha-mask discard. SG_PIXELFORMAT_NONE marks it depth-only in Sokol.
-        sg_pipeline_desc pip_shadow_depth_desc = pipeline_desc;
-
-        if (enableFaceCulling){
-            pip_shadow_depth_desc.cull_mode = getCullMode(cullingMode);
-            pip_shadow_depth_desc.face_winding = getFaceWinding(windingOrder);
+        if (loadFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(loadWindingOrder);
         }
+        desc.sample_count = 1;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = true;
+        desc.color_count = 0;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
+        break;
 
-        pip_shadow_depth_desc.sample_count = 1;
-        pip_shadow_depth_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
-        pip_shadow_depth_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        pip_shadow_depth_desc.depth.write_enabled = true;
-        pip_shadow_depth_desc.color_count = 0;
-        pip_shadow_depth_desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
-
-        shadow_depth_pip = makePipeline(pip_shadow_depth_desc);
-        if (shadow_depth_pip.id == SG_INVALID_ID){
-            return false;
-        }
-    }
-
-    if (pipelines & (int)PipelineType::PIP_GBUFFER) {
+    case PipelineType::PIP_GBUFFER:
         // Mesh geometry pass with three color attachments (MRT):
         //   color[0] = packed depth (same as PIP_DEPTH, so SSAO/SSR depth is unchanged)
         //   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
         //   color[2] = linear base color (.rgb) + hasIBL flag (.a)
-        sg_pipeline_desc pip_gbuffer_desc = pipeline_desc;
-
-        if (enableFaceCulling){
-            pip_gbuffer_desc.cull_mode = getCullMode(cullingMode);
-            pip_gbuffer_desc.face_winding = getFaceWinding(windingOrder);
+        if (loadFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(loadWindingOrder);
         }
+        desc.sample_count = 1;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = true;
+        desc.color_count = 3;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        desc.colors[1].pixel_format = SG_PIXELFORMAT_RGBA8;
+        desc.colors[2].pixel_format = SG_PIXELFORMAT_RGBA8;
+        break;
 
-        pip_gbuffer_desc.sample_count = 1;
-        pip_gbuffer_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
-        pip_gbuffer_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        pip_gbuffer_desc.depth.write_enabled = true;
-        pip_gbuffer_desc.color_count = 3;
-        pip_gbuffer_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-        pip_gbuffer_desc.colors[1].pixel_format = SG_PIXELFORMAT_RGBA8;
-        pip_gbuffer_desc.colors[2].pixel_format = SG_PIXELFORMAT_RGBA8;
-
-        gbuffer_pip = makePipeline(pip_gbuffer_desc);
-        if (gbuffer_pip.id == SG_INVALID_ID){
-            return false;
+    case PipelineType::PIP_DEFAULT:
+    case PipelineType::PIP_DEFAULT_NODEPTH:
+        if (loadFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
+            desc.face_winding = getFaceWinding(loadWindingOrder);
         }
-    }
-
-    if (pipelines & ((int)PipelineType::PIP_DEFAULT | (int)PipelineType::PIP_DEFAULT_NODEPTH)) {
-        sg_pipeline_desc pip_default_desc = pipeline_desc;
-
-        if (enableFaceCulling){
-            pip_default_desc.cull_mode = getCullMode(cullingMode);
-            pip_default_desc.face_winding = getFaceWinding(windingOrder);
+        desc.colors[0].write_mask = SG_COLORMASK_RGB;
+        desc.colors[0].blend.enabled = true;
+        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        if (pipType == PipelineType::PIP_DEFAULT){
+            desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+            desc.depth.write_enabled = loadDepthWrite;
+        }else{
+            desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+            desc.depth.write_enabled = false;
         }
-
-        pip_default_desc.colors[0].write_mask = SG_COLORMASK_RGB;
-        pip_default_desc.colors[0].blend.enabled = true;
-        pip_default_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        pip_default_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-
-        if (pipelines & (int)PipelineType::PIP_DEFAULT){
-            pip_default_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-            pip_default_desc.depth.write_enabled = enableDepthWrite;
-
-            pip = makePipeline(pip_default_desc);
-            if (pip.id == SG_INVALID_ID){
-                return false;
-            }
-        }
-
-        if (pipelines & (int)PipelineType::PIP_DEFAULT_NODEPTH){
-            pip_default_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
-            pip_default_desc.depth.write_enabled = false;
-
-            nodepth_pip = makePipeline(pip_default_desc);
-            if (nodepth_pip.id == SG_INVALID_ID){
-                return false;
-            }
-        }
-    }
+        break;
 
     // PIP_RTT (offscreen), PIP_RTT_INVERT (planar reflection) and PIP_RTT_NODEPTH share
-    // an identical pipeline except for winding and depth state, so build the desc once.
-    if (pipelines & ((int)PipelineType::PIP_RTT | (int)PipelineType::PIP_RTT_INVERT |
-            (int)PipelineType::PIP_RTT_NODEPTH)){
-        sg_pipeline_desc pip_rtt_desc = pipeline_desc;
-
-        pip_rtt_desc.sample_count = 1;
-        pip_rtt_desc.depth.write_enabled = enableDepthWrite;
-        pip_rtt_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        pip_rtt_desc.colors[0].write_mask = SG_COLORMASK_RGBA;
-        pip_rtt_desc.colors[0].blend.enabled = true;
-        pip_rtt_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        pip_rtt_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        pip_rtt_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-        pip_rtt_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        pip_rtt_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
-        pip_rtt_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-
-        // offscreen passes render with a Y-flipped projection on GL (top-left
-        // origin), which reverses the triangle winding
-        WindingOrder rttWinding = windingOrder;
-        if (Engine::isOpenGL()){
-            rttWinding = (windingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
-        }
-        if (enableFaceCulling){
-            pip_rtt_desc.cull_mode = getCullMode(cullingMode);
-            pip_rtt_desc.face_winding = getFaceWinding(rttWinding);
-        }
-
-        if (pipelines & (int)PipelineType::PIP_RTT){
-            rtt_pip = makePipeline(pip_rtt_desc);
-            if (rtt_pip.id == SG_INVALID_ID){
-                return false;
-            }
-        }
-
-        if (pipelines & (int)PipelineType::PIP_RTT_NODEPTH){
-            sg_pipeline_desc pip_rtt_nodepth_desc = pip_rtt_desc;
-            pip_rtt_nodepth_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
-            pip_rtt_nodepth_desc.depth.write_enabled = false;
-
-            rtt_nodepth_pip = makePipeline(pip_rtt_nodepth_desc);
-            if (rtt_nodepth_pip.id == SG_INVALID_ID){
-                return false;
-            }
-        }
-
-        if (pipelines & (int)PipelineType::PIP_RTT_INVERT){
+    // an identical pipeline except for winding and depth state
+    case PipelineType::PIP_RTT:
+    case PipelineType::PIP_RTT_NODEPTH:
+    case PipelineType::PIP_RTT_INVERT:
+        desc.sample_count = 1;
+        desc.depth.write_enabled = loadDepthWrite;
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.colors[0].write_mask = SG_COLORMASK_RGBA;
+        desc.colors[0].blend.enabled = true;
+        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        if (loadFaceCulling){
+            desc.cull_mode = getCullMode(loadCullingMode);
             // planar reflection mirrors handedness, reversing winding once more
-            if (enableFaceCulling){
-                WindingOrder invWinding = (rttWinding == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
-                pip_rtt_desc.face_winding = getFaceWinding(invWinding);
+            WindingOrder winding = rttWinding;
+            if (pipType == PipelineType::PIP_RTT_INVERT){
+                winding = (rttWinding == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
             }
-            rtt_invert_pip = makePipeline(pip_rtt_desc);
-            if (rtt_invert_pip.id == SG_INVALID_ID){
-                return false;
-            }
+            desc.face_winding = getFaceWinding(winding);
+        }
+        if (pipType == PipelineType::PIP_RTT_NODEPTH){
+            desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+            desc.depth.write_enabled = false;
+        }
+        break;
+    }
+
+    return desc;
+}
+
+sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
+    switch (pipType){
+    case PipelineType::PIP_DEPTH: return depth_pip;
+    case PipelineType::PIP_ZPREPASS: return zprepass_pip;
+    case PipelineType::PIP_ZPREPASS_RTT: return zprepass_rtt_pip;
+    case PipelineType::PIP_SHADOW_DEPTH: return shadow_depth_pip;
+    case PipelineType::PIP_GBUFFER: return gbuffer_pip;
+    case PipelineType::PIP_RTT: return rtt_pip;
+    case PipelineType::PIP_RTT_INVERT: return rtt_invert_pip;
+    case PipelineType::PIP_DEFAULT_NODEPTH: return nodepth_pip;
+    case PipelineType::PIP_RTT_NODEPTH: return rtt_nodepth_pip;
+    default: return pip;
+    }
+}
+
+bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
+    loadFaceCulling = enableFaceCulling;
+    loadDepthWrite = enableDepthWrite;
+    loadCullingMode = cullingMode;
+    loadWindingOrder = windingOrder;
+    loadPrepassFaceCulling = prepassFaceCulling;
+
+    // creation order of the pipeline types
+    static const PipelineType types[] = {
+        PipelineType::PIP_DEPTH, PipelineType::PIP_ZPREPASS, PipelineType::PIP_ZPREPASS_RTT,
+        PipelineType::PIP_SHADOW_DEPTH, PipelineType::PIP_GBUFFER,
+        PipelineType::PIP_DEFAULT, PipelineType::PIP_DEFAULT_NODEPTH,
+        PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT
+    };
+
+    for (PipelineType type : types){
+        if (!(pipelines & (int)type)){
+            continue;
+        }
+        sg_pipeline& pipeline = pipelineOf(type);
+        pipeline = makePipeline(makePipelineDesc(type));
+        if (pipeline.id == SG_INVALID_ID){
+            return false;
         }
     }
 
     return true;
 }
 
-bool SokolObject::beginDraw(PipelineType pipType){
-    sg_pipeline selectedPipeline = pip;
-    if (pipType == PipelineType::PIP_DEPTH){
-        selectedPipeline = depth_pip;
-    }else if (pipType == PipelineType::PIP_ZPREPASS){
-        selectedPipeline = zprepass_pip;
-    }else if (pipType == PipelineType::PIP_ZPREPASS_RTT){
-        selectedPipeline = zprepass_rtt_pip;
-    }else if (pipType == PipelineType::PIP_SHADOW_DEPTH){
-        selectedPipeline = shadow_depth_pip;
-    }else if (pipType == PipelineType::PIP_GBUFFER){
-        selectedPipeline = gbuffer_pip;
-    }else if (pipType == PipelineType::PIP_RTT){
-        selectedPipeline = rtt_pip;
-    }else if (pipType == PipelineType::PIP_RTT_INVERT){
-        selectedPipeline = rtt_invert_pip;
-    }else if (pipType == PipelineType::PIP_DEFAULT_NODEPTH){
-        selectedPipeline = nodepth_pip;
-    }else if (pipType == PipelineType::PIP_RTT_NODEPTH){
-        selectedPipeline = rtt_nodepth_pip;
-    }
+bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+    sg_pipeline selectedPipeline = pipelineOf(pipType);
 
     // Deferred resource creation can leave an allocated handle in FAILED state.
     // Never apply it: doing so would turn one creation error into a cascade of
@@ -515,6 +510,34 @@ bool SokolObject::beginDraw(PipelineType pipType){
         sg_query_pipeline_state(selectedPipeline) != SG_RESOURCESTATE_VALID){
         return false;
     }
+
+#ifdef JASPERENGINE_EDITOR
+    if (disableFaceCulling){
+        int index = 0;
+        while (index < PIPELINE_TYPES && (1 << index) != (int)pipType){
+            index++;
+        }
+        if (index < PIPELINE_TYPES){
+            sg_pipeline& variant = noCullPipelines[index];
+            if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
+                sg_pipeline_desc desc = makePipelineDesc(pipType);
+                if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
+                    desc.cull_mode = SG_CULLMODE_NONE;
+                    variant = makePipeline(desc);
+                }else{
+                    // already culls nothing: the pipeline is its own variant
+                    noCullSame |= (uint16_t)(1u << index);
+                }
+            }
+            // a variant that failed to build leaves the pipeline as it is
+            if (variant.id != SG_INVALID_ID && sg_query_pipeline_state(variant) == SG_RESOURCESTATE_VALID){
+                selectedPipeline = variant;
+            }
+        }
+    }
+#else
+    (void)disableFaceCulling;
+#endif
 
     sg_apply_pipeline(selectedPipeline);
     return true;
@@ -545,6 +568,11 @@ void SokolObject::destroy(){
         destroyPipeline(rtt_nodepth_pip);
         destroyPipeline(zprepass_pip);
         destroyPipeline(zprepass_rtt_pip);
+#ifdef JASPERENGINE_EDITOR
+        for (sg_pipeline& variant : noCullPipelines){
+            destroyPipeline(variant);
+        }
+#endif
     }
 
     pip.id = SG_INVALID_ID;
@@ -557,6 +585,7 @@ void SokolObject::destroy(){
     rtt_nodepth_pip.id = SG_INVALID_ID;
     zprepass_pip.id = SG_INVALID_ID;
     zprepass_rtt_pip.id = SG_INVALID_ID;
+    resetPipelines();
     bind = {};
     pipeline_desc = {};
     bindSlotIndex = 0;

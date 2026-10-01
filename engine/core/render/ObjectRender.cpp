@@ -62,8 +62,8 @@ bool ObjectRender::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enab
     return backend.endLoad(pipelines, enableFaceCulling, enableDepthWrite, cullingMode, windingOrder, prepassFaceCulling);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType){
-    return backend.beginDraw(pipType);
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling){
+    return backend.beginDraw(pipType, disableFaceCulling);
 }
 
 void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){

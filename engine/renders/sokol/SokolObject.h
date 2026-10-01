@@ -56,6 +56,22 @@ namespace jasperengine{
 
         sg_pipeline_desc pipeline_desc;
 
+        // the face state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
+        bool loadFaceCulling;
+        bool loadDepthWrite;
+        CullingMode loadCullingMode;
+        WindingOrder loadWindingOrder;
+        bool loadPrepassFaceCulling;
+
+#ifdef JASPERENGINE_EDITOR
+        // Editor-only variants of the pipelines that cull no face, one per pipeline type,
+        // created on the first draw that asks for one and destroyed with the others
+        static constexpr int PIPELINE_TYPES = 10;
+        sg_pipeline noCullPipelines[PIPELINE_TYPES];
+        // types whose pipeline already culls nothing, by bit index
+        uint16_t noCullSame;
+#endif
+
         size_t bindSlotIndex;
 
         std::map< BufferInfo, size_t > bufferToBindSlot;
@@ -65,6 +81,10 @@ namespace jasperengine{
         sg_primitive_type getPrimitiveType(PrimitiveType primitiveType);
         sg_cull_mode getCullMode(CullingMode cullingMode);
         sg_face_winding getFaceWinding(WindingOrder windingOrder);
+        // the description endLoad creates the pipeline of one type from
+        sg_pipeline_desc makePipelineDesc(PipelineType pipType);
+        sg_pipeline& pipelineOf(PipelineType pipType);
+        void resetPipelines();
 
     public:
 
@@ -87,7 +107,9 @@ namespace jasperengine{
         // prepassFaceCulling applies to the PIP_ZPREPASS pipelines, which must cull like the color pass
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
-        bool beginDraw(PipelineType pipType);
+        // disableFaceCulling draws with a variant of the pipeline that culls no face
+        // (editor-only debug views; ignored elsewhere)
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
         void applyUniformBlock(int slot, unsigned int count, void* data);
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
