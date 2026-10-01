@@ -24,6 +24,7 @@ Projects made before the rename are migrated once with
 | Prefab | Entity bundle (`.bundle` file) |
 | Prefab > Unpack, Unpack Completely; the Inspector's Prefab bar (Select, Unpack) | none (new) |
 | Override Prefab Component (component menu) | Make Unique |
+| Removed GameObject overrides (deleting a Prefab GameObject in an instance); the Prefab bar's Overrides dropdown (Revert, Apply, Revert All, Apply All) | none (new): deleting removed it from the Prefab |
 | Assets > Prefabs... | Project > Bundles... |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |

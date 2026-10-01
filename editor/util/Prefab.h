@@ -4,6 +4,7 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -26,6 +27,12 @@ public:
         Entity rootEntity = NULL_ENTITY; // Root entity of this instance in the scene
         std::vector<EntityMember> members;
         std::map<Entity, uint64_t> overrides; // entityId → bitmask of overridden ComponentTypes
+        // Unity's removed GameObject overrides: registry entities taken out of this instance
+        // only, each with the members its branch had then (whose ids a revert takes back;
+        // empty after a reload). A Prefab GameObject is absent from the instance when it or
+        // one of its registry ancestors is listed, so what the Prefab adds below a removed
+        // GameObject stays out too. Members only ever hold the GameObjects present.
+        std::unordered_map<Entity, std::vector<EntityMember>> removed;
     };
 
     // sceneId → list of instances
@@ -55,6 +62,12 @@ public:
     void setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
     void clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
     bool hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const;
+
+    // Removed GameObjects: whether the registry entity is left out of the instance, being
+    // removed itself or below a removed one. One hash lookup per registry ancestor.
+    bool isRegistryEntityAbsent(const Instance& instance, Entity registryEntity) const;
+    // The registry Transform parent of a registry entity, NULL_ENTITY for a top-level one
+    Entity getRegistryParent(Entity registryEntity) const;
 
 };
 

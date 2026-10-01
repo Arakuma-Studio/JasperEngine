@@ -96,32 +96,7 @@ bool editor::ModelClearCmd::canClear(Project* project, uint32_t sceneId, Entity 
     if (ModelLoadCmd::isLoadPending(sceneId, entity)) {
         return fail("The model is still loading");
     }
-    const std::string blocker = prefabNodesBlocker(project, sceneId, collectOwnedEntities(scene, entity, *model));
-    if (!blocker.empty()) {
-        return fail(blocker);
-    }
     return true;
-}
-
-std::string editor::ModelClearCmd::prefabNodesBlocker(Project* project, uint32_t sceneId, const std::vector<Entity>& owned){
-    // A Prefab instance holds every GameObject of its Prefab: one cannot be left out of a single
-    // instance, and deleting it deletes it from the Prefab and all its instances
-    const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
-    for (const auto& [prefabPath, prefab] : project->getPrefabs(sceneId)) {
-        auto sceneInstances = prefab->instances.find(sceneId);
-        if (sceneInstances == prefab->instances.end()) {
-            continue;
-        }
-        for (const Prefab::Instance& instance : sceneInstances->second) {
-            for (const Prefab::EntityMember& member : instance.members) {
-                if (ownedSet.count(member.localEntity)) {
-                    return "The model's GameObjects are part of Prefab '" + prefabPath.stem().string() +
-                        "': unpack the instance to empty its Model without changing the Prefab";
-                }
-            }
-        }
-    }
-    return std::string();
 }
 
 std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, Entity entity, const ModelComponent& model){
@@ -167,14 +142,31 @@ std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, En
     return owned;
 }
 
-std::vector<editor::ModelClearCmd::ParkedEntity> editor::ModelClearCmd::collectParkedEntities(Scene* scene, const std::vector<Entity>& owned, Entity entity){
+std::vector<editor::ModelClearCmd::ParkedEntity> editor::ModelClearCmd::collectParkedEntities(Project* project, uint32_t sceneId, Scene* scene, const std::vector<Entity>& owned, Entity entity){
     std::vector<ParkedEntity> parked;
     const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
+    // A Prefab GameObject hung on a node is the Prefab's: below a node the instance removes,
+    // it is out of the instance too, as Unity leaves out what is below a removed GameObject
+    std::unordered_set<Entity> prefabMembers;
+    for (const auto& [prefabPath, prefab] : project->getPrefabs(sceneId)) {
+        auto sceneInstances = prefab->instances.find(sceneId);
+        if (sceneInstances == prefab->instances.end()) {
+            continue;
+        }
+        for (const Prefab::Instance& instance : sceneInstances->second) {
+            for (const Prefab::EntityMember& member : instance.members) {
+                if (!ownedSet.count(member.localEntity)) {
+                    prefabMembers.insert(member.localEntity);
+                }
+            }
+        }
+    }
     auto transforms = scene->getComponentArray<Transform>();
     for (size_t i = 0; i < transforms->size(); i++) {
         const Entity candidate = transforms->getEntity(i);
         const Transform& transform = transforms->getComponentFromIndex(i);
-        if (candidate == entity || ownedSet.count(candidate) || !ownedSet.count(transform.parent)) {
+        if (candidate == entity || ownedSet.count(candidate) || !ownedSet.count(transform.parent) ||
+            prefabMembers.count(candidate)) {
             continue;
         }
         ParkedEntity entry;
@@ -307,12 +299,9 @@ bool editor::ModelClearCmd::execute(){
 
     const std::vector<Entity> owned = collectOwnedEntities(scene, entity, model);
     const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
-    if (!prefabNodesBlocker(project, sceneId, owned).empty()) {
-        return false;
-    }
 
     // What the user hung on a model node stays, on the GameObject and where it is in the world
-    parkedEntities = collectParkedEntities(scene, owned, entity);
+    parkedEntities = collectParkedEntities(project, sceneId, scene, owned, entity);
     for (const ParkedEntity& parked : parkedEntities) {
         scene->addEntityChild(entity, parked.entity, true);
     }
@@ -359,7 +348,10 @@ bool editor::ModelClearCmd::execute(){
             }
         }
 
+        // Nodes that are Prefab GameObjects of an instance are removed from that instance only
+        // (removed GameObject overrides): the Prefab and its other instances keep them
         deleteCmd = new DeleteEntityCmd(project, sceneId, roots, true, preserved);
+        deleteCmd->setPrefabMemberDelete(PrefabMemberDelete::RemoveFromInstance);
         if (!deleteCmd->execute()) {
             delete deleteCmd;
             deleteCmd = nullptr;

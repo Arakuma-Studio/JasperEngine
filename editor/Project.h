@@ -132,9 +132,53 @@ namespace jasperengine::editor{
         std::vector<Prefab::EntityMember> members;
         std::map<Entity, uint64_t> overrides;
         std::vector<NestedPrefabRecovery> nestedPrefabs;
+        // Removed GameObject entries of the instance inside the branch the Prefab lost,
+        // dropped with it. An entry with no node is an instance that did not hold the branch.
+        std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removed;
     };
 
     using NodeRecovery = std::map<std::string, NodeRecoveryEntry>;
+
+    // A Prefab GameObject branch taken out of one prefab instance only: a removed GameObject
+    // override, or what a Prefab change left below one. Holds what puts it back exactly.
+    struct PrefabBranchRecovery {
+        std::filesystem::path path;           // prefab of the instance
+        Entity instanceRoot = NULL_ENTITY;
+        Entity registryEntity = NULL_ENTITY;  // the branch's top in the prefab registry
+        bool recorded = false;                // a removed GameObject entry was added for it
+        YAML::Node node;                      // the branch; nested instances as instance roots
+        Entity parent = NULL_ENTITY;
+        size_t index = 0;                     // Transform index, or tracked list index
+        bool hasTransform = false;
+        std::vector<Prefab::EntityMember> members;  // the instance's members in the branch
+        std::map<Entity, uint64_t> overrides;
+        std::vector<NestedPrefabRecovery> nestedPrefabs;  // containing ones first
+
+        bool valid() const { return registryEntity != NULL_ENTITY && node.IsMap(); }
+    };
+
+    // One removed GameObject override of an instance, or of an instance nested in it
+    struct PrefabRemovalInfo {
+        std::filesystem::path path;           // prefab that holds the GameObject
+        Entity instanceRoot = NULL_ENTITY;    // instance that removed it
+        Entity registryEntity = NULL_ENTITY;
+        std::string name;                     // its name in the prefab
+        bool belowRemoved = false;            // a removed GameObject above it keeps it out too
+    };
+
+    // What Revert of a removed GameObject did, for its undo
+    struct PrefabRemovalRevert {
+        std::vector<Prefab::EntityMember> entry;    // the entry's recorded members
+        std::vector<Prefab::EntityMember> created;  // what the revert made, whose ids a redo takes
+        Entity local = NULL_ENTITY;                 // the GameObject brought back, if any
+    };
+
+    // What Apply of a removed GameObject did, for its undo
+    struct PrefabRemovalApply {
+        std::vector<Prefab::EntityMember> entry;  // the applying instance's entry
+        Entity registryParent = NULL_ENTITY;
+        NodeRecovery recovery;                    // the GameObject in the Prefab and its instances
+    };
 
     // A prefab instance unpacked by Project::unpackPrefabInstances, with what putting its
     // prefab link back takes: the members stay in the scene, only the bookkeeping goes
@@ -150,6 +194,11 @@ namespace jasperengine::editor{
         Entity oldParent;
         size_t oldIndex;
         size_t hasTransform;
+        // An instance where the move changed whether the GameObject is there: it went below a
+        // GameObject the instance removed (taken out, put back by the undo), or came out from
+        // below one (brought in, taken out again by the undo)
+        PrefabBranchRecovery left;
+        Entity entered = NULL_ENTITY;
     };
 
     struct TerrainEditorSettings {
@@ -463,6 +512,23 @@ namespace jasperengine::editor{
         void updateSceneCppScripts(SceneProject* sceneProject);
         void updateScenePrefabs(SceneProject* sceneProject);
         void removePrefabInstanceTracking(uint32_t sceneId, Entity rootEntity);
+
+        // removeEntityFromPrefab and addEntityToPrefab(recovery) on a registry entity: the
+        // source instance is the one whose own copy destroyItself/createItself applies to
+        NodeRecovery removeRegistryEntityFromPrefab(const std::filesystem::path& filepath, Entity registryEntity,
+            uint32_t sourceSceneId, uint32_t sourceInstanceId, bool destroyItself);
+        bool restoreRegistryEntityToPrefab(const std::filesystem::path& filepath, Entity registryParent, const NodeRecovery& recoveryData,
+            uint32_t sceneId, uint32_t sourceInstanceId, bool createItself, std::unordered_map<Entity, Entity>* entityRemap,
+            std::vector<Entity>* restoredEntities);
+        // Creates in an instance the registry branch at registryEntity, less what the instance
+        // removed, under its registry parent's GameObject and in Prefab order; preferredIds
+        // (registry -> local pairs) are taken where free. Returns the members made, the top
+        // first (nested instances not included); empty when its parent is absent.
+        std::vector<Prefab::EntityMember> instantiatePrefabBranch(SceneProject* sceneProject, const std::filesystem::path& filepath, uint32_t instanceId,
+            Entity registryEntity, const std::vector<Prefab::EntityMember>& preferredIds);
+        // Puts a GameObject of an instance at its Prefab place among the siblings it holds
+        void placeInPrefabOrder(SceneProject* sceneProject, const Prefab& prefab, const Prefab::Instance& instance,
+            Entity registryEntity, Entity localEntity, Entity localParent, bool keepWorldTransform);
 
         std::vector<SceneScriptSource> collectAllSceneCppScripts() const;
         std::vector<PrefabSceneInfo> collectAllPrefabs() const;
@@ -959,7 +1025,9 @@ namespace jasperengine::editor{
 
         YAML::Node encodePrefabNode(const std::filesystem::path& filepath) const;
 
-        std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr);
+        // prefabRemovals: the instance's `prefabRemovedGameObjects` (see Stream), the Prefab
+        // GameObjects left out of it and of the instances nested in it
+        std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr, const YAML::Node& prefabRemovals = YAML::Node());
         // reconcileTracked false leaves dropping the destroyed entities from the scene's
         // tracked list to the caller (one pass after unimporting many instances)
         bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
@@ -994,6 +1062,35 @@ namespace jasperengine::editor{
         // Returns what repackPrefabInstances needs to undo it, in unpack order.
         std::vector<PrefabUnpackRecord> unpackPrefabInstances(uint32_t sceneId, const std::vector<Entity>& roots, bool completely);
         void repackPrefabInstances(uint32_t sceneId, std::vector<PrefabUnpackRecord> records);
+
+        // Unity's removed GameObject overrides. removePrefabBranch takes a Prefab GameObject
+        // (a member, a nested instance root included) and everything below it out of its
+        // instance only, recording the removal when asked; restorePrefabBranch undoes it with
+        // the same ids where they are free (the replacements go to entityRemap; without one,
+        // the scene's references are repaired here).
+        PrefabBranchRecovery removePrefabBranch(uint32_t sceneId, Entity entity, bool recordRemoval);
+        bool restorePrefabBranch(uint32_t sceneId, const PrefabBranchRecovery& recovery,
+            std::unordered_map<Entity, Entity>* entityRemap = nullptr, std::vector<Entity>* restoredEntities = nullptr);
+        // The removed GameObjects of the instance rooted at instanceRoot and of the instances
+        // nested in it, in prefab order
+        std::vector<PrefabRemovalInfo> getPrefabRemovals(uint32_t sceneId, Entity instanceRoot) const;
+        // The other overrides of that instance and the ones nested in it: overridden
+        // components (GameObject, component), and the GameObjects added below its Prefab
+        // GameObjects (top ones only, with their parent), in hierarchy order
+        std::vector<std::pair<Entity, ComponentType>> getPrefabComponentOverrides(uint32_t sceneId, Entity instanceRoot) const;
+        std::vector<std::pair<Entity, Entity>> getPrefabAddedGameObjects(uint32_t sceneId, Entity instanceRoot) const;
+        // Revert: the removed GameObject comes back with the Prefab's current values, in its
+        // Prefab place, taking back the ids it had where they are free
+        bool revertPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalRevert& revert);
+        void undoRevertPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, const PrefabRemovalRevert& revert);
+        // Apply: the GameObject is deleted from the Prefab asset, so from all its instances
+        bool applyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
+        void undoApplyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
+        // Apply of a component override: the instance's values become the Prefab's (and every
+        // instance that follows it); false when it holds a reference outside the instance
+        bool canApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const;
+        bool applyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, ComponentRecovery& recovery);
+        void undoApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery);
 
         //=== end Prefab part ===
 

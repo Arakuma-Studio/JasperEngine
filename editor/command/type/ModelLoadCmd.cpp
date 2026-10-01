@@ -506,6 +506,8 @@ bool editor::ModelLoadCmd::execute(){
     }
     if (!oldSubEntityRoots.empty()) {
         oldSubEntitiesDeleteCmd = new DeleteEntityCmd(project, sceneId, oldSubEntityRoots, true);
+        // Loading a model on a Prefab GameObject is a Prefab edit: its old nodes leave the Prefab
+        oldSubEntitiesDeleteCmd->setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
         if (!oldSubEntitiesDeleteCmd->execute()) {
             delete oldSubEntitiesDeleteCmd;
             oldSubEntitiesDeleteCmd = nullptr;
@@ -579,6 +581,7 @@ void editor::ModelLoadCmd::undo(){
         }
         if (!newSubEntityRoots.empty()) {
             DeleteEntityCmd newSubEntitiesDeleteCmd(project, sceneId, newSubEntityRoots, true);
+            newSubEntitiesDeleteCmd.setPrefabMemberDelete(PrefabMemberDelete::DeleteFromPrefab);
             newSubEntitiesDeleteCmd.execute();
         }
     }

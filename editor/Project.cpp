@@ -7217,7 +7217,7 @@ YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath
     return node;
 }
 
-std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap) {
+std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene, const YAML::Node& prefabOverrides, const YAML::Node& prefabLocalEntities, std::unordered_map<Entity, Entity>* entityRemap, const YAML::Node& prefabRemovals) {
     if (!filepath.is_relative()) {
         Out::error("Prefab filepath must be relative: %s", filepath.string().c_str());
         return {};
@@ -7297,8 +7297,79 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
     newInstance.rootEntity = rootEntity;
 
+    // Removed GameObject overrides: this instance's own, and the nested instances' by the
+    // registry entity of their root in this prefab
+    std::map<std::string, YAML::Node> nestedRemovalsMap;
+    if (prefabRemovals && prefabRemovals.IsSequence()) {
+        for (const auto& entry : prefabRemovals) {
+            if (!entry.IsMap()) continue;
+            if (entry["prefabPath"]) {
+                if (!entry["prefabRootRegistryEntity"]) continue;
+                std::string key = entry["prefabPath"].as<std::string>() + "_" +
+                    std::to_string(entry["prefabRootRegistryEntity"].as<Entity>());
+                if (entry["nested"]) {
+                    nestedRemovalsMap[key].push_back(entry["nested"]);
+                } else if (entry["registryEntity"]) {
+                    YAML::Node inner;
+                    inner["registryEntity"] = entry["registryEntity"];
+                    nestedRemovalsMap[key].push_back(inner);
+                }
+            } else if (entry["registryEntity"]) {
+                Entity registryEntity = entry["registryEntity"].as<Entity>();
+                // An entry whose GameObject left the Prefab since has nothing to remove
+                if (prefab.registry->isEntityCreated(registryEntity)) {
+                    newInstance.removed.emplace(registryEntity, std::vector<Prefab::EntityMember>());
+                }
+            }
+        }
+    }
+
     std::vector<Entity> regEntities = prefab.registryEntities;
     if (newEntities.size() == regEntities.size()) {
+        // Decoded parents come before their children, so one pass finds what sits below a
+        // removed GameObject: the removed ones are destroyed before any reference is mapped,
+        // leaving references to them None
+        std::unordered_set<Entity> absentLocals;
+        if (!newInstance.removed.empty()) {
+            for (size_t i = 0; i < newEntities.size(); i++) {
+                const Transform* transform = scene->findComponent<Transform>(newEntities[i]);
+                if (newInstance.removed.count(regEntities[i]) || (transform && absentLocals.count(transform->parent))) {
+                    absentLocals.insert(newEntities[i]);
+                }
+            }
+        }
+        if (!absentLocals.empty()) {
+            std::vector<Entity> presentEntities;
+            std::vector<Entity> presentRegistry;
+            presentEntities.reserve(newEntities.size() - absentLocals.size());
+            presentRegistry.reserve(newEntities.size() - absentLocals.size());
+            for (size_t i = 0; i < newEntities.size(); i++) {
+                if (absentLocals.count(newEntities[i])) {
+                    // Ownership callbacks must not reach a present GameObject
+                    if (ActionComponent* action = scene->findComponent<ActionComponent>(newEntities[i])) {
+                        action->ownedTarget = false;
+                    }
+                    if (AnimationComponent* animation = scene->findComponent<AnimationComponent>(newEntities[i])) {
+                        animation->ownedActions = false;
+                    }
+                } else {
+                    presentEntities.push_back(newEntities[i]);
+                    presentRegistry.push_back(regEntities[i]);
+                }
+            }
+            for (size_t i = newEntities.size(); i-- > 0;) {
+                if (absentLocals.count(newEntities[i]) && scene->isEntityCreated(newEntities[i])) {
+                    scene->destroyEntity(newEntities[i]);
+                }
+            }
+            if (entities) {
+                entities->erase(std::remove_if(entities->begin(), entities->end(),
+                    [&absentLocals](Entity e) { return absentLocals.count(e) != 0; }), entities->end());
+            }
+            newEntities = std::move(presentEntities);
+            regEntities = std::move(presentRegistry);
+        }
+
         std::unordered_map<Entity, Entity> registryToLocal;
         for (size_t i = 0; i < newEntities.size(); i++) {
             newInstance.members.push_back({newEntities[i], regEntities[i]});
@@ -7442,12 +7513,14 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
                 nestedKey += "_" + std::to_string(nestedRegEntity);
             }
 
-            YAML::Node nestedOvr, nestedLoc;
+            YAML::Node nestedOvr, nestedLoc, nestedRem;
             auto ovrIt = nestedOverridesMap.find(nestedKey);
             if (ovrIt != nestedOverridesMap.end()) nestedOvr = ovrIt->second;
             auto locIt = nestedLocalEntitiesMap.find(nestedKey);
             if (locIt != nestedLocalEntitiesMap.end()) nestedLoc = locIt->second;
-            std::vector<Entity> nestedEntities = importPrefab(sceneProject, entities, prefabComp->path, ent, false, nestedOvr, nestedLoc, entityRemap);
+            auto remIt = nestedRemovalsMap.find(nestedKey);
+            if (remIt != nestedRemovalsMap.end()) nestedRem = remIt->second;
+            std::vector<Entity> nestedEntities = importPrefab(sceneProject, entities, prefabComp->path, ent, false, nestedOvr, nestedLoc, entityRemap, nestedRem);
             allResult.insert(allResult.end(), nestedEntities.begin(), nestedEntities.end());
         }
     }
@@ -7749,6 +7822,11 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
         for (auto& instance : sceneInstances) {
             std::vector<Entity> newOtherEntities;
 
+            // Below a GameObject this instance removed, the new one stays out of it too
+            if (prefab->isRegistryEntityAbsent(instance, registryParent)) {
+                continue;
+            }
+
             // Find the parent in this instance.
             Entity otherParent = instance.rootEntity;
             if (registryParent != NULL_ENTITY) {
@@ -7847,10 +7925,20 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& re
     if (!prefab) {
         return false;
     }
+
+    return restoreRegistryEntityToPrefab(filepath, prefab->getRegistryEntity(sceneId, parent), recoveryData,
+        sceneId, prefab->getInstanceId(sceneId, parent), createItself, entityRemap, restoredEntities);
+}
+
+bool editor::Project::restoreRegistryEntityToPrefab(const std::filesystem::path& filepath, Entity registryParent, const NodeRecovery& recoveryData,
+        uint32_t sceneId, uint32_t sourceInstanceId, bool createItself, std::unordered_map<Entity, Entity>* entityRemap,
+        std::vector<Entity>* restoredEntities){
+    Prefab* prefab = getPrefab(filepath);
+    if (!prefab || !prefab->registry) {
+        return false;
+    }
     bool wasPrefabModified = prefab->isModified;
     bool deferSourceRemap = entityRemap && restoredEntities;
-
-    Entity registryParent = prefab->getRegistryEntity(sceneId, parent);
 
     // Recover registry data
     std::string recoveryDefKey = std::to_string(NULL_PROJECT_SCENE);
@@ -7876,7 +7964,6 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& re
     remapEntityProperties(prefab->registry.get(), prefab->registryEntities, recoveredRegistryIds, false);
     bool regHasTransform = prefab->registry->getSignature(regEntities[0]).test(prefab->registry->getComponentId<Transform>());
     ProjectUtils::moveEntityOrderByIndex(prefab->registry.get(), prefab->registryEntities, regEntities[0], registryParent, regTransformIndex, regHasTransform);
-    uint32_t sourceInstanceId = prefab->getInstanceId(sceneId, parent);
 
     struct InstanceRecoveryTarget {
         uint32_t sceneId = NULL_PROJECT_SCENE;
@@ -7908,6 +7995,17 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& re
     std::map<uint32_t, std::vector<Entity>> referenceEntitiesByScene;
     bool validRecovery = true;
 
+    struct PendingRemovalRestore {
+        uint32_t sceneId = NULL_PROJECT_SCENE;
+        uint32_t instanceId = 0;
+        const NodeRecoveryEntry* recoveredEntry = nullptr;
+    };
+    std::vector<PendingRemovalRestore> removalRestores;
+    auto recoveredRegistry = [&recoveredRegistryIds](Entity entity) {
+        auto it = recoveredRegistryIds.find(entity);
+        return it != recoveredRegistryIds.end() ? it->second : entity;
+    };
+
     // Decode every instance first. Membership and override metadata are committed only after
     // all exact saved pairs have resolved, so a failed nested import can be rolled back cleanly.
     const std::unordered_set<Entity> recoveredRegistryEntities(regEntities.begin(), regEntities.end());
@@ -7937,7 +8035,25 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& re
             recoveredEntry = &recoveryIt->second;
             nodeData = recoveredEntry->node;
             transformIndex = recoveredEntry->transformIndex;
-        } else {
+        }
+
+        // An instance that removed the GameObject, or one above it, gets its removed
+        // GameObject entries back (once the recovery holds) and nothing in the scene
+        bool branchRemoved = false;
+        if (recoveredEntry && !recoveredEntry->removed.empty()) {
+            removalRestores.push_back({target.sceneId, target.instanceId, recoveredEntry});
+            for (const auto& [removedEntity, removedMembers] : recoveredEntry->removed) {
+                if (recoveredRegistry(removedEntity) == regEntities[0]) {
+                    branchRemoved = true;
+                }
+            }
+        }
+        if (branchRemoved || instance->removed.count(regEntities[0]) ||
+            prefab->isRegistryEntityAbsent(*instance, registryParent) ||
+            (recoveredEntry && !recoveredEntry->node)) {
+            continue;
+        }
+        if (!recoveredEntry) {
             nodeData = Stream::encodeEntity(regEntities[0], prefab->registry.get());
         }
 
@@ -8104,6 +8220,19 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, const NodeRecovery& re
         return false;
     }
 
+    for (const PendingRemovalRestore& restore : removalRestores) {
+        Prefab::Instance* instance = prefab->getInstanceById(restore.sceneId, restore.instanceId);
+        if (!instance) {
+            continue;
+        }
+        for (const auto& [removedEntity, removedMembers] : restore.recoveredEntry->removed) {
+            instance->removed[recoveredRegistry(removedEntity)] = removedMembers;
+        }
+        if (SceneProject* removalScene = getScene(restore.sceneId)) {
+            removalScene->isModified = true;
+        }
+    }
+
     std::map<uint32_t, std::unordered_map<Entity, Entity>> sceneEntityRemaps;
     for (PendingInstanceRecovery& pending : pendingRecoveries) {
         SceneProject* pendingScene = getScene(pending.sceneId);
@@ -8219,7 +8348,25 @@ editor::NodeRecovery editor::Project::removeEntityFromPrefab(uint32_t sceneId, E
         return {};
     }
 
+    return removeRegistryEntityFromPrefab(filepath, registryEntity, sceneId, instanceId, destroyItself);
+}
+
+editor::NodeRecovery editor::Project::removeRegistryEntityFromPrefab(const std::filesystem::path& filepath, Entity registryEntity,
+        uint32_t sceneId, uint32_t instanceId, bool destroyItself) {
+    Prefab* prefab = getPrefab(filepath);
+    if (!prefab || !prefab->registry || !prefab->registry->isEntityCreated(registryEntity)) {
+        return {};
+    }
+
     YAML::Node regData = Stream::encodeEntity(registryEntity, prefab->registry.get(), nullptr, nullptr);
+
+    // Removed GameObject entries inside the branch go with it, and come back with an undo
+    std::unordered_set<Entity> registryBranch;
+    {
+        std::vector<Entity> branchEntities;
+        ProjectUtils::collectEntities(regData, branchEntities);
+        registryBranch.insert(branchEntities.begin(), branchEntities.end());
+    }
 
     size_t transformIndex;
     NodeRecovery recovery;
@@ -8256,7 +8403,24 @@ editor::NodeRecovery editor::Project::removeEntityFromPrefab(uint32_t sceneId, E
                 }
             }
 
+            // The instance's removed GameObjects in the branch: the recovery keeps them
+            std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removedInBranch;
+            for (auto removedIt = instance.removed.begin(); removedIt != instance.removed.end();) {
+                if (registryBranch.count(removedIt->first)) {
+                    removedInBranch.emplace(removedIt->first, std::move(removedIt->second));
+                    removedIt = instance.removed.erase(removedIt);
+                } else {
+                    ++removedIt;
+                }
+            }
+
             if (otherEntity == NULL_ENTITY) {
+                // Not in this instance (it removed the GameObject or one above it)
+                if (!removedInBranch.empty()) {
+                    std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.rootEntity);
+                    recovery[recoveryKey].removed = std::move(removedInBranch);
+                    otherScene->isModified = true;
+                }
                 continue;
             }
 
@@ -8316,6 +8480,7 @@ editor::NodeRecovery editor::Project::removeEntityFromPrefab(uint32_t sceneId, E
             NodeRecoveryEntry& recoveryEntry = recovery[recoveryKey];
             recoveryEntry = {nodeExtend, transformIndex};
             recoveryEntry.nestedPrefabs = std::move(nestedPrefabs);
+            recoveryEntry.removed = std::move(removedInBranch);
 
             // Remove members from this instance
             for (const Entity& e : allEntities) {
@@ -8667,6 +8832,14 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
                 }
             }
             instance.members.erase(std::remove_if(instance.members.begin(), instance.members.end(), lost), instance.members.end());
+            // Removed GameObjects the prefab no longer holds have nothing left to keep out
+            for (auto removedIt = instance.removed.begin(); removedIt != instance.removed.end();) {
+                if (!prefab->registry || !prefab->registry->isEntityCreated(removedIt->first)) {
+                    removedIt = instance.removed.erase(removedIt);
+                } else {
+                    ++removedIt;
+                }
+            }
 
             prefab->nextInstanceId = std::max(prefab->nextInstanceId, instance.instanceId + 1);
 
@@ -8697,6 +8870,830 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
     updateScenePrefabs(sceneProject);
     sceneProject->structureVersion++;
     sceneProject->needUpdateRender = true;
+}
+
+//=== Removed GameObject overrides ===
+
+namespace {
+
+// The instance of the prefab on `entity`'s PrefabComponent rooted at `entity`, if any
+const editor::Prefab::Instance* instanceRootedAt(const std::map<std::filesystem::path, editor::Prefab>& prefabAssets,
+        const EntityRegistry* scene, uint32_t sceneId, Entity entity, const std::filesystem::path** path = nullptr) {
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity) ||
+        !scene->getSignature(entity).test(scene->getComponentId<PrefabComponent>())) {
+        return nullptr;
+    }
+    const PrefabComponent* component = &scene->getComponent<PrefabComponent>(entity);
+    if (component->path.empty()) {
+        return nullptr;
+    }
+    auto prefabIt = prefabAssets.find(component->path);
+    if (prefabIt == prefabAssets.end()) {
+        return nullptr;
+    }
+    const editor::Prefab::Instance* instance = prefabIt->second.getInstance(sceneId, entity);
+    if (!instance || instance->rootEntity != entity) {
+        return nullptr;
+    }
+    if (path) {
+        *path = &prefabIt->first;
+    }
+    return instance;
+}
+
+Entity propertyEntityTarget(const editor::PropertyData& property) {
+    if (!property.ref) {
+        return NULL_ENTITY;
+    }
+    if (property.type == editor::PropertyType::EntityReference) {
+        const EntityReference* ref = static_cast<const EntityReference*>(property.ref);
+        return ref->sceneId == 0 ? ref->entity : NULL_ENTITY;
+    }
+    if (property.type == editor::PropertyType::Entity) {
+        return *static_cast<const Entity*>(property.ref);
+    }
+    return NULL_ENTITY;
+}
+
+}
+
+editor::PrefabBranchRecovery editor::Project::removePrefabBranch(uint32_t sceneId, Entity entity, bool recordRemoval) {
+    PrefabBranchRecovery recovery;
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || !sceneProject->scene->isEntityCreated(entity)) {
+        return recovery;
+    }
+    Scene* scene = sceneProject->scene;
+
+    const fs::path path = findPrefabPathFor(sceneId, entity);
+    Prefab* prefab = getPrefab(path);
+    Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, entity) : nullptr;
+    if (!instance || instance->rootEntity == entity) {
+        return recovery;
+    }
+    Entity registryEntity = NULL_ENTITY;
+    for (const Prefab::EntityMember& member : instance->members) {
+        if (member.localEntity == entity) {
+            registryEntity = member.registryEntity;
+            break;
+        }
+    }
+    if (registryEntity == NULL_ENTITY) {
+        return recovery;
+    }
+
+    // The snapshot: a nested instance root as an instance root (its overrides, added and
+    // removed GameObjects), anything else as plain GameObjects holding nested instance roots
+    const bool isNestedRoot = instanceRootedAt(prefabAssets, scene, sceneId, entity) != nullptr;
+    YAML::Node node = Stream::encodeEntity(entity, scene, this, sceneProject, !isNestedRoot);
+    if (!node.IsMap()) {
+        return recovery;
+    }
+
+    recovery.path = path;
+    recovery.instanceRoot = instance->rootEntity;
+    recovery.registryEntity = registryEntity;
+    recovery.node.reset(node);
+
+    Transform* transform = scene->findComponent<Transform>(entity);
+    recovery.hasTransform = transform != nullptr;
+    if (transform) {
+        recovery.parent = transform->parent;
+        recovery.index = scene->getComponentArray<Transform>()->getIndex(entity);
+    } else {
+        recovery.parent = instance->rootEntity;
+        auto tracked = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
+        recovery.index = tracked != sceneProject->entities.end() ? std::distance(sceneProject->entities.begin(), tracked) : 0;
+    }
+
+    // The branch: its Transform range, and the members of nested instances in it that
+    // have no Transform. Containing instances come before the ones they hold.
+    std::vector<Entity> branch;
+    std::unordered_set<Entity> branchSet;
+    auto addToBranch = [&](Entity candidate) {
+        if (candidate != NULL_ENTITY && scene->isEntityCreated(candidate) && branchSet.insert(candidate).second) {
+            branch.push_back(candidate);
+        }
+    };
+    if (transform) {
+        auto transforms = scene->getComponentArray<Transform>();
+        const size_t first = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        for (size_t i = first; i <= last && i < transforms->size(); i++) {
+            addToBranch(transforms->getEntity(i));
+        }
+    } else {
+        addToBranch(entity);
+    }
+    for (size_t i = 0; i < branch.size(); i++) {
+        const fs::path* nestedPath = nullptr;
+        if (const Prefab::Instance* nested = instanceRootedAt(prefabAssets, scene, sceneId, branch[i], &nestedPath)) {
+            recovery.nestedPrefabs.push_back({*nestedPath, branch[i], nested->members});
+            for (const Prefab::EntityMember& member : nested->members) {
+                addToBranch(member.localEntity);
+            }
+        }
+    }
+
+    // Out of the instance's bookkeeping
+    for (const Prefab::EntityMember& member : instance->members) {
+        if (branchSet.count(member.localEntity)) {
+            recovery.members.push_back(member);
+        }
+    }
+    instance->members.erase(std::remove_if(instance->members.begin(), instance->members.end(),
+        [&branchSet](const Prefab::EntityMember& member) { return branchSet.count(member.localEntity) != 0; }),
+        instance->members.end());
+    for (auto it = instance->overrides.begin(); it != instance->overrides.end();) {
+        if (branchSet.count(it->first)) {
+            recovery.overrides.insert(*it);
+            it = instance->overrides.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (recordRemoval) {
+        instance->removed[registryEntity] = recovery.members;
+        recovery.recorded = true;
+    }
+
+    // Out of the scene: what the branch owns elsewhere stays (a delete takes those along
+    // itself), and so do the nested instances' records until their roots are gone
+    bool hadCamera = false;
+    for (Entity branchEntity : branch) {
+        if (scene->findComponent<CameraComponent>(branchEntity)) {
+            hadCamera = true;
+        }
+        if (ActionComponent* action = scene->findComponent<ActionComponent>(branchEntity)) {
+            action->ownedTarget = false;
+        }
+        if (AnimationComponent* animation = scene->findComponent<AnimationComponent>(branchEntity)) {
+            animation->ownedActions = false;
+        }
+    }
+    for (const NestedPrefabRecovery& nested : recovery.nestedPrefabs) {
+        removePrefabInstanceTracking(sceneId, nested.rootEntity);
+    }
+    DeleteEntityCmd::destroyEntities(scene, branch, sceneProject->entities, this, sceneId);
+    if (hadCamera) {
+        CameraTextureLink::resolve(scene);
+    }
+
+    updateScenePrefabs(sceneProject);
+    sceneProject->isModified = true;
+    sceneProject->needUpdateRender = true;
+
+    return recovery;
+}
+
+bool editor::Project::restorePrefabBranch(uint32_t sceneId, const PrefabBranchRecovery& recovery,
+        std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>* restoredEntities) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || !recovery.valid()) {
+        return false;
+    }
+    Scene* scene = sceneProject->scene;
+
+    std::unordered_map<Entity, Entity> localRemap;
+    auto remapped = [&](Entity entity) {
+        if (auto it = localRemap.find(entity); it != localRemap.end()) {
+            return it->second;
+        }
+        if (entityRemap) {
+            if (auto it = entityRemap->find(entity); it != entityRemap->end()) {
+                return it->second;
+            }
+        }
+        return entity;
+    };
+
+    const Entity instanceRoot = remapped(recovery.instanceRoot);
+    Prefab* prefab = getPrefab(recovery.path);
+    const Prefab::Instance* found = prefab ? prefab->getInstance(sceneId, instanceRoot) : nullptr;
+    if (!found || found->rootEntity != instanceRoot) {
+        Out::error("Could not put back a GameObject of prefab %s: its instance is gone", recovery.path.string().c_str());
+        return false;
+    }
+    const uint32_t instanceId = found->instanceId;
+
+    // Same ids where free; the nested instances are imported again from their saved roots
+    std::vector<Entity> decoded = Stream::decodeEntity(recovery.node, scene, &sceneProject->entities, this, sceneProject,
+        NULL_ENTITY, true, false, &localRemap);
+    if (decoded.empty()) {
+        return false;
+    }
+    ProjectUtils::moveEntityOrderByIndex(scene, sceneProject->entities, decoded[0], remapped(recovery.parent),
+        recovery.index, recovery.hasTransform);
+
+    // Nested members got new ids from the import: matched by their registry entity
+    for (const NestedPrefabRecovery& saved : recovery.nestedPrefabs) {
+        const Entity root = remapped(saved.rootEntity);
+        const Prefab* nestedPrefab = getPrefab(saved.path);
+        const Prefab::Instance* nested = nestedPrefab ? nestedPrefab->getInstance(sceneId, root) : nullptr;
+        if (!nested || nested->rootEntity != root) {
+            continue;
+        }
+        std::unordered_map<Entity, Entity> byRegistry;
+        for (const Prefab::EntityMember& member : nested->members) {
+            byRegistry[member.registryEntity] = member.localEntity;
+        }
+        for (const Prefab::EntityMember& member : saved.members) {
+            auto it = byRegistry.find(member.registryEntity);
+            if (it != byRegistry.end() && it->second != member.localEntity) {
+                localRemap[member.localEntity] = it->second;
+            }
+        }
+    }
+
+    // Back into the instance's bookkeeping (found again: an import can move the list). A
+    // GameObject the Prefab lost meanwhile (through another scene) stays as the instance's own.
+    if (Prefab::Instance* instance = prefab->getInstanceById(sceneId, instanceId)) {
+        for (const Prefab::EntityMember& member : recovery.members) {
+            const Entity local = remapped(member.localEntity);
+            if (scene->isEntityCreated(local) && prefab->registry && prefab->registry->isEntityCreated(member.registryEntity)) {
+                instance->members.push_back({local, member.registryEntity});
+            }
+        }
+        for (const auto& [overridden, mask] : recovery.overrides) {
+            const Entity local = remapped(overridden);
+            if (scene->isEntityCreated(local)) {
+                instance->overrides[local] = mask;
+            }
+        }
+        if (recovery.recorded) {
+            instance->removed.erase(recovery.registryEntity);
+        }
+    }
+
+    if (entityRemap) {
+        for (const auto& [oldEntity, newEntity] : localRemap) {
+            (*entityRemap)[oldEntity] = newEntity;
+        }
+    } else if (!localRemap.empty()) {
+        remapEntityProperties(scene, sceneProject->entities, localRemap, false);
+    }
+    if (restoredEntities) {
+        restoredEntities->insert(restoredEntities->end(), decoded.begin(), decoded.end());
+    } else {
+        CameraTextureLink::resolve(scene, decoded);
+    }
+
+    updateScenePrefabs(sceneProject);
+    sceneProject->isModified = true;
+    sceneProject->needUpdateRender = true;
+    return true;
+}
+
+std::vector<editor::PrefabRemovalInfo> editor::Project::getPrefabRemovals(uint32_t sceneId, Entity instanceRoot) const {
+    std::vector<PrefabRemovalInfo> removals;
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return removals;
+    }
+    const Scene* scene = sceneProject->scene;
+
+    auto collect = [&](auto&& self, Entity root, size_t depth) -> void {
+        const fs::path* path = nullptr;
+        const Prefab::Instance* instance = instanceRootedAt(prefabAssets, scene, sceneId, root, &path);
+        if (!instance || depth > 64) {
+            return;
+        }
+        const Prefab& prefab = prefabAssets.at(*path);
+        if (!instance->removed.empty() && prefab.registry) {
+            for (Entity registryEntity : prefab.registryEntities) {
+                if (!instance->removed.count(registryEntity)) {
+                    continue;
+                }
+                PrefabRemovalInfo info;
+                info.path = *path;
+                info.instanceRoot = root;
+                info.registryEntity = registryEntity;
+                info.name = prefab.registry->getEntityName(registryEntity);
+                info.belowRemoved = prefab.isRegistryEntityAbsent(*instance, prefab.getRegistryParent(registryEntity));
+                removals.push_back(std::move(info));
+            }
+        }
+        for (const Prefab::EntityMember& member : instance->members) {
+            if (instanceRootedAt(prefabAssets, scene, sceneId, member.localEntity)) {
+                self(self, member.localEntity, depth + 1);
+            }
+        }
+    };
+    collect(collect, instanceRoot, 0);
+    return removals;
+}
+
+std::vector<std::pair<Entity, editor::ComponentType>> editor::Project::getPrefabComponentOverrides(uint32_t sceneId, Entity instanceRoot) const {
+    std::vector<std::pair<Entity, ComponentType>> overrides;
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return overrides;
+    }
+    const Scene* scene = sceneProject->scene;
+
+    auto collect = [&](auto&& self, Entity root, size_t depth) -> void {
+        const Prefab::Instance* instance = instanceRootedAt(prefabAssets, scene, sceneId, root);
+        if (!instance || depth > 64) {
+            return;
+        }
+        for (const Prefab::EntityMember& member : instance->members) {
+            auto overrideIt = instance->overrides.find(member.localEntity);
+            if (overrideIt == instance->overrides.end()) {
+                continue;
+            }
+            for (int bit = 0; bit < 64; bit++) {
+                if (overrideIt->second & (1ULL << bit)) {
+                    overrides.push_back({member.localEntity, static_cast<ComponentType>(bit)});
+                }
+            }
+        }
+        for (const Prefab::EntityMember& member : instance->members) {
+            if (instanceRootedAt(prefabAssets, scene, sceneId, member.localEntity)) {
+                self(self, member.localEntity, depth + 1);
+            }
+        }
+    };
+    collect(collect, instanceRoot, 0);
+    return overrides;
+}
+
+std::vector<std::pair<Entity, Entity>> editor::Project::getPrefabAddedGameObjects(uint32_t sceneId, Entity instanceRoot) const {
+    std::vector<std::pair<Entity, Entity>> added;
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return added;
+    }
+    const Scene* scene = sceneProject->scene;
+
+    // The roots and members of the instance and the ones nested in it, and among them the
+    // GameObjects an added one hangs from
+    std::unordered_set<Entity> prefabEntities;
+    std::unordered_set<Entity> parents;
+    auto collect = [&](auto&& self, Entity root, size_t depth) -> void {
+        const Prefab::Instance* instance = instanceRootedAt(prefabAssets, scene, sceneId, root);
+        if (!instance || depth > 64) {
+            return;
+        }
+        prefabEntities.insert(root);
+        parents.insert(root);
+        for (const Prefab::EntityMember& member : instance->members) {
+            prefabEntities.insert(member.localEntity);
+            parents.insert(member.localEntity);
+        }
+        for (const Prefab::EntityMember& member : instance->members) {
+            if (instanceRootedAt(prefabAssets, scene, sceneId, member.localEntity)) {
+                self(self, member.localEntity, depth + 1);
+            }
+        }
+    };
+    collect(collect, instanceRoot, 0);
+
+    const std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());
+    auto transforms = scene->getComponentArray<Transform>();
+    for (size_t i = 0; i < transforms->size(); i++) {
+        const Entity entity = transforms->getEntity(i);
+        const Entity parent = transforms->getComponentFromIndex(i).parent;
+        if (parent != NULL_ENTITY && parents.count(parent) && !prefabEntities.count(entity) && tracked.count(entity)) {
+            added.push_back({entity, parent});
+        }
+    }
+    return added;
+}
+
+void editor::Project::placeInPrefabOrder(SceneProject* sceneProject, const Prefab& prefab, const Prefab::Instance& instance,
+        Entity registryEntity, Entity localEntity, Entity localParent, bool keepWorldTransform) {
+    Scene* scene = sceneProject->scene;
+    const EntityRegistry* registry = prefab.registry.get();
+    if (!registry || !scene->isEntityCreated(localEntity)) {
+        return;
+    }
+
+    std::unordered_map<Entity, Entity> registryToLocal;
+    for (const Prefab::EntityMember& member : instance.members) {
+        registryToLocal[member.registryEntity] = member.localEntity;
+    }
+    auto presentLocal = [&](Entity registrySibling) {
+        auto it = registryToLocal.find(registrySibling);
+        return (it != registryToLocal.end() && it->second != localEntity && scene->isEntityCreated(it->second)) ?
+            it->second : NULL_ENTITY;
+    };
+
+    if (scene->findComponent<Transform>(localEntity)) {
+        if (localParent == NULL_ENTITY || !scene->findComponent<Transform>(localParent)) {
+            return;
+        }
+        // Its Prefab siblings, in order
+        const Entity registryParent = prefab.getRegistryParent(registryEntity);
+        std::vector<Entity> siblings;
+        auto registryTransforms = registry->getComponentArray<Transform>();
+        for (size_t i = 0; i < registryTransforms->size(); i++) {
+            if (registryTransforms->getComponentFromIndex(i).parent == registryParent) {
+                siblings.push_back(registryTransforms->getEntity(i));
+            }
+        }
+        Entity previous = NULL_ENTITY;
+        Entity next = NULL_ENTITY;
+        auto position = std::find(siblings.begin(), siblings.end(), registryEntity);
+        if (position != siblings.end()) {
+            for (auto it = position; it != siblings.begin();) {
+                --it;
+                if ((previous = presentLocal(*it)) != NULL_ENTITY) break;
+            }
+            for (auto it = std::next(position); it != siblings.end(); ++it) {
+                if ((next = presentLocal(*it)) != NULL_ENTITY) break;
+            }
+        }
+        auto parentOf = [scene](Entity entity) {
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            return transform ? transform->parent : NULL_ENTITY;
+        };
+
+        scene->addEntityChild(localParent, localEntity, keepWorldTransform);
+        auto transforms = scene->getComponentArray<Transform>();
+        size_t target;
+        if (previous != NULL_ENTITY && parentOf(previous) == localParent) {
+            target = scene->findBranchLastIndex(previous) + 1;
+        } else if (next != NULL_ENTITY && parentOf(next) == localParent) {
+            target = transforms->getIndex(next);
+        } else {
+            target = transforms->getIndex(localParent) + 1;
+        }
+        scene->moveChildToIndex(localEntity, target);
+        ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
+    } else {
+        // A GameObject without a Transform keeps the Prefab's list order
+        Entity anchor = instance.rootEntity;
+        auto position = std::find(prefab.registryEntities.begin(), prefab.registryEntities.end(), registryEntity);
+        for (auto it = position; it != prefab.registryEntities.begin();) {
+            --it;
+            if (Entity local = presentLocal(*it); local != NULL_ENTITY) {
+                anchor = local;
+                break;
+            }
+        }
+        std::vector<Entity>& tracked = sceneProject->entities;
+        tracked.erase(std::remove(tracked.begin(), tracked.end(), localEntity), tracked.end());
+        auto anchorIt = std::find(tracked.begin(), tracked.end(), anchor);
+        tracked.insert(anchorIt != tracked.end() ? std::next(anchorIt) : tracked.end(), localEntity);
+    }
+}
+
+std::vector<editor::Prefab::EntityMember> editor::Project::instantiatePrefabBranch(SceneProject* sceneProject, const std::filesystem::path& filepath,
+        uint32_t instanceId, Entity registryEntity, const std::vector<Prefab::EntityMember>& preferredIds) {
+    Prefab* prefab = getPrefab(filepath);
+    Prefab::Instance* instance = prefab ? prefab->getInstanceById(sceneProject->id, instanceId) : nullptr;
+    if (!instance || !prefab->registry || !prefab->registry->isEntityCreated(registryEntity) || !sceneProject->scene) {
+        return {};
+    }
+    Scene* scene = sceneProject->scene;
+    EntityRegistry* registry = prefab->registry.get();
+
+    const Entity registryParent = prefab->getRegistryParent(registryEntity);
+    Entity localParent = instance->rootEntity;
+    if (registryParent != NULL_ENTITY) {
+        localParent = prefab->getLocalEntity(sceneProject->id, instanceId, registryParent);
+        if (localParent == NULL_ENTITY) {
+            return {}; // below a GameObject the instance removed
+        }
+    }
+
+    // The registry branch less what the instance removed in it; a nested prefab root's
+    // GameObjects come from its own import below
+    YAML::Node node = Stream::encodeEntity(registryEntity, registry);
+    if (!node.IsMap()) {
+        return {};
+    }
+    const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
+    std::unordered_map<Entity, Entity> preferred;
+    for (const Prefab::EntityMember& member : preferredIds) {
+        preferred[member.registryEntity] = member.localEntity;
+    }
+    std::vector<Entity> registryOrder;
+    auto prepare = [&](auto&& self, YAML::Node entityNode) -> void {
+        const YAML::Node readNode = entityNode;
+        const Entity nodeEntity = readNode["entity"].as<Entity>();
+        registryOrder.push_back(nodeEntity);
+        auto wanted = preferred.find(nodeEntity);
+        if (wanted != preferred.end() && wanted->second != NULL_ENTITY && !scene->isEntityCreated(wanted->second)) {
+            entityNode["entity"] = wanted->second;
+        } else {
+            entityNode.remove("entity");
+        }
+        const YAML::Node components = readNode["components"];
+        if (components && components.IsMap() && components[prefabKey]) {
+            entityNode.remove("children");
+            return;
+        }
+        const YAML::Node children = readNode["children"];
+        if (children && children.IsSequence()) {
+            YAML::Node kept(YAML::NodeType::Sequence);
+            for (YAML::Node child : children) {
+                const YAML::Node readChild = child;
+                if (!readChild.IsMap() || !readChild["entity"] || instance->removed.count(readChild["entity"].as<Entity>())) {
+                    continue;
+                }
+                self(self, child);
+                kept.push_back(child);
+            }
+            if (kept.size() > 0) {
+                entityNode["children"] = kept;
+            } else {
+                entityNode.remove("children");
+            }
+        }
+    };
+    prepare(prepare, node);
+
+    std::vector<Entity> decoded = Stream::decodeEntity(node, scene, &sceneProject->entities);
+    if (decoded.empty() || decoded.size() != registryOrder.size()) {
+        Out::error("Could not create the GameObjects of prefab %s again", filepath.string().c_str());
+        DeleteEntityCmd::destroyEntities(scene, decoded, sceneProject->entities, this, sceneProject->id);
+        return {};
+    }
+
+    std::vector<Prefab::EntityMember> created;
+    created.reserve(decoded.size());
+    for (size_t i = 0; i < decoded.size(); i++) {
+        created.push_back({decoded[i], registryOrder[i]});
+    }
+
+    placeInPrefabOrder(sceneProject, *prefab, *instance, registryEntity, decoded[0], localParent, false);
+    instance->members.insert(instance->members.end(), created.begin(), created.end());
+
+    std::unordered_map<Entity, Entity> registryToLocal;
+    for (const Prefab::EntityMember& member : instance->members) {
+        registryToLocal[member.registryEntity] = member.localEntity;
+    }
+    remapEntityProperties(scene, decoded, registryToLocal);
+
+    // The instance's GameObjects that the Prefab has pointing at these get them back
+    const std::unordered_set<Entity> createdRegistry(registryOrder.begin(), registryOrder.end());
+    const std::unordered_set<Entity> createdLocal(decoded.begin(), decoded.end());
+    for (const Prefab::EntityMember& member : instance->members) {
+        if (createdLocal.count(member.localEntity) || !scene->isEntityCreated(member.localEntity) ||
+            !registry->isEntityCreated(member.registryEntity)) {
+            continue;
+        }
+        auto overrideIt = instance->overrides.find(member.localEntity);
+        const uint64_t overridden = overrideIt != instance->overrides.end() ? overrideIt->second : 0;
+        for (ComponentType componentType : Catalog::findComponents(registry, member.registryEntity)) {
+            if ((overridden & (1ULL << static_cast<int>(componentType))) ||
+                !Catalog::mayHoldReferences(registry, member.registryEntity, componentType, true, false)) {
+                continue;
+            }
+            std::map<std::string, PropertyData> localProperties;
+            bool localRead = false;
+            uint64_t updateFlags = 0;
+            for (auto& [propertyName, registryProperty] : Catalog::findEntityProperties(registry, member.registryEntity, componentType)) {
+                const Entity target = propertyEntityTarget(registryProperty);
+                if (target == NULL_ENTITY || !createdRegistry.count(target)) {
+                    continue;
+                }
+                if (!localRead) {
+                    localProperties = Catalog::findEntityProperties(scene, member.localEntity, componentType);
+                    localRead = true;
+                }
+                auto local = localProperties.find(propertyName);
+                if (local == localProperties.end() || !local->second.ref || local->second.type != registryProperty.type) {
+                    continue;
+                }
+                if (local->second.type == PropertyType::EntityReference) {
+                    EntityReference* ref = static_cast<EntityReference*>(local->second.ref);
+                    ref->entity = registryToLocal[target];
+                    ref->sceneId = 0;
+                } else {
+                    *static_cast<Entity*>(local->second.ref) = registryToLocal[target];
+                }
+                updateFlags |= local->second.updateFlags;
+            }
+            if (updateFlags != 0) {
+                Catalog::updateEntity(scene, member.localEntity, updateFlags);
+            }
+        }
+    }
+
+    // Nested prefab roots bring their own GameObjects
+    for (Entity entity : decoded) {
+        const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
+        if (component && !component->path.empty()) {
+            const fs::path nestedPath = component->path;
+            importPrefab(sceneProject, &sceneProject->entities, nestedPath, entity, false);
+        }
+    }
+
+    CameraTextureLink::resolve(scene, decoded);
+    updateScenePrefabs(sceneProject);
+    sceneProject->isModified = true;
+    sceneProject->needUpdateRender = true;
+    return created;
+}
+
+bool editor::Project::revertPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
+        Entity registryEntity, PrefabRemovalRevert& revert) {
+    SceneProject* sceneProject = getScene(sceneId);
+    Prefab* prefab = getPrefab(path);
+    Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, instanceRoot) : nullptr;
+    if (!sceneProject || !sceneProject->scene || !instance || instance->rootEntity != instanceRoot) {
+        return false;
+    }
+    auto entry = instance->removed.find(registryEntity);
+    if (entry == instance->removed.end()) {
+        return false;
+    }
+    revert.entry = entry->second;
+    revert.local = NULL_ENTITY;
+    const uint32_t instanceId = instance->instanceId;
+    instance->removed.erase(entry);
+    sceneProject->isModified = true;
+
+    // Below another removed GameObject it stays out with it, which a revert of that one
+    // now brings back too
+    if (!prefab->registry || !prefab->registry->isEntityCreated(registryEntity) ||
+        prefab->isRegistryEntityAbsent(*instance, registryEntity)) {
+        return true;
+    }
+
+    // The ids of a previous run of this revert, else the ones it had when removed
+    const std::vector<Prefab::EntityMember>& preferred = revert.created.empty() ? revert.entry : revert.created;
+    std::vector<Prefab::EntityMember> created = instantiatePrefabBranch(sceneProject, path, instanceId, registryEntity, preferred);
+    if (created.empty()) {
+        if (Prefab::Instance* again = prefab->getInstanceById(sceneId, instanceId)) {
+            again->removed[registryEntity] = revert.entry;
+        }
+        return false;
+    }
+    revert.created = created;
+    revert.local = created[0].localEntity;
+    return true;
+}
+
+void editor::Project::undoRevertPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
+        Entity registryEntity, const PrefabRemovalRevert& revert) {
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    if (revert.local != NULL_ENTITY && sceneProject->scene->isEntityCreated(revert.local)) {
+        removePrefabBranch(sceneId, revert.local, false);
+    }
+    Prefab* prefab = getPrefab(path);
+    Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, instanceRoot) : nullptr;
+    if (instance && instance->rootEntity == instanceRoot) {
+        instance->removed[registryEntity] = revert.entry;
+    }
+    sceneProject->isModified = true;
+}
+
+bool editor::Project::applyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
+        Entity registryEntity, PrefabRemovalApply& apply) {
+    SceneProject* sceneProject = getScene(sceneId);
+    Prefab* prefab = getPrefab(path);
+    Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, instanceRoot) : nullptr;
+    if (!sceneProject || !instance || instance->rootEntity != instanceRoot || !prefab->registry ||
+        !prefab->registry->isEntityCreated(registryEntity)) {
+        return false;
+    }
+    auto entry = instance->removed.find(registryEntity);
+    if (entry == instance->removed.end()) {
+        return false;
+    }
+    apply.entry = entry->second;
+    apply.registryParent = prefab->getRegistryParent(registryEntity);
+    const uint32_t instanceId = instance->instanceId;
+    instance->removed.erase(entry);
+
+    // Out of the Prefab, so out of every instance holding it
+    apply.recovery = removeRegistryEntityFromPrefab(path, registryEntity, sceneId, instanceId, true);
+    if (apply.recovery.empty()) {
+        if (Prefab::Instance* again = prefab->getInstanceById(sceneId, instanceId)) {
+            again->removed[registryEntity] = apply.entry;
+        }
+        return false;
+    }
+    sceneProject->isModified = true;
+    return true;
+}
+
+void editor::Project::undoApplyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
+        Entity registryEntity, PrefabRemovalApply& apply) {
+    Prefab* prefab = getPrefab(path);
+    const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, instanceRoot) : nullptr;
+    if (!instance || instance->rootEntity != instanceRoot) {
+        return;
+    }
+    // The applying instance keeps it removed: its entry rides with the recovery, which
+    // then leaves that instance out and maps a registry id the restore had to change
+    NodeRecovery recovery = apply.recovery;
+    recovery[std::to_string(sceneId) + "_" + std::to_string(instanceRoot)].removed[registryEntity] = apply.entry;
+    restoreRegistryEntityToPrefab(path, apply.registryParent, recovery, sceneId, instance->instanceId, true, nullptr, nullptr);
+    if (SceneProject* sceneProject = getScene(sceneId)) {
+        sceneProject->isModified = true;
+    }
+}
+
+bool editor::Project::canApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const {
+    const SceneProject* sceneProject = getScene(sceneId);
+    const Prefab* prefab = getPrefab(findPrefabPathFor(sceneId, entity));
+    if (!sceneProject || !sceneProject->scene || !prefab || !prefab->registry ||
+        componentType == ComponentType::PrefabComponent || !prefab->hasComponentOverride(sceneId, entity, componentType)) {
+        return false;
+    }
+    const Prefab::Instance* instance = prefab->getInstance(sceneId, entity);
+    const Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
+    if (!instance || registryEntity == NULL_ENTITY || !prefab->registry->isEntityCreated(registryEntity) ||
+        (prefab->registry->getSignature(registryEntity) & Catalog::componentTypeToSignature(prefab->registry.get(), componentType)).none()) {
+        return false;
+    }
+    std::unordered_set<Entity> memberLocals;
+    for (const Prefab::EntityMember& member : instance->members) {
+        memberLocals.insert(member.localEntity);
+    }
+    // A reference outside the instance cannot go into the shared Prefab
+    return !componentHasExternalEntityRef(sceneProject->scene, entity, componentType, memberLocals);
+}
+
+bool editor::Project::applyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, ComponentRecovery& recovery) {
+    if (!canApplyComponentOverride(sceneId, entity, componentType)) {
+        return false;
+    }
+    SceneProject* sceneProject = getScene(sceneId);
+    Prefab* prefab = getPrefab(findPrefabPathFor(sceneId, entity));
+    const uint32_t instanceId = prefab->getInstanceId(sceneId, entity);
+    const Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
+    EntityRegistry* registry = prefab->registry.get();
+
+    recovery.clear();
+    const Signature registrySignature = Catalog::componentTypeToSignature(registry, componentType);
+    recovery[std::to_string(NULL_PROJECT_SCENE)] = {registryEntity, Stream::encodeComponents(registryEntity, registry, registrySignature)};
+
+    std::unordered_map<Entity, Entity> localToRegistry;
+    if (const Prefab::Instance* instance = prefab->getInstanceById(sceneId, instanceId)) {
+        for (const Prefab::EntityMember& member : instance->members) {
+            localToRegistry[member.localEntity] = member.registryEntity;
+        }
+    }
+    prefab->clearComponentOverride(sceneId, entity, componentType);
+    Catalog::copyComponent(sceneProject->scene, entity, registry, registryEntity, componentType);
+    remapEntityPropertiesInComponent(registry, registryEntity, componentType, {}, localToRegistry);
+
+    // Every other instance that follows the Prefab on this component takes it
+    for (auto& [otherSceneId, sceneInstances] : prefab->instances) {
+        SceneProject* otherScene = getScene(otherSceneId);
+        if (!otherScene || !otherScene->scene) {
+            continue;
+        }
+        for (const Prefab::Instance& instance : sceneInstances) {
+            if (otherSceneId == sceneId && instance.instanceId == instanceId) {
+                continue;
+            }
+            const Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+            if (otherEntity == NULL_ENTITY || prefab->hasComponentOverride(otherSceneId, otherEntity, componentType)) {
+                continue;
+            }
+            const Signature signature = Catalog::componentTypeToSignature(otherScene->scene, componentType);
+            recovery[std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId)] =
+                {otherEntity, Stream::encodeComponents(otherEntity, otherScene->scene, signature)};
+            Catalog::copyComponent(registry, registryEntity, otherScene->scene, otherEntity, componentType);
+            std::unordered_map<Entity, Entity> registryToLocal;
+            for (const Prefab::EntityMember& member : instance.members) {
+                registryToLocal[member.registryEntity] = member.localEntity;
+            }
+            remapEntityPropertiesInComponent(otherScene->scene, otherEntity, componentType, {}, registryToLocal);
+            otherScene->isModified = true;
+            otherScene->needUpdateRender = true;
+        }
+    }
+
+    prefab->isModified = true;
+    sceneProject->isModified = true;
+    return true;
+}
+
+void editor::Project::undoApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery) {
+    Prefab* prefab = getPrefab(findPrefabPathFor(sceneId, entity));
+    if (!prefab || !prefab->registry) {
+        return;
+    }
+    auto parentOf = [](EntityRegistry* registry, Entity target) {
+        const Transform* transform = registry->findComponent<Transform>(target);
+        return transform ? transform->parent : NULL_ENTITY;
+    };
+    for (const auto& [key, saved] : recovery) {
+        if (key == std::to_string(NULL_PROJECT_SCENE)) {
+            if (prefab->registry->isEntityCreated(saved.entity)) {
+                Stream::decodeComponents(saved.entity, parentOf(prefab->registry.get(), saved.entity), prefab->registry.get(), saved.node);
+            }
+            continue;
+        }
+        const uint32_t otherSceneId = static_cast<uint32_t>(std::stoul(key.substr(0, key.find('_'))));
+        SceneProject* otherScene = getScene(otherSceneId);
+        if (otherScene && otherScene->scene && otherScene->scene->isEntityCreated(saved.entity)) {
+            Stream::decodeComponents(saved.entity, parentOf(otherScene->scene, saved.entity), otherScene->scene, saved.node);
+            otherScene->needUpdateRender = true;
+        }
+    }
+    prefab->setComponentOverride(sceneId, entity, componentType);
+    prefab->isModified = true;
 }
 
 bool editor::Project::prefabPropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself){
@@ -8765,6 +9762,9 @@ bool editor::Project::prefabPropertyChanged(uint32_t sceneId, Entity entity, Com
                 for (auto& instance : sceneInstances) {
                     if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || changeItself) {
                         Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                        if (otherEntity == NULL_ENTITY) {
+                            continue; // removed from that instance
+                        }
 
                         // Instances that hold their own external reference on this component
                         // are overridden, so they are skipped here and keep their wiring.
@@ -8842,6 +9842,9 @@ bool editor::Project::prefabNameChanged(uint32_t sceneId, Entity entity, std::st
         for (auto& instance : sceneInstances) {
             if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || changeItself) {
                 Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
+                if (otherEntity == NULL_ENTITY) {
+                    continue; // removed from that instance
+                }
 
                 otherScene->scene->setEntityName(otherEntity, name);
                 otherScene->isModified = true;
@@ -8934,20 +9937,63 @@ editor::SharedMoveRecovery editor::Project::moveEntityFromPrefab(uint32_t sceneI
             stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
-        for (auto& instance : sceneInstances) {
-            if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || moveItself) {
-                Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
-                Entity otherTarget = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
+        // By id: taking a branch out or bringing one in changes the instance lists
+        std::vector<uint32_t> instanceIds;
+        for (const auto& instance : sceneInstances) {
+            instanceIds.push_back(instance.instanceId);
+        }
+        for (uint32_t otherInstanceId : instanceIds) {
+            Prefab::Instance* instance = prefab->getInstanceById(otherSceneId, otherInstanceId);
+            if (!instance || ((otherSceneId == sceneId) && (otherInstanceId == instanceId) && !moveItself)) {
+                continue;
+            }
+            Entity otherEntity = prefab->getLocalEntity(otherSceneId, otherInstanceId, registryEntity);
+            Entity otherTarget = prefab->getLocalEntity(otherSceneId, otherInstanceId, registryTarget);
+            // Where the Prefab puts it now, below a GameObject this instance removed or not
+            const bool present = !prefab->isRegistryEntityAbsent(*instance, registryEntity);
+            std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(otherInstanceId);
 
-                if (otherEntity != NULL_ENTITY && otherTarget != NULL_ENTITY) {
-                    Entity otherOldParent;
-                    size_t otherOldIndex;
-                    bool otherHasTransform;
-                    ProjectUtils::moveEntityOrderByTarget(otherScene->scene, otherScene->entities, otherEntity, otherTarget, type, otherOldParent, otherOldIndex, otherHasTransform);
-                    std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId);
-                    recovery[recoveryKey] = {otherOldParent, otherOldIndex, otherHasTransform};
-
-                    otherScene->isModified = true;
+            if (otherEntity != NULL_ENTITY && otherTarget != NULL_ENTITY && present) {
+                Entity otherOldParent;
+                size_t otherOldIndex;
+                bool otherHasTransform;
+                ProjectUtils::moveEntityOrderByTarget(otherScene->scene, otherScene->entities, otherEntity, otherTarget, type, otherOldParent, otherOldIndex, otherHasTransform);
+                recovery[recoveryKey] = {otherOldParent, otherOldIndex, otherHasTransform};
+                otherScene->isModified = true;
+            } else if (otherEntity != NULL_ENTITY && !present) {
+                // Moved below a GameObject the instance removed: it leaves the instance too
+                SharedMoveRecoveryEntry entry{NULL_ENTITY, 0, false};
+                entry.left = removePrefabBranch(otherSceneId, otherEntity, false);
+                if (entry.left.valid()) {
+                    recovery[recoveryKey] = std::move(entry);
+                }
+            } else if (otherEntity != NULL_ENTITY && present) {
+                // The target is one the instance removed: the Prefab order places it
+                Transform* transform = otherScene->scene->findComponent<Transform>(otherEntity);
+                Entity newRegistryParent = prefab->getRegistryParent(registryEntity);
+                Entity localParent = newRegistryParent == NULL_ENTITY ? instance->rootEntity :
+                    prefab->getLocalEntity(otherSceneId, otherInstanceId, newRegistryParent);
+                if (localParent == NULL_ENTITY) {
+                    continue;
+                }
+                SharedMoveRecoveryEntry entry{NULL_ENTITY, 0, transform != nullptr};
+                if (transform) {
+                    entry.oldParent = transform->parent;
+                    entry.oldIndex = ProjectUtils::getTransformIndex(otherScene->scene, otherEntity);
+                } else {
+                    auto tracked = std::find(otherScene->entities.begin(), otherScene->entities.end(), otherEntity);
+                    entry.oldIndex = tracked != otherScene->entities.end() ? std::distance(otherScene->entities.begin(), tracked) : 0;
+                }
+                placeInPrefabOrder(otherScene, *prefab, *instance, registryEntity, otherEntity, localParent, true);
+                recovery[recoveryKey] = std::move(entry);
+                otherScene->isModified = true;
+            } else if (otherEntity == NULL_ENTITY && present) {
+                // Out from below a GameObject the instance removed: it comes into the instance
+                SharedMoveRecoveryEntry entry{NULL_ENTITY, 0, false};
+                std::vector<Prefab::EntityMember> entered = instantiatePrefabBranch(otherScene, filepath, otherInstanceId, registryEntity, {});
+                if (!entered.empty()) {
+                    entry.entered = entered[0].localEntity;
+                    recovery[recoveryKey] = std::move(entry);
                 }
             }
         }
@@ -8998,19 +10044,37 @@ bool editor::Project::undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, En
             stalePrefabScenes.push_back(otherSceneId);
             continue;
         }
-        // Inverting to get correct entity index
+        // Inverting to get correct entity index; by id, as a branch going or coming back
+        // changes the instance lists
+        std::vector<uint32_t> instanceIds;
         for (auto it = sceneInstances.rbegin(); it != sceneInstances.rend(); ++it) {
-            auto& instance = *it;
-            if ((otherSceneId != sceneId) || (instance.instanceId != instanceId) || moveItself) {
-                std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(instance.instanceId);
-                if (recovery.find(recoveryKey) != recovery.end()) {
-                    Entity otherEntity = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryEntity);
-                    Entity otherTarget = prefab->getLocalEntity(otherSceneId, instance.instanceId, registryTarget);
-                    if (otherEntity != NULL_ENTITY && otherTarget != NULL_ENTITY) {
-                        ProjectUtils::moveEntityOrderByIndex(otherScene->scene, otherScene->entities, otherEntity, recovery.at(recoveryKey).oldParent, recovery.at(recoveryKey).oldIndex, recovery.at(recoveryKey).hasTransform);
-                    }
+            instanceIds.push_back(it->instanceId);
+        }
+        for (uint32_t otherInstanceId : instanceIds) {
+            if ((otherSceneId == sceneId) && (otherInstanceId == instanceId) && !moveItself) {
+                continue;
+            }
+            std::string recoveryKey = std::to_string(otherSceneId) + "_" + std::to_string(otherInstanceId);
+            auto entryIt = recovery.find(recoveryKey);
+            if (entryIt == recovery.end()) {
+                continue;
+            }
+            const SharedMoveRecoveryEntry& entry = entryIt->second;
+            if (entry.left.valid()) {
+                // It left the instance with the move: back as it was
+                restorePrefabBranch(otherSceneId, entry.left);
+            } else if (entry.entered != NULL_ENTITY) {
+                // It came into the instance with the move: out again
+                if (otherScene->scene->isEntityCreated(entry.entered)) {
+                    removePrefabBranch(otherSceneId, entry.entered, false);
+                }
+            } else {
+                Entity otherEntity = prefab->getLocalEntity(otherSceneId, otherInstanceId, registryEntity);
+                if (otherEntity != NULL_ENTITY) {
+                    ProjectUtils::moveEntityOrderByIndex(otherScene->scene, otherScene->entities, otherEntity, entry.oldParent, entry.oldIndex, entry.hasTransform);
                 }
             }
+            otherScene->isModified = true;
         }
     }
     for (uint32_t staleId : stalePrefabScenes) {

@@ -29,6 +29,14 @@ namespace jasperengine::editor{
         NodeRecovery recoveryPrefabData;
         bool isPrefabRoot = false;
         std::filesystem::path prefabPath;
+        // A Prefab GameObject removed from its instance only (removed GameObject override)
+        PrefabBranchRecovery removedFromInstance;
+    };
+
+    // What deleting a GameObject of a prefab instance that comes from the Prefab does
+    enum class PrefabMemberDelete {
+        RemoveFromInstance,  // Unity: removed from this instance only, a removed GameObject override
+        DeleteFromPrefab     // a Prefab edit: gone from the Prefab asset and all its instances
     };
 
     class DeleteEntityCmd: public Command{
@@ -53,6 +61,7 @@ namespace jasperengine::editor{
         std::vector<Entity> requestedEntities;
         std::vector<Entity> preservedEntities;
         bool allowLockedRoots;
+        PrefabMemberDelete prefabMemberDelete = PrefabMemberDelete::RemoveFromInstance;
 
         std::vector<Entity> lastSelected;
         std::vector<Entity> survivingEntities;
@@ -89,6 +98,9 @@ namespace jasperengine::editor{
         // project context just before this command runs: its first execute takes these
         // as its snapshots instead of encoding the same GameObjects again
         void setPreEncoded(std::unordered_map<Entity, YAML::Node> snapshots) { preEncoded = std::move(snapshots); }
+
+        // Set before the first execute; a user's delete removes from the instance only
+        void setPrefabMemberDelete(PrefabMemberDelete mode) { prefabMemberDelete = mode; }
 
         bool execute() override;
         void undo() override;

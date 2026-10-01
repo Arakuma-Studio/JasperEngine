@@ -2408,6 +2408,30 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         }
     }
 
+    // Removed GameObject overrides: the factory builds the whole prefab, so the members an
+    // instance (or one nested in it) left out are destroyed right after, by their index,
+    // with the whole subtree of a nested root that is left out
+    std::map<Entity, std::vector<size_t>> absentMembers;
+    auto mapAbsentMembers = [&](auto&& self, const PrefabInstanceInfo* bi, Entity topRoot, size_t base) -> void {
+        size_t next = base + bi->orderedMembers.size();
+        for (size_t i = 0; i < bi->orderedMembers.size(); i++) {
+            const size_t nestedSize = i < bi->nestedSizes.size() ? bi->nestedSizes[i] : 0;
+            if (bi->orderedMembers[i] == NULL_ENTITY) {
+                absentMembers[topRoot].push_back(base + i);
+                for (size_t n = 0; n < nestedSize; n++) {
+                    absentMembers[topRoot].push_back(next + n);
+                }
+            } else if (nestedSize > 0) {
+                auto nestedIt = rootToInstance.find(bi->orderedMembers[i]);
+                if (nestedIt != rootToInstance.end()) self(self, nestedIt->second, topRoot, next);
+            }
+            next += nestedSize;
+        }
+    };
+    for (Entity root : topLevelRoots) {
+        mapAbsentMembers(mapAbsentMembers, rootToInstance[root], root, 0);
+    }
+
     // a component reading a vector not filled yet is added with those references
     // cleared and assigned again once every instance exists
     std::set<Entity> builtRoots;
@@ -2537,7 +2561,7 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
 
     std::set<Entity> usedRoots;
     for (Entity root : topLevelRoots) {
-        if (usesMembers(root)) usedRoots.insert(root);
+        if (usesMembers(root) || absentMembers.count(root)) usedRoots.insert(root);
     }
 
     if (!usedRoots.empty()) {
@@ -2566,6 +2590,20 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
             out << "\n";
             if (usedRoots.count(entity)) {
                 out << ind3 << prefabToBuildFunctionName(bi->prefabPath) << "(scene, " << entity << ", " << membersVar(entity) << ");\n";
+                auto absentIt = absentMembers.find(entity);
+                if (absentIt != absentMembers.end()) {
+                    // children before their parents
+                    out << ind3 << "// Prefab GameObjects removed from this instance\n";
+                    out << ind3 << "const size_t removedMembers[] = {";
+                    for (size_t i = absentIt->second.size(); i-- > 0;) {
+                        out << absentIt->second[i] << (i > 0 ? ", " : "");
+                    }
+                    out << "};\n";
+                    out << ind3 << "for (size_t index : removedMembers) {\n";
+                    out << ind3 << "    if (index < " << membersVar(entity) << ".size() && scene->isEntityCreated(" << membersVar(entity) << "[index]))\n";
+                    out << ind3 << "        scene->destroyEntity(" << membersVar(entity) << "[index]);\n";
+                    out << ind3 << "}\n";
+                }
             } else {
                 out << ind3 << prefabToFunctionName(bi->prefabPath) << "(scene, " << entity << ");\n";
             }
