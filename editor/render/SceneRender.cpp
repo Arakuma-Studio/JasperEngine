@@ -521,10 +521,23 @@ void editor::SceneRender::activate(){
     }
 
     Engine::setFramebuffer(&framebuffer);
-    Engine::setScene(scene);
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(true);
 
-    Engine::removeAllSceneLayers(false);
+    if (underlayScene){
+        // Prefab Mode In Context: the context scene clears and draws first, through the
+        // camera that follows this view, then this scene over it (a layer keeps the colour)
+        underlayScene->setCamera(underlayCamera);
+        underlayScene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+        Engine::setScene(underlayScene);
+        Engine::removeAllSceneLayers(false);
+        if (underlayVeil){
+            Engine::addSceneLayer(underlayVeil);
+        }
+        Engine::addSceneLayer(scene);
+    }else{
+        Engine::setScene(scene);
+        Engine::removeAllSceneLayers(false);
+    }
 
     for (Scene* childScene : childSceneLayers) {
         Engine::addSceneLayer(childScene);
@@ -615,6 +628,15 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     const Entity viewCamera = previewing ? previewCameraEntity : camera->getEntity();
 
     std::vector<Engine::ViewLayer> layers;
+    // Prefab Mode In Context: the context scene under this one, as activate() sets it up
+    if (underlayScene && !gameLayers){
+        underlayScene->update(Engine::getDeltatime());
+        layers.push_back({underlayScene, underlayCamera, full, false, false, false, (float)width, (float)height});
+        if (underlayVeil){
+            underlayVeil->update(Engine::getDeltatime());
+            layers.push_back({underlayVeil, underlayVeil->getCamera(), full, false, false});
+        }
+    }
     // the Scene view's own fog and face culling toggles hold while playing too, and in this
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
@@ -649,6 +671,20 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
 
 void editor::SceneRender::setChildSceneLayers(const std::vector<Scene*>& layers){
     childSceneLayers = layers;
+}
+
+bool editor::SceneRender::setUnderlay(Scene* underlay, Entity camera, Scene* veil){
+    if (!underlay){
+        camera = NULL_ENTITY;
+        veil = nullptr;
+    }
+    if (underlayScene == underlay && underlayCamera == camera && underlayVeil == veil){
+        return false;
+    }
+    underlayScene = underlay;
+    underlayCamera = camera;
+    underlayVeil = veil;
+    return true;
 }
 
 void editor::SceneRender::updateSize(int width, int height){

@@ -1177,12 +1177,15 @@ void editor::App::showAlert(){
                     }
                 }
             } else if (alert.type == AlertType::ThreeButton) {
-                // For three-button alerts, show Yes, No and Cancel buttons
+                // For three-button alerts, show Yes, No and Cancel buttons (or their labels)
                 float windowWidth = ImGui::GetWindowSize().x;
-                float buttonsWidth = 370; // Width for three buttons
-                ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+                const float padding = ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float yesWidth = std::max(120.0f, ImGui::CalcTextSize(alert.yesLabel.c_str()).x + padding);
+                const float noWidth = std::max(120.0f, ImGui::CalcTextSize(alert.noLabel.c_str()).x + padding);
+                float buttonsWidth = yesWidth + noWidth + 120.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+                ImGui::SetCursorPosX(std::max(0.0f, (windowWidth - buttonsWidth) * 0.5f));
 
-                if (ImGui::Button("Yes", ImVec2(120, 0))) {
+                if (ImGui::Button(alert.yesLabel.c_str(), ImVec2(yesWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
                     if (alert.onYes) {
@@ -1190,7 +1193,7 @@ void editor::App::showAlert(){
                     }
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("No", ImVec2(120, 0))) {
+                if (ImGui::Button(alert.noLabel.c_str(), ImVec2(noWidth, 0))) {
                     alert.needShow = false;
                     ImGui::CloseCurrentPopup();
                     if (alert.onNo) {
@@ -2040,6 +2043,10 @@ void editor::App::show(){
     aiChatWindow->show();
     codeEditor->show();
     gameWindow->show();
+    // Prefab Mode's tab docks with the scene tabs the first time a stage shows
+    if (project.getActivePrefabStage()) {
+        dockTabWindow(SceneWindow::PREFAB_STAGE_WINDOW_ID);
+    }
     sceneWindow->show();
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
@@ -2209,6 +2216,8 @@ void editor::App::engineInit(int argc, char** argv) {
                 sceneProject->structureVersion++;
             }
         }
+        // a prefab stage's Auto Save writes after its changes
+        project.notePrefabStageChange((uint32_t)sceneId);
     };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
@@ -2313,6 +2322,9 @@ void editor::App::engineRender(){
     project.refreshLinkedMaterials();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
+    // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
+    project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
+        || ImGui::GetIO().WantTextInput);
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -2368,8 +2380,17 @@ void editor::App::engineRender(){
         return false;
     };
 
-    for (auto& sceneProject : project.getScenes()) {
-        if (!sceneProject.opened) continue;
+    // The Scene views: the open scenes and the shown prefab stage (Prefab Mode)
+    std::vector<SceneProject*> viewScenes;
+    for (auto& openScene : project.getScenes()) {
+        if (openScene.opened) viewScenes.push_back(&openScene);
+    }
+    if (PrefabStage* prefabStage = project.getActivePrefabStage()) {
+        viewScenes.push_back(&prefabStage->sceneProject);
+    }
+
+    for (SceneProject* viewScene : viewScenes) {
+        SceneProject& sceneProject = *viewScene;
         if (!sceneProject.scene || !sceneProject.sceneRender) continue;
         if (sceneProject.playState == ScenePlayState::SAVING || sceneProject.playState == ScenePlayState::LOADING || sceneProject.playState == ScenePlayState::CANCELLING) continue;
 
@@ -2439,6 +2460,8 @@ void editor::App::engineRender(){
                 }
             }
             sceneProject.sceneRender->setChildSceneLayers(childLayers);
+            // Prefab Mode In Context: the context scene under the stage (no-op for a scene)
+            project.preparePrefabStageView(sceneProject.id, width, height);
 
             // activate() reloads this scene and every layer, so it runs only on a scene
             // change. Anything else needing it calls resetLastActivatedScene().
@@ -2503,7 +2526,9 @@ void editor::App::engineRender(){
             // A paused game advances one frame here when Step was pressed
             const bool steppingFrame = project.beginStepFrame(sceneProject.id);
 
+            project.beginPrefabStageDraw(sceneProject.id);
             Engine::systemDraw();
+            project.endPrefabStageDraw(sceneProject.id);
 
             if (steppingFrame) {
                 project.endStepFrame(sceneProject.id);
@@ -2647,6 +2672,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
         }
     }
     sceneRender->setChildSceneLayers(childLayers);
+    project.preparePrefabStageView(sceneProject.id, width, height);
 
     sceneRender->setOverlayScale(sceneWindow->getOverlayScale(sceneProject.id));
     if (sceneRender->getViewWidth() != width || sceneRender->getViewHeight() != height) {
@@ -2656,7 +2682,9 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
     sceneRender->updateRenderSystem();
     sceneProject.scene->update(Engine::getDeltatime());
 
+    project.beginPrefabStageDraw(sceneProject.id);
     sceneRender->drawSceneView(width, height, childLayers, false);
+    project.endPrefabStageDraw(sceneProject.id);
 
     renderedSceneThisFrame = true;
     sceneProject.needUpdateRender = false;
@@ -3184,9 +3212,24 @@ void editor::App::registerThreeButtonAlert(std::string title, std::string messag
     alert.message = message;
     alert.note.clear();
     alert.type = AlertType::ThreeButton;
+    alert.yesLabel = "Yes";
+    alert.noLabel = "No";
     alert.onYes = onYes;
     alert.onNo = onNo;
     alert.onCancel = onCancel;
+}
+
+void editor::App::registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard, std::function<void()> onCancel) {
+    registerThreeButtonAlert(std::move(title), std::move(message), std::move(onSave), std::move(onDiscard), std::move(onCancel));
+    alert.yesLabel = "Save";
+    alert.noLabel = "Discard Changes";
+}
+
+void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId, uint32_t contextRoot, bool inContext) {
+    // Next frame: the window asking is in the middle of drawing the scene it may replace
+    enqueueMainThreadTask([this, path, contextSceneId, contextRoot, inContext]() {
+        project.openPrefabStage(path, contextSceneId, contextRoot, inContext);
+    });
 }
 
 void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {

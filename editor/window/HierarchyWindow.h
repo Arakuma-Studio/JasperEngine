@@ -146,6 +146,15 @@ namespace jasperengine::editor{
         void showCreateMenuItems(bool atRoot, Entity parent, bool addToPrefab);
         void showSceneMenu(SceneProject* sceneProject);
         void showPrefabMenu(const TreeNode& node);
+
+        // Prefab Mode (HierarchyPrefabMode.cpp): the stage's header menu, Unity's "Open Asset
+        // in Context / in Isolation" items, and the row buttons (the header's back arrow, the
+        // open arrow of an instance root)
+        void showPrefabStageMenu(SceneProject* sceneProject);
+        void showOpenPrefabItems(const TreeNode& node);
+        void drawPrefabRowButtons(const TreeNode& node, bool renaming);
+        // The prefab asset and instance root a row opens in Prefab Mode (false if none)
+        bool getOpenPrefabTarget(const TreeNode& node, std::filesystem::path& path, Entity& instanceRoot) const;
         void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);
         bool isRenaming(const TreeNode& node) const;
         void drawRenameField();

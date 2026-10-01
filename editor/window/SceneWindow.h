@@ -56,6 +56,17 @@ namespace jasperengine::editor {
 
         std::vector<uint32_t> closeSceneQueue;
 
+        // Prefab Mode: the stage the Prefab Mode tab showed last frame (a new one takes focus,
+        // leaving it gives the focus back to the scene)
+        uint32_t shownPrefabStage = NULL_PROJECT_SCENE;
+
+        // Prefab Mode's bar over its Scene view: breadcrumbs, Save, Auto Save, Context
+        // (PrefabStageBar.cpp)
+        void drawPrefabStageBar(SceneProject& sceneProject);
+        std::string getPrefabStageWindowTitle(const SceneProject& sceneProject) const;
+        // Leaves Prefab Mode down to `depth` stages, asking to save (deferred to the next frame)
+        void requestExitPrefabStages(size_t depth);
+
         void handleCloseScene(uint32_t sceneId);
         void closeSceneInternal(uint32_t sceneId);
         void sceneEventHandler(SceneProject* sceneProject);
@@ -79,6 +90,9 @@ namespace jasperengine::editor {
         void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
         
     public:
+        // The ImGui id of Prefab Mode's tab: one tab, whichever stage it shows
+        static constexpr const char* PREFAB_STAGE_WINDOW_ID = "###PrefabMode";
+
         SceneWindow(Project* project);
 
         void show();

@@ -502,6 +502,13 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         return {};
     }
 
+    // Prefab Mode: an instance of a prefab holding the stage's asset (a paste, a drop) would
+    // make the asset contain itself
+    if (!nestedImport && isPrefabStage(sceneProject->id) && !canInstantiatePrefabIn(sceneProject->id, filepath)) {
+        Out::error("Prefab %s cannot go into this prefab: it would contain itself", filepath.string().c_str());
+        return missingPrefab();
+    }
+
     // Cycle detection for nested prefabs
     std::string pathStr = filepath.string();
     if (loadingPaths.count(pathStr)) {

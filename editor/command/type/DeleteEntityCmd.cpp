@@ -415,6 +415,14 @@ void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
 bool editor::DeleteEntityCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
+    // Prefab Mode: a prefab has its root (Unity refuses to delete it there)
+    for (Entity requested : requestedEntities) {
+        if (project->isPrefabStageRoot(sceneId, requested)) {
+            Out::warning("The root GameObject of a prefab cannot be deleted in Prefab Mode");
+            return false;
+        }
+    }
+
     std::vector<Entity> entitiesToDelete;
     std::unordered_set<Entity> entitiesToDeleteSet;
     const std::unordered_set<Entity> requestedSet(requestedEntities.begin(), requestedEntities.end());
