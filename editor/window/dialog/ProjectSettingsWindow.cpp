@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cfloat>
 #include <cstring>
 
 namespace jasperengine::editor {
@@ -948,6 +949,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_layerNames = project->getLayerNames();
     m_layerNames.resize(MAX_LAYERS);
     m_newTagBuffer[0] = '\0';
+
+    m_layerCollision3D = project->getLayerCollisionMatrix3D();
+    m_layerCollision2D = project->getLayerCollisionMatrix2D();
 }
 
 void ProjectSettingsWindow::show() {
@@ -1305,25 +1309,168 @@ void ProjectSettingsWindow::drawQualitySettings() {
 }
 
 void ProjectSettingsWindow::drawPhysicsSettings() {
-    drawSettingsPanel("##PhysicsSettingsPanel", [this]() {
-        if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
-            m_physics3DEnabled = Project::defaultPhysics3DEnabled;
+    if (beginSettingsPanel("##PhysicsSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
+                m_physics3DEnabled = Project::defaultPhysics3DEnabled;
+            }
+            ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
+            endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
+            ImGui::EndTable();
         }
-        ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
-        endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
 
-    });
+        if (Theme::foldoutHeader("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
+            drawSectionNote("Rigidbodies on layers whose box is cleared pass through each other and report no contacts. "
+                "Scripts change it with Physics.ignoreLayerCollision; collider category and mask bits still apply to the checked pairs.");
+            drawLayerCollisionMatrix("##LayerCollisionMatrix3D", m_layerCollision3D);
+        }
+    }
+    endSettingsPanel();
 }
 
 void ProjectSettingsWindow::drawPhysics2DSettings() {
-    drawSettingsPanel("##Physics2DSettingsPanel", [this]() {
-        if (beginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
-            m_physics2DEnabled = Project::defaultPhysics2DEnabled;
+    if (beginSettingsPanel("##Physics2DSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (beginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
+                m_physics2DEnabled = Project::defaultPhysics2DEnabled;
+            }
+            ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
+            endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
+            ImGui::EndTable();
         }
-        ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
-        endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
 
-    });
+        if (Theme::foldoutHeader("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
+            drawSectionNote("Rigidbody 2D colliders on layers whose box is cleared pass through each other and report no contacts or triggers. "
+                "Scripts change it with Physics2D.ignoreLayerCollision; collider category, mask and group still apply to the checked pairs.");
+            drawLayerCollisionMatrix("##LayerCollisionMatrix2D", m_layerCollision2D);
+        }
+    }
+    endSettingsPanel();
+}
+
+// Text turned a quarter left, read bottom to top, from bottomLeft upwards
+static void addVerticalText(ImDrawList* drawList, const ImVec2& bottomLeft, ImU32 color, const char* text) {
+    const int firstVertex = drawList->VtxBuffer.Size;
+    // laid out unclipped, as the clip test would run on the unrotated glyphs; the
+    // draw command still clips to the window
+    const ImVec4 noClip(-FLT_MAX, -FLT_MAX, FLT_MAX, FLT_MAX);
+    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), bottomLeft, color, text, nullptr, 0.0f, &noClip);
+    for (int i = firstVertex; i < drawList->VtxBuffer.Size; i++) {
+        ImDrawVert& vertex = drawList->VtxBuffer[i];
+        const float dx = vertex.pos.x - bottomLeft.x;
+        const float dy = vertex.pos.y - bottomLeft.y;
+        vertex.pos = ImVec2(bottomLeft.x + dy, bottomLeft.y - dx);
+    }
+}
+
+void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows) {
+    // named layers only, lowest first, as Unity lists them
+    std::vector<int> layers;
+    std::vector<std::string> names;
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+        const std::string name = TagManager::isBuiltinLayer(layer)
+            ? std::string(TagManager::getBuiltinLayerName(layer))
+            : TagManager::trimName(m_layerNames[layer]);
+        if (!name.empty()) {
+            layers.push_back(layer);
+            names.push_back(name);
+        }
+    }
+    const int count = static_cast<int>(layers.size());
+
+    ImGui::PushID(id);
+
+    // every layer, named or not, like Unity's buttons
+    if (ImGui::Button("Disable All")) {
+        rows.fill(LAYER_MASK_NOTHING);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Enable All")) {
+        rows.fill(LAYER_MASK_EVERYTHING);
+    }
+    ImGui::Spacing();
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float labelWidth = 0.0f;
+    for (const std::string& name : names) {
+        labelWidth = std::max(labelWidth, ImGui::CalcTextSize(name.c_str()).x);
+    }
+    const float cell = ImGui::GetFrameHeight() + Theme::dpi(2.0f);
+    const float headerHeight = labelWidth + style.ItemInnerSpacing.y * 2.0f;
+    const float labelColumn = labelWidth + style.ItemSpacing.x * 2.0f;
+    const ImVec2 contentSize(labelColumn + count * cell, headerHeight + count * cell);
+
+    // scrolls sideways when 32 named layers do not fit the page
+    const float childHeight = contentSize.y + style.ScrollbarSize + style.WindowPadding.y;
+    if (ImGui::BeginChild("##Matrix", ImVec2(0, childHeight), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const float gridX = origin.x + labelColumn;
+        const float gridY = origin.y + headerHeight;
+        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        const ImU32 highlightColor = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+        // Row and column of the box under the mouse, highlighted like Unity
+        int hoveredRow = -1;
+        int hoveredColumn = -1;
+        if (ImGui::IsWindowHovered()) {
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            const int column = static_cast<int>(std::floor((mouse.x - gridX) / cell));
+            const int row = static_cast<int>(std::floor((mouse.y - gridY) / cell));
+            if (mouse.x >= gridX && mouse.y >= gridY && row < count && column >= 0 && column <= count - 1 - row) {
+                hoveredRow = row;
+                hoveredColumn = column;
+            }
+        }
+        if (hoveredRow >= 0) {
+            const ImU32 bandColor = ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.5f);
+            drawList->AddRectFilled(ImVec2(origin.x, gridY + hoveredRow * cell),
+                                    ImVec2(gridX + (count - hoveredRow) * cell, gridY + (hoveredRow + 1) * cell), bandColor);
+            drawList->AddRectFilled(ImVec2(gridX + hoveredColumn * cell, origin.y),
+                                    ImVec2(gridX + (hoveredColumn + 1) * cell, gridY + (count - hoveredColumn) * cell), bandColor);
+        }
+
+        // Columns run from the highest layer on the left down to the lowest
+        for (int column = 0; column < count; column++) {
+            const int index = count - 1 - column;
+            const float x = gridX + column * cell + (cell - ImGui::GetFontSize()) * 0.5f;
+            addVerticalText(drawList, ImVec2(x, gridY - style.ItemInnerSpacing.y), column == hoveredColumn ? highlightColor : textColor, names[index].c_str());
+        }
+
+        for (int row = 0; row < count; row++) {
+            const float y = gridY + row * cell;
+            const ImVec2 labelSize = ImGui::CalcTextSize(names[row].c_str());
+            drawList->AddText(ImVec2(gridX - style.ItemSpacing.x - labelSize.x, y + (cell - labelSize.y) * 0.5f),
+                              row == hoveredRow ? highlightColor : textColor, names[row].c_str());
+
+            // row 'row' pairs its layer with itself and every higher layer
+            for (int column = 0; column <= count - 1 - row; column++) {
+                const int layerA = layers[row];
+                const int layerB = layers[count - 1 - column];
+
+                ImGui::SetCursorScreenPos(ImVec2(gridX + column * cell, y + (cell - ImGui::GetFrameHeight()) * 0.5f));
+                ImGui::PushID(row * MAX_LAYERS + column);
+                bool collide = ((rows[layerA] >> layerB) & 1u) != 0;
+                if (ImGui::Checkbox("##Pair", &collide)) {
+                    if (collide) {
+                        rows[layerA] |= 1u << layerB;
+                        rows[layerB] |= 1u << layerA;
+                    } else {
+                        rows[layerA] &= ~(1u << layerB);
+                        rows[layerB] &= ~(1u << layerA);
+                    }
+                }
+                ImGui::SetItemTooltip("%s / %s", names[row].c_str(), names[count - 1 - column].c_str());
+                ImGui::PopID();
+            }
+        }
+
+        ImGui::SetCursorScreenPos(origin);
+        ImGui::Dummy(contentSize);
+    }
+    ImGui::EndChild();
+
+    ImGui::PopID();
 }
 
 void ProjectSettingsWindow::drawScriptingSettings() {
@@ -1945,6 +2092,7 @@ bool ProjectSettingsWindow::applySettings() {
     }
     // GameObjects keep a removed tag, as in Unity; scripts then see it as not defined
     m_project->setTagsAndLayers(tags, m_layerNames);
+    m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
 
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();

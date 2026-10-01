@@ -15,6 +15,8 @@
 #include "PrefabManager.h"
 #include "Input.h"
 #include "System.h"
+#include "registry/PhysicsLayers.h"
+#include "math/Ray.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Contact2D.h"
@@ -57,6 +59,175 @@ static int luaLayerMaskGetMask(lua_State* L){
     }
     lua_pushinteger(L, (lua_Integer)(int32_t)TagManager::getMask(names));
     return 1;
+}
+
+// Physics and Physics2D. Layer masks are read as Unity's int and any integer is taken by
+// its low 32 bits, so LayerMask.getMask(...), ~mask and -1 (Everything) all work.
+namespace{
+
+    uint32_t luaOptLayerMask(lua_State* L, int index, uint32_t defaultMask){
+        if (lua_isnoneornil(L, index)){
+            return defaultMask;
+        }
+        return (uint32_t)luaL_checkinteger(L, index);
+    }
+
+    lua_Integer luaMaskToInteger(uint32_t mask){
+        return (lua_Integer)(int32_t)mask;
+    }
+
+    lua_Integer luaAllLayers(){ return luaMaskToInteger(Physics::ALL_LAYERS); }
+    lua_Integer luaDefaultRaycastLayers(){ return luaMaskToInteger(Physics::DEFAULT_RAYCAST_LAYERS); }
+    lua_Integer luaIgnoreRaycastLayer(){ return luaMaskToInteger(Physics::IGNORE_RAYCAST_LAYER); }
+
+    template<typename PhysicsT>
+    int luaIgnoreLayerCollision(lua_State* L){
+        const int layer1 = (int)luaL_checkinteger(L, 1);
+        const int layer2 = (int)luaL_checkinteger(L, 2);
+        const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
+        PhysicsT::ignoreLayerCollision(layer1, layer2, ignore);
+        return 0;
+    }
+
+    template<typename PhysicsT>
+    int luaGetIgnoreLayerCollision(lua_State* L){
+        const int layer1 = (int)luaL_checkinteger(L, 1);
+        const int layer2 = (int)luaL_checkinteger(L, 2);
+        lua_pushboolean(L, PhysicsT::getIgnoreLayerCollision(layer1, layer2) ? 1 : 0);
+        return 1;
+    }
+
+    template<typename PhysicsT>
+    int luaGetLayerCollisionMask(lua_State* L){
+        const int layer = (int)luaL_checkinteger(L, 1);
+        lua_pushinteger(L, luaMaskToInteger(PhysicsT::getLayerCollisionMask(layer)));
+        return 1;
+    }
+
+    template<typename PhysicsT>
+    int luaSetLayerCollisionMask(lua_State* L){
+        const int layer = (int)luaL_checkinteger(L, 1);
+        const uint32_t mask = (uint32_t)luaL_checkinteger(L, 2);
+        PhysicsT::setLayerCollisionMask(layer, mask);
+        return 0;
+    }
+
+    template<typename PhysicsT>
+    int luaResetLayerCollisionMatrix(lua_State* L){
+        (void)L;
+        PhysicsT::resetLayerCollisionMatrix();
+        return 0;
+    }
+
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
+    Scene* luaSceneArg(lua_State* L, const char* function){
+        Scene* scene = nullptr;
+        if (luabridge::isInstance<Scene*>(L, 1)){
+            auto result = luabridge::get<Scene*>(L, 1);
+            if (result){
+                scene = result.value();
+            }
+        }
+        if (!scene){
+            luaL_error(L, "%s: argument 1 must be a Scene", function);
+        }
+        return scene;
+    }
+
+    // get<T> raises a Lua error on a mismatch, so the type is tested first
+    bool luaRayArg(lua_State* L, int index, Ray& ray){
+        if (!luabridge::isInstance<Ray>(L, index)){
+            return false;
+        }
+        auto result = luabridge::get<Ray>(L, index);
+        if (!result){
+            return false;
+        }
+        ray = result.value();
+        return true;
+    }
+
+    void luaPushRayReturn(lua_State* L, const RayReturn& hit){
+        if (!luabridge::push(L, hit)){
+            lua_pushnil(L);
+        }
+    }
+
+    void luaPushRayReturns(lua_State* L, const std::vector<RayReturn>& hits){
+        lua_createtable(L, (int)hits.size(), 0);
+        for (size_t i = 0; i < hits.size(); i++){
+            luaPushRayReturn(L, hits[i]);
+            lua_rawseti(L, -2, (lua_Integer)(i + 1));
+        }
+    }
+
+    // Physics.raycast(scene, ray [, layerMask]) or (scene, origin, direction, maxDistance [, layerMask]),
+    // and the 2D versions with Vector2 origin and direction
+    template<typename VectorT, bool all, bool is2D>
+    int luaRaycast(lua_State* L){
+        const char* function = is2D ? (all ? "Physics2D.raycastAll" : "Physics2D.raycast")
+                                    : (all ? "Physics.raycastAll" : "Physics.raycast");
+        Scene* scene = luaSceneArg(L, function);
+
+        Ray ray;
+        uint32_t layerMask;
+        if (luaRayArg(L, 2, ray)){
+            layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+        }else{
+            if (!luabridge::isInstance<VectorT>(L, 2) || !luabridge::isInstance<VectorT>(L, 3)){
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+            }
+            auto origin = luabridge::get<VectorT>(L, 2);
+            auto direction = luabridge::get<VectorT>(L, 3);
+            if (!origin || !direction){
+                return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
+            }
+            const float maxDistance = (float)luaL_checknumber(L, 4);
+            layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+
+            const VectorT originValue = origin.value();
+            const VectorT directionValue = direction.value();
+            if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+                if (all){
+                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                }else{
+                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                }
+#endif
+            }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+                if (all){
+                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                }else{
+                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                }
+#endif
+            }
+            return 1;
+        }
+
+        if constexpr (is2D){
+#ifdef JASPERENGINE_PHYSICS_2D
+            if (all){
+                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask));
+            }else{
+                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask));
+            }
+#endif
+        }else{
+#ifdef JASPERENGINE_PHYSICS_3D
+            if (all){
+                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask));
+            }else{
+                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask));
+            }
+#endif
+        }
+        return 1;
+    }
+#endif
+
 }
 
 void LuaBinding::registerCoreClasses(lua_State *L){
@@ -237,6 +408,40 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("nameToLayer", &TagManager::nameToLayer)
         .addStaticFunction("layerToName", &TagManager::layerToName)
         .addStaticFunction("getMask", &luaLayerMaskGetMask)
+        .endClass();
+
+    // Unity's Physics and Physics2D: Layer Collision Matrix (Project Settings > Physics and
+    // Physics 2D) and layer-masked ray casts. Layers are numbers 0..31 (LayerMask.nameToLayer).
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Physics>("Physics")
+        .addStaticProperty("ALL_LAYERS", &luaAllLayers)
+        .addStaticProperty("DEFAULT_RAYCAST_LAYERS", &luaDefaultRaycastLayers)
+        .addStaticProperty("IGNORE_RAYCAST_LAYER", &luaIgnoreRaycastLayer)
+        .addStaticFunction("ignoreLayerCollision", &luaIgnoreLayerCollision<Physics>)
+        .addStaticFunction("getIgnoreLayerCollision", &luaGetIgnoreLayerCollision<Physics>)
+        .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics>)
+        .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics>)
+        .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics>)
+#ifdef JASPERENGINE_PHYSICS_3D
+        .addStaticFunction("raycast", &luaRaycast<Vector3, false, false>)
+        .addStaticFunction("raycastAll", &luaRaycast<Vector3, true, false>)
+#endif
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Physics2D>("Physics2D")
+        .addStaticProperty("ALL_LAYERS", &luaAllLayers)
+        .addStaticProperty("DEFAULT_RAYCAST_LAYERS", &luaDefaultRaycastLayers)
+        .addStaticProperty("IGNORE_RAYCAST_LAYER", &luaIgnoreRaycastLayer)
+        .addStaticFunction("ignoreLayerCollision", &luaIgnoreLayerCollision<Physics2D>)
+        .addStaticFunction("getIgnoreLayerCollision", &luaGetIgnoreLayerCollision<Physics2D>)
+        .addStaticFunction("getLayerCollisionMask", &luaGetLayerCollisionMask<Physics2D>)
+        .addStaticFunction("setLayerCollisionMask", &luaSetLayerCollisionMask<Physics2D>)
+        .addStaticFunction("resetLayerCollisionMatrix", &luaResetLayerCollisionMatrix<Physics2D>)
+#ifdef JASPERENGINE_PHYSICS_2D
+        .addStaticFunction("raycast", &luaRaycast<Vector2, false, true>)
+        .addStaticFunction("raycastAll", &luaRaycast<Vector2, true, true>)
+#endif
         .endClass();
 
     // The "no entity" sentinel, mirroring the C++ NULL_ENTITY macro. Scene:findEntity

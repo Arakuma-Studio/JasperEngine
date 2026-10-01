@@ -556,53 +556,36 @@ void Rigidbody::setGravityFactor(float gravityFactor){
     }
 }
 
+// Kept in the component, so a reloaded body keeps them, and combined with the GameObject
+// layer into the Jolt ObjectLayer
 void Rigidbody::setBitsFilter(uint16_t category, uint16_t mask){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    checkBody(body);
-    getBodyInterface().SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(category, mask));
+    body.categoryBits = category;
+    body.maskBits = mask;
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyFilter3D(entity);
 }
 
 uint16_t Rigidbody::getCategoryBitsFilter() const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    checkBody(body);
-    JPH::ObjectLayer objectLayer = getBodyInterface().GetObjectLayer(body.body);
-
-    return JPH::ObjectLayerPairFilterMask::sGetGroup(objectLayer);
+    return getComponent<RigidbodyComponent>().categoryBits;
 }
 
 void Rigidbody::setCategoryBitsFilter(uint16_t category){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    checkBody(body);
-    JPH::BodyInterface &body_interface = getBodyInterface();
-
-    JPH::ObjectLayer objectLayer = body_interface.GetObjectLayer(body.body);
-    uint32_t mask = JPH::ObjectLayerPairFilterMask::sGetMask(objectLayer);
-
-    body_interface.SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(category, mask));
+    body.categoryBits = category;
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyFilter3D(entity);
 }
 
 uint16_t Rigidbody::getMaskBitsFilter() const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    checkBody(body);
-    JPH::ObjectLayer objectLayer = getBodyInterface().GetObjectLayer(body.body);
-
-    return JPH::ObjectLayerPairFilterMask::sGetMask(objectLayer);
+    return getComponent<RigidbodyComponent>().maskBits;
 }
 
 void Rigidbody::setMaskBitsFilter(uint16_t mask){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    checkBody(body);
-    JPH::BodyInterface &body_interface = getBodyInterface();
-
-    JPH::ObjectLayer objectLayer = body_interface.GetObjectLayer(body.body);
-    uint32_t group = JPH::ObjectLayerPairFilterMask::sGetGroup(objectLayer);
-
-    body_interface.SetObjectLayer(body.body, JPH::ObjectLayerPairFilterMask::sGetObjectLayer(group, mask));
+    body.maskBits = mask;
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyFilter3D(entity);
 }
 
 uint32_t Rigidbody::getCollisionGroupID() const{

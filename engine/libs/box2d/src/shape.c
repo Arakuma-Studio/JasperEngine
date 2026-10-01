@@ -1061,7 +1061,8 @@ void b2Shape_SetFilter( b2ShapeId shapeId, b2Filter filter )
 	}
 
 	// If the category bits change, I need to destroy the proxy because it affects the tree sorting.
-	bool destroyProxy = filter.categoryBits == shape->filter.categoryBits;
+	// JasperEngine: was ==, which left the tree with stale category bits (fixed upstream in v3.1)
+	bool destroyProxy = filter.categoryBits != shape->filter.categoryBits;
 
 	shape->filter = filter;
 

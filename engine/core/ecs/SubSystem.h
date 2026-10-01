@@ -50,6 +50,8 @@ namespace jasperengine{
 
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
+        // GameObject layer changed (Scene::setEntityLayer)
+        virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
 
     };
 

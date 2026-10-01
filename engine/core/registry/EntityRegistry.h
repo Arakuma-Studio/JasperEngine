@@ -82,6 +82,7 @@ namespace jasperengine {
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onEntityDestroyed(Entity entity, Signature signature) { (void)entity; (void)signature; }
+        virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
 
     public:
         EntityRegistry();

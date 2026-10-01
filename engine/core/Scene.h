@@ -60,6 +60,13 @@ namespace jasperengine{
             }
         }
 
+        // physics re-filters the entity's bodies
+        void onEntityLayerChanged(Entity entity) override {
+            for (auto const& pair : systems) {
+                pair.second->onEntityLayerChanged(entity);
+            }
+        }
+
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 for (ComponentId componentId = 0; componentId < signature.size(); ++componentId) {

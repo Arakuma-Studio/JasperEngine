@@ -29,6 +29,7 @@ Projects made before the rename are migrated once with
 | File > Build Settings... | File > Export Project... |
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
+| Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
 
@@ -58,6 +59,7 @@ Projects made before the rename are migrated once with
 | `Collider2DType`, `Collider3DType`, `RigidbodyMotionQuality` | `Shape2DType`, `Shape3DType`, `Body3DMotionQuality` |
 | `AudioSourceState`, `AudioSourceAttenuation` | `SoundState`, `SoundAttenuation` |
 | `LayoutGroupType`, `ShadowCaster2DShape` | `ContainerType`, `Occluder2DShape` |
+| `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `Model`, `Sprite`, `Tilemap`, `Terrain`, `Fog`, `Mirror`, `ReflectionProbe`,
@@ -65,6 +67,25 @@ Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `Polygon`, `MeshPolygon`, `InstancedMesh`, `Action`, `Animation`,
 `SpriteAnimation`, the keyframe tracks, `Joint2D`/`Joint3D`, `Contact2D`/`Contact3D`
 and `CollideShapeResult3D`.
+
+## Layers and physics
+
+Each physics backend has its Layer Collision Matrix (Project Settings > Physics for
+Jolt, Physics 2D for Box2D), saved in `project.yaml` as the layer pairs that do not
+collide (`ignoredLayerCollisions: {physics: [[8, 9]], physics2D: [...]}`). Bodies on a
+disabled pair pass through each other and report no contact or trigger events. The
+matrix gates first: a pair it allows still needs the colliders' category and mask bits
+(`setBitsFilter`, and the 2D group index) to match. `Physics.ignoreLayerCollision` and
+the `Physics2D` one change it at runtime; in the editor that lasts until Play stops.
+Changing a GameObject's layer re-filters its Rigidbody (2D) before the next step.
+
+Ray casts take a layer mask (`LayerMask.getMask(...)`, `Physics.ALL_LAYERS`):
+`Physics.raycast(scene, ray [, layerMask])`,
+`Physics.raycast(scene, origin, direction, maxDistance [, layerMask])` and `raycastAll`,
+and the `Physics2D` ones with `Vector2` origin and direction. Without a mask they use
+`DEFAULT_RAYCAST_LAYERS`, every layer but Ignore Raycast; so do the scene queries of
+`Ray:intersects`. With a `Ray`, `distance` is the fraction of `ray.direction`; with an
+origin, a direction and a distance it is in world units (scene units in 2D).
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

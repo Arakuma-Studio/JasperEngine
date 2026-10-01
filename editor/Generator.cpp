@@ -13,6 +13,7 @@
 #include "util/ShellEnv.h"
 #include "util/Util.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cctype>
 #include <stdexcept>
@@ -1580,6 +1581,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         if (tagsAndLayers.layerNames[layer].empty()) continue;
         mainContent += "    TagManager::setLayerName(" + std::to_string(layer) + ", " + Factory::formatString(tagsAndLayers.layerNames[layer]) + ");\n";
     }
+
+    // Layer Collision Matrices: only the rows that do not collide with every layer
+    auto emitLayerCollisionMatrix = [&mainContent](const char* physicsClass, const LayerCollisionRows& rows) {
+        for (int layer = 0; layer < MAX_LAYERS; layer++) {
+            if (rows[layer] == LAYER_MASK_EVERYTHING) continue;
+            char mask[16];
+            snprintf(mask, sizeof(mask), "0x%08Xu", (unsigned int)rows[layer]);
+            mainContent += std::string("    ") + physicsClass + "::setLayerCollisionMask(" + std::to_string(layer) + ", " + mask + ");\n";
+        }
+    };
+    emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
+    emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
 
     mainContent += "\n";
 

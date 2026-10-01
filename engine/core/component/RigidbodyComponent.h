@@ -109,6 +109,12 @@ namespace jasperengine{
         bool sensor = false;
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;
+
+        // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
+        // bodies collide when each one's category meets the other's mask and the Layer
+        // Collision Matrix lets their GameObject layers collide.
+        uint16_t categoryBits = 1;
+        uint16_t maskBits = 0xFFFF;
     };
 
 }

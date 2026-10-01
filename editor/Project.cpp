@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "Factory.h"
 #include "Workspace.h"
+#include "registry/PhysicsLayers.h"
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
@@ -2062,6 +2063,39 @@ const std::vector<std::string>& editor::Project::getLayerNames() const{
     return layerNames;
 }
 
+static editor::LayerCollisionRows symmetricLayerCollisions(const editor::LayerCollisionRows& rows){
+    editor::LayerCollisionRows result;
+    for (int layer = 0; layer < MAX_LAYERS; layer++){
+        uint32_t row = 0;
+        for (int other = 0; other < MAX_LAYERS; other++){
+            if (((rows[layer] >> other) & 1u) && ((rows[other] >> layer) & 1u)){
+                row |= 1u << other;
+            }
+        }
+        result[layer] = row;
+    }
+    return result;
+}
+
+void editor::Project::setLayerCollisionMatrices(const LayerCollisionRows& matrix3D, const LayerCollisionRows& matrix2D){
+    layerCollisionMatrix3D = symmetricLayerCollisions(matrix3D);
+    layerCollisionMatrix2D = symmetricLayerCollisions(matrix2D);
+    applyLayerCollisionMatrices();
+}
+
+const editor::LayerCollisionRows& editor::Project::getLayerCollisionMatrix3D() const{
+    return layerCollisionMatrix3D;
+}
+
+const editor::LayerCollisionRows& editor::Project::getLayerCollisionMatrix2D() const{
+    return layerCollisionMatrix2D;
+}
+
+void editor::Project::applyLayerCollisionMatrices() const{
+    Physics::getLayerCollisionMatrix().setRows(layerCollisionMatrix3D.data());
+    Physics2D::getLayerCollisionMatrix().setRows(layerCollisionMatrix2D.data());
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -4040,6 +4074,7 @@ void editor::Project::resetConfigs() {
     physics2DEnabled = defaultPhysics2DEnabled;
     physics3DEnabled = defaultPhysics3DEnabled;
     setTagsAndLayers({}, {});
+    setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -5240,7 +5275,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames});
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D});
 }
 
 void editor::Project::updateGeneratedSources() {
@@ -9222,7 +9257,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames});
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D});
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -9767,6 +9802,9 @@ void editor::Project::start(uint32_t sceneId) {
     }
 
     sceneProject->playState = ScenePlayState::LOADING;
+    // Play starts from the project's layer collision matrices, whatever an earlier Play's
+    // scripts did to them
+    applyLayerCollisionMatrices();
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -9967,6 +10005,9 @@ void editor::Project::stop(uint32_t sceneId) {
                     CommandHandle::get(mainSceneProject->id)->endPlaySession(false);
                 }
             }
+
+            // matrix changes made by scripts last only for the Play, never reaching project.yaml
+            applyLayerCollisionMatrices();
 
             {
                 std::scoped_lock lock(playSessionMutex);
