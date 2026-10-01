@@ -410,6 +410,16 @@ namespace jasperengine::editor{
         static constexpr double materialRefreshIntervalSec = 0.2;
 
         std::map<std::filesystem::path, Prefab> prefabAssets;
+
+        // Parsed prefab files, reused while the file on disk keeps its time and size:
+        // pasting a hundred instances parses the file once instead of per instance
+        struct PrefabFileCache {
+            std::filesystem::file_time_type writeTime{};
+            std::uintmax_t size = 0;
+            YAML::Node node;
+        };
+        std::map<std::filesystem::path, PrefabFileCache> prefabFileCache;
+        YAML::Node loadPrefabFile(const std::filesystem::path& fullPath);
         std::vector<std::filesystem::path> standalonePrefabs;  // built without a scene instance
 
         std::string libName;
@@ -878,7 +888,10 @@ namespace jasperengine::editor{
         YAML::Node encodePrefabNode(const std::filesystem::path& filepath) const;
 
         std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& prefabOverrides = YAML::Node(), const YAML::Node& prefabLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr);
-        bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities);
+        // reconcileTracked false leaves dropping the destroyed entities from the scene's
+        // tracked list to the caller (one pass after unimporting many instances)
+        bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
+                            bool reconcileTracked = true);
 
         bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
         bool addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,

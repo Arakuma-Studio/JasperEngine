@@ -68,7 +68,7 @@ namespace {
                 // Backward compatibility: scenes saved before forks were named by path
                 // stored the packed key, so only its stable half survives and the fork
                 // is re-paired on the next save. Remove this branch with support for them.
-                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(keyNode.as<uint64_t>())));
+                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(editor::YamlNumbers::as<uint64_t>(keyNode))));
                 continue;
             }
             ShaderType shaderType;
@@ -81,7 +81,7 @@ namespace {
             if (keyNode["customShader"]) {
                 customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
             }
-            const uint32_t properties = keyNode["properties"] ? keyNode["properties"].as<uint32_t>() : 0;
+            const uint32_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint32_t>(keyNode["properties"]) : 0;
             shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getShaderKey(shaderType, properties, customId)));
         }
         return shaderKeys;
@@ -269,7 +269,7 @@ uint32_t editor::Stream::decodeLayerMask(const YAML::Node& node, uint32_t fallba
 
     // written unsigned; a hand-written -1 (Unity's Everything) also reads as all layers
     try {
-        return static_cast<uint32_t>(node.as<long long>());
+        return static_cast<uint32_t>(YamlNumbers::as<long long>(node));
     } catch (const YAML::Exception&) {
         return fallback;
     }
@@ -1413,11 +1413,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
             } else if (source == "data") {
                 if (node["data"] && node["width"] && node["height"] && node["channels"]) {
                     std::vector<unsigned char> decodedData = Base64::decode(node["data"].as<std::string>());
-                    const int width = node["width"].as<int>();
-                    const int height = node["height"].as<int>();
-                    const int channels = node["channels"].as<int>();
+                    const int width = YamlNumbers::as<int>(node["width"]);
+                    const int height = YamlNumbers::as<int>(node["height"]);
+                    const int channels = YamlNumbers::as<int>(node["channels"]);
                     const size_t expectedSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels);
-                    const size_t dataSize = node["size"] ? node["size"].as<size_t>() : expectedSize;
+                    const size_t dataSize = node["size"] ? YamlNumbers::as<size_t>(node["size"]) : expectedSize;
                     const std::string colorFormat = node["colorFormat"] ? node["colorFormat"].as<std::string>() : std::string();
                     const std::string textureId = node["id"] ? node["id"].as<std::string>() : std::string();
 
@@ -1433,7 +1433,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // framebuffer is bound later by CameraTextureLink::resolve,
                 // after every entity of the scene exists
                 if (node["camera"]) {
-                    texture.setId(CameraTextureLink::makeId(node["camera"].as<Entity>()));
+                    texture.setId(CameraTextureLink::makeId(YamlNumbers::as<Entity>(node["camera"])));
                 }
             }
         }
@@ -1446,16 +1446,16 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
         if (node["svgScale"]) texture.setSvgScale(YamlNumbers::as<float>(node["svgScale"]));
         if (node["alphaBorder"]) texture.setAlphaBorder(stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()));
 
-        //if (node["isFramebuffer"] && node["isFramebuffer"].as<bool>()) {
+        //if (node["isFramebuffer"] && YamlNumbers::as<bool>(node["isFramebuffer"])) {
         //    texture.setIsFramebuffer(true);
         //}
 
         //if (node["width"] && node["height"]) {
-        //    texture.setWidth(node["width"].as<int>());
-        //    texture.setHeight(node["height"].as<int>());
+        //    texture.setWidth(YamlNumbers::as<int>(node["width"]));
+        //    texture.setHeight(YamlNumbers::as<int>(node["height"]));
         //}
 
-        if (node["releaseDataAfterLoad"]) texture.setReleaseDataAfterLoad(node["releaseDataAfterLoad"].as<bool>());
+        if (node["releaseDataAfterLoad"]) texture.setReleaseDataAfterLoad(YamlNumbers::as<bool>(node["releaseDataAfterLoad"]));
     }
     return texture;
 }
@@ -1503,11 +1503,11 @@ void editor::Stream::decodeBuffer(Buffer& buffer, const YAML::Node& node) {
     // Decode buffer properties
     buffer.setType(stringToBufferType(node["type"].as<std::string>()));
     buffer.setUsage(stringToBufferUsage(node["usage"].as<std::string>()));
-    buffer.setStride(node["stride"].as<unsigned int>());
-    buffer.setSize(node["size"].as<size_t>());
-    buffer.setCount(node["count"].as<unsigned int>());
-    buffer.setRenderAttributes(node["renderAttributes"].as<bool>());
-    buffer.setInstanceBuffer(node["instanceBuffer"].as<bool>());
+    buffer.setStride(YamlNumbers::as<unsigned int>(node["stride"]));
+    buffer.setSize(YamlNumbers::as<size_t>(node["size"]));
+    buffer.setCount(YamlNumbers::as<unsigned int>(node["count"]));
+    buffer.setRenderAttributes(YamlNumbers::as<bool>(node["renderAttributes"]));
+    buffer.setInstanceBuffer(YamlNumbers::as<bool>(node["instanceBuffer"]));
 
     // Decode attributes
     if (node["attributes"]) {
@@ -1515,11 +1515,11 @@ void editor::Stream::decodeBuffer(Buffer& buffer, const YAML::Node& node) {
             AttributeType type = stringToAttributeType(attrNode["type"].as<std::string>());
             AttributeDataType dataType = stringToAttributeDataType(attrNode["dataType"].as<std::string>());
             std::string bufferName = attrNode["bufferName"].as<std::string>();
-            unsigned int elements = attrNode["elements"].as<unsigned int>();
-            size_t offset = attrNode["offset"].as<size_t>();
-            unsigned int count = attrNode["count"].as<unsigned int>();
-            bool normalized = attrNode["normalized"].as<bool>();
-            bool perInstance = attrNode["perInstance"].as<bool>();
+            unsigned int elements = YamlNumbers::as<unsigned int>(attrNode["elements"]);
+            size_t offset = YamlNumbers::as<size_t>(attrNode["offset"]);
+            unsigned int count = YamlNumbers::as<unsigned int>(attrNode["count"]);
+            bool normalized = YamlNumbers::as<bool>(attrNode["normalized"]);
+            bool perInstance = YamlNumbers::as<bool>(attrNode["perInstance"]);
 
             Attribute attr(dataType, bufferName, elements, offset, count, normalized, perInstance);
             buffer.addAttribute(type, attr);
@@ -1545,7 +1545,7 @@ void editor::Stream::decodeInterleavedBuffer(InterleavedBuffer& buffer, const YA
     decodeBuffer(buffer, node);
 
     if (node["vertexSize"]) {
-        buffer.setVertexSize(node["vertexSize"].as<unsigned int>());
+        buffer.setVertexSize(YamlNumbers::as<unsigned int>(node["vertexSize"]));
     }
 }
 
@@ -1575,7 +1575,7 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    node["vertexCount"] = submesh.vertexCount;
+    node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
 
@@ -1615,25 +1615,25 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["material"]) submesh.material = decodeMaterial(node["material"], &submesh.material);
     if (node["textureRect"]) submesh.textureRect = decodeRect(node["textureRect"]);
     if (node["primitiveType"]) submesh.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
-    if (node["vertexCount"]) submesh.vertexCount = node["vertexCount"].as<uint32_t>();
-    if (node["faceCulling"]) submesh.faceCulling = node["faceCulling"].as<bool>();
-    if (node["textureShadow"]) submesh.textureShadow = node["textureShadow"].as<bool>();
+    if (node["vertexCount"]) submesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
+    if (node["faceCulling"]) submesh.faceCulling = YamlNumbers::as<bool>(node["faceCulling"]);
+    if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
-    submesh.overrideFields = node["overrideFields"] ? node["overrideFields"].as<uint32_t>() : 0;
+    submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint32_t>(node["overrideFields"]) : 0;
 
     // Flags
-    if (node["hasTexCoord1"]) submesh.hasTexCoord1 = node["hasTexCoord1"].as<bool>();
-    if (node["hasTexCoord2"]) submesh.hasTexCoord2 = node["hasTexCoord2"].as<bool>();
-    if (node["hasNormalMap"]) submesh.hasNormalMap = node["hasNormalMap"].as<bool>();
-    if (node["hasTangent"]) submesh.hasTangent = node["hasTangent"].as<bool>();
-    if (node["hasVertexColor3"]) submesh.hasVertexColor3 = node["hasVertexColor3"].as<bool>();
-    if (node["hasVertexColor4"]) submesh.hasVertexColor4 = node["hasVertexColor4"].as<bool>();
-    if (node["hasTextureRect"]) submesh.hasTextureRect = node["hasTextureRect"].as<bool>();
-    if (node["hasSkinning"]) submesh.hasSkinning = node["hasSkinning"].as<bool>();
-    if (node["hasMorphTarget"]) submesh.hasMorphTarget = node["hasMorphTarget"].as<bool>();
-    if (node["hasMorphNormal"]) submesh.hasMorphNormal = node["hasMorphNormal"].as<bool>();
-    if (node["hasMorphTangent"]) submesh.hasMorphTangent = node["hasMorphTangent"].as<bool>();
+    if (node["hasTexCoord1"]) submesh.hasTexCoord1 = YamlNumbers::as<bool>(node["hasTexCoord1"]);
+    if (node["hasTexCoord2"]) submesh.hasTexCoord2 = YamlNumbers::as<bool>(node["hasTexCoord2"]);
+    if (node["hasNormalMap"]) submesh.hasNormalMap = YamlNumbers::as<bool>(node["hasNormalMap"]);
+    if (node["hasTangent"]) submesh.hasTangent = YamlNumbers::as<bool>(node["hasTangent"]);
+    if (node["hasVertexColor3"]) submesh.hasVertexColor3 = YamlNumbers::as<bool>(node["hasVertexColor3"]);
+    if (node["hasVertexColor4"]) submesh.hasVertexColor4 = YamlNumbers::as<bool>(node["hasVertexColor4"]);
+    if (node["hasTextureRect"]) submesh.hasTextureRect = YamlNumbers::as<bool>(node["hasTextureRect"]);
+    if (node["hasSkinning"]) submesh.hasSkinning = YamlNumbers::as<bool>(node["hasSkinning"]);
+    if (node["hasMorphTarget"]) submesh.hasMorphTarget = YamlNumbers::as<bool>(node["hasMorphTarget"]);
+    if (node["hasMorphNormal"]) submesh.hasMorphNormal = YamlNumbers::as<bool>(node["hasMorphNormal"]);
+    if (node["hasMorphTangent"]) submesh.hasMorphTangent = YamlNumbers::as<bool>(node["hasMorphTangent"]);
 
     submesh.hasSkinningNormalization = false;
     if (node["normAdjustJoint"] || node["normAdjustWeight"]) {
@@ -1683,7 +1683,7 @@ YAML::Node editor::Stream::encodeTileRectData(const TileRectData& tileRect) {
 TileRectData editor::Stream::decodeTileRectData(const YAML::Node& node) {
     TileRectData tileRect;
     if (node["name"]) tileRect.name = node["name"].as<std::string>();
-    if (node["submeshId"]) tileRect.submeshId = node["submeshId"].as<int>();
+    if (node["submeshId"]) tileRect.submeshId = YamlNumbers::as<int>(node["submeshId"]);
     if (node["rect"]) tileRect.rect = decodeRect(node["rect"]);
     return tileRect;
 }
@@ -1701,7 +1701,7 @@ YAML::Node editor::Stream::encodeTileData(const TileData& tile) {
 TileData editor::Stream::decodeTileData(const YAML::Node& node) {
     TileData tile;
     if (node["name"]) tile.name = node["name"].as<std::string>();
-    if (node["rectId"]) tile.rectId = node["rectId"].as<int>();
+    if (node["rectId"]) tile.rectId = YamlNumbers::as<int>(node["rectId"]);
     if (node["position"]) tile.position = decodeVector2(node["position"]);
     if (node["width"]) tile.width = YamlNumbers::as<float>(node["width"]);
     if (node["height"]) tile.height = YamlNumbers::as<float>(node["height"]);
@@ -1753,22 +1753,22 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["brushRotation"].IsDefined())      ts.brushRotation      = decodeFinite(tn["brushRotation"], ts.brushRotation);
     if (tn["brushMaskPath"].IsDefined())      ts.brushMaskPath      = tn["brushMaskPath"].as<std::string>();
     if (tn["flattenHeight"].IsDefined())      ts.flattenHeight      = decodeFinite(tn["flattenHeight"], ts.flattenHeight);
-    if (tn["terraceSteps"].IsDefined())       ts.terraceSteps       = tn["terraceSteps"].as<int>();
+    if (tn["terraceSteps"].IsDefined())       ts.terraceSteps       = YamlNumbers::as<int>(tn["terraceSteps"]);
     if (tn["noiseSize"].IsDefined())          ts.noiseSize          = decodePositiveFinite(tn["noiseSize"], ts.noiseSize);
-    if (tn["heightMapResolution"].IsDefined()) ts.heightMapResolution = tn["heightMapResolution"].as<int>();
-    if (tn["blendMapResolution"].IsDefined()) ts.blendMapResolution = tn["blendMapResolution"].as<int>();
-    if (tn["densityMapResolution"].IsDefined()) ts.densityMapResolution = tn["densityMapResolution"].as<int>();
-    if (tn["normalizeBlendPaint"].IsDefined()) ts.normalizeBlendPaint = tn["normalizeBlendPaint"].as<bool>();
-    if (tn["heightMapStartAtMiddle"].IsDefined()) ts.heightMapStartAtMiddle = tn["heightMapStartAtMiddle"].as<bool>();
-    if (tn["flattenPickOnStroke"].IsDefined()) ts.flattenPickOnStroke = tn["flattenPickOnStroke"].as<bool>();
+    if (tn["heightMapResolution"].IsDefined()) ts.heightMapResolution = YamlNumbers::as<int>(tn["heightMapResolution"]);
+    if (tn["blendMapResolution"].IsDefined()) ts.blendMapResolution = YamlNumbers::as<int>(tn["blendMapResolution"]);
+    if (tn["densityMapResolution"].IsDefined()) ts.densityMapResolution = YamlNumbers::as<int>(tn["densityMapResolution"]);
+    if (tn["normalizeBlendPaint"].IsDefined()) ts.normalizeBlendPaint = YamlNumbers::as<bool>(tn["normalizeBlendPaint"]);
+    if (tn["heightMapStartAtMiddle"].IsDefined()) ts.heightMapStartAtMiddle = YamlNumbers::as<bool>(tn["heightMapStartAtMiddle"]);
+    if (tn["flattenPickOnStroke"].IsDefined()) ts.flattenPickOnStroke = YamlNumbers::as<bool>(tn["flattenPickOnStroke"]);
     else ts.brushStrength = TerrainEditorSettings{}.brushStrength; // file predates time-based flow; old per-event strengths are far too weak under the new semantics
-    if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = tn["paintUseMask"].as<bool>();
+    if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = YamlNumbers::as<bool>(tn["paintUseMask"]);
     if (tn["paintMinSlope"].IsDefined())      ts.paintMinSlope      = decodeFinite(tn["paintMinSlope"], ts.paintMinSlope);
     if (tn["paintMaxSlope"].IsDefined())      ts.paintMaxSlope      = decodeFinite(tn["paintMaxSlope"], ts.paintMaxSlope);
     if (tn["paintMinHeight"].IsDefined())     ts.paintMinHeight     = decodeFinite(tn["paintMinHeight"], ts.paintMinHeight);
     if (tn["paintMaxHeight"].IsDefined())     ts.paintMaxHeight     = decodeFinite(tn["paintMaxHeight"], ts.paintMaxHeight);
     if (tn["placeAssetPath"].IsDefined())     ts.placeAssetPath     = tn["placeAssetPath"].as<std::string>();
-    if (tn["placeInstanced"].IsDefined())     ts.placeInstanced     = tn["placeInstanced"].as<bool>();
+    if (tn["placeInstanced"].IsDefined())     ts.placeInstanced     = YamlNumbers::as<bool>(tn["placeInstanced"]);
     if (tn["placeSpacing"].IsDefined())       ts.placeSpacing       = decodePositiveFinite(tn["placeSpacing"], ts.placeSpacing);
     if (tn["placeMinScale"].IsDefined())      ts.placeMinScale      = decodePositiveFinite(tn["placeMinScale"], ts.placeMinScale);
     if (tn["placeMaxScale"].IsDefined())      ts.placeMaxScale      = decodePositiveFinite(tn["placeMaxScale"], ts.placeMaxScale);
@@ -1825,24 +1825,24 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
 void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDisplaySettings& ds) {
     if (!node.IsMap()) return;
 
-    if (node["showAllJoints"])        ds.showAllJoints        = node["showAllJoints"].as<bool>();
-    if (node["showAllBones"])         ds.showAllBones         = node["showAllBones"].as<bool>();
-    if (node["showAllBodies"])        ds.showAllBodies        = node["showAllBodies"].as<bool>();
-    if (node["hideCameraView"])       ds.hideCameraView       = node["hideCameraView"].as<bool>();
-    if (node["hideLightIcons"])       ds.hideLightIcons       = node["hideLightIcons"].as<bool>();
-    if (node["hideSoundIcons"])       ds.hideSoundIcons       = node["hideSoundIcons"].as<bool>();
-    if (node["hideContainerGuides"])  ds.hideContainerGuides  = node["hideContainerGuides"].as<bool>();
-    if (node["showOrigin"])           ds.showOrigin           = node["showOrigin"].as<bool>();
-    if (node["showGrid3D"])           ds.showGrid3D           = node["showGrid3D"].as<bool>();
-    if (node["hideSelectionOutline"]) ds.hideSelectionOutline = node["hideSelectionOutline"].as<bool>();
-    if (node["disableFaceCulling"])   ds.disableFaceCulling   = node["disableFaceCulling"].as<bool>();
-    if (node["disableFog"])           ds.disableFog           = node["disableFog"].as<bool>();
-    if (node["showGrid2D"])           ds.showGrid2D           = node["showGrid2D"].as<bool>();
+    if (node["showAllJoints"])        ds.showAllJoints        = YamlNumbers::as<bool>(node["showAllJoints"]);
+    if (node["showAllBones"])         ds.showAllBones         = YamlNumbers::as<bool>(node["showAllBones"]);
+    if (node["showAllBodies"])        ds.showAllBodies        = YamlNumbers::as<bool>(node["showAllBodies"]);
+    if (node["hideCameraView"])       ds.hideCameraView       = YamlNumbers::as<bool>(node["hideCameraView"]);
+    if (node["hideLightIcons"])       ds.hideLightIcons       = YamlNumbers::as<bool>(node["hideLightIcons"]);
+    if (node["hideSoundIcons"])       ds.hideSoundIcons       = YamlNumbers::as<bool>(node["hideSoundIcons"]);
+    if (node["hideContainerGuides"])  ds.hideContainerGuides  = YamlNumbers::as<bool>(node["hideContainerGuides"]);
+    if (node["showOrigin"])           ds.showOrigin           = YamlNumbers::as<bool>(node["showOrigin"]);
+    if (node["showGrid3D"])           ds.showGrid3D           = YamlNumbers::as<bool>(node["showGrid3D"]);
+    if (node["hideSelectionOutline"]) ds.hideSelectionOutline = YamlNumbers::as<bool>(node["hideSelectionOutline"]);
+    if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
+    if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
+    if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
-    if (node["snapToGrid"])           ds.snapToGrid           = node["snapToGrid"].as<bool>();
-    if (node["snapTile"])             ds.snapTile             = node["snapTile"].as<bool>();
-    if (node["snapRotation"])         ds.snapRotation         = node["snapRotation"].as<bool>();
+    if (node["snapToGrid"])           ds.snapToGrid           = YamlNumbers::as<bool>(node["snapToGrid"]);
+    if (node["snapTile"])             ds.snapTile             = YamlNumbers::as<bool>(node["snapTile"]);
+    if (node["snapRotation"])         ds.snapRotation         = YamlNumbers::as<bool>(node["snapRotation"]);
     if (node["rotationSnapDegrees"])  ds.rotationSnapDegrees  = decodePositiveFinite(node["rotationSnapDegrees"], ds.rotationSnapDegrees);
 }
 
@@ -2149,8 +2149,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["canvasWidth"] && node["canvasHeight"]) {
         project->setCanvasSize(
-            node["canvasWidth"].as<unsigned int>(),
-            node["canvasHeight"].as<unsigned int>()
+            YamlNumbers::as<unsigned int>(node["canvasWidth"]),
+            YamlNumbers::as<unsigned int>(node["canvasHeight"])
         );
     }
 
@@ -2163,7 +2163,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["vsync"].IsDefined()) {
-        project->setVSyncEnabled(node["vsync"].as<bool>());
+        project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
     }
 
     if (node["windowMode"]) {
@@ -2172,8 +2172,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["windowWidth"] && node["windowHeight"]) {
         project->setWindowSize(
-            node["windowWidth"].as<unsigned int>(),
-            node["windowHeight"].as<unsigned int>()
+            YamlNumbers::as<unsigned int>(node["windowWidth"]),
+            YamlNumbers::as<unsigned int>(node["windowHeight"])
         );
     } else {
         // Projects saved before window settings existed follow the canvas size
@@ -2181,7 +2181,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["windowResizable"].IsDefined()) {
-        project->setWindowResizable(node["windowResizable"].as<bool>());
+        project->setWindowResizable(YamlNumbers::as<bool>(node["windowResizable"]));
     }
 
     if (node["windowTitle"]) {
@@ -2209,14 +2209,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["cxxStandard"]) {
-        project->setCxxStandard(node["cxxStandard"].as<int>());
+        project->setCxxStandard(YamlNumbers::as<int>(node["cxxStandard"]));
     }
 
     if (node["physics2D"]) {
-        project->setPhysics2DEnabled(node["physics2D"].as<bool>());
+        project->setPhysics2DEnabled(YamlNumbers::as<bool>(node["physics2D"]));
     }
     if (node["physics3D"]) {
-        project->setPhysics3DEnabled(node["physics3D"].as<bool>());
+        project->setPhysics3DEnabled(YamlNumbers::as<bool>(node["physics3D"]));
     }
 
     // Backward compatibility: the compiler and job count used to live here before
@@ -2230,7 +2230,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (node["cmakeCxxCompiler"]) build.cxxCompiler = node["cmakeCxxCompiler"].as<std::string>();
             if (node["cmakeGenerator"]) build.generator = node["cmakeGenerator"].as<std::string>();
             if (node["cmakeBuildJobs"]) {
-                const long long jobs = node["cmakeBuildJobs"].as<long long>();
+                const long long jobs = YamlNumbers::as<long long>(node["cmakeBuildJobs"]);
                 const long long maxJobs = static_cast<long long>(Generator::MAX_SUPPORTED_PARALLEL_BUILD_JOBS);
                 build.buildJobs = static_cast<unsigned int>(std::clamp(jobs, 0LL, maxJobs));
             }
@@ -2239,11 +2239,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["packNativeResources"].IsDefined()) {
-        project->setPackNativeResources(node["packNativeResources"].as<bool>());
+        project->setPackNativeResources(YamlNumbers::as<bool>(node["packNativeResources"]));
     }
 
     if (node["versionControlMetadata"].IsDefined()) {
-        project->setVersionControlMetadata(node["versionControlMetadata"].as<bool>());
+        project->setVersionControlMetadata(YamlNumbers::as<bool>(node["versionControlMetadata"]));
     }
 
     {
@@ -2306,7 +2306,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (applicationNode["name"]) application.name = applicationNode["name"].as<std::string>();
         if (applicationNode["identifier"]) application.identifier = applicationNode["identifier"].as<std::string>();
         if (applicationNode["version"]) application.version = applicationNode["version"].as<std::string>();
-        if (applicationNode["build"]) application.build = std::max(1u, applicationNode["build"].as<unsigned int>());
+        if (applicationNode["build"]) application.build = std::max(1u, YamlNumbers::as<unsigned int>(applicationNode["build"]));
     }
 
     if (node["web"] && node["web"].IsMap()) {
@@ -2316,8 +2316,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (webNode["favicon"]) web.favicon = webNode["favicon"].as<std::string>();
         if (webNode["customHtmlShell"]) web.customHtmlShell = webNode["customHtmlShell"].as<std::string>();
         if (webNode["headInclude"]) web.headInclude = webNode["headInclude"].as<std::string>();
-        if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = webNode["resizeCanvasToWindow"].as<bool>();
-        if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = webNode["hideEmscriptenUI"].as<bool>();
+        if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = YamlNumbers::as<bool>(webNode["resizeCanvasToWindow"]);
+        if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = YamlNumbers::as<bool>(webNode["hideEmscriptenUI"]);
     }
 
     if (node["linux"] && node["linux"].IsMap()) {
@@ -2345,7 +2345,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (macOSNode["versionName"]) macOS.versionName = macOSNode["versionName"].as<std::string>();
         if (macOSNode["buildNumber"]) macOS.buildNumber = macOSNode["buildNumber"].as<std::string>();
         if (macOSNode["icon"]) macOS.icon = macOSNode["icon"].as<std::string>();
-        if (macOSNode["highDpi"].IsDefined()) macOS.highDpi = macOSNode["highDpi"].as<bool>();
+        if (macOSNode["highDpi"].IsDefined()) macOS.highDpi = YamlNumbers::as<bool>(macOSNode["highDpi"]);
     }
 
     if (node["ios"] && node["ios"].IsMap()) {
@@ -2356,9 +2356,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["versionName"]) ios.versionName = iosNode["versionName"].as<std::string>();
         if (iosNode["buildNumber"]) ios.buildNumber = iosNode["buildNumber"].as<std::string>();
         if (iosNode["icon"]) ios.icon = iosNode["icon"].as<std::string>();
-        if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = iosNode["hideStatusBar"].as<bool>();
-        if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = iosNode["hideHomeIndicator"].as<bool>();
-        if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = iosNode["supportsHighRefreshRate"].as<bool>();
+        if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
+        if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
+        if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2367,21 +2367,21 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
         if (androidNode["applicationName"]) android.applicationName = androidNode["applicationName"].as<std::string>();
         if (androidNode["packageName"]) android.packageName = androidNode["packageName"].as<std::string>();
-        if (androidNode["versionCode"]) android.versionCode = androidNode["versionCode"].as<unsigned int>();
+        if (androidNode["versionCode"]) android.versionCode = YamlNumbers::as<unsigned int>(androidNode["versionCode"]);
         if (androidNode["versionName"]) android.versionName = androidNode["versionName"].as<std::string>();
         if (androidNode["launcherIcon"]) android.launcherIcon = androidNode["launcherIcon"].as<std::string>();
         if (androidNode["adaptiveIconForeground"]) android.adaptiveIconForeground = androidNode["adaptiveIconForeground"].as<std::string>();
         if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
-        if (androidNode["minSdk"]) android.minSdk = std::max(1u, androidNode["minSdk"].as<unsigned int>());
-        if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, androidNode["targetSdk"].as<unsigned int>());
+        if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
+        if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
         if (androidNode["orientation"]) android.orientation = stringToAndroidOrientation(androidNode["orientation"].as<std::string>());
 
         if (androidNode["architectures"] && androidNode["architectures"].IsMap()) {
             const YAML::Node& abiNode = androidNode["architectures"];
-            if (abiNode["armeabi-v7a"].IsDefined()) android.abiArmeabiV7a = abiNode["armeabi-v7a"].as<bool>();
-            if (abiNode["arm64-v8a"].IsDefined()) android.abiArm64V8a = abiNode["arm64-v8a"].as<bool>();
-            if (abiNode["x86"].IsDefined()) android.abiX86 = abiNode["x86"].as<bool>();
-            if (abiNode["x86_64"].IsDefined()) android.abiX86_64 = abiNode["x86_64"].as<bool>();
+            if (abiNode["armeabi-v7a"].IsDefined()) android.abiArmeabiV7a = YamlNumbers::as<bool>(abiNode["armeabi-v7a"]);
+            if (abiNode["arm64-v8a"].IsDefined()) android.abiArm64V8a = YamlNumbers::as<bool>(abiNode["arm64-v8a"]);
+            if (abiNode["x86"].IsDefined()) android.abiX86 = YamlNumbers::as<bool>(abiNode["x86"]);
+            if (abiNode["x86_64"].IsDefined()) android.abiX86_64 = YamlNumbers::as<bool>(abiNode["x86_64"]);
         }
 
         if (androidNode["permissions"] && androidNode["permissions"].IsSequence()) {
@@ -2391,22 +2391,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
 
-        if (androidNode["allowBackup"].IsDefined()) android.allowBackup = androidNode["allowBackup"].as<bool>();
-        if (androidNode["fullscreen"].IsDefined()) android.fullscreen = androidNode["fullscreen"].as<bool>();
-        if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = androidNode["keepScreenOn"].as<bool>();
+        if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
+        if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
+        if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
     }
 
     if (node["startSceneId"]) {
-        project->setStartSceneId(node["startSceneId"].as<uint32_t>());
+        project->setStartSceneId(YamlNumbers::as<uint32_t>(node["startSceneId"]));
     }
 
     if (node["loading"]) {
         const YAML::Node loadingNode = node["loading"];
         LoadingSettings& loading = project->getLoadingSettings();
-        if (loadingNode["sceneId"]) loading.sceneId = loadingNode["sceneId"].as<uint32_t>();
+        if (loadingNode["sceneId"]) loading.sceneId = YamlNumbers::as<uint32_t>(loadingNode["sceneId"]);
         loading.delay = std::max(0.0f, decodeFinite(loadingNode["delay"], loading.delay));
         loading.timeout = std::max(0.0f, decodeFinite(loadingNode["timeout"], loading.timeout));
-        if (loadingNode["asyncLoading"]) loading.asyncLoading = loadingNode["asyncLoading"].as<bool>();
+        if (loadingNode["asyncLoading"]) loading.asyncLoading = YamlNumbers::as<bool>(loadingNode["asyncLoading"]);
     }
 
     if (node["standalonePrefabs"]) {
@@ -2625,28 +2625,28 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
 }
 
 void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene) {
-    if (node["id"]) sceneProject->id = node["id"].as<uint32_t>();
+    if (node["id"]) sceneProject->id = YamlNumbers::as<uint32_t>(node["id"]);
     if (node["name"]) sceneProject->name = node["name"].as<std::string>();
     if (loadScene){
         if (node["scene"]) sceneProject->scene = decodeScene(sceneProject->scene, node["scene"]);
     }
     if (node["sceneType"]) sceneProject->sceneType = stringToSceneType(node["sceneType"].as<std::string>());
-    if (node["mainCamera"]) sceneProject->mainCamera = node["mainCamera"].as<Entity>();
+    if (node["mainCamera"]) sceneProject->mainCamera = YamlNumbers::as<Entity>(node["mainCamera"]);
 
     sceneProject->maxValues = {};
     if (node["maxValues"]) {
         const YAML::Node& maxValuesNode = node["maxValues"];
-        if (maxValuesNode["maxSubmeshes"]) sceneProject->maxValues.maxSubmeshes = maxValuesNode["maxSubmeshes"].as<unsigned int>();
-        if (maxValuesNode["maxTilemapTilesRect"]) sceneProject->maxValues.maxTilemapTilesRect = maxValuesNode["maxTilemapTilesRect"].as<unsigned int>();
-        if (maxValuesNode["maxTilemapTiles"]) sceneProject->maxValues.maxTilemapTiles = maxValuesNode["maxTilemapTiles"].as<unsigned int>();
-        if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = maxValuesNode["maxExternalBuffers"].as<unsigned int>();
-        if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = maxValuesNode["maxSpriteFrames"].as<unsigned int>();
-        if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = maxValuesNode["maxBones"].as<unsigned int>();
-        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.maxColliders2D = maxValuesNode["maxColliders2D"].as<unsigned int>();
-        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.maxColliderPoints2D = maxValuesNode["maxColliderPoints2D"].as<unsigned int>();
-        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.maxColliders3D = maxValuesNode["maxColliders3D"].as<unsigned int>();
-        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.maxColliderVertices3D = maxValuesNode["maxColliderVertices3D"].as<unsigned int>();
-        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.maxColliderIndices3D = maxValuesNode["maxColliderIndices3D"].as<unsigned int>();
+        if (maxValuesNode["maxSubmeshes"]) sceneProject->maxValues.maxSubmeshes = YamlNumbers::as<unsigned int>(maxValuesNode["maxSubmeshes"]);
+        if (maxValuesNode["maxTilemapTilesRect"]) sceneProject->maxValues.maxTilemapTilesRect = YamlNumbers::as<unsigned int>(maxValuesNode["maxTilemapTilesRect"]);
+        if (maxValuesNode["maxTilemapTiles"]) sceneProject->maxValues.maxTilemapTiles = YamlNumbers::as<unsigned int>(maxValuesNode["maxTilemapTiles"]);
+        if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
+        if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
+        if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
+        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.maxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
+        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.maxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
+        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.maxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
+        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.maxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
+        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.maxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
     }
 
     sceneProject->shaderKeys.clear();
@@ -2662,9 +2662,9 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
                 continue;
             }
 
-            childSceneRef.id = childSceneNode["id"].as<uint32_t>();
+            childSceneRef.id = YamlNumbers::as<uint32_t>(childSceneNode["id"]);
             if (childSceneNode["startActive"]) {
-                childSceneRef.startActive = childSceneNode["startActive"].as<bool>();
+                childSceneRef.startActive = YamlNumbers::as<bool>(childSceneNode["startActive"]);
             }
             sceneProject->childScenes.push_back(childSceneRef);
         }
@@ -2691,7 +2691,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
                         prop.name = propNode["name"].as<std::string>();
                     }
                     if (propNode["isPtr"]) {
-                        prop.isPtr = propNode["isPtr"].as<bool>();
+                        prop.isPtr = YamlNumbers::as<bool>(propNode["isPtr"]);
                     }
                     if (propNode["ptrTypeName"]) {
                         prop.ptrTypeName = propNode["ptrTypeName"].as<std::string>();
@@ -2731,7 +2731,7 @@ Entity lastSerializedEntity(const YAML::Node& entityNode) {
 
     Entity last = NULL_ENTITY;
     if (entityNode["entity"]) {
-        last = entityNode["entity"].as<Entity>();
+        last = editor::YamlNumbers::as<Entity>(entityNode["entity"]);
     }
 
     if (entityNode["children"] && entityNode["children"].IsSequence()) {
@@ -2889,13 +2889,13 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setShadowQuality(stringToShadowQuality(node["shadowQuality"].as<std::string>()));
     }
     if (node["meshLodEnabled"]) {
-        scene->setMeshLodEnabled(node["meshLodEnabled"].as<bool>());
+        scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
     }
     if (node["meshLodThreshold"]) {
         scene->setMeshLodThreshold(decodeFinite(node["meshLodThreshold"], scene->getMeshLodThreshold()));
     }
     if (node["depthPrepassEnabled"]) {
-        scene->setDepthPrepassEnabled(node["depthPrepassEnabled"].as<bool>());
+        scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }
 
     if (node["lightState"]) {
@@ -2929,7 +2929,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
 
     if (node["ssaoEnabled"]) {
-        scene->setSSAOEnabled(node["ssaoEnabled"].as<bool>());
+        scene->setSSAOEnabled(YamlNumbers::as<bool>(node["ssaoEnabled"]));
     }
     if (node["ssaoRadius"]) {
         scene->setSSAORadius(YamlNumbers::as<float>(node["ssaoRadius"]));
@@ -2941,7 +2941,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setSSAOBias(YamlNumbers::as<float>(node["ssaoBias"]));
     }
     if (node["ssrEnabled"]) {
-        scene->setSSREnabled(node["ssrEnabled"].as<bool>());
+        scene->setSSREnabled(YamlNumbers::as<bool>(node["ssrEnabled"]));
     }
     if (node["ssrMaxDistance"]) {
         scene->setSSRMaxDistance(YamlNumbers::as<float>(node["ssrMaxDistance"]));
@@ -2950,7 +2950,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setSSRThickness(YamlNumbers::as<float>(node["ssrThickness"]));
     }
     if (node["ssrMaxSteps"]) {
-        scene->setSSRMaxSteps(node["ssrMaxSteps"].as<int>());
+        scene->setSSRMaxSteps(YamlNumbers::as<int>(node["ssrMaxSteps"]));
     }
     if (node["ssrIntensity"]) {
         scene->setSSRIntensity(YamlNumbers::as<float>(node["ssrIntensity"]));
@@ -2964,13 +2964,13 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
 
     if (node["fixedResolutionEnabled"]) {
-        scene->setFixedResolutionEnabled(node["fixedResolutionEnabled"].as<bool>());
+        scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
     }
     if (node["fixedResolutionWidth"]) {
-        scene->setFixedResolutionWidth(node["fixedResolutionWidth"].as<unsigned int>());
+        scene->setFixedResolutionWidth(YamlNumbers::as<unsigned int>(node["fixedResolutionWidth"]));
     }
     if (node["fixedResolutionHeight"]) {
-        scene->setFixedResolutionHeight(node["fixedResolutionHeight"].as<unsigned int>());
+        scene->setFixedResolutionHeight(YamlNumbers::as<unsigned int>(node["fixedResolutionHeight"]));
     }
     if (node["fixedResolutionFilter"]) {
         scene->setFixedResolutionFilter(stringToTextureFilter(node["fixedResolutionFilter"].as<std::string>()));
@@ -2993,7 +2993,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         for (const auto& passNode : node["postProcess"]) {
             PostProcessPass pass;
             pass.shader = passNode["shader"] ? passNode["shader"].as<std::string>() : "";
-            pass.enabled = passNode["enabled"] ? passNode["enabled"].as<bool>() : true;
+            pass.enabled = passNode["enabled"] ? YamlNumbers::as<bool>(passNode["enabled"]) : true;
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
             postProcess.push_back(pass);
         }
@@ -3147,7 +3147,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
         if (rootEntity == entity) {
                 // Prefab root: encode as normal Entity (PrefabComponent carries the path)
                 entityNode["type"] = "Entity";
-                entityNode["entity"] = entity;
+                entityNode["entity"] = YamlNumbers::integerText(entity);
                 entityNode["name"] = registry->getEntityName(entity);
                 encodeEntityState(entityNode, entity, registry);
 
@@ -3348,7 +3348,7 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
     }else{
         entityNode["type"] = "Entity";
 
-        entityNode["entity"] = entity;
+        entityNode["entity"] = YamlNumbers::integerText(entity);
         entityNode["name"] = registry->getEntityName(entity);
         encodeEntityState(entityNode, entity, registry);
 
@@ -3380,9 +3380,9 @@ void editor::Stream::encodeEntityState(YAML::Node& entityNode, const Entity enti
 
 void editor::Stream::decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode) {
     // missing keys reset to defaults, decoding over a live entity restores it fully
-    registry->setEntityActive(entity, entityNode["active"] ? entityNode["active"].as<bool>() : true);
+    registry->setEntityActive(entity, entityNode["active"] ? YamlNumbers::as<bool>(entityNode["active"]) : true);
     registry->setEntityTag(entity, entityNode["tag"] ? entityNode["tag"].as<std::string>() : std::string(DEFAULT_ENTITY_TAG));
-    registry->setEntityLayer(entity, entityNode["layer"] ? entityNode["layer"].as<int>() : 0);
+    registry->setEntityLayer(entity, entityNode["layer"] ? YamlNumbers::as<int>(entityNode["layer"]) : 0);
 }
 
 YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
@@ -3457,12 +3457,12 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     if (node["value"]) {
         switch (prop.type) {
             case ScriptPropertyType::Bool:
-                prop.value = node["value"].as<bool>();
-                prop.defaultValue = node["defaultValue"] ? node["defaultValue"].as<bool>() : false;
+                prop.value = YamlNumbers::as<bool>(node["value"]);
+                prop.defaultValue = node["defaultValue"] ? YamlNumbers::as<bool>(node["defaultValue"]) : false;
                 break;
             case ScriptPropertyType::Int:
-                prop.value = node["value"].as<int>();
-                prop.defaultValue = node["defaultValue"] ? node["defaultValue"].as<int>() : 0;
+                prop.value = YamlNumbers::as<int>(node["value"]);
+                prop.defaultValue = node["defaultValue"] ? YamlNumbers::as<int>(node["defaultValue"]) : 0;
                 break;
             case ScriptPropertyType::Float:
                 prop.value = YamlNumbers::as<float>(node["value"]);
@@ -3527,7 +3527,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
 
         Entity entity = NULL_ENTITY;
         if (entityNode["entity"]){
-            Entity serializedEntity = entityNode["entity"].as<Entity>();
+            Entity serializedEntity = YamlNumbers::as<Entity>(entityNode["entity"]);
             entity = serializedEntity;
             if (!registry->recreateEntity(entity)){
                 if (createNewIfExists){
@@ -3630,11 +3630,11 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     }
 
     // Per-texture UV set (glTF texCoord): 0 = a_texcoord1, 1 = a_texcoord2
-    node["baseColorTexCoord"] = material.baseColorTexCoord;
-    node["metallicRoughnessTexCoord"] = material.metallicRoughnessTexCoord;
-    node["occlusionTexCoord"] = material.occlusionTexCoord;
-    node["emissiveTexCoord"] = material.emissiveTexCoord;
-    node["normalTexCoord"] = material.normalTexCoord;
+    node["baseColorTexCoord"] = YamlNumbers::integerText(material.baseColorTexCoord);
+    node["metallicRoughnessTexCoord"] = YamlNumbers::integerText(material.metallicRoughnessTexCoord);
+    node["occlusionTexCoord"] = YamlNumbers::integerText(material.occlusionTexCoord);
+    node["emissiveTexCoord"] = YamlNumbers::integerText(material.emissiveTexCoord);
+    node["normalTexCoord"] = YamlNumbers::integerText(material.normalTexCoord);
 
     // Encode material name
     node["name"] = material.name;
@@ -3669,11 +3669,11 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.occlusionTexture = texture("occlusionTexture");
     material.normalTexture = texture("normalTexture");
 
-    if (node["baseColorTexCoord"]) material.baseColorTexCoord = node["baseColorTexCoord"].as<int>();
-    if (node["metallicRoughnessTexCoord"]) material.metallicRoughnessTexCoord = node["metallicRoughnessTexCoord"].as<int>();
-    if (node["occlusionTexCoord"]) material.occlusionTexCoord = node["occlusionTexCoord"].as<int>();
-    if (node["emissiveTexCoord"]) material.emissiveTexCoord = node["emissiveTexCoord"].as<int>();
-    if (node["normalTexCoord"]) material.normalTexCoord = node["normalTexCoord"].as<int>();
+    if (node["baseColorTexCoord"]) material.baseColorTexCoord = YamlNumbers::as<int>(node["baseColorTexCoord"]);
+    if (node["metallicRoughnessTexCoord"]) material.metallicRoughnessTexCoord = YamlNumbers::as<int>(node["metallicRoughnessTexCoord"]);
+    if (node["occlusionTexCoord"]) material.occlusionTexCoord = YamlNumbers::as<int>(node["occlusionTexCoord"]);
+    if (node["emissiveTexCoord"]) material.emissiveTexCoord = YamlNumbers::as<int>(node["emissiveTexCoord"]);
+    if (node["normalTexCoord"]) material.normalTexCoord = YamlNumbers::as<int>(node["normalTexCoord"]);
 
     if (node["name"]) material.name = node["name"].as<std::string>();
 
@@ -4721,15 +4721,15 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
     if (node["modelMatrix"]) transform.modelMatrix = decodeMatrix4(node["modelMatrix"]);
     if (node["normalMatrix"]) transform.normalMatrix = decodeMatrix4(node["normalMatrix"]);
     //if (node["modelViewProjectionMatrix"]) transform.modelViewProjectionMatrix = decodeMatrix4(node["modelViewProjectionMatrix"]);
-    if (node["visible"]) transform.visible = node["visible"].as<bool>();
-    //transform.parent = node["parent"].as<Entity>();
+    if (node["visible"]) transform.visible = YamlNumbers::as<bool>(node["visible"]);
+    //transform.parent = YamlNumbers::as<Entity>(node["parent"]);
     //if (node["distanceToCamera"]) transform.distanceToCamera = YamlNumbers::as<float>(node["distanceToCamera"]);
     if (node["billboardRotation"]) transform.billboardRotation = decodeQuaternion(node["billboardRotation"]);
-    if (node["billboard"]) transform.billboard = node["billboard"].as<bool>();
-    if (node["fakeBillboard"]) transform.fakeBillboard = node["fakeBillboard"].as<bool>();
-    if (node["cylindricalBillboard"]) transform.cylindricalBillboard = node["cylindricalBillboard"].as<bool>();
-    //transform.needUpdateChildVisibility = node["needUpdateChildVisibility"].as<bool>();
-    //transform.needUpdate = node["needUpdate"].as<bool>();
+    if (node["billboard"]) transform.billboard = YamlNumbers::as<bool>(node["billboard"]);
+    if (node["fakeBillboard"]) transform.fakeBillboard = YamlNumbers::as<bool>(node["fakeBillboard"]);
+    if (node["cylindricalBillboard"]) transform.cylindricalBillboard = YamlNumbers::as<bool>(node["cylindricalBillboard"]);
+    //transform.needUpdateChildVisibility = YamlNumbers::as<bool>(node["needUpdateChildVisibility"]);
+    //transform.needUpdate = YamlNumbers::as<bool>(node["needUpdate"]);
 
     return transform;
 }
@@ -4821,8 +4821,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
         mesh = *oldMesh;
     }
 
-    //mesh.loaded = node["loaded"].as<bool>();
-    //mesh.loadCalled = node["loadCalled"].as<bool>();
+    //mesh.loaded = YamlNumbers::as<bool>(node["loaded"]);
+    //mesh.loadCalled = YamlNumbers::as<bool>(node["loadCalled"]);
 
     // Decode buffers using generic methods
     if (node["buffer"]) {
@@ -4842,7 +4842,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
         mesh.numExternalBuffers = eBuffersNode.size();
     }
 
-    //mesh.vertexCount = node["vertexCount"].as<uint32_t>();
+    //mesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
 
     // Decode submeshes
     if (node["submeshes"]) {
@@ -4878,15 +4878,15 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["verticesAABB"]) mesh.verticesAABB = decodeAABB(node["verticesAABB"]);
     if (node["worldAABB"]) mesh.worldAABB = decodeAABB(node["worldAABB"]);
 
-    if (node["receiveLights"]) mesh.receiveLights = node["receiveLights"].as<bool>();
-    if (node["receiveIBL"]) mesh.receiveIBL = node["receiveIBL"].as<bool>();
-    if (node["castShadows"]) mesh.castShadows = node["castShadows"].as<bool>();
-    if (node["receiveShadows"]) mesh.receiveShadows = node["receiveShadows"].as<bool>();
-    if (node["lodEnabled"]) mesh.lodEnabled = node["lodEnabled"].as<bool>();
+    if (node["receiveLights"]) mesh.receiveLights = YamlNumbers::as<bool>(node["receiveLights"]);
+    if (node["receiveIBL"]) mesh.receiveIBL = YamlNumbers::as<bool>(node["receiveIBL"]);
+    if (node["castShadows"]) mesh.castShadows = YamlNumbers::as<bool>(node["castShadows"]);
+    if (node["receiveShadows"]) mesh.receiveShadows = YamlNumbers::as<bool>(node["receiveShadows"]);
+    if (node["lodEnabled"]) mesh.lodEnabled = YamlNumbers::as<bool>(node["lodEnabled"]);
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
-    if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = node["renderInReflectionProbes"].as<bool>();
-    if (node["shadowsBillboard"]) mesh.shadowsBillboard = node["shadowsBillboard"].as<bool>();
-    if (node["transparent"]) mesh.transparent = node["transparent"].as<bool>();
+    if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
+    if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
+    if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
 
     if (node["cullingMode"]) mesh.cullingMode = stringToCullingMode(node["cullingMode"].as<std::string>());
     if (node["windingOrder"]) mesh.windingOrder = stringToWindingOrder(node["windingOrder"].as<std::string>());
@@ -4896,10 +4896,10 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     mesh.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     mesh.needUpdateShaderUniforms = true;
 
-    //mesh.needUpdateBuffer = node["needUpdateBuffer"].as<bool>();
-    //mesh.needReload = node["needReload"].as<bool>();
+    //mesh.needUpdateBuffer = YamlNumbers::as<bool>(node["needUpdateBuffer"]);
+    //mesh.needReload = YamlNumbers::as<bool>(node["needReload"]);
 
-    if (node["enabled"]) mesh.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) mesh.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return mesh;
 }
@@ -4959,21 +4959,21 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
         ui = *oldUI;
     }
 
-    //ui.loaded = node["loaded"].as<bool>();
-    //ui.loadCalled = node["loadCalled"].as<bool>();
+    //ui.loaded = YamlNumbers::as<bool>(node["loaded"]);
+    //ui.loadCalled = YamlNumbers::as<bool>(node["loadCalled"]);
 
     if (node["buffer"]) decodeBuffer(ui.buffer, node["buffer"]);
     if (node["indices"]) decodeBuffer(ui.indices, node["indices"]);
-    if (node["minBufferCount"]) ui.minBufferCount = node["minBufferCount"].as<unsigned int>();
-    if (node["minIndicesCount"]) ui.minIndicesCount = node["minIndicesCount"].as<unsigned int>();
+    if (node["minBufferCount"]) ui.minBufferCount = YamlNumbers::as<unsigned int>(node["minBufferCount"]);
+    if (node["minIndicesCount"]) ui.minIndicesCount = YamlNumbers::as<unsigned int>(node["minIndicesCount"]);
 
     // ui.render and ui.shader can't be deserialized here
     // ui.shaderProperties = node["shaderProperties"].as<std::string>();
-    //ui.slotVSParams = node["slotVSParams"].as<int>();
-    //ui.slotFSParams = node["slotFSParams"].as<int>();
+    //ui.slotVSParams = YamlNumbers::as<int>(node["slotVSParams"]);
+    //ui.slotFSParams = YamlNumbers::as<int>(node["slotFSParams"]);
 
     if (node["primitiveType"]) ui.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
-    if (node["vertexCount"]) ui.vertexCount = node["vertexCount"].as<unsigned int>();
+    if (node["vertexCount"]) ui.vertexCount = YamlNumbers::as<unsigned int>(node["vertexCount"]);
 
     if (node["aabb"]) ui.aabb = decodeAABB(node["aabb"]);
     if (node["worldAABB"]) ui.worldAABB = decodeAABB(node["worldAABB"]);
@@ -4981,22 +4981,22 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["texture"]) ui.texture = decodeTexture(node["texture"]);
     if (node["color"]) ui.color = decodeVector4(node["color"]);
 
-    if (node["automaticFlipY"]) ui.automaticFlipY = node["automaticFlipY"].as<bool>();
-    if (node["flipY"]) ui.flipY = node["flipY"].as<bool>();
+    if (node["automaticFlipY"]) ui.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
+    if (node["flipY"]) ui.flipY = YamlNumbers::as<bool>(node["flipY"]);
 
-    if (node["pointerMoved"]) ui.pointerMoved = node["pointerMoved"].as<bool>();
-    if (node["focused"]) ui.focused = node["focused"].as<bool>();
+    if (node["pointerMoved"]) ui.pointerMoved = YamlNumbers::as<bool>(node["pointerMoved"]);
+    if (node["focused"]) ui.focused = YamlNumbers::as<bool>(node["focused"]);
 
     if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     ui.needUpdateShaderUniforms = true;
 
-    //ui.needReload = node["needReload"].as<bool>();
-    //ui.needUpdateAABB = node["needUpdateAABB"].as<bool>();
-    //ui.needUpdateBuffer = node["needUpdateBuffer"].as<bool>();
-    //ui.needUpdateTexture = node["needUpdateTexture"].as<bool>();
+    //ui.needReload = YamlNumbers::as<bool>(node["needReload"]);
+    //ui.needUpdateAABB = YamlNumbers::as<bool>(node["needUpdateAABB"]);
+    //ui.needUpdateBuffer = YamlNumbers::as<bool>(node["needUpdateBuffer"]);
+    //ui.needUpdateTexture = YamlNumbers::as<bool>(node["needUpdateTexture"]);
 
-    if (node["enabled"]) ui.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) ui.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return ui;
 }
@@ -5023,7 +5023,7 @@ ButtonComponent editor::Stream::decodeButtonComponent(const YAML::Node& node, co
         button = *oldButton;
     }
 
-    if (node["label"]) button.label = node["label"].as<Entity>();
+    if (node["label"]) button.label = YamlNumbers::as<Entity>(node["label"]);
     if (node["textureNormal"]) button.textureNormal = decodeTexture(node["textureNormal"]);
     if (node["textureHovered"]) button.textureHovered = decodeTexture(node["textureHovered"]);
     if (node["texturePressed"]) button.texturePressed = decodeTexture(node["texturePressed"]);
@@ -5032,7 +5032,7 @@ ButtonComponent editor::Stream::decodeButtonComponent(const YAML::Node& node, co
     if (node["colorHovered"]) button.colorHovered = decodeVector4(node["colorHovered"]);
     if (node["colorPressed"]) button.colorPressed = decodeVector4(node["colorPressed"]);
     if (node["colorDisabled"]) button.colorDisabled = decodeVector4(node["colorDisabled"]);
-    if (node["disabled"]) button.disabled = node["disabled"].as<bool>();
+    if (node["disabled"]) button.disabled = YamlNumbers::as<bool>(node["disabled"]);
 
     return button;
 }
@@ -5057,14 +5057,14 @@ ScrollbarComponent editor::Stream::decodeScrollbarComponent(const YAML::Node& no
         scrollbar = *oldScrollbar;
     }
 
-    if (node["bar"]) scrollbar.bar = node["bar"].as<Entity>();
+    if (node["bar"]) scrollbar.bar = YamlNumbers::as<Entity>(node["bar"]);
     if (node["type"]) scrollbar.type = stringToScrollbarType(node["type"].as<std::string>());
     if (node["barSize"]) scrollbar.barSize = YamlNumbers::as<float>(node["barSize"]);
     if (node["step"]) scrollbar.step = YamlNumbers::as<float>(node["step"]);
-    if (node["barMarginLeft"]) scrollbar.barMarginLeft = node["barMarginLeft"].as<int>();
-    if (node["barMarginRight"]) scrollbar.barMarginRight = node["barMarginRight"].as<int>();
-    if (node["barMarginTop"]) scrollbar.barMarginTop = node["barMarginTop"].as<int>();
-    if (node["barMarginBottom"]) scrollbar.barMarginBottom = node["barMarginBottom"].as<int>();
+    if (node["barMarginLeft"]) scrollbar.barMarginLeft = YamlNumbers::as<int>(node["barMarginLeft"]);
+    if (node["barMarginRight"]) scrollbar.barMarginRight = YamlNumbers::as<int>(node["barMarginRight"]);
+    if (node["barMarginTop"]) scrollbar.barMarginTop = YamlNumbers::as<int>(node["barMarginTop"]);
+    if (node["barMarginBottom"]) scrollbar.barMarginBottom = YamlNumbers::as<int>(node["barMarginBottom"]);
 
     scrollbar.needUpdateScrollbar = true;
 
@@ -5090,13 +5090,13 @@ ProgressbarComponent editor::Stream::decodeProgressbarComponent(const YAML::Node
         progressbar = *oldProgressbar;
     }
 
-    if (node["fill"]) progressbar.fill = node["fill"].as<Entity>();
+    if (node["fill"]) progressbar.fill = YamlNumbers::as<Entity>(node["fill"]);
     if (node["type"]) progressbar.type = stringToProgressbarType(node["type"].as<std::string>());
     if (node["value"]) progressbar.value = YamlNumbers::as<float>(node["value"]);
-    if (node["fillMarginLeft"]) progressbar.fillMarginLeft = node["fillMarginLeft"].as<int>();
-    if (node["fillMarginRight"]) progressbar.fillMarginRight = node["fillMarginRight"].as<int>();
-    if (node["fillMarginTop"]) progressbar.fillMarginTop = node["fillMarginTop"].as<int>();
-    if (node["fillMarginBottom"]) progressbar.fillMarginBottom = node["fillMarginBottom"].as<int>();
+    if (node["fillMarginLeft"]) progressbar.fillMarginLeft = YamlNumbers::as<int>(node["fillMarginLeft"]);
+    if (node["fillMarginRight"]) progressbar.fillMarginRight = YamlNumbers::as<int>(node["fillMarginRight"]);
+    if (node["fillMarginTop"]) progressbar.fillMarginTop = YamlNumbers::as<int>(node["fillMarginTop"]);
+    if (node["fillMarginBottom"]) progressbar.fillMarginBottom = YamlNumbers::as<int>(node["fillMarginBottom"]);
 
     progressbar.needUpdateProgressbar = true;
 
@@ -5129,9 +5129,9 @@ InputFieldComponent editor::Stream::decodeInputFieldComponent(const YAML::Node& 
         inputfield = *oldInputField;
     }
 
-    if (node["text"]) inputfield.text = node["text"].as<Entity>();
-    if (node["selection"]) inputfield.selection = node["selection"].as<Entity>();
-    if (node["cursor"]) inputfield.cursor = node["cursor"].as<Entity>();
+    if (node["text"]) inputfield.text = YamlNumbers::as<Entity>(node["text"]);
+    if (node["selection"]) inputfield.selection = YamlNumbers::as<Entity>(node["selection"]);
+    if (node["cursor"]) inputfield.cursor = YamlNumbers::as<Entity>(node["cursor"]);
     if (node["cursorBlink"]) inputfield.cursorBlink = YamlNumbers::as<float>(node["cursorBlink"]);
     if (node["cursorWidth"]) inputfield.cursorWidth = YamlNumbers::as<float>(node["cursorWidth"]);
     if (node["cursorColor"]) inputfield.cursorColor = decodeVector4(node["cursorColor"]);
@@ -5142,10 +5142,10 @@ InputFieldComponent editor::Stream::decodeInputFieldComponent(const YAML::Node& 
         std::string passwordChar = node["passwordChar"].as<std::string>();
         inputfield.passwordChar = passwordChar.empty() ? '*' : passwordChar[0];
     }
-    if (node["cursorIndex"]) inputfield.cursorIndex = node["cursorIndex"].as<int>();
-    if (node["selectionAnchor"]) inputfield.selectionAnchor = node["selectionAnchor"].as<int>();
-    if (node["disabled"]) inputfield.disabled = node["disabled"].as<bool>();
-    if (node["password"]) inputfield.password = node["password"].as<bool>();
+    if (node["cursorIndex"]) inputfield.cursorIndex = YamlNumbers::as<int>(node["cursorIndex"]);
+    if (node["selectionAnchor"]) inputfield.selectionAnchor = YamlNumbers::as<int>(node["selectionAnchor"]);
+    if (node["disabled"]) inputfield.disabled = YamlNumbers::as<bool>(node["disabled"]);
+    if (node["password"]) inputfield.password = YamlNumbers::as<bool>(node["password"]);
 
     inputfield.needUpdateInputField = true;
 
@@ -5179,21 +5179,21 @@ PanelComponent editor::Stream::decodePanelComponent(const YAML::Node& node, cons
         panel = *oldPanel;
     }
 
-    if (node["headerimage"]) panel.headerimage = node["headerimage"].as<Entity>();
-    if (node["headercontainer"]) panel.headercontainer = node["headercontainer"].as<Entity>();
-    if (node["headertext"]) panel.headertext = node["headertext"].as<Entity>();
+    if (node["headerimage"]) panel.headerimage = YamlNumbers::as<Entity>(node["headerimage"]);
+    if (node["headercontainer"]) panel.headercontainer = YamlNumbers::as<Entity>(node["headercontainer"]);
+    if (node["headertext"]) panel.headertext = YamlNumbers::as<Entity>(node["headertext"]);
     if (node["titleAnchorPreset"]) panel.titleAnchorPreset = stringToAnchorPreset(node["titleAnchorPreset"].as<std::string>());
-    if (node["minWidth"]) panel.minWidth = node["minWidth"].as<unsigned int>();
-    if (node["minHeight"]) panel.minHeight = node["minHeight"].as<unsigned int>();
-    if (node["headerMarginLeft"]) panel.headerMarginLeft = node["headerMarginLeft"].as<int>();
-    if (node["headerMarginTop"]) panel.headerMarginTop = node["headerMarginTop"].as<int>();
-    if (node["headerMarginRight"]) panel.headerMarginRight = node["headerMarginRight"].as<int>();
-    if (node["headerMarginBottom"]) panel.headerMarginBottom = node["headerMarginBottom"].as<int>();
-    if (node["defaultHeaderMargin"]) panel.defaultHeaderMargin = node["defaultHeaderMargin"].as<bool>();
-    if (node["resizeMargin"]) panel.resizeMargin = node["resizeMargin"].as<int>();
-    if (node["canMove"]) panel.canMove = node["canMove"].as<bool>();
-    if (node["canResize"]) panel.canResize = node["canResize"].as<bool>();
-    if (node["canBringToFront"]) panel.canBringToFront = node["canBringToFront"].as<bool>();
+    if (node["minWidth"]) panel.minWidth = YamlNumbers::as<unsigned int>(node["minWidth"]);
+    if (node["minHeight"]) panel.minHeight = YamlNumbers::as<unsigned int>(node["minHeight"]);
+    if (node["headerMarginLeft"]) panel.headerMarginLeft = YamlNumbers::as<int>(node["headerMarginLeft"]);
+    if (node["headerMarginTop"]) panel.headerMarginTop = YamlNumbers::as<int>(node["headerMarginTop"]);
+    if (node["headerMarginRight"]) panel.headerMarginRight = YamlNumbers::as<int>(node["headerMarginRight"]);
+    if (node["headerMarginBottom"]) panel.headerMarginBottom = YamlNumbers::as<int>(node["headerMarginBottom"]);
+    if (node["defaultHeaderMargin"]) panel.defaultHeaderMargin = YamlNumbers::as<bool>(node["defaultHeaderMargin"]);
+    if (node["resizeMargin"]) panel.resizeMargin = YamlNumbers::as<int>(node["resizeMargin"]);
+    if (node["canMove"]) panel.canMove = YamlNumbers::as<bool>(node["canMove"]);
+    if (node["canResize"]) panel.canResize = YamlNumbers::as<bool>(node["canResize"]);
+    if (node["canBringToFront"]) panel.canBringToFront = YamlNumbers::as<bool>(node["canBringToFront"]);
 
     panel.needUpdatePanel = true;
 
@@ -5235,27 +5235,27 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
         layout = *oldLayout;
     }
 
-    if (node["width"]) layout.width = node["width"].as<unsigned int>();
-    if (node["height"]) layout.height = node["height"].as<unsigned int>();
+    if (node["width"]) layout.width = YamlNumbers::as<unsigned int>(node["width"]);
+    if (node["height"]) layout.height = YamlNumbers::as<unsigned int>(node["height"]);
     if (node["anchorPointLeft"]) layout.anchorPointLeft = YamlNumbers::as<float>(node["anchorPointLeft"]);
     if (node["anchorPointTop"]) layout.anchorPointTop = YamlNumbers::as<float>(node["anchorPointTop"]);
     if (node["anchorPointRight"]) layout.anchorPointRight = YamlNumbers::as<float>(node["anchorPointRight"]);
     if (node["anchorPointBottom"]) layout.anchorPointBottom = YamlNumbers::as<float>(node["anchorPointBottom"]);
-    if (node["anchorOffsetLeft"]) layout.anchorOffsetLeft = node["anchorOffsetLeft"].as<int>();
-    if (node["anchorOffsetTop"]) layout.anchorOffsetTop = node["anchorOffsetTop"].as<int>();
-    if (node["anchorOffsetRight"]) layout.anchorOffsetRight = node["anchorOffsetRight"].as<int>();
-    if (node["anchorOffsetBottom"]) layout.anchorOffsetBottom = node["anchorOffsetBottom"].as<int>();
+    if (node["anchorOffsetLeft"]) layout.anchorOffsetLeft = YamlNumbers::as<int>(node["anchorOffsetLeft"]);
+    if (node["anchorOffsetTop"]) layout.anchorOffsetTop = YamlNumbers::as<int>(node["anchorOffsetTop"]);
+    if (node["anchorOffsetRight"]) layout.anchorOffsetRight = YamlNumbers::as<int>(node["anchorOffsetRight"]);
+    if (node["anchorOffsetBottom"]) layout.anchorOffsetBottom = YamlNumbers::as<int>(node["anchorOffsetBottom"]);
     if (node["positionOffset"]) layout.positionOffset = decodeVector2(node["positionOffset"]);
     if (node["pivot"]) layout.pivot = decodeVector2(node["pivot"]);
     if (node["anchorPreset"]) layout.anchorPreset = stringToAnchorPreset(node["anchorPreset"].as<std::string>());
-    if (node["usingAnchors"]) layout.usingAnchors = node["usingAnchors"].as<bool>();
-    if (node["panel"]) layout.panel = node["panel"].as<Entity>();
-    if (node["containerBoxIndex"]) layout.containerBoxIndex = node["containerBoxIndex"].as<int>();
+    if (node["usingAnchors"]) layout.usingAnchors = YamlNumbers::as<bool>(node["usingAnchors"]);
+    if (node["panel"]) layout.panel = YamlNumbers::as<Entity>(node["panel"]);
+    if (node["containerBoxIndex"]) layout.containerBoxIndex = YamlNumbers::as<int>(node["containerBoxIndex"]);
     if (node["scissor"]) layout.scissor = decodeRect(node["scissor"]);
-    if (node["ignoreScissor"]) layout.ignoreScissor = node["ignoreScissor"].as<bool>();
-    if (node["ignoreEvents"]) layout.ignoreEvents = node["ignoreEvents"].as<bool>();
-    //layout.needUpdateSizes = node["needUpdateSizes"].as<bool>();
-    //layout.needUpdateAnchorOffsets = node["needUpdateAnchorOffsets"].as<bool>();
+    if (node["ignoreScissor"]) layout.ignoreScissor = YamlNumbers::as<bool>(node["ignoreScissor"]);
+    if (node["ignoreEvents"]) layout.ignoreEvents = YamlNumbers::as<bool>(node["ignoreEvents"]);
+    //layout.needUpdateSizes = YamlNumbers::as<bool>(node["needUpdateSizes"]);
+    //layout.needUpdateAnchorOffsets = YamlNumbers::as<bool>(node["needUpdateAnchorOffsets"]);
 
     return layout;
 }
@@ -5277,10 +5277,10 @@ LayoutGroupComponent editor::Stream::decodeLayoutGroupComponent(const YAML::Node
     }
 
     if (node["type"]) container.type = stringToLayoutGroupType(node["type"].as<std::string>());
-    if (node["useAllWrapSpace"]) container.useAllWrapSpace = node["useAllWrapSpace"].as<bool>();
-    if (node["fillAvailableSpace"]) container.useAllWrapSpace = node["fillAvailableSpace"].as<bool>();
-    if (node["wrapCellWidth"]) container.wrapCellWidth = node["wrapCellWidth"].as<unsigned int>();
-    if (node["wrapCellHeight"]) container.wrapCellHeight = node["wrapCellHeight"].as<unsigned int>();
+    if (node["useAllWrapSpace"]) container.useAllWrapSpace = YamlNumbers::as<bool>(node["useAllWrapSpace"]);
+    if (node["fillAvailableSpace"]) container.useAllWrapSpace = YamlNumbers::as<bool>(node["fillAvailableSpace"]);
+    if (node["wrapCellWidth"]) container.wrapCellWidth = YamlNumbers::as<unsigned int>(node["wrapCellWidth"]);
+    if (node["wrapCellHeight"]) container.wrapCellHeight = YamlNumbers::as<unsigned int>(node["wrapCellHeight"]);
 
     return container;
 }
@@ -5329,13 +5329,13 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
         }
     }
     if (node["text"]) text.text = node["text"].as<std::string>();
-    if (node["fontSize"]) text.fontSize = node["fontSize"].as<unsigned int>();
-    if (node["multiline"]) text.multiline = node["multiline"].as<bool>();
-    if (node["maxTextSize"]) text.maxTextSize = node["maxTextSize"].as<unsigned int>();
-    if (node["fixedWidth"]) text.fixedWidth = node["fixedWidth"].as<bool>();
-    if (node["fixedHeight"]) text.fixedHeight = node["fixedHeight"].as<bool>();
-    if (node["pivotBaseline"]) text.pivotBaseline = node["pivotBaseline"].as<bool>();
-    if (node["pivotCentered"]) text.pivotCentered = node["pivotCentered"].as<bool>();
+    if (node["fontSize"]) text.fontSize = YamlNumbers::as<unsigned int>(node["fontSize"]);
+    if (node["multiline"]) text.multiline = YamlNumbers::as<bool>(node["multiline"]);
+    if (node["maxTextSize"]) text.maxTextSize = YamlNumbers::as<unsigned int>(node["maxTextSize"]);
+    if (node["fixedWidth"]) text.fixedWidth = YamlNumbers::as<bool>(node["fixedWidth"]);
+    if (node["fixedHeight"]) text.fixedHeight = YamlNumbers::as<bool>(node["fixedHeight"]);
+    if (node["pivotBaseline"]) text.pivotBaseline = YamlNumbers::as<bool>(node["pivotBaseline"]);
+    if (node["pivotCentered"]) text.pivotCentered = YamlNumbers::as<bool>(node["pivotCentered"]);
 
     return text;
 }
@@ -5360,12 +5360,12 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
         image = *oldImage;
     }
 
-    if (node["patchMarginLeft"]) image.patchMarginLeft = node["patchMarginLeft"].as<int>();
-    if (node["patchMarginRight"]) image.patchMarginRight = node["patchMarginRight"].as<int>();
-    if (node["patchMarginTop"]) image.patchMarginTop = node["patchMarginTop"].as<int>();
-    if (node["patchMarginBottom"]) image.patchMarginBottom = node["patchMarginBottom"].as<int>();
+    if (node["patchMarginLeft"]) image.patchMarginLeft = YamlNumbers::as<int>(node["patchMarginLeft"]);
+    if (node["patchMarginRight"]) image.patchMarginRight = YamlNumbers::as<int>(node["patchMarginRight"]);
+    if (node["patchMarginTop"]) image.patchMarginTop = YamlNumbers::as<int>(node["patchMarginTop"]);
+    if (node["patchMarginBottom"]) image.patchMarginBottom = YamlNumbers::as<int>(node["patchMarginBottom"]);
     if (node["textureScaleFactor"]) image.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
-    //image.needUpdatePatches = node["needUpdatePatches"].as<bool>();
+    //image.needUpdatePatches = YamlNumbers::as<bool>(node["needUpdatePatches"]);
 
     return image;
 }
@@ -5373,8 +5373,8 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
 YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(sprite.enabled);
-    node["width"] = sprite.width;
-    node["height"] = sprite.height;
+    node["width"] = YamlNumbers::integerText(sprite.width);
+    node["height"] = YamlNumbers::integerText(sprite.height);
     node["automaticFlipY"] = YamlNumbers::text(sprite.automaticFlipY);
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
@@ -5405,13 +5405,13 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     sprite.pendingFrameRect = Rect();
     sprite.needUpdateFrameRect = false;
 
-    if (node["width"]) sprite.width = node["width"].as<unsigned int>();
-    if (node["height"]) sprite.height = node["height"].as<unsigned int>();
-    if (node["automaticFlipY"]) sprite.automaticFlipY = node["automaticFlipY"].as<bool>();
-    if (node["flipY"]) sprite.flipY = node["flipY"].as<bool>();
+    if (node["width"]) sprite.width = YamlNumbers::as<unsigned int>(node["width"]);
+    if (node["height"]) sprite.height = YamlNumbers::as<unsigned int>(node["height"]);
+    if (node["automaticFlipY"]) sprite.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
+    if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = stringToPivotPreset(node["pivotPreset"].as<std::string>());
-    //if (node["needUpdateSprite"]) sprite.needUpdateSprite = node["needUpdateSprite"].as<bool>();
+    //if (node["needUpdateSprite"]) sprite.needUpdateSprite = YamlNumbers::as<bool>(node["needUpdateSprite"]);
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -5429,7 +5429,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
         }
     }
 
-    if (node["enabled"]) sprite.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) sprite.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return sprite;
 }
@@ -5470,12 +5470,12 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
         tilemap = *oldTilemap;
     }
 
-    if (node["width"]) tilemap.width = node["width"].as<unsigned int>();
-    if (node["height"]) tilemap.height = node["height"].as<unsigned int>();
-    if (node["automaticFlipY"]) tilemap.automaticFlipY = node["automaticFlipY"].as<bool>();
-    if (node["flipY"]) tilemap.flipY = node["flipY"].as<bool>();
+    if (node["width"]) tilemap.width = YamlNumbers::as<unsigned int>(node["width"]);
+    if (node["height"]) tilemap.height = YamlNumbers::as<unsigned int>(node["height"]);
+    if (node["automaticFlipY"]) tilemap.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
+    if (node["flipY"]) tilemap.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
-    if (node["reserveTiles"]) tilemap.reserveTiles = node["reserveTiles"].as<unsigned int>();
+    if (node["reserveTiles"]) tilemap.reserveTiles = YamlNumbers::as<unsigned int>(node["reserveTiles"]);
 
     if (node["tilesRect"]) {
         const YAML::Node& tilesRectNode = node["tilesRect"];
@@ -5505,7 +5505,7 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
         }
     }
 
-    if (node["enabled"]) tilemap.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) tilemap.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return tilemap;
 }
@@ -5535,7 +5535,7 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
 
 TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& node) {
     TerrainSurfaceLayer layer;
-    if (node["pbr"]) layer.pbr = node["pbr"].as<bool>();
+    if (node["pbr"]) layer.pbr = YamlNumbers::as<bool>(node["pbr"]);
     if (node["colorTexture"]) layer.colorTexture = decodeTexture(node["colorTexture"]);
     if (node["normalTexture"]) layer.normalTexture = decodeTexture(node["normalTexture"]);
     if (node["roughnessTexture"]) layer.roughnessTexture = decodeTexture(node["roughnessTexture"]);
@@ -5575,8 +5575,8 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = node["meshPath"].as<std::string>();
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
-    if (node["seed"]) layer.seed = node["seed"].as<unsigned int>();
-    if (node["castShadows"]) layer.castShadows = node["castShadows"].as<bool>();
+    if (node["seed"]) layer.seed = YamlNumbers::as<unsigned int>(node["seed"]);
+    if (node["castShadows"]) layer.castShadows = YamlNumbers::as<bool>(node["castShadows"]);
     layer.density = decodeFinite(node["density"], layer.density);
     layer.minScale = decodeFinite(node["minScale"], layer.minScale);
     layer.maxScale = decodeFinite(node["maxScale"], layer.maxScale);
@@ -5691,15 +5691,15 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     if (terrain.surfaceLayers.size() > MAX_TERRAIN_LAYERS) {
         terrain.surfaceLayers.resize(MAX_TERRAIN_LAYERS);
     }
-    if (node["autoSetRanges"]) terrain.autoSetRanges = node["autoSetRanges"].as<bool>();
+    if (node["autoSetRanges"]) terrain.autoSetRanges = YamlNumbers::as<bool>(node["autoSetRanges"]);
     if (node["offset"]) terrain.offset = decodeVector2(node["offset"]);
     if (node["terrainSize"]) terrain.terrainSize = YamlNumbers::as<float>(node["terrainSize"]);
     if (node["maxHeight"]) terrain.maxHeight = YamlNumbers::as<float>(node["maxHeight"]);
     if (node["resolution"]) terrain.resolution = YamlNumbers::as<float>(node["resolution"]);
     if (node["textureBaseTiles"]) terrain.textureBaseTiles = YamlNumbers::as<float>(node["textureBaseTiles"]);
     if (node["textureDetailTiles"]) terrain.textureDetailTiles = YamlNumbers::as<float>(node["textureDetailTiles"]);
-    if (node["rootGridSize"]) terrain.rootGridSize = node["rootGridSize"].as<int>();
-    if (node["levels"]) terrain.levels = node["levels"].as<int>();
+    if (node["rootGridSize"]) terrain.rootGridSize = YamlNumbers::as<int>(node["rootGridSize"]);
+    if (node["levels"]) terrain.levels = YamlNumbers::as<int>(node["levels"]);
 
     // The encoder omits empty ranges, so applying a full component must clear old values.
     terrain.ranges.clear();
@@ -5734,7 +5734,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.nodes.clear();
     terrain.numNodes = 0;
 
-    if (node["enabled"]) terrain.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) terrain.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return terrain;
 }
@@ -5817,21 +5817,21 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
 
     // Also check for the old modelPath for exact backward compatibility with old save files
     if (node["filename"]) model.filename = node["filename"].as<std::string>();
-    if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = node["mergeStaticMeshes"].as<bool>();
-    if (node["skeleton"]) model.skeleton = static_cast<Entity>(node["skeleton"].as<uint32_t>());
+    if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = YamlNumbers::as<bool>(node["mergeStaticMeshes"]);
+    if (node["skeleton"]) model.skeleton = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["skeleton"]));
 
     if (node["animations"]) {
         model.animations.clear();
         for (const auto& animNode : node["animations"]) {
-            model.animations.push_back(static_cast<Entity>(animNode.as<uint32_t>()));
+            model.animations.push_back(static_cast<Entity>(YamlNumbers::as<uint32_t>(animNode)));
         }
     }
 
     if (node["bonesIdMapping"]) {
         model.bonesIdMapping.clear();
         for (const auto& boneNode : node["bonesIdMapping"]) {
-            int id = boneNode["id"].as<int>();
-            Entity boneEntity = static_cast<Entity>(boneNode["entity"].as<uint32_t>());
+            int id = YamlNumbers::as<int>(boneNode["id"]);
+            Entity boneEntity = static_cast<Entity>(YamlNumbers::as<uint32_t>(boneNode["entity"]));
             model.bonesIdMapping[id] = boneEntity;
         }
     }
@@ -5840,7 +5840,7 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
         model.bonesNameMapping.clear();
         for (const auto& boneNode : node["bonesNameMapping"]) {
             std::string name = boneNode["name"].as<std::string>();
-            Entity boneEntity = static_cast<Entity>(boneNode["entity"].as<uint32_t>());
+            Entity boneEntity = static_cast<Entity>(YamlNumbers::as<uint32_t>(boneNode["entity"]));
             model.bonesNameMapping[name] = boneEntity;
         }
     }
@@ -5848,8 +5848,8 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     if (node["meshNodesMapping"]) {
         model.meshNodesMapping.clear();
         for (const auto& meshNode : node["meshNodesMapping"]) {
-            int nodeIdx = meshNode["node"].as<int>();
-            Entity nodeEntity = static_cast<Entity>(meshNode["entity"].as<uint32_t>());
+            int nodeIdx = YamlNumbers::as<int>(meshNode["node"]);
+            Entity nodeEntity = static_cast<Entity>(YamlNumbers::as<uint32_t>(meshNode["entity"]));
             model.meshNodesMapping[nodeIdx] = nodeEntity;
         }
     }
@@ -5857,8 +5857,8 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     model.nodesIdMapping.clear();
     if (node["nodesIdMapping"]) {
         for (const auto& mappedNode : node["nodesIdMapping"]) {
-            int nodeIdx = mappedNode["node"].as<int>();
-            Entity nodeEntity = static_cast<Entity>(mappedNode["entity"].as<uint32_t>());
+            int nodeIdx = YamlNumbers::as<int>(mappedNode["node"]);
+            Entity nodeEntity = static_cast<Entity>(YamlNumbers::as<uint32_t>(mappedNode["entity"]));
             model.nodesIdMapping[nodeIdx] = nodeEntity;
         }
     }
@@ -5872,7 +5872,7 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
         model.needUpdateModel = true;
     }
 
-    if (node["enabled"]) model.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) model.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return model;
 }
@@ -5919,14 +5919,14 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["outerConeCos"]) light.outerConeCos = YamlNumbers::as<float>(node["outerConeCos"]);
     if (node["spotMask"]) light.spotMask = decodeTexture(node["spotMask"]);
     if (node["cullingMask"]) light.cullingMask = decodeLayerMask(node["cullingMask"], light.cullingMask);
-    if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
-    if (node["automaticShadowCamera"]) light.automaticShadowCamera = node["automaticShadowCamera"].as<bool>();
+    if (node["shadows"]) light.shadows = YamlNumbers::as<bool>(node["shadows"]);
+    if (node["automaticShadowCamera"]) light.automaticShadowCamera = YamlNumbers::as<bool>(node["automaticShadowCamera"]);
     if (node["shadowBias"]) light.shadowBias = YamlNumbers::as<float>(node["shadowBias"]);
-    if (node["mapResolution"]) light.mapResolution = node["mapResolution"].as<unsigned int>();
+    if (node["mapResolution"]) light.mapResolution = YamlNumbers::as<unsigned int>(node["mapResolution"]);
     if (node["shadowCameraNearFar"]) light.shadowCameraNearFar = decodeVector2(node["shadowCameraNearFar"]);
-    if (node["numShadowCascades"]) light.numShadowCascades = node["numShadowCascades"].as<unsigned int>();
+    if (node["numShadowCascades"]) light.numShadowCascades = YamlNumbers::as<unsigned int>(node["numShadowCascades"]);
 
-    if (node["enabled"]) light.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return light;
 }
@@ -5961,12 +5961,12 @@ Light2DComponent editor::Stream::decodeLight2DComponent(const YAML::Node& node, 
     if (node["range"]) light.range = YamlNumbers::as<float>(node["range"]);
     if (node["falloff"]) light.falloff = YamlNumbers::as<float>(node["falloff"]);
     if (node["height"]) light.height = YamlNumbers::as<float>(node["height"]);
-    if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
+    if (node["shadows"]) light.shadows = YamlNumbers::as<bool>(node["shadows"]);
     if (node["shadowBias"]) light.shadowBias = YamlNumbers::as<float>(node["shadowBias"]);
     if (node["shadowSoftness"]) light.shadowSoftness = YamlNumbers::as<float>(node["shadowSoftness"]);
-    if (node["mapResolution"]) light.mapResolution = node["mapResolution"].as<unsigned int>();
+    if (node["mapResolution"]) light.mapResolution = YamlNumbers::as<unsigned int>(node["mapResolution"]);
 
-    if (node["enabled"]) light.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return light;
 }
@@ -6008,8 +6008,8 @@ ShadowCaster2DComponent editor::Stream::decodeShadowCaster2DComponent(const YAML
     }
 
     if (node["shape"]) occluder.shape = stringToShadowCaster2DShape(node["shape"].as<std::string>());
-    if (node["closed"]) occluder.closed = node["closed"].as<bool>();
-    if (node["enabled"]) occluder.enabled = node["enabled"].as<bool>();
+    if (node["closed"]) occluder.closed = YamlNumbers::as<bool>(node["closed"]);
+    if (node["enabled"]) occluder.enabled = YamlNumbers::as<bool>(node["enabled"]);
     if (node["points"]) {
         occluder.points.clear();
         for (const auto& pointNode : node["points"]) {
@@ -6112,12 +6112,12 @@ ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YA
     if (node["boxSize"]) probe.boxSize = decodeVector3(node["boxSize"]);
     if (node["blendDistance"]) probe.blendDistance = YamlNumbers::as<float>(node["blendDistance"]);
     if (node["intensity"]) probe.intensity = YamlNumbers::as<float>(node["intensity"]);
-    if (node["priority"]) probe.priority = node["priority"].as<int>();
-    if (node["resolution"]) probe.resolution = node["resolution"].as<unsigned int>();
+    if (node["priority"]) probe.priority = YamlNumbers::as<int>(node["priority"]);
+    if (node["resolution"]) probe.resolution = YamlNumbers::as<unsigned int>(node["resolution"]);
     if (node["nearClip"]) probe.nearClip = YamlNumbers::as<float>(node["nearClip"]);
     if (node["farClip"]) probe.farClip = YamlNumbers::as<float>(node["farClip"]);
     if (node["updateInterval"]) probe.updateInterval = YamlNumbers::as<float>(node["updateInterval"]);
-    if (node["includeSky"]) probe.includeSky = node["includeSky"].as<bool>();
+    if (node["includeSky"]) probe.includeSky = YamlNumbers::as<bool>(node["includeSky"]);
     if (node["cullingMask"]) probe.cullingMask = decodeLayerMask(node["cullingMask"], probe.cullingMask);
     if (node["texture"]) probe.texture = decodeTexture(node["texture"]);
     probe.needUpdate = true;
@@ -6173,16 +6173,16 @@ CameraComponent editor::Stream::decodeCameraComponent(const YAML::Node& node, co
     camera.aspect = decodePositiveFinite(node["aspect"], camera.aspect);
     camera.nearClip = decodeFinite(node["nearClip"], camera.nearClip);
     camera.farClip = decodeFinite(node["farClip"], camera.farClip);
-    if (node["renderToTexture"]) camera.renderToTexture = node["renderToTexture"].as<bool>();
-    if (node["transparentSort"]) camera.transparentSort = node["transparentSort"].as<bool>();
-    if (node["depthTest"]) camera.depthTest = node["depthTest"].as<bool>();
-    if (node["useTarget"]) camera.useTarget = node["useTarget"].as<bool>();
-    if (node["autoResize"]) camera.autoResize = node["autoResize"].as<bool>();
-    if (node["framebufferWidth"]) camera.framebufferWidth = node["framebufferWidth"].as<unsigned int>();
-    if (node["framebufferHeight"]) camera.framebufferHeight = node["framebufferHeight"].as<unsigned int>();
+    if (node["renderToTexture"]) camera.renderToTexture = YamlNumbers::as<bool>(node["renderToTexture"]);
+    if (node["transparentSort"]) camera.transparentSort = YamlNumbers::as<bool>(node["transparentSort"]);
+    if (node["depthTest"]) camera.depthTest = YamlNumbers::as<bool>(node["depthTest"]);
+    if (node["useTarget"]) camera.useTarget = YamlNumbers::as<bool>(node["useTarget"]);
+    if (node["autoResize"]) camera.autoResize = YamlNumbers::as<bool>(node["autoResize"]);
+    if (node["framebufferWidth"]) camera.framebufferWidth = YamlNumbers::as<unsigned int>(node["framebufferWidth"]);
+    if (node["framebufferHeight"]) camera.framebufferHeight = YamlNumbers::as<unsigned int>(node["framebufferHeight"]);
     if (node["framebufferFilter"]) camera.framebufferFilter = stringToTextureFilter(node["framebufferFilter"].as<std::string>());
 
-    if (node["enabled"]) camera.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) camera.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return camera;
 }
@@ -6222,15 +6222,15 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
 
     if (node["state"]) audio.state = stringToAudioSourceState(node["state"].as<std::string>());
     if (node["filename"]) audio.filename = node["filename"].as<std::string>();
-    if (node["enableClocked"]) audio.enableClocked = node["enableClocked"].as<bool>();
+    if (node["enableClocked"]) audio.enableClocked = YamlNumbers::as<bool>(node["enableClocked"]);
     if (node["volume"]) audio.volume = decodeFiniteDouble(node["volume"], audio.volume);
     if (node["speed"]) audio.speed = decodeFinite(node["speed"], audio.speed);
     if (node["pan"]) audio.pan = decodeFinite(node["pan"], audio.pan);
-    if (node["looping"]) audio.looping = node["looping"].as<bool>();
+    if (node["looping"]) audio.looping = YamlNumbers::as<bool>(node["looping"]);
     if (node["loopingPoint"]) audio.loopingPoint = decodeFiniteDouble(node["loopingPoint"], audio.loopingPoint);
-    if (node["protectVoice"]) audio.protectVoice = node["protectVoice"].as<bool>();
-    if (node["inaudibleBehaviorMustTick"]) audio.inaudibleBehaviorMustTick = node["inaudibleBehaviorMustTick"].as<bool>();
-    if (node["inaudibleBehaviorKill"]) audio.inaudibleBehaviorKill = node["inaudibleBehaviorKill"].as<bool>();
+    if (node["protectVoice"]) audio.protectVoice = YamlNumbers::as<bool>(node["protectVoice"]);
+    if (node["inaudibleBehaviorMustTick"]) audio.inaudibleBehaviorMustTick = YamlNumbers::as<bool>(node["inaudibleBehaviorMustTick"]);
+    if (node["inaudibleBehaviorKill"]) audio.inaudibleBehaviorKill = YamlNumbers::as<bool>(node["inaudibleBehaviorKill"]);
     if (node["minDistance"]) audio.minDistance = decodeFinite(node["minDistance"], audio.minDistance);
     if (node["maxDistance"]) audio.maxDistance = decodeFinite(node["maxDistance"], audio.maxDistance);
     if (node["attenuationModel"]) audio.attenuationModel = stringToAudioSourceAttenuation(node["attenuationModel"].as<std::string>());
@@ -6253,7 +6253,7 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
     audio.stopTrigger = false;
     audio.needUpdate = true;
 
-    if (node["enabled"]) audio.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) audio.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return audio;
 }
@@ -6326,7 +6326,7 @@ ScriptComponent editor::Stream::decodeScriptComponent(const YAML::Node& node, co
             entry.className = scriptNode["className"].as<std::string>();
 
         if (scriptNode["enabled"])
-            entry.enabled = scriptNode["enabled"].as<bool>();
+            entry.enabled = YamlNumbers::as<bool>(scriptNode["enabled"]);
 
         if (scriptNode["properties"] && scriptNode["properties"].IsSequence()) {
             for (const auto& propNode : scriptNode["properties"]) {
@@ -6365,7 +6365,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
         sky = *oldSky;
     }
 
-    const bool useDefaultTexture = node["useDefaultTexture"] ? node["useDefaultTexture"].as<bool>() : false;
+    const bool useDefaultTexture = node["useDefaultTexture"] ? YamlNumbers::as<bool>(node["useDefaultTexture"]) : false;
     if (useDefaultTexture) {
         ProjectUtils::setDefaultSkyTexture(sky.texture);
     }
@@ -6377,14 +6377,14 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
             if (texNode["magFilter"]) sky.texture.setMagFilter(stringToTextureFilter(texNode["magFilter"].as<std::string>()));
             if (texNode["wrapU"]) sky.texture.setWrapU(stringToTextureWrap(texNode["wrapU"].as<std::string>()));
             if (texNode["wrapV"]) sky.texture.setWrapV(stringToTextureWrap(texNode["wrapV"].as<std::string>()));
-            if (texNode["releaseDataAfterLoad"]) sky.texture.setReleaseDataAfterLoad(texNode["releaseDataAfterLoad"].as<bool>());
+            if (texNode["releaseDataAfterLoad"]) sky.texture.setReleaseDataAfterLoad(YamlNumbers::as<bool>(texNode["releaseDataAfterLoad"]));
         } else {
             sky.texture = decodeTexture(node["texture"]);
         }
     }
     if (node["color"]) sky.color = decodeVector4(node["color"]);
     if (node["rotation"]) sky.rotation = YamlNumbers::as<float>(node["rotation"]);
-    if (node["visible"]) sky.visible = node["visible"].as<bool>();
+    if (node["visible"]) sky.visible = YamlNumbers::as<bool>(node["visible"]);
 
     if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
@@ -6602,7 +6602,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
     }
 
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
-    if (node["numColliders"]) body.numColliders = node["numColliders"].as<unsigned int>();
+    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
 
     if (node["colliders"]) {
         size_t count = node["colliders"].size();
@@ -6617,19 +6617,19 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
                 body.colliders[i].pointB = decodeVector2(node["colliders"][i]["pointB"]);
             }
             if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
-            if (node["colliders"][i]["loop"]) body.colliders[i].loop = node["colliders"][i]["loop"].as<bool>();
+            if (node["colliders"][i]["loop"]) body.colliders[i].loop = YamlNumbers::as<bool>(node["colliders"][i]["loop"]);
 
             if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
             if (node["colliders"][i]["friction"]) body.colliders[i].friction = YamlNumbers::as<float>(node["colliders"][i]["friction"]);
             if (node["colliders"][i]["restitution"]) body.colliders[i].restitution = YamlNumbers::as<float>(node["colliders"][i]["restitution"]);
-            if (node["colliders"][i]["sensor"]) body.colliders[i].sensor = node["colliders"][i]["sensor"].as<bool>();
-            if (node["colliders"][i]["enableHitEvents"]) body.colliders[i].enableHitEvents = node["colliders"][i]["enableHitEvents"].as<bool>();
-            if (node["colliders"][i]["contactEvents"]) body.colliders[i].contactEvents = node["colliders"][i]["contactEvents"].as<bool>();
-            if (node["colliders"][i]["preSolveEvents"]) body.colliders[i].preSolveEvents = node["colliders"][i]["preSolveEvents"].as<bool>();
-            if (node["colliders"][i]["sensorEvents"]) body.colliders[i].sensorEvents = node["colliders"][i]["sensorEvents"].as<bool>();
-            if (node["colliders"][i]["categoryBits"]) body.colliders[i].categoryBits = node["colliders"][i]["categoryBits"].as<uint16_t>();
-            if (node["colliders"][i]["maskBits"]) body.colliders[i].maskBits = node["colliders"][i]["maskBits"].as<uint16_t>();
-            if (node["colliders"][i]["groupIndex"]) body.colliders[i].groupIndex = node["colliders"][i]["groupIndex"].as<int16_t>();
+            if (node["colliders"][i]["sensor"]) body.colliders[i].sensor = YamlNumbers::as<bool>(node["colliders"][i]["sensor"]);
+            if (node["colliders"][i]["enableHitEvents"]) body.colliders[i].enableHitEvents = YamlNumbers::as<bool>(node["colliders"][i]["enableHitEvents"]);
+            if (node["colliders"][i]["contactEvents"]) body.colliders[i].contactEvents = YamlNumbers::as<bool>(node["colliders"][i]["contactEvents"]);
+            if (node["colliders"][i]["preSolveEvents"]) body.colliders[i].preSolveEvents = YamlNumbers::as<bool>(node["colliders"][i]["preSolveEvents"]);
+            if (node["colliders"][i]["sensorEvents"]) body.colliders[i].sensorEvents = YamlNumbers::as<bool>(node["colliders"][i]["sensorEvents"]);
+            if (node["colliders"][i]["categoryBits"]) body.colliders[i].categoryBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["categoryBits"]);
+            if (node["colliders"][i]["maskBits"]) body.colliders[i].maskBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["maskBits"]);
+            if (node["colliders"][i]["groupIndex"]) body.colliders[i].groupIndex = YamlNumbers::as<int16_t>(node["colliders"][i]["groupIndex"]);
 
             if (node["colliders"][i]["vertices"]) {
                 size_t vcount = node["colliders"][i]["vertices"].size();
@@ -6649,7 +6649,7 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
         body.needUpdateColliders = true;
     }
 
-    if (node["enabled"]) body.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) body.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return body;
 }
@@ -6736,7 +6736,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
 
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
     if (node["motionQuality"]) body.motionQuality = stringToRigidbodyMotionQuality(node["motionQuality"].as<std::string>());
-    if (node["sensor"]) body.sensor = node["sensor"].as<bool>();
+    if (node["sensor"]) body.sensor = YamlNumbers::as<bool>(node["sensor"]);
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
 
     if (node["allowedDOFs"]) {
@@ -6744,7 +6744,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         uint8_t dofs = 0;
         // A present map is authoritative, so a missing key means that axis is locked.
         auto dof = [&](const char* name, uint8_t bit) {
-            if (dofsNode[name] && dofsNode[name].as<bool>()) dofs |= bit;
+            if (dofsNode[name] && YamlNumbers::as<bool>(dofsNode[name])) dofs |= bit;
         };
         dof("translationX", RigidbodyAllowedDOF_TranslationX);
         dof("translationY", RigidbodyAllowedDOF_TranslationY);
@@ -6757,7 +6757,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         body.allowedDOFs = dofs == 0 ? RigidbodyAllowedDOF_All : dofs;
     }
 
-    if (node["numColliders"]) body.numColliders = node["numColliders"].as<unsigned int>();
+    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
 
     if (node["colliders"]) {
         size_t count = node["colliders"].size();
@@ -6804,9 +6804,9 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
                 }
             }
 
-            if (node["colliders"][i]["sourceEntity"]) body.colliders[i].sourceEntity = node["colliders"][i]["sourceEntity"].as<Entity>();
+            if (node["colliders"][i]["sourceEntity"]) body.colliders[i].sourceEntity = YamlNumbers::as<Entity>(node["colliders"][i]["sourceEntity"]);
 
-            if (node["colliders"][i]["samplesSize"]) body.colliders[i].samplesSize = node["colliders"][i]["samplesSize"].as<unsigned int>();
+            if (node["colliders"][i]["samplesSize"]) body.colliders[i].samplesSize = YamlNumbers::as<unsigned int>(node["colliders"][i]["samplesSize"]);
 
             if (node["colliders"][i]["vertices"]) {
                 size_t vcount = node["colliders"][i]["vertices"].size();
@@ -6820,7 +6820,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
                 size_t icount = node["colliders"][i]["indices"].size();
                 body.colliders[i].numIndices = (uint16_t)icount;
                 for (size_t j = 0; j < icount; j++) {
-                    body.colliders[i].indices[j] = node["colliders"][i]["indices"][j].as<uint16_t>();
+                    body.colliders[i].indices[j] = YamlNumbers::as<uint16_t>(node["colliders"][i]["indices"][j]);
                 }
             }
 
@@ -6833,7 +6833,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         body.needUpdateColliders = true;
     }
 
-    if (node["enabled"]) body.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) body.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return body;
 }
@@ -6867,20 +6867,20 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
     }
 
     if (node["type"]) joint.type = stringToJoint2DType(node["type"].as<std::string>());
-    if (node["bodyA"]) joint.bodyA = node["bodyA"].as<Entity>();
-    if (node["bodyB"]) joint.bodyB = node["bodyB"].as<Entity>();
+    if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
+    if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
     if (node["anchorA"]) joint.anchorA = decodeVector2(node["anchorA"]);
     if (node["anchorB"]) joint.anchorB = decodeVector2(node["anchorB"]);
     if (node["axis"]) joint.axis = decodeVector2(node["axis"]);
     if (node["target"]) joint.target = decodeVector2(node["target"]);
-    if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
-    if (node["rope"]) joint.rope = node["rope"].as<bool>();
+    if (node["autoAnchors"]) joint.autoAnchors = YamlNumbers::as<bool>(node["autoAnchors"]);
+    if (node["rope"]) joint.rope = YamlNumbers::as<bool>(node["rope"]);
 
     if (oldJoint && b2Joint_IsValid(oldJoint->joint)) {
         joint.needUpdateJoint = true;
     }
 
-    if (node["enabled"]) joint.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) joint.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return joint;
 }
@@ -6942,8 +6942,8 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     }
 
     if (node["type"]) joint.type = stringToJoint3DType(node["type"].as<std::string>());
-    if (node["bodyA"]) joint.bodyA = node["bodyA"].as<Entity>();
-    if (node["bodyB"]) joint.bodyB = node["bodyB"].as<Entity>();
+    if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
+    if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
     if (node["anchorA"]) joint.anchorA = decodeVector3(node["anchorA"]);
     if (node["anchorB"]) joint.anchorB = decodeVector3(node["anchorB"]);
     if (node["anchor"]) joint.anchor = decodeVector3(node["anchor"]);
@@ -6961,15 +6961,15 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["twistMaxAngle"]) joint.twistMaxAngle = YamlNumbers::as<float>(node["twistMaxAngle"]);
     if (node["fixedPointA"]) joint.fixedPointA = decodeVector3(node["fixedPointA"]);
     if (node["fixedPointB"]) joint.fixedPointB = decodeVector3(node["fixedPointB"]);
-    if (node["hingeA"]) joint.hingeA = node["hingeA"].as<Entity>();
-    if (node["hingeB"]) joint.hingeB = node["hingeB"].as<Entity>();
-    if (node["hinge"]) joint.hinge = node["hinge"].as<Entity>();
-    if (node["slider"]) joint.slider = node["slider"].as<Entity>();
-    if (node["numTeethGearA"]) joint.numTeethGearA = node["numTeethGearA"].as<int>();
-    if (node["numTeethGearB"]) joint.numTeethGearB = node["numTeethGearB"].as<int>();
-    if (node["numTeethRack"]) joint.numTeethRack = node["numTeethRack"].as<int>();
-    if (node["numTeethGear"]) joint.numTeethGear = node["numTeethGear"].as<int>();
-    if (node["rackLength"]) joint.rackLength = node["rackLength"].as<int>();
+    if (node["hingeA"]) joint.hingeA = YamlNumbers::as<Entity>(node["hingeA"]);
+    if (node["hingeB"]) joint.hingeB = YamlNumbers::as<Entity>(node["hingeB"]);
+    if (node["hinge"]) joint.hinge = YamlNumbers::as<Entity>(node["hinge"]);
+    if (node["slider"]) joint.slider = YamlNumbers::as<Entity>(node["slider"]);
+    if (node["numTeethGearA"]) joint.numTeethGearA = YamlNumbers::as<int>(node["numTeethGearA"]);
+    if (node["numTeethGearB"]) joint.numTeethGearB = YamlNumbers::as<int>(node["numTeethGearB"]);
+    if (node["numTeethRack"]) joint.numTeethRack = YamlNumbers::as<int>(node["numTeethRack"]);
+    if (node["numTeethGear"]) joint.numTeethGear = YamlNumbers::as<int>(node["numTeethGear"]);
+    if (node["rackLength"]) joint.rackLength = YamlNumbers::as<int>(node["rackLength"]);
     if (node["pathPoints"]){
         joint.pathPoints.clear();
         for (const YAML::Node& pointNode : node["pathPoints"]){
@@ -6977,14 +6977,14 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
         }
     }
     if (node["pathPosition"]) joint.pathPosition = decodeVector3(node["pathPosition"]);
-    if (node["isLooping"]) joint.isLooping = node["isLooping"].as<bool>();
-    if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
+    if (node["isLooping"]) joint.isLooping = YamlNumbers::as<bool>(node["isLooping"]);
+    if (node["autoAnchors"]) joint.autoAnchors = YamlNumbers::as<bool>(node["autoAnchors"]);
 
     if (oldJoint && oldJoint->joint) {
         joint.needUpdateJoint = true;
     }
 
-    if (node["enabled"]) joint.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) joint.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return joint;
 }
@@ -7031,8 +7031,8 @@ ActionComponent editor::Stream::decodeActionComponent(const YAML::Node& node, co
 
     if (node["state"]) action.state = stringToActionState(node["state"].as<std::string>());
     if (node["speed"]) action.speed = YamlNumbers::as<float>(node["speed"]);
-    if (node["target"]) action.target = node["target"].as<Entity>();
-    if (node["ownedTarget"]) action.ownedTarget = node["ownedTarget"].as<bool>();
+    if (node["target"]) action.target = YamlNumbers::as<Entity>(node["target"]);
+    if (node["ownedTarget"]) action.ownedTarget = YamlNumbers::as<bool>(node["ownedTarget"]);
 
     return action;
 }
@@ -7060,7 +7060,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
     timed.value = 0;
 
     if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
-    if (node["loop"]) timed.loop = node["loop"].as<bool>();
+    if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
     return timed;
@@ -7111,7 +7111,7 @@ RotationTweenComponent editor::Stream::decodeRotationTweenComponent(const YAML::
 
     if (node["endRotation"]) rotAction.endRotation = decodeQuaternion(node["endRotation"]);
     if (node["startRotation"]) rotAction.startRotation = decodeQuaternion(node["startRotation"]);
-    if (node["shortestPath"]) rotAction.shortestPath = node["shortestPath"].as<bool>();
+    if (node["shortestPath"]) rotAction.shortestPath = YamlNumbers::as<bool>(node["shortestPath"]);
 
     return rotAction;
 }
@@ -7161,7 +7161,7 @@ ColorTweenComponent editor::Stream::decodeColorTweenComponent(const YAML::Node& 
 
     if (node["endColor"]) colorTween.endColor = decodeVector3(node["endColor"]);
     if (node["startColor"]) colorTween.startColor = decodeVector3(node["startColor"]);
-    if (node["useSRGB"]) colorTween.useSRGB = node["useSRGB"].as<bool>();
+    if (node["useSRGB"]) colorTween.useSRGB = YamlNumbers::as<bool>(node["useSRGB"]);
 
     return colorTween;
 }
@@ -7223,13 +7223,13 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     spriteanim.frameTimeIndex = 0;
     spriteanim.spriteFrameCount = 0;
 
-    if (node["loop"]) spriteanim.loop = node["loop"].as<bool>();
+    if (node["loop"]) spriteanim.loop = YamlNumbers::as<bool>(node["loop"]);
 
     if (node["frames"]) {
         spriteanim.framesSize = 0;
         for (const YAML::Node& frameNode : node["frames"]) {
             if (!spriteanim.frames.validIndex(spriteanim.framesSize)) break;
-            spriteanim.frames[spriteanim.framesSize] = frameNode.as<int>();
+            spriteanim.frames[spriteanim.framesSize] = YamlNumbers::as<int>(frameNode);
             spriteanim.framesSize++;
         }
     }
@@ -7238,7 +7238,7 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
         spriteanim.framesTimeSize = 0;
         for (const YAML::Node& timeNode : node["framesTime"]) {
             if (!spriteanim.framesTime.validIndex(spriteanim.framesTimeSize)) break;
-            spriteanim.framesTime[spriteanim.framesTimeSize] = timeNode.as<int>();
+            spriteanim.framesTime[spriteanim.framesTimeSize] = YamlNumbers::as<int>(timeNode);
             spriteanim.framesTimeSize++;
         }
     }
@@ -7277,19 +7277,19 @@ AnimationComponent editor::Stream::decodeAnimationComponent(const YAML::Node& no
         animation = *oldAnimation;
     }
 
-    if (node["loop"]) animation.loop = node["loop"].as<bool>();
+    if (node["loop"]) animation.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["duration"]) animation.duration = YamlNumbers::as<float>(node["duration"]);
-    if (node["ownedActions"]) animation.ownedActions = node["ownedActions"].as<bool>();
+    if (node["ownedActions"]) animation.ownedActions = YamlNumbers::as<bool>(node["ownedActions"]);
     if (node["defaultFadeTime"]) animation.defaultFadeTime = YamlNumbers::as<float>(node["defaultFadeTime"]);
 
     if (node["actions"]) {
         animation.actions.clear();
         for (const YAML::Node& frameNode : node["actions"]) {
             ActionFrame frame;
-            if (frameNode["track"]) frame.track = frameNode["track"].as<uint32_t>();
+            if (frameNode["track"]) frame.track = YamlNumbers::as<uint32_t>(frameNode["track"]);
             if (frameNode["startTime"]) frame.startTime = YamlNumbers::as<float>(frameNode["startTime"]);
             if (frameNode["duration"]) frame.duration = YamlNumbers::as<float>(frameNode["duration"]);
-            if (frameNode["action"]) frame.action = frameNode["action"].as<Entity>();
+            if (frameNode["action"]) frame.action = YamlNumbers::as<Entity>(frameNode["action"]);
             animation.actions.push_back(frame);
         }
     }
@@ -7317,8 +7317,8 @@ BoneComponent editor::Stream::decodeBoneComponent(const YAML::Node& node, const 
         bone = *oldBone;
     }
 
-    if (node["model"]) bone.model = static_cast<Entity>(node["model"].as<uint32_t>());
-    if (node["index"]) bone.index = node["index"].as<int>();
+    if (node["model"]) bone.model = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["model"]));
+    if (node["index"]) bone.index = YamlNumbers::as<int>(node["index"]);
     if (node["bindPosition"]) bone.bindPosition = decodeVector3(node["bindPosition"]);
     if (node["bindRotation"]) bone.bindRotation = decodeQuaternion(node["bindRotation"]);
     if (node["bindScale"]) bone.bindScale = decodeVector3(node["bindScale"]);
@@ -7359,7 +7359,7 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
         tracks = *oldTracks;
     }
 
-    if (node["index"]) tracks.index = node["index"].as<int>();
+    if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
     if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
 
     if (node["times"]) {
@@ -7681,20 +7681,20 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     ParticleSystemComponent particles;
     if (oldParticles) { particles = *oldParticles; }
 
-    if (node["maxParticles"]) particles.maxParticles = node["maxParticles"].as<unsigned int>();
-    if (node["emitter"]) particles.emitter = node["emitter"].as<bool>();
-    if (node["loop"]) particles.loop = node["loop"].as<bool>();
-    if (node["localSpace"]) particles.localSpace = node["localSpace"].as<bool>();
-    if (node["rate"]) particles.rate = node["rate"].as<int>();
-    if (node["maxPerUpdate"]) particles.maxPerUpdate = node["maxPerUpdate"].as<int>();
+    if (node["maxParticles"]) particles.maxParticles = YamlNumbers::as<unsigned int>(node["maxParticles"]);
+    if (node["emitter"]) particles.emitter = YamlNumbers::as<bool>(node["emitter"]);
+    if (node["loop"]) particles.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["localSpace"]) particles.localSpace = YamlNumbers::as<bool>(node["localSpace"]);
+    if (node["rate"]) particles.rate = YamlNumbers::as<int>(node["rate"]);
+    if (node["maxPerUpdate"]) particles.maxPerUpdate = YamlNumbers::as<int>(node["maxPerUpdate"]);
 
     if (node["bursts"] && node["bursts"].IsSequence()) {
         particles.bursts.clear();
         for (const auto& bn : node["bursts"]) {
             ParticleBurst b;
             if (bn["time"]) b.time = YamlNumbers::as<float>(bn["time"]);
-            if (bn["minCount"]) b.minCount = bn["minCount"].as<int>();
-            if (bn["maxCount"]) b.maxCount = bn["maxCount"].as<int>();
+            if (bn["minCount"]) b.minCount = YamlNumbers::as<int>(bn["minCount"]);
+            if (bn["maxCount"]) b.maxCount = YamlNumbers::as<int>(bn["maxCount"]);
             particles.bursts.push_back(b);
         }
     }
@@ -7752,7 +7752,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         const YAML::Node& n = node["colorInitializer"];
         if (n["minColor"]) particles.colorInitializer.minColor = decodeVector3(n["minColor"]);
         if (n["maxColor"]) particles.colorInitializer.maxColor = decodeVector3(n["maxColor"]);
-        if (n["useSRGB"]) particles.colorInitializer.useSRGB = n["useSRGB"].as<bool>();
+        if (n["useSRGB"]) particles.colorInitializer.useSRGB = YamlNumbers::as<bool>(n["useSRGB"]);
     }
     if (node["colorModifier"]) {
         const YAML::Node& n = node["colorModifier"];
@@ -7761,11 +7761,11 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["fromColor"]) particles.colorModifier.fromColor = decodeVector3(n["fromColor"]);
         if (n["toColor"]) particles.colorModifier.toColor = decodeVector3(n["toColor"]);
         if (n["function"]) particles.colorModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->colorModifier.function : nullptr);
-        if (n["useSRGB"]) particles.colorModifier.useSRGB = n["useSRGB"].as<bool>();
+        if (n["useSRGB"]) particles.colorModifier.useSRGB = YamlNumbers::as<bool>(n["useSRGB"]);
     }
     if (node["colorGradient"]) {
         const YAML::Node& n = node["colorGradient"];
-        if (n["useSRGB"]) particles.colorGradient.useSRGB = n["useSRGB"].as<bool>();
+        if (n["useSRGB"]) particles.colorGradient.useSRGB = YamlNumbers::as<bool>(n["useSRGB"]);
         if (n["stops"] && n["stops"].IsSequence()) {
             particles.colorGradient.stops.clear();
             for (const auto& sn : n["stops"]) {
@@ -7807,7 +7807,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         const YAML::Node& n = node["spriteInitializer"];
         if (n["frames"]) {
             particles.spriteInitializer.frames.clear();
-            for (const YAML::Node& f : n["frames"]) particles.spriteInitializer.frames.push_back(f.as<int>());
+            for (const YAML::Node& f : n["frames"]) particles.spriteInitializer.frames.push_back(YamlNumbers::as<int>(f));
         }
     }
     if (node["spriteModifier"]) {
@@ -7817,14 +7817,14 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["function"]) particles.spriteModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->spriteModifier.function : nullptr);
         if (n["frames"]) {
             particles.spriteModifier.frames.clear();
-            for (const YAML::Node& f : n["frames"]) particles.spriteModifier.frames.push_back(f.as<int>());
+            for (const YAML::Node& f : n["frames"]) particles.spriteModifier.frames.push_back(YamlNumbers::as<int>(f));
         }
     }
     if (node["rotationInitializer"]) {
         const YAML::Node& n = node["rotationInitializer"];
         if (n["minRotation"]) particles.rotationInitializer.minRotation = decodeQuaternion(n["minRotation"]);
         if (n["maxRotation"]) particles.rotationInitializer.maxRotation = decodeQuaternion(n["maxRotation"]);
-        if (n["shortestPath"]) particles.rotationInitializer.shortestPath = n["shortestPath"].as<bool>();
+        if (n["shortestPath"]) particles.rotationInitializer.shortestPath = YamlNumbers::as<bool>(n["shortestPath"]);
     }
     if (node["rotationModifier"]) {
         const YAML::Node& n = node["rotationModifier"];
@@ -7833,13 +7833,13 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
         if (n["fromRotation"]) particles.rotationModifier.fromRotation = decodeQuaternion(n["fromRotation"]);
         if (n["toRotation"]) particles.rotationModifier.toRotation = decodeQuaternion(n["toRotation"]);
         if (n["function"]) particles.rotationModifier.function = decodeEase(n["function"], oldParticles ? &oldParticles->rotationModifier.function : nullptr);
-        if (n["shortestPath"]) particles.rotationModifier.shortestPath = n["shortestPath"].as<bool>();
+        if (n["shortestPath"]) particles.rotationModifier.shortestPath = YamlNumbers::as<bool>(n["shortestPath"]);
     }
     if (node["scaleInitializer"]) {
         const YAML::Node& n = node["scaleInitializer"];
         if (n["minScale"]) particles.scaleInitializer.minScale = decodeVector3(n["minScale"]);
         if (n["maxScale"]) particles.scaleInitializer.maxScale = decodeVector3(n["maxScale"]);
-        if (n["linearSort"]) particles.scaleInitializer.linearSort = n["linearSort"].as<bool>();
+        if (n["linearSort"]) particles.scaleInitializer.linearSort = YamlNumbers::as<bool>(n["linearSort"]);
     }
     if (node["scaleModifier"]) {
         const YAML::Node& n = node["scaleModifier"];
@@ -7855,7 +7855,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
 
-    if (node["enabled"]) particles.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) particles.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return particles;
 }
@@ -7893,14 +7893,14 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     InstancedMeshComponent instmesh;
     if (oldInstmesh) { instmesh = *oldInstmesh; }
 
-    if (node["maxInstances"]) instmesh.maxInstances = node["maxInstances"].as<unsigned int>();
-    if (node["cullInstances"]) instmesh.cullInstances = node["cullInstances"].as<bool>();
-    if (node["distanceFade"]) instmesh.distanceFade = node["distanceFade"].as<bool>();
+    if (node["maxInstances"]) instmesh.maxInstances = YamlNumbers::as<unsigned int>(node["maxInstances"]);
+    if (node["cullInstances"]) instmesh.cullInstances = YamlNumbers::as<bool>(node["cullInstances"]);
+    if (node["distanceFade"]) instmesh.distanceFade = YamlNumbers::as<bool>(node["distanceFade"]);
     instmesh.cullDistance = std::max(0.0f, decodeFinite(node["cullDistance"], instmesh.cullDistance));
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);
-    if (node["instancedBillboard"]) instmesh.instancedBillboard = node["instancedBillboard"].as<bool>();
-    if (node["instancedCylindricalBillboard"]) instmesh.instancedCylindricalBillboard = node["instancedCylindricalBillboard"].as<bool>();
+    if (node["instancedBillboard"]) instmesh.instancedBillboard = YamlNumbers::as<bool>(node["instancedBillboard"]);
+    if (node["instancedCylindricalBillboard"]) instmesh.instancedCylindricalBillboard = YamlNumbers::as<bool>(node["instancedCylindricalBillboard"]);
 
     if (node["instances"]) {
         instmesh.instances.clear();
@@ -7911,7 +7911,7 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
             if (instNode["scale"]) inst.scale = decodeVector3(instNode["scale"]);
             if (instNode["color"]) inst.color = decodeVector4(instNode["color"]);
             if (instNode["textureRect"]) inst.textureRect = decodeRect(instNode["textureRect"]);
-            if (instNode["visible"]) inst.visible = instNode["visible"].as<bool>();
+            if (instNode["visible"]) inst.visible = YamlNumbers::as<bool>(instNode["visible"]);
             instmesh.instances.push_back(inst);
         }
     }
@@ -7922,7 +7922,7 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 
-    if (node["enabled"]) instmesh.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) instmesh.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return instmesh;
 }
@@ -7969,9 +7969,9 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     PointsComponent points;
     if (oldPoints) { points = *oldPoints; }
 
-    if (node["maxPoints"]) points.maxPoints = node["maxPoints"].as<unsigned int>();
-    if (node["transparent"]) points.transparent = node["transparent"].as<bool>();
-    if (node["autoTransparency"]) points.autoTransparency = node["autoTransparency"].as<bool>();
+    if (node["maxPoints"]) points.maxPoints = YamlNumbers::as<unsigned int>(node["maxPoints"]);
+    if (node["transparent"]) points.transparent = YamlNumbers::as<bool>(node["transparent"]);
+    if (node["autoTransparency"]) points.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
     if (node["texture"]) points.texture = decodeTexture(node["texture"]);
 
     if (node["framesRect"]) {
@@ -7993,7 +7993,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
             if (ptNode["size"]) pt.size = YamlNumbers::as<float>(ptNode["size"]);
             if (ptNode["rotation"]) pt.rotation = YamlNumbers::as<float>(ptNode["rotation"]);
             if (ptNode["textureRect"]) pt.textureRect = decodeRect(ptNode["textureRect"]);
-            if (ptNode["visible"]) pt.visible = ptNode["visible"].as<bool>();
+            if (ptNode["visible"]) pt.visible = YamlNumbers::as<bool>(ptNode["visible"]);
             points.points.push_back(pt);
         }
     }
@@ -8012,7 +8012,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     points.needUpdateTexture = true;
     points.needReload = false;
 
-    if (node["enabled"]) points.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) points.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return points;
 }
@@ -8046,7 +8046,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     LineRendererComponent lines;
     if (oldLines) { lines = *oldLines; }
 
-    if (node["maxLines"]) lines.maxLines = node["maxLines"].as<unsigned int>();
+    if (node["maxLines"]) lines.maxLines = YamlNumbers::as<unsigned int>(node["maxLines"]);
 
     if (node["lines"]) {
         lines.lines.clear();
@@ -8073,7 +8073,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     lines.needUpdateBuffer = false;
     lines.needReload = false;
 
-    if (node["enabled"]) lines.enabled = node["enabled"].as<bool>();
+    if (node["enabled"]) lines.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return lines;
 }
@@ -8136,10 +8136,10 @@ MeshPolygonComponent editor::Stream::decodeMeshPolygonComponent(const YAML::Node
     MeshPolygonComponent polygon;
     if (oldPolygon) { polygon = *oldPolygon; }
 
-    if (node["width"]) polygon.width = node["width"].as<unsigned int>();
-    if (node["height"]) polygon.height = node["height"].as<unsigned int>();
-    if (node["automaticFlipY"]) polygon.automaticFlipY = node["automaticFlipY"].as<bool>();
-    if (node["flipY"]) polygon.flipY = node["flipY"].as<bool>();
+    if (node["width"]) polygon.width = YamlNumbers::as<unsigned int>(node["width"]);
+    if (node["height"]) polygon.height = YamlNumbers::as<unsigned int>(node["height"]);
+    if (node["automaticFlipY"]) polygon.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
+    if (node["flipY"]) polygon.flipY = YamlNumbers::as<bool>(node["flipY"]);
 
     if (node["points"]) {
         polygon.points.clear();

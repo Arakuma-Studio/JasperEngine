@@ -55,6 +55,7 @@ namespace jasperengine::editor{
 
         std::vector<Entity> lastSelected;
         std::vector<Entity> survivingEntities;
+        std::vector<Entity> trackedBeforeDelete; // the scene's tracked list, restored by undo
 
         std::vector<DeleteEntityData> entities;
         std::vector<PrefabInstanceSnapshot> prefabInstanceSnapshots;
@@ -74,8 +75,9 @@ namespace jasperengine::editor{
             bool allowLockedRoots, const std::vector<Entity>& preservedEntities);
 
         static void destroyEntity(EntityRegistry* registry, Entity entity, std::vector<Entity>& entities, Project* project = nullptr, uint32_t sceneId = NULL_PROJECT_SCENE);
+        // reconcile false leaves the tracked list to the caller
         static void destroyEntities(EntityRegistry* registry, const std::vector<Entity>& entitiesToDestroy,
-            std::vector<Entity>& entities, Project* project = nullptr, uint32_t sceneId = NULL_PROJECT_SCENE);
+            std::vector<Entity>& entities, Project* project = nullptr, uint32_t sceneId = NULL_PROJECT_SCENE, bool reconcile = true);
 
     public:
         DeleteEntityCmd(Project* project, uint32_t sceneId, Entity entity, bool allowLockedRoots = false);

@@ -399,14 +399,16 @@ void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity ent
 
 void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
         const std::vector<Entity>& entitiesToDestroy, std::vector<Entity>& entities,
-        Project* project, uint32_t sceneId) {
+        Project* project, uint32_t sceneId, bool reconcile) {
     if (entitiesToDestroy.empty()) {
         return;
     }
     for (Entity entity : entitiesToDestroy) {
         destroyEntityWithoutReconcile(registry, entity);
     }
-    ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    if (reconcile) {
+        ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
+    }
 }
 
 bool editor::DeleteEntityCmd::execute(){
@@ -452,6 +454,7 @@ bool editor::DeleteEntityCmd::execute(){
     }
 
     lastSelected = project->getSelectedEntities(sceneId);
+    trackedBeforeDelete = sceneProject->entities;
     std::vector<size_t> deleteOrder = prepareDeleteSet();
     snapshotEntities();
 
@@ -463,8 +466,8 @@ bool editor::DeleteEntityCmd::execute(){
         cameras.push_back(cameraArray->getEntity(i));
     }
 
-    // The tracked list is reconciled once after a run of plain GameObjects is destroyed,
-    // and always before the prefab bookkeeping, which reads it
+    // The tracked list is reconciled once after a run of destroyed GameObjects and instances,
+    // and always before removing a prefab member, whose bookkeeping reads it
     bool reconcilePending = false;
     auto reconcile = [&]() {
         if (reconcilePending) {
@@ -484,7 +487,6 @@ bool editor::DeleteEntityCmd::execute(){
         Prefab* prefab = project->getPrefab(entityData.prefabPath);
 
         if (prefab) {
-            reconcile();
             if (entityData.isPrefabRoot) {
                 const auto* inst = prefab->getInstance(sceneId, entityData.entity);
                 std::vector<Entity> memberEntities;
@@ -493,8 +495,10 @@ bool editor::DeleteEntityCmd::execute(){
                         memberEntities.push_back(member.localEntity);
                     }
                 }
-                project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities);
+                project->unimportPrefab(sceneId, entityData.prefabPath, entityData.entity, memberEntities, false);
+                reconcilePending = true;
             } else {
+                reconcile();
                 if (!entityData.hasTransform) {
                     entityData.parent = prefab->getRootEntity(sceneId, entityData.entity);
                 }
@@ -523,8 +527,8 @@ bool editor::DeleteEntityCmd::execute(){
                 for (const Prefab::EntityMember& member : instance->members) {
                     members.push_back(member.localEntity);
                 }
-                reconcile();
-                project->unimportPrefab(sceneId, nestedPath, nestedRoot, members);
+                project->unimportPrefab(sceneId, nestedPath, nestedRoot, members, false);
+                reconcilePending = true;
             }
 
             for (Entity entity : allEntities) {
@@ -669,6 +673,28 @@ void editor::DeleteEntityCmd::undo(){
         for (Entity& entity : requestedEntities) remapEntity(entity);
         for (Entity& entity : preservedEntities) remapEntity(entity);
         for (Entity& entity : lastSelected) remapEntity(entity);
+        for (Entity& entity : trackedBeforeDelete) remapEntity(entity);
+    }
+
+    // The tracked list back as it was: placing each GameObject back by index keeps the
+    // Transform order, but moves the Transform-less ones (sorted first, or left where the
+    // last one was put). Whatever is tracked now and was not then keeps its current order.
+    if (!trackedBeforeDelete.empty()) {
+        std::vector<Entity>& tracked = sceneProject->entities;
+        std::unordered_set<Entity> current(tracked.begin(), tracked.end());
+        std::vector<Entity> restored;
+        restored.reserve(tracked.size());
+        for (Entity entity : trackedBeforeDelete) {
+            if (current.erase(entity)) {
+                restored.push_back(entity);
+            }
+        }
+        for (Entity entity : tracked) {
+            if (current.count(entity)) {
+                restored.push_back(entity);
+            }
+        }
+        tracked.swap(restored);
     }
 
     if (lastSelected.size() > 0){
@@ -687,6 +713,8 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
         if (project == otherCmd->project && sceneId == otherCmd->sceneId && allowLockedRoots == otherCmd->allowLockedRoots){
 
             lastSelected = otherCmd->lastSelected;
+            // Undone together, back to before the older one
+            trackedBeforeDelete = otherCmd->trackedBeforeDelete;
 
             for (DeleteEntityData& otherEntityData :  otherCmd->entities){
                 entities.push_back(otherEntityData);

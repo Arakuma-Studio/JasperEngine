@@ -3217,7 +3217,25 @@ std::string editor::Catalog::removeComponentSuffix(std::string str) {
     return str;
 }
 
+namespace {
+    std::string computeComponentName(editor::ComponentType component);
+}
+
 std::string editor::Catalog::getComponentName(ComponentType component, bool removeSuffix){
+    // Asked for every component type of every decoded entity: computed once per thread
+    thread_local std::unordered_map<int, std::string> names;
+    const int key = static_cast<int>(component) * 2 + (removeSuffix ? 1 : 0);
+    auto it = names.find(key);
+    if (it == names.end()) {
+        const std::string name = computeComponentName(component);
+        it = names.emplace(key, removeSuffix && !name.empty() ? removeComponentSuffix(name) : name).first;
+    }
+    return it->second;
+}
+
+namespace {
+std::string computeComponentName(editor::ComponentType component){
+    using namespace jasperengine::editor;
     std::string name;
 
     if(component == ComponentType::ActionComponent){
@@ -3329,11 +3347,8 @@ std::string editor::Catalog::getComponentName(ComponentType component, bool remo
         return "";
     }
 
-    if(removeSuffix){
-        return removeComponentSuffix(name);
-    }
-
     return name;
+}
 }
 
 std::string editor::Catalog::getComponentDisplayName(ComponentType component){

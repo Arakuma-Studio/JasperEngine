@@ -145,7 +145,7 @@ void editor::PasteEntitiesCmd::destroyCreated(SceneProject* sceneProject){
                 members.push_back(member.localEntity);
             }
         }
-        project->unimportPrefab(sceneId, path, root, members);
+        project->unimportPrefab(sceneId, path, root, members, false);
     }
 
     std::vector<Entity> remaining;
@@ -155,7 +155,9 @@ void editor::PasteEntitiesCmd::destroyCreated(SceneProject* sceneProject){
             remaining.push_back(*it);
         }
     }
-    DeleteEntityCmd::destroyEntities(scene, remaining, sceneProject->entities, project, sceneId);
+    // One pass over the tracked list for the instances and the rest
+    DeleteEntityCmd::destroyEntities(scene, remaining, sceneProject->entities, project, sceneId, false);
+    ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
 }
 
 bool editor::PasteEntitiesCmd::execute(){
