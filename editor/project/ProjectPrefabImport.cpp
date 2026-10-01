@@ -568,6 +568,24 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         }
     }
 
+    // A nested root imported again on its own (a relinked Missing Prefab, a removal
+    // reverted): what the instance holding it overrides of it is kept too (the first import
+    // of the holding instance applies those after this one)
+    if (!topLevel) {
+        for (auto& [otherPath, other] : prefabAssets) {
+            auto sceneIt = other.instances.find(sceneProject->id);
+            if (sceneIt == other.instances.end()) {
+                continue;
+            }
+            for (const Prefab::Instance& holder : sceneIt->second) {
+                const Prefab::ObjectOverrides* held = holder.rootEntity != rootEntity ? holder.findOverrides(rootEntity) : nullptr;
+                if (held) {
+                    rootOverrides.merge(*held);
+                }
+            }
+        }
+    }
+
     YAML::Node rootNode = Stream::encodeEntity(registryRoot, registry, this);
     const YAML::Node rootComponents = rootNode["components"];
     std::vector<ComponentType> rootFromPrefab;
@@ -1316,8 +1334,8 @@ std::vector<editor::Prefab::EntityMember> editor::Project::instantiatePrefabBran
         const PrefabComponent* component = scene->findComponent<PrefabComponent>(member.localEntity);
         if (component && prefab->isNestedRoot(member.registryEntity)) {
             const fs::path nestedPath = component->path;
-            std::vector<PrefabInstanceData*> layers{nestedAssetLayer(*prefab, filepath, member.registryEntity, member.localEntity, sceneProject)};
-            importPrefab(sceneProject, &sceneProject->entities, nestedPath, member.localEntity, false, nullptr, nullptr, nullptr, layers);
+            importPrefab(sceneProject, &sceneProject->entities, nestedPath, member.localEntity, false, nullptr, nullptr, nullptr,
+                getPrefabAssetLayers(sceneProject->id, member.localEntity));
         }
     }
 

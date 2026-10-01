@@ -762,7 +762,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 // --ops <file>: a list of operations run on the loaded project before the dump, to check
 // the prefab APIs headless. Each is a map with `op` and its arguments (`entity` is a dump
 // path; `component` a Stream component key):
-//   save | dump {out} | refresh {prefab, reload} | copy {from, to} (an outside edit) |
+//   save | dump {out} | refresh {prefab, reload} | copy {from, to} / remove {path} (outside edits) |
 //   refreshAssets (the asset database refresh) | undo (the last command) | redo |
 //   set {entity, component, property, value, shared}  (a PropertyCmd-like edit: value set,
 //       then prefabPropertyChanged when shared, the Inspector's edit-shared path) |
@@ -811,6 +811,11 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             std::error_code ec;
             fs::copy_file(project.getProjectPath() / op["from"].as<std::string>(), project.getProjectPath() / op["to"].as<std::string>(),
                 fs::copy_options::overwrite_existing, ec);
+            continue;
+        }
+        if (name == "remove") {
+            std::error_code ec;
+            fs::remove(project.getProjectPath() / op["path"].as<std::string>(), ec);
             continue;
         }
         if (name == "refreshAssets") {

@@ -1317,6 +1317,10 @@ namespace jasperengine::editor{
         // The asset-level data of the instance nested at registryRoot of `prefab` (made, and
         // converted when read from an older file)
         PrefabInstanceData* nestedAssetLayerFor(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryRoot);
+        // The asset layers (importPrefab's assetLayers) of the instance rooted at
+        // instanceRoot: what the prefabs holding it as a nested one override of it, innermost
+        // first; empty for a top-level instance
+        std::vector<PrefabInstanceData*> getPrefabAssetLayers(uint32_t sceneId, Entity instanceRoot);
         // The prefab's value of a component of the GameObject (with the layers of the
         // prefabs holding its instance), references in the instance's local ids
         bool buildPrefabSource(uint32_t sceneId, Entity entity, ComponentType type, prefabinternal::ScratchEntity& scratch, PrefabObjectRef* ref = nullptr);

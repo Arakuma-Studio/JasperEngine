@@ -356,7 +356,9 @@ preferredIds, assetLayers)` builds the instance in layers:
    `removed`.
 
 Removals of every layer are left out; overrides of a layer apply after the instances
-nested in it are built (so they win over the nested prefab). Every entry is validated
+nested in it are built (so they win over the nested prefab). A nested root imported on its
+own later (a relinked Missing Prefab, a reverted removal) also keeps from its own values
+what the instance holding it overrides of it. Every entry is validated
 against the GameObject it names (registry entity -> this instance's local entity): a
 property or whole-component override needs the component on that GameObject, a removed
 component the prefab GameObject's component, an added one only adds when absent (when the
@@ -392,6 +394,7 @@ GameObject of an instance, resolved to its owning level.
 | `PrefabOverrideCmd` (`command/type/`) | any primitive above as one undo step |
 | `prefabStateChanged(sceneId, entity, bits)` | edit-shared active/tag/layer (EntityStateCmd) |
 | `loadPrefabAsset(path)` | the asset, read when not loaded |
+| `getPrefabAssetLayers(sceneId, instanceRoot)` | the `assetLayers` of a (nested) instance, innermost first: pass them when importing a nested root on its own (relink does) |
 | `nestedAssetLayerFor`, `applyTargetLayer`, `recordNestedRootAssetOverride` | asset-level nested data (B) |
 
 Apply to the owning prefab writes the registry (refused for a reference outside the

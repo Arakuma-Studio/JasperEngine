@@ -193,6 +193,11 @@ namespace {
 
 }
 
+std::vector<editor::PrefabInstanceData*> editor::Project::getPrefabAssetLayers(uint32_t sceneId, Entity instanceRoot) {
+    SceneProject* sceneProject = getScene(sceneId);
+    return sceneProject ? assetLayersOf(this, prefabAssets, sceneProject, instanceRoot) : std::vector<PrefabInstanceData*>();
+}
+
 editor::PrefabInstanceData* editor::Project::nestedAssetLayerFor(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryRoot) {
     return nestedAssetLayer(prefab, prefabPath, registryRoot, NULL_ENTITY, nullptr);
 }
