@@ -12,6 +12,8 @@
 #include "util/ProjectUtils.h"
 
 #include <algorithm>
+#include <set>
+#include <tuple>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -129,12 +131,37 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
     }
 
     std::unordered_set<uint32_t> touchedScenes;
+    // An instance nested in a live one goes missing with that instance built again once the
+    // asset is gone: what the prefabs holding it add to it and override stays theirs
+    // (PREFABS.md 17). Their nodes are taken now, while the asset still answers.
+    std::vector<std::tuple<uint32_t, Entity, YAML::Node>> outerRoots;
+    std::set<std::pair<uint32_t, Entity>> nestedRoots;
+    for (const auto& [sceneId, root] : roots) {
+        SceneProject* sceneProject = getScene(sceneId);
+        if (!sceneProject || !sceneProject->scene) {
+            continue;
+        }
+        const Entity outer = getOutermostPrefabRoots(sceneId, {root})[0];
+        if (outer == NULL_ENTITY || outer == root) {
+            continue;
+        }
+        nestedRoots.insert({sceneId, root});
+        const bool listed = std::any_of(outerRoots.begin(), outerRoots.end(), [&](const auto& entry) {
+            return std::get<0>(entry) == sceneId && std::get<1>(entry) == outer;
+        });
+        if (!listed) {
+            outerRoots.emplace_back(sceneId, outer, Stream::encodeEntity(outer, sceneProject->scene, this, sceneProject));
+        }
+    }
     for (const auto& [sceneId, root] : roots) {
         SceneProject* sceneProject = getScene(sceneId);
         prefab = getPrefab(filepath);
         const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, root) : nullptr;
         if (!sceneProject || !sceneProject->scene || !instance || instance->rootEntity != root) {
             continue;
+        }
+        if (nestedRoots.count({sceneId, root})) {
+            continue; // nested: below
         }
 
         // Everything the scene file would hold for the instance, as it would write it
@@ -178,6 +205,15 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
         }
         prefabAssets.erase(it);
     }
+    for (const auto& [sceneId, outer, node] : outerRoots) {
+        if (SceneProject* sceneProject = getScene(sceneId)) {
+            reimportPrefabInstance(sceneProject, outer, node);
+            touchedScenes.insert(sceneId);
+            sceneProject->isModified = true;
+            sceneProject->needUpdateRender = true;
+            sceneProject->structureVersion++;
+        }
+    }
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.scene) {
             updateScenePrefabs(&sceneProject);
@@ -199,7 +235,34 @@ size_t editor::Project::relinkMissingPrefabs() {
         }
 
         bool changed = false;
+        // A Missing Prefab nested in a live instance comes back with the instance holding it
+        // built again: the GameObjects the prefabs above add to it go below their nested
+        // parents, their references into it resolve (stripped objects, PREFABS.md 17)
+        std::vector<Entity> outerRoots;
         for (Entity root : roots) {
+            if (!getMissingPrefab(sceneProject.id, root)) {
+                continue;
+            }
+            const PrefabComponent& reference = scene->getComponent<PrefabComponent>(root);
+            if (resolvePrefabPath(reference.guid, reference.path).empty()) {
+                continue;
+            }
+            const Entity outer = getOutermostPrefabRoots(sceneProject.id, {root})[0];
+            if (outer != NULL_ENTITY && outer != root && std::find(outerRoots.begin(), outerRoots.end(), outer) == outerRoots.end()) {
+                outerRoots.push_back(outer);
+            }
+        }
+        for (Entity outer : outerRoots) {
+            if (reimportPrefabInstance(&sceneProject, outer, YAML::Node())) {
+                changed = true;
+            }
+        }
+        for (Entity root : roots) {
+            if (!outerRoots.empty() && scene->isEntityCreated(root) && isPrefabInstanceRoot(sceneProject.id, root)) {
+                sceneProject.missingPrefabs.erase(root); // relinked with its holder
+                relinked++;
+                continue;
+            }
             if (!getMissingPrefab(sceneProject.id, root)) {
                 sceneProject.missingPrefabs.erase(root); // its root is gone or changed
                 continue;

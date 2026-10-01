@@ -486,6 +486,9 @@ bool editor::Project::loadPrefabStageContent(PrefabStage& stage) {
     SceneProject& sceneProject = stage.sceneProject;
     YAML::Node sceneNode;
     sceneNode["entities"] = YAML::Clone(assetNode["members"]);
+    // The GameObjects the asset adds to its nested instances are those instances' added
+    // GameObjects in the stage (PREFABS.md 17)
+    prefabNodeToStage(*prefab, sceneNode["entities"]);
     // A nested root the asset overrides nothing of has no block in the file: in a scene a
     // root without one is from before the block (legacy), so it gets an empty one
     for (YAML::Node member : sceneNode["entities"]) {
@@ -499,6 +502,9 @@ bool editor::Project::loadPrefabStageContent(PrefabStage& stage) {
         Out::error("Failed to open prefab %s: %s", stage.assetPath.string().c_str(), e.what());
         return false;
     }
+
+    // References into the nested instances (stripped objects) to their GameObjects here
+    resolveStageStrippedReferences(&sceneProject, *prefab);
 
     stage.root = prefab->root;
     if (!sceneProject.scene->isEntityCreated(stage.root)) {
@@ -645,17 +651,12 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
 
     // The registry becomes the stage's GameObjects with their ids (their file ids) and the
     // nested instances' data; the instances follow below
+    const std::map<Entity, std::vector<Entity>> previousStripped = prefab->stripped;
     prefab->loadRegistry(node, path.stem().string());
     resolveRegistryPrefabRefs(prefab->registry.get());
-    // References stay inside the asset's own GameObjects: one into a nested instance's
-    // GameObjects has no id in this asset (stripped proxies, PREFABS.md section 9)
-    {
-        std::unordered_map<Entity, Entity> own;
-        for (Entity entity : prefab->registryEntities) {
-            own[entity] = entity;
-        }
-        remapEntityProperties(prefab->registry.get(), prefab->registryEntities, own, true);
-    }
+    // The GameObjects added to the nested instances are the asset's; references stay inside
+    // the asset, into its nested instances as stripped objects (PREFABS.md 17)
+    stageToPrefabAsset(&sceneProject, *prefab, previousStripped);
     for (auto& [instanceSceneId, instances] : prefab->instances) {
         for (Prefab::Instance& instance : instances) {
             instance.rootRegistryEntity = prefab->root;
@@ -712,7 +713,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
     std::error_code ec;
     if (std::filesystem::exists(getProjectPath() / "CMakeLists.txt", ec)) {
         generator.writePrefabSources(prefabAssets, NULL_PROJECT_SCENE, getProjectPath(), getProjectInternalPath(),
-            [this](const std::filesystem::path& prefabPath) { return getPrefabGuid(prefabPath); });
+            [this](const std::filesystem::path& prefabPath) { return getPrefabGuid(prefabPath); }, bakePrefabsForExport());
     }
     if (invalidated || isStandalonePrefab(path)) {
         generatedSourcesDirty.store(true);

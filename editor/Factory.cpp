@@ -3067,91 +3067,46 @@ std::string editor::Factory::createPrefabHeader(const fs::path& prefabPath) {
 }
 
 std::vector<Entity> editor::Factory::getPrefabMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities, Entity root) {
-    // Identify nested prefab roots (entities with PrefabComponent)
-    std::unordered_set<Entity> nestedPrefabRoots;
-    for (Entity entity : registryEntities) {
-        if (entity == root) continue;
-        PrefabComponent* bc = registry->findComponent<PrefabComponent>(entity);
-        if (bc && !bc->path.empty()) {
-            nestedPrefabRoots.insert(entity);
-        }
-    }
-
-    // Skip entities that are children of nested prefab roots
-    std::unordered_set<Entity> entitiesToSkip;
-    if (!nestedPrefabRoots.empty()) {
-        std::unordered_set<Entity> entitySet(registryEntities.begin(), registryEntities.end());
-        for (Entity entity : registryEntities) {
-            if (nestedPrefabRoots.count(entity)) continue;
-            Transform* tf = registry->findComponent<Transform>(entity);
-            if (!tf) continue;
-            Entity ancestor = tf->parent;
-            while (ancestor != NULL_ENTITY && entitySet.count(ancestor)) {
-                if (nestedPrefabRoots.count(ancestor)) {
-                    entitiesToSkip.insert(entity);
-                    break;
-                }
-                Transform* parentTf = registry->findComponent<Transform>(ancestor);
-                ancestor = parentTf ? parentTf->parent : NULL_ENTITY;
-            }
-        }
-    }
-
+    (void)registry;
     std::vector<Entity> memberEntities;
     for (Entity entity : registryEntities) {
-        if (entity == root || entitiesToSkip.count(entity)) continue;
+        if (entity == root) continue;
         memberEntities.push_back(entity);
     }
     return memberEntities;
 }
 
-std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath,
-        const std::function<std::string(const fs::path&)>& prefabGuid, Entity root, const std::map<Entity, PrefabObjectOverrides>& nestedRootOverrides) {
+std::string editor::Factory::createPrefab(const fs::path& prefabPath, const BakedPrefab& baked, const fs::path& projectPath, const fs::path& generatedPath,
+        const std::function<std::string(const fs::path&)>& prefabGuid) {
     std::string funcName = prefabToFunctionName(prefabPath);
     std::string buildFuncName = prefabToBuildFunctionName(prefabPath);
     std::string fileName = prefabToFileName(prefabPath);
 
     std::ostringstream out;
 
-    // A nested prefab whose asset is missing (a Missing Prefab) has no build function: its
-    // root is built as a plain GameObject, as an exported Unity scene keeps the placeholder
-    auto nestedBuilt = [&](const PrefabComponent* bc) {
-        return bc && !bc->path.empty() && (!prefabGuid || !prefabGuid(bc->path).empty());
-    };
+    Scene* scene = baked.scene.get();
+    const Entity root = (scene && scene->isEntityCreated(baked.root)) ? baked.root : NULL_ENTITY;
 
-    // Identify nested prefab roots and their includes
-    std::set<std::string> nestedPrefabIncludes;
-    for (Entity entity : registryEntities) {
-        if (entity == root) continue;
-        PrefabComponent* bc = registry->findComponent<PrefabComponent>(entity);
-        if (nestedBuilt(bc)) {
-            nestedPrefabIncludes.insert(prefabToFileName(bc->path));
-        }
-    }
-
-    // Get filtered member entities (excludes the root and children of nested prefab roots)
-    std::vector<Entity> memberEntities = getPrefabMemberEntities(registry, registryEntities, root);
-
-    // Build entity variable name map: the prefab's root GameObject is the root it is given
+    // The GameObjects build_prefab_* makes, by slot: e<slot>; the root is the one it is given
     std::unordered_map<Entity, std::string> entityVarNames;
-    for (size_t i = 0; i < memberEntities.size(); i++) {
-        entityVarNames[memberEntities[i]] = "e" + std::to_string(i);
+    std::vector<Entity> made;
+    for (size_t i = 0; i < baked.slots.size(); i++) {
+        const Entity entity = baked.slots[i];
+        if (entity != NULL_ENTITY && scene && scene->isEntityCreated(entity) && !entityVarNames.count(entity)) {
+            entityVarNames[entity] = "e" + std::to_string(i);
+            made.push_back(entity);
+        }
     }
     if (root != NULL_ENTITY) {
         entityVarNames[root] = "root";
     }
 
-    std::unordered_set<Entity> memberSet(memberEntities.begin(), memberEntities.end());
-    auto isNestedRoot = [&](Entity entity) {
-        return nestedBuilt(registry->findComponent<PrefabComponent>(entity));
-    };
-
     // Check for default sky usage
     bool usesDefaultSky = false;
-    std::vector<Entity> skyEntities = memberEntities;
+    std::vector<Entity> skyEntities = made;
     if (root != NULL_ENTITY) skyEntities.push_back(root);
     for (Entity entity : skyEntities) {
-        SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity);
+        SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity);
         if (sky && sky->texture.getId() == DEFAULT_SKY_ID) {
             usesDefaultSky = true;
             break;
@@ -3161,9 +3116,6 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
     // File header
     out << "// This file is auto-generated by JasperEngine Editor. Do not edit manually.\n\n";
     out << "#include \"" << fileName << ".h\"\n";
-    for (const auto& inc : nestedPrefabIncludes) {
-        out << "#include \"" << inc << ".h\"\n";
-    }
 
     writeSkyIncludes(out, usesDefaultSky, generatedPath);
 
@@ -3174,10 +3126,10 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
     out << "bool " << buildFuncName << "(Scene* scene, Entity root, std::vector<Entity>& members) {\n";
 
     // The root is the prefab's root GameObject. PrefabManager hands the factory a bare one,
-    // which takes everything from it; a scene instance root (or a nested root of a prefab
-    // being built) carries its own components already, and only gets the ones it lacks.
+    // which takes everything from it; a scene instance root carries its own components
+    // already, and only gets the ones it lacks.
     const std::string stem = prefabPath.stem().string();
-    std::string rootName = root != NULL_ENTITY ? registry->getEntityName(root) : stem;
+    std::string rootName = root != NULL_ENTITY ? scene->getEntityName(root) : stem;
     if (rootName.empty()) rootName = stem.empty() ? "Prefab" : stem;
 
     out << ind1 << "const bool bareRoot = !scene->findComponent<PrefabComponent>(root);\n";
@@ -3196,59 +3148,66 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
     }
     out << ind1 << "    scene->addComponent<PrefabComponent>(root, prefab);\n";
     if (root != NULL_ENTITY) {
-        out << ind1 << "    scene->setEntityActive(root, " << formatBool(registry->isEntityActive(root)) << ");\n";
-        out << ind1 << "    scene->setEntityTag(root, " << formatString(registry->getEntityTag(root)) << ");\n";
-        out << ind1 << "    scene->setEntityLayer(root, " << formatInt(registry->getEntityLayer(root)) << ");\n";
+        out << ind1 << "    scene->setEntityActive(root, " << formatBool(scene->isEntityActive(root)) << ");\n";
+        out << ind1 << "    scene->setEntityTag(root, " << formatString(scene->getEntityTag(root)) << ");\n";
+        out << ind1 << "    scene->setEntityLayer(root, " << formatInt(scene->getEntityLayer(root)) << ");\n";
     }
     out << ind1 << "}\n\n";
 
-    // Phase 1: Create all member entities
+    // Phase 1: every GameObject, nested prefabs' included, in member order. A GameObject a
+    // layer removed keeps its slot empty.
     out << ind1 << "// Create member entities\n";
-    for (size_t i = 0; i < memberEntities.size(); i++) {
-        Entity entity = memberEntities[i];
-        std::string varName = entityVarNames[entity];
-        std::string entityName = registry->getEntityName(entity);
-        out << ind1 << "Entity " << varName << " = scene->createEntity();\n";
-        out << ind1 << "scene->setEntityName(" << varName << ", " << formatString(entityName) << ");\n";
-        if (!isNestedRoot(entity)) {
-            out << formatEntityState(ind1, varName, registry, entity);
+    for (size_t i = 0; i < baked.slots.size(); i++) {
+        const Entity entity = baked.slots[i];
+        auto var = entityVarNames.find(entity);
+        if (entity == NULL_ENTITY || var == entityVarNames.end() || var->second != "e" + std::to_string(i)) {
+            out << ind1 << "members.push_back(NULL_ENTITY);\n";
+            continue;
         }
-        out << ind1 << "members.push_back(" << varName << ");\n";
+        out << ind1 << "Entity " << var->second << " = scene->createEntity();\n";
+        out << ind1 << "scene->setEntityName(" << var->second << ", " << formatString(scene->getEntityName(entity)) << ");\n";
+        out << formatEntityState(ind1, var->second, scene, entity);
+        out << ind1 << "members.push_back(" << var->second << ");\n";
     }
     out << "\n";
 
-    // Phase 2: Nested prefabs, built first: each nested root gets the nested prefab's root
-    // GameObject, then what this prefab overrides of it
+    // Phase 2: the roots of the nested instances keep their prefab link
     bool hasNestedPrefabs = false;
-    for (Entity entity : memberEntities) {
-        PrefabComponent* bc = registry->findComponent<PrefabComponent>(entity);
-        if (nestedBuilt(bc)) {
-            if (!hasNestedPrefabs) {
-                out << ind1 << "// Nested prefabs\n";
-                hasNestedPrefabs = true;
-            }
-            std::string nestedFuncName = prefabToBuildFunctionName(bc->path);
-            std::string varName = entityVarNames[entity];
-            out << ind1 << "if (!" << nestedFuncName << "(scene, " << varName << ", members)) return false;\n";
+    for (Entity entity : made) {
+        const PrefabComponent* link = scene->findComponent<PrefabComponent>(entity);
+        if (!link) {
+            continue;
         }
+        if (!hasNestedPrefabs) {
+            out << ind1 << "// Nested prefab roots\n";
+            hasNestedPrefabs = true;
+        }
+        out << ind1 << "{\n";
+        out << ind2 << "PrefabComponent prefab;\n";
+        out << ind2 << "prefab.name = " << formatString(link->name) << ";\n";
+        out << ind2 << "prefab.path = " << formatString(fs::path(link->path).generic_string()) << ";\n";
+        if (!link->guid.empty()) {
+            out << ind2 << "prefab.guid = " << formatString(link->guid) << ";\n";
+        }
+        out << ind2 << "scene->addComponent<PrefabComponent>(" << entityVarNames[entity] << ", prefab);\n";
+        out << ind1 << "}\n";
     }
     if (hasNestedPrefabs) {
         out << "\n";
     }
 
-    // Phase 3: the root's components it does not have yet
     auto writeComponents = [&](Entity entity, const std::string& varName, bool onlyMissing) {
-        std::vector<ComponentType> components = Catalog::findComponents(registry, entity);
+        std::vector<ComponentType> components = Catalog::findComponents(scene, entity);
         bool first = true;
         for (ComponentType compType : components) {
-            // Skip PrefabComponent - editor-internal only
+            // PrefabComponent: the prefab links above
             if (compType == ComponentType::PrefabComponent) continue;
 
             std::string componentCode;
             if (compType == ComponentType::Transform) {
-                componentCode = createTransform(onlyMissing ? 12 : 8, registry, entity, "scene", varName, true, false, &entityVarNames);
+                componentCode = createTransform(onlyMissing ? 12 : 8, scene, entity, "scene", varName, true, false, &entityVarNames);
             } else {
-                componentCode = createComponent(onlyMissing ? 12 : 8, registry, entity, compType, projectPath, "scene", varName, false, &entityVarNames);
+                componentCode = createComponent(onlyMissing ? 12 : 8, scene, entity, compType, projectPath, "scene", varName, false, &entityVarNames);
             }
 
             if (!componentCode.empty()) {
@@ -3263,6 +3222,8 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
             }
         }
     };
+
+    // Phase 3: the root's components it does not have yet
     if (root != NULL_ENTITY) {
         out << ind1 << "// Components of the root GameObject\n";
         out << ind1 << "{\n";
@@ -3274,99 +3235,36 @@ std::string editor::Factory::createPrefab(const fs::path& prefabPath, EntityRegi
         out << ind1 << "    scene->addComponent<Transform>(root, {});\n\n";
     }
 
-    // Phase 4: Set up components for each entity
-    for (size_t i = 0; i < memberEntities.size(); i++) {
-        Entity entity = memberEntities[i];
-        if (isNestedRoot(entity)) {
-            continue;
-        }
-        std::string varName = entityVarNames[entity];
-        std::string entityName = registry->getEntityName(entity);
-
-        out << ind1 << "// Components for " << entityName << "\n";
+    // Phase 4: every other GameObject's components, as the instance has them
+    for (Entity entity : made) {
+        out << ind1 << "// Components for " << scene->getEntityName(entity) << "\n";
         out << ind1 << "{\n";
-        writeComponents(entity, varName, false);
+        writeComponents(entity, entityVarNames[entity], false);
         out << ind1 << "}\n\n";
     }
 
-    // Phase 5: what this prefab overrides of its nested roots: their placement (the nested
-    // instance's default overrides), their overridden state and components
-    for (Entity entity : memberEntities) {
-        if (!isNestedRoot(entity)) {
-            continue;
-        }
-        const std::string varName = entityVarNames[entity];
-        const PrefabObjectOverrides* overrides = nullptr;
-        auto found = nestedRootOverrides.find(entity);
-        if (found != nestedRootOverrides.end()) {
-            overrides = &found->second;
-        }
-        out << ind1 << "// " << registry->getEntityName(entity) << ": this prefab's values over its prefab's\n";
-        out << ind1 << "{\n";
-        if (Transform* transform = registry->findComponent<Transform>(entity)) {
-            const bool allTransform = overrides && overrides->hasComponent(ComponentType::Transform);
-            out << ind2 << "if (Transform* t = scene->findComponent<Transform>(" << varName << ")) {\n";
-            out << ind2 << "    t->position = " << formatVector3(transform->position) << ";\n";
-            out << ind2 << "    t->rotation = " << formatQuaternion(transform->rotation) << ";\n";
-            if (allTransform) {
-                out << ind2 << "    t->scale = " << formatVector3(transform->scale) << ";\n";
-                out << ind2 << "    t->visible = " << formatBool(transform->visible) << ";\n";
-                out << ind2 << "    t->billboard = " << formatBool(transform->billboard) << ";\n";
-                out << ind2 << "    t->fakeBillboard = " << formatBool(transform->fakeBillboard) << ";\n";
-                out << ind2 << "    t->cylindricalBillboard = " << formatBool(transform->cylindricalBillboard) << ";\n";
-                out << ind2 << "    t->billboardRotation = " << formatQuaternion(transform->billboardRotation) << ";\n";
-            }
-            out << ind2 << "    t->needUpdate = true;\n";
-            out << ind2 << "}\n";
-        }
-        if (overrides) {
-            if (overrides->state & PrefabObjectOverrides::StateActive)
-                out << ind2 << "scene->setEntityActive(" << varName << ", " << formatBool(registry->isEntityActive(entity)) << ");\n";
-            if (overrides->state & PrefabObjectOverrides::StateTag)
-                out << ind2 << "scene->setEntityTag(" << varName << ", " << formatString(registry->getEntityTag(entity)) << ");\n";
-            if (overrides->state & PrefabObjectOverrides::StateLayer)
-                out << ind2 << "scene->setEntityLayer(" << varName << ", " << formatInt(registry->getEntityLayer(entity)) << ");\n";
-            for (ComponentType compType : overrides->removedComponents) {
-                out << guardComponentCode(compType, ind2 + "if (scene->findComponent<" + Catalog::getComponentName(compType) + ">(" + varName + ")) scene->removeComponent<" +
-                    Catalog::getComponentName(compType) + ">(" + varName + ");\n");
-            }
-            std::set<ComponentType> replaced;
-            for (const auto& [compType, names] : overrides->properties) {
-                if (compType != ComponentType::Transform) replaced.insert(compType);
-            }
-            replaced.insert(overrides->addedComponents.begin(), overrides->addedComponents.end());
-            for (ComponentType compType : replaced) {
-                if (compType == ComponentType::PrefabComponent || !registry->getSignature(entity).test(Catalog::getComponentId(registry, compType))) {
-                    continue;
-                }
-                std::string componentCode = createComponent(12, registry, entity, compType, projectPath, "scene", varName, false, &entityVarNames);
-                if (componentCode.empty()) continue;
-                out << guardComponentCode(compType, ind2 + "{\n" + ind2 + "    if (scene->findComponent<" + Catalog::getComponentName(compType) + ">(" + varName +
-                    ")) scene->removeComponent<" + Catalog::getComponentName(compType) + ">(" + varName + ");\n" + componentCode + ind2 + "}\n");
-            }
-        }
-        out << ind1 << "}\n\n";
-    }
-
-    // Phase 6: Set up parent-child hierarchy
+    // Phase 5: the hierarchy, in Transform order (each child appended to its parent)
     out << ind1 << "// Parent-child hierarchy\n";
-    for (Entity entity : memberEntities) {
-        Transform* tf = registry->findComponent<Transform>(entity);
-        if (!tf) continue;
-
-        std::string childVar = entityVarNames[entity];
-
-        if (tf->parent != NULL_ENTITY && memberSet.count(tf->parent)) {
-            std::string parentVar = entityVarNames[tf->parent];
-            out << ind1 << "scene->addEntityChild(" << parentVar << ", " << childVar << ", false);\n";
-        } else {
-            out << ind1 << "scene->addEntityChild(root, " << childVar << ", false);\n";
+    {
+        std::vector<std::pair<size_t, Entity>> ordered;
+        auto transforms = scene->getComponentArray<Transform>();
+        for (Entity entity : made) {
+            if (scene->findComponent<Transform>(entity)) {
+                ordered.emplace_back(transforms->getIndex(entity), entity);
+            }
+        }
+        std::sort(ordered.begin(), ordered.end());
+        for (const auto& [index, entity] : ordered) {
+            const Entity parent = scene->getComponent<Transform>(entity).parent;
+            auto parentVar = entityVarNames.find(parent);
+            const std::string parentName = parentVar != entityVarNames.end() ? parentVar->second : std::string("root");
+            out << ind1 << "scene->addEntityChild(" << parentName << ", " << entityVarNames[entity] << ", false);\n";
         }
     }
 
-    // Phase 7: Camera render-to-texture links, once every member camera exists. A link to
-    // a camera outside the prefab is not in it (an instance keeps one as an override).
-    const std::string links = createCameraTextureLinks(4, registry, skyEntities, &entityVarNames, true);
+    // Phase 6: Camera render-to-texture links, once every camera exists (into and out of
+    // nested prefabs alike: every GameObject has a variable)
+    const std::string links = createCameraTextureLinks(4, scene, skyEntities, &entityVarNames, true);
     if (!links.empty()) {
         out << "\n";
         out << ind1 << "// Render-to-texture cameras\n";

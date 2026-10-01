@@ -5005,8 +5005,9 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
     // prefabs only scripts reference or other prefabs nest get their sources too
     loadBuildPrefabs();
+    const auto baked = bakePrefabsForExport();
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
-        [this](const fs::path& path) { return getPrefabGuid(path); });
+        [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
     generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
@@ -6661,8 +6662,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                 // prefabs only scripts reference or other prefabs nest get their sources too
                 loadBuildPrefabs();
+                const auto baked = bakePrefabsForExport();
                 std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
-                    [this](const fs::path& path) { return getPrefabGuid(path); });
+                    [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
                 generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {

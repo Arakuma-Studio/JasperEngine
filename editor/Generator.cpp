@@ -1347,7 +1347,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
 }
 
 std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
-        const std::function<std::string(const fs::path&)>& prefabGuid) {
+        const std::function<std::string(const fs::path&)>& prefabGuid, const std::map<fs::path, std::shared_ptr<BakedPrefab>>& baked) {
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::vector<PrefabInstanceInfo> prefabInstances;
@@ -1417,24 +1417,12 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
             continue;
         }
 
-        // Write prefab .h and .cpp files
+        // Write prefab .h and .cpp files, from the prefab's instance as the editor makes it
         std::string headerContent = Factory::createPrefabHeader(prefabPath);
-        // What this prefab overrides of the roots of the prefabs nested in it
-        std::map<Entity, PrefabObjectOverrides> nestedRootOverrides;
-        for (const auto& [nestedRoot, data] : prefab.nestedInstances) {
-            const PrefabComponent* component = prefab.registry->isEntityCreated(nestedRoot) ?
-                prefab.registry->findComponent<PrefabComponent>(nestedRoot) : nullptr;
-            auto nested = component ? prefabAssets.find(component->path) : prefabAssets.end();
-            if (nested == prefabAssets.end()) {
-                continue;
-            }
-            auto entry = data.objects.find(nested->second.root);
-            if (entry != data.objects.end()) {
-                nestedRootOverrides[nestedRoot] = entry->second.overrides;
-            }
-        }
-        std::string sourceContent = Factory::createPrefab(prefabPath, prefab.registry.get(), prefab.registryEntities, projectPath, generatedPath, prefabGuid,
-            prefab.root, nestedRootOverrides);
+        auto bakedIt = baked.find(prefabPath);
+        static const BakedPrefab unbaked;
+        std::string sourceContent = Factory::createPrefab(prefabPath, bakedIt != baked.end() && bakedIt->second ? *bakedIt->second : unbaked,
+            projectPath, generatedPath, prefabGuid);
 
         std::string prefabFileName = Factory::prefabToFileName(prefabPath);
         FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".h"), headerContent);

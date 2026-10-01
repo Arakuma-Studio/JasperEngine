@@ -217,24 +217,13 @@ bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, Co
         return true; // state, removed components: nothing to check
     }
     // A value referencing a GameObject outside the Prefab cannot go into the Prefab: the
-    // GameObjects the target prefab holds (its instance, below the GameObject's own)
-    std::unordered_set<Entity> members;
-    auto addInstance = [&](const Prefab::Instance* instance) {
-        if (!instance) {
-            return;
-        }
-        members.insert(instance->rootEntity);
-        for (const Prefab::EntityMember& member : instance->members) {
-            members.insert(member.localEntity);
-        }
-    };
+    // GameObjects the target prefab holds (its instance, below the GameObject's own), the
+    // ones of the instances nested in it included (stripped objects, section 17)
     const std::filesystem::path resolved = target.empty() ? ref.path : target;
-    if (isNestedRootApplyTarget(sceneId, ref, resolved)) {
-        const Prefab* nested = getPrefab(resolved);
-        addInstance(nested ? nested->getInstance(sceneId, entity) : nullptr);
-    } else {
-        addInstance(ref.instance);
-    }
+    Project* self = const_cast<Project*>(this);
+    const Entity holderRoot = isNestedRootApplyTarget(sceneId, ref, resolved) ? entity :
+        self->findHolderInstanceRoot(sceneId, ref.instance->rootEntity, resolved);
+    const std::unordered_set<Entity> members = self->collectInstanceTreeObjects(sceneId, holderRoot);
     if (componentHasExternalEntityRef(sceneProject->scene, entity, type, members)) {
         return fail("It references a GameObject outside the Prefab, which the Prefab cannot hold");
     }

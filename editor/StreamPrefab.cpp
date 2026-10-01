@@ -284,8 +284,33 @@ namespace {
     // What a live instance holds relative to its prefab, as a `prefabInstance` block (without
     // `version`). The top-level instance's root takes its values from its own node; anything
     // else is written with its values.
+    // The GameObjects of an instance and of every instance nested in it, at any depth: the
+    // ones a GameObject added below one of them is not
+    void collectTreeObjects(const editor::Project* project, const editor::SceneProject* sceneProject, const EntityRegistry* registry,
+            const editor::Prefab::Instance& instance, std::unordered_set<Entity>& objects, size_t depth) {
+        objects.insert(instance.rootEntity);
+        for (const editor::Prefab::EntityMember& member : instance.members) {
+            objects.insert(member.localEntity);
+        }
+        if (depth > 64) {
+            return;
+        }
+        for (const editor::Prefab::EntityMember& member : instance.members) {
+            if (!registry->isEntityCreated(member.localEntity) ||
+                !registry->getSignature(member.localEntity).test(registry->getComponentId<PrefabComponent>())) {
+                continue;
+            }
+            const PrefabComponent& component = registry->getComponent<PrefabComponent>(member.localEntity);
+            const editor::Prefab* nestedPrefab = project->getPrefab(component.path);
+            const editor::Prefab::Instance* nested = nestedPrefab ? nestedPrefab->getInstance(sceneProject->id, member.localEntity) : nullptr;
+            if (nested && nested->rootEntity == member.localEntity) {
+                collectTreeObjects(project, sceneProject, registry, *nested, objects, depth + 1);
+            }
+        }
+    }
+
     YAML::Node encodeLiveInstance(const editor::Project* project, const editor::SceneProject* sceneProject, const EntityRegistry* registry,
-            const editor::Prefab::Instance& instance, bool topLevel, size_t depth) {
+            const editor::Prefab::Instance& instance, bool topLevel, size_t depth, const std::unordered_set<Entity>& treeObjects) {
         YAML::Node block(YAML::NodeType::Map);
 
         std::map<Entity, Entity> memberIds;
@@ -350,14 +375,11 @@ namespace {
             block["removedGameObjects"] = removedNode;
         }
 
-        // GameObjects added below the root or a member. The members of the instances nested
-        // here are not added ones; GameObjects added below a nested root belong to the
-        // nested instance's block.
-        std::unordered_set<Entity> memberSet;
-        memberSet.insert(instance.rootEntity);
-        for (const editor::Prefab::EntityMember& member : instance.members) {
-            memberSet.insert(member.localEntity);
-        }
+        // GameObjects added below the root or a member. The GameObjects of the instances in
+        // the tree (nested ones, and the ones a prefab adds to its nested instances) are not
+        // added ones; GameObjects added below a nested root belong to the nested instance's
+        // block.
+        const std::unordered_set<Entity>& memberSet = treeObjects;
         std::vector<const editor::Prefab::EntityMember*> nestedRoots;
         for (const editor::Prefab::EntityMember& member : instance.members) {
             if (!registry->isEntityCreated(member.localEntity) ||
@@ -369,14 +391,6 @@ namespace {
                 continue;
             }
             nestedRoots.push_back(&member);
-            if (const editor::Prefab* nestedPrefab = project->getPrefab(component.path)) {
-                const editor::Prefab::Instance* nested = nestedPrefab->getInstance(sceneProject->id, member.localEntity);
-                if (nested && nested->rootEntity == member.localEntity) {
-                    for (const editor::Prefab::EntityMember& nestedMember : nested->members) {
-                        memberSet.insert(nestedMember.localEntity);
-                    }
-                }
-            }
         }
         YAML::Node addedNode(YAML::NodeType::Sequence);
         appendAddedChildren(project, sceneProject, registry, instance.rootEntity, instance.rootRegistryEntity, memberSet, addedNode);
@@ -402,7 +416,7 @@ namespace {
                 if (depth > 64) {
                     continue; // a nesting cycle, which importPrefab refuses anyway
                 }
-                nestedBlock = encodeLiveInstance(project, sceneProject, registry, *nested, false, depth + 1);
+                nestedBlock = encodeLiveInstance(project, sceneProject, registry, *nested, false, depth + 1, treeObjects);
             } else if (const editor::MissingPrefabInstance* missing = project->getMissingPrefab(sceneProject->id, member->localEntity)) {
                 // A Missing Prefab nested here keeps what it was loaded with; GameObjects added
                 // below its root since go after the ones it kept there
@@ -415,7 +429,7 @@ namespace {
                     }
                 }
                 YAML::Node added = nestedBlock["addedGameObjects"] ? nestedBlock["addedGameObjects"] : YAML::Node(YAML::NodeType::Sequence);
-                appendAddedChildren(project, sceneProject, registry, member->localEntity, NULL_ENTITY, {}, added, keptAtRoot);
+                appendAddedChildren(project, sceneProject, registry, member->localEntity, NULL_ENTITY, treeObjects, added, keptAtRoot);
                 if (added.size() > 0) {
                     nestedBlock["addedGameObjects"] = added;
                 }
@@ -553,7 +567,9 @@ void editor::Stream::encodePrefabInstance(YAML::Node& entityNode, const Entity e
 
         YAML::Node block(YAML::NodeType::Map);
         block["version"] = Prefab::FILE_VERSION;
-        YAML::Node content = encodeLiveInstance(project, sceneProject, registry, instance, true, 0);
+        std::unordered_set<Entity> treeObjects;
+        collectTreeObjects(project, sceneProject, registry, instance, treeObjects, 0);
+        YAML::Node content = encodeLiveInstance(project, sceneProject, registry, instance, true, 0, treeObjects);
         for (auto it = content.begin(); it != content.end(); ++it) {
             block[it->first.as<std::string>()] = it->second;
         }
