@@ -1299,7 +1299,11 @@ namespace jasperengine::editor{
         bool unimportPrefab(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities,
                             bool reconcileTracked = true, bool keepRoot = false);
 
-        bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
+        // target: the prefab to add it to, the one whose GameObject `parent` is when empty; a
+        // prefab holding that instance (one of getPrefabApplyTargets(parent)) gets it as a
+        // GameObject it adds to that nested instance (PREFABS.md 16)
+        bool addEntityToPrefab(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true, const std::filesystem::path& target = {});
+        bool addEntityToOuterPrefab(uint32_t sceneId, Entity entity, Entity parent, const std::filesystem::path& target);
         bool addEntityToPrefab(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,
             bool createItself = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr,
             std::vector<Entity>* restoredEntities = nullptr);

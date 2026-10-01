@@ -534,11 +534,17 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     // Revert and Apply for this item
     std::vector<std::filesystem::path> targets;
     if (entry.kind == Kind::AddedGameObject) {
-        targets.push_back(project->findPrefabPathFor(sceneId, entry.parent));
+        // the prefab of its parent GameObject, then each prefab holding that instance (a
+        // GameObject the outer prefab adds to its nested instance, PREFABS.md 16)
+        targets = project->getPrefabApplyTargets(sceneId, entry.parent);
         if (project->isPrefabInstanceRoot(sceneId, entry.parent)) {
             if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entry.parent)) {
-                targets.front() = component->path;
+                targets.erase(std::remove(targets.begin(), targets.end(), std::filesystem::path(component->path)), targets.end());
+                targets.insert(targets.begin(), component->path);
             }
+        }
+        if (targets.empty()) {
+            targets.push_back(project->findPrefabPathFor(sceneId, entry.parent));
         }
     } else if (entry.kind == Kind::RemovedGameObject) {
         targets.push_back(entry.removal.path);
@@ -552,7 +558,7 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
             case Kind::Property: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyProperty, entry.type, names, 0, target);
             case Kind::AddedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyAddedComponent, entry.type, {}, 0, target);
             case Kind::RemovedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyRemovedComponent, entry.type, {}, 0, target);
-            case Kind::AddedGameObject: return new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent);
+            case Kind::AddedGameObject: return new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent, target);
             case Kind::RemovedGameObject: return new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity);
         }
         return nullptr;

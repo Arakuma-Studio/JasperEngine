@@ -6,7 +6,8 @@
 GameObjects are matched by hierarchy path. Compared: name, state, parent, components (as
 Stream encodes them, matrices and other derived fields included) and references (by target
 path, so entity ids may differ). --ignore-prefab-info leaves out the prefab link and the
-override bookkeeping (`prefab`, `overrides`), for a dump of an older editor; entity ids are
+override bookkeeping (`prefab`, `overrides`, the PrefabComponent), for a dump of an older
+editor or a GameObject made a prefab's root; entity ids are
 compared only with --ids (member ids persisted across a save and load).
 --subtree=A:B compares the GameObjects below path A (A included) in the first dump with the
 ones below B in the second (two instances of one prefab): the roots' name, position,
@@ -38,11 +39,23 @@ def strip(node, ignore_prefab, ids):
     if ignore_prefab:
         node.pop("prefab", None)
         node.pop("overrides", None)
+        if isinstance(node.get("components"), dict) and "prefab" in node["components"]:
+            node["components"] = {k: v for k, v in node["components"].items() if k != "prefab"}
     return node
 
 
 def drop_reference(components, key):
     """Takes the raw id a `refs` key ("action.target", "mesh.submeshes[0].material.baseColorTexture") names."""
+    if key.startswith("script.scripts["):
+        # a script property: scripts[i].<name> is the value of the property of that name
+        index, _, name = key[len("script.scripts["):].partition("].")
+        try:
+            for prop in components["script"]["scripts"][int(index)]["properties"]:
+                if prop.get("name") == name:
+                    prop.pop("value", None)
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
+        return
     steps = []
     for part in key.split("."):
         name, _, rest = part.partition("[")

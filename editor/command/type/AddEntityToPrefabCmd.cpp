@@ -7,11 +7,12 @@
 
 using namespace jasperengine;
 
-editor::AddEntityToPrefabCmd::AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent){
+editor::AddEntityToPrefabCmd::AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent, const std::filesystem::path& target){
     this->project = project;
     this->sceneId = sceneId;
     this->entity = entity;
     this->parent = parent;
+    this->target = target;
     this->wasModified = project->getScene(sceneId)->isModified;
 
     this->originalParent = NULL_ENTITY;
@@ -49,7 +50,7 @@ bool editor::AddEntityToPrefabCmd::execute(){
         }
     }
 
-    bool result = project->addEntityToPrefab(sceneId, entity, parent, false);
+    bool result = project->addEntityToPrefab(sceneId, entity, parent, false, target);
 
     if (result){
         project->getScene(sceneId)->isModified = true;

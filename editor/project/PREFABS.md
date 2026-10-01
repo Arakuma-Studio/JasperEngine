@@ -740,6 +740,13 @@ X's instance referring outside its tree become whole-component scene overrides
 (`refreshPrefabInstances`; ids kept). Undo: `CreatePrefabCmd` and `AddEntityToPrefabCmd`
 re-import the nested instances from their nodes taken before.
 
+Apply of an added GameObject (`AddEntityToPrefabCmd(..., target)`,
+`addEntityToPrefab(..., target)`): to the prefab whose GameObject its parent is (empty
+target), or to a prefab holding that instance (`getPrefabApplyTargets(parent)`; the
+Overrides dropdown offers them, Apply All uses the instance's own prefab):
+`addEntityToOuterPrefab` makes it a GameObject that prefab adds to its nested instance
+(below the nested root, `addedTo` the parent's stripped id, at its `childIndex`).
+
 ### Out of an asset: Unpack
 
 `unpackPrefabInstances` calls `promoteNestedAssetData` before dropping an instance: what its
@@ -770,6 +777,21 @@ nested prefabs. Generator's scene side counts the same slots (`getPrefabMemberEn
 includes the GameObjects a prefab adds to its nested instances). Play imports with the
 editor (`registerPrefabManager`), the same code the bake uses.
 
+### Notes for Prefab Mode and Variants
+
+- Everything here is keyed by a registry entity of the holding prefab that is a nested root
+  (`Prefab::isNestedRoot`: a `PrefabComponent`, not the prefab's root). A Variant (a prefab
+  whose root is an instance of its base) is the same model with the root as that nested
+  root: its asset-level data `nestedInstances[root]`, its added GameObjects the root's
+  registry children, its references into the base stripped ids whose way starts at the
+  root. `importPrefab` would import the base onto the root first (deferred), decode the
+  variant's added GameObjects, then `applyHolderData(root, nestedInstances[root], map,
+  registry, root)`; the scene layer stays as is.
+- Writing an edited instance back to its asset (Prefab Mode's save, Apply of an added
+  GameObject to an outer prefab) uses the same pieces as Create Prefab: GameObjects below a
+  nested instance become `addedObjects` with `makePrefabReference` parents, values go
+  through `encodeComponentForPrefab` / `remapReferencesToPrefab`.
+
 ### Tests
 
 `tools/prefab-fixtures.py nested <dir>` writes a project of plain GameObjects four levels
@@ -779,6 +801,17 @@ references (camera link, action targets, joint bodies) at every level, a fresh i
 each compared with what it was made from (`prefab-dump-compare.py --subtree=A:B`), scene
 references into deep members and between instances, a multi-selection of instances made
 prefabs (unpacked to originals), an instance put into a prefab, and `bake` (the generated
-`build_prefab_*` sources). Scene-dump ops added for this: `createPrefabs`, `addToPrefab`,
+`build_prefab_*` sources). A Lua script (`Watcher.lua`) with an entity property points into
+nested prefabs from Branch and Tree and logs its target when the game starts (`WATCH ...` in
+an exported game's log). Scene-dump ops added for this: `createPrefabs`, `addToPrefab`,
 `create`, `setRef`, `setStateLocal`, `addLocalComponent` / `removeLocalComponent`, `spawn`
 (Play's factory: a bare root imported), `bake`; `@/x` in a path is next to the ops file.
+
+`FIXTURE=<TappyPlane fixture> tools/prefab-nested-test.py [work-dir]` runs all of it and
+checks: a fresh instance of each level equals what it was made from (by
+`prefab-dump-compare.py --subtree`), the references at every level, a reload equal with
+member ids, a second save byte for byte the same, Play's spawn equal to an instantiated
+instance, Apply of a reference into a nested prefab to the owning and to an outer prefab,
+undo / redo of Create Prefab holding an instance, a nested prefab going missing and coming
+back, Revert of a nested root after its prefab changed, and the generated sources.
+`tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.

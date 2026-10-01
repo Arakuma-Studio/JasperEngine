@@ -184,6 +184,27 @@ def legacy(out):
     write_yaml(os.path.join(out, "Prefab Scene.scene"), scene)
 
 
+WATCHER_LUA = """local Watcher = {
+    properties = {
+        { name = "target", displayName = "Target", type = "Sprite" }
+    }
+}
+
+-- Logs the GameObject its property points at, for the export checks
+function Watcher:init()
+    local name = "none"
+    local id = 0
+    if self.target ~= nil then
+        id = self.target.entity
+        name = self.scene:getEntityName(id)
+    end
+    Log.print("WATCH " .. self.scene:getEntityName(self.entity) .. " " .. tostring(self.entity) .. " -> " .. name .. " " .. tostring(id))
+end
+
+return Watcher
+"""
+
+
 def camera_components(x=0.0, y=0.0):
     return {
         "transform": transform(x, y),
@@ -223,6 +244,21 @@ def nested(out):
     def sprite(texture, w, h, x=0.0, y=0.0, color=(1, 1, 1, 1), sx=1.0, sy=1.0):
         return sprite_components(texture, w, h, x=x, y=y, color=color, sx=sx, sy=sy)
 
+    # A script with an entity property: it logs what it points at when the game starts
+    os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
+    with open(os.path.join(out, "scripts", "Watcher.lua"), "w") as f:
+        f.write(WATCHER_LUA)
+
+    def watcher(x=0.0, y=0.0):
+        return {
+            "transform": transform(x, y),
+            "script": {"scripts": [{
+                "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
+                "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
+                                "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
+            }]},
+        }
+
     leaf = entity(1009, "Leaf", sprite("sprites/plane-sheet.png", 88, 73, x=0, y=180, color=(0.4, 1, 0.4, 1)), [
         entity(1010, "Petal", sprite("sprites/rock.png", 30, 60, x=60, y=0, color=(1, 0.6, 0.8, 1))),
         entity(1011, "Bud", dict(sprite("sprites/rock.png", 20, 40, x=-60, y=0, color=(1, 1, 0.4, 1)), **action_components())),
@@ -232,11 +268,13 @@ def nested(out):
     branch = entity(1006, "Branch", sprite("sprites/rock-down.png", 60, 140, x=120, y=150, color=(0.7, 0.5, 0.3, 1)), [
         entity(1007, "Twig", sprite("sprites/rock.png", 30, 80, x=60, y=40)),
         entity(1008, "Screen", sprite("sprites/ground.png", 120, 40, x=-80, y=40)),
+        entity(1014, "Eye", watcher(-30, 20)),
         leaf,
     ])
     tree = entity(1003, "Tree", sprite("sprites/rock.png", 120, 260, x=0, y=60), [
         entity(1004, "Trunk", sprite("sprites/ground.png", 80, 40, x=0, y=-20, color=(0.5, 0.35, 0.2, 1))),
         entity(1005, "Rope", {"transform": transform(-60, 100)}),
+        entity(1015, "Lens", watcher(40, 20)),
         branch,
     ])
     forest = entity(1001, "Forest", sprite("sprites/ground.png", 400, 60, x=250, y=60), [
@@ -248,6 +286,9 @@ def nested(out):
         entity(1020, "Pointer", action_components()),
         entity(1021, "Cross", action_components()),
         entity(1022, "Field", sprite("sprites/ground.png", 300, 30, x=900, y=30)),
+        # scene scripts pointing into instances (deep members, GameObjects prefabs add)
+        entity(1023, "Spy", watcher(0, 0)),
+        entity(1024, "Spy2", watcher(0, 0)),
     ]
 
     scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
@@ -256,12 +297,17 @@ def nested(out):
     scene.pop("childScenes", None)
     scene.pop("cppScripts", None)
     scene["prefabs"] = []
+    scene["gravity2D"] = [0, 0]
     scene["entities"] = entities
     write_yaml(os.path.join(out, "Nested Scene.scene"), scene)
 
     F, T, B, L = "Forest", "Forest/Tree", "Forest/Tree/Branch", "Forest/Tree/Branch/Leaf"
     color = "submeshes[0].material.baseColorFactor"
     ops = [
+        # joint bodies (the scene has no gravity: they stay where they are)
+        {"op": "addComponent", "entity": L + "/Petal", "component": "rigidbody2d"},
+        {"op": "addComponent", "entity": B + "/Twig", "component": "rigidbody2d"},
+        {"op": "addComponent", "entity": T + "/Trunk", "component": "rigidbody2d"},
         # ---- Leaf, then an instance of it inside Branch with overrides of every kind ----
         {"op": "createPrefab", "entity": L, "path": "prefabs/Leaf.prefab"},
         {"op": "dump", "out": "@/0-leaf.yaml"},
@@ -281,6 +327,7 @@ def nested(out):
         {"op": "create", "entity": L + "/Petal", "name": "Dew"},
         # references from Branch into the Leaf instance
         {"op": "setRef", "entity": B + "/Screen", "component": "mesh", "property": "submeshes[0].material.baseColorTexture", "target": L + "/LeafCam"},
+        {"op": "setRef", "entity": B + "/Eye", "component": "script", "property": "scripts[0].target", "target": L + "/Petal"},
         {"op": "addComponent", "entity": B + "/Twig", "component": "action"},
         {"op": "setRef", "entity": B + "/Twig", "component": "action", "property": "target", "target": L + "/Petal"},
         {"op": "dump", "out": "@/1-before-branch.yaml"},
@@ -298,6 +345,7 @@ def nested(out):
         {"op": "delete", "entity": L + "/Bud"},
         {"op": "create", "entity": L + "/Petal/Dew", "name": "Moss"},
         {"op": "create", "entity": B + "/Twig", "name": "Knot"},
+        {"op": "setRef", "entity": T + "/Lens", "component": "script", "property": "scripts[0].target", "target": L + "/LeafCam"},
         {"op": "addComponent", "entity": T + "/Rope", "component": "joint2d"},
         {"op": "setRef", "entity": T + "/Rope", "component": "joint2d", "property": "bodyA", "target": B + "/Twig"},
         {"op": "setRef", "entity": T + "/Rope", "component": "joint2d", "property": "bodyB", "target": L + "/Petal"},
@@ -338,6 +386,7 @@ def nested(out):
         {"op": "addLocalComponent", "entity": F + "/Wind", "component": "joint2d"},
         {"op": "recordAddedComponent", "entity": F + "/Wind", "component": "joint2d"},
         {"op": "setRef", "entity": F + "/Wind", "component": "joint2d", "property": "bodyA", "target": "Field/Forest 2/Tree/Trunk", "shared": False},
+        {"op": "setRef", "entity": F + "/Wind", "component": "joint2d", "property": "bodyB", "target": "Field/Forest 2/Tree/Branch/Twig", "shared": False},
 
         # ---- Create Prefab from a multi-selection of instances (one original each) ----
         {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Leaf.prefab"},
@@ -355,6 +404,10 @@ def nested(out):
         {"op": "recordProperty", "entity": "Leaf 3/Bud", "component": "transform", "properties": ["scale"]},
         {"op": "create", "entity": "Leaf 3/Petal", "name": "Drop"},
         {"op": "addToPrefab", "entity": "Leaf 3", "parent": T},
+        # scene scripts into deep GameObjects: added by Tree / Forest, and by Add to Prefab
+        {"op": "setName", "entity": "Field/Forest 2/Tree/Branch/Leaf/Petal/Dew/Moss", "name": "Moss2"},
+        {"op": "setRef", "entity": "Spy", "component": "script", "property": "scripts[0].target", "target": "Field/Forest 2/Tree/Branch/Leaf/Petal/Dew/Moss2"},
+        {"op": "setRef", "entity": "Spy2", "component": "script", "property": "scripts[0].target", "target": "Forest/Tree/Leaf 3/Petal/Drop"},
         {"op": "dump", "out": "@/7-final.yaml"},
         {"op": "bake", "out": "@/bake"},
         {"op": "save"},

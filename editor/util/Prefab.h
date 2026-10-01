@@ -215,6 +215,8 @@ public:
     Instance* getInstance(uint32_t sceneId, Entity entity);
     const Instance* getInstance(uint32_t sceneId, Entity entity) const;
     Instance* getInstanceById(uint32_t sceneId, uint32_t instanceId);
+    // The instance whose root is `root` (roots only: one comparison per instance)
+    Instance* getInstanceByRoot(uint32_t sceneId, Entity root);
     const Instance* getInstanceById(uint32_t sceneId, uint32_t instanceId) const;
 
     // Whole-component overrides ("*": every property of the component), on the owning

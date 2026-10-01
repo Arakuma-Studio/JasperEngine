@@ -407,8 +407,8 @@ editor::Prefab::Instance* editor::Project::findInstanceRootedAt(SceneProject* sc
     }
     const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(root);
     Prefab* prefab = component ? getPrefab(component->path) : nullptr;
-    Prefab::Instance* instance = prefab ? prefab->getInstance(sceneProject->id, root) : nullptr;
-    if (!instance || instance->rootEntity != root) {
+    Prefab::Instance* instance = prefab ? prefab->getInstanceByRoot(sceneProject->id, root) : nullptr;
+    if (!instance) {
         return nullptr;
     }
     if (path) {

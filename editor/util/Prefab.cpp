@@ -609,3 +609,20 @@ bool Prefab::isRegistryEntityAbsent(const Instance& instance, Entity registryEnt
 }
 
 } // namespace jasperengine::editor
+
+namespace jasperengine::editor {
+
+Prefab::Instance* Prefab::getInstanceByRoot(uint32_t sceneId, Entity root) {
+	auto it = instances.find(sceneId);
+	if (it == instances.end() || root == NULL_ENTITY) {
+		return nullptr;
+	}
+	for (Instance& instance : it->second) {
+		if (instance.rootEntity == root) {
+			return &instance;
+		}
+	}
+	return nullptr;
+}
+
+} // namespace jasperengine::editor

@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "Project.h"
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@ namespace jasperengine::editor{
         uint32_t sceneId;
         Entity entity;
         Entity parent;
+        std::filesystem::path target;   // empty: the prefab whose GameObject the parent is
 
         bool wasModified;
 
@@ -30,7 +32,9 @@ namespace jasperengine::editor{
         std::vector<std::pair<Entity, YAML::Node>> nestedRoots;
 
     public:
-        AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent);
+        // target: a prefab holding the parent's instance (Apply to an outer prefab), empty
+        // for the prefab whose GameObject the parent is
+        AddEntityToPrefabCmd(Project* project, uint32_t sceneId, Entity entity, Entity parent, const std::filesystem::path& target = {});
 
         bool execute() override;
         void undo() override;

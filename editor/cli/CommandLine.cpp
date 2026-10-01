@@ -724,7 +724,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
 //   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
 //   createPrefabs {entities, dir} (a multi-selection dragged into the Project window: one prefab
-//       per root, from the Hierarchy's payload) | addToPrefab {entity, parent} (AddEntityToPrefabCmd) |
+//       per root, from the Hierarchy's payload) | addToPrefab {entity, parent, target} (AddEntityToPrefabCmd) |
 //   create {entity (the parent, may be empty), name} (a plain child GameObject with a Transform) |
 //   setRef {entity, component, property, target (a dump path or empty)} (an override on an
 //       instance's GameObject) | addLocalComponent / removeLocalComponent {entity, component} (the
@@ -1101,7 +1101,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             SceneProject* parentScene = nullptr;
             const Entity parent = findDumpEntity(project, pick, parentScene);
             if (parent == NULL_ENTITY) return false;
-            runCommand(new AddEntityToPrefabCmd(&project, sceneProject->id, entity, parent));
+            runCommand(new AddEntityToPrefabCmd(&project, sceneProject->id, entity, parent,
+                op["target"] ? fs::path(op["target"].as<std::string>()) : fs::path()));
             continue;
         }
         if (name == "setStateLocal") {

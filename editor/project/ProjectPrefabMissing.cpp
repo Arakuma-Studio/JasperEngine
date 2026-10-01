@@ -12,6 +12,8 @@
 #include "util/ProjectUtils.h"
 
 #include <algorithm>
+#include <set>
+#include <tuple>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -129,12 +131,37 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
     }
 
     std::unordered_set<uint32_t> touchedScenes;
+    // An instance nested in a live one goes missing with that instance built again once the
+    // asset is gone: what the prefabs holding it add to it and override stays theirs
+    // (PREFABS.md 16). Their nodes are taken now, while the asset still answers.
+    std::vector<std::tuple<uint32_t, Entity, YAML::Node>> outerRoots;
+    std::set<std::pair<uint32_t, Entity>> nestedRoots;
+    for (const auto& [sceneId, root] : roots) {
+        SceneProject* sceneProject = getScene(sceneId);
+        if (!sceneProject || !sceneProject->scene) {
+            continue;
+        }
+        const Entity outer = getOutermostPrefabRoots(sceneId, {root})[0];
+        if (outer == NULL_ENTITY || outer == root) {
+            continue;
+        }
+        nestedRoots.insert({sceneId, root});
+        const bool listed = std::any_of(outerRoots.begin(), outerRoots.end(), [&](const auto& entry) {
+            return std::get<0>(entry) == sceneId && std::get<1>(entry) == outer;
+        });
+        if (!listed) {
+            outerRoots.emplace_back(sceneId, outer, Stream::encodeEntity(outer, sceneProject->scene, this, sceneProject));
+        }
+    }
     for (const auto& [sceneId, root] : roots) {
         SceneProject* sceneProject = getScene(sceneId);
         prefab = getPrefab(filepath);
         const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, root) : nullptr;
         if (!sceneProject || !sceneProject->scene || !instance || instance->rootEntity != root) {
             continue;
+        }
+        if (nestedRoots.count({sceneId, root})) {
+            continue; // nested: below
         }
 
         // Everything the scene file would hold for the instance, as it would write it
@@ -177,6 +204,15 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
             it->second.registry->clear();
         }
         prefabAssets.erase(it);
+    }
+    for (const auto& [sceneId, outer, node] : outerRoots) {
+        if (SceneProject* sceneProject = getScene(sceneId)) {
+            reimportPrefabInstance(sceneProject, outer, node);
+            touchedScenes.insert(sceneId);
+            sceneProject->isModified = true;
+            sceneProject->needUpdateRender = true;
+            sceneProject->structureVersion++;
+        }
     }
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.scene) {
