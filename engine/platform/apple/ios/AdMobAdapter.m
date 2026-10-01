@@ -30,9 +30,9 @@
 
 - (void)initializeAdMob:(Boolean)tagForChildDirectedTreatment and:(Boolean)tagForUnderAgeOfConsent {
     [GADMobileAds.sharedInstance startWithCompletionHandler:nil];
-    
-    [self setTagForChildDirectedTreatment: tagForChildDirectedTreatment];
-    [self setTagForUnderAgeOfConsent: tagForUnderAgeOfConsent];
+
+    GADMobileAds.sharedInstance.requestConfiguration.tagForChildDirectedTreatment = tagForChildDirectedTreatment ? @YES : @NO;
+    GADMobileAds.sharedInstance.requestConfiguration.tagForUnderAgeOfConsent = tagForUnderAgeOfConsent ? @YES : @NO;
     
     [self requestConsent: (tagForChildDirectedTreatment || tagForUnderAgeOfConsent)];
 }
@@ -52,53 +52,30 @@
     }
 }
 
-- (void)setTagForChildDirectedTreatment:(Boolean)tagForChildDirectedTreatment {
-    if (tagForChildDirectedTreatment){
-        GADMobileAds.sharedInstance.requestConfiguration.tagForChildDirectedTreatment = @YES;
-    }else{
-        GADMobileAds.sharedInstance.requestConfiguration.tagForChildDirectedTreatment = @NO;
-    }
-}
-
-- (void)setTagForUnderAgeOfConsent:(Boolean)tagForUnderAgeOfConsent {
-    if (tagForUnderAgeOfConsent){
-        GADMobileAds.sharedInstance.requestConfiguration.tagForUnderAgeOfConsent = @YES;
-    }else{
-        GADMobileAds.sharedInstance.requestConfiguration.tagForUnderAgeOfConsent = @NO;
-    }
-}
-
 - (void)requestConsent:(Boolean)tagForUnderAgeOfConsent {
     UMPRequestParameters *parameters = [[UMPRequestParameters alloc] init];
     parameters.tagForUnderAgeOfConsent = tagForUnderAgeOfConsent;
     
-    // Request an update to the consent information.
     [UMPConsentInformation.sharedInstance
      requestConsentInfoUpdateWithParameters:parameters
      completionHandler:^(NSError* _Nullable error) {
         if (error) {
-            // Handle the error.
             NSLog(@"Failed to request consent form with error: %@", [error localizedDescription]);
         }
     }];
 }
 
 - (void)loadInterstitial:(NSString *)adUnitID {
-    // load consent form
     UMPFormStatus formStatus = UMPConsentInformation.sharedInstance.formStatus;
     if (formStatus == UMPFormStatusAvailable) {
         [UMPConsentForm loadWithCompletionHandler:^(UMPConsentForm *form, NSError *loadError) {
             if (loadError) {
-                // Handle the error.
                 NSLog(@"Failed to load consent form with error: %@", [loadError localizedDescription]);
             } else {
-                // Present the form. You can also hold on to the reference to present
-                // later.
                 if (UMPConsentInformation.sharedInstance.consentStatus == UMPConsentStatusRequired) {
                     [form
                      presentFromViewController:self->_rootController
                           completionHandler:^(NSError *_Nullable dismissError) {
-                              // Handle dismissal by reloading form.
                             [self loadInterstitial:adUnitID];
                           }];
                 }
@@ -106,7 +83,6 @@
         }];
     }
     
-    // load ad
     if (UMPConsentInformation.sharedInstance.consentStatus == UMPConsentStatusObtained ||
         UMPConsentInformation.sharedInstance.consentStatus == UMPConsentStatusNotRequired){
         GADRequest *request = [GADRequest request];
@@ -136,20 +112,17 @@
     }
 }
 
-/// Tells the delegate that the ad failed to present full screen content.
 - (void)ad:(nonnull id<GADFullScreenPresentingAd>)ad
 didFailToPresentFullScreenContentWithError:(nonnull NSError *)error {
     [Renderer resumeGame];
     NSLog(@"Ad did fail to present full screen content.");
 }
 
-/// Tells the delegate that the ad will present full screen content.
 - (void)adWillPresentFullScreenContent:(nonnull id<GADFullScreenPresentingAd>)ad {
     [Renderer pauseGame];
     NSLog(@"Ad will present full screen content.");
 }
 
-/// Tells the delegate that the ad dismissed full screen content.
 - (void)adDidDismissFullScreenContent:(nonnull id<GADFullScreenPresentingAd>)ad {
     [Renderer resumeGame];
    NSLog(@"Ad did dismiss full screen content.");

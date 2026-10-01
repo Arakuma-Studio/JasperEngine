@@ -92,11 +92,7 @@ if(WIN32)
  
     if(MSVC)
         set(PLATFORM_PROPERTIES_FLAGS LINK_FLAGS "/ENTRY:mainCRTStartup")
-        if(JASPERENGINE_SHARED)
-            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-        else()
-            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        endif()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     elseif(MINGW)
         # Same call as the CRT above: a shared engine means one GCC runtime for
         # the editor, the DLL and the plugins, shipped beside the binaries.
@@ -438,7 +434,7 @@ include_directories (${SHADERCOMPILER_ROOT}/src)
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
-if(WIN32 AND JASPERENGINE_SHARED)
+if(WIN32)
     jasperengine_add_windows_resource(
         JASPERENGINE_LIB_ICON_OBJECTS
         jasperengine
@@ -800,13 +796,11 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/resources/Info.plist"
     )
 
-    if(JASPERENGINE_SHARED)
-        add_custom_command(TARGET jasperengine-editor POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:jasperengine> $<TARGET_FILE_DIR:jasperengine-editor>
-            COMMENT "Copying the engine runtime into the bundle"
-        )
-    endif()
+    add_custom_command(TARGET jasperengine-editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:jasperengine> $<TARGET_FILE_DIR:jasperengine-editor>
+        COMMENT "Copying the engine runtime into the bundle"
+    )
 endif()
 
 # In the bundle this has to be Resources, not MacOS: codesign treats everything in

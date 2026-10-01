@@ -24,7 +24,6 @@ namespace jasperengine::editor {
     private:
         Project* project;
 
-        SceneProject* getActiveScene() const;
         bool toolSupported(const SceneProject& sceneProject, Tool tool) const;
         void applyTool(SceneProject& sceneProject, Tool tool) const;
 

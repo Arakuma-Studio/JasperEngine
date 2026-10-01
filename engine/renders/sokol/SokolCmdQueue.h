@@ -12,7 +12,6 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
-#include <memory>
 
 #include "sokol_gfx.h"
 
@@ -31,9 +30,6 @@ namespace jasperengine {
 			{
 				NOT_SET = 0,
 				
-				PUSH_DEBUG_GROUP,
-				POP_DEBUG_GROUP,
-				
 				MAKE_BUFFER,
 				MAKE_IMAGE,
 				MAKE_SAMPLER,
@@ -47,18 +43,10 @@ namespace jasperengine {
 				DESTROY_PIPELINE,
 				DESTROY_VIEW,
 				UPDATE_BUFFER,
-				APPEND_BUFFER,
 				UPDATE_IMAGE,
 
 				BEGIN_PASS,
-				APPLY_VIEWPORT,
-				APPLY_SCISSOR_RECT,
-				APPLY_PIPELINE,
-				APPLY_BINDINGS,
-				APPLY_UNIFORMS,
-				DRAW,
 				END_PASS,
-				COMMIT,
 				
 				CUSTOM
 			};
@@ -71,11 +59,6 @@ namespace jasperengine {
 
 		union
 		{
-			struct
-			{
-				const char* name;
-			} push_debug_group;
-
 			struct
 			{
 				sg_buffer_desc desc;
@@ -150,12 +133,6 @@ namespace jasperengine {
 			
 			struct
 			{
-				sg_buffer buffer;
-				sg_range data;
-			} append_buffer;
-			
-			struct
-			{
 				sg_image image;
 				sg_image_data data;
 			} update_image;
@@ -171,47 +148,6 @@ namespace jasperengine {
 				sg_pass pass;
 			} begin_pass;
 
-			struct
-			{
-				int x;
-				int y;
-				int width;
-				int height;
-				bool origin_top_left;
-			} apply_viewport;
-			
-			struct
-			{
-				int x;
-				int y;
-				int width;
-				int height;
-				bool origin_top_left;
-			} apply_scissor_rect;
-			
-			struct
-			{
-				sg_pipeline pipeline;
-			} apply_pipeline;
-			
-			struct
-			{
-				sg_bindings bindings;
-			} apply_bindings;
-			
-			struct
-			{
-				int ub_slot;
-				size_t data_size;
-				char buf[16384];
-			} apply_uniforms;
-			
-			struct
-			{
-				int base_element;
-				int number_of_elements;
-				int number_of_instances;
-			} draw;
 		};
 	};
 
@@ -236,13 +172,10 @@ namespace jasperengine {
 		static void finish();
 
 		// render thread functions
-		static void execute_commands(bool resource_only = false);
+		static void execute_commands();
 		static void wait_for_flush();
 
 		// update thread functions
-		static void add_command_push_debug_group(const char* name);
-		static void add_command_pop_debug_group();
-		
 		static sg_buffer add_command_make_buffer(const sg_buffer_desc& desc);
 		static sg_image add_command_make_image(const sg_image_desc& desc);
 		static sg_sampler add_command_make_sampler(const sg_sampler_desc& desc);
@@ -258,18 +191,10 @@ namespace jasperengine {
 		static void add_command_destroy_view(sg_view view);
 		
 		static void add_command_update_buffer(sg_buffer buffer, const sg_range& data);
-		static void add_command_append_buffer(sg_buffer buffer, const sg_range& data);
 		static void add_command_update_image(sg_image image, const sg_image_data& data);
 		
 		static void add_command_begin_pass(const sg_pass& pass);
-		static void add_command_apply_viewport(int x, int y, int width, int height, bool origin_top_left);
-		static void add_command_apply_scissor_rect(int x, int y, int width, int height, bool origin_top_left);
-		static void add_command_apply_pipeline(sg_pipeline pipeline);
-		static void add_command_apply_bindings(const sg_bindings& bindings);
-		static void add_command_apply_uniforms(int ub_slot, const sg_range& data);
-		static void add_command_draw(int base_element, int number_of_elements, int number_of_instances);
 		static void add_command_end_pass();
-		static void add_command_commit();
 
 		static void add_command_custom(void (*custom_cb)(void* custom_data), void* custom_data);
 		
@@ -277,9 +202,6 @@ namespace jasperengine {
 
 		static void commit_commands();
 		static void flush_commands();
-		
-		static void lock_execute_mutex() { m_execute_mutex.lock(); }
-		static void unlock_execute_mutex() { m_execute_mutex.unlock(); }
 		
 	private:
 		static void process_cleanups(int32_t frame_index);

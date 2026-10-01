@@ -8,9 +8,6 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
-#include <functional>
-#include <algorithm>
-#include <cctype>
 
 namespace jasperengine::editor {
 
@@ -62,14 +59,10 @@ namespace jasperengine::editor {
 
     class SemanticSuggestions {
     public:
-        SemanticSuggestions();
-        ~SemanticSuggestions();
+        SemanticSuggestions() = default;
 
         // Configuration
-        void SetMinPrefixLength(int length) { minPrefixLength = length; }
         void SetMaxSuggestions(int max) { maxSuggestions = max; }
-        void SetFuzzyMatching(bool enable) { fuzzyMatching = enable; }
-        void SetCaseSensitive(bool sensitive) { caseSensitive = sensitive; }
 
         // Language setup
         void SetKeywords(const std::unordered_set<std::string>& keywords);
@@ -109,10 +102,7 @@ namespace jasperengine::editor {
 
     private:
         // Settings
-        int minPrefixLength;
-        int maxSuggestions;
-        bool fuzzyMatching;
-        bool caseSensitive;
+        int maxSuggestions = 20;
 
         // Word sources
         std::unordered_set<std::string> keywords;

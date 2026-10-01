@@ -56,7 +56,6 @@ namespace jasperengine::editor {
         // Unity darkens the editor while in play mode. Call every frame with the
         // play state; it only rewrites the style when the state changes.
         static void setPlayModeTint(bool active);
-        static bool isPlayModeTinted();
 
         static void pushFoldoutHeaderColors();
         static void popFoldoutHeaderColors();
@@ -69,4 +68,3 @@ namespace jasperengine::editor {
     };
 
 }
-

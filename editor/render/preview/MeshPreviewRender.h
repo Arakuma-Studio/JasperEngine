@@ -22,9 +22,11 @@ namespace jasperengine::editor{
 
         Mesh* mesh;
 
+        void positionCameraForMesh();
+
     public:
         MeshPreviewRender();
-        virtual ~MeshPreviewRender();
+        ~MeshPreviewRender();
 
         MeshPreviewRender(const MeshPreviewRender&) = delete;
         MeshPreviewRender& operator=(const MeshPreviewRender&) = delete;
@@ -32,14 +34,8 @@ namespace jasperengine::editor{
         void applyMesh(YAML::Node meshData, bool updateCamera = true, bool removeMaterial = false);
         void setBackground(Vector4 color);
 
-        void positionCameraForMesh();
-
-        Framebuffer* getFramebuffer();
         Texture getTexture();
-        Entity getMeshEntity();
-        MeshComponent& getMeshComponent();
         Scene* getScene();
-        GameObject* getGameObject();
     };
 
 }

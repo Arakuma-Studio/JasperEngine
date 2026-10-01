@@ -297,10 +297,6 @@ void jasperengine::editor::Theme::setPlayModeTint(bool active) {
     applyPlayModeTint(ImGui::GetStyle());
 }
 
-bool jasperengine::editor::Theme::isPlayModeTinted() {
-    return g_playModeTint;
-}
-
 void jasperengine::editor::Theme::pushFoldoutHeaderColors() {
     ImGui::PushStyleColor(ImGuiCol_Header, Colors::FoldoutHeader);
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Colors::FoldoutHeaderHovered);

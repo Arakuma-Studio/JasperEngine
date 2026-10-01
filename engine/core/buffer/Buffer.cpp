@@ -69,34 +69,15 @@ BufferRender* Buffer::getRender(){
 }
 
 void Buffer::addAttribute(AttributeType attribute, AttributeDataType dataType, unsigned int elements, size_t offset){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(dataType);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, Attribute(dataType, "", elements, offset, 0, true, false));
 }
 
 void Buffer::addAttribute(AttributeType attribute, unsigned int elements, size_t offset, bool perInstance){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(AttributeDataType::FLOAT);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-    attData.setPerInstance(perInstance);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, Attribute(AttributeDataType::FLOAT, "", elements, offset, 0, true, perInstance));
 }
 
 void Buffer::addAttribute(AttributeType attribute, unsigned int elements, size_t offset){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(AttributeDataType::FLOAT);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, elements, offset, false);
 }
 
 void Buffer::addAttribute(AttributeType attribute, Attribute attributeData){
@@ -206,10 +187,8 @@ void Buffer::setValues(unsigned int index, Attribute* attribute, unsigned int nu
 
         increase(pos + (numValues * typesize));
 
-        for (int i = 0; i < numValues; i++) {
-            memcpy(&data[pos], &vector[i*typesize], typesize);
-            pos += typesize;
-        }
+        if (numValues != 0)
+            memcpy(&data[pos], vector, numValues * typesize);
 
         if (attribute->count > count)
             count = attribute->count;

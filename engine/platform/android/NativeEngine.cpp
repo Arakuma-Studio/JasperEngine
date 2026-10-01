@@ -293,12 +293,10 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglContext = EGL_NO_CONTEXT;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
-    mScreenDensity = AConfiguration_getDensity(app->config);
     mJniEnv = NULL;
     memset(&mState, 0, sizeof(mState));
 
     mInternalDataPath = mApp->activity->internalDataPath;
-    mExternalDataPath = mApp->activity->externalDataPath;
 
     app->motionEventFilter = all_motion_filter;
     app->keyEventFilter = all_key_filter;
@@ -352,10 +350,6 @@ GameActivity* NativeEngine::getActivity(){
     return mApp->activity;
 }
 
-jobject NativeEngine::getJavaGameActivity(){
-    return mApp->activity->javaGameActivity;
-}
-
 JniData& NativeEngine::getJniData(){
     return mJniData;
 }
@@ -379,10 +373,6 @@ int NativeEngine::getSurfHeight(){
     return mSurfHeight;
 }
 
-int NativeEngine::getScreenDensity(){
-    return mScreenDensity;
-}
-
 void NativeEngine::showSoftInput(std::wstring text){
     textInputBuffer = text;
 
@@ -397,19 +387,15 @@ void NativeEngine::showSoftInput(std::wstring text){
     mGameTextInputState.composingRegion.end = -1;
 
     GameActivity_setTextInputState(mApp->activity, &mGameTextInputState);
-    GameActivity_showSoftInput(NativeEngine::getInstance()->getActivity(), 0);
+    GameActivity_showSoftInput(mApp->activity, 0);
 }
 
 void NativeEngine::hideSoftInput(){
-    GameActivity_hideSoftInput(NativeEngine::getInstance()->getActivity(), 0);
+    GameActivity_hideSoftInput(mApp->activity, 0);
 }
 
 std::string NativeEngine::getInternalDataPath(){
     return mInternalDataPath;
-}
-
-std::string NativeEngine::getExternalDataPath(){
-    return mExternalDataPath;
 }
 
 AAssetManager* NativeEngine::getAssetManager(){
@@ -490,7 +476,7 @@ void NativeEngine::gameLoop() {
 void NativeEngine::setupJNI(){
     JNIEnv* env = getJniEnv();
 
-    mJniData.gameActivityObjRef = NativeEngine::getInstance()->getJavaGameActivity();
+    mJniData.gameActivityObjRef = mApp->activity->javaGameActivity;
     mJniData.gameActivityClsRef = env->GetObjectClass(mJniData.gameActivityObjRef);
 
     mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lcom/jaspergameengine/jasperengine/UserSettings;");

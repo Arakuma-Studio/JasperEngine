@@ -2470,7 +2470,6 @@ void editor::App::engineRender(){
             // to avoid delay when move objects with gizmo
             sceneRender->updateRenderSystem();
 
-            //TODO: avoid calling every frame
             project.updateSceneRender(sceneProject.id);
 
             // A paused game advances one frame here when Step was pressed
@@ -3089,10 +3088,6 @@ void editor::App::updateResourcesPath(){
     projectWindow->cleanupThumbnails();
 }
 
-void editor::App::requestDockspaceRebuild() {
-    dockspaceNeedsRebuild = true;
-}
-
 void editor::App::updateWindowTitle(const std::string& projectName) {
     Backend::updateWindowTitle(projectName);
 }
@@ -3349,14 +3344,6 @@ editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
 
 editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
-}
-
-editor::MainToolbar* editor::App::getMainToolbar() const{
-    return mainToolbar;
-}
-
-bool editor::App::isSceneWindowFocused() const{
-    return sceneWindow && sceneWindow->isFocused();
 }
 
 void editor::App::resetLayout(){

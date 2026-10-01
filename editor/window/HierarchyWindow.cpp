@@ -1159,30 +1159,12 @@ void editor::HierarchyWindow::showAddChildSceneMenu() {
 
 bool editor::HierarchyWindow::nodeMatchesSearch(const TreeNode& node, const std::string& searchLower) {
     std::string nodeName = node.name;
-    std::string searchStr = searchLower;
 
     if (!matchCase) {
-        // Convert both to lowercase for case-insensitive search
         std::transform(nodeName.begin(), nodeName.end(), nodeName.begin(), ::tolower);
-        std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
     }
 
-    // Check if the node name contains the search string
-    return nodeName.find(searchStr) != std::string::npos;
-}
-
-bool editor::HierarchyWindow::hasMatchingDescendant(const TreeNode& node, const std::string& searchLower) {
-    // Check if any child matches
-    for (const auto& child : node.children) {
-        if (nodeMatchesSearch(child, searchLower)) {
-            return true;
-        }
-        // Recursively check descendants
-        if (hasMatchingDescendant(child, searchLower)) {
-            return true;
-        }
-    }
-    return false;
+    return nodeName.find(searchLower) != std::string::npos;
 }
 
 void editor::HierarchyWindow::markMatchingNodes(TreeNode& node, const std::string& searchLower) {

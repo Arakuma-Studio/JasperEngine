@@ -42,8 +42,6 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
     this->previewCameraEntity = NULL_ENTITY;
 
     this->multipleEntitiesSelected = false;
-    // displaySettings initialised with struct defaults
-
     this->zoom = 1.0f;
 
     selLines = overlay(new LineRenderer(scene));
@@ -743,7 +741,6 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     CameraComponent& cameracomp = scene->getComponent<CameraComponent>(cameraEntity);
     Transform& cameratransform = scene->getComponent<Transform>(cameraEntity);
 
-    // TODO: avoid get gizmo position and rotation every frame
     Vector3 gizmoPosition;
     Quaternion gizmoRotation;
 

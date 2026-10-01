@@ -32,17 +32,14 @@ ShaderData::ShaderData(const ShaderData& d){
 }
 
 ShaderData& ShaderData::operator = (const ShaderData& d){
+    if (this == &d)
+        return *this;
+
+    ShaderData copy(d);
+    stages.swap(copy.stages);
     this->lang = d.lang;
     this->version = d.version;
     this->es = d.es;
-    this->stages = d.stages;
-
-    for (int i = 0; i < stages.size(); i++){
-        if (this->stages[i].bytecode.data){
-            this->stages[i].bytecode.data = new unsigned char[this->stages[i].bytecode.size];
-            memcpy(this->stages[i].bytecode.data, d.stages[i].bytecode.data, this->stages[i].bytecode.size);
-        }
-    }
 
     return *this;
 }
@@ -393,7 +390,7 @@ std::pair<int, int> ShaderData::getTextureIndexByName(const std::string& texstr)
 void ShaderData::releaseSourceData(){
     for (int i = 0; i < stages.size(); i++){
         if (stages[i].bytecode.data)
-            delete stages[i].bytecode.data;
+            delete[] stages[i].bytecode.data;
         stages[i].bytecode.data = NULL;
         stages[i].bytecode.size = 0;
         stages[i].source.clear();

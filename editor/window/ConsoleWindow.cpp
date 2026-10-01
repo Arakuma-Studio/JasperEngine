@@ -11,16 +11,9 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
-#include <chrono>
 #include <unordered_map>
 
 #include "imgui_internal.h"
-
-static float getElapsedSeconds() {
-    static auto startTime = std::chrono::steady_clock::now();
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration<float>(now - startTime).count();
-}
 
 using namespace jasperengine::editor;
 
@@ -195,9 +188,9 @@ size_t ConsoleWindow::trimLeadingRawLines(std::string& message, size_t linesToTr
     return removed;
 }
 
-bool ConsoleWindow::enforceStoredLineLimit() {
+void ConsoleWindow::enforceStoredLineLimit() {
     if (storedLogLineCount <= MAX_STORED_LOG_LINES) {
-        return false;
+        return;
     }
 
     size_t eraseCount = 0;
@@ -219,7 +212,6 @@ bool ConsoleWindow::enforceStoredLineLimit() {
         logs.erase(logs.begin(), logs.begin() + static_cast<std::ptrdiff_t>(eraseCount));
     }
     recountSeverities();
-    return true;
 }
 
 void ConsoleWindow::recountSeverities() {
@@ -242,7 +234,7 @@ void ConsoleWindow::addLog(LogType type, const char* fmt, ...) {
 }
 
 void ConsoleWindow::addLog(LogType type, const std::string& message) {
-    LogData logEntry{type, message, getElapsedSeconds(), nextLogId++};
+    LogData logEntry{type, message, nextLogId++};
     logs.push_back(std::move(logEntry));
     storedLogLineCount += countRawLines(message);
     severityCounts[severityOf(type)]++;

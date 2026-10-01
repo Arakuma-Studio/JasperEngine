@@ -829,14 +829,6 @@ void editor::EntityClipboard::update() {
     appFocusLost = focusLost;
 }
 
-std::shared_ptr<const editor::GameObjectsClip> editor::EntityClipboard::readGameObjects(const Project* project) {
-    const Entry* entry = readClipboard();
-    if (!entry || entry->kind != Kind::GameObjects || entry->project != projectKey(project)) {
-        return nullptr;
-    }
-    return entry->objects;
-}
-
 std::shared_ptr<const editor::ComponentClip> editor::EntityClipboard::peekComponent(const Project* project) {
     if (getKind(project) != Kind::Component) {
         return nullptr;

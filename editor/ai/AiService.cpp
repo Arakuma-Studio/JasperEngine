@@ -481,7 +481,6 @@ void AiService::update() {
 
     ProviderRequest request;
     int retryAttempt = 0;
-    bool dispatch = false;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (pendingRetry) {
@@ -492,11 +491,11 @@ void AiService::update() {
             retryAttempt = pendingRetry->attempt;
             pendingRetry.reset();
             retryScheduled.store(false);
-            dispatch = true;
         } else {
             const int maxRounds = std::max(1, settings.maxToolRounds);
-            if (!needsContinuationLocked() || toolRounds >= maxRounds) {
-                if (needsContinuationLocked() && toolRounds >= maxRounds) {
+            const bool needsContinuation = needsContinuationLocked();
+            if (!needsContinuation || toolRounds >= maxRounds) {
+                if (needsContinuation && toolRounds >= maxRounds) {
                     appendAssistantMessageLocked(
                         "Reached the tool-step limit for this request. Send another message to continue.");
                     finishTurnLocked(false);
@@ -508,12 +507,9 @@ void AiService::update() {
             }
             ++toolRounds;
             request = buildRequestSnapshotLocked();
-            dispatch = true;
         }
     }
-    if (dispatch) {
-        dispatchRequest(std::move(request), retryAttempt);
-    }
+    dispatchRequest(std::move(request), retryAttempt);
 }
 
 std::vector<ChatMessage> AiService::getMessages() const {

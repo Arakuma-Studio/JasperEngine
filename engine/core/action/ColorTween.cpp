@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "ColorTween.h"
-#include "util/Color.h"
 
 using namespace jasperengine;
 

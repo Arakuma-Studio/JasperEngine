@@ -16,9 +16,6 @@ namespace jasperengine::editor {
         Texture logo;
 
     public:
-        LoadingWindow();
-        ~LoadingWindow();
-
         void show();
 
     private:

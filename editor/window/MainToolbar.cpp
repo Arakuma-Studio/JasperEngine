@@ -18,6 +18,7 @@ namespace {
     // Unity's play mode tint for the Play/Pause buttons
     const ImVec4 PLAY_ACTIVE = ImVec4(0.24f, 0.45f, 0.70f, 1.00f);
     const ImVec4 PLAY_ACTIVE_HOVERED = ImVec4(0.30f, 0.52f, 0.78f, 1.00f);
+    constexpr const char* LAYOUT_BUTTON_LABEL = "Layout " ICON_FA_CARET_DOWN "##MainLayout";
 
     bool isRunningState(editor::ScenePlayState state) {
         return state == editor::ScenePlayState::PLAYING || state == editor::ScenePlayState::PAUSED;
@@ -38,10 +39,6 @@ namespace {
 }
 
 editor::MainToolbar::MainToolbar(Project* project): project(project) {
-}
-
-editor::SceneProject* editor::MainToolbar::getActiveScene() const {
-    return project->getSelectedScene();
 }
 
 //=== Play mode ===
@@ -143,7 +140,7 @@ void editor::MainToolbar::applyTool(SceneProject& sceneProject, Tool tool) const
 }
 
 editor::MainToolbar::Tool editor::MainToolbar::getTool() const {
-    const SceneProject* sceneProject = getActiveScene();
+    const SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->sceneRender) return Tool::Move;
 
     if (sceneProject->sceneRender->getCursorSelected() == CursorSelected::HAND) {
@@ -159,7 +156,7 @@ editor::MainToolbar::Tool editor::MainToolbar::getTool() const {
 }
 
 bool editor::MainToolbar::canUseTool(Tool tool) const {
-    const SceneProject* sceneProject = getActiveScene();
+    const SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->sceneRender) return false;
     // Viewing through a camera leaves the editor tools inert
     if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->sceneRender->isPreviewCameraActive()) return false;
@@ -175,7 +172,7 @@ void editor::MainToolbar::setTool(Tool tool) {
 }
 
 bool editor::MainToolbar::isGlobalTransform() const {
-    const SceneProject* sceneProject = getActiveScene();
+    const SceneProject* sceneProject = project->getSelectedScene();
     return !sceneProject || !sceneProject->sceneRender || sceneProject->sceneRender->isUseGlobalTransform();
 }
 
@@ -270,7 +267,7 @@ void editor::MainToolbar::drawTools(float rowHeight) {
 
     // Global/Local handle orientation (Unity: X)
     ImGui::SameLine(0, Theme::dpi(10.0f));
-    const SceneProject* sceneProject = getActiveScene();
+    const SceneProject* sceneProject = project->getSelectedScene();
     const bool rectTool = current == Tool::Rect;
     const bool multiple = sceneProject && sceneProject->sceneRender && sceneProject->sceneRender->isMultipleEntitesSelected();
     const bool global = isGlobalTransform();
@@ -317,8 +314,7 @@ void editor::MainToolbar::drawPlayControls(float rowHeight) {
 }
 
 void editor::MainToolbar::drawLayoutMenu(float rowHeight) {
-    const std::string label = std::string("Layout ") + ICON_FA_CARET_DOWN + "##MainLayout";
-    if (ImGui::Button(label.c_str(), ImVec2(0.0f, rowHeight))) {
+    if (ImGui::Button(LAYOUT_BUTTON_LABEL, ImVec2(0.0f, rowHeight))) {
         ImGui::OpenPopup("MainLayoutPopup");
     }
     ImGui::SetItemTooltip("Window layout");
@@ -366,8 +362,7 @@ void editor::MainToolbar::show() {
         drawPlayControls(rowHeight);
 
         // Right: Layout
-        const std::string layoutLabel = std::string("Layout ") + ICON_FA_CARET_DOWN;
-        const float layoutWidth = ImGui::CalcTextSize(layoutLabel.c_str()).x + style.FramePadding.x * 2.0f;
+        const float layoutWidth = ImGui::CalcTextSize(LAYOUT_BUTTON_LABEL, nullptr, true).x + style.FramePadding.x * 2.0f;
         const float rightX = ImGui::GetWindowContentRegionMax().x - layoutWidth;
         ImGui::SameLine();
         ImGui::SetCursorPos(ImVec2(std::max(rightX, ImGui::GetCursorPosX() + style.ItemSpacing.x), startY));

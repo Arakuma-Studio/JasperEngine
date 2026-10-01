@@ -50,8 +50,6 @@ void TextureSlicerToolDialog::open(const Texture& previewTexture,
     if (m_sheetWidth > 0 && m_sheetHeight > 0) {
         m_columns = std::max(1, m_sheetWidth / 32);
         m_rows = std::max(1, m_sheetHeight / 32);
-        m_cellWidth = m_sheetWidth / m_columns;
-        m_cellHeight = m_sheetHeight / m_rows;
 
         // Clamp to reasonable defaults
         if (m_columns > 16) m_columns = 4;

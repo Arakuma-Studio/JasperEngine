@@ -612,11 +612,9 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     return 0;
 }
 
-int CommandLine::runBenchmarkHelp(int argc, char** argv, const char* executableName) {
+int CommandLine::runBenchmarkHelp(const char* executableName) {
     attachHostConsoleIfNeeded();
     printBenchmarkUsage(getCommandName(executableName));
-    (void)argc;
-    (void)argv;
     return 0;
 }
 

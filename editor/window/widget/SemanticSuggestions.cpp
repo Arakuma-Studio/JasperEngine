@@ -4,20 +4,9 @@
 #include "SemanticSuggestions.h"
 #include "external/IconsFontAwesome6.h"
 #include <algorithm>
-#include <cmath>
+#include <cctype>
 
 namespace jasperengine::editor {
-
-SemanticSuggestions::SemanticSuggestions()
-    : minPrefixLength(1)
-    , maxSuggestions(20)
-    , fuzzyMatching(true)
-    , caseSensitive(false)
-{
-}
-
-SemanticSuggestions::~SemanticSuggestions() {
-}
 
 void SemanticSuggestions::SetKeywords(const std::unordered_set<std::string>& kw) {
     keywords = kw;
@@ -163,9 +152,8 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
 
     bool isMemberAccess = (context.afterDot || context.afterArrow || context.afterDoubleColon || context.afterColon);
 
-    // Don't suggest if query is too short (unless after member access or explicit Ctrl+Space)
-    if (query.length() < static_cast<size_t>(minPrefixLength) &&
-        !isMemberAccess && !context.manualInvoke) {
+    // Don't suggest with an empty query unless after member access or explicit Ctrl+Space
+    if (query.empty() && !isMemberAccess && !context.manualInvoke) {
         return results;
     }
 
@@ -306,13 +294,12 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
     results = std::move(unique);
 
     // Remove the exact match of what's being typed (snippets stay — they expand to more text)
+    const std::string queryLower = toLower(query);
     results.erase(
         std::remove_if(results.begin(), results.end(),
-            [&query, this](const SuggestionItem& item) {
+            [&queryLower, this](const SuggestionItem& item) {
                 if (item.kind == SuggestionKind::Snippet) return false;
-                std::string itemLower = caseSensitive ? item.label : toLower(item.label);
-                std::string queryLower = caseSensitive ? query : toLower(query);
-                return itemLower == queryLower;
+                return toLower(item.label) == queryLower;
             }),
         results.end()
     );
@@ -378,8 +365,8 @@ bool SemanticSuggestions::computeMatch(const std::string& candidate, const std::
     if (query.empty()) return true; // Show all candidates when no filter typed yet
     if (query.length() > candidate.length()) return false;
 
-    std::string candCmp = caseSensitive ? candidate : toLower(candidate);
-    std::string queryCmp = caseSensitive ? query : toLower(query);
+    std::string candCmp = toLower(candidate);
+    std::string queryCmp = toLower(query);
 
     // Tier 1: prefix match
     if (candCmp.compare(0, queryCmp.size(), queryCmp) == 0) {
@@ -387,8 +374,6 @@ bool SemanticSuggestions::computeMatch(const std::string& candidate, const std::
         if (candidate.compare(0, query.size(), query) == 0) outScore += 100; // exact case
         return true;
     }
-
-    if (!fuzzyMatching) return false;
 
     // Tier 2: substring beginning at a word boundary (e.g. "Pos" in "setPosition")
     size_t found = candCmp.find(queryCmp);

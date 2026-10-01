@@ -74,10 +74,7 @@ private:
     EGLConfig mEglConfig;
 
     int mSurfWidth, mSurfHeight;
-    int mScreenDensity;
-
     std::string mInternalDataPath;
-    std::string mExternalDataPath;
 
     JNIEnv *mJniEnv;
     JniData mJniData;
@@ -108,6 +105,8 @@ private:
 
     void handleGameActivityInput();
 
+    void setupJNI();
+
 public:
     NativeEngine(struct android_app *app);
 
@@ -116,24 +115,18 @@ public:
     static NativeEngine *getInstance();
     JNIEnv* getJniEnv();
     GameActivity* getActivity();
-    jobject getJavaGameActivity();
     JniData& getJniData();
 
     void handleCommand(int32_t cmd);
 
     void gameLoop();
 
-    void setupJNI();
-
     int getSurfWidth();
     int getSurfHeight();
-    int getScreenDensity();
-
     void showSoftInput(std::wstring text);
     void hideSoftInput();
 
     std::string getInternalDataPath();
-    std::string getExternalDataPath();
 
     AAssetManager* getAssetManager();
 };

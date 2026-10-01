@@ -920,8 +920,11 @@ AiChatWindow::AiChatWindow(Project* project, ProjectWindow* projectWindow)
     : project(project)
     , projectWindow(projectWindow)
     , conversationStore(project) {
-    service.setSettings(AppSettings::getAiSettings());
-    prefetchModels();
+    const ai::Settings settings = AppSettings::getAiSettings();
+    service.setSettings(settings);
+    for (const ai::ProviderAccount& account : ai::SecretStore::configuredAccounts(settings)) {
+        modelCatalog.refresh(account, ai::SecretStore::getApiKey(account.id));
+    }
 }
 
 void AiChatWindow::setWakeCallback(std::function<void()> callback) {
@@ -930,15 +933,6 @@ void AiChatWindow::setWakeCallback(std::function<void()> callback) {
 
 void AiChatWindow::shutdown() {
     service.shutdown();
-}
-
-void AiChatWindow::prefetchModels() {
-    // Kick off a background /models fetch for every configured account at app
-    // open, so the picker is already populated by the time it is opened.
-    const ai::Settings settings = AppSettings::getAiSettings();
-    for (const ai::ProviderAccount& account : ai::SecretStore::configuredAccounts(settings)) {
-        modelCatalog.refresh(account, ai::SecretStore::getApiKey(account.id));
-    }
 }
 
 const std::vector<ai::ChatMessage>& AiChatWindow::cachedMessages() {

@@ -8,10 +8,7 @@
 using namespace jasperengine;
 
 InterleavedBuffer::InterleavedBuffer(): Buffer(){
-    vectorBuffer.clear();
     vertexSize = 0;
-
-    data = nullptr;
 }
 
 InterleavedBuffer::~InterleavedBuffer(){
@@ -53,17 +50,16 @@ bool InterleavedBuffer::increase(size_t newSize) {
 
 void InterleavedBuffer::clearAll(){
     Buffer::clearAll();
-
     vertexSize = 0;
-    vectorBuffer.clear(); // clear only here to not lose ref in async commands
-    data = nullptr; // Explicitly set to nullptr since buffer is cleared
+    vectorBuffer.clear();
+    data = nullptr;
 }
 
 void InterleavedBuffer::clear(){
     Buffer::clear(); 
 
     vertexSize = 0;
-    vectorBuffer.resize(0); // Resize to 0 but keep capacity to avoid reallocation
+    vectorBuffer.clear();
     data = vectorBuffer.empty() ? nullptr : &vectorBuffer[0];
 }
 
@@ -95,4 +91,3 @@ unsigned int InterleavedBuffer::getVertexSize() const {
 void InterleavedBuffer::setVertexSize(unsigned int size) { 
     vertexSize = size;
 }
-

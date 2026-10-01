@@ -49,7 +49,7 @@ editor::DirectionRender::DirectionRender(){
     camera->setRenderToTexture(true);
 
     // Set default direction (pointing up)
-    setDirection(0, 1, 0);
+    setDirection(Vector3(0, 1, 0));
 }
 
 editor::DirectionRender::~DirectionRender(){
@@ -101,26 +101,8 @@ void editor::DirectionRender::setDirection(Vector3 direction){
     }
 }
 
-void editor::DirectionRender::setDirection(float x, float y, float z){
-    setDirection(Vector3(x, y, z));
-}
-
-void editor::DirectionRender::setColor(Vector4 color){
-    arrowShaft->setColor(color.x, color.y, color.z, color.w);
-    arrowHead->setColor(color.x, color.y, color.z, color.w);
-}
-
-void editor::DirectionRender::setColor(float r, float g, float b, float a){
-    arrowShaft->setColor(r, g, b, a);
-    arrowHead->setColor(r, g, b, a);
-}
-
 Vector3 editor::DirectionRender::getDirection(){
     return direction;
-}
-
-void editor::DirectionRender::setBackground(Vector4 color){
-    scene->setBackgroundColor(color);
 }
 
 Framebuffer* editor::DirectionRender::getFramebuffer(){
@@ -133,8 +115,4 @@ Texture editor::DirectionRender::getTexture(){
 
 Scene* editor::DirectionRender::getScene(){
     return scene;
-}
-
-GameObject* editor::DirectionRender::getGameObject(){
-    return arrowObject;
 }

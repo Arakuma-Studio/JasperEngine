@@ -171,14 +171,11 @@ editor::UILayer::~UILayer(){
     delete leftRect;
     delete rightRect;
     delete centralRect;
-    if (viewGizmoImage){
-        delete viewGizmoImage;
-    }
+    delete viewGizmoImage;
 
     for (Polygon* tick : gaugeTicks){
         delete tick;
     }
-    gaugeTicks.clear();
     if (gaugeBar){
         delete gaugeBar;
         delete gaugeMarker;

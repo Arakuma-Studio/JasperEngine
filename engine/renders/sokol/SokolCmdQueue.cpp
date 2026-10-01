@@ -4,10 +4,7 @@
 // Based on: https://github.com/oviano/sokol-multithread
 // ---------------------------------------
 
-#include <string>
-#include <cstring>
 #include <algorithm>
-#include <cassert>
 
 #include "SokolCmdQueue.h"
 
@@ -42,7 +39,7 @@ void SokolCmdQueue::finish(){
 	process_cleanups(-1);
 }
 
-void SokolCmdQueue::execute_commands(bool resource_only)
+void SokolCmdQueue::execute_commands()
 {
 	m_frame_index ++;
 
@@ -61,19 +58,8 @@ void SokolCmdQueue::execute_commands(bool resource_only)
 
 		for (const auto& command : m_commands[m_commit_commands_index])
 		{
-			if (resource_only && !(command.type >= SokolRenderCommand::TYPE::MAKE_BUFFER && command.type <= SokolRenderCommand::TYPE::DESTROY_VIEW))
-			{
-				continue;
-			}
-
 			switch (command.type)
 			{
-			case SokolRenderCommand::TYPE::PUSH_DEBUG_GROUP:
-				sg_push_debug_group(command.push_debug_group.name);
-				break;
-			case SokolRenderCommand::TYPE::POP_DEBUG_GROUP:
-				sg_pop_debug_group();
-				break;
 			case SokolRenderCommand::TYPE::MAKE_BUFFER:
 				sg_init_buffer(command.make_buffer.buffer, command.make_buffer.desc);
 				break;
@@ -113,38 +99,14 @@ void SokolCmdQueue::execute_commands(bool resource_only)
 			case SokolRenderCommand::TYPE::UPDATE_BUFFER:
 				sg_update_buffer(command.update_buffer.buffer, command.update_buffer.data);
 				break;
-			case SokolRenderCommand::TYPE::APPEND_BUFFER:
-				sg_append_buffer(command.append_buffer.buffer, command.append_buffer.data);
-				break;
 			case SokolRenderCommand::TYPE::UPDATE_IMAGE:
 				sg_update_image(command.update_image.image, command.update_image.data);
 				break;
 			case SokolRenderCommand::TYPE::BEGIN_PASS:
 				sg_begin_pass(command.begin_pass.pass);
 				break;
-			case SokolRenderCommand::TYPE::APPLY_VIEWPORT:
-				sg_apply_viewport(command.apply_viewport.x, command.apply_viewport.y, command.apply_viewport.width, command.apply_viewport.height, command.apply_viewport.origin_top_left);
-				break;
-			case SokolRenderCommand::TYPE::APPLY_SCISSOR_RECT:
-				sg_apply_scissor_rect(command.apply_scissor_rect.x, command.apply_scissor_rect.y, command.apply_scissor_rect.width, command.apply_scissor_rect.height, command.apply_scissor_rect.origin_top_left);
-				break;
-			case SokolRenderCommand::TYPE::APPLY_PIPELINE:
-				sg_apply_pipeline(command.apply_pipeline.pipeline);
-				break;
-			case SokolRenderCommand::TYPE::APPLY_BINDINGS:
-				sg_apply_bindings(command.apply_bindings.bindings);
-				break;
-			case SokolRenderCommand::TYPE::APPLY_UNIFORMS:
-				sg_apply_uniforms(command.apply_uniforms.ub_slot, { command.apply_uniforms.buf, command.apply_uniforms.data_size });
-				break;
-			case SokolRenderCommand::TYPE::DRAW:
-				sg_draw(command.draw.base_element, command.draw.number_of_elements, command.draw.number_of_instances);
-				break;
 			case SokolRenderCommand::TYPE::END_PASS:
 				sg_end_pass();
-				break;
-			case SokolRenderCommand::TYPE::COMMIT:
-				sg_commit();
 				break;
 			case SokolRenderCommand::TYPE::CUSTOM:
 				command.custom.custom_cb(command.custom.custom_data);
@@ -208,18 +170,6 @@ void SokolCmdQueue::wait_for_flush()
 
 		m_render_semaphore.release();
 	}
-}
-
-void SokolCmdQueue::add_command_push_debug_group(const char* name)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::PUSH_DEBUG_GROUP);
-
-	command.push_debug_group.name = name;
-}
-
-void SokolCmdQueue::add_command_pop_debug_group()
-{
-	m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::POP_DEBUG_GROUP);
 }
 
 sg_buffer SokolCmdQueue::add_command_make_buffer(const sg_buffer_desc& desc)
@@ -350,14 +300,6 @@ void SokolCmdQueue::add_command_update_buffer(sg_buffer buffer, const sg_range& 
 	command.update_buffer.data = data;
 }
 
-void SokolCmdQueue::add_command_append_buffer(sg_buffer buffer, const sg_range& data)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPEND_BUFFER);
-
-	command.append_buffer.buffer = buffer;
-	command.append_buffer.data = data;
-}
-
 void SokolCmdQueue::add_command_update_image(sg_image image, const sg_image_data& data)
 {
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::UPDATE_IMAGE);
@@ -373,70 +315,9 @@ void SokolCmdQueue::add_command_begin_pass(const sg_pass& pass)
 	command.begin_pass.pass = pass;
 }
 
-void SokolCmdQueue::add_command_apply_viewport(int x, int y, int width, int height, bool origin_top_left)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPLY_VIEWPORT);
-
-	command.apply_viewport.x = x;
-	command.apply_viewport.y = y;
-	command.apply_viewport.width = width;
-	command.apply_viewport.height = height;
-	command.apply_viewport.origin_top_left = origin_top_left;
-}
-
-void SokolCmdQueue::add_command_apply_scissor_rect(int x, int y, int width, int height, bool origin_top_left)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPLY_SCISSOR_RECT);
-
-	command.apply_scissor_rect.x = x;
-	command.apply_scissor_rect.y = y;
-	command.apply_scissor_rect.width = width;
-	command.apply_scissor_rect.height = height;
-	command.apply_scissor_rect.origin_top_left = origin_top_left;
-}
-
-void SokolCmdQueue::add_command_apply_pipeline(sg_pipeline pipeline)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPLY_PIPELINE);
-
-	command.apply_pipeline.pipeline = pipeline;
-}
-
-void SokolCmdQueue::add_command_apply_bindings(const sg_bindings& bindings)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPLY_BINDINGS);
-
-	command.apply_bindings.bindings = bindings;
-}
-
-void SokolCmdQueue::add_command_apply_uniforms(int ub_slot, const sg_range& data)
-{
-	assert((size_t)data.size <= sizeof(SokolRenderCommand::apply_uniforms.buf));
-
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::APPLY_UNIFORMS);
-
-	command.apply_uniforms.ub_slot = ub_slot;
-	memcpy(command.apply_uniforms.buf, data.ptr, data.size);
-	command.apply_uniforms.data_size = data.size;
-}
-
-void SokolCmdQueue::add_command_draw(int base_element, int number_of_elements, int number_of_instances)
-{
-	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::DRAW);
-
-	command.draw.base_element = base_element;
-	command.draw.number_of_elements = number_of_elements;
-	command.draw.number_of_instances = number_of_instances;
-}
-
 void SokolCmdQueue::add_command_end_pass()
 {
 	m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::END_PASS);
-}
-
-void SokolCmdQueue::add_command_commit()
-{
-	m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::COMMIT);
 }
 
 void SokolCmdQueue::add_command_custom(void (*custom_cb)(void* custom_data), void* custom_data)

@@ -54,17 +54,9 @@ static int appendCollider3D(RigidbodyComponent& body){
 Rigidbody::Rigidbody(Scene* scene, Entity entity): EntityHandle(scene, entity){
 }
 
-Rigidbody::~Rigidbody(){
-}
-
-Rigidbody::Rigidbody(const Rigidbody& rhs): EntityHandle(rhs){
-}
-
-Rigidbody& Rigidbody::operator=(const Rigidbody& rhs){
-    EntityHandle::operator = (rhs);
-
-    return *this;
-}
+Rigidbody::~Rigidbody() = default;
+Rigidbody::Rigidbody(const Rigidbody& rhs) = default;
+Rigidbody& Rigidbody::operator=(const Rigidbody& rhs) = default;
 
 void Rigidbody::checkBody(const RigidbodyComponent& body) const{
     if (body.body.IsInvalid()){

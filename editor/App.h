@@ -288,7 +288,6 @@ namespace jasperengine::editor{
         void resetLastActivatedScene() override;
         bool shouldSyncEngineApi() const override;
         void updateResourcesPath() override;
-        void requestDockspaceRebuild();
         void updateWindowTitle(const std::string& projectName) override;
         void stopTransientPreviews() override;
         void flushSceneMaterialWrites(uint32_t sceneId) override;
@@ -348,9 +347,6 @@ namespace jasperengine::editor{
         TerrainEditWindow* getTerrainEditWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
-        // Play/Pause/Step and the transform tools, for the Edit menu
-        MainToolbar* getMainToolbar() const;
-        bool isSceneWindowFocused() const;
         void resetLayout();
 
         // Window settings methods. Sizes are physical pixels, converted between

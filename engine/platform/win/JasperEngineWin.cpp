@@ -64,7 +64,6 @@ constexpr int WGL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
 
 HDC deviceContext = nullptr;
 HGLRC glContext = nullptr;
-SwapIntervalProc swapIntervalEXT = nullptr;
 #endif
 
 GamepadWin gamepads;
@@ -263,7 +262,7 @@ bool createContext() {
         return false;
     }
 
-    swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+    const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
     if (swapIntervalEXT) swapIntervalEXT(JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
     return true;
 }
@@ -278,7 +277,6 @@ void destroyContext() {
         ReleaseDC(WindowWin::handle(), deviceContext);
         deviceContext = nullptr;
     }
-    swapIntervalEXT = nullptr;
 }
 
 void beginFrame() {

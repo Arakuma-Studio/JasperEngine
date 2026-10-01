@@ -7172,7 +7172,6 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
             up = Vector3(0, 0, 1);
         }
 
-        //TODO: perspective aspect based on shadow map size
         if (light.type == LightType::DIRECTIONAL){
 
             float shadowSplitLogFactor = 0.7f;

@@ -55,7 +55,6 @@ using SwapIntervalProc = void (*)(Display*, GLXDrawable, int);
 
 GLXFBConfig framebufferConfig = nullptr;
 GLXContext glContext = nullptr;
-SwapIntervalProc swapIntervalEXT = nullptr;
 bool glxContextError = false;
 #endif
 
@@ -176,7 +175,7 @@ bool createContext() {
     }
 
     if (hasGlxExtension(display, screen, "GLX_EXT_swap_control")) {
-        swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
+        const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
         if (swapIntervalEXT)
             swapIntervalEXT(display, WindowLinux::handle(),
                             JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
@@ -191,7 +190,6 @@ void destroyContext() {
         glXDestroyContext(display, glContext);
     }
     glContext = nullptr;
-    swapIntervalEXT = nullptr;
     framebufferConfig = nullptr;
 }
 

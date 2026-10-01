@@ -38,15 +38,12 @@ namespace jasperengine::editor {
         TextureType mapTextureType(shadercompiler::texture_type_t type);
         TextureSamplerType mapSamplerType(shadercompiler::texture_samplertype_t type);
         SamplerType mapSamplerFilterType(shadercompiler::sampler_type_t type);
-        ShaderStorageBufferType mapStorageType(shadercompiler::storage_buffer_type_t type);
         ShaderStageType mapStageType(shadercompiler::stage_type_t type);
         ShaderLang mapLang(shadercompiler::lang_type_t lang);
         static void applyShaderBackend(shadercompiler::args_t& args, ShaderBackend backend);
-        static void setBackendLang(shadercompiler::args_t& args);
 
         ShaderData convertToShaderData(
             const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,
-            const std::vector<shadercompiler::input_t>& inputs,
             const shadercompiler::args_t& args);
 
         void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
@@ -74,9 +71,6 @@ namespace jasperengine::editor {
         static bool isCustomCacheStale(ShaderKey shaderKey, Project* project, const std::filesystem::path& cachePath);
 
     public:
-        ShaderBuilder();
-        virtual ~ShaderBuilder();
-
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
         ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend);
 
@@ -93,7 +87,6 @@ namespace jasperengine::editor {
         // Serialize ShaderData cache on demand (no disk I/O inside buildShaderInternal).
         static bool saveShaderDataCache(ShaderKey shaderKey, Project* project, const ShaderData& shaderData, std::string* err = nullptr);
 
-        ShaderData& getShaderData(ShaderKey shaderKey);
     };
 
 }

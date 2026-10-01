@@ -4,14 +4,11 @@
 #pragma once
 
 #include "imgui.h"
-#include "imgui_internal.h"
 #include "Project.h"
 #include "object/Camera.h"
-#include "command/CommandHandle.h"
-#include "command/type/PropertyCmd.h"
-#include "render/gizmo/ViewportGizmo.h"
+#include <map>
 #include <unordered_map>
-#include <set>
+#include <vector>
 
 namespace jasperengine::editor {
 

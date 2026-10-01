@@ -182,12 +182,6 @@ std::unordered_map<ShaderKey, std::future<ShaderData>> editor::ShaderBuilder::pe
 std::mutex editor::ShaderBuilder::cacheMutex;
 std::atomic<bool> editor::ShaderBuilder::shutdownRequested{false};
 
-editor::ShaderBuilder::ShaderBuilder(){
-}
-
-editor::ShaderBuilder::~ShaderBuilder(){
-}
-
 ShaderVertexType editor::ShaderBuilder::mapVertexType(shadercompiler::attribute_type_t type) {
     using namespace shadercompiler;
     switch(type) {
@@ -251,14 +245,6 @@ SamplerType editor::ShaderBuilder::mapSamplerFilterType(shadercompiler::sampler_
     }
 }
 
-ShaderStorageBufferType editor::ShaderBuilder::mapStorageType(shadercompiler::storage_buffer_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case storage_buffer_type_t::STRUCT: return ShaderStorageBufferType::STRUCT;
-        default:                            return ShaderStorageBufferType::STRUCT;
-    }
-}
-
 ShaderStageType editor::ShaderBuilder::mapStageType(shadercompiler::stage_type_t type) {
     using namespace shadercompiler;
     switch(type) {
@@ -310,14 +296,9 @@ void editor::ShaderBuilder::applyShaderBackend(shadercompiler::args_t& args, Sha
     }
 }
 
-void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
-    applyShaderBackend(args, ShaderPool::getShaderBackend());
-}
-
 // Implementation of convertToShaderData
 ShaderData editor::ShaderBuilder::convertToShaderData(
     const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,
-    const std::vector<shadercompiler::input_t>& inputs,
     const shadercompiler::args_t& args) {
 
     ShaderData shaderData;
@@ -384,7 +365,7 @@ ShaderData editor::ShaderBuilder::convertToShaderData(
             ssb.slot = sbCount++;
             ssb.sizeBytes = sb.size_bytes;
             ssb.readonly = sb.readonly;
-            ssb.type = mapStorageType(sb.type);
+            ssb.type = ShaderStorageBufferType::STRUCT;
             stage.storagebuffers.push_back(ssb);
         }
 
@@ -788,7 +769,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     shadercompiler::args_t args = shadercompiler::initialize_args();
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
-    setBackendLang(args);
+    applyShaderBackend(args, ShaderPool::getShaderBackend());
 
     // Capture the GLSL compiler log so failures surface in the editor output window
     // (otherwise the details only reach stderr/app output).
@@ -863,7 +844,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
 
     // Use a deterministic basename for stage naming and disk cache
     args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) + getLangSuffix(args.lang, args.version, args.es, args.platform);
-    ShaderData shaderData = convertToShaderData(spirvcrossvec, inputs, args);
+    ShaderData shaderData = convertToShaderData(spirvcrossvec, args);
 
     if (shutdownRequested) {
         throw std::runtime_error("Shutdown requested");
@@ -999,11 +980,6 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
     clearCustomSourceCache();
 }
 
-ShaderData& editor::ShaderBuilder::getShaderData(ShaderKey shaderKey) { 
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    return shaderDataCache[shaderKey]; 
-}
-
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {
     ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
     uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
@@ -1035,7 +1011,7 @@ ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Proj
 
     args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
                            getLangSuffix(args.lang, args.version, args.es, args.platform);
-    ShaderData shaderData = convertToShaderData(spirvcrossvec, inputs, args);
+    ShaderData shaderData = convertToShaderData(spirvcrossvec, args);
 
     Out::build(
         "Shader %s (%s) generated successfully",

@@ -6,7 +6,6 @@
 #include "imgui.h"
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <unordered_set>
 #include <functional>
 #include <memory>
@@ -378,7 +377,6 @@ namespace jasperengine::editor {
         void renderCursors(ImDrawList* drawList, const ImVec2& origin);
         void renderMatchingBrackets(ImDrawList* drawList, const ImVec2& origin);
         void renderSearchHighlights(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
-        void renderAutoComplete(const ImVec2& origin);
         void renderFindDialog(const ImVec2& editorPos, const ImVec2& editorSize);
         void renderContextMenu();
 

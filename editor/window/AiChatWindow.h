@@ -20,8 +20,6 @@ namespace jasperengine::editor {
 
 class ProjectWindow;
 
-// Clean, Copilot-style chat surface. Provider/key details live in
-// AiSettingsWindow; quick conversation controls live with the composer.
 class AiChatWindow {
 private:
     enum class MentionKind {
@@ -150,8 +148,6 @@ private:
     void loadLatestConversationForCurrentProject();
     void persistConversation();
     void loadConversation(const std::string& id);
-    void prefetchModels();
-
 public:
     static constexpr const char* WINDOW_NAME = "AI Chat";
 

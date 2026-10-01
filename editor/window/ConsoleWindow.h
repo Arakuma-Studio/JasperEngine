@@ -21,7 +21,6 @@ namespace jasperengine::editor {
     struct LogData {
         LogType type;
         std::string message;
-        float timestamp;
         uint64_t id = 0;                     // increasing sequence number
     };
 
@@ -79,7 +78,7 @@ namespace jasperengine::editor {
         static size_t countRawLines(const std::string& message);
         static size_t trimLeadingRawLines(std::string& message, size_t linesToTrim);
         static Severity severityOf(LogType type);
-        bool enforceStoredLineLimit();
+        void enforceStoredLineLimit();
         void recountSeverities();
         void rebuildRows();
         bool passTextFilter(const char* text) const;

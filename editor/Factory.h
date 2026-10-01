@@ -97,7 +97,6 @@ namespace jasperengine::editor{
         // attributes, settings and bytes of a saved buffer; nothing for an empty one
         static std::string formatBufferContents(const std::string& ind, const std::string& target, const Buffer& buffer, const Buffer& defaults);
 
-        static std::string formatPropertyValue(const PropertyData& property, const std::string& propertyName);
 
         static std::string beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName);
         static void addComponentCode(std::ostringstream& code, const std::string& ind, const std::string& sceneName, const std::string& entityName, Entity entity, const std::string& componentType, const std::string& varName, bool assignExisting = false);
@@ -132,8 +131,6 @@ namespace jasperengine::editor{
         // namedCamerasOnly, only links to cameras that have a variable in entityVarNames
         static std::string createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly);
 
-        static std::string setComponent(EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath);
-        static std::string setAllComponents(EntityRegistry* scene, Entity entity, const fs::path& projectPath);
 
         static std::string createTransform(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool skipParent = false, bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createMeshComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);

@@ -124,23 +124,18 @@ public:
 
     // Writes newContent only when the file does not already hold it.
     static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
-        std::string currentContent;
-        bool shouldWrite = true;
-
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {
             std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
             if (ifs) {
-                currentContent.assign(
+                std::string currentContent(
                     (std::istreambuf_iterator<char>(ifs)),
                     std::istreambuf_iterator<char>()
                 );
-                shouldWrite = (currentContent != newContent);
+                if (currentContent == newContent) {
+                    return WriteResult::Unchanged;
+                }
             }
-        }
-
-        if (!shouldWrite) {
-            return WriteResult::Unchanged;
         }
 
         if (filePath.has_parent_path()) {

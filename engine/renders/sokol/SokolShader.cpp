@@ -234,7 +234,7 @@ bool SokolShader::createShader(ShaderData& shaderData){
                 img->stage = shader_stage;
                 img->image_type = textureToSokolType(stage->textures[t].type);
                 img->sample_type = textureSamplerToSokolType(stage->textures[t].samplerType);
-                img->multisampled = false; // TODO
+                img->multisampled = false;
                 img->hlsl_register_t_n = stage->textures[t].binding;
                 img->msl_texture_n = stage->textures[t].binding;
                 img->wgsl_group1_binding_n = stage->textures[t].binding;

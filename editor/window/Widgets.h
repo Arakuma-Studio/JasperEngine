@@ -4,10 +4,8 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <filesystem>
 #include "imgui.h"
-#include "external/IconsFontAwesome6.h"
 #include "Vector2.h"
 
 namespace fs = std::filesystem;

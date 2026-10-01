@@ -17,7 +17,6 @@
 #include <limits>
 #include <map>
 #include <set>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -196,7 +195,7 @@ void editor::SceneRender3D::buildConvexHullEdges(std::vector<Vector3> points, co
     auto edgeKey = [](int a, int b) { return (uint64_t(uint32_t(a)) << 32) | uint32_t(b); };
 
     std::vector<int> visible;
-    std::unordered_map<uint64_t, int> horizon;
+    std::unordered_set<uint64_t> horizon;
 
     for (size_t pi = 0; pi < points.size(); pi++) {
         if (int(pi) == i0 || int(pi) == i1 || int(pi) == i2 || int(pi) == i3) continue;
@@ -216,16 +215,16 @@ void editor::SceneRender3D::buildConvexHullEdges(std::vector<Vector3> points, co
             uint64_t rev = edgeKey(e, s);
             auto it = horizon.find(rev);
             if (it != horizon.end()) { horizon.erase(it); return; }
-            horizon[edgeKey(s, e)] = s; // value unused; key encodes the directed edge
+            horizon.insert(edgeKey(s, e));
         };
         for (int fi : visible) {
             Face& f = faces[fi];
             addEdge(f.a, f.b); addEdge(f.b, f.c); addEdge(f.c, f.a);
             f.removed = true;
         }
-        for (const auto& kv : horizon) {
-            int s = int(uint32_t(kv.first >> 32));
-            int e = int(uint32_t(kv.first));
+        for (uint64_t key : horizon) {
+            int s = int(uint32_t(key >> 32));
+            int e = int(uint32_t(key));
             pushFace(s, e, int(pi));
         }
     }
@@ -245,16 +244,9 @@ void editor::SceneRender3D::buildConvexHullEdges(std::vector<Vector3> points, co
 editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, true, 40.0, 0.01){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
-    linesOffset = Vector2(0, 0);
     lastGridSpacing = 1.0f;
 
     lines = overlay(new LineRenderer(scene));
-
-    lightObjects.clear();
-    cameraObjects.clear();
-    soundObjects.clear();
-    bodyObjects.clear();
-    jointLines.clear();
 
     camera->setNearClip(DEFAULT_EDITOR_CAMERA_NEAR);
     camera->setFarClip(DEFAULT_EDITOR_CAMERA_FAR);
@@ -286,53 +278,43 @@ editor::SceneRender3D::~SceneRender3D(){
         delete pair.second.icon;
         delete pair.second.lines;
     }
-    lightObjects.clear();
 
     for (auto& pair : cameraObjects) {
         delete pair.second.icon;
         delete pair.second.lines;
     }
-    cameraObjects.clear();
 
     for (auto& pair : soundObjects) {
         delete pair.second.icon;
     }
-    soundObjects.clear();
 
     for (auto& pair : bodyObjects) {
         delete pair.second.lines;
     }
-    bodyObjects.clear();
 
     for (auto& pair : jointLines) {
         delete pair.second;
     }
-    jointLines.clear();
 
     for (auto& pair : boneLines) {
         delete pair.second;
     }
-    boneLines.clear();
 
     for (auto& pair : linePointLines) {
         delete pair.second;
     }
-    linePointLines.clear();
 
     for (auto& pair : polygonPointLines) {
         delete pair.second;
     }
-    polygonPointLines.clear();
 
     for (auto& pair : trackLines) {
         delete pair.second;
     }
-    trackLines.clear();
 
     for (auto& pair : reflectionProbeLines) {
         delete pair.second;
     }
-    reflectionProbeLines.clear();
 }
 
 void editor::SceneRender3D::createLines(){

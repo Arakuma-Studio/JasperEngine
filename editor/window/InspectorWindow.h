@@ -209,10 +209,8 @@ namespace jasperengine::editor{
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
 
         // Sound preview helpers
-        SoundPreviewRuntime& soundPreview();
         bool ensureSoundPreviewInitialized();
         void stopSoundPreview(bool unload = false);
-        std::filesystem::path resolveSoundPreviewPath(const std::string& filename);
         void applySoundPreviewSettings(const AudioSourceComponent& audio);
         bool loadSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);
         bool startSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);

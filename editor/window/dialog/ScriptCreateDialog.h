@@ -65,9 +65,6 @@ private:
     void selectExistingFile(bool selectHeader);
 
 public:
-    ScriptCreateDialog() = default;
-    ~ScriptCreateDialog() = default;
-
     void open(Scene* scene,
               Entity entity,
               const fs::path& projectPath,

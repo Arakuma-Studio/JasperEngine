@@ -10,14 +10,7 @@
 
 class JasperEngineAndroid: public jasperengine::System {
 
-private:
-
-    const char* logtag;
-
 public:
-
-    JasperEngineAndroid();
-
     virtual int getScreenWidth() override;
     virtual int getScreenHeight() override;
 

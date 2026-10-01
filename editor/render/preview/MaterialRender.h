@@ -24,7 +24,7 @@ namespace jasperengine::editor{
         bool receiveIBL = true;
     public:
         MaterialRender();
-        virtual ~MaterialRender();
+        ~MaterialRender();
 
         MaterialRender(const MaterialRender&) = delete;
         MaterialRender& operator=(const MaterialRender&) = delete;
@@ -38,7 +38,6 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         Texture getTexture();
         Scene* getScene();
-        GameObject* getGameObject();
     };
 
 }

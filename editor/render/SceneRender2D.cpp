@@ -49,58 +49,47 @@ editor::SceneRender2D::~SceneRender2D(){
     for (auto& pair : containerLines) {
         delete pair.second;
     }
-    containerLines.clear();
 
     for (auto& pair : bodyLines) {
         delete pair.second;
     }
-    bodyLines.clear();
 
     for (auto& pair : jointLines) {
         delete pair.second;
     }
-    jointLines.clear();
 
     for (auto& pair : light2DLines) {
         delete pair.second;
     }
-    light2DLines.clear();
 
     for (auto& pair : shadowCaster2DLines) {
         delete pair.second;
     }
-    shadowCaster2DLines.clear();
 
     for (auto& pair : linePointLines) {
         delete pair.second;
     }
-    linePointLines.clear();
 
     for (auto& pair : polygonPointLines) {
         delete pair.second;
     }
-    polygonPointLines.clear();
 
     for (auto& pair : trackLines) {
         delete pair.second;
     }
-    trackLines.clear();
 
     for (auto& pair : cameraObjects) {
         delete pair.second.icon;
         delete pair.second.lines;
     }
-    cameraObjects.clear();
 
     for (auto& pair : soundObjects) {
         delete pair.second.icon;
     }
-    soundObjects.clear();
 
     for (auto& pair : light2DObjects) {
         delete pair.second.icon;
     }
-    light2DObjects.clear();
 
     delete gridLines;
     delete tileLines;

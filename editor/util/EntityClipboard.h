@@ -127,8 +127,7 @@ namespace jasperengine::editor {
         // Once per frame: notices ImGui writing the clipboard and the editor regaining focus
         static void update();
 
-        // The parsed clipboard, read now; null when it holds no data of that kind from this project
-        static std::shared_ptr<const GameObjectsClip> readGameObjects(const Project* project);
+        // The parsed component clipboard, read now; null when it holds no component from this project
         static std::shared_ptr<const ComponentClip> readComponent(const Project* project);
         // The copied component as last probed, without reading the clipboard (menus drawn every frame)
         static std::shared_ptr<const ComponentClip> peekComponent(const Project* project);

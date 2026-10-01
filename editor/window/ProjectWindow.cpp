@@ -19,6 +19,7 @@
 #include "resources/icons/font-icon_png.h"
 
 #include "command/type/CopyFileCmd.h"
+#include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
@@ -1762,7 +1763,6 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
     }
 
     files.clear();
-    fileIndex.clear();
 
     // A search lists matches from this folder and everything below it instead.
     if (!searchText.empty()) {
@@ -3187,6 +3187,5 @@ void editor::ProjectWindow::assetsImport() {
 }
 
 void editor::ProjectWindow::assetsRefresh() {
-    refreshProjectFiles();
     refreshCurrentDirectory();
 }

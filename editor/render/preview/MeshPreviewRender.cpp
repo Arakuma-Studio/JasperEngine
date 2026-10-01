@@ -76,26 +76,10 @@ void editor::MeshPreviewRender::positionCameraForMesh(){
     camera->setTarget(center.x, center.y, center.z);
 }
 
-Framebuffer* editor::MeshPreviewRender::getFramebuffer(){
-    return camera->getFramebuffer();
-}
-
 Texture editor::MeshPreviewRender::getTexture(){
-    return Texture(getFramebuffer());
-}
-
-Entity editor::MeshPreviewRender::getMeshEntity(){
-    return mesh->getEntity();
-}
-
-MeshComponent& editor::MeshPreviewRender::getMeshComponent(){
-    return mesh->getComponent<MeshComponent>();
+    return Texture(camera->getFramebuffer());
 }
 
 Scene* editor::MeshPreviewRender::getScene(){
     return scene;
-}
-
-GameObject* editor::MeshPreviewRender::getGameObject(){
-    return mesh;
 }

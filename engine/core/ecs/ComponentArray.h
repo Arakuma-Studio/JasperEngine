@@ -4,16 +4,12 @@
 #ifndef COMPONENTARRAY_H
 #define COMPONENTARRAY_H
     
-#include <array>
-#include <cassert>
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
-#include <functional>
 #include <stdexcept>
 #include <numeric>
 #include <limits>
-#include <memory>
 #include <utility>
 #include "Entity.h"
 #include "Log.h"
@@ -263,11 +259,6 @@ namespace jasperengine {
             }
         }
 
-        void iterateAll(std::function<void(T component)> lambda){
-              for(int i=0;i<componentArray.size();i++){
-                lambda(componentArray[i]);
-              }
-        }
     };
 
 }

@@ -272,14 +272,6 @@ static std::vector<editor::EnumEntry> entriesCollider3DType = {
     { (int)Collider3DType::HEIGHTFIELD, "Heightfield" }
 };
 
-static std::vector<editor::EnumEntry> entriesCollider3DSource = {
-    { (int)Collider3DSource::NONE, "None" },
-    { (int)Collider3DSource::RAW_VERTICES, "Raw Vertices" },
-    { (int)Collider3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" },
-    { (int)Collider3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
-};
-
 static std::vector<editor::EnumEntry> entriesCollider3DSourceConvexHull = {
     { (int)Collider3DSource::RAW_VERTICES, "Raw Vertices" },
     { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" }
@@ -600,12 +592,8 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
     }
 }
 
-editor::InspectorWindow::SoundPreviewRuntime& editor::InspectorWindow::soundPreview() {
-    return soundPreviewRuntime;
-}
-
 bool editor::InspectorWindow::ensureSoundPreviewInitialized() {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (!AudioSystem::init()) {
         ap.error = "Failed to initialize audio preview output.";
         return false;
@@ -615,7 +603,7 @@ bool editor::InspectorWindow::ensureSoundPreviewInitialized() {
 }
 
 void editor::InspectorWindow::stopSoundPreview(bool unload) {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (ap.handle != 0) {
         AudioSystem::getSoloud().stop(ap.handle);
     }
@@ -634,12 +622,8 @@ void editor::InspectorWindow::stopSoundPreview(bool unload) {
     }
 }
 
-std::filesystem::path editor::InspectorWindow::resolveSoundPreviewPath(const std::string& filename) {
-    return project->resolveAssetPath(filename);
-}
-
 void editor::InspectorWindow::applySoundPreviewSettings(const AudioSourceComponent& audio) {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (!ap.active || ap.handle == 0) {
         return;
     }
@@ -656,7 +640,7 @@ void editor::InspectorWindow::applySoundPreviewSettings(const AudioSourceCompone
 }
 
 bool editor::InspectorWindow::loadSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio) {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (audio.filename.empty()) {
         ap.error = "Select an audio clip before previewing.";
         return false;
@@ -672,7 +656,7 @@ bool editor::InspectorWindow::loadSoundPreview(SceneProject* sceneProject, Entit
 
     stopSoundPreview(true);
 
-    std::filesystem::path audioPath = resolveSoundPreviewPath(audio.filename);
+    std::filesystem::path audioPath = project->resolveAssetPath(audio.filename);
     SoLoud::result result = ap.sample.load(audioPath.string().c_str());
     if (result != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR) {
         ap.error = "Failed to load audio preview file:\n" + audioPath.string();
@@ -696,7 +680,7 @@ bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Enti
         return false;
     }
 
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (ap.active && ap.handle != 0) {
         AudioSystem::getSoloud().setPause(ap.handle, false);
         ap.playing = true;
@@ -719,7 +703,7 @@ bool editor::InspectorWindow::startSoundPreview(SceneProject* sceneProject, Enti
 }
 
 void editor::InspectorWindow::pauseSoundPreview() {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (!ap.active || ap.handle == 0) {
         return;
     }
@@ -733,7 +717,7 @@ bool editor::InspectorWindow::seekSoundPreview(SceneProject* sceneProject, Entit
         return false;
     }
 
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     bool shouldKeepPlaying = ap.active && ap.playing;
     if (!ap.active || ap.handle == 0) {
         ap.handle = AudioSystem::getSoloud().play(ap.sample);
@@ -762,7 +746,7 @@ bool editor::InspectorWindow::seekSoundPreview(SceneProject* sceneProject, Entit
 }
 
 void editor::InspectorWindow::updateSoundPreview(const AudioSourceComponent& audio) {
-    SoundPreviewRuntime& ap = soundPreview();
+    SoundPreviewRuntime& ap = soundPreviewRuntime;
     if (!ap.active || ap.handle == 0) {
         return;
     }
@@ -8199,7 +8183,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
-        SoundPreviewRuntime& ap = soundPreview();
+        SoundPreviewRuntime& ap = soundPreviewRuntime;
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
 
         if (ap.active && (!isThisPreview || !sceneIsStopped || ap.filename != audio.filename)) {

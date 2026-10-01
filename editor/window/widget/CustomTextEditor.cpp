@@ -18,6 +18,7 @@
 #include <sstream>
 #include <cstring>
 #include <regex>
+#include <unordered_map>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -140,8 +141,7 @@ CustomTextEditor::CustomTextEditor()
     initializeSuggestions();
 }
 
-CustomTextEditor::~CustomTextEditor() {
-}
+CustomTextEditor::~CustomTextEditor() = default;
 
 void CustomTextEditor::initializePalette() {
     // VS Code Dark+ inspired color scheme
@@ -294,11 +294,8 @@ void CustomTextEditor::initializeSuggestions() {
     suggestions->ClearSymbols();
     suggestions->ClearInheritance();
 
-    suggestions->SetMinPrefixLength(1);
     // The popup scrolls, so a high cap keeps inherited members from being crowded out
     suggestions->SetMaxSuggestions(200);
-    suggestions->SetFuzzyMatching(true);
-    suggestions->SetCaseSensitive(false);
 
     suggestions->SetKeywords(languageDef.keywords);
     suggestions->SetTypes(languageDef.types);
@@ -3752,11 +3749,6 @@ void CustomTextEditor::renderSuggestions(const ImVec2& origin) {
     ImGui::PopStyleVar(4);
 }
 
-void CustomTextEditor::renderAutoComplete(const ImVec2& origin) {
-    renderSuggestions(origin);
-    renderParamHint(origin);
-}
-
 void CustomTextEditor::renderFindDialog(const ImVec2& editorPos, const ImVec2& editorSize) {
     if (!showFindDialog) return;
 
@@ -4095,7 +4087,8 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
 
         // Render autocomplete popup first (so it can capture mouse events)
         ImGui::PushFont(ImGui::GetIO().FontDefault);
-        renderAutoComplete(origin);
+        renderSuggestions(origin);
+        renderParamHint(origin);
         ImGui::PopFont();
 
         if (pendingScrollToCursor) {

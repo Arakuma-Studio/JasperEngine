@@ -1307,7 +1307,6 @@ bool Engine::transformCoordPos(float& x, float& y){
 
 void Engine::systemTouchStart(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
@@ -1319,13 +1318,10 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchStart.call(pointer, x, y);
-            //-----------------
             if (Engine::isCallMouseInTouchEvent()){
-                //-----------------
                 Input::addMousePressed(D_MOUSE_BUTTON_1);
                 Input::setMousePosition(x, y);
                 Engine::onMouseDown.call(D_MOUSE_BUTTON_1, x, y, 0);
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1334,7 +1330,6 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
@@ -1346,13 +1341,10 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchEnd.call(pointer, x, y);
-            //-----------------
             if (Engine::isCallMouseInTouchEvent()){
-                //-----------------
                 Input::releaseMousePressed(D_MOUSE_BUTTON_1);
                 Input::setMousePosition(x, y);
                 Engine::onMouseUp.call(D_MOUSE_BUTTON_1, x, y, 0);
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1361,7 +1353,6 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
 void Engine::systemTouchMove(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
@@ -1373,12 +1364,9 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchMove.call(pointer, x, y);
-            //-----------------
             if (Engine::isCallMouseInTouchEvent()){
-                //-----------------
                 Input::setMousePosition(x, y);
                 Engine::onMouseMove.call(x, y, 0);
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1386,12 +1374,10 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 }
 
 void Engine::systemTouchCancel(){
-    //-----------------
     std::vector<Touch> cancelled = Input::getTouches();
     Input::clearTouches();
     for (const Touch& touch : cancelled)
         Engine::onTouchCancel.call(touch.pointer, touch.position.x, touch.position.y);
-    //-----------------
 }
 
 void Engine::systemTouchCancel(int pointer){
@@ -1406,7 +1392,6 @@ void Engine::systemTouchCancel(int pointer){
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::addMousePressed(button);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -1422,12 +1407,9 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseDown.call(button, x, y, mods);
-            //-----------------
             if (Engine::isCallTouchInMouseEvent()){
-                //-----------------
                 Input::addTouch(0, x, y);
                 Engine::onTouchStart.call(0, x, y);
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1435,7 +1417,6 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::releaseMousePressed(button);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -1451,12 +1432,9 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseUp.call(button, x, y, mods);
-            //-----------------
             if (Engine::isCallTouchInMouseEvent()){
-                //-----------------
                 Input::removeTouch(0);
                 Engine::onTouchEnd.call(0, x, y);
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1465,7 +1443,6 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 
 void Engine::systemMouseMove(float x, float y, int mods){
     if (transformCoordPos(x, y)){
-        //-----------------
         Input::setMousePosition(x, y);
         if (mods != 0)
             Input::setModifiers(mods);
@@ -1479,14 +1456,11 @@ void Engine::systemMouseMove(float x, float y, int mods){
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseMove.call(x, y, mods);
-            //-----------------
             if (Engine::isCallTouchInMouseEvent()){
-                //-----------------
                 if (Input::isMousePressed(D_MOUSE_BUTTON_LEFT) || Input::isMousePressed(D_MOUSE_BUTTON_RIGHT)){
                     Input::setTouchPosition(0, x, y);
                     Engine::onTouchMove.call(0, x, y);
                 }
-                //-----------------
             }
         }
         uiEventReceived = false;
@@ -1494,30 +1468,23 @@ void Engine::systemMouseMove(float x, float y, int mods){
 }
 
 void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
-    //-----------------
     Input::setMouseScroll(xoffset, yoffset);
     if (mods != 0)
         Input::setModifiers(mods);
     Engine::onMouseScroll.call(xoffset, yoffset, mods);
-    //-----------------
 }
 
 void Engine::systemMouseEnter(){
-    //-----------------
     Input::addMouseEntered();
     Engine::onMouseEnter.call();
-    //-----------------
 }
 
 void Engine::systemMouseLeave(){
-    //-----------------
     Input::releaseMouseEntered();
     Engine::onMouseLeave.call();
-    //-----------------
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
-    //-----------------
     Input::addKeyPressed(key);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -1527,15 +1494,12 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
         if (canSendUIEvents(scene))
             scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
     }
-    //-----------------
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
-    //-----------------
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
     Engine::onKeyUp.call(key, repeat, mods);
-    //-----------------
 }
 
 void Engine::systemCharInput(wchar_t codepoint){
@@ -1548,36 +1512,26 @@ void Engine::systemCharInput(wchar_t codepoint){
 }
 
 void Engine::systemGamepadConnect(int gamepad, const std::string& name){
-    //-----------------
     Input::addGamepad(gamepad, name);
     Engine::onGamepadConnect.call(gamepad);
-    //-----------------
 }
 
 void Engine::systemGamepadDisconnect(int gamepad){
-    //-----------------
     Input::removeGamepad(gamepad);
     Engine::onGamepadDisconnect.call(gamepad);
-    //-----------------
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
-    //-----------------
     Input::addGamepadButtonPressed(gamepad, button);
     Engine::onGamepadButtonDown.call(gamepad, button);
-    //-----------------
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
-    //-----------------
     Input::releaseGamepadButtonPressed(gamepad, button);
     Engine::onGamepadButtonUp.call(gamepad, button);
-    //-----------------
 }
 
 void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
-    //-----------------
     Input::setGamepadAxisValue(gamepad, axis, value);
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
-    //-----------------
 }

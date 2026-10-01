@@ -6,20 +6,7 @@
 #include "System.h"
 #include "sokol_gfx.h"
 #include "SokolCmdQueue.h"
-#include "Engine.h"
 #include "Log.h"
-
-// Render thread
-// 
-// execute_commands() in render loop
-// wait_for_flush() on termination
-//
-//
-// Update thread
-// 
-// add_command_xxx()
-// commit_commands() when you're done for the frame
-// flush_commands() on termination, before exiting the thread
 
 using namespace jasperengine;
 

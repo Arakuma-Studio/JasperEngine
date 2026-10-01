@@ -95,19 +95,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # @JASPERENGINE_SCENE_MAX_VALUES@
 
     if(NOT GRAPHIC_BACKEND)
-        if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
             set(GRAPHIC_BACKEND "gles3")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
-            set(GRAPHIC_BACKEND "gles3")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+               CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
             set(GRAPHIC_BACKEND "glcore")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-            set(GRAPHIC_BACKEND "glcore")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-            set(GRAPHIC_BACKEND "glcore")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-            set(GRAPHIC_BACKEND "metal")
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
             set(GRAPHIC_BACKEND "metal")
         else()
             message(FATAL_ERROR "GRAPHIC_BACKEND is not set")
@@ -147,8 +140,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(PLATFORM_RESOURCES)
     set(PLATFORM_PROPERTIES)
     set(PLATFORM_OPTIONS)
-
-    find_package(Threads REQUIRED)
 
     # FindVulkan reads the VULKAN_SDK environment variable the SDK installer
     # sets. A macro, not a function, so Vulkan_FOUND lands in the caller.

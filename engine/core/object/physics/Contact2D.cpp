@@ -12,22 +12,9 @@ Contact2D::Contact2D(Scene* scene, b2ContactData contact){
     this->contact = contact;
 }
 
-Contact2D::~Contact2D(){
-
-}
-
-Contact2D::Contact2D(const Contact2D& rhs){
-    scene = rhs.scene;
-    contact = rhs.contact;
-
-}
-
-Contact2D& Contact2D::operator=(const Contact2D& rhs){
-    scene = rhs.scene;
-    contact = rhs.contact;
-    
-    return *this;
-}
+Contact2D::~Contact2D() = default;
+Contact2D::Contact2D(const Contact2D& rhs) = default;
+Contact2D& Contact2D::operator=(const Contact2D& rhs) = default;
 
 b2ContactData Contact2D::getBox2DContact() const{
     return contact;

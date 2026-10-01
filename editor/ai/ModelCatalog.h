@@ -6,7 +6,6 @@
 #include "AiTypes.h"
 #include "HttpClient.h"
 
-#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <map>

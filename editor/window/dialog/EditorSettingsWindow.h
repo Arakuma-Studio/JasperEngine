@@ -53,9 +53,6 @@ namespace jasperengine::editor {
         bool applySettings();
 
     public:
-        EditorSettingsWindow() = default;
-        ~EditorSettingsWindow() = default;
-
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }

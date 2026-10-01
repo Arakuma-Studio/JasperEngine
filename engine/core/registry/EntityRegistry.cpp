@@ -148,7 +148,6 @@ void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound
         auto transforms = componentManager.getComponentArray<Transform>();
 
         size_t entityIndex = transforms->getIndex(entity);
-        //auto teste = transforms->getComponent(entity);
         Entity entityParent = transforms->getComponent(entity).parent;
 
         size_t nextIndex = entityIndex;

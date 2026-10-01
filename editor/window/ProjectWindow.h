@@ -190,7 +190,6 @@ namespace jasperengine::editor {
         std::mutex completedThumbnailMutex;
         std::queue<ThumbnailRequest> completedThumbnailQueue;
 
-        // Add these to the private section of the ProjectWindow class
         fs::path pendingMaterialPath;
         bool hasPendingMaterialRender = false; // guarded by thumbnailMutex
         uint64_t pendingMaterialGeneration = 0; // guarded by thumbnailMutex
@@ -257,7 +256,6 @@ namespace jasperengine::editor {
         void handleExternalDragEnter();
         void handleExternalDragLeave();
 
-        // need to be after draw
         void processMaterialThumbnails();
         void processModelThumbnails();
 

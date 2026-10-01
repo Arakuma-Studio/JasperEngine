@@ -1,10 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef RESIZE_WITH_STB
-#define RESIZE_WITH_STB 0
-#endif
-
 #include "TextureData.h"
 #include <assert.h>
 #include <stdlib.h>
@@ -16,9 +12,6 @@
 #include <string>
 #include <vector>
 #include "stb_image.h"
-#if RESIZE_WITH_STB
-#include "stb_image_resize2.h"
-#endif
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION
@@ -574,26 +567,6 @@ void TextureData::resize(int newWidth, int newHeight){
         int bufsize = newWidth * newHeight * pixelSize;
         unsigned char* newData = (unsigned char*) malloc(bufsize*sizeof(unsigned char));
 
-        #if RESIZE_WITH_STB
-
-        stbir_pixel_layout pixel_layout = stbir_pixel_layout::STBIR_RGBA;
-        if (channels == 1){
-            pixel_layout = stbir_pixel_layout::STBIR_1CHANNEL;
-        }else if (channels == 2){
-            pixel_layout = stbir_pixel_layout::STBIR_2CHANNEL;
-        }else if (channels == 3){
-            pixel_layout = stbir_pixel_layout::STBIR_RGB;
-        }else if (channels == 4){
-            pixel_layout = stbir_pixel_layout::STBIR_RGBA;
-        }
-
-        stbir_resize((unsigned char*)data, width, height, 0,
-	                   newData, newWidth, newHeight, 0, pixel_layout,
-	                   (color_format == ColorFormat::RED16) ? STBIR_TYPE_UINT16 : STBIR_TYPE_UINT8,
-	                   STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
-
-        #else
-
         double scaleWidth =  (double)newWidth / (double)width;
         double scaleHeight = (double)newHeight / (double)height;
 
@@ -609,8 +582,6 @@ void TextureData::resize(int newWidth, int newHeight){
             
             }
         }
-
-        #endif
 
         stbi_image_free(data);
     

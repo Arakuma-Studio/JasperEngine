@@ -24,9 +24,6 @@ namespace editor {
         std::function<void()> m_onCancel;
 
     public:
-        ProjectSaveDialog() = default;
-        ~ProjectSaveDialog() = default;
-
         void open(const std::string& defaultName, 
             std::function<void(const std::string&, const fs::path&)> onSave,
             std::function<void()> onCancel = nullptr);

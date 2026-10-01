@@ -17,9 +17,6 @@ namespace jasperengine::editor {
         void drawAbout();
 
     public:
-        AboutWindow() = default;
-        ~AboutWindow() = default;
-
         void open();
         void show();
         bool isOpen() const { return m_isOpen; }

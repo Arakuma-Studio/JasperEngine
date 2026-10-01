@@ -177,11 +177,6 @@ ColorFormat editor::TerrainEditWindow::expectedFormat(TerrainMapTarget target){
     return target == TerrainMapTarget::DensityMap ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
-// bytes occupied by one texel for a terrain map target
-int editor::TerrainEditWindow::expectedBytesPerTexel(TerrainMapTarget target){
-    return expectedChannels(target) * TextureData::getBytesPerChannel(expectedFormat(target));
-}
-
 // Decode a normalized [0,1] height from a raw pixel buffer, honoring 8- or 16-bit storage.
 // 16-bit samples are stored little-endian in memory (native unsigned short).
 float editor::TerrainEditWindow::decodeHeightTexel(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel){
@@ -266,26 +261,6 @@ bool editor::TerrainEditWindow::setFileBackedTextureData(Project* project, Textu
     return true;
 }
 
-editor::TerrainMapInfo editor::TerrainEditWindow::getTerrainMapInfo(Texture& texture){
-    TerrainMapInfo info;
-    info.present = !texture.empty();
-    if (!info.present){
-        return info;
-    }
-
-    if (TerrainMapUtils::hasLoadedData(texture)){
-        TextureData& data = texture.getData();
-        info.width = data.getWidth();
-        info.height = data.getHeight();
-    }else{
-        info.width = static_cast<int>(texture.getWidth());
-        info.height = static_cast<int>(texture.getHeight());
-    }
-    info.sizeKnown = info.width > 0 && info.height > 0;
-
-    return info;
-}
-
 std::vector<unsigned char> editor::TerrainEditWindow::copyTexturePixels(TextureData& data){
     std::vector<unsigned char> pixels;
     if (!data.getData() || data.getSize() == 0){
@@ -303,7 +278,7 @@ std::vector<unsigned char> editor::TerrainEditWindow::convertTexturePixels(Textu
     const int srcChannels = data.getChannels();
     const int srcBytesPerChannel = TextureData::getBytesPerChannel(data.getColorFormat());
     const int dstChannels = expectedChannels(target);
-    const int dstBytesPerChannel = expectedBytesPerTexel(target) / dstChannels;
+    const int dstBytesPerChannel = TextureData::getBytesPerChannel(expectedFormat(target));
     std::vector<unsigned char> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(dstChannels) * static_cast<size_t>(dstBytesPerChannel), 0);
 
     if (!data.getData() || width <= 0 || height <= 0 || srcChannels <= 0){
@@ -597,7 +572,7 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
 // bit depth. Heightmaps optionally start at the middle (0.5) so they can be raised or lowered.
 std::vector<unsigned char> editor::TerrainEditWindow::makeInitialMapPixels(TerrainMapTarget target, int width, int height){
     const int channels = expectedChannels(target);
-    const int bytesPerTexel = expectedBytesPerTexel(target);
+    const int bytesPerTexel = channels * TextureData::getBytesPerChannel(expectedFormat(target));
     const size_t texelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
     std::vector<unsigned char> pixels(texelCount * static_cast<size_t>(bytesPerTexel), 0);
 
@@ -2298,20 +2273,33 @@ static void terrainPropertyRow(const char* label, const char* tooltip = nullptr,
 void editor::TerrainEditWindow::drawMapSettings(const TerrainMapRef& ref, const char* label, int& resolution){
     TerrainComponent& terrain = getTargetSceneProject()->scene->getComponent<TerrainComponent>(selectedEntity);
     Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
-    const TerrainMapInfo info = texture ? getTerrainMapInfo(*texture) : TerrainMapInfo{};
+    const bool mapPresent = texture && !texture->empty();
+    int mapWidth = 0;
+    int mapHeight = 0;
+    if (mapPresent){
+        if (TerrainMapUtils::hasLoadedData(*texture)){
+            TextureData& data = texture->getData();
+            mapWidth = data.getWidth();
+            mapHeight = data.getHeight();
+        }else{
+            mapWidth = static_cast<int>(texture->getWidth());
+            mapHeight = static_cast<int>(texture->getHeight());
+        }
+    }
+    const bool sizeKnown = mapWidth > 0 && mapHeight > 0;
     const bool heightMap = ref.target == TerrainMapTarget::HeightMap;
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const int actionCount = (info.present ? 2 : 1) + (heightMap ? 1 : 0);
+    const int actionCount = (mapPresent ? 2 : 1) + (heightMap ? 1 : 0);
 
     ImGui::PushID(label);
-    terrainPropertyRow(label, info.present ? "Recreate or remove this map. Map changes can be undone." : "Choose a resolution, then create a map to enable painting.");
+    terrainPropertyRow(label, mapPresent ? "Recreate or remove this map. Map changes can be undone." : "Choose a resolution, then create a map to enable painting.");
     const float valueWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - (buttonSize.x + spacing) * actionCount);
-    if (info.present){
+    if (mapPresent){
         ImGui::BeginChild("size", ImVec2(valueWidth, buttonSize.y), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::AlignTextToFramePadding();
-        if (info.sizeKnown){
-            ImGui::Text("%d x %d", info.width, info.height);
+        if (sizeKnown){
+            ImGui::Text("%d x %d", mapWidth, mapHeight);
         }else{
             ImGui::TextDisabled("Unknown size");
         }
@@ -2330,11 +2318,11 @@ void editor::TerrainEditWindow::drawMapSettings(const TerrainMapRef& ref, const 
         }
     }
     ImGui::SameLine();
-    if (info.present){
-        ImGui::BeginDisabled(!info.sizeKnown);
+    if (mapPresent){
+        ImGui::BeginDisabled(!sizeKnown);
         if (iconButton(ICON_FA_ARROWS_ROTATE, "recreate", "Recreate map at its current resolution", false, buttonSize)){
             endStroke();
-            createMapForTarget(ref, info.width, info.height);
+            createMapForTarget(ref, mapWidth, mapHeight);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();

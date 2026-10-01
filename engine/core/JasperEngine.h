@@ -5,7 +5,6 @@
 #define jasperengine_h
 
 #include "Engine.h"
-//#include "Export.h"
 #include "Input.h"
 #include "Log.h"
 #include "Scene.h"
@@ -156,7 +155,6 @@
 #include "object/ui/Text.h"
 #include "object/ui/RectTransform.h"
 
-//#include "pool/FontPool.h"
 #include "pool/ShaderPool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -177,7 +175,6 @@
 #include "render/TextureRender.h"
 
 #include "script/LuaBinding.h"
-//#include "script/LuaBridgeAddon.h"
 #include "script/LuaFunctionBase.h"
 #include "script/LuaFunction.h"
 #include "script/LuaScript.h"
@@ -201,18 +198,12 @@
 
 #include "util/Angle.h"
 #include "util/Base64.h"
-//#include "util/Box2DAux.h"
 #include "util/Color.h"
-//#include "util/CrashGuard.h"
-//#include "util/DefaultFont.h"
 #include "util/SpriteFrameData.h"
 #include "util/FunctionSubscribe.h"
-//#include "util/JoltPhysicsAux.h"
-//#include "util/STBText.h"
 #include "util/StringUtils.h"
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"
-//#include "util/XMLUtils.h"
 
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"

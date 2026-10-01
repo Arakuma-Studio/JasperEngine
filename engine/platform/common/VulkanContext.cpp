@@ -512,11 +512,6 @@ namespace {
         return true;
     }
 
-    bool recreateSwapchain() {
-        vkDeviceWaitIdle(gDevice);
-        return createSwapchain();
-    }
-
 }
 
 bool VulkanContext::create(const VulkanContextConfig& config) {
@@ -581,7 +576,10 @@ void VulkanContext::beginFrame() {
         capabilities.currentExtent.height != static_cast<uint32_t>(gHeight))
         gSwapchainValid = false;
 
-    if (!gSwapchainValid && !recreateSwapchain()) return;
+    if (!gSwapchainValid) {
+        vkDeviceWaitIdle(gDevice);
+        if (!createSwapchain()) return;
+    }
 
     const VkResult result = vkAcquireNextImageKHR(
         gDevice, gSwapchain, UINT64_MAX, gSync[gSyncSlot].presentComplete,

@@ -17,19 +17,9 @@ Joint3D::Joint3D(Scene* scene, Entity entity): EntityHandle(scene, entity){
 
 }
 
-Joint3D::~Joint3D(){
-
-}
-
-Joint3D::Joint3D(const Joint3D& rhs): EntityHandle(rhs){
-    
-}
-
-Joint3D& Joint3D::operator=(const Joint3D& rhs){
-    EntityHandle::operator =(rhs);
-
-    return *this;
-}
+Joint3D::~Joint3D() = default;
+Joint3D::Joint3D(const Joint3D& rhs) = default;
+Joint3D& Joint3D::operator=(const Joint3D& rhs) = default;
 
 JPH::TwoBodyConstraint* Joint3D::getJoltJoint() const{
     Joint3DComponent& joint = getComponent<Joint3DComponent>();

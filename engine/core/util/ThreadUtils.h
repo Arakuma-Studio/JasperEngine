@@ -20,10 +20,6 @@ namespace jasperengine {
 
 	class Semaphore {
 	public:
-		Semaphore() {}
-
-		~Semaphore() {}
-
 		void release() {
 			std::scoped_lock<std::mutex> lock(m_mutex);
 			m_count++;
