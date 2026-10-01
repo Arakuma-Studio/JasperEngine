@@ -204,6 +204,19 @@ namespace jasperengine::editor{
         void showMissingPrefabMenu(const TreeNode& node);
         void requestReplacePrefab(uint32_t sceneId, const std::vector<Entity>& roots);
         void showReplacePrefabPopup();
+        // Unity's "Cannot restructure Prefab instance" dialog: a move of members of an instance
+        // (MoveEntityOrderCmd::getPrefabRestructureBlock) is refused, Open Prefab offered.
+        // True when one of `entities` cannot move (the dialog then opens)
+        struct RestructureRefusal {
+            bool pending = false;
+            std::filesystem::path prefab;
+            Entity instanceRoot = NULL_ENTITY;
+            std::string name;
+            int delay = 0;
+        };
+        RestructureRefusal restructureRefusal;
+        bool refusePrefabRestructure(uint32_t sceneId, const std::vector<Entity>& entities);
+        void showRestructurePopup();
         // Alt-drop of a prefab asset on an instance root row replaces it (Alt+Shift: and
         // clears its overrides); true when it took the drop
         bool handlePrefabReplaceDrop(const TreeNode& node);

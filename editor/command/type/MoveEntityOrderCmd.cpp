@@ -6,8 +6,8 @@
 #include "Out.h"
 #include "util/ProjectUtils.h"
 
-using namespace jasperengine;        
-        
+using namespace jasperengine;
+
 editor::MoveEntityOrderCmd::MoveEntityOrderCmd(Project* project, uint32_t sceneId, Entity source, Entity target, InsertionType type){
     this->project = project;
     this->sceneId = sceneId;
@@ -16,6 +16,24 @@ editor::MoveEntityOrderCmd::MoveEntityOrderCmd(Project* project, uint32_t sceneI
     this->type = type;
 
     this->wasModified = project->getScene(sceneId)->isModified;
+}
+
+std::string editor::MoveEntityOrderCmd::getPrefabRestructureBlock(Project* project, uint32_t sceneId, Entity source,
+        std::filesystem::path* prefabPath, Entity* instanceRoot){
+    if (project->isEditingPrefabAsset(sceneId, source)){
+        return std::string();  // Prefab Mode: the stage's own GameObjects are the asset's
+    }
+    PrefabObjectRef ref;
+    if (!project->findPrefabObject(sceneId, source, ref) || ref.isRoot || !ref.instance){
+        return std::string();  // no member of an instance: an added GameObject or an instance root
+    }
+    if (prefabPath){
+        *prefabPath = ref.path;
+    }
+    if (instanceRoot){
+        *instanceRoot = ref.instance->rootEntity;
+    }
+    return PREFAB_RESTRUCTURE_MESSAGE;
 }
 
 bool editor::MoveEntityOrderCmd::execute(){
@@ -27,40 +45,15 @@ bool editor::MoveEntityOrderCmd::execute(){
         return false;
     }
 
-    if (project->isEntityInPrefab(sceneId, source)){
-
-        fs::path sourcePrefabPath = project->findPrefabPathFor(sceneId, source);
-        fs::path targetPrefabPath = project->findPrefabPathFor(sceneId, target);
-
-        if (type == InsertionType::INTO){
-            if (!project->isEntityInPrefab(sceneId, target)){
-                Out::error("Cannot move prefab entity %u into target %u", source, target);
-                return false;
-            }
-        }else{
-            Transform* transformTarget = sceneProject->scene->findComponent<Transform>(target);
-            if (transformTarget){
-                fs::path parentPrefabPath = project->findPrefabPathFor(sceneId, transformTarget->parent);
-
-                Prefab* sourcePrefab = project->getPrefab(sourcePrefabPath);
-                bool isSourceRoot = sourcePrefab && (sourcePrefab->getRootEntity(sceneId, source) == source);
-
-                if (parentPrefabPath != sourcePrefabPath && targetPrefabPath != sourcePrefabPath && !isSourceRoot){
-                    Out::error("Cannot move prefab entity %u outside prefab", source);
-                    return false;
-                }
-            }
-        }
-
-        if (targetPrefabPath == sourcePrefabPath){
-            // a reorder inside an instance changes the Prefab asset, which Play mode leaves alone
-            if (!project->canApplyPrefabOverrides()){
-                Out::warning("Cannot restructure a Prefab instance in Play mode");
-                return false;
-            }
-            prefabMoveRecovery = project->moveEntityFromPrefab(sceneId, source, target, type, false);
-        }
+    // Never the prefab asset (Unity): a member of an instance stays where its prefab puts it.
+    // An instance root or an added GameObject moves like any GameObject: below an instance
+    // it is an added GameObject of it, its place among the siblings saved with it.
+    const std::string blocked = getPrefabRestructureBlock(project, sceneId, source);
+    if (!blocked.empty()){
+        editor::Out::warning("Cannot move '%s': %s", sceneProject->scene->getEntityName(source).c_str(), blocked.c_str());
+        return false;
     }
+
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
     sceneProject->isModified = true;

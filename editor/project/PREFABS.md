@@ -489,6 +489,21 @@ scenes never see an instance edit. There is no "edit shared" path any more
 | component added (AddComponentCmd) | an added component; one of the prefab's this instance had removed comes back as a `"*"` override |
 | component removed (RemoveComponentCmd) | a removed component; an added one is simply gone. What the component owned (an Action's or Animation's GameObjects) leaves this instance only (removed GameObject overrides) |
 
+- **Restructuring an instance is refused** (Unity: "Children of a Prefab instance cannot be
+  rearranged. Open the Prefab to restructure it."): a member of an instance (a GameObject
+  of its prefab, a nested instance root included) cannot be reordered among its siblings,
+  reparented, or moved out of the instance, by any path: `MoveEntityOrderCmd` (Hierarchy
+  drag and drop, the AI's reparent / move actions, Reset Mesh Parenting) checks
+  `MoveEntityOrderCmd::getPrefabRestructureBlock` and fails with the message; the
+  Hierarchy refuses the whole drop and shows Unity's "Cannot restructure Prefab instance"
+  dialog with **Open Prefab** (Prefab Mode in context of the instance holding it,
+  `openPrefabFromHierarchy`), the AI actions return the message. Nothing reaches the asset
+  (`moveEntityFromPrefab` is no instance path any more). Free: an instance root and an added
+  GameObject (moved below an instance's GameObject it is an added GameObject of it, its
+  sibling place saved with it; moved out it is a plain GameObject again), and a Prefab
+  Mode stage's own GameObjects (`isEditingPrefabAsset`: an asset edit). Deleting a member
+  stays a removed GameObject override. `scene-dump --ops` `move {entity, target,
+  insertion}` runs MoveEntityOrderCmd.
 - Not overrides: an instance root's default overrides (section 6), a component the
   instance added (it is the instance's already), GameObjects added to the instance, edits in
   Prefab Mode (`isEditingPrefabAsset`). A value set back equal to the prefab's stays
@@ -503,8 +518,7 @@ scenes never see an instance edit. There is no "edit shared" path any more
   removed GameObjects, then state and components; Apply All goes to the instance's prefab,
   the outermost, so nested instances' overrides become its overrides of them).
 - **Play mode**: edits while playing record overrides like at edit time, and Apply is
-  refused (`canApplyPrefabOverrides`; reordering an instance's GameObjects, which edits the
-  asset, too).
+  refused (`canApplyPrefabOverrides`).
   Play's snapshot of the played scene takes its instances' bookkeeping with it
   (`capturePlayPrefabState`: every prefab's `instances[scene]` and the Missing Prefab
   records); Stop's `restorePlaySnapshot` puts entities, components and that bookkeeping back,

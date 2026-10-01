@@ -1019,6 +1019,12 @@ void editor::HierarchyWindow::moveDraggedEntitiesToTarget(const std::vector<Enti
 
     uint32_t sceneId = project->getSelectedSceneId();
 
+    // Unity refuses the whole drop when a member of a Prefab instance is in it, and offers
+    // to open the Prefab (HierarchyPrefabRows.cpp)
+    if (refusePrefabRestructure(sceneId, draggedEntities)) {
+        return;
+    }
+
     if (draggedEntities.size() == 1) {
         CommandHandle::get(sceneId)->addCommand(new MoveEntityOrderCmd(project, sceneId, draggedEntities[0], target, type));
         return;
@@ -2928,6 +2934,7 @@ void editor::HierarchyWindow::show(){
     }
 
     showReplacePrefabPopup();
+    showRestructurePopup();
 
     ImGui::End();
 

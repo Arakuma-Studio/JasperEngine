@@ -33,6 +33,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReplacePrefabCmd.h"
+#include "command/type/MoveEntityOrderCmd.h"
 #include <chrono>
 #include <thread>
 #include "pool/ShaderPool.h"
@@ -755,6 +756,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //       GameObject only, for record*Component) | bake {out} (each prefab's generated source) |
 //   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
 //   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
+//   move {entity, target, insertion: before|after|into} (MoveEntityOrderCmd, a Hierarchy drag) |
 //   usage (the Prefabs dialog's usage scan, listed) | close {scene} (unloads it: usage reads its file) |
 //   record|revert|apply Property|State|AddedComponent|RemovedComponent
 //       {entity, component, properties, state, target}  (PrefabOverrideCmd) |
@@ -1200,6 +1202,20 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             settings.keepOverrides = !op["keepOverrides"] || op["keepOverrides"].as<bool>();
             settings.renameRoot = !op["renameRoot"] || op["renameRoot"].as<bool>();
             runCommand(new ReplacePrefabCmd(&project, sceneProject->id, {entity}, op["prefab"].as<std::string>(), settings));
+            continue;
+        }
+        if (name == "move") {
+            // a Hierarchy drag (MoveEntityOrderCmd): target a dump path, insertion before|after|into
+            YAML::Node targetOp;
+            targetOp["entity"] = op["target"].as<std::string>();
+            if (op["scene"]) targetOp["scene"] = op["scene"];
+            SceneProject* targetScene = nullptr;
+            const Entity target = findDumpEntity(project, targetOp, targetScene);
+            if (target == NULL_ENTITY) return false;
+            const std::string insertion = op["insertion"] ? op["insertion"].as<std::string>() : std::string("into");
+            const InsertionType insertionType = insertion == "before" ? InsertionType::BEFORE :
+                insertion == "after" ? InsertionType::AFTER : InsertionType::INTO;
+            runCommand(new MoveEntityOrderCmd(&project, sceneProject->id, entity, target, insertionType));
             continue;
         }
         if (name == "unpackMissing") {
