@@ -23,8 +23,6 @@ namespace jasperengine::editor{
 
         ModelRender(const ModelRender&) = delete;
         ModelRender& operator=(const ModelRender&) = delete;
-        ModelRender(ModelRender&&) noexcept = default;
-        ModelRender& operator=(ModelRender&&) noexcept = default;
 
         void clearScene();
         void clearAndInitScene();

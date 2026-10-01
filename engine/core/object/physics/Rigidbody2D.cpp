@@ -40,10 +40,6 @@ BodyType getB2ToBodyType(b2BodyType type){
     return BodyType::DYNAMIC;
 }
 
-Vector2 getB2ToVector2(b2Vec2 vec2){
-    return Vector2(vec2.x, vec2.y);
-}
-
 static int appendCollider2D(Rigidbody2DComponent& body){
     if (!body.colliders.validIndex(body.numColliders)){
         Log::error("Cannot add more shapes in this body");

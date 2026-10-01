@@ -224,10 +224,6 @@ if(NOT WIN32)
     find_package(CURL REQUIRED)
 endif()
 
-if(UNIX AND NOT APPLE)
-    find_package(X11 QUIET)
-endif()
-
 set(BACKEND_SOURCES)
 set(BACKEND_LIBS)
 
@@ -331,7 +327,6 @@ add_definitions("-DJASPERENGINE_EDITOR")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
-#add_definitions("-DNO_CPP_INIT")
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
     add_definitions("-DSOKOL_VULKAN")
 elseif(GRAPHIC_BACKEND STREQUAL "metal")
@@ -844,7 +839,7 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 # EXCLUDE_FROM_ALL keeps it out of the default ("all") build, so local and IDE
 # builds only produce jasperengine-editor. Release builds compile it explicitly by
 # name (`cmake --build --target jasperengine-editor-cmd`, see
-# .github/workflows/cmake.yml); the install rule below still installs it because
+# .github/workflows/ci.yml); the install rule below still installs it because
 # CI builds it before installing.
 if(WIN32)
     # Its own icon because both executables install to the same folder

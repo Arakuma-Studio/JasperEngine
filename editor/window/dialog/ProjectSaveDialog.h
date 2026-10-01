@@ -17,7 +17,6 @@ namespace editor {
     class ProjectSaveDialog {
     private:
         bool m_isOpen = false;
-        std::string m_projectName;
         fs::path m_projectPath;
         char m_projectNameBuffer[256] = "";
 

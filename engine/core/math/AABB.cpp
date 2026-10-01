@@ -150,7 +150,6 @@ void AABB::setMaximumZ( float z ) {
 }
 
 void AABB::setExtents( const Vector3& min, const Vector3& max ) {
-    //TODO: Put error
     //The minimum corner of the box must be less than or equal to maximum corner
     assert( min.x <= max.x && min.y <= max.y && min.z <= max.z );
 
@@ -160,7 +159,6 @@ void AABB::setExtents( const Vector3& min, const Vector3& max ) {
 }
 
 void AABB::setExtents(float mx, float my, float mz, float Mx, float My, float Mz ) {
-    //TODO: Put error
     //The minimum corner of the box must be less than or equal to maximum corner
     assert( mx <= Mx && my <= My && mz <= Mz );
 
@@ -200,7 +198,6 @@ Vector3 AABB::getCorner(CornerEnum cornerToGet) const {
 }
 
 const Vector3* AABB::getCorners(void) const {
-    //TODO: Put error
     //Can't get corners of a null or infinite AAB
     assert( mBoxType == BOXTYPE_FINITE );
 
@@ -255,7 +252,6 @@ AABB& AABB::merge( const Vector3& point ) {
             return *this;
     }
 
-    //TODO: Put error
     //Never reached
     assert( false );
 
@@ -464,7 +460,6 @@ void AABB::scale(const Vector3& s) {
 }
 
 Vector3 AABB::getCenter(void) const {
-    //TODO: Put error
     //Can't get center of a null or infinite AAB
     assert( mBoxType == BOXTYPE_FINITE );
 

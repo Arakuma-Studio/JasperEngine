@@ -84,7 +84,6 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 		}
 		return NULL;
 	}
-	//Log::debug("Create texture %s", id.c_str());
 
 	map[id] = shared;
 	getInvalidated().erase(id);
@@ -106,7 +105,6 @@ void TexturePool::remove(const std::string& id){
 			if (it->second){
 				it->second->destroyTexture();
 			}
-			//Log::debug("Remove texture %s", id.c_str());
 			map.erase(it);
 			getInvalidated().erase(id);
 		}
@@ -146,7 +144,6 @@ void TexturePool::clear(){
 		if (it.second)
 			it.second->destroyTexture();
 	}
-	//Log::debug("Remove all textures");
 	getMap().clear();
 	getInvalidated().clear();
 }

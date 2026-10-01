@@ -17,12 +17,9 @@ SokolShader::SokolShader(){
     shader.id = SG_INVALID_ID;
 }
 
-SokolShader::SokolShader(const SokolShader& rhs) : shader(rhs.shader) {}
+SokolShader::SokolShader(const SokolShader& rhs) = default;
 
-SokolShader& SokolShader::operator=(const SokolShader& rhs){ 
-    shader = rhs.shader; 
-    return *this;
-}
+SokolShader& SokolShader::operator=(const SokolShader& rhs) = default;
 
 int SokolShader::roundup(int val, int round_to) {
     return (val + (round_to - 1)) & ~(round_to - 1);

@@ -30,10 +30,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
     file(TO_CMAKE_PATH ${JASPERENGINE_ROOT} JASPERENGINE_ROOT)
 
-    #add_definitions(-DDISABLE_LUA_BINDINGS)
-    #add_definitions(-DNO_LUA_INIT)
-    #add_definitions(-DNO_CPP_INIT)
-
     if(NOT PROJECT_ROOT)
         set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/project)
     endif()
@@ -111,7 +107,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             set(GRAPHIC_BACKEND "glcore")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             set(GRAPHIC_BACKEND "metal")
-            #set(GRAPHIC_BACKEND "glcore")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
             set(GRAPHIC_BACKEND "metal")
         else()
@@ -144,9 +139,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         message(WARNING "VSync off is not supported by the macOS Metal application backend; this build will remain synchronized")
     endif()
     message(STATUS "Application backend is set to ${APP_BACKEND}")
-
-    set(COMPILE_ZLIB OFF)
-    set(IS_ARM OFF)
 
     set(PLATFORM_EXEC_FLAGS)
     set(PLATFORM_ROOT)
@@ -265,12 +257,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(APP_NAME jasperengine-android)
 
-        if(ANDROID_ABI MATCHES "^arm(eabi)?(-v7a)?(64-v8a)?$")
-            #add_compile_options("-march=armv8.2a+fp16")
-            if(ANDROID_ABI MATCHES "^arm(eabi)?(-v7a)?$")
-                add_compile_options("-mfpu=fp-armv8")
-            endif()
-            set(IS_ARM ON)
+        if(ANDROID_ABI MATCHES "^arm(eabi)?(-v7a)?$")
+            add_compile_options("-mfpu=fp-armv8")
         endif()
 
         set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/android)
@@ -606,15 +594,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
             ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
             ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
-
-            # TODO: use here to run on real iOS devices
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64/FBLPromises.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64/GoogleAppMeasurement.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64/GoogleAppMeasurementIdentitySupport.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64/GoogleMobileAds.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64/GoogleUtilities.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_armv7/UserMessagingPlatform.framework
-            #${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64/nanopb.framework
         )
 
         add_compile_options(-fmodules)
@@ -752,8 +731,6 @@ if(DEFINED NO_CPP_INIT)
     add_definitions("-DNO_CPP_INIT=${NO_CPP_INIT}")
     unset(NO_CPP_INIT CACHE)
 endif()
-
-#add_definitions("-DPROJECT_ROOT=\"${PROJECT_ROOT}\"")
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
@@ -951,6 +928,13 @@ if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
     message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
 endif()
 message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
+
+# tinygltf shares STL containers with the engine; libc++ template definitions
+# must use the same C++ standard on both sides of that boundary.
+set_target_properties(tinygltf PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+)
 
 set_target_properties(
     jasperengine

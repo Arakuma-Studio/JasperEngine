@@ -65,67 +65,9 @@ void SokolObject::resetPipelines(){
 #endif
 }
 
-SokolObject::SokolObject(const SokolObject& rhs) {
-    bind = rhs.bind;
-    loadIndexBuffer = rhs.loadIndexBuffer;
-    loadIndexOffset = rhs.loadIndexOffset;
-    pip = rhs.pip;
-    depth_pip = rhs.depth_pip;
-    shadow_depth_pip = rhs.shadow_depth_pip;
-    rtt_pip = rhs.rtt_pip;
-    rtt_invert_pip = rhs.rtt_invert_pip;
-    gbuffer_pip = rhs.gbuffer_pip;
-    nodepth_pip = rhs.nodepth_pip;
-    rtt_nodepth_pip = rhs.rtt_nodepth_pip;
-    zprepass_pip = rhs.zprepass_pip;
-    zprepass_rtt_pip = rhs.zprepass_rtt_pip;
-    pipeline_desc = rhs.pipeline_desc;
-    loadFaceCulling = rhs.loadFaceCulling;
-    loadDepthWrite = rhs.loadDepthWrite;
-    loadCullingMode = rhs.loadCullingMode;
-    loadWindingOrder = rhs.loadWindingOrder;
-    loadPrepassFaceCulling = rhs.loadPrepassFaceCulling;
-#ifdef JASPERENGINE_EDITOR
-    for (int i = 0; i < PIPELINE_TYPES; i++){
-        noCullPipelines[i] = rhs.noCullPipelines[i];
-    }
-    noCullSame = rhs.noCullSame;
-#endif
-    bindSlotIndex = rhs.bindSlotIndex;
-    bufferToBindSlot = rhs.bufferToBindSlot;
-}
+SokolObject::SokolObject(const SokolObject& rhs) = default;
 
-SokolObject& SokolObject::operator=(const SokolObject& rhs) {
-    bind = rhs.bind;
-    loadIndexBuffer = rhs.loadIndexBuffer;
-    loadIndexOffset = rhs.loadIndexOffset;
-    pip = rhs.pip;
-    depth_pip = rhs.depth_pip;
-    shadow_depth_pip = rhs.shadow_depth_pip;
-    rtt_pip = rhs.rtt_pip;
-    rtt_invert_pip = rhs.rtt_invert_pip;
-    gbuffer_pip = rhs.gbuffer_pip;
-    nodepth_pip = rhs.nodepth_pip;
-    rtt_nodepth_pip = rhs.rtt_nodepth_pip;
-    zprepass_pip = rhs.zprepass_pip;
-    zprepass_rtt_pip = rhs.zprepass_rtt_pip;
-    pipeline_desc = rhs.pipeline_desc;
-    loadFaceCulling = rhs.loadFaceCulling;
-    loadDepthWrite = rhs.loadDepthWrite;
-    loadCullingMode = rhs.loadCullingMode;
-    loadWindingOrder = rhs.loadWindingOrder;
-    loadPrepassFaceCulling = rhs.loadPrepassFaceCulling;
-#ifdef JASPERENGINE_EDITOR
-    for (int i = 0; i < PIPELINE_TYPES; i++){
-        noCullPipelines[i] = rhs.noCullPipelines[i];
-    }
-    noCullSame = rhs.noCullSame;
-#endif
-    bindSlotIndex = rhs.bindSlotIndex;
-    bufferToBindSlot = rhs.bufferToBindSlot;
-    
-    return *this;
-}
+SokolObject& SokolObject::operator=(const SokolObject& rhs) = default;
 
 sg_vertex_format SokolObject::getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized){
     if (dataType == AttributeDataType::BYTE){
@@ -550,9 +492,7 @@ void SokolObject::applyUniformBlock(int slot, unsigned int count, void* data){
 }
 
 void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
-    //SokolCmdQueue::add_command_apply_bindings(bind);
     sg_apply_bindings(bind);
-    //SokolCmdQueue::add_command_draw(0, vertexCount, 1);
     sg_draw(baseElement, vertexCount, instanceCount);
 }
 

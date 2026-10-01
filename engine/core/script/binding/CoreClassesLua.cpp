@@ -801,10 +801,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addConstructor<
             void(), 
             void(int, int, unsigned int, ColorFormat, int, void*), 
-            //void(unsigned char*, unsigned int), // TODO: missing constructor
             void(const char*)>()
         .addFunction("loadTextureFromFile", &TextureData::loadTextureFromFile)
-        //.addFunction("loadTextureFromMemory", &TextureData::loadTextureFromMemory)
         .addFunction("releaseImageData", &TextureData::releaseImageData)
         .addFunction("hasAlpha", &TextureData::hasAlpha)
         .addFunction("resizePowerOfTwo", &TextureData::resizePowerOfTwo)

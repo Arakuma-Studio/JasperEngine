@@ -52,5 +52,5 @@ when the key node is a scalar, which is exactly what that decode accepts.
 
 `const Node::operator[]` names a missing key in the zombie node it returns
 (`key_to_string`), which built a `std::stringstream` imbued with a named locale for every
-lookup that misses. Overloads for `std::string`, `const char*` and `char[N]` return the
-key text directly, which is what streaming it gives.
+lookup that misses. Overloads for `std::string` and `const char*` (including character
+arrays) return the key text directly, which is what streaming it gives.

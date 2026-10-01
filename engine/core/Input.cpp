@@ -48,7 +48,7 @@ void Input::addTouch(int pointer, float x, float y){
 
 void Input::setTouchPosition(int pointer, float x, float y){
     size_t index = findTouchIndex(pointer);
-    if (index >=0 && index < touches.size())
+    if (index < touches.size())
         touches[index].position = Vector2(x, y);
 }
 
@@ -83,10 +83,6 @@ void Input::removeGamepad(int id){
     size_t index = findGamepadIndex(id);
     if (index != -1)
         gamepads.erase(gamepads.begin()+index);
-}
-
-void Input::clearGamepads(){
-    gamepads.clear();
 }
 
 void Input::addGamepadButtonPressed(int id, int button){
@@ -145,7 +141,7 @@ Vector2 Input::getMouseScroll(){
 
 Vector2 Input::getTouchPosition(int pointer){
     size_t index = findTouchIndex(pointer);
-    if (index >=0 && index < touches.size())
+    if (index < touches.size())
         return touches[index].position;
     
     return Vector2(-1, -1); 

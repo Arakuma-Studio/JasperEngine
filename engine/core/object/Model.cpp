@@ -39,14 +39,9 @@ bool Model::loadModel(const std::string& filename){
     std::string ext = FileData::getFilePathExtension(filename);
 
     if (ext.compare("obj") == 0) {
-        if (!loadOBJ(filename))
-            return false;
-    }else{
-        if (!loadGLTF(filename))
-            return false;
+        return loadOBJ(filename);
     }
-
-    return true;
+    return loadGLTF(filename);
 }
 
 bool Model::loadOBJ(const std::string& filename){

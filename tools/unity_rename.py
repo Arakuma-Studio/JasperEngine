@@ -263,22 +263,19 @@ def variants(name, old, new, kinds="CMST", **kw):
 
 # ---- Phase 1: context rules on whole C-like / Lua files ------------------------------
 
-def _class_new(name):
-    return CLASS_MAP.get(name, name)
-
-
 def _dispatch(m):
-    return f'DISPATCH_TYPE({m.group(1)}, "{_class_new(m.group(1)).lower()}")'
+    cls = m.group(1)
+    return f'DISPATCH_TYPE({cls}, "{CLASS_MAP.get(cls, cls).lower()}")'
 
 
 def _register_literal(m):
     cls, lit = m.group(2), m.group(4)
     if lit == cls:
-        lit = _class_new(lit)
+        lit = CLASS_MAP.get(lit, lit)
     return f"{m.group(1)}{lit}{m.group(5)}"
 
 
-def _enum_block(enum, table):
+def _enum_block(table):
     def fix(m):
         return re.sub(B + r"(" + "|".join(table) + r")" + E, mapper(table), m.group(0))
     return fix
@@ -327,7 +324,7 @@ PHASE1 = [
 for _enum, _table in ENUM_MAPS.items():
     PHASE1.append(Rule(f"{_enum} value", rf"(?<={_enum}::)(" + "|".join(_table) + ")" + E, mapper(_table), "W"))
     PHASE1.append(Rule(f"{_enum} definition", rf"enum\s+class\s+{_enum}\b[^{{;]*\{{[^}}]*\}}",
-                       _enum_block(_enum, _table), "W"))
+                       _enum_block(_table), "W"))
 
 # ---- Phase 2: per-segment rules ------------------------------------------------------
 
@@ -584,9 +581,9 @@ class Rewriter:
         self.phase2 = [self.filenames] + PHASE2
         self.counts = Counter()
 
-    def _sub(self, rule, text, count=True):
+    def _sub(self, rule, text):
         new, n = rule.re.subn(rule.repl, text)
-        if n and count and new != text:
+        if n and new != text:
             self.counts[rule.name] += n
         return new
 
@@ -706,15 +703,6 @@ def read_text(full):
         return data.decode("latin-1")
 
 
-def write_text(full, text, original):
-    enc = "utf-8"
-    try:
-        original.encode("utf-8")
-    except UnicodeEncodeError:
-        enc = "latin-1"
-    full.write_bytes(text.encode(enc))
-
-
 DATA_BLOB = re.compile(r"0x[0-9A-Fa-f]{2}\s*,")
 
 
@@ -735,14 +723,7 @@ def text_files(root, files):
 def all_renames(files):
     """Old path -> new path for every tracked source file in FILE_RENAMES."""
     tracked = set(files)
-    out = {}
-    for stem, new_stem in FILE_RENAMES.items():
-        parent = str(PurePosixPath(stem).parent)
-        for ext in SOURCE_EXTS:
-            old = stem + ext
-            if old in tracked:
-                out[old] = f"{parent}/{new_stem}{ext}"
-    return out
+    return {old: new for old, new in static_renames().items() if old in tracked}
 
 
 def static_renames():
@@ -797,15 +778,12 @@ def cmd_dry_run(root, files):
     rw = Rewriter(static_renames())
     changed = 0
     merges, collisions = [], []
-    existing = Counter()
     per_file = {}
     for p, text in text_files(root, files):
         new = rw.rewrite(p, text)
         if new != text:
             changed += 1
             per_file[p] = (text, new)
-        for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text):
-            existing[t] += 1
     renamed_tokens = defaultdict(set)
     for p, (old, new) in per_file.items():
         pairs = token_changes(old, new)
@@ -828,9 +806,10 @@ def cmd_dry_run(root, files):
             if b in old_tokens and b not in olds:
                 collisions.append(f"{p}: {', '.join(sorted(olds))} -> {b}, which the file's code already uses")
     print("Content rules (matches):")
-    for r in [rw.filenames] + PHASE1 + PHASE2 + [type("X", (), {"name": "Xcode file references"})]:
-        if rw.counts[r.name]:
-            print(f"  {rw.counts[r.name]:6d}  {r.name}")
+    rule_names = [r.name for r in [rw.filenames] + PHASE1 + PHASE2] + ["Xcode file references"]
+    for name in rule_names:
+        if rw.counts[name]:
+            print(f"  {rw.counts[name]:6d}  {name}")
     print(f"  {changed} files would change")
     print(f"\nPath renames ({len(renames)}):")
     for old, new in sorted(renames.items()):
@@ -865,7 +844,7 @@ def cmd_apply_content(root, files):
     for p, text in text_files(root, files):
         new = rw.rewrite(p, text)
         if new != text:
-            write_text(root / p, new, text)
+            (root / p).write_bytes(new.encode("utf-8"))
             changed += 1
     print(f"Rewrote {changed} files, {sum(rw.counts.values())} replacements")
     return 0
@@ -991,7 +970,7 @@ def cmd_project(project_dir, dry_run):
             if new != text:
                 changed.append(rel)
                 if not dry_run:
-                    write_text(full, new, text)
+                    full.write_bytes(new.encode("utf-8"))
             if ext == ".bundle":
                 renamed.append((rel, rel[: -len(".bundle")] + ".prefab"))
     for rel in PROJECT_REGENERATED:

@@ -27,8 +27,7 @@
 
 namespace {
 
-// These logical keycodes postdate the API 33 target currently configured by
-// the project. Keep their stable platform values here so builds using older
+// These logical keycodes postdate API 33. Keep their stable platform values so older
 // NDK headers can still recognize them on newer Android releases.
 constexpr int32_t ANDROID_KEYCODE_F13 = 326;
 constexpr int32_t ANDROID_KEYCODE_F24 = 337;
@@ -256,9 +255,6 @@ static void _handle_cmd_proxy(struct android_app *app, int32_t cmd) {
 
 static void _log_opengl_error(GLenum err) {
     switch (err) {
-        case GL_NO_ERROR:
-            jasperengine::Log::error("*** OpenGL error: GL_NO_ERROR");
-            break;
         case GL_INVALID_ENUM:
             jasperengine::Log::error("*** OpenGL error: GL_INVALID_ENUM");
             break;
@@ -297,12 +293,9 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglContext = EGL_NO_CONTEXT;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
-    mApiVersion = 0;
     mScreenDensity = AConfiguration_getDensity(app->config);
-    mActiveAxisIds = 0;
     mJniEnv = NULL;
     memset(&mState, 0, sizeof(mState));
-    mIsFirstFrame = true;
 
     mInternalDataPath = mApp->activity->internalDataPath;
     mExternalDataPath = mApp->activity->externalDataPath;
@@ -313,7 +306,6 @@ NativeEngine::NativeEngine(struct android_app *app) {
     // Flags to control how the IME behaves.
     // https://developer.android.com/reference/android/text/InputType
     constexpr int InputType_dot_TYPE_CLASS_TEXT = 1;
-    constexpr int InputType_dot_TYPE_TEXT_FLAG_NO_SUGGESTIONS = 524288;
     // https://developer.android.com/reference/android/view/inputmethod/EditorInfo
     constexpr int IME_ACTION_NONE = 1;
     constexpr int IME_FLAG_NO_FULLSCREEN = 33554432;
@@ -353,7 +345,6 @@ NativeEngine::~NativeEngine() {
 }
 
 NativeEngine *NativeEngine::getInstance() {
-    //assert(_singleton != NULL);
     return _singleton;
 }
 
@@ -425,14 +416,6 @@ AAssetManager* NativeEngine::getAssetManager(){
     return mApp->activity->assetManager;
 }
 
-bool NativeEngine::initGLObjects() {
-    if (!mHasGLObjects) {
-        jasperengine::Engine::systemViewLoaded();
-        mHasGLObjects = true;
-    }
-    return true;
-}
-
 void NativeEngine::killGLObjects() {
     if (mHasGLObjects) {
         jasperengine::Engine::systemViewDestroyed();
@@ -443,14 +426,12 @@ void NativeEngine::killGLObjects() {
 void NativeEngine::gameLoop() {
     mApp->userData = this;
     mApp->onAppCmd = _handle_cmd_proxy;
-    //mApp->onInputEvent = _handle_input_proxy;
 
     GameActivity_setWindowFlags(mApp->activity,
                                 AWINDOW_FLAG_KEEP_SCREEN_ON | AWINDOW_FLAG_TURN_SCREEN_ON |
                                 AWINDOW_FLAG_FULLSCREEN |
                                 AWINDOW_FLAG_SHOW_WHEN_LOCKED,
                                 0);
-    updateSystemBarOffset();
 
     while (1) {
         int events;
@@ -718,10 +699,8 @@ bool NativeEngine::prepareToRender() {
 
     }
     if (!mHasGLObjects) {
-        if (!initGLObjects()) {
-            jasperengine::Log::error("NativeEngine: unable to initialize OpenGL objects.");
-            return false;
-        }
+        jasperengine::Engine::systemViewLoaded();
+        mHasGLObjects = true;
     }
 
     jasperengine::Engine::systemViewChanged();
@@ -753,11 +732,6 @@ void NativeEngine::doFrame() {
         glViewport(0, 0, mSurfWidth, mSurfHeight);
     }
 
-    if (mIsFirstFrame) {
-        mIsFirstFrame = false;
-        // if this is the first frame
-    }
-
     jasperengine::Engine::systemDraw();
 
     // swap buffers
@@ -784,13 +758,6 @@ void NativeEngine::doFrame() {
 
 bool NativeEngine::isAnimating() {
     return mHasFocus && mIsVisible && mHasWindow;
-}
-
-void NativeEngine::updateSystemBarOffset() {
-    ARect insets;
-    // Log all the insets types
-    GameActivity_getWindowInsets(mApp->activity, GAMECOMMON_INSETS_TYPE_SYSTEM_BARS, &insets);
-    mSystemBarOffset = insets.top;
 }
 
 // Gamepads are registered lazily on their first event; Android has no NDK-side
@@ -899,7 +866,7 @@ void NativeEngine::handleGameActivityInput(){
             // metaState works with capslock, numlock and others
             int keyCode = getJasperEngineKey(keyEvent->keyCode, keyEvent->scanCode);
             int modifiers = getJasperEngineModifiers(keyEvent->metaState);
-            bool repeat = (keyEvent->repeatCount > 0)?true:false;
+            bool repeat = keyEvent->repeatCount > 0;
 
             if (keyEvent->action == AKEY_EVENT_ACTION_DOWN) {
                 if (keyEvent->keyCode == AKEYCODE_TAB)
@@ -1022,13 +989,6 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_START:
             mIsVisible = true;
             break;
-        case APP_CMD_WINDOW_RESIZED:
-        case APP_CMD_CONFIG_CHANGED:
-            // Window was resized or some other configuration changed.
-            // Note: we don't handle this event because we check the surface dimensions
-            // every frame, so that's how we know it was resized. If you are NOT doing that,
-            // then you need to handle this event!
-            break;
         case APP_CMD_LOW_MEMORY:
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
@@ -1037,9 +997,6 @@ void NativeEngine::handleCommand(int32_t cmd) {
             if (!mHasWindow) {
                 killContext();
             }
-            break;
-        case APP_CMD_WINDOW_INSETS_CHANGED:
-            updateSystemBarOffset();
             break;
         default:
             break;

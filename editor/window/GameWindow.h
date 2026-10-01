@@ -87,7 +87,6 @@ namespace jasperengine::editor {
         bool isGameCursorInView() const;
         // The game image has keyboard focus (keys go to the game while playing)
         bool hasKeyboardFocus() const;
-        bool isMaximizedOnPlay();
 
         void resetProjectState();
     };

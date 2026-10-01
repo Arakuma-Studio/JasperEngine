@@ -490,26 +490,4 @@ ImVec4 SemanticSuggestions::GetKindColor(SuggestionKind kind) {
     }
 }
 
-const char* SemanticSuggestions::GetKindName(SuggestionKind kind) {
-    switch (kind) {
-        case SuggestionKind::Keyword:    return "Keyword";
-        case SuggestionKind::Type:       return "Type";
-        case SuggestionKind::Function:   return "Function";
-        case SuggestionKind::Variable:   return "Variable";
-        case SuggestionKind::Snippet:    return "Snippet";
-        case SuggestionKind::Class:      return "Class";
-        case SuggestionKind::Interface:  return "Interface";
-        case SuggestionKind::Module:     return "Module";
-        case SuggestionKind::Property:   return "Property";
-        case SuggestionKind::Method:     return "Method";
-        case SuggestionKind::Field:      return "Field";
-        case SuggestionKind::Constant:   return "Constant";
-        case SuggestionKind::Enum:       return "Enum";
-        case SuggestionKind::EnumMember: return "Enum Member";
-        case SuggestionKind::Operator:   return "Operator";
-        case SuggestionKind::Text:       
-        default:                         return "Text";
-    }
-}
-
 } // namespace jasperengine::editor

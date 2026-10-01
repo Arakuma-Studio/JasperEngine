@@ -7,7 +7,6 @@
 #include "Scene.h"
 
 #include "soloud.h"
-#include "soloud_thread.h"
 #include "soloud_wav.h"
 
 using namespace jasperengine;
@@ -39,8 +38,6 @@ bool AudioSystem::init(){
 
         getSoloud().setGlobalVolume(globalVolume);
 
-        //Wait for mixing thread
-        //SoLoud::Thread::sleep(10);
 
         inited = true;
     }
@@ -229,7 +226,6 @@ void AudioSystem::setGlobalVolume(float volume){
 }
 
 float AudioSystem::getGlobalVolume(){
-    //return getSoloud().getGlobalVolume();
     return globalVolume;
 }
 

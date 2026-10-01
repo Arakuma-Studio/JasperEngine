@@ -12,7 +12,6 @@ namespace jasperengine::editor{
     class Backend{
         private:
             static App app;
-            static std::string title;
 
         public:
             static int init(int argc, char **argv);
@@ -58,4 +57,3 @@ namespace jasperengine::editor{
     };
 
 }
-

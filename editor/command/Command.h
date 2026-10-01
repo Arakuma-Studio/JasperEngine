@@ -15,7 +15,7 @@ namespace jasperengine::editor{
         virtual bool execute() = 0;
         virtual void undo() = 0;
 
-        virtual bool mergeWith(Command* olderCommand) = 0;
+        virtual bool mergeWith(Command*) { return false; }
 
         // True if this can change what the Hierarchy tree shows. Defaults to true so a
         // new command is never silently stale.

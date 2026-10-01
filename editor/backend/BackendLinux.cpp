@@ -2794,7 +2794,6 @@ void shutdownX11() {
 } // namespace
 
 editor::App editor::Backend::app;
-std::string editor::Backend::title;
 
 int editor::Backend::init(int argc, char* argv[]) {
     setEditorHost(&app);
@@ -3050,7 +3049,7 @@ sg_swapchain editor::Backend::getSokolSwapchain() {
 #endif
 
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
-    title = editor::EditorFrame::formatWindowTitle(projectName);
+    const std::string title = editor::EditorFrame::formatWindowTitle(projectName);
     if (backend && backend->mainWindow) setWindowTitle(backend->mainWindow, title.c_str());
 }
 

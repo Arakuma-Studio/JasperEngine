@@ -183,9 +183,7 @@ void JasperEngineApple::quit(){
 }
 
 std::string JasperEngineApple::getAssetPath(){
-    NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"assets"];
-
-    NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
+    NSString* path = [[NSBundle mainBundle] pathForResource:@"assets" ofType:nil];
 
     if (!path){
         // No bundle resource: either a plain (non-.app) build, or a project run
@@ -209,9 +207,7 @@ std::string JasperEngineApple::getUserDataPath(){
 }
 
 std::string JasperEngineApple::getLuaPath(){
-    NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"lua"];
-
-    NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
+    NSString* path = [[NSBundle mainBundle] pathForResource:@"lua" ofType:nil];
 
     if (!path){
 #ifdef JASPERENGINE_LUA_PATH
@@ -225,9 +221,7 @@ std::string JasperEngineApple::getLuaPath(){
 }
 
 std::string JasperEngineApple::getShaderPath(){
-    NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"shaders"];
-
-    NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
+    NSString* path = [[NSBundle mainBundle] pathForResource:@"shaders" ofType:nil];
 
     if (!path){
 #ifdef JASPERENGINE_SHADER_PATH

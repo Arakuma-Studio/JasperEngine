@@ -20,7 +20,6 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 
-//TODO: Add all components and properties
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIComponent.h"
@@ -195,13 +194,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("removeRigidbody2D", &PhysicsSystem::removeRigidbody2D)
         .addFunction("loadRigidbody2D", &PhysicsSystem::loadRigidbody2D)
         .addFunction("destroyRigidbody2D", &PhysicsSystem::destroyRigidbody2D)
-        //.addFunction("loadCollider2D", &PhysicsSystem::loadCollider2D) // has rigidbody2d components
         .addFunction("destroyCollider2D", &PhysicsSystem::destroyCollider2D)
         .addFunction("loadDistanceJoint2D", &PhysicsSystem::loadDistanceJoint2D)
         .addFunction("loadRevoluteJoint2D", &PhysicsSystem::loadRevoluteJoint2D)
         .addFunction("loadPrismaticJoint2D", &PhysicsSystem::loadPrismaticJoint2D)
-        //.addFunction("loadPulleyJoint2D", &PhysicsSystem::loadPulleyJoint2D)
-        //.addFunction("loadGearJoint2D", &PhysicsSystem::loadGearJoint2D)
         .addFunction("loadMouseJoint2D", &PhysicsSystem::loadMouseJoint2D)
         .addFunction("loadWheelJoint2D", &PhysicsSystem::loadWheelJoint2D)
         .addFunction("loadWeldJoint2D", &PhysicsSystem::loadWeldJoint2D)
@@ -213,7 +209,6 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("removeRigidbody", &PhysicsSystem::removeRigidbody)
         .addFunction("loadRigidbody", &PhysicsSystem::loadRigidbody)
         .addFunction("destroyRigidbody", &PhysicsSystem::destroyRigidbody)
-        //.addFunction("loadCollider3D", &PhysicsSystem::loadCollider3D) // has jolt components
         .addFunction("destroyCollider3D", &PhysicsSystem::destroyCollider3D)
         .addFunction("loadFixedJoint3D", &PhysicsSystem::loadFixedJoint3D)
         .addFunction("loadDistanceJoint3D", &PhysicsSystem::loadDistanceJoint3D)
@@ -338,15 +333,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<UIComponent>("UIComponent")
         .addProperty("loaded", &UIComponent::loaded)
-        //.addProperty("buffer", &UIComponent::buffer)
-        //.addProperty("indices", &UIComponent::indices)
         .addProperty("minBufferCount", &UIComponent::minBufferCount)
         .addProperty("minIndicesCount", &UIComponent::minIndicesCount)
-        //.addProperty("render", &UIComponent::render)
-        //.addProperty("shader", &UIComponent::shader)
-        //.addProperty("shaderProperties", &UIComponent::shaderProperties)
-        //.addProperty("slotVSParams", &UIComponent::slotVSParams)
-        //.addProperty("slotFSParams", &UIComponent::slotFSParams)
         .addProperty("primitiveType", &UIComponent::primitiveType, &UIComponent::primitiveType)
         .addProperty("vertexCount", &UIComponent::vertexCount)
         .addProperty("texture", &UIComponent::texture, &UIComponent::texture)
@@ -728,8 +716,6 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("textureScaleFactor", &TilemapComponent::textureScaleFactor, &TilemapComponent::textureScaleFactor)
         .addProperty("reserveTiles", &TilemapComponent::reserveTiles, &TilemapComponent::reserveTiles)
         .addProperty("numTiles", &TilemapComponent::numTiles, &TilemapComponent::numTiles)
-        //.addProperty("tilesRect", &TilemapComponent::tilesRect, &TilemapComponent::tilesRect)
-        //.addProperty("tiles", &TilemapComponent::tiles, &TilemapComponent::tiles)
         .addProperty("needUpdateTilemap", &TilemapComponent::needUpdateTilemap, &TilemapComponent::needUpdateTilemap)
         .endClass();
 

@@ -724,10 +724,6 @@ void editor::CreateEntityCmd::undo(){
     }
 }
 
-bool editor::CreateEntityCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
-
 Entity editor::CreateEntityCmd::getEntity(){
     return entity;
 }

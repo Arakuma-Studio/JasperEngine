@@ -165,8 +165,6 @@ namespace jasperengine::editor{
 
         bool isPreviewingEntity(Entity entity, uint32_t sceneId) const;
         bool getIsPlaying() const;
-        bool getIsPreviewing() const;
-        float getCurrentTime() const;
 
         void externalPlay(Entity entity, uint32_t sceneId);
         void externalStop();

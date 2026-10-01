@@ -94,7 +94,3 @@ void editor::CreateMaterialFileCmd::undo() {
     std::error_code ec;
     fs::remove(targetFile, ec);
 }
-
-bool editor::CreateMaterialFileCmd::mergeWith(Command* otherCommand) {
-    return false;
-}

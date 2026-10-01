@@ -26,36 +26,9 @@ Framebuffer::~Framebuffer(){
     destroy();
 }
 
-Framebuffer::Framebuffer(const Framebuffer& rhs){
-    this->render = rhs.render;
-    this->width = rhs.width;
-    this->height = rhs.height;
-    this->minFilter = rhs.minFilter;
-    this->magFilter = rhs.magFilter;
-    this->wrapU = rhs.wrapU;
-    this->wrapV = rhs.wrapV;
-    this->numColorAttachments = rhs.numColorAttachments;
-    for (int i = 0; i < SokolFramebuffer::MAX_COLOR_ATTACHMENTS; i++){
-        this->colorFormats[i] = rhs.colorFormats[i];
-    }
-    this->version = rhs.version;
-}
+Framebuffer::Framebuffer(const Framebuffer& rhs) = default;
 
-Framebuffer& Framebuffer::operator=(const Framebuffer& rhs){
-    this->render = rhs.render;
-    this->width = rhs.width;
-    this->height = rhs.height;
-    this->minFilter = rhs.minFilter;
-    this->magFilter = rhs.magFilter;
-    this->wrapU = rhs.wrapU;
-    this->wrapV = rhs.wrapV;
-    this->numColorAttachments = rhs.numColorAttachments;
-    for (int i = 0; i < SokolFramebuffer::MAX_COLOR_ATTACHMENTS; i++){
-        this->colorFormats[i] = rhs.colorFormats[i];
-    }
-    this->version = rhs.version;
-    return *this;
-}
+Framebuffer& Framebuffer::operator=(const Framebuffer& rhs) = default;
 
 void Framebuffer::create(){
     if (numColorAttachments > 1){

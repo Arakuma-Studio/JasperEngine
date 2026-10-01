@@ -1496,15 +1496,6 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
         if (node["svgScale"]) texture.setSvgScale(YamlNumbers::as<float>(node["svgScale"]));
         if (node["alphaBorder"]) texture.setAlphaBorder(stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()));
 
-        //if (node["isFramebuffer"] && YamlNumbers::as<bool>(node["isFramebuffer"])) {
-        //    texture.setIsFramebuffer(true);
-        //}
-
-        //if (node["width"] && node["height"]) {
-        //    texture.setWidth(YamlNumbers::as<int>(node["width"]));
-        //    texture.setHeight(YamlNumbers::as<int>(node["height"]));
-        //}
-
         if (node["releaseDataAfterLoad"]) texture.setReleaseDataAfterLoad(YamlNumbers::as<bool>(node["releaseDataAfterLoad"]));
     }
     return texture;
@@ -4811,16 +4802,11 @@ YAML::Node editor::Stream::encodeTransform(const Transform& transform) {
     transformNode["localMatrix"] = encodeMatrix4(transform.localMatrix);
     transformNode["modelMatrix"] = encodeMatrix4(transform.modelMatrix);
     transformNode["normalMatrix"] = encodeMatrix4(transform.normalMatrix);
-    //transformNode["modelViewProjectionMatrix"] = encodeMatrix4(transform.modelViewProjectionMatrix);
     transformNode["visible"] = YamlNumbers::text(transform.visible);
-    //transformNode["parent"] = transform.parent;
-    //transformNode["distanceToCamera"] = transform.distanceToCamera;
     transformNode["billboardRotation"] = encodeQuaternion(transform.billboardRotation);
     transformNode["billboard"] = YamlNumbers::text(transform.billboard);
     transformNode["fakeBillboard"] = YamlNumbers::text(transform.fakeBillboard);
     transformNode["cylindricalBillboard"] = YamlNumbers::text(transform.cylindricalBillboard);
-    //transformNode["needUpdateChildVisibility"] = transform.needUpdateChildVisibility;
-    //transformNode["needUpdate"] = transform.needUpdate;
 
     return transformNode;
 }
@@ -4842,16 +4828,11 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
     if (node["localMatrix"]) transform.localMatrix = decodeMatrix4(node["localMatrix"]);
     if (node["modelMatrix"]) transform.modelMatrix = decodeMatrix4(node["modelMatrix"]);
     if (node["normalMatrix"]) transform.normalMatrix = decodeMatrix4(node["normalMatrix"]);
-    //if (node["modelViewProjectionMatrix"]) transform.modelViewProjectionMatrix = decodeMatrix4(node["modelViewProjectionMatrix"]);
     if (node["visible"]) transform.visible = YamlNumbers::as<bool>(node["visible"]);
-    //transform.parent = YamlNumbers::as<Entity>(node["parent"]);
-    //if (node["distanceToCamera"]) transform.distanceToCamera = YamlNumbers::as<float>(node["distanceToCamera"]);
     if (node["billboardRotation"]) transform.billboardRotation = decodeQuaternion(node["billboardRotation"]);
     if (node["billboard"]) transform.billboard = YamlNumbers::as<bool>(node["billboard"]);
     if (node["fakeBillboard"]) transform.fakeBillboard = YamlNumbers::as<bool>(node["fakeBillboard"]);
     if (node["cylindricalBillboard"]) transform.cylindricalBillboard = YamlNumbers::as<bool>(node["cylindricalBillboard"]);
-    //transform.needUpdateChildVisibility = YamlNumbers::as<bool>(node["needUpdateChildVisibility"]);
-    //transform.needUpdate = YamlNumbers::as<bool>(node["needUpdate"]);
 
     return transform;
 }
@@ -4859,9 +4840,6 @@ Transform editor::Stream::decodeTransform(const YAML::Node& node, const Transfor
 YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
-
-    //node["loaded"] = mesh.loaded;
-    //node["loadCalled"] = mesh.loadCalled;
 
     if (encodeBuffers){
         node["buffer"] = encodeInterleavedBuffer(mesh.buffer);
@@ -4875,15 +4853,12 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
         node["eBuffers"] = eBuffersNode;
     }
 
-    //node["vertexCount"] = mesh.vertexCount;
-
     // Encode submeshes
     YAML::Node submeshesNode;
     for(unsigned int i = 0; i < mesh.numSubmeshes; i++) {
         submeshesNode.push_back(encodeSubmesh(mesh.submeshes[i], embedTextureData));
     }
     node["submeshes"] = submeshesNode;
-    //node["numSubmeshes"] = mesh.numSubmeshes;
 
     // Model-backed meshes regenerate these matrices from their skeleton on load.
     if (encodeBones) {
@@ -4930,9 +4905,6 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     if (!mesh.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(mesh.shaderUniforms);
 
-    //node["needUpdateBuffer"] = mesh.needUpdateBuffer;
-    //node["needReload"] = mesh.needReload;
-
     return node;
 }
 
@@ -4943,9 +4915,6 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (oldMesh) {
         mesh = *oldMesh;
     }
-
-    //mesh.loaded = YamlNumbers::as<bool>(node["loaded"]);
-    //mesh.loadCalled = YamlNumbers::as<bool>(node["loadCalled"]);
 
     // Decode buffers using generic methods
     if (node["buffer"]) {
@@ -4964,8 +4933,6 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
         }
         mesh.numExternalBuffers = eBuffersNode.size();
     }
-
-    //mesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
 
     // Decode submeshes
     if (node["submeshes"]) {
@@ -5020,9 +4987,6 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     mesh.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     mesh.needUpdateShaderUniforms = true;
 
-    //mesh.needUpdateBuffer = YamlNumbers::as<bool>(node["needUpdateBuffer"]);
-    //mesh.needReload = YamlNumbers::as<bool>(node["needReload"]);
-
     if (node["enabled"]) mesh.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     return mesh;
@@ -5031,20 +4995,12 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeBuffers, bool embedTextureData) {
     YAML::Node node;
     node["enabled"] = ui.enabled;
-    //node["loaded"] = ui.loaded;
-    //node["loadCalled"] = ui.loadCalled;
     if (encodeBuffers){
         node["buffer"] = encodeBuffer(ui.buffer);
         node["indices"] = encodeBuffer(ui.indices);
         node["minBufferCount"] = ui.minBufferCount;
         node["minIndicesCount"] = ui.minIndicesCount;
     }
-
-    //node["render"] = {}; // ObjectRender not serialized here
-    //node["shader"] = {}; // shared_ptr<ShaderRender> not serialized
-    //node["shaderProperties"] = ui.shaderProperties;
-    //node["slotVSParams"] = ui.slotVSParams;
-    //node["slotFSParams"] = ui.slotFSParams;
 
     node["primitiveType"] = primitiveTypeToString(ui.primitiveType);
     node["vertexCount"] = ui.vertexCount;
@@ -5067,11 +5023,6 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
 
-    //node["needReload"] = ui.needReload;
-    //node["needUpdateAABB"] = ui.needUpdateAABB;
-    //node["needUpdateBuffer"] = ui.needUpdateBuffer;
-    //node["needUpdateTexture"] = ui.needUpdateTexture;
-
     return node;
 }
 
@@ -5083,18 +5034,10 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
         ui = *oldUI;
     }
 
-    //ui.loaded = YamlNumbers::as<bool>(node["loaded"]);
-    //ui.loadCalled = YamlNumbers::as<bool>(node["loadCalled"]);
-
     if (node["buffer"]) decodeBuffer(ui.buffer, node["buffer"]);
     if (node["indices"]) decodeBuffer(ui.indices, node["indices"]);
     if (node["minBufferCount"]) ui.minBufferCount = YamlNumbers::as<unsigned int>(node["minBufferCount"]);
     if (node["minIndicesCount"]) ui.minIndicesCount = YamlNumbers::as<unsigned int>(node["minIndicesCount"]);
-
-    // ui.render and ui.shader can't be deserialized here
-    // ui.shaderProperties = node["shaderProperties"].as<std::string>();
-    //ui.slotVSParams = YamlNumbers::as<int>(node["slotVSParams"]);
-    //ui.slotFSParams = YamlNumbers::as<int>(node["slotFSParams"]);
 
     if (node["primitiveType"]) ui.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
     if (node["vertexCount"]) ui.vertexCount = YamlNumbers::as<unsigned int>(node["vertexCount"]);
@@ -5114,11 +5057,6 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     ui.needUpdateShaderUniforms = true;
-
-    //ui.needReload = YamlNumbers::as<bool>(node["needReload"]);
-    //ui.needUpdateAABB = YamlNumbers::as<bool>(node["needUpdateAABB"]);
-    //ui.needUpdateBuffer = YamlNumbers::as<bool>(node["needUpdateBuffer"]);
-    //ui.needUpdateTexture = YamlNumbers::as<bool>(node["needUpdateTexture"]);
 
     if (node["enabled"]) ui.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -5345,8 +5283,6 @@ YAML::Node editor::Stream::encodeRectTransformComponent(const RectTransformCompo
     node["scissor"] = encodeRect(layout.scissor);
     node["ignoreScissor"] = layout.ignoreScissor;
     node["ignoreEvents"] = layout.ignoreEvents;
-    //node["needUpdateSizes"] = layout.needUpdateSizes;
-    //node["needUpdateAnchorOffsets"] = layout.needUpdateAnchorOffsets;
 
     return node;
 }
@@ -5378,8 +5314,6 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
     if (node["scissor"]) layout.scissor = decodeRect(node["scissor"]);
     if (node["ignoreScissor"]) layout.ignoreScissor = YamlNumbers::as<bool>(node["ignoreScissor"]);
     if (node["ignoreEvents"]) layout.ignoreEvents = YamlNumbers::as<bool>(node["ignoreEvents"]);
-    //layout.needUpdateSizes = YamlNumbers::as<bool>(node["needUpdateSizes"]);
-    //layout.needUpdateAnchorOffsets = YamlNumbers::as<bool>(node["needUpdateAnchorOffsets"]);
 
     return layout;
 }
@@ -5471,7 +5405,6 @@ YAML::Node editor::Stream::encodeImageComponent(const ImageComponent& image) {
     node["patchMarginTop"] = image.patchMarginTop;
     node["patchMarginBottom"] = image.patchMarginBottom;
     node["textureScaleFactor"] = image.textureScaleFactor;
-    //node["needUpdatePatches"] = image.needUpdatePatches;
 
     return node;
 }
@@ -5489,7 +5422,6 @@ ImageComponent editor::Stream::decodeImageComponent(const YAML::Node& node, cons
     if (node["patchMarginTop"]) image.patchMarginTop = YamlNumbers::as<int>(node["patchMarginTop"]);
     if (node["patchMarginBottom"]) image.patchMarginBottom = YamlNumbers::as<int>(node["patchMarginBottom"]);
     if (node["textureScaleFactor"]) image.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
-    //image.needUpdatePatches = YamlNumbers::as<bool>(node["needUpdatePatches"]);
 
     return image;
 }
@@ -5503,7 +5435,6 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
-    //node["needUpdateSprite"] = sprite.needUpdateSprite;
 
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
@@ -5535,7 +5466,6 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = stringToPivotPreset(node["pivotPreset"].as<std::string>());
-    //if (node["needUpdateSprite"]) sprite.needUpdateSprite = YamlNumbers::as<bool>(node["needUpdateSprite"]);
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];

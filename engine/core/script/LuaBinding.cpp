@@ -187,38 +187,29 @@ void LuaBinding::stackDump (lua_State *L) {
     Log::debug("--------------- Stack Dump Finished ---------------" );
 }
 
-int LuaBinding::setLuaSearcher(lua_CFunction f, bool cleanSearchers) {
+void LuaBinding::configureProjectLuaLoader() {
 
     lua_State *L = luastate;
 
-    // Add the package loader to the package.loaders table.
+    // Replace the default searchers with the project asset loader.
     lua_getglobal(L, "package");
     if(lua_isnil(L, -1))
-        return luaL_error(L, "package table does not exist.");
+        luaL_error(L, "package table does not exist.");
 
     lua_getfield(L, -1, "searchers");
     if(lua_isnil(L, -1))
-        return luaL_error(L, "package.loaders table does not exist.");
+        luaL_error(L, "package.loaders table does not exist.");
 
     size_t numloaders = lua_rawlen(L, -1);
 
-    if (cleanSearchers) {
-        //remove preconfigured loaders
-        for (int i = 0; i < numloaders; i++) {
-            lua_pushnil(L);
-            lua_rawseti(L, -2, i + 1);
-        }
-        //add new loader
-        lua_pushcfunction(L, f);
-        lua_rawseti(L, -2, 1);
-    }else{
-        lua_pushcfunction(L, f);
-        lua_rawseti(L, -2, numloaders+1);
+    for (int i = 0; i < numloaders; i++) {
+        lua_pushnil(L);
+        lua_rawseti(L, -2, i + 1);
     }
+    lua_pushcfunction(L, moduleLoader);
+    lua_rawseti(L, -2, 1);
 
     lua_pop(L, 1);
-
-    return 0;
 }
 
 // Common implementation for event registration
@@ -388,30 +379,6 @@ int LuaBinding::luaRegisterEngineEvent(lua_State* L) {
     return luaRegisterEventImpl(L, eventIndex, 1, methodName, tag, true);
 }
 
-// Note it can be done in the same way with Sol2: https://github.com/ThePhD/sol2/issues/692
-int LuaBinding::setLuaPath(const char* path) {
-
-    lua_State *L = luastate;
-
-    lua_getglobal( L, "package" );
-    if(lua_isnil(L, -1))
-        return luaL_error(L, "package table does not exist.");
-
-    lua_getfield( L, -1, "path" );
-    if(lua_isnil(L, -1))
-        return luaL_error(L, "package.path table does not exist.");
-
-    std::string cur_path = lua_tostring( L, -1 );
-    cur_path.append( ";" );
-    cur_path.append( path );
-    lua_pop( L, 1 );
-    lua_pushstring( L, cur_path.c_str() );
-    lua_setfield( L, -2, "path" );
-    lua_pop( L, 1 );
-
-    return 0;
-}
-
 int LuaBinding::moduleLoader(lua_State *L) {
     
     const char *filename = lua_tostring(L, 1);
@@ -421,7 +388,7 @@ int LuaBinding::moduleLoader(lua_State *L) {
     std::string filepath;
     Data filedata;
     
-    filepath = "lua://" + std::string("") + filename + ".lua";
+    filepath = std::string("lua://") + filename + ".lua";
     filedata.open(filepath.c_str());
     if (filedata.getMemPtr() != NULL) {
         
@@ -444,11 +411,6 @@ int LuaBinding::moduleLoader(lua_State *L) {
     lua_pushstring(L, "\n\tno file in assets directory");
     
     return 1;
-}
-
-void LuaBinding::configureProjectLuaLoader(){
-    // moduleLoader replaces the default searchers, so package.path is never used
-    setLuaSearcher(moduleLoader, true);
 }
 
 //The same msghandler of lua.c
@@ -486,7 +448,6 @@ void LuaBinding::init(){
         filedata.open(luafile_subdir.c_str());
     }
 
-    //int luaL_dofile (lua_State *L, const char *filename);
     if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), luafile.c_str()) == 0){
         if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
             Log::error("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());

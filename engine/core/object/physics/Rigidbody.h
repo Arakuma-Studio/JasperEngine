@@ -66,8 +66,6 @@ namespace jasperengine{
         int createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices);
         int createHeightFieldCollider();
         int createHeightFieldCollider(unsigned int samplesSize);
-        //TODO:
-        // MutableCompoundShape
 
         size_t getNumColliders() const;
         Collider3DType getColliderType(size_t index) const;

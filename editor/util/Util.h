@@ -3,68 +3,37 @@
 
 #pragma once
 
+#include <cctype>
 #include <cstring>
 #include <vector>
 #include <string>
 #include <string_view>
-#include <sstream>
 #include <algorithm>
 #include <filesystem>
 #include <unordered_set>
-#include "Backend.h"
 #include "imgui.h"
 
 namespace jasperengine::editor{
     class Util{
 
+    private:
+        static std::string fileExtension(const std::string& path) {
+            std::string ext = std::filesystem::path(path).extension().string();
+            if (ext.empty() && !path.empty() && path[0] == '.') {
+                ext = path;
+            }
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            return ext;
+        }
+
     public:
-
-        inline static std::string getImageExtensions() {
-             return "png,jpg,jpeg,bmp,tga,gif,hdr,psd,pic,pnm,svg";
-        }
-
-        inline static std::string getFontExtensions() {
-             return "ttf,otf";
-        }
-
-        inline static std::string getSceneExtensions() {
-             return "scene";
-        }
-
-        inline static std::string getMaterialExtensions() {
-             return "material";
-        }
-
-        inline static std::string getModelExtensions() {
-             return "gltf,glb,obj";
-        }
-
-        inline static std::string getPrefabExtensions() {
-             return "prefab";
-        }
-
-        inline static std::string getAudioExtensions() {
-             return "wav,ogg,mp3,flac";
-        }
-
-        inline static std::string getShaderExtensions() {
-             return "vert,frag";
-        }
-
-        inline static std::string getScriptExtensions() {
-             return "lua,cpp,cc,cxx,h,hh,hpp,hxx";
-        }
 
         inline static bool isImageFile(const std::string& path) {
             static const std::unordered_set<std::string> imageExtensions = {
                 ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return imageExtensions.find(ext) != imageExtensions.end();
         }
 
@@ -73,38 +42,16 @@ namespace jasperengine::editor{
                 ".ttf", ".otf"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return fontExtensions.find(ext) != fontExtensions.end();
         }
 
         inline static bool isSceneFile(const std::string& path) {
-             static const std::unordered_set<std::string> sceneExtensions = {
-                ".scene"
-            };
-
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            return sceneExtensions.find(ext) != sceneExtensions.end();
+            return fileExtension(path) == ".scene";
         }
 
         inline static bool isMaterialFile(const std::string& path) {
-             static const std::unordered_set<std::string> materialExtensions = {
-                ".material"
-            };
-
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            return materialExtensions.find(ext) != materialExtensions.end();
+            return fileExtension(path) == ".material";
         }
 
         inline static bool isShaderFile(const std::string& path) {
@@ -112,11 +59,7 @@ namespace jasperengine::editor{
                 ".vert", ".frag", ".glsl"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return shaderExtensions.find(ext) != shaderExtensions.end();
         }
 
@@ -229,16 +172,7 @@ namespace jasperengine::editor{
         }
 
         inline static bool isPrefabFile(const std::string& path) {
-             static const std::unordered_set<std::string> prefabExtensions = {
-                ".prefab"
-            };
-
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            return prefabExtensions.find(ext) != prefabExtensions.end();
+            return fileExtension(path) == ".prefab";
         }
 
         inline static bool isModelFile(const std::string& path) {
@@ -246,11 +180,7 @@ namespace jasperengine::editor{
                 ".gltf", ".glb", ".obj"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return modelExtensions.find(ext) != modelExtensions.end();
         }
 
@@ -259,11 +189,7 @@ namespace jasperengine::editor{
                 ".wav", ".ogg", ".mp3", ".flac"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return audioExtensions.find(ext) != audioExtensions.end();
         }
 
@@ -277,25 +203,12 @@ namespace jasperengine::editor{
                 ".lua", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp", ".hxx"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return scriptExtensions.find(ext) != scriptExtensions.end();
         }
 
         inline static bool isLuaFile(const std::string& path) {
-             static const std::unordered_set<std::string> luaExtensions = {
-                ".lua"
-            };
-
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            return luaExtensions.find(ext) != luaExtensions.end();
+            return fileExtension(path) == ".lua";
         }
 
         inline static bool isHeaderFile(const std::string& path) {
@@ -303,11 +216,7 @@ namespace jasperengine::editor{
                 ".h", ".hh", ".hpp", ".hxx"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return headerExtensions.find(ext) != headerExtensions.end();
         }
 
@@ -316,11 +225,7 @@ namespace jasperengine::editor{
                 ".cpp", ".cc", ".cxx"
             };
 
-            std::string ext = std::filesystem::path(path).extension().string();
-            if (ext.empty() && !path.empty() && path[0] == '.') {
-                ext = path;
-            }
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            const std::string ext = fileExtension(path);
             return sourceExtensions.find(ext) != sourceExtensions.end();
         }
 

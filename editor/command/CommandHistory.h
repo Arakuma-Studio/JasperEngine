@@ -32,7 +32,7 @@ namespace jasperengine::editor{
         explicit CommandHistory(size_t sceneId = 0);
         virtual ~CommandHistory();
 
-        void addCommand(Command* cmd);
+        bool addCommand(Command* cmd);
         void addCommandNoMerge(Command* cmd);
 
         void undo();
@@ -50,4 +50,3 @@ namespace jasperengine::editor{
     };
 
 }
-

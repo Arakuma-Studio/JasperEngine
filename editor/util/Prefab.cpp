@@ -6,22 +6,8 @@
 namespace jasperengine::editor {
 
 uint32_t Prefab::getInstanceId(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return instance.instanceId;
-			}
-
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return instance.instanceId;
-				}
-			}
-		}
-	}
-
-	return 0;
+	const Instance* instance = getInstance(sceneId, entity);
+	return instance ? instance->instanceId : 0;
 }
 
 Entity Prefab::getRegistryEntity(uint32_t sceneId, Entity entity) const {
@@ -56,61 +42,17 @@ Entity Prefab::getLocalEntity(uint32_t sceneId, uint32_t instanceId, Entity regi
 }
 
 Entity Prefab::getRootEntity(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return instance.rootEntity;
-			}
-
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return instance.rootEntity;
-				}
-			}
-		}
-	}
-
-	return NULL_ENTITY;
+	const Instance* instance = getInstance(sceneId, entity);
+	return instance ? instance->rootEntity : NULL_ENTITY;
 }
+
 bool Prefab::hasInstances(uint32_t sceneId) const {
 	auto it = instances.find(sceneId);
 	return it != instances.end() && !it->second.empty();
 }
 
-
-std::vector<Entity> Prefab::getAllEntities(uint32_t sceneId, uint32_t instanceId) const {
-	auto it = instances.find(sceneId);
-	if (it == instances.end()) return {};
-	for (const auto& instance : it->second) {
-		if (instance.instanceId == instanceId) {
-			std::vector<Entity> result;
-			result.reserve(1 + instance.members.size());
-			result.push_back(instance.rootEntity);
-			for (const auto& member : instance.members) {
-				result.push_back(member.localEntity);
-			}
-			return result;
-		}
-	}
-	return {};
-}
-
 bool Prefab::containsEntity(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return true;
-			}
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
+	return getInstance(sceneId, entity) != nullptr;
 }
 
 Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) {

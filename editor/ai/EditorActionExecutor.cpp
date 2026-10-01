@@ -1905,10 +1905,6 @@ public:
         refreshMaterialEdit(project, projectWindow, fullPath);
     }
 
-    bool mergeWith(Command*) override {
-        return false;
-    }
-
 private:
     Project* project;
     ProjectWindow* projectWindow;
@@ -1966,10 +1962,6 @@ public:
     void undo() override {
         if (!removed) return;
         restoreScene();
-    }
-
-    bool mergeWith(Command*) override {
-        return false;
     }
 
 private:

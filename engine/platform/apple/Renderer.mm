@@ -1,9 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#import <simd/simd.h>
-#import <ModelIO/ModelIO.h>
-
 #import "Renderer.h"
 
 #include "Engine.h"
@@ -11,9 +8,6 @@
 #import "JasperEngineGameController.h"
 
 @implementation Renderer
-{
-    id <MTLDevice> _device;
-}
 
 static MTKView* _view;
 static CGSize _screenSize;
@@ -49,10 +43,6 @@ static CGSize _screenSize;
     if(self)
     {
         _view = view;
-        _device = view.device;
-        
-        //[view setPreferredFramesPerSecond:60];
-        //[view setSampleCount:4]; //causing issues in real devices when using SG_LOADACTION_LOAD
         [view setColorPixelFormat:MTLPixelFormatBGRA8Unorm];
         [view setDepthStencilPixelFormat:MTLPixelFormatDepth32Float_Stencil8];
         
@@ -77,7 +67,6 @@ static CGSize _screenSize;
 
 - (void)mtkView:(nonnull MTKView *)view drawableSizeWillChange:(CGSize)size
 {
-    /// Respond to drawable size or orientation changes here
     _screenSize.width = (float) size.width;
     _screenSize.height = (float) size.height;
     jasperengine::Engine::systemViewChanged();

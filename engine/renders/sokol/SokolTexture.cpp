@@ -66,14 +66,9 @@ SokolTexture::SokolTexture(){
     view.id = SG_INVALID_ID;
 }
 
-SokolTexture::SokolTexture(const SokolTexture& rhs): image(rhs.image), sampler(rhs.sampler), view(rhs.view) {}
+SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
 
-SokolTexture& SokolTexture::operator=(const SokolTexture& rhs){
-    image = rhs.image;
-    sampler = rhs.sampler;
-    view = rhs.view;
-    return *this;
-}
+SokolTexture& SokolTexture::operator=(const SokolTexture& rhs) = default;
 
 sg_image_type SokolTexture::getTextureType(TextureType textureType){
     if (textureType == TextureType::TEXTURE_2D){

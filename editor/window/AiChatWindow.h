@@ -51,7 +51,6 @@ private:
         std::vector<MentionItem> items;
         ImVec2 popupPos{};
         float inputItemMinY = 0.0f;
-        float inputItemMaxY = 0.0f;
         float maxLineWidth = 0.0f;
     };
 

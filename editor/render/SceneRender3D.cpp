@@ -269,9 +269,6 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     lastGridFarClip = camera->getFarClip();
     createLines();
 
-    //camera->setRenderToTexture(true);
-    //camera->setUseFramebufferSizes(false);
-
     // Note: scene-appearance defaults (light state, global illumination, background
     // color) are applied when a new scene is created in Project::createScene(), not
     // here. Setting them in the constructor would clobber values loaded from disk,

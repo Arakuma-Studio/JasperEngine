@@ -27,7 +27,6 @@ namespace jasperengine{
         Ret operator()() {
             // push the function from the registry
             push_function(m_vm, m_func);
-            // call the function on top of the stack (throws exception on error)
             call(0, 1);
             // return the value
             return get_value<Ret>(m_vm);
@@ -98,7 +97,6 @@ namespace jasperengine{
             return get_value<Ret>(m_vm);
         }
 
-        // et cetera, provide as many overloads as you need
     };
 
     // we need to specialize the function for void return type
@@ -202,7 +200,6 @@ namespace jasperengine{
             call(8);
         }
 
-        // et cetera, provide as many overloads as you need
     };
 
 }

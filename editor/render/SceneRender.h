@@ -78,7 +78,6 @@ namespace jasperengine::editor{
         Vector3 gizmoStartPosition;
         Vector3 cursorStartOffset;
         Quaternion rotationStartOffset;
-        Vector3 scaleStartOffset;
         std::map<Entity, Matrix4> objectMatrixOffset;
         std::map<Entity, Vector2> objectSizeOffset;
         // RectTransforms whose anchor preset places them: their positionOffset and position
@@ -108,9 +107,6 @@ namespace jasperengine::editor{
         // Instance sub-selection within an instanced mesh entity
         Entity selectedInstanceEntity = 0;  // NULL_ENTITY
         int selectedInstanceIndex = -1;
-        Vector3 instanceStartPosition;
-        Quaternion instanceStartRotation;
-        Vector3 instanceStartScale;
 
         // ShadowCaster2D polygon point sub-selection
         Entity selectedOccluderPointEntity = 0;  // NULL_ENTITY

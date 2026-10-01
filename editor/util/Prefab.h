@@ -51,7 +51,6 @@ public:
 
     // Membership and instance access
     bool hasInstances(uint32_t sceneId) const;
-    std::vector<Entity> getAllEntities(uint32_t sceneId, uint32_t instanceId) const;
     bool containsEntity(uint32_t sceneId, Entity entity) const;
     Instance* getInstance(uint32_t sceneId, Entity entity);
     const Instance* getInstance(uint32_t sceneId, Entity entity) const;

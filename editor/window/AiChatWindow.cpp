@@ -1900,7 +1900,6 @@ void AiChatWindow::updateMentionFromInput(int displayCursor, float inputMinX, fl
     mention.queryRawEnd = clampedCursor;
     mention.query = query;
     mention.inputItemMinY = inputMinY;
-    mention.inputItemMaxY = inputMaxY;
     mention.maxLineWidth = maxLineWidth;
 
     int lineStart = 0;

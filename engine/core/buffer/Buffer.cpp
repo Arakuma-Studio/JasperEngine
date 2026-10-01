@@ -9,7 +9,6 @@
 using namespace jasperengine;
 
 Buffer::Buffer(){
-    attributes.clear();
     count = 0;
     type = BufferType::VERTEX_BUFFER;
     usage = BufferUsage::IMMUTABLE;
@@ -25,39 +24,9 @@ Buffer::Buffer(){
 Buffer::~Buffer(){
 }
 
-Buffer::Buffer(const Buffer& rhs){
-    attributes = rhs.attributes;
-    count = rhs.count;
-    type = rhs.type;
-    usage = rhs.usage;
+Buffer::Buffer(const Buffer& rhs) = default;
 
-    data = rhs.data;
-    size = rhs.size;
-    stride = rhs.stride;
-
-    renderAttributes = rhs.renderAttributes;
-    instanceBuffer = rhs.instanceBuffer;
-
-    render = rhs.render;
-}
-
-Buffer& Buffer::operator=(const Buffer& rhs){
-    attributes = rhs.attributes;
-    count = rhs.count;
-    type = rhs.type;
-    usage = rhs.usage;
-
-    data = rhs.data;
-    size = rhs.size;
-    stride = rhs.stride;
-
-    renderAttributes = rhs.renderAttributes;
-    instanceBuffer = rhs.instanceBuffer;
-
-    render = rhs.render;
-
-    return *this;
-}
+Buffer& Buffer::operator=(const Buffer& rhs) = default;
 
 bool Buffer::increase(size_t newSize){
     if (newSize >= size) {
@@ -131,19 +100,12 @@ void Buffer::addAttribute(AttributeType attribute, unsigned int elements, size_t
 }
 
 void Buffer::addAttribute(AttributeType attribute, Attribute attributeData){
-    //if (size == 0) {
     attributes[attribute] = attributeData;
-    //}else{
-    //    Log::error("Cannot add attribute with not cleared buffer");
-    //}
 }
 
 Attribute* Buffer::getAttribute(AttributeType attribute){
-    if (attributes.count(attribute) > 0){
-        return &attributes[attribute];
-    }
-
-    return NULL;
+    auto it = attributes.find(attribute);
+    return it != attributes.end() ? &it->second : nullptr;
 }
 
 std::map<AttributeType, Attribute> Buffer::getAttributes() const{
@@ -383,7 +345,7 @@ Vector4 Buffer::getVector4(Attribute* attribute, unsigned int index){
 }
 
 unsigned char* Buffer::getData() const{
-    return data ? &data[0] : nullptr;
+    return data;
 }
 
 void Buffer::setSize(size_t size){

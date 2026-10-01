@@ -9,12 +9,9 @@ using namespace jasperengine;
 TextureRender::TextureRender(){
  }
 
-TextureRender::TextureRender(const TextureRender& rhs) : backend(rhs.backend) { }
+TextureRender::TextureRender(const TextureRender& rhs) = default;
 
-TextureRender& TextureRender::operator=(const TextureRender& rhs) { 
-    backend = rhs.backend;
-    return *this; 
-}
+TextureRender& TextureRender::operator=(const TextureRender& rhs) = default;
 
 TextureRender::~TextureRender(){
     //Cannot destroy because its a handle

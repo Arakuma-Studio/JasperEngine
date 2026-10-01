@@ -17,24 +17,6 @@ namespace jasperengine::editor::ai {
 
 namespace {
 
-Json objectSchema(std::initializer_list<std::pair<const char*, Json>> properties,
-                  std::initializer_list<const char*> required = {}) {
-    Json props = Json::object();
-    for (const auto& item : properties) {
-        props[item.first] = item.second;
-    }
-    Json req = Json::array();
-    for (const char* key : required) {
-        req.push_back(key);
-    }
-    return {
-        {"type", "object"},
-        {"additionalProperties", false},
-        {"properties", props},
-        {"required", req}
-    };
-}
-
 Json objectSchemaFromProperties(Json properties, std::initializer_list<const char*> required = {}) {
     Json req = Json::array();
     for (const char* key : required) {
@@ -46,6 +28,15 @@ Json objectSchemaFromProperties(Json properties, std::initializer_list<const cha
         {"properties", std::move(properties)},
         {"required", req}
     };
+}
+
+Json objectSchema(std::initializer_list<std::pair<const char*, Json>> properties,
+                  std::initializer_list<const char*> required = {}) {
+    Json props = Json::object();
+    for (const auto& item : properties) {
+        props[item.first] = item.second;
+    }
+    return objectSchemaFromProperties(std::move(props), required);
 }
 
 // Unity's name for a create_entity type, for the approval card.
@@ -1309,14 +1300,10 @@ bool EditorActionRegistry::hasTool(const std::string& name) {
 }
 
 bool EditorActionRegistry::isReadOnly(const std::string& name) {
-    return getTool(name).readOnly;
-}
-
-ToolDefinition EditorActionRegistry::getTool(const std::string& name) {
     for (const auto& tool : cachedTools()) {
-        if (tool.name == name) return tool;
+        if (tool.name == name) return tool.readOnly;
     }
-    return {};
+    return true;
 }
 
 ValidationResult EditorActionRegistry::validate(const std::string& name, const Json& arguments) {
@@ -1491,34 +1478,21 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         }
         return ok();
     }
-    if (name == "update_script_file") {
-        if (!hasString(arguments, "path")) return fail("update_script_file requires path.");
+    if (name == "update_script_file" || name == "create_source_file") {
+        if (!hasString(arguments, "path")) return fail(name + " requires path.");
         if (!arguments.contains("content") || !arguments["content"].is_string()) {
-            return fail("update_script_file requires string content.");
+            return fail(name + " requires string content.");
         }
         fs::path path = fs::path(arguments["path"].get<std::string>()).lexically_normal();
         if (!PathUtils::isSafeRelativePath(path)) {
             return fail("path must be a safe project-relative path.");
         }
         const std::string ext = path.extension().string();
-        if (ext != ".lua" && ext != ".cpp" && ext != ".h" && ext != ".hpp") {
-            return fail("update_script_file only supports .lua, .cpp, .h, and .hpp files.");
-        }
-        return ok();
-    }
-    if (name == "create_source_file") {
-        if (!hasString(arguments, "path")) return fail("create_source_file requires path.");
-        if (!arguments.contains("content") || !arguments["content"].is_string()) {
-            return fail("create_source_file requires string content.");
-        }
-        fs::path path = fs::path(arguments["path"].get<std::string>()).lexically_normal();
-        if (!PathUtils::isSafeRelativePath(path)) {
-            return fail("path must be a safe project-relative path.");
-        }
-        // The same set update_script_file accepts, so a created file stays editable.
-        const std::string ext = path.extension().string();
-        if (ext != ".cpp" && ext != ".h" && ext != ".hpp") {
-            return fail("create_source_file only supports .cpp, .h, and .hpp files.");
+        if (ext != ".cpp" && ext != ".h" && ext != ".hpp" &&
+            !(name == "update_script_file" && ext == ".lua")) {
+            return fail(name == "update_script_file"
+                ? "update_script_file only supports .lua, .cpp, .h, and .hpp files."
+                : "create_source_file only supports .cpp, .h, and .hpp files.");
         }
         return ok();
     }

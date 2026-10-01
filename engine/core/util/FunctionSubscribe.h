@@ -133,10 +133,7 @@ namespace jasperengine {
         }
 
         bool addImpl(const std::string& tag, std::function<Ret(Args...)> function){
-            if (find(tags.begin(), tags.end(), tag) != tags.end())
-            {
-                remove(tag);
-            }
+            remove(tag);
 
             functions.push_back(function);
             tags.push_back(tag);
@@ -156,22 +153,9 @@ namespace jasperengine {
 
     public:
 
-        FunctionSubscribe() {
-        }
-
-        FunctionSubscribe(const FunctionSubscribe& t){
-            this->functions = t.functions;
-            this->tags = t.tags;
-            this->enabled = t.enabled;
-        }
-
-        FunctionSubscribe& operator = (const FunctionSubscribe& t){
-            this->functions = t.functions;
-            this->tags = t.tags;
-            this->enabled = t.enabled;
-
-            return *this;
-        }
+        FunctionSubscribe() = default;
+        FunctionSubscribe(const FunctionSubscribe&) = default;
+        FunctionSubscribe& operator = (const FunctionSubscribe&) = default;
 
         FunctionSubscribe(std::function<Ret(Args...)> function){
             add("cFunction", function);
@@ -207,37 +191,31 @@ namespace jasperengine {
 
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
-            addImpl(tag, function);
-            return true;
+            return addImpl(tag, function);
         }
 
         bool add(const std::string& tag, std::function<Ret(Args...)> function) {
-            addImpl(tag, function);
-            return true;
+            return addImpl(tag, function);
         }
 
         template<Ret(*funcPtr)(Args...)>
         bool add(const std::string& tag){
-            addImpl(tag, std::function<Ret(Args...)>(funcPtr));
-            return true;
+            return addImpl(tag, std::function<Ret(Args...)>(funcPtr));
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
         bool add(const std::string& tag, std::shared_ptr<T> obj){
-            addImpl(tag, bindImpl(obj.get(), funcPtr, std::index_sequence_for<Args...>{}));
-            return true;
+            return addImpl(tag, bindImpl(obj.get(), funcPtr, std::index_sequence_for<Args...>{}));
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
         bool add(const std::string& tag, T* obj){
-            addImpl(tag, bindImpl(obj, funcPtr, std::index_sequence_for<Args...>{}));
-            return true;
+            return addImpl(tag, bindImpl(obj, funcPtr, std::index_sequence_for<Args...>{}));
         }
 
         template<typename T>
         bool add(const std::string& tag, std::shared_ptr<T> t){
-            addImpl(tag, *t.get());
-            return true;
+            return addImpl(tag, *t.get());
         }
 
         bool remove(const std::string& tag){

@@ -4,10 +4,8 @@
 #include "Conector.h"
 
 #include "editor/Out.h"
-#include "Project.h"
 
 #include <iostream>
-#include <thread>
 #include <chrono>
 #include <atomic>
 #include <system_error>
@@ -29,10 +27,6 @@ editor::Conector::~Conector(){
     disconnect();
 }
 
-bool editor::Conector::fileExists(const fs::path& path) {
-    return std::filesystem::exists(path);
-}
-
 void* editor::Conector::loadSharedLibrary(const std::string& libPath) {
     #ifdef _WIN32
         HMODULE libHandle = LoadLibrary(libPath.c_str());
@@ -52,34 +46,31 @@ void* editor::Conector::loadSharedLibrary(const std::string& libPath) {
 }
 
 void editor::Conector::unloadSharedLibrary(void* libHandle) {
+    if (!libHandle) {
+        return;
+    }
     #ifdef _WIN32
-        if (libHandle) {
-            FreeLibrary(static_cast<HMODULE>(libHandle));
-            std::cout << "Library unloaded successfully.\n";
-        }
+        FreeLibrary(static_cast<HMODULE>(libHandle));
     #else
-        if (libHandle) {
-            dlclose(libHandle);
-            std::cout << "Library unloaded successfully.\n";
-        }
+        dlclose(libHandle);
     #endif
+    std::cout << "Library unloaded successfully.\n";
 }
 
 bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
-    // Disconnect any existing connection first
     disconnect();
 
-    std::string libPath = libName;
     #ifdef _WIN32
-        libPath = libPath + ".dll";
+        const std::string ext = ".dll";
     #elif defined(__APPLE__)
-        libPath = libPath + ".dylib";
+        const std::string ext = ".dylib";
     #else
-        libPath = libPath + ".so";
+        const std::string ext = ".so";
     #endif
+    const std::string libPath = libName + ext;
 
     fs::path fullLibPath = buildPath / fs::path(libPath);
-    if (!fileExists(fullLibPath)) {
+    if (!fs::exists(fullLibPath)) {
         Out::error("Library file not found: %s", libPath.c_str());
         return false;
     }
@@ -93,13 +84,6 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
     // .dll locked, blocking the next build from overwriting it. A unique filename
     // per load forces the loader to map the new file every time.
     static std::atomic<unsigned long long> loadCounter{0};
-    #ifdef _WIN32
-        const std::string ext = ".dll";
-    #elif defined(__APPLE__)
-        const std::string ext = ".dylib";
-    #else
-        const std::string ext = ".so";
-    #endif
     const std::string uniqueName = libName + "_" + std::to_string(loadCounter++) + "_" +
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ext;
 

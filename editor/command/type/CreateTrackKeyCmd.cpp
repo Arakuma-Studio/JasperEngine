@@ -119,8 +119,3 @@ void editor::CreateTrackKeyCmd::undo(){
     trackEntity = NULL_ENTITY;
     sceneProject->isModified = wasModified;
 }
-
-bool editor::CreateTrackKeyCmd::mergeWith(Command* otherCommand){
-    (void)otherCommand;
-    return false;
-}

@@ -425,7 +425,3 @@ void editor::ModelClearCmd::undo(){
 
     sceneProject->isModified = wasModified;
 }
-
-bool editor::ModelClearCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

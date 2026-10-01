@@ -28,8 +28,6 @@ namespace jasperengine::editor{
 
         MaterialRender(const MaterialRender&) = delete;
         MaterialRender& operator=(const MaterialRender&) = delete;
-        MaterialRender(MaterialRender&&) noexcept = default;
-        MaterialRender& operator=(MaterialRender&&) noexcept = default;
 
         void applyMaterial(const Material& material);
         const Material getMaterial();

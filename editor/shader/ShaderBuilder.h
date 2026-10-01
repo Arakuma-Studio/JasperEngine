@@ -33,7 +33,6 @@ namespace jasperengine::editor {
 
         static std::atomic<bool> shutdownRequested;
 
-        // Mapping functions declarations with camelCase
         ShaderVertexType mapVertexType(shadercompiler::attribute_type_t type);
         ShaderUniformType mapUniformType(shadercompiler::uniform_type_t type);
         TextureType mapTextureType(shadercompiler::texture_type_t type);

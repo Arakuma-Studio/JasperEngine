@@ -11,8 +11,6 @@ import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.google.androidgamesdk.GameActivity;
 
-// A minimal extension of GameActivity. For this sample, it is only used to invoke
-// a workaround for loading the runtime shared library on old Android versions
 public class MainActivity extends GameActivity {
 
 	// Load our native library:

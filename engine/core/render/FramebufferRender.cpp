@@ -8,12 +8,9 @@ using namespace jasperengine;
 
 FramebufferRender::FramebufferRender(){ }
 
-FramebufferRender::FramebufferRender(const FramebufferRender& rhs) : backend(rhs.backend) { }
+FramebufferRender::FramebufferRender(const FramebufferRender& rhs) = default;
 
-FramebufferRender& FramebufferRender::operator=(const FramebufferRender& rhs) { 
-    backend = rhs.backend;
-    return *this; 
-}
+FramebufferRender& FramebufferRender::operator=(const FramebufferRender& rhs) = default;
 
 FramebufferRender::~FramebufferRender(){
     //Cannot destroy because its a handle

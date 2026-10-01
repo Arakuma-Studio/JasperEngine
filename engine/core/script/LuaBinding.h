@@ -23,8 +23,6 @@ namespace jasperengine {
         static lua_State *luastate;
         
         static void createLuaState();
-        static int setLuaPath(const char* path);
-        static int setLuaSearcher(lua_CFunction f, bool cleanSearchers = false);
         static void configureProjectLuaLoader();
 
         static int luaRegisterEvent(lua_State* L);

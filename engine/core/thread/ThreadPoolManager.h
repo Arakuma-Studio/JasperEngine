@@ -24,10 +24,9 @@ namespace jasperengine {
         
         std::vector<std::thread> workers;
         std::queue<std::function<void()>> tasks;
-        mutable std::mutex queueMutex;  // Added mutable for const methods
+        mutable std::mutex queueMutex;
         std::condition_variable condition;
         std::atomic<bool> stop{false};
-        std::atomic<bool> isShutdown{false};
         
         ThreadPoolManager(size_t numThreads = std::thread::hardware_concurrency());
         
@@ -44,7 +43,6 @@ namespace jasperengine {
         ~ThreadPoolManager();
     };
 
-    // Template implementation must be in the header
     template<class F, class... Args>
     auto ThreadPoolManager::enqueue(F&& f, Args&&... args) 
         -> std::future<std::invoke_result_t<F, Args...>> {

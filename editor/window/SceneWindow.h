@@ -8,22 +8,12 @@
 #include "Project.h"
 #include "object/Camera.h"
 #include "command/CommandHandle.h"
-#include "command/type/ScenePropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "render/gizmo/ViewportGizmo.h"
 #include <unordered_map>
 #include <set>
 
 namespace jasperengine::editor {
-
-    enum class ScenePropertyType {
-        CHECKBOX,
-        DRAG_FLOAT,
-        SLIDER_FLOAT,
-        COLOR_RGB,
-        COLOR_RGBA,
-        COMBO
-    };
 
     class SceneWindow {
     private:
@@ -83,7 +73,6 @@ namespace jasperengine::editor {
 
         void show();
         bool isFocused() const;
-        // The pointer is over a Scene view that shows the running game.
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);
@@ -106,73 +95,5 @@ namespace jasperengine::editor {
         int getWidth(uint32_t sceneId) const;
         int getHeight(uint32_t sceneId) const;
         float getOverlayScale(uint32_t sceneId) const;
-
-        template<typename T>
-        void drawSceneProperty(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyType inputType, float minValue = 0.0f, float maxValue = 1.0f, float col2Size = -1.0f) {
-            T value = jasperengine::editor::Catalog::getSceneProperty<T>(sceneProject->scene, propertyName);
-            bool changed = false;
-
-            Command* cmd = nullptr;
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%s", label);
-            ImGui::TableSetColumnIndex(1);
-
-            switch (inputType) {
-                case ScenePropertyType::CHECKBOX:
-                    if constexpr (std::is_same_v<T, bool>) {
-                        changed = ImGui::Checkbox(("##" + propertyName).c_str(), &value);
-                    }
-                    break;
-                case ScenePropertyType::DRAG_FLOAT:
-                    if constexpr (std::is_same_v<T, float>) {
-                        changed = ImGui::DragFloat(("##" + propertyName).c_str(), &value, 0.01f);
-                    } else if constexpr (std::is_same_v<T, Vector3>) {
-                        changed = ImGui::DragFloat3(("##" + propertyName).c_str(), (float*)&value.x);
-                    } else if constexpr (std::is_same_v<T, Vector4>) {
-                        changed = ImGui::DragFloat4(("##" + propertyName).c_str(), (float*)&value.x);
-                    }
-                    break;
-                case ScenePropertyType::SLIDER_FLOAT:
-                    if constexpr (std::is_same_v<T, float>) {
-                        ImGui::SetNextItemWidth(-1);
-                        changed = ImGui::SliderFloat(("##" + propertyName).c_str(), &value, minValue, maxValue);
-                    }
-                    break;
-                case ScenePropertyType::COLOR_RGB:
-                    if constexpr (std::is_same_v<T, Vector3>) {
-                        changed = ImGui::ColorEdit3(("##" + propertyName).c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
-                    }
-                    break;
-                case ScenePropertyType::COLOR_RGBA:
-                    if constexpr (std::is_same_v<T, Vector4>) {
-                        changed = ImGui::ColorEdit4(("##" + propertyName).c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
-                    }
-                    break;
-                case ScenePropertyType::COMBO:
-                    if constexpr (std::is_same_v<T, LightState>) {
-                        const char* lightStateNames[] = { "Off", "On", "Auto" };
-                        int currentItem = static_cast<int>(value);
-                        changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, lightStateNames, IM_ARRAYSIZE(lightStateNames));
-                        if (changed) {
-                            value = static_cast<LightState>(currentItem);
-                        }
-                    }
-                    break;
-            }
-
-            if (changed) {
-                cmd = new ScenePropertyCmd<T>(project, sceneProject->id, propertyName, value);
-                CommandHandle::get(sceneProject->id)->addCommand(cmd);
-            }
-
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                if (cmd){
-                    cmd->setNoMerge();
-                    cmd = nullptr;
-                }
-            }
-        }
     };
 }

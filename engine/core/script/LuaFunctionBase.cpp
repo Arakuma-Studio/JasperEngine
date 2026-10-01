@@ -63,8 +63,6 @@ LuaFunctionBase& LuaFunctionBase::operator=(const LuaFunctionBase &other){
 void LuaFunctionBase::store_function(){
     // ensure it's a function
     if (!lua_isfunction(m_vm, -1)) {
-        // throw an exception; you'd use your own exception class here
-        // of course, but for sake of simplicity i use runtime_error
         lua_pop(m_vm, 1);
         throw std::runtime_error("not a valid function");
     }

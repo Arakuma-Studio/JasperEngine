@@ -38,8 +38,6 @@ void LuaBinding::registerIOClasses(lua_State *L){
         .addFunction("read16", &FileData::read16)
         .addFunction("read32", &FileData::read32)
         .addFunction("eof", &FileData::eof)
-        //.addFunction("read", &FileData::read) //TODO: read and write data in Lua
-        //.addFunction("write", &FileData::write)
         .addFunction("length", &FileData::length)
         .addFunction("seek", &FileData::seek)
         .addFunction("pos", &FileData::pos)

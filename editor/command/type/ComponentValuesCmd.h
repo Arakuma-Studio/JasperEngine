@@ -43,7 +43,6 @@ namespace jasperengine::editor {
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
 
         // --- Inspector component menu ---
         // Each returns null, with a reason for the tooltip, when it cannot apply to all entities.

@@ -370,7 +370,6 @@ void PhysicsSystem::ensureWorld2D(){
     appliedLayerVersion2D = Physics2D::getLayerCollisionMatrix().getVersion();
 
     b2World_SetPreSolveCallback(world2D, Box2DAux::PreSolve, scene);
-    // TODO: could there be a performance issue by checking this often?
     b2World_SetCustomFilterCallback(world2D, Box2DAux::CollisionFilter, scene);
 }
 #endif
@@ -390,15 +389,12 @@ PhysicsSystem::~PhysicsSystem(){
     delete activationListener3D;
     delete contactListener3D;
 
-    //delete world3D;
     // temp_allocator and job_system are process-shared singletons (see constructor); not owned here.
     delete broad_phase_layer_interface;
     delete object_vs_broadphase_layer_filter;
     delete object_vs_object_layer_filter;
     delete objectLayerTable3D;
 
-    //delete JPH::Factory::sInstance;
-    //JPH::UnregisterTypes();
 #endif
 }
 
@@ -1538,9 +1534,6 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         return false;
     }
     jbody->SetUserData(entity);
-    //if (type != BodyType::STATIC){
-    //    jbody->SetAllowSleeping(false);
-    //}
 
     body.body = jbody->GetID();
 
@@ -1556,7 +1549,6 @@ void PhysicsSystem::createRigidbody2D(Entity entity){
 
     if (!signature.test(scene->getComponentId<Rigidbody2DComponent>())){
         scene->addComponent<Rigidbody2DComponent>(entity);
-        //loadRigidbody2D(entity);
     }
 }
 
@@ -1576,7 +1568,6 @@ void PhysicsSystem::createRigidbody(Entity entity){
 
     if (!signature.test(scene->getComponentId<RigidbodyComponent>())){
         scene->addComponent<RigidbodyComponent>(entity);
-        //loadRigidbody(entity);
     }
 }
 
@@ -2169,8 +2160,6 @@ bool PhysicsSystem::loadDistanceJoint3D(Joint3DComponent& joint, Entity bodyA, E
         JPH::DistanceConstraintSettings settings;
         settings.mPoint1 = JPH::RVec3(anchorA.x, anchorA.y, anchorA.z);
         settings.mPoint2 = JPH::RVec3(anchorB.x, anchorB.y, anchorB.z);
-        //settings.mMinDistance = 4.0f;
-        //settings.mMaxDistance = 8.0f;
 
         joint.joint = settings.Create(*lockBodyA, *lockBodyB);
 

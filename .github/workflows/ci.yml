@@ -96,6 +96,7 @@ jobs:
           cmake --build build-engine --target "$ENGINE_TARGET"
 
       - name: Package AppImage
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist

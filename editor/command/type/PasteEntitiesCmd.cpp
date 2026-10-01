@@ -417,7 +417,3 @@ void editor::PasteEntitiesCmd::undo(){
 
     sceneProject->isModified = wasModified;
 }
-
-bool editor::PasteEntitiesCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

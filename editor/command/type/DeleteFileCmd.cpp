@@ -109,7 +109,3 @@ void editor::DeleteFileCmd::undo(){
     if (project && restoredShaderSource)
         project->invalidateCustomShaders();
 }
-
-bool editor::DeleteFileCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

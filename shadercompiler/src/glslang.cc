@@ -38,7 +38,7 @@ private:
         return new IncludeResult(path, content, length, content);
     }
 
-    std::string getDirectory(const std::string path) const {
+    std::string getDirectory(const std::string& path) const {
         size_t last = path.find_last_of("/\\");
         return last == std::string::npos ? "." : path.substr(0, last);
     }
@@ -79,13 +79,11 @@ public:
         }
     }
 
-    virtual ~FileIncluder() override { }
-
     void addLocalDirectory(const std::string& dir) {
         localDirectories.push_back(dir);
     }
 
-    virtual std::set<std::string> getIncludedFiles() {
+    const std::set<std::string>& getIncludedFiles() const {
         return includedFiles;
     }
 };
@@ -131,9 +129,7 @@ public:
         }
     }
 
-    virtual ~BufferIncluder() override { }
-
-    virtual std::set<std::string> getIncludedFiles() {
+    const std::set<std::string>& getIncludedFiles() const {
         return includedFiles;
     }
 };
@@ -210,7 +206,7 @@ static void add_defines(glslang::TShader* shader, const args_t& args, std::strin
 //
 
 // Callback passed to spvtools::Optimizer::SetMessageConsumer
-void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
+static void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
         const spv_position_t &position, const char *message)
 {
     auto &out = std::cerr;
@@ -244,7 +240,7 @@ void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
 }
 
 // Apply the SPIRV-Tools optimizer to generated SPIR-V.  HLSL SPIR-V is legalized in the process.
-void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
+static void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
                          spv::SpvBuildLogger* logger, const glslang::SpvOptions* options)
 {
     spv_target_env target_env = glslang::MapToSpirvToolsEnv(intermediate.getSpv(), logger);

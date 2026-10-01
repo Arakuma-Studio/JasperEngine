@@ -468,15 +468,6 @@ void EntityRegistry::clear() {
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){
-    //----------DEBUG
-    //printf("Add child - BEFORE\n");
-    //auto transforms = componentManager.getComponentArray<Transform>();
-    //for (int i = 0; i < transforms->size(); i++){
-    //	auto transform = transforms->getComponentFromIndex(i);
-    //	printf("Transform %i - Entity: %i - Parent: %i: %s\n", i, transforms->getEntity(i), transform.parent, getEntityName(transforms->getEntity(i)).c_str());
-    //}
-    //----------DEBUG
-
     Signature childSignature = entityManager.getSignature(child);
     if (childSignature.test(getComponentId<Transform>())){
         Transform& transformChild = componentManager.getComponent<Transform>(child);
@@ -527,14 +518,6 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
         }
     }
 
-    //----------DEBUG
-    //printf("Add child - AFTER\n");
-    //for (int i = 0; i < transforms->size(); i++){
-    //	auto transform = transforms->getComponentFromIndex(i);
-    //	printf("Transform %i - Entity: %i - Parent: %i: %s\n", i, transforms->getEntity(i), transform.parent, getEntityName(transforms->getEntity(i)).c_str());
-    //}
-    //printf("\n");
-    //----------DEBUG
 }
 
 void EntityRegistry::moveChildToIndex(Entity entity, size_t index){

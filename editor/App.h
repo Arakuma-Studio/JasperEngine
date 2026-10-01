@@ -222,7 +222,6 @@ namespace jasperengine::editor{
         void showMenu();
         void showAlert();
         void showFooter();
-        void showStyleEditor();
         void buildDockspace(bool resetLayout = false);
         void buildDefaultLayout();
         // Matches a layout restored from the ini to the current UI scale.
@@ -252,8 +251,6 @@ namespace jasperengine::editor{
     public:
         void processMainThreadTasks() override;
         bool isMainThread() const override;
-
-    public:
 
         App();
 

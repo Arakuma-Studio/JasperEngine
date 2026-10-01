@@ -74,9 +74,7 @@ private:
     EGLConfig mEglConfig;
 
     int mSurfWidth, mSurfHeight;
-    int mApiVersion;
     int mScreenDensity;
-    uint64_t mActiveAxisIds;
 
     std::string mInternalDataPath;
     std::string mExternalDataPath;
@@ -86,11 +84,7 @@ private:
 
     struct NativeEngineSavedState mState;
 
-    bool mIsFirstFrame;
-
     GameTextInputState mGameTextInputState;
-
-    int mSystemBarOffset;
 
     bool initDisplay();
     bool initSurface();
@@ -100,7 +94,6 @@ private:
     void killSurface();
     void killDisplay();
 
-    bool initGLObjects();
     void killGLObjects();
 
     int getGamepadSlot(int32_t deviceId);
@@ -113,12 +106,9 @@ private:
 
     bool isAnimating();
 
-    void updateSystemBarOffset();
-
     void handleGameActivityInput();
 
 public:
-    // create an engine
     NativeEngine(struct android_app *app);
 
     ~NativeEngine();

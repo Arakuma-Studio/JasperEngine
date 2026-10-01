@@ -80,7 +80,3 @@ bool editor::TerrainMapPatchCmd::execute(){
 void editor::TerrainMapPatchCmd::undo(){
     apply(patch.beforePixels, true);
 }
-
-bool editor::TerrainMapPatchCmd::mergeWith(Command* otherCommand){
-    return false;
-}

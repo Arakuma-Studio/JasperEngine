@@ -27,7 +27,6 @@ namespace {
 
         ImGui::BeginDisabled(!enabled);
         bool clicked = ImGui::Selectable(id, highlighted, ImGuiSelectableFlags_None, ImVec2(width, height));
-        bool hovered = ImGui::IsItemHovered();
         ImGui::EndDisabled();
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -45,7 +44,6 @@ namespace {
             drawList->AddText(ImVec2(pos.x + width - arrowSize.x - style.FramePadding.x, textY), ImGui::GetColorU32(ImGuiCol_TextDisabled), ICON_FA_CHEVRON_RIGHT);
         }
 
-        (void)hovered;
         return clicked && enabled;
     }
 

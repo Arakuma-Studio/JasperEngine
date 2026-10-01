@@ -16,9 +16,6 @@ namespace jasperengine::editor {
         std::vector<std::unique_ptr<Command>> commands;
 
     public:
-        MultiPropertyCmd() {
-        }
-
         template<typename T>
         void addPropertyCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType type, 
                            std::string propertyName, T newValue, std::function<void()> onValueChanged = nullptr) {
@@ -31,21 +28,18 @@ namespace jasperengine::editor {
         }
 
         bool execute() override {
-            std::vector<Command*> executedCommands;
-            for (auto& cmd : commands) {
-                if (!cmd->execute()){
-                    for (auto it = executedCommands.rbegin(); it != executedCommands.rend(); ++it) {
-                        (*it)->undo();
+            for (size_t i = 0; i < commands.size(); ++i) {
+                if (!commands[i]->execute()){
+                    while (i > 0) {
+                        commands[--i]->undo();
                     }
                     return false;
                 }
-                executedCommands.push_back(cmd.get());
             }
             return true;
         }
 
         void undo() override {
-            // Undo in reverse order
             for (auto it = commands.rbegin(); it != commands.rend(); ++it) {
                 (*it)->undo();
             }
@@ -63,6 +57,7 @@ namespace jasperengine::editor {
             MultiPropertyCmd* otherMultiCmd = dynamic_cast<MultiPropertyCmd*>(otherCommand);
             if (otherMultiCmd) {
                 bool anyMerged = false;
+                std::vector<size_t> unmatched;
                 
                 for (size_t i = 0; i < otherMultiCmd->commands.size(); i++) {
                     bool merged = false;
@@ -76,7 +71,15 @@ namespace jasperengine::editor {
                     }
 
                     if (!merged) {
-                        commands.push_back(std::move(otherMultiCmd->commands[i]));
+                        unmatched.push_back(i);
+                    }
+
+                    // A rejected merge must leave the older batch intact for its own undo.
+                    if (anyMerged) {
+                        for (size_t index : unmatched) {
+                            commands.push_back(std::move(otherMultiCmd->commands[index]));
+                        }
+                        unmatched.clear();
                     }
                 }
                 

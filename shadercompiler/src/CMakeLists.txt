@@ -1,15 +1,9 @@
-cmake_minimum_required(VERSION 3.15)
-
-# Source files used for both library and executable
-set(SHADERCOMPILER_SOURCES
+add_library(shadercompiler STATIC
     args.cc
     input.cc
     glslang.cc
     spirvcross.cc
 )
-
-# Build as a static library
-add_library(shadercompiler STATIC ${SHADERCOMPILER_SOURCES})
 
 target_link_libraries(shadercompiler PRIVATE
     glslang
@@ -24,13 +18,6 @@ target_link_libraries(shadercompiler PRIVATE
     spirv-cross-util 
     spirv-cross-msl
 )
-
-if (MSVC)
-    if (ENABLE_D3D11_COMPILER)
-        add_definitions(-DD3D11_COMPILER)
-        target_link_libraries(shadercompiler PRIVATE d3dcompiler)
-    endif()
-endif()
 
 set_target_properties(
     shadercompiler

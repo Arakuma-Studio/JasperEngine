@@ -3082,14 +3082,6 @@ bool editor::AnimationWindow::getIsPlaying() const {
     return isPlaying;
 }
 
-bool editor::AnimationWindow::getIsPreviewing() const {
-    return isPreviewing;
-}
-
-float editor::AnimationWindow::getCurrentTime() const {
-    return currentTime;
-}
-
 void editor::AnimationWindow::externalPlay(Entity entity, uint32_t sceneId) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return;

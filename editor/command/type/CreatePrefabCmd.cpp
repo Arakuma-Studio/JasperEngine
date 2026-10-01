@@ -84,8 +84,3 @@ void editor::CreatePrefabCmd::undo(){
 
     //editor::Out::info("Unmarked entity '%s' from shared group at '%s'", sceneProject->scene->getEntityName(entity).c_str(), filepath.string().c_str());
 }
-
-bool editor::CreatePrefabCmd::mergeWith(editor::Command* otherCommand){
-    // Create Prefab commands typically don't merge with each other
-    return false;
-}

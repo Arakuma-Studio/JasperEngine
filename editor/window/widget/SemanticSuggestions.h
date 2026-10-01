@@ -48,8 +48,6 @@ namespace jasperengine::editor {
     struct SuggestionContext {
         std::string currentWord;     // Word being typed
         std::string lineContent;     // Full line content
-        int cursorColumn;            // Cursor position in line
-        int lineNumber;              // Current line number
         std::string previousWord;    // Word before current (for context)
         bool afterDot = false;               // Is cursor after a '.' (member access)
         bool afterArrow = false;             // Is cursor after '->' (pointer member access)
@@ -108,7 +106,6 @@ namespace jasperengine::editor {
         // UI helpers
         static const char* GetKindIcon(SuggestionKind kind);
         static ImVec4 GetKindColor(SuggestionKind kind);
-        static const char* GetKindName(SuggestionKind kind);
 
     private:
         // Settings

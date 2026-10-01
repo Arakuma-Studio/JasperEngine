@@ -17,7 +17,6 @@ void ProjectSaveDialog::open(const std::string& defaultName,
         std::function<void(const std::string&, const fs::path&)> onSave,
         std::function<void()> onCancel) {
     m_isOpen = true;
-    m_projectName = defaultName;
     m_projectPath.clear();
     m_onSave = onSave;
     m_onCancel = onCancel;

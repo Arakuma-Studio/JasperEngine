@@ -112,7 +112,3 @@ void editor::RenameFileCmd::undo(){
         printf("Error: Undo renaming %s: %s\n", sourceFs.string().c_str(), e.what());
     }
 }
-
-bool editor::RenameFileCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

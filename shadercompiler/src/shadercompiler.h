@@ -56,14 +56,7 @@ namespace shadercompiler{
         SHADER_IOS
     };
 
-    enum output_type_t{
-        OUTPUT_JSON,
-        OUTPUT_BINARY
-    };
-
     struct args_t{
-        bool isValid;
-
         bool useBuffers;
         std::unordered_map<std::string, std::string> fileBuffers;
         
@@ -76,8 +69,6 @@ namespace shadercompiler{
         platform_t platform;
 
         std::string output_basename;
-        std::string output_dir;
-        output_type_t output_type;
 
         std::string include_dir;
         std::vector<define_t> defines;
@@ -237,14 +228,12 @@ namespace shadercompiler{
         SINT,
         UINT,
         DEPTH,
-        //UNFILTERABLE_FLOAT,
         INVALID
     };
 
     enum class sampler_type_t {
         FILTERING,
         COMPARISON,
-        //NONFILTERING,
         INVALID
     };
 

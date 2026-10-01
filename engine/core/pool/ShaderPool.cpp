@@ -625,7 +625,6 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
             if (it->second){
                 it->second->destroyShader();
             }
-            //Log::debug("Remove shader %s", shaderStr.c_str());
             map.erase(it);
         }
     }else{
@@ -798,7 +797,6 @@ void ShaderPool::clear(){
         if (it.second)
             it.second->destroyShader();
     }
-    //Log::debug("Remove all shaders");
     getMap().clear();
     getMissingShaders().clear();
     failedShaders().clear();

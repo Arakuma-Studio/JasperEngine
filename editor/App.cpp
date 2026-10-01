@@ -27,7 +27,6 @@
 #include "Theme.h"
 #include "resources/fonts/fa-solid-900_ttf.h"
 #include "resources/fonts/jetbrains-mono-regular_ttf.h"
-//#include "recources/fonts/roboto-v20-latin-regular_ttf.h"
 #include "util/DefaultFont.h"
 #include "util/DefaultFontArabic.h"
 
@@ -1527,26 +1526,6 @@ ImGuiID editor::App::getCentralDockId(){
     return dockspace_id;
 }
 
-void editor::App::showStyleEditor(){
-    ImGui::Begin("Dear ImGui Style Editor", nullptr);
-    {
-        // Get the current IO object to access display size
-        ImGuiIO& io = ImGui::GetIO();
-        ImVec2 windowSize = ImGui::GetWindowSize();
-
-        // Calculate the centered position at the top
-        float windowX = (io.DisplaySize.x - windowSize.x - 200) / 2;
-        float windowY = 0.0f; // Top of the screen
-
-        // Set the window position
-        ImGui::SetWindowPos(ImVec2(windowX, windowY), ImGuiCond_Once);
-        ImGui::SetWindowCollapsed(true, ImGuiCond_Once);
-
-        ImGui::ShowStyleEditor();
-    }
-    ImGui::End();
-}
-
 ImFont* editor::App::getCodeFont() {
     return codeFont ? codeFont : ImGui::GetIO().Fonts->Fonts[0];
 }
@@ -1645,7 +1624,6 @@ void editor::App::setup() {
 
     //io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
 
-    //ImGui::StyleColorsDark();
     Theme::apply();
 
     // Fonts follow each viewport's monitor DPI. Style paddings are global, so
@@ -2008,10 +1986,6 @@ void editor::App::show(){
     }
 
     ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
-
-    #ifdef SHOW_STYLE_WINDOW
-    showStyleEditor();
-    #endif
 
     showAlert();
 

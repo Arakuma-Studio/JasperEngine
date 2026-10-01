@@ -126,10 +126,7 @@ namespace jasperengine::editor {
         bool isDragging;
         ImVec2 dragStart;
         ImVec2 dragEnd;
-        ImVec2 windowPos;
-        ImVec2 scrollOffset;
 
-        bool isDragDropTarget;
         bool isExternalDragHovering;
 
         std::vector<std::string> clipboardFiles;

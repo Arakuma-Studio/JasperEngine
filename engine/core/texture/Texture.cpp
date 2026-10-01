@@ -27,73 +27,25 @@ Texture::Texture(){
     this->svgScale = 1.0f;
 }
 
-Texture::Texture(const std::string& path){
-    this->render = NULL;
-    this->framebuffer = NULL;
-    this->alphaBorder = TextureAlphaBorder::AUTO;
-    this->alphaBorderAuto = false;
-
-    // Legacy form "<path>?svgScale=N" is absorbed into the svgScale field so paths[] always
-    // holds a real file path.
-    this->svgScale = 1.0f;
+Texture::Texture(const std::string& path): Texture(){
     this->paths[0] = TextureData::parseSvgScalePath(path, &this->svgScale);
-
-    this->type = TextureType::TEXTURE_2D;
-    this->numFaces = 1;
     this->loadFromPath = true;
-    this->releaseDataAfterLoad = true;
     this->needLoad = true;
-
     this->id = buildPathTextureId();
-
-    this->minFilter = TextureFilter::LINEAR;
-    this->magFilter = TextureFilter::LINEAR;
-    this->wrapU = TextureWrap::REPEAT;
-    this->wrapV = TextureWrap::REPEAT;
 }
 
-Texture::Texture(const std::string& id, TextureData data){
-    this->render = NULL;
-    this->framebuffer = NULL;
-    this->alphaBorder = TextureAlphaBorder::AUTO;
-    this->alphaBorderAuto = false;
-
+Texture::Texture(const std::string& id, TextureData data): Texture(){
     this->id = id;
-    this->type = TextureType::TEXTURE_2D;
-    this->numFaces = 1;
-    this->loadFromPath = false;
     this->releaseDataAfterLoad = false;
     this->needLoad = true;
 
     this->data = std::make_shared<std::array<TextureData,6>>();
     this->data->at(0) = data;
     this->data = TextureDataPool::get(id, *this->data.get());
-
-    this->minFilter = TextureFilter::LINEAR;
-    this->magFilter = TextureFilter::LINEAR;
-    this->wrapU = TextureWrap::REPEAT;
-    this->wrapV = TextureWrap::REPEAT;
-    this->svgScale = 1.0f;
 }
 
-Texture::Texture(Framebuffer* framebuffer){
-    this->render = NULL;
+Texture::Texture(Framebuffer* framebuffer): Texture(){
     this->framebuffer = framebuffer;
-    this->alphaBorder = TextureAlphaBorder::AUTO;
-    this->alphaBorderAuto = false;
-
-    this->id = "";
-    this->type = TextureType::TEXTURE_2D;
-    this->numFaces = 1;
-    this->loadFromPath = false;
-    this->releaseDataAfterLoad = true;
-    this->needLoad = false;
-
-    this->minFilter = TextureFilter::LINEAR;
-    this->magFilter = TextureFilter::LINEAR;
-    this->wrapU = TextureWrap::REPEAT;
-    this->wrapV = TextureWrap::REPEAT;
-    this->svgScale = 1.0f;
 }
 
 Texture::Texture(const Texture& rhs){
@@ -168,26 +120,7 @@ bool Texture::operator == ( const Texture& rhs ) const{
 }
 
 bool Texture::operator != ( const Texture& rhs ) const{
-    return (
-        framebuffer != rhs.framebuffer ||
-        type != rhs.type ||
-        id != rhs.id ||
-        paths[0] != rhs.paths[0] ||
-        paths[1] != rhs.paths[1] ||
-        paths[2] != rhs.paths[2] ||
-        paths[3] != rhs.paths[3] ||
-        paths[4] != rhs.paths[4] ||
-        paths[5] != rhs.paths[5] ||
-        numFaces != rhs.numFaces ||
-        loadFromPath != rhs.loadFromPath ||
-        releaseDataAfterLoad != rhs.releaseDataAfterLoad ||
-        minFilter != rhs.minFilter ||
-        magFilter != rhs.magFilter ||
-        wrapU != rhs.wrapU ||
-        wrapV != rhs.wrapV ||
-        svgScale != rhs.svgScale ||
-        alphaBorder != rhs.alphaBorder
-    );
+    return !(*this == rhs);
 }
 
 Texture::~Texture(){

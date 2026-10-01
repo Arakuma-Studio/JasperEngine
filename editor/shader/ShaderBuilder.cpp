@@ -25,9 +25,6 @@
 #include <sstream>
 #include <unordered_set>
 
-//#include <thread>
-//#include <chrono>
-
 using namespace jasperengine;
 
 namespace {
@@ -191,7 +188,6 @@ editor::ShaderBuilder::ShaderBuilder(){
 editor::ShaderBuilder::~ShaderBuilder(){
 }
 
-// Mapping functions implementation with camelCase
 ShaderVertexType editor::ShaderBuilder::mapVertexType(shadercompiler::attribute_type_t type) {
     using namespace shadercompiler;
     switch(type) {
@@ -790,7 +786,6 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
 
     std::vector<shadercompiler::input_t> inputs;
     shadercompiler::args_t args = shadercompiler::initialize_args();
-    args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
     setBackendLang(args);
@@ -817,7 +812,6 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     }
 
     if (!shadercompiler::load_input(inputs, args)) {
-        //printf("Error loading shader input\n");
         if (trackProgress) {
             ResourceProgress::failBuild(shaderKey);
         }
@@ -1017,7 +1011,6 @@ ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Proj
 
     std::vector<shadercompiler::input_t> inputs;
     shadercompiler::args_t args = shadercompiler::initialize_args();
-    args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
     applyShaderBackend(args, backend);

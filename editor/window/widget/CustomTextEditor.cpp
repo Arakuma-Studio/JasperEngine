@@ -2194,9 +2194,6 @@ SuggestionContext CustomTextEditor::buildSuggestionContext() const {
         ctx.lineContent = lines[pos.line];
     }
 
-    ctx.cursorColumn = pos.column;
-    ctx.lineNumber = pos.line;
-
     // Check for member access operators
     int checkCol = wordStart.column - 1;
     if (checkCol >= 0 && ctx.lineContent.size() > 0) {

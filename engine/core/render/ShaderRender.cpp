@@ -10,14 +10,9 @@ using namespace jasperengine;
 
 ShaderRender::ShaderRender(){ }
 
-ShaderRender::ShaderRender(const ShaderRender& rhs) : backend(rhs.backend), shaderData(rhs.shaderData), loading(rhs.loading) { }
+ShaderRender::ShaderRender(const ShaderRender& rhs) = default;
 
-ShaderRender& ShaderRender::operator=(const ShaderRender& rhs) {
-    backend = rhs.backend;
-    shaderData = rhs.shaderData;
-    loading = rhs.loading;
-    return *this;
-}
+ShaderRender& ShaderRender::operator=(const ShaderRender& rhs) = default;
 
 ShaderRender::~ShaderRender(){
     //Cannot destroy because its a handle

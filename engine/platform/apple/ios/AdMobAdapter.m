@@ -69,29 +69,16 @@
 }
 
 - (void)requestConsent:(Boolean)tagForUnderAgeOfConsent {
-    //UMPDebugSettings *debugSettings = [[UMPDebugSettings alloc] init];
-    //debugSettings.testDeviceIdentifiers = @[ GADSimulatorID ];
-    //debugSettings.geography = UMPDebugGeographyEEA;
-    
-    // Create a UMPRequestParameters object.
-    // Set tag for under age of consent. Here NO means users are not under age.
     UMPRequestParameters *parameters = [[UMPRequestParameters alloc] init];
-    //parameters.debugSettings = debugSettings;
     parameters.tagForUnderAgeOfConsent = tagForUnderAgeOfConsent;
-    
-    //[UMPConsentInformation.sharedInstance reset];
     
     // Request an update to the consent information.
     [UMPConsentInformation.sharedInstance
      requestConsentInfoUpdateWithParameters:parameters
      completionHandler:^(NSError* _Nullable error) {
-        // The consent information has updated.
         if (error) {
             // Handle the error.
             NSLog(@"Failed to request consent form with error: %@", [error localizedDescription]);
-        } else {
-            // The consent information state was updated.
-            // You are now ready to see if a form is available.
         }
     }];
 }
@@ -114,8 +101,6 @@
                               // Handle dismissal by reloading form.
                             [self loadInterstitial:adUnitID];
                           }];
-                } else {
-                    // Keep the form available for changes to user consent.
                 }
             }
         }];

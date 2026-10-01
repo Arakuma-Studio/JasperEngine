@@ -12,6 +12,8 @@
 
 namespace jasperengine::editor::ai {
 
+namespace {
+
 // Payload builders / response parsers, implemented at the bottom of this file.
 // OpenAI, DeepSeek and OpenAI-compatible share the Chat Completions wire format.
 Json buildChatCompletionsPayload(const ProviderRequest& request);
@@ -20,13 +22,6 @@ Json buildGeminiPayload(const ProviderRequest& request);
 ProviderResponse parseChatCompletionsBody(const std::string& body);
 ProviderResponse parseAnthropicBody(const std::string& body);
 ProviderResponse parseGeminiBody(const std::string& body);
-
-// Strips JSON Schema keywords Gemini's function-declaration schema rejects (e.g.
-// additionalProperties). Returns a null Json for an empty object schema so the
-// caller can omit the parameters field entirely.
-Json sanitizeGeminiSchema(const Json& schema);
-
-namespace {
 
 Json toolParametersOrObject(const ToolDefinition& tool) {
     return tool.parameters.is_object() ? tool.parameters : Json::object();
@@ -281,8 +276,6 @@ void parseGeminiUsage(const Json& root, ProviderResponse& result) {
 
 class OpenAIProvider : public Provider {
 public:
-    ProviderId id() const override { return ProviderId::OpenAI; }
-
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
         http.url = "https://api.openai.com/v1/chat/completions";
@@ -301,8 +294,6 @@ public:
 
 class OpenAICompatibleProvider : public Provider {
 public:
-    ProviderId id() const override { return ProviderId::OpenAICompatible; }
-
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
         http.url = activeEndpointUrl(request.settings);
@@ -327,8 +318,6 @@ public:
 
 class DeepSeekProvider : public Provider {
 public:
-    ProviderId id() const override { return ProviderId::DeepSeek; }
-
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
         http.url = "https://api.deepseek.com/chat/completions";
@@ -347,8 +336,6 @@ public:
 
 class AnthropicProvider : public Provider {
 public:
-    ProviderId id() const override { return ProviderId::Anthropic; }
-
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
         http.url = "https://api.anthropic.com/v1/messages";
@@ -368,8 +355,6 @@ public:
 
 class GeminiProvider : public Provider {
 public:
-    ProviderId id() const override { return ProviderId::Gemini; }
-
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
         http.url = "https://generativelanguage.googleapis.com/v1beta/models/" +
@@ -397,6 +382,8 @@ std::unique_ptr<Provider> createProvider(ProviderId provider) {
         default: return std::make_unique<OpenAIProvider>();
     }
 }
+
+namespace {
 
 // --- Chat Completions (OpenAI + OpenAI-compatible) ------------------------
 
@@ -646,6 +633,8 @@ ProviderResponse parseAnthropicBody(const std::string& body) {
 
 // --- Gemini ---------------------------------------------------------------
 
+// Strips JSON Schema keywords Gemini rejects; empty object schemas return null
+// so the caller can omit the parameters field.
 Json sanitizeGeminiSchema(const Json& schema) {
     if (!schema.is_object()) {
         return schema;
@@ -834,5 +823,7 @@ ProviderResponse parseGeminiBody(const std::string& body) {
     }
     return result;
 }
+
+} // namespace
 
 } // namespace jasperengine::editor::ai

@@ -18,8 +18,6 @@ import glob
 
 # ── Regex patterns ──────────────────────────────────────────────────────────
 
-RE_NAMESPACE_BEGIN = re.compile(r'\.beginNamespace\(\s*"([^"]+)"\s*\)')
-RE_NAMESPACE_END = re.compile(r'\.endNamespace\(\)')
 RE_ADD_VARIABLE = re.compile(r'\.addVariable\(\s*"([^"]+)"')
 
 RE_BEGIN_CLASS = re.compile(
@@ -29,8 +27,6 @@ RE_DERIVE_CLASS = re.compile(
     r'\.deriveClass\s*<\s*([^,>]+?)\s*,\s*([^>]+?)\s*>\s*\(\s*"([^"]+)"\s*\)'
 )
 RE_END_CLASS = re.compile(r'\.endClass\(\)')
-
-RE_ADD_CONSTRUCTOR = re.compile(r'\.addConstructor\s*<([^>]+)>')
 
 RE_ADD_FUNCTION = re.compile(r'\.addFunction\(\s*"([^"]+)"')
 RE_ADD_STATIC_FUNCTION = re.compile(r'\.addStaticFunction\(\s*"([^"]+)"')
@@ -108,7 +104,6 @@ def parse_binding_file(filepath):
     # ── Parse classes ───────────────────────────────────────────────────
     # We process the file line-by-line with state tracking
     lines = content.split('\n')
-    current_class = None
     current_lua_name = None
     current_base = None
     current_constructors = []
@@ -129,7 +124,6 @@ def parse_binding_file(filepath):
         # beginClass
         m = RE_BEGIN_CLASS.search(stripped)
         if m:
-            current_class = m.group(1).strip()
             current_lua_name = m.group(2)
             current_base = None
             current_constructors = []
@@ -139,7 +133,6 @@ def parse_binding_file(filepath):
         # deriveClass
         m = RE_DERIVE_CLASS.search(stripped)
         if m:
-            current_class = m.group(1).strip()
             current_base = m.group(2).strip()
             current_lua_name = m.group(3)
             current_constructors = []
@@ -157,7 +150,6 @@ def parse_binding_file(filepath):
                         current_lua_name, 'Constructor',
                         constructor_detail, current_lua_name
                     ))
-            current_class = None
             current_lua_name = None
             current_base = None
             current_constructors = []
@@ -597,10 +589,6 @@ def generate_header(symbols, output_path):
 
 def main():
     if len(sys.argv) < 3:
-        print(f'Usage: {sys.argv[0]} <binding_dir> <output_header>')
-        sys.exit(1)
-
-    if len(sys.argv) < 3:
         print(f'Usage: {sys.argv[0]} <binding_dir> <output_header> [engine_core_dir]')
         sys.exit(1)
 
@@ -635,7 +623,7 @@ def main():
     for cls, methods_dict in cpp_methods.items():
         for method_name, overloads in methods_dict.items():
             # Pick the shortest overload as primary detail (most common / simplest)
-            shortest = min(overloads, key=lambda o: len(o[0])) if overloads else ('', '')
+            shortest = min(overloads, key=lambda o: len(o[0]))
             cpp_signatures[(cls, method_name)] = shortest
 
     # Update existing LuaBridge method symbols with param + return info from C++ headers
@@ -664,9 +652,9 @@ def main():
     cpp_symbols = []
     for cls in lua_classes:
         methods_dict = cpp_methods.get(cls, {})
-        for method_name, overloads in methods_dict.items():
+        for method_name in methods_dict:
             if (method_name, cls) not in lua_bound_methods:
-                shortest = min(overloads, key=lambda o: len(o[0])) if overloads else ('', '')
+                shortest = cpp_signatures[(cls, method_name)]
                 cpp_symbols.append(APISymbol(
                     method_name, 'CppMethod',
                     _format_detail(cls, method_name, '::', shortest), cls

@@ -105,7 +105,3 @@ void editor::UnlinkMaterialCmd::undo(){
         onValueChanged();
     }
 }
-
-bool editor::UnlinkMaterialCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

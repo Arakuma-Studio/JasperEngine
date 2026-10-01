@@ -82,7 +82,3 @@ void editor::ForkShaderCmd::undo() {
     project->invalidateCustomShaders();
     executed = false;
 }
-
-bool editor::ForkShaderCmd::mergeWith(Command* otherCommand) {
-    return false;
-}

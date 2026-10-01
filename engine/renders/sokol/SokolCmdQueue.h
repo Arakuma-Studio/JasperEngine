@@ -280,8 +280,6 @@ namespace jasperengine {
 		
 		static void lock_execute_mutex() { m_execute_mutex.lock(); }
 		static void unlock_execute_mutex() { m_execute_mutex.unlock(); }
-
-		//static sg_pixel_format get_pixel_format() const { return sg_query_desc().context.color_format; }
 		
 	private:
 		static void process_cleanups(int32_t frame_index);

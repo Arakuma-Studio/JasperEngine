@@ -15,7 +15,7 @@ editor::CommandHistory::~CommandHistory(){
     clear();
 }
 
-void editor::CommandHistory::addCommand(editor::Command* cmd){
+bool editor::CommandHistory::addCommand(editor::Command* cmd){
     if (cmd->execute()){
         if (index < list.size()){
             for (auto it = list.begin() + index; it != list.end(); ++it) {
@@ -27,6 +27,7 @@ void editor::CommandHistory::addCommand(editor::Command* cmd){
 
         if (list.size() > undoFloor() && list.back()->canMerge() && cmd->canMerge()){
             if (cmd->mergeWith(list.back())){
+                delete list.back();
                 list.pop_back();
             }
         }
@@ -37,8 +38,10 @@ void editor::CommandHistory::addCommand(editor::Command* cmd){
         if (onSceneModified){
             onSceneModified(sceneId, cmd->affectsStructure());
         }
+        return true;
     }else{
         delete cmd;
+        return false;
     }
 }
 

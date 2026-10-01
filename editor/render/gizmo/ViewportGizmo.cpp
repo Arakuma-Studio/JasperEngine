@@ -163,8 +163,7 @@ editor::ViewportGizmoAxis editor::ViewportGizmo::hitTest(float normalizedX, floa
         }
     }
 
-    // Test central cube (0.6x0.6x0.6 centered at origin, rotated)
-    // Use an AABB-approximating sphere for the cube center
+    // Test the central cube in its local space.
     if (closestAxis == ViewportGizmoAxis::NONE) {
         float cubeHalf = 0.35f;
         Vector3 cubeMin = Vector3(-cubeHalf, -cubeHalf, -cubeHalf);

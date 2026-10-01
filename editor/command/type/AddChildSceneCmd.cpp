@@ -26,7 +26,3 @@ void editor::AddChildSceneCmd::undo() {
     project->removeChildScene(sceneId, childSceneId);
     project->getScene(sceneId)->isModified = wasModified;
 }
-
-bool editor::AddChildSceneCmd::mergeWith(Command* otherCommand){
-    return false;
-}

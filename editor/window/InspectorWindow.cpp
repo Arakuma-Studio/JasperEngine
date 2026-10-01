@@ -916,23 +916,6 @@ editor::RowPropertyType editor::InspectorWindow::scriptPropertyTypeToRowProperty
     }
 }
 
-std::string editor::InspectorWindow::replaceNumberedBrackets(const std::string& input) {
-    std::string result = input;
-    size_t pos = 0;
-
-    while ((pos = result.find('[', pos)) != std::string::npos) {
-        size_t end_pos = result.find(']', pos);
-        if (end_pos != std::string::npos && std::isdigit(result[pos + 1])) {
-            result.replace(pos, end_pos - pos + 1, "[]");
-            pos += 2;
-        } else {
-            ++pos;
-        }
-    }
-
-    return result;
-}
-
 Vector3 editor::InspectorWindow::roundZero(const Vector3& val, const float threshold) const{
     return Vector3(
         (fabs(val.x) < threshold) ? 0.0f : val.x,

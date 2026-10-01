@@ -156,9 +156,7 @@ namespace jasperengine {
             std::vector<size_t> indices(count);
             std::iota(indices.begin(), indices.end(), 0);
 
-            auto less = [&keys, missing](size_t a, size_t b) {
-                if (keys[a] == missing) return false;
-                if (keys[b] == missing) return true;
+            auto less = [&keys](size_t a, size_t b) {
                 return keys[a] < keys[b];
             };
 
@@ -192,13 +190,7 @@ namespace jasperengine {
         }
 
         bool hasEntity(Entity entity) {
-            auto it = entityToIndexMap.find(entity);
-
-            if (it == entityToIndexMap.end()) {
-                 return false;
-            }
-
-            return true;
+            return entityToIndexMap.find(entity) != entityToIndexMap.end();
         }
 
         T* findComponent(Entity entity) {

@@ -57,13 +57,6 @@ namespace jasperengine{
         void push_value(lua_State *vm, Contact3D o);
         void push_value(lua_State *vm, CollideShapeResult3D o);
 
-        // other overloads, for stuff like userdata or C functions
-
-        // for extracting return values, we specialize a simple struct
-        // as overloading on return type does not work, and we only need
-        // to support a specific set of return types, as the return type
-        // of a function is always specified explicitly
-
         template <typename T>
         static T get_value(lua_State *vm);
 

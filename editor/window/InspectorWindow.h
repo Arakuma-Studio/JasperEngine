@@ -226,12 +226,6 @@ namespace jasperengine::editor{
         // For entity picker popup
         char entityPickerSearchBuffer[128] = {};
 
-        // For component menu
-        char componentSearchBuffer[128] = "";
-        int hoveredComponentIndex = -1;
-        bool addComponentModalOpen = false;
-        bool componentMenuJustOpened = false;
-
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
         ShaderForkDialog shaderForkDialog;
@@ -240,8 +234,6 @@ namespace jasperengine::editor{
 
         static RowPropertyType scriptPropertyTypeToRowPropertyType(ScriptPropertyType scriptType);
 
-        // replace [number] with []
-        std::string replaceNumberedBrackets(const std::string& input);
         Vector3 roundZero(const Vector3& val, const float threshold) const;
         float snapDisplayedAngle(float angle, float threshold) const;
         Vector3 getDisplayedEulerAngles(const Quaternion& value, const RotationOrder& order, float zeroThreshold) const;

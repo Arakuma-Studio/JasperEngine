@@ -134,10 +134,6 @@ static bool parseUInt32(const std::string& value, uint32_t& out) {
     return true;
 }
 
-static bool isAllBackendsToken(const std::string& value) {
-    return normalizeToken(value) == "all";
-}
-
 static bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat& out) {
     const std::string token = normalizeToken(value);
     if (token == "binary" || token == "sdat") {
@@ -188,10 +184,7 @@ static bool parseShaderSpec(const std::string& value, ShaderKey& out, std::strin
 
     uint32_t properties = 0;
     if (!propsPart.empty()) {
-        const bool numericMask =
-            std::isdigit(static_cast<unsigned char>(propsPart[0])) ||
-            propsPart.rfind("0x", 0) == 0 ||
-            propsPart.rfind("0X", 0) == 0;
+        const bool numericMask = std::isdigit(static_cast<unsigned char>(propsPart[0]));
 
         if (numericMask) {
             if (!parseUInt32(propsPart, properties)) {
@@ -231,7 +224,7 @@ static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {
 
 static bool parseBackendList(const std::string& value, std::set<ShaderBackend>& backends, std::string& error) {
     for (const std::string& name : splitList(value)) {
-        if (isAllBackendsToken(name)) {
+        if (normalizeToken(name) == "all") {
             addAllSupportedBackends(backends);
             continue;
         }

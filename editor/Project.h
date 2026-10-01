@@ -503,8 +503,6 @@ namespace jasperengine::editor{
         template<typename T>
         T* findScene(uint32_t sceneId) const;
 
-        Entity createNewEntity(uint32_t sceneId, std::string entityName);
-        bool createNewComponent(uint32_t sceneId, Entity entity, ComponentType component);
         void calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const;
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
@@ -967,7 +965,6 @@ namespace jasperengine::editor{
         fs::path getThumbsDir() const;
         fs::path getThumbnailPath(const fs::path& originalPath) const;
 
-        std::vector<Entity> getEntities(uint32_t sceneId) const;
         // What the running scene made for itself: listed while playing, destroyed by Stop,
         // and never part of the authored entities a file keeps
         std::vector<Entity> getPlayCreatedEntities(const SceneProject* sceneProject) const;
@@ -984,7 +981,6 @@ namespace jasperengine::editor{
         bool hasSelectedEntities(uint32_t sceneId) const;
 
         bool hasSelectedSceneUnsavedChanges() const;
-        bool hasSelectedSceneUnsavedPrefabs() const;
         bool hasLocalUnsavedChanges(uint32_t sceneId) const;
         bool hasSceneUnsavedChanges(uint32_t sceneId) const;
         bool hasUnsavedPrefabs(uint32_t sceneId) const;
@@ -1129,8 +1125,6 @@ namespace jasperengine::editor{
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);
-
-        void debugSceneHierarchy();
     };
 
 }

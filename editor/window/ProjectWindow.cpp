@@ -34,6 +34,7 @@
 #include "subsystem/MeshSystem.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -872,7 +873,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
         ImGui::SameLine();
     }
 
-    bool segmentTooltipShown = false;
     for (size_t i = firstVisible; i < segments.size(); i++) {
         if (i > firstVisible || firstVisible > 0) {
             ImGui::AlignTextToFramePadding();
@@ -892,7 +892,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             ImGui::SetTooltip("%s", segments[i].second.string().c_str());
-            segmentTooltipShown = true;
         }
         ImGui::PopID();
         ImGui::SameLine();
@@ -913,7 +912,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
     }
 
     ImGui::EndChild();
-    (void)segmentTooltipShown;
 
     if (!navigateTo.empty()) {
         // Clicking a path segment leaves search mode, like Unity.
@@ -2802,9 +2800,6 @@ void editor::ProjectWindow::show() {
     ctrlPressed = ImGui::GetIO().KeyCtrl;
     shiftPressed = ImGui::GetIO().KeyShift;
 
-    windowPos = ImGui::GetWindowPos();
-    scrollOffset = ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
-
     if (focusRequested) {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
@@ -2823,9 +2818,6 @@ void editor::ProjectWindow::show() {
         }
         return;
     }
-
-    windowPos = ImGui::GetWindowPos();
-    scrollOffset = ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
 
     // Determine effective layout when in AUTO mode: Unity's two-column layout
     // (folder tree + grid with subfolders) unless the panel is too narrow.
@@ -2850,7 +2842,6 @@ void editor::ProjectWindow::show() {
     // (saved as Prefabs) land in the folder being shown.
     auto acceptListingDrops = [&]() {
         if (ImGui::BeginDragDropTarget()) {
-            isDragDropTarget = true;
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
                 importExternalPaths(Util::getStringsFromPayload(payload));
             }
