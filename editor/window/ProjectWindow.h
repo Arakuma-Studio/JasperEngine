@@ -7,6 +7,7 @@
 #include "window/CodeEditor.h"
 #include "util/EntityPayload.h"
 #include "render/preview/ModelRender.h"
+#include "render/preview/PrefabRender.h"
 
 #include <iostream>
 #include <filesystem>
@@ -201,6 +202,28 @@ namespace jasperengine::editor {
         uint64_t pendingModelGeneration = 0; // guarded by thumbnailMutex
         std::mutex modelRenderMutex;
 
+        // Prefab thumbnails: rendered on the main thread (the instance is built from the
+        // project's prefab data), one at a time, over a few frames
+        PrefabRender prefabRender;
+        std::queue<ThumbnailRequest> prefabThumbnailQueue;
+        ThumbnailRequest prefabThumbnailActive;
+        bool hasActivePrefabThumbnail = false;
+        int prefabThumbnailFrames = 0;
+        // The dependency stamp (the prefab file and its nested prefabs' sizes and times) each
+        // prefab's thumbnail was made from: a change re-renders it
+        std::unordered_map<std::string, std::string> prefabThumbnailStamps;
+        // The prefab files each prefab depends on, read again when its own file changes
+        struct PrefabDependencies {
+            std::filesystem::file_time_type writeTime{};
+            uintmax_t size = 0;
+            std::vector<fs::path> files;
+        };
+        std::unordered_map<std::string, PrefabDependencies> prefabDependencies;
+        std::string prefabThumbnailStamp(const fs::path& prefabPath);
+        static fs::path prefabStampPath(const fs::path& thumbnailPath);
+        void checkPrefabThumbnailStamps();
+        void cancelPrefabThumbnails();
+
         ImU32 fileSeparatorColor(const FileEntry& fe) const;
         void refreshProjectFiles();
         bool fileNotInProject(const FileEntry& fe) const;
@@ -259,6 +282,7 @@ namespace jasperengine::editor {
         // need to be after draw
         void processMaterialThumbnails();
         void processModelThumbnails();
+        void processPrefabThumbnails();
 
         // True while any thumbnail is still generating; the render loop must keep
         // drawing while set (thumbnail scenes share systemDraw).

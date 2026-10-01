@@ -9,6 +9,7 @@
 #include "Stream.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
+#include "command/PrefabEditUndo.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ImportPrefabCmd.h"
@@ -527,7 +528,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     // components, so maps repointed by still-unsaved edits stay protected. Closed
     // scenes keep a null Scene* (deleteSceneProject) and are covered by pass 2.
     std::unordered_set<std::string> activeFiles;
-    for (SceneProject& sceneProject : project->getScenes()){
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()){
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene){
             continue;
         }
@@ -962,6 +964,7 @@ private:
     TerrainMapSnapshot beforeSnapshot;
     TerrainMapSnapshot afterSnapshot;
     bool wasModified = false;
+    PrefabEditUndo prefabUndo;
 
     void apply(const TerrainMapSnapshot& snapshot, bool restoreModifiedState){
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -977,18 +980,27 @@ private:
         if (!texture){
             return;
         }
+        const std::string oldPath = texture->getPath(0);
+        if (!restoreModifiedState){
+            prefabUndo.capture(project, sceneId, entity);
+        }
         window->applySnapshotToTexture(project, *texture, snapshot);
         TerrainMapUtils::refresh(sceneProject, entity, ref);
 
-        if (project->isEntityInPrefab(sceneId, entity)){
-            std::vector<std::string> properties = {TerrainMapUtils::getPropertyName(ref)};
+        if (restoreModifiedState){
+            prefabUndo.restore(project, sceneId);
+        }else if (texture->getPath(0) != oldPath){
+            // Unity: another map bound to a prefab instance's terrain is an override of it.
             // The list carries its own length, which is what a newly created map needs
+            std::vector<std::string> properties = {TerrainMapUtils::getPropertyName(ref)};
             const std::string container = TerrainMapUtils::getContainerPropertyName(ref);
             if (!container.empty()){
                 properties.push_back(container);
             }
-            project->prefabPropertyChanged(sceneId, entity, ComponentType::TerrainComponent, properties);
+            project->recordPrefabEdit(sceneId, entity, ComponentType::TerrainComponent, properties);
         }
+        // the content of the file is an asset's: the other terrains using it follow
+        TerrainMapUtils::refreshSharing(project, sceneId, entity, ref);
 
         if (restoreModifiedState){
             sceneProject->isModified = wasModified;
@@ -1358,9 +1370,9 @@ SceneProject* editor::TerrainEditWindow::findSceneProject(Scene* scene) const{
     if (!project || !scene){
         return nullptr;
     }
-    for (SceneProject& sceneProject : project->getScenes()){
-        if (sceneProject.scene == scene){
-            return &sceneProject;
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()){
+        if (sceneProject->scene == scene){
+            return sceneProject;
         }
     }
     return nullptr;
@@ -2260,7 +2272,8 @@ void editor::TerrainEditWindow::updateFoliagePreview(){
     }
 
     const bool editing = windowOpen && !project->isAnyScenePlaying() && hasValidTarget();
-    for (SceneProject& sceneProject : project->getScenes()){
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()){
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene){
             continue;
         }

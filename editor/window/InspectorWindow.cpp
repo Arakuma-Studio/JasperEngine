@@ -27,7 +27,6 @@
 #include "command/type/AddComponentCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
-#include "command/type/ComponentToPrefabLocalCmd.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
@@ -1843,7 +1842,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCubeSingleFile(ComponentTy
     }
 }
 
-void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool& headerOpen, bool readOnly) {
+void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool& headerOpen, bool readOnly) {
     if (ImGui::BeginPopup(popupId)) {
         // Paste reflects what another editor instance copied
         if (ImGui::IsWindowAppearing()) {
@@ -1916,31 +1915,12 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
         }
         reasonTooltip(canPasteValues, reason);
 
-        if (isPrefab){
-            ImGui::Separator();
-            if (isPrefabOverridden) {
-                if (ImGui::MenuItem("Revert Prefab Component")) {
-                    for (Entity& entity : entities){
-                        cmd = new ComponentToPrefabSharedCmd(project, sceneProject->id, entity, cpType);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                    }
-                    cmd->setNoMerge();
-                }
-                ImGui::SetItemTooltip("Discard this instance's values and follow the Prefab again");
-
-            } else {
-                if (ImGui::MenuItem("Override Prefab Component")) {
-                    for (Entity& entity : entities){
-                        cmd = new ComponentToPrefabLocalCmd(project, sceneProject->id, entity, cpType);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                    }
-                    cmd->setNoMerge();
-                }
-                ImGui::SetItemTooltip("Stop following the Prefab for this component: this instance keeps its own values until Revert Prefab Component");
-            }
-        }
-
         ImGui::EndDisabled();
+
+        // Unity's "Modified Component" / "Added Component" entries: Apply to the prefab(s), Revert
+        if (isPrefab){
+            drawPrefabApplyRevertItems(sceneProject, entities, cpType, std::string(), 0, readOnly);
+        }
 
         ImGui::EndPopup();
     }
@@ -1994,6 +1974,19 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     }
     const bool isPrefab = !project->findPrefabPathFor(sceneProject->id, entities[0]).empty();
 
+    // Unity: an overridden name, active state, tag or layer shows bold, with the blue bar
+    auto stateOverridden = [&](uint8_t bit){
+        for (Entity entity : entities){
+            if (project->getPrefabObjectOverrides(sceneProject->id, entity).state & bit){
+                return true;
+            }
+        }
+        return false;
+    };
+    const bool nameOverridden = stateOverridden(PrefabObjectOverrides::StateName);
+    const bool tagOverridden = stateOverridden(PrefabObjectOverrides::StateTag);
+    const bool layerOverridden = stateOverridden(PrefabObjectOverrides::StateLayer);
+
     ImGui::PushID("gameobject_header");
 
     // Row 1: active checkbox, GameObject icon and name
@@ -2007,6 +2000,9 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     if (activeMixed) ImGui::PopItemFlag();
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("Active: an inactive GameObject and its children are not rendered, simulated or updated");
+    const float headerRowTop = ImGui::GetItemRectMin().y;
+    const float headerRowBottom = ImGui::GetItemRectMax().y;
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateActive, readOnly, headerRowTop, headerRowBottom);
 
     ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     ImGui::AlignTextToFramePadding();
@@ -2022,9 +2018,12 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     nameBuffer[sizeof(nameBuffer) - 1] = '\0';
     ImGui::BeginDisabled(!single || readOnly);
     if (nameFocusFrames > 0 && single) ImGui::SetKeyboardFocusHere();
+    if (nameOverridden) ImGui::PushFont(App::getBoldFont(), 0.0f);
     ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+    if (nameOverridden) ImGui::PopFont();
     if (ImGui::IsItemActive()) nameFocusFrames = 0;
     ImGui::EndDisabled();
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateName, readOnly, headerRowTop, headerRowBottom);
     if (ImGui::IsItemDeactivatedAfterEdit() && single) {
         if (nameBuffer[0] != '\0' && strcmp(nameBuffer, scene->getEntityName(entities[0]).c_str()) != 0) {
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new EntityNameCmd(project, sceneProject->id, entities[0], nameBuffer));
@@ -2042,14 +2041,24 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
         (ImGui::GetContentRegionAvail().x - tagLabelWidth - layerLabelWidth - style.ItemInnerSpacing.x * 2.0f - gap) * 0.5f);
 
     ImGui::AlignTextToFramePadding();
+    if (tagOverridden) ImGui::PushFont(App::getBoldFont(), 0.0f);
     ImGui::TextUnformatted("Tag");
+    if (tagOverridden) ImGui::PopFont();
+    const float tagRowTop = ImGui::GetItemRectMin().y;
+    const float tagRowBottom = tagRowTop + ImGui::GetFrameHeight();
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateTag, readOnly, tagRowTop, tagRowBottom);
     ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     drawTagCombo(sceneProject, entities, readOnly, comboWidth);
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateTag, readOnly, tagRowTop, tagRowBottom);
     ImGui::SameLine(0.0f, gap);
     ImGui::AlignTextToFramePadding();
+    if (layerOverridden) ImGui::PushFont(App::getBoldFont(), 0.0f);
     ImGui::TextUnformatted("Layer");
+    if (layerOverridden) ImGui::PopFont();
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateLayer, readOnly, tagRowTop, tagRowBottom);
     ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     drawLayerCombo(sceneProject, entities, readOnly, -1.0f);
+    prefabStateContext(sceneProject, entities, PrefabObjectOverrides::StateLayer, readOnly, tagRowTop, tagRowBottom);
 
     // Row 3: Unity's Prefab bar, for the outermost instance holding each selected GameObject
     drawPrefabBar(sceneProject, entities, readOnly, gap);
@@ -2214,11 +2223,22 @@ void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const s
     }
 }
 
-bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool isPrefabOverridden, bool readOnly){
+bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly){
     Scene* scene = sceneProject->scene;
     const ImGuiStyle& style = ImGui::GetStyle();
-    const bool fromPrefab = isPrefab && !isPrefabOverridden;
     const std::string displayName = Catalog::getComponentDisplayName(cpType);
+
+    // Unity: a component with overridden values gets the blue margin bar, one the instance
+    // added a "+" badge too
+    bool prefabOverridden = false;
+    bool prefabAdded = false;
+    if (isPrefab){
+        for (Entity entity : entities){
+            const Prefab::ObjectOverrides overrides = project->getPrefabObjectOverrides(sceneProject->id, entity);
+            prefabOverridden = prefabOverridden || overrides.hasComponent(cpType);
+            prefabAdded = prefabAdded || overrides.addedComponents.count(cpType) != 0;
+        }
+    }
 
     // component checkbox over the selection, mixed when the entities disagree
     bool hasEnabled = false;
@@ -2262,11 +2282,25 @@ bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, co
     // past the foldout arrow CollapsingHeader draws at the frame padding
     float x = headerMin.x + style.FramePadding.x + fontSize + style.ItemInnerSpacing.x;
 
-    const ImU32 textColor = fromPrefab ? ImGui::GetColorU32(prefabTextColor) : ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+
+    if (prefabOverridden || prefabAdded){
+        drawPrefabOverrideBar(headerMin.y, headerMax.y);
+    }
 
     const char* icon = Catalog::getComponentIcon(cpType);
     const float iconBox = fontSize * 1.25f;
     drawList->AddText(ImVec2(x + (iconBox - ImGui::CalcTextSize(icon).x) * 0.5f, textY), textColor, icon);
+    if (prefabAdded){
+        // Unity's "+" badge over the icon of an added component
+        const float badge = fontSize * 0.55f;
+        const ImVec2 center(x + iconBox - badge * 0.35f, textY + fontSize - badge * 0.35f);
+        drawList->AddCircleFilled(center, badge * 0.62f, IM_COL32(40, 40, 40, 255));
+        drawList->AddCircleFilled(center, badge * 0.5f, IM_COL32(60, 160, 255, 255));
+        const float arm = badge * 0.3f;
+        drawList->AddLine(ImVec2(center.x - arm, center.y), ImVec2(center.x + arm, center.y), IM_COL32(255, 255, 255, 255), Theme::dpi(1.5f));
+        drawList->AddLine(ImVec2(center.x, center.y - arm), ImVec2(center.x, center.y + arm), IM_COL32(255, 255, 255, 255), Theme::dpi(1.5f));
+    }
     x += iconBox + style.ItemInnerSpacing.x;
 
     if (hasEnabled){
@@ -2310,13 +2344,11 @@ bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, co
     if (menuClicked || rightClicked){
         ImGui::OpenPopup(popupId);
     }
-    handleComponentMenu(popupId, sceneProject, entities, cpType, isPrefab, isPrefabOverridden, open, readOnly);
+    handleComponentMenu(popupId, sceneProject, entities, cpType, isPrefab, open, readOnly);
 
-    if (fromPrefab && headerHovered){
-        ImGui::BeginTooltip();
-        ImGui::TextColored(prefabTextColor, ICON_FA_CUBE " Prefab Component");
-        ImGui::TextUnformatted("This component comes from the Prefab.");
-        ImGui::EndTooltip();
+    if ((prefabOverridden || prefabAdded) && headerHovered && !ImGui::IsPopupOpen(popupId)){
+        ImGui::SetTooltip("%s", prefabAdded ? "Added Component: this Prefab instance added it. Right click to apply or revert." :
+            "Modified Component: this Prefab instance overrides some of its values (bold). Right click to apply or revert.");
     }
 
     ImGui::SetCursorScreenPos(afterHeader);
@@ -2828,7 +2860,7 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
     }
     ImGui::TableNextColumn();
     //ImGui::Dummy(ImVec2(0, 10));
-    ImGui::Text("%s", label.c_str());
+    drawPrefabPropertyLabel(label);
     ImGui::SameLine();
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
@@ -2851,6 +2883,14 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
 
 bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings){
     bool result = true;
+
+    // The label shows whether the selection's prefab instances override it (propertyHeader);
+    // a row that draws none leaves nothing for the next one
+    prefabRowProperty = id;
+    struct PrefabRowPropertyReset{
+        std::string& property;
+        ~PrefabRowPropertyReset(){ property.clear(); }
+    } prefabRowPropertyReset{prefabRowProperty};
 
     // Script properties and submesh fields are per entity, a selection may not share all of them
     entities.erase(std::remove_if(entities.begin(), entities.end(), [&](Entity entity){
@@ -5579,6 +5619,7 @@ void editor::InspectorWindow::drawParticleFrameList(ComponentType cpType, const 
 
     bool defChanged = defFrames && *frames != *defFrames;
     beginTable(cpType, getLabelSize("Frames"), tableId + "_header");
+    prefabRowProperty = propertyId;
     if (propertyHeader("Frames", -1, defChanged, false) && defFrames) {
         setParticleFrames(cpType, propertyId, sceneProject, entity, *defFrames);
         finishProperty = true;
@@ -5725,12 +5766,14 @@ void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderTy
         labelSize = std::max(labelSize, getLabelSize(uniform.name, false));
 
     beginTable(cpType, labelSize, "custom_shader_table");
+    prefabRowProperty = "customShader";
     propertyHeader("Shader");
     drawComponentShaderRow(cpType, shaderType, sceneProject, shaderEntity, "customShader", "custom_shader");
 
     // shadow maps and the depth pre-pass have their own fork, so a mesh fork that displaces
     // vertices or discards can keep its shadows in step
     if (cpType == ComponentType::MeshComponent) {
+        prefabRowProperty = "customDepthShader";
         propertyHeader("Depth Shader");
         drawComponentShaderRow(cpType, ShaderType::DEPTH, sceneProject, shaderEntity, "customDepthShader", "custom_depth_shader");
         ImGui::SameLine(); helpMarker("Shader of the shadow maps, and of the depth pre-pass that feeds SSAO and post-process depth while SSR is off (with SSR on they read the G-buffer, which keeps the built-in shader). Fork it when the mesh shader moves vertices or discards fragments, so shadows follow.");
@@ -6778,6 +6821,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Model File"));
 
+    prefabRowProperty = "filename";
     propertyHeader("Model File");
 
     if (entities.size() == 1) {
@@ -7878,6 +7922,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
         std::string currentPath = audio.filename;
 
+        prefabRowProperty = "filename";
         if (propertyHeader("Audio Clip", -1, !currentPath.empty())) {
             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
                 new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "filename", "")
@@ -9168,6 +9213,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
     }
 
     beginTable(cpType, getLabelSize("Scripts"), "script_component_header");
+    prefabRowProperty = "scripts";
     propertyHeader("Scripts", -1, false, false);
     ImGui::Text("%zu", firstScriptComp.scripts.size());
     if (drawSummaryAddButton(ICON_FA_PLUS " Add Script##script_add")) {
@@ -9787,6 +9833,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     ImGui::SeparatorText("Instances");
 
     beginTable(cpType, getLabelSize("Instances"), "instanced_mesh_instances_header");
+    prefabRowProperty = "instances";
     propertyHeader("Instances", -1, false, false);
     ImGui::Text("%zu", instmesh.instances.size());
     float instancesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
@@ -13129,6 +13176,7 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
     ImGui::SeparatorText("Actions");
 
     beginTable(cpType, getLabelSize("Actions"), "animation_actions_header");
+    prefabRowProperty = "actions";
     propertyHeader("Actions", -1, false, false);
     ImGui::Text("%zu", anim.actions.size());
     if (drawSummaryAddButton("Add Action##animation_actions_add")) {
@@ -13243,6 +13291,7 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
             float newDurValue = *durValue;
             bool durDefChanged = durDef ? (newDurValue != *durDef) : false;
 
+            prefabRowProperty = durationId;
             if (propertyHeader("Duration", -1, durDefChanged, false)){
                 for (Entity& entity : entities){
                     cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, durationId, *durDef,
@@ -13955,45 +14004,26 @@ void editor::InspectorWindow::show(){
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
 
-        bool isPrefab = !prefabPath.empty();
-
-        // Root entity of a prefab is always local, not part of the prefab template
-        if (isPrefab) {
-            Prefab* prefab = project->getPrefab(prefabPath);
-            if (prefab) {
-                for (Entity& entity : entities) {
-                    Entity root = prefab->getRootEntity(sceneProject->id, entity);
-                    if (root == entity && prefab->getRegistryEntity(sceneProject->id, entity) == NULL_ENTITY) {
-                        isPrefab = false;
-                        break;
-                    }
-                }
+        // GameObjects of prefab instances (their roots included: the real root is the prefab's
+        // root GameObject) among the selection: their edits are overrides (Unity)
+        bool isPrefab = false;
+        for (Entity entity : entities) {
+            PrefabObjectRef ref;
+            if (project->findPrefabObject(sceneProject->id, entity, ref)) {
+                isPrefab = true;
+                break;
             }
         }
+        (void)prefabPath;
 
         for (ComponentType& cpType : components){
 
-            // Check if this component is overridden for prefab entities
-            bool isPrefabOverridden = false;
-            Prefab* prefabAsset = nullptr;
-            if (isPrefab) {
-                prefabAsset = project->getPrefab(prefabPath);
-                if (prefabAsset) {
-                    for (Entity& entity : entities) {
-                        if (prefabAsset->hasComponentOverride(sceneProject->id, entity, cpType)) {
-                            isPrefabOverridden = true;
-                            break;
-                        }
-                        isPrefabOverridden = false;
-                    }
-                }
-            }
-
             // Context menu and body disabled for a runtime selection
             const bool compReadOnly = isRuntimeSelection;
-            bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isPrefab, isPrefabOverridden, compReadOnly);
+            bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isPrefab, compReadOnly);
 
             if (headerOpen){
+                beginPrefabComponent(sceneProject, entities, cpType, compReadOnly);
                 // Disable non-script components while playing
                 if (compReadOnly) ImGui::BeginDisabled(true);
 
@@ -14104,7 +14134,12 @@ void editor::InspectorWindow::show(){
                 }
 
                 if (compReadOnly) ImGui::EndDisabled();
+                endPrefabComponent();
             }
+        }
+
+        if (isPrefab) {
+            drawRemovedPrefabComponents(sceneProject, entities, isRuntimeSelection);
         }
 
         drawAddComponentButton(sceneProject, entities, isRuntimeSelection, openAddComponent);

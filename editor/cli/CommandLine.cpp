@@ -16,8 +16,19 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/EntityStateCmd.h"
+#include "command/type/EntityNameCmd.h"
+#include "command/type/MultiPropertyCmd.h"
+#include "command/type/ComponentToPrefabSharedCmd.h"
+#include "command/type/PrefabOverridesCmd.h"
+#include "command/type/DeleteEntityCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
 #include "command/type/RemoveComponentCmd.h"
+#include "command/type/PropertyCmd.h"
+#include "command/type/CreateEntityCmd.h"
+#include "command/CommandHandle.h"
+#include "command/type/ReplacePrefabCmd.h"
+#include <chrono>
+#include <thread>
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 
@@ -611,10 +622,11 @@ std::string dumpPath(Scene* scene, Entity entity, std::map<Entity, std::string>&
 }
 
 static void writeSceneDump(Project& project, const fs::path& outPath) {
-    auto& scenes = project.getScenes();
     YAML::Emitter out;
     out << YAML::BeginMap << YAML::Key << "scenes" << YAML::Value << YAML::BeginSeq;
-    for (SceneProject& sceneProject : scenes) {
+    // the scenes, then the open prefab stages (Prefab Mode), named after their asset
+    for (SceneProject* sceneProjectPtr : project.getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) continue;
         Scene* scene = sceneProject.scene;
         std::map<Entity, std::string> paths;
@@ -662,7 +674,16 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
             if (nodes.count(path)) path += "@" + std::to_string(entity);
             nodes[path] = node;
         }
-        out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << sceneProject.name;
+        const PrefabStage* stage = project.getPrefabStage(sceneProject.id);
+        out << YAML::BeginMap << YAML::Key << "name" << YAML::Value
+            << (stage ? "Prefab Mode: " + stage->assetPath.generic_string() : sceneProject.name);
+        if (stage) {
+            out << YAML::Key << "modified" << YAML::Value << project.hasUnsavedPrefabStage(sceneProject.id);
+            if (stage->inContext()) {
+                const SceneProject* context = project.getScene(stage->contextSceneId);
+                out << YAML::Key << "context" << YAML::Value << (context ? context->name : std::string("?"));
+            }
+        }
         out << YAML::Key << "entities" << YAML::Value << YAML::BeginMap;
         for (auto& [path, node] : nodes) out << YAML::Key << path << YAML::Value << node;
         out << YAML::EndMap << YAML::EndMap;
@@ -681,8 +702,17 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
 static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProject*& sceneOut) {
     const std::string sceneName = op["scene"] ? op["scene"].as<std::string>() : std::string();
     const std::string path = op["entity"] ? op["entity"].as<std::string>() : std::string();
-    for (SceneProject& sceneProject : project.getScenes()) {
-        if (!sceneProject.scene || (!sceneName.empty() && sceneProject.name != sceneName)) continue;
+    // stage: true looks in the shown prefab stage (Prefab Mode) only
+    const bool inStage = op["stage"] && op["stage"].as<bool>();
+    std::vector<SceneProject*> candidates;
+    if (inStage) {
+        if (PrefabStage* stage = project.getActivePrefabStage()) candidates.push_back(&stage->sceneProject);
+    } else {
+        for (SceneProject& sceneProject : project.getScenes()) candidates.push_back(&sceneProject);
+    }
+    for (SceneProject* candidate : candidates) {
+        SceneProject& sceneProject = *candidate;
+        if (!sceneProject.scene || (!inStage && !sceneName.empty() && sceneProject.name != sceneName)) continue;
         std::map<Entity, std::string> paths;
         for (Entity entity : sceneProject.entities) {
             if (sceneProject.scene->isEntityCreated(entity) && dumpPath(sceneProject.scene, entity, paths) == path) {
@@ -700,16 +730,45 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 // path; `component` a Stream component key):
 //   save | dump {out} | refresh {prefab, reload} | copy {from, to} / remove {path} (outside edits) |
 //   refreshAssets (the asset database refresh) | undo (the last command) | redo |
-//   set {entity, component, property, value, shared}  (a PropertyCmd-like edit: value set,
-//       then prefabPropertyChanged when shared, the Inspector's edit-shared path) |
+//   set {entity, also, component, property, value}  (the Inspector's edit: a PropertyCmd per
+//       GameObject, `also` more dump paths for a multi-selection, one undo step) |
+//   setName {entity, name}  (EntityNameCmd) | delete {entity}  (DeleteEntityCmd) |
 //   setState {entity, active|tag|layer}  (EntityStateCmd's path) |
+//   revertComponent {entity, component}  (the component header's Revert) |
+//   revertAll / applyAll {entity: an instance root}  (the Overrides dropdown's) |
+//   playStart / playStop {scene}  (Play's snapshot taken / Stop's restore, without running) |
+//   canApply {entity, component, properties, target}  (prints whether Apply is allowed) |
 //   addComponent / removeComponent {entity, component}  (AddComponentCmd / RemoveComponentCmd) |
 //   createPrefab {entity, path} (CreatePrefabCmd) | instantiate {entity, prefab, below} (ImportPrefabCmd) |
+//   replace {entity, prefab, match: name|hierarchy|none, keepOverrides, renameRoot} (ReplacePrefabCmd) |
+//   unpackMissing {entity} (UnpackMissingPrefabCmd) | preview {entity, prefab} (a thumbnail's instance, listed) |
+//   usage (the Prefabs dialog's usage scan, listed) | close {scene} (unloads it: usage reads its file) |
 //   record|revert|apply Property|State|AddedComponent|RemovedComponent
-//       {entity, component, properties, state, target}  (PrefabOverrideCmd)
+//       {entity, component, properties, state, target}  (PrefabOverrideCmd) |
+//   Prefab Mode: openPrefab {prefab} (isolation) or {entity, [prefab], [inContext]} (from an
+//       instance) | closePrefab {depth, choice: ask|save|discard|cancel} | savePrefab |
+//       autoSave {value} | tickPrefab {wait, editing} (the per-frame upkeep: Auto Save) |
+//       undoStage / redoStage | setCmd {entity, component, property, value: Vector3},
+//       createChild {entity, name}, deleteEntity {entity} (through the undo history),
+//       create {scene | stage: true, name, kind: empty|box|sphere|light, position};
+//       `stage: true` makes `entity` a path in the shown stage
+// The GameObject menu entry an op's `kind` names (create, createChild)
+static EntityCreationType creationKind(const YAML::Node& op) {
+    static const std::map<std::string, EntityCreationType> kinds = {
+        {"empty", EntityCreationType::GAMEOBJECT}, {"box", EntityCreationType::BOX},
+        {"sphere", EntityCreationType::SPHERE}, {"light", EntityCreationType::POINT_LIGHT},
+        {"sun", EntityCreationType::DIRECTIONAL_LIGHT}, {"text", EntityCreationType::TEXT},
+        {"image", EntityCreationType::IMAGE},
+    };
+    const std::string kind = op["kind"] ? op["kind"].as<std::string>() : std::string("empty");
+    auto it = kinds.find(kind);
+    return it != kinds.end() ? it->second : EntityCreationType::GAMEOBJECT;
+}
+
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
     std::vector<std::unique_ptr<Command>> done;
     std::vector<std::unique_ptr<Command>> undone;
+    size_t playFloor = 0;
     static const std::map<std::string, PrefabOverrideCmd::Operation> operations = {
         {"recordProperty", PrefabOverrideCmd::Operation::RecordProperty}, {"revertProperty", PrefabOverrideCmd::Operation::RevertProperty},
         {"applyProperty", PrefabOverrideCmd::Operation::ApplyProperty}, {"recordState", PrefabOverrideCmd::Operation::RecordState},
@@ -758,6 +817,57 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             project.refreshAssetDatabase(true);
             continue;
         }
+        if (name == "playStart" || name == "playStop") {
+            // Play's snapshot of the scene (Project::runPlayStartup) and Stop's restore
+            // (finalizeStop), the game itself not run
+            for (SceneProject& played : project.getScenes()) {
+                if (!played.scene || (op["scene"] && played.name != op["scene"].as<std::string>())) continue;
+                if (name == "playStart") {
+                    played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                    played.playPrefabState = project.capturePlayPrefabState(&played);
+                    const std::vector<Entity> alive = played.scene->getEntityList();
+                    played.playStateEntities = std::set<Entity>(alive.begin(), alive.end());
+                    played.playStateModified = played.isModified;
+                    played.playState = ScenePlayState::PLAYING;
+                } else {
+                    played.isModified = played.playStateModified;
+                    project.restorePlaySnapshot(&played);
+                    played.playState = ScenePlayState::STOPPED;
+                }
+                break;
+            }
+            // Stop drops what was done while playing from the history
+            if (name == "playStart") {
+                playFloor = done.size();
+            } else {
+                while (done.size() > playFloor) done.pop_back();
+                undone.clear();
+            }
+            continue;
+        }
+        if (name == "close") {
+            // a scene closed (unloaded): what reads closed scenes from their file sees it (F)
+            for (SceneProject& sceneProject : project.getScenes()) {
+                if (sceneProject.scene && (!op["scene"] || sceneProject.name == op["scene"].as<std::string>())) {
+                    project.closeScene(sceneProject.id, true);
+                    break;
+                }
+            }
+            continue;
+        }
+        if (name == "usage") {
+            // the Prefabs dialog's usage scan (F)
+            for (const auto& [key, usage] : project.collectPrefabUsage()) {
+                std::cout << "  usage " << usage.path.generic_string() << " guid " << (usage.guid.empty() ? "-" : usage.guid) << ":";
+                for (const PrefabSceneUsage& scene : usage.scenes) {
+                    std::cout << " [" << scene.sceneName << (scene.loaded ? "" : " closed") << " instances " << scene.instances
+                              << " nested " << scene.nested << " missing " << scene.missing << "]";
+                }
+                for (const fs::path& path : usage.nestedIn) std::cout << " in " << path.generic_string();
+                std::cout << "\n";
+            }
+            continue;
+        }
         if (name == "refresh") {
             project.refreshPrefabInstances(op["prefab"].as<std::string>(), op["reload"] && op["reload"].as<bool>());
             continue;
@@ -778,10 +888,124 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
             continue;
         }
+        // ---- Prefab Mode ----
+        if (name == "openPrefab" && !op["entity"]) {
+            // from the Project window: in isolation
+            if (!project.openPrefabStage(op["prefab"].as<std::string>())) {
+                std::cout << "  (failed)\n";
+            }
+            continue;
+        }
+        if (name == "closePrefab") {
+            // choice: save | discard | cancel (the exit dialog's buttons), ask (the dialog;
+            // headless it saves)
+            static const std::map<std::string, int> choices = {{"ask", 0}, {"save", 1}, {"discard", 2}, {"cancel", 3}};
+            const std::string choice = op["choice"] ? op["choice"].as<std::string>() : std::string("ask");
+            const size_t depth = op["depth"] ? op["depth"].as<size_t>() : 0;
+            project.closePrefabStages(depth, [](bool closed) {
+                std::cout << "  " << (closed ? "closed" : "cancelled") << "\n";
+            }, choices.count(choice) ? choices.at(choice) : 0);
+            continue;
+        }
+        if (name == "savePrefab") {
+            PrefabStage* stage = project.getActivePrefabStage();
+            std::cout << "  " << (stage && project.savePrefabStage(stage->sceneProject.id) ? "saved" : "(failed)") << "\n";
+            continue;
+        }
+        if (name == "autoSave") {
+            project.setPrefabAutoSave(op["value"].as<bool>());
+            continue;
+        }
+        if (name == "tickPrefab") {
+            // frames of Prefab Mode's upkeep (Auto Save, outside changes) after `wait` seconds
+            if (op["wait"]) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(op["wait"].as<float>() * 1000.0f)));
+            }
+            project.updatePrefabStages(op["editing"] && op["editing"].as<bool>());
+            continue;
+        }
+        if (name == "create") {
+            // a GameObject at the top of `scene` (or of the shown stage), as the GameObject menu
+            // makes it: kind empty|box|sphere|light, at `position`
+            SceneProject* target = nullptr;
+            if (op["stage"] && op["stage"].as<bool>()) {
+                PrefabStage* stage = project.getActivePrefabStage();
+                target = stage ? &stage->sceneProject : nullptr;
+            } else {
+                for (SceneProject& candidate : project.getScenes()) {
+                    if (candidate.scene && (!op["scene"] || candidate.name == op["scene"].as<std::string>())) {
+                        target = &candidate;
+                        break;
+                    }
+                }
+            }
+            if (!target) {
+                std::cerr << "scene-dump: no scene for create\n";
+                return false;
+            }
+            CreateEntityCmd* command = new CreateEntityCmd(&project, target->id, op["name"].as<std::string>(), creationKind(op));
+            if (op["position"]) {
+                const YAML::Node p = op["position"];
+                command->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(p[0].as<float>(), p[1].as<float>(), p[2].as<float>()));
+            }
+            CommandHandle::get(target->id)->addCommandNoMerge(command);
+            continue;
+        }
+        if (name == "undoScene" || name == "redoScene") {
+            // the undo history of a scene (`scene`), as Ctrl+Z / Ctrl+Y in it
+            for (SceneProject& candidate : project.getScenes()) {
+                if (candidate.scene && op["scene"] && candidate.name == op["scene"].as<std::string>()) {
+                    CommandHistory* history = CommandHandle::get(candidate.id);
+                    if (name == "undoScene") history->undo(); else history->redo();
+                }
+            }
+            continue;
+        }
+        if (name == "undoStage" || name == "redoStage") {
+            if (PrefabStage* stage = project.getActivePrefabStage()) {
+                CommandHistory* history = CommandHandle::get(stage->sceneProject.id);
+                if (name == "undoStage") history->undo(); else history->redo();
+                project.notePrefabStageChange(stage->sceneProject.id);  // the editor's onSceneModified
+            }
+            continue;
+        }
+
         SceneProject* sceneProject = nullptr;
         const Entity entity = findDumpEntity(project, op, sceneProject);
         if (entity == NULL_ENTITY) {
             return false;
+        }
+        if (name == "openPrefab") {
+            // from an instance (Hierarchy / Inspector Open): in context unless inContext: false
+            const std::string prefab = op["prefab"] ? op["prefab"].as<std::string>() : project.findPrefabPathFor(sceneProject->id, entity).generic_string();
+            const bool inContext = !op["inContext"] || op["inContext"].as<bool>();
+            if (!project.openPrefabStage(prefab, sceneProject->id, entity, inContext)) {
+                std::cout << "  (failed)\n";
+            }
+            continue;
+        }
+        if (name == "setCmd" || name == "createChild" || name == "deleteEntity") {
+            // through the scene's (or stage's) undo history, as the Inspector and Hierarchy do
+            Command* command = nullptr;
+            if (name == "setCmd") {
+                const YAML::Node value = op["value"];
+                const ComponentType componentType = op["component"] ? Catalog::getComponentType(op["component"].as<std::string>()) : ComponentType::Transform;
+                command = new PropertyCmd<Vector3>(&project, sceneProject->id, entity, componentType, op["property"].as<std::string>(),
+                    Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>()));
+            } else if (name == "createChild") {
+                CreateEntityCmd* create = new CreateEntityCmd(&project, sceneProject->id, op["name"] ? op["name"].as<std::string>() : std::string("GameObject"),
+                    creationKind(op), entity);
+                if (op["position"]) {
+                    const YAML::Node p = op["position"];
+                    create->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(p[0].as<float>(), p[1].as<float>(), p[2].as<float>()));
+                }
+                command = create;
+            } else {
+                command = new DeleteEntityCmd(&project, sceneProject->id, entity);
+            }
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(command);
+            project.notePrefabStageChange(sceneProject->id);
+            continue;
         }
         Scene* scene = sceneProject->scene;
         const ComponentType type = op["component"] ? Catalog::getComponentType(op["component"].as<std::string>()) : ComponentType::Transform;
@@ -796,21 +1020,74 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 std::cerr << "scene-dump: no property " << property << "\n";
                 return false;
             }
+            std::vector<Entity> targets{entity};
+            if (op["also"]) {
+                for (const YAML::Node& path : op["also"]) {
+                    YAML::Node other = YAML::Clone(op);
+                    other["entity"] = path;
+                    SceneProject* otherScene = nullptr;
+                    const Entity target = findDumpEntity(project, other, otherScene);
+                    if (target == NULL_ENTITY || otherScene != sceneProject) {
+                        return false;
+                    }
+                    targets.push_back(target);
+                }
+            }
             const YAML::Node value = op["value"];
-            switch (data.type) {
-                case PropertyType::Float: *static_cast<float*>(data.ref) = value.as<float>(); break;
-                case PropertyType::Bool: *static_cast<bool*>(data.ref) = value.as<bool>(); break;
-                case PropertyType::Int: *static_cast<int*>(data.ref) = value.as<int>(); break;
-                case PropertyType::UInt: *static_cast<unsigned int*>(data.ref) = value.as<unsigned int>(); break;
-                case PropertyType::Vector3: *static_cast<Vector3*>(data.ref) = Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>()); break;
-                case PropertyType::Vector4: *static_cast<Vector4*>(data.ref) = Vector4(value[0].as<float>(), value[1].as<float>(), value[2].as<float>(), value[3].as<float>()); break;
-                default: std::cerr << "scene-dump: unsupported property type\n"; return false;
+            MultiPropertyCmd* command = new MultiPropertyCmd();
+            for (Entity target : targets) {
+                const uint32_t id = sceneProject->id;
+                switch (data.type) {
+                    case PropertyType::Float: command->addPropertyCmd<float>(&project, id, target, type, property, value.as<float>()); break;
+                    case PropertyType::Bool: command->addPropertyCmd<bool>(&project, id, target, type, property, value.as<bool>()); break;
+                    case PropertyType::Int: command->addPropertyCmd<int>(&project, id, target, type, property, value.as<int>()); break;
+                    case PropertyType::UInt: command->addPropertyCmd<unsigned int>(&project, id, target, type, property, value.as<unsigned int>()); break;
+                    case PropertyType::String: command->addPropertyCmd<std::string>(&project, id, target, type, property, value.as<std::string>()); break;
+                    case PropertyType::Vector3: command->addPropertyCmd<Vector3>(&project, id, target, type, property,
+                        Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>())); break;
+                    case PropertyType::Vector4: command->addPropertyCmd<Vector4>(&project, id, target, type, property,
+                        Vector4(value[0].as<float>(), value[1].as<float>(), value[2].as<float>(), value[3].as<float>())); break;
+                    default: std::cerr << "scene-dump: unsupported property type\n"; delete command; return false;
+                }
             }
-            Catalog::updateEntity(scene, entity, data.updateFlags);
-            if (project.isEntityInPrefab(sceneProject->id, entity) && (!op["shared"] || op["shared"].as<bool>())) {
-                project.prefabPropertyChanged(sceneProject->id, entity, type, {property});
+            runCommand(command);
+            continue;
+        }
+        if (name == "setName") {
+            runCommand(new EntityNameCmd(&project, sceneProject->id, entity, op["name"].as<std::string>()));
+            continue;
+        }
+        if (name == "delete") {
+            runCommand(new DeleteEntityCmd(&project, sceneProject->id, entity));
+            continue;
+        }
+        if (name == "revertAll") {
+            runCommand(PrefabOverridesCmd::revertAll(&project, sceneProject->id, entity));
+            continue;
+        }
+        if (name == "applyAll") {
+            PrefabOverridesCmd* command = PrefabOverridesCmd::applyAll(&project, sceneProject->id, entity);
+            if (command) {
+                runCommand(command);
+            } else {
+                std::cout << "  (failed)\n";
             }
-            sceneProject->isModified = true;
+            continue;
+        }
+        if (name == "revertComponent") {
+            runCommand(new ComponentToPrefabSharedCmd(&project, sceneProject->id, entity, type));
+            continue;
+        }
+        if (name == "canApply") {
+            std::string reason;
+            const bool can = project.canApplyPrefabOverride(sceneProject->id, entity, type, properties,
+                op["target"] ? fs::path(op["target"].as<std::string>()) : fs::path(), &reason);
+            std::cout << "  canApply: " << (can ? "yes" : "no") << (reason.empty() ? std::string() : " (" + reason + ")") << "\n";
+            std::cout << "  targets:";
+            for (const fs::path& target : project.getPrefabApplyTargets(sceneProject->id, entity)) {
+                std::cout << " " << target.generic_string();
+            }
+            std::cout << "\n";
             continue;
         }
         if (name == "setState") {
@@ -831,6 +1108,36 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 op["below"] && op["below"].as<bool>() ? entity : NULL_ENTITY, true);
             command->setQuiet(true);
             runCommand(command);
+            continue;
+        }
+        // ---- F: Replace Prefab, Missing Prefab unpack, previews, usage ----
+        if (name == "replace") {
+            // Prefab > Replace (ReplacePrefabCmd): match name|hierarchy|none, keepOverrides, renameRoot
+            PrefabReplaceSettings settings;
+            const std::string match = op["match"] ? op["match"].as<std::string>() : std::string("name");
+            settings.match = match == "hierarchy" ? PrefabReplaceSettings::Match::ByHierarchy :
+                match == "none" ? PrefabReplaceSettings::Match::None : PrefabReplaceSettings::Match::ByName;
+            settings.keepOverrides = !op["keepOverrides"] || op["keepOverrides"].as<bool>();
+            settings.renameRoot = !op["renameRoot"] || op["renameRoot"].as<bool>();
+            runCommand(new ReplacePrefabCmd(&project, sceneProject->id, {entity}, op["prefab"].as<std::string>(), settings));
+            continue;
+        }
+        if (name == "unpackMissing") {
+            runCommand(new UnpackMissingPrefabCmd(&project, sceneProject->id, {entity}));
+            continue;
+        }
+        if (name == "preview") {
+            // what a prefab thumbnail renders: an instance in a scene of its own, listed
+            Scene previewScene;
+            const Entity root = project.instantiatePrefabPreview(&previewScene, op["prefab"].as<std::string>());
+            std::map<Entity, std::string> paths;
+            std::vector<std::string> names;
+            for (Entity previewEntity : previewScene.getEntityList()) {
+                names.push_back(dumpPath(&previewScene, previewEntity, paths));
+            }
+            std::sort(names.begin(), names.end());
+            std::cout << "  preview root " << (root == NULL_ENTITY ? std::string("none") : dumpPath(&previewScene, root, paths)) << "\n";
+            for (const std::string& path : names) std::cout << "  preview " << path << "\n";
             continue;
         }
         if (name == "addComponent") {

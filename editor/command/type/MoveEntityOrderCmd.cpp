@@ -53,6 +53,11 @@ bool editor::MoveEntityOrderCmd::execute(){
         }
 
         if (targetPrefabPath == sourcePrefabPath){
+            // a reorder inside an instance changes the Prefab asset, which Play mode leaves alone
+            if (!project->canApplyPrefabOverrides()){
+                Out::warning("Cannot restructure a Prefab instance in Play mode");
+                return false;
+            }
             prefabMoveRecovery = project->moveEntityFromPrefab(sceneId, source, target, type, false);
         }
     }

@@ -1022,7 +1022,8 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
         return;
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1060,7 +1061,8 @@ void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& delet
         }
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1158,7 +1160,8 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
         return;
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1179,7 +1182,8 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
 }
 
 void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene || !visitAssetPathsInRegistry(sceneProject.scene, transform)) {
             continue;
         }
@@ -1286,7 +1290,8 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         return changed;
     };
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1587,7 +1592,8 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
     this->canvasWidth = width;
     this->canvasHeight = height;
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -3774,6 +3780,11 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
 }
 
 void editor::Project::resetConfigs() {
+    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+    while (!prefabStages.empty()) {
+        popPrefabStage();
+    }
+
     // Clear existing scenes
     for (auto& sceneProject : scenes) {
         deleteSceneProject(&sceneProject);
@@ -4082,6 +4093,54 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     }
 }
 
+bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
+    if (!sceneProject) {
+        return false;
+    }
+    if (!sceneProject->scene || !sceneProject->playStateSnapshot || sceneProject->playStateSnapshot.IsNull()) {
+        sceneProject->playPrefabState = PlayPrefabState();
+        return false;
+    }
+    Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
+
+    // entities are still live, so the decode also removes components added during play
+    auto entitiesNode = sceneProject->playStateSnapshot["entities"];
+    size_t insertAt = 0;
+    for (const auto& entityNode : entitiesNode) {
+        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+
+        // A script can destroy entities while playing and the decode recreates them, but
+        // only the tracked list makes them visible to the editor again
+        for (Entity entity : restored) {
+            auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
+            if (it != sceneProject->entities.end()) {
+                insertAt = std::distance(sceneProject->entities.begin(), it) + 1;
+                continue;
+            }
+
+            insertAt = std::min(insertAt, sceneProject->entities.size());
+            sceneProject->entities.insert(sceneProject->entities.begin() + insertAt, entity);
+            insertAt++;
+        }
+    }
+
+    destroyPlayCreatedEntities(sceneProject);
+
+    deselectDestroyedEntities(sceneProject);
+
+    // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
+    CameraTextureLink::resolve(sceneProject->scene);
+
+    // Clear the snapshot
+    sceneProject->playStateSnapshot = YAML::Node();
+    sceneProject->playStateEntities.clear();
+
+    // The prefab instances' bookkeeping goes back with them: an override recorded, a
+    // GameObject removed or added while playing does not outlive Play
+    restorePlayPrefabState(sceneProject);
+    return true;
+}
+
 void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
@@ -4169,42 +4228,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         // Restore snapshot if present
-        const bool restoredFromSnapshot = sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull();
-        if (restoredFromSnapshot) {
-            Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
-
-            // entities are still live, so the decode also removes components added during play
-            auto entitiesNode = sceneProject->playStateSnapshot["entities"];
-            size_t insertAt = 0;
-            for (const auto& entityNode : entitiesNode) {
-                std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
-
-                // A script can destroy entities while playing and the decode recreates them, but
-                // only the tracked list makes them visible to the editor again
-                for (Entity entity : restored) {
-                    auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
-                    if (it != sceneProject->entities.end()) {
-                        insertAt = std::distance(sceneProject->entities.begin(), it) + 1;
-                        continue;
-                    }
-
-                    insertAt = std::min(insertAt, sceneProject->entities.size());
-                    sceneProject->entities.insert(sceneProject->entities.begin() + insertAt, entity);
-                    insertAt++;
-                }
-            }
-
-            destroyPlayCreatedEntities(sceneProject);
-
-            deselectDestroyedEntities(sceneProject);
-
-            // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
-            CameraTextureLink::resolve(sceneProject->scene);
-
-            // Clear the snapshot
-            sceneProject->playStateSnapshot = YAML::Node();
-            sceneProject->playStateEntities.clear();
-        }
+        const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {
@@ -4737,6 +4761,13 @@ bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, Sc
 }
 
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
+    // Prefab Mode: saving its scene saves the prefab asset
+    if (isPrefabStage(sceneId)) {
+        const bool saved = savePrefabStage(sceneId);
+        if (callback) callback(saved);
+        return;
+    }
+
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Cannot save scene - invalid scene ID: %u", sceneId);
@@ -4985,8 +5016,9 @@ void editor::Project::writeMissingSceneSources() {
 }
 
 void editor::Project::configureGenerator() {
-    // the standalone build starts the selected scene
-    const uint32_t startId = getScene(selectedScene) ? selectedScene : startSceneId;
+    // the standalone build starts the selected scene (in Prefab Mode, the scene behind it)
+    const uint32_t selectedRegular = getSceneBehindPrefabStage(selectedScene);
+    const uint32_t startId = getScene(selectedRegular) ? selectedRegular : startSceneId;
 
     std::vector<editor::SceneBuildInfo> scenesToConfig;
     for (SceneProject& sceneConf : scenes) {
@@ -5072,6 +5104,12 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     std::vector<uint32_t> sceneIds;
+    // the prefab stages first: the scenes saved after them hold their assets' new state
+    for (const auto& stage : prefabStages) {
+        if (hasUnsavedPrefabStage(stage->sceneProject.id)) {
+            sceneIds.push_back(stage->sceneProject.id);
+        }
+    }
     for (auto& sceneProject : scenes) {
         if (hasSceneUnsavedChanges(sceneProject.id)) {
             sceneIds.push_back(sceneProject.id);
@@ -5108,9 +5146,9 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
         Transform& transform = scene->getComponent<Transform>(entity);
         float size = 16.0f;
         SceneRender* editorRender = nullptr;
-        for (const SceneProject& sceneProject : scenes){
-            if (sceneProject.scene == mainScene){
-                editorRender = sceneProject.sceneRender;
+        for (SceneProject* sceneProject : const_cast<Project*>(this)->getScenesAndPrefabStages()){
+            if (sceneProject->scene == mainScene){
+                editorRender = sceneProject->sceneRender;
                 break;
             }
         }
@@ -5650,6 +5688,10 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
     if (SceneProject* sceneProject = findScene<editor::SceneProject>(sceneId)) {
         return sceneProject;
     }
+    // a prefab stage's scene (Prefab Mode) answers to its id like any scene
+    if (SceneProject* stageScene = findPrefabStageScene(sceneId)) {
+        return stageScene;
+    }
     return findPlayRuntimeScene(sceneId);
 }
 
@@ -5657,6 +5699,9 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
 const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
     if (const SceneProject* sceneProject = findScene<const editor::SceneProject>(sceneId)) {
         return sceneProject;
+    }
+    if (const SceneProject* stageScene = findPrefabStageScene(sceneId)) {
+        return stageScene;
     }
     return findPlayRuntimeScene(sceneId);
 }
@@ -6252,6 +6297,11 @@ bool editor::Project::hasScenesUnsavedChanges() const{
         }
     }
 
+    // Prefab Mode with Auto Save off
+    if (hasUnsavedPrefabStages()){
+        return true;
+    }
+
     if (hasUnsavedPrefabs()){
          return true;
     }
@@ -6610,6 +6660,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         registerPrefabManager();
 
         YAML::Node playSnapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
+        // with what describes its prefab instances, which Stop puts back with it
+        PlayPrefabState playPrefabState = capturePlayPrefabState(mainSceneProject);
 
         // Play reuses the edit-time Scene, so anything alive now is authored or engine
         // owned. Whatever appears later belongs to the play session.
@@ -6674,7 +6726,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         // constructors observing a current GL context behave correctly,
         // and so that finalizeStart is invoked from the UI thread.
         editor::getEditorHost().enqueueMainThreadTask(
-            [this, session, sceneId, hasCppScripts, playSnapshot = std::move(playSnapshot), playEntities = std::move(playEntities)]() mutable {
+            [this, session, sceneId, hasCppScripts, playSnapshot = std::move(playSnapshot), playEntities = std::move(playEntities),
+             playPrefabState = std::move(playPrefabState)]() mutable {
                 if (session->cancelled.load(std::memory_order_acquire)) {
                     session->startupThreadDone.store(true, std::memory_order_release);
                     return;
@@ -6693,6 +6746,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                 sceneProject->playStateSnapshot = std::move(playSnapshot);
                 sceneProject->playStateEntities = std::move(playEntities);
+                sceneProject->playPrefabState = std::move(playPrefabState);
                 sceneProject->playStateModified = sceneProject->isModified;
 
                 std::vector<PlayRuntimeScene> runtimeScenesToInitialize;

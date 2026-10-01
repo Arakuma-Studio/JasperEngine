@@ -16,6 +16,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "command/type/ImportPrefabCmd.h"
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -79,6 +80,7 @@ bool editor::SceneWindow::isFocused() const {
 }
 
 void editor::SceneWindow::resetProjectState() {
+    cancelPrefabDrag();
     for (const auto& entry : lookActive) {
         // Only one look can be active, and endLook only rewrites keys that exist
         if (entry.second) { endLook(entry.first); break; }
@@ -103,6 +105,9 @@ void editor::SceneWindow::resetProjectState() {
 }
 
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
+    if (prefabDragSceneId == sceneId) {
+        cancelPrefabDrag();
+    }
     if (lookActive[sceneId]) {
         endLook(sceneId);
     }
@@ -448,7 +453,15 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                     cachedDragPath.clear();
                 }
 
-                if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {
+                const bool isPrefab = Util::isPrefabFile(droppedRelativePath);
+
+                if (isPrefab) {
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            updatePrefabDrag(sceneProject, receivedStrings, x, y, payload->IsDelivery());
+                        }
+                    }
+                } else if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                         if (payload->IsDelivery() && !insideAssets) {
                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
@@ -694,6 +707,10 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
         }
         ImGui::EndDragDropTarget();
     } else {
+        // the dragged prefab left this view (or the drag ended elsewhere)
+        if (prefabDragSceneId == sceneProject->id) {
+            cancelPrefabDrag();
+        }
         if (draggingResourceFile) {
             // If user released mouse (ended drag) and we have a temp texture applied, revert it
             if (selMesh) {
@@ -730,6 +747,128 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
             tempImage = nullptr;
         }
     }
+}
+
+Vector3 editor::SceneWindow::getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ) {
+    keepZ = false;
+    if (sceneProject->sceneType == SceneType::SCENE_3D) {
+        // On what the pointer is over (the preview itself left out), else the ground plane,
+        // else in front of the camera
+        Entity hit = project->findObjectByRayIgnoring(sceneProject->id, x, y, prefabDragEntities);
+        return getModelDropPosition(sceneProject, x, y, hit);
+    }
+    // 2D and UI: the pointer's world position, the prefab keeping its own depth
+    keepZ = true;
+    Ray ray = sceneProject->sceneRender->screenToRay(x, y);
+    RayReturn hit = ray.intersects(Plane(Vector3(0, 0, 1), Vector3(0, 0, 0)));
+    return hit ? hit.point : Vector3(0, 0, 0);
+}
+
+void editor::SceneWindow::cancelPrefabDrag() {
+    if (prefabDragPreview) {
+        prefabDragPreview->undo();
+        delete prefabDragPreview;
+        prefabDragPreview = nullptr;
+        if (SceneProject* sceneProject = project->getScene(prefabDragSceneId)) {
+            sceneProject->needUpdateRender = true;
+        }
+    }
+    prefabDragSceneId = NULL_PROJECT_SCENE;
+    prefabDragPath.clear();
+    prefabDragEntities.clear();
+}
+
+void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std::vector<std::string>& paths, float x, float y, bool delivery) {
+    std::vector<fs::path> prefabs;
+    for (const std::string& path : paths) {
+        if (Util::isPrefabFile(path)) {
+            fs::path relative = fs::path(path).lexically_relative(project->getProjectPath());
+            if (!relative.empty() && relative.begin()->string() != "..") {
+                prefabs.push_back(relative);
+            }
+        }
+    }
+    if (prefabs.empty() || !sceneProject->sceneRender) {
+        cancelPrefabDrag();
+        return;
+    }
+
+    // The preview: an instance of the first prefab, made once and moved with the pointer
+    if (prefabDragSceneId != NULL_PROJECT_SCENE &&
+            (prefabDragSceneId != sceneProject->id || prefabDragPath != prefabs.front().generic_string())) {
+        cancelPrefabDrag();
+    }
+    bool keepZ = false;
+    if (!prefabDragPreview && prefabDragSceneId == NULL_PROJECT_SCENE) {
+        // one attempt per drag: a prefab that cannot be made is not tried every frame
+        prefabDragSceneId = sceneProject->id;
+        prefabDragPath = prefabs.front().generic_string();
+        ImportPrefabCmd* preview = new ImportPrefabCmd(project, sceneProject->id, prefabs.front(), NULL_ENTITY, true);
+        preview->setQuiet(true);
+        preview->setDropPosition(getPrefabDropPosition(sceneProject, x, y, keepZ), keepZ);
+        if (preview->execute()) {
+            prefabDragPreview = preview;
+            const Entity root = preview->getRootEntity();
+            prefabDragEntities.insert(root);
+            // everything below the root, so the pointer never lands on the preview itself
+            auto transforms = sceneProject->scene->getComponentArray<Transform>();
+            for (size_t i = 0; i < transforms->size(); i++) {
+                Entity entity = transforms->getEntity(i);
+                Entity ancestor = transforms->getComponentFromIndex(i).parent;
+                for (size_t depth = 0; ancestor != NULL_ENTITY && depth < 1024; depth++) {
+                    if (ancestor == root) {
+                        prefabDragEntities.insert(entity);
+                        break;
+                    }
+                    Transform* parent = sceneProject->scene->findComponent<Transform>(ancestor);
+                    ancestor = parent ? parent->parent : NULL_ENTITY;
+                }
+            }
+            for (Entity entity : preview->getImportedEntities()) {
+                prefabDragEntities.insert(entity);
+            }
+        } else {
+            delete preview;
+        }
+    }
+
+    const Vector3 position = getPrefabDropPosition(sceneProject, x, y, keepZ);
+    if (prefabDragPreview) {
+        if (Transform* transform = sceneProject->scene->findComponent<Transform>(prefabDragPreview->getRootEntity())) {
+            Vector3 target = position;
+            if (keepZ) {
+                target.z = transform->position.z;
+            }
+            if (transform->position != target) {
+                transform->position = target;
+                transform->needUpdate = true;
+                sceneProject->needUpdateRender = true;
+            }
+        }
+    }
+
+    if (!delivery) {
+        return;
+    }
+
+    // The drop: the preview goes, the real instances come as one undo step
+    cancelPrefabDrag();
+    std::vector<ImportPrefabCmd*> commands;
+    for (const fs::path& prefab : prefabs) {
+        ImportPrefabCmd* cmd = new ImportPrefabCmd(project, sceneProject->id, prefab, NULL_ENTITY, true);
+        cmd->setDropPosition(position, keepZ);
+        commands.push_back(cmd);
+    }
+    if (commands.size() == 1) {
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(commands.front());
+    } else {
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        for (ImportPrefabCmd* cmd : commands) {
+            multiCmd->addCommand(std::unique_ptr<Command>(cmd));
+        }
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(multiCmd);
+    }
+    focusSceneWindow(*sceneProject);
 }
 
 void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
@@ -1918,6 +2057,11 @@ void editor::SceneWindow::show() {
     }
     closeSceneQueue.clear();
 
+    // A prefab drag that ended where no Scene view saw it (a hidden tab, another window)
+    if (prefabDragSceneId != NULL_PROJECT_SCENE && !ImGui::GetDragDropPayload()) {
+        cancelPrefabDrag();
+    }
+
     windowFocused = false;
 
     int openedScenesCount = 0;
@@ -1925,12 +2069,35 @@ void editor::SceneWindow::show() {
         if (s.opened) openedScenesCount++;
     }
 
-    // Iterate through all scenes in the project
-    for (auto& sceneProject : project->getScenes()) {
-        if (!sceneProject.opened) continue;
+    // The open scenes, then Prefab Mode's tab for the shown stage
+    std::vector<SceneProject*> viewScenes;
+    for (auto& openScene : project->getScenes()) {
+        if (openScene.opened) viewScenes.push_back(&openScene);
+    }
+    PrefabStage* activeStage = project->getActivePrefabStage();
+    const uint32_t activeStageId = activeStage ? activeStage->sceneProject.id : NULL_PROJECT_SCENE;
+    bool focusStage = false;
+    uint32_t focusScene = NULL_PROJECT_SCENE;
+    if (activeStageId != shownPrefabStage) {
+        // a stage opened (or the breadcrumbs went to another): its tab comes forward; Prefab
+        // Mode left: the scene it was entered from does
+        focusStage = activeStageId != NULL_PROJECT_SCENE;
+        if (!focusStage) {
+            focusScene = project->getSelectedSceneId();
+        }
+        shownPrefabStage = activeStageId;
+    }
+    if (activeStage) {
+        viewScenes.push_back(&activeStage->sceneProject);
+    }
 
-        // Disable close button if this is the only open scene
-        bool canClose = openedScenesCount > 1;
+    // Iterate through all scenes in the project
+    for (SceneProject* viewScene : viewScenes) {
+        SceneProject& sceneProject = *viewScene;
+        const bool isStage = activeStage && &activeStage->sceneProject == viewScene;
+
+        // Disable close button if this is the only open scene (Prefab Mode's tab exits it)
+        bool canClose = isStage || openedScenesCount > 1;
         bool isOpen = true;
 
         const bool isRuntimeActive = sceneProject.playState == ScenePlayState::PLAYING
@@ -1944,7 +2111,11 @@ void editor::SceneWindow::show() {
         }
         ImGuiWindowFlags windowFlags = hasNotification[sceneProject.id] ? ImGuiWindowFlags_UnsavedDocument : 0;
         ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
-        const bool sceneWindowVisible = ImGui::Begin(getWindowTitle(sceneProject).c_str(), canClose ? &isOpen : nullptr, windowFlags);
+        if ((isStage && focusStage) || (!isStage && sceneProject.id == focusScene)) {
+            ImGui::SetNextWindowFocus();
+        }
+        const std::string windowTitle = isStage ? getPrefabStageWindowTitle(sceneProject) : getWindowTitle(sceneProject);
+        const bool sceneWindowVisible = ImGui::Begin(windowTitle.c_str(), canClose ? &isOpen : nullptr, windowFlags);
         if (hasNotification[sceneProject.id]) App::popTabNotificationStyle();
 
         if (!isRuntimeActive) {
@@ -1968,6 +2139,11 @@ void editor::SceneWindow::show() {
             Entity previewCameraEntity = isCameraPreview ? sceneProject.sceneRender->getPreviewCameraEntity() : NULL_ENTITY;
             if (isCameraPreview) {
                 sceneProject.needUpdateRender = true;
+            }
+
+            // Prefab Mode: its breadcrumbs and controls over the Scene view
+            if (isStage) {
+                drawPrefabStageBar(sceneProject);
             }
 
             // Scene view toolbar (Unity style): view-specific controls only. Play and the
@@ -2001,7 +2177,9 @@ void editor::SceneWindow::show() {
                 ImGui::SetItemTooltip("Exit camera preview (Esc)");
             }
 
-            drawParentSceneButton(sceneProject);
+            if (!isStage) {
+                drawParentSceneButton(sceneProject);
+            }
 
             {
                 const std::string gizmosPopupId = "GizmosPopup" + std::to_string(sceneProject.id);
@@ -2062,6 +2240,17 @@ void editor::SceneWindow::show() {
                     canvasDpiScale[sceneProject.id] = dpiScale;
 
                     sceneProject.needUpdateRender = true;
+                }
+
+                // A stage opened in isolation shows its prefab whole once the view has a size
+                if (isStage && activeStage->frameOnOpen && widthNew > 0 && heightNew > 0
+                        && sceneProject.scene->isEntityCreated(activeStage->root)) {
+                    // after a few drawn frames: the bounds and the camera's direction exist
+                    sceneProject.needUpdateRender = true;
+                    if (--activeStage->frameDelay <= 0) {
+                        activeStage->frameOnOpen = false;
+                        focusOnEntities(&sceneProject, {activeStage->root});
+                    }
                 }
 
                 ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());
@@ -2168,9 +2357,13 @@ void editor::SceneWindow::show() {
         }
         ImGui::End();
 
-        // Handle window closing
+        // Handle window closing (Prefab Mode's tab exits Prefab Mode)
         if (!isOpen) {
-            handleCloseScene(sceneProject.id);
+            if (isStage) {
+                requestExitPrefabStages(0);
+            } else {
+                handleCloseScene(sceneProject.id);
+            }
         }
     }
 

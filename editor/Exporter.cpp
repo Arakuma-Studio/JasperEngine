@@ -1382,6 +1382,14 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             std::vector<uint32_t> temporarilyLoaded;
             auto& scenes = project->getScenes();
 
+            // Prefab Mode's unsaved changes (Auto Save off) are the assets the build uses
+            for (size_t i = 0; i < project->getPrefabStageCount(); i++) {
+                PrefabStage* stage = project->getPrefabStageAt(i);
+                if (stage && project->hasUnsavedPrefabStage(stage->sceneProject.id)) {
+                    project->savePrefabStage(stage->sceneProject.id);
+                }
+            }
+
             // Load all unloaded scenes (opened=false to avoid UI side-effects)
             for (size_t i = 0; i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];

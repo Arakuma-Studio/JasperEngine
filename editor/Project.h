@@ -105,6 +105,14 @@ namespace jasperengine::editor{
         Entity mainCamera = NULL_ENTITY;  // the scene's main camera, when it was one of them
     };
 
+    // What a scene's prefab instances are (Project::capturePlayPrefabState): Play mode puts
+    // it back at Stop with the scene's snapshot
+    struct PlayPrefabState {
+        bool valid = false;
+        std::map<std::filesystem::path, std::vector<Prefab::Instance>> instances;
+        std::map<Entity, MissingPrefabInstance> missingPrefabs;
+    };
+
     struct SceneProject{
         uint32_t id = NULL_PROJECT_SCENE;
         std::string name = "Unknown";
@@ -134,6 +142,8 @@ namespace jasperengine::editor{
         std::set<Entity> playStateEntities;
         // isModified when the snapshot was taken: Stop puts both back
         bool playStateModified = false;
+        // The prefab instances' bookkeeping when the snapshot was taken (capturePlayPrefabState)
+        PlayPrefabState playPrefabState;
         SceneMaxValues maxValues;
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
@@ -149,6 +159,51 @@ namespace jasperengine::editor{
         // member ids, added GameObjects). A prefab member without a saved id never takes one
         // of these, which a GameObject further down the file needs.
         std::unordered_set<Entity> reservedEntityIds;
+        // A scene of Project::instantiatePrefabPreview (a thumbnail): its Missing Prefabs are
+        // not reported
+        bool prefabPreview = false;
+    };
+
+    // Unity's Prefab Mode, Context: how the scene an In Context prefab stage was opened from
+    // shows behind it
+    enum class PrefabContextVisibility {
+        Normal,
+        Gray,
+        Hidden
+    };
+
+    class PrefabContextOverlay;  // editor/PrefabStage.h
+
+    // Unity's prefab stage (Prefab Mode): a prefab asset opened for editing in a scene of its
+    // own. Its GameObjects are the asset's (their ids are the asset's file ids), so every
+    // edit made in it is an edit of the asset; the instances nested in it are instances, and
+    // what they override is the asset's override of them. Stages stack (a nested prefab
+    // opened from inside one goes on top, Unity's breadcrumbs); the top one is shown. See
+    // editor/PrefabStage.cpp and editor/project/PREFABS.md, section 16.
+    struct PrefabStage {
+        SceneProject sceneProject;                     // the stage's scene (never in Project::scenes)
+        std::filesystem::path assetPath;               // project-relative .prefab
+        std::string guid;
+        Entity root = NULL_ENTITY;                     // the prefab's root GameObject
+        uint32_t returnSceneId = NULL_PROJECT_SCENE;   // the scene Prefab Mode was entered from
+        // In Context: the instance it was opened from, drawn behind the stage
+        uint32_t contextSceneId = NULL_PROJECT_SCENE;
+        Entity contextRoot = NULL_ENTITY;
+        Entity contextCamera = NULL_ENTITY;            // a system camera in the context scene
+        bool contextHidden = false;                    // the instance is hidden while drawn
+        bool contextWasActive = true;
+        std::shared_ptr<PrefabContextOverlay> overlay; // the Gray context's veil
+        std::vector<Entity> environment;               // system entities: light, sky (never saved)
+        bool frameOnOpen = true;                       // the Scene view frames the root once sized
+        int frameDelay = 3;                            // ... and drawn (bounds and camera settled)
+        bool changePending = false;                    // a change Auto Save has not written yet
+        bool autoSaveFailed = false;                   // retried after the next change only
+        std::chrono::steady_clock::time_point lastChange{};
+        std::chrono::steady_clock::time_point lastSyncCheck{};
+        std::string syncedAsset;                       // the asset as the stage last read or wrote it
+        bool outsideChangeWarned = false;
+
+        bool inContext() const { return contextSceneId != NULL_PROJECT_SCENE; }
     };
 
     struct NestedPrefabRecovery {
@@ -244,6 +299,18 @@ namespace jasperengine::editor{
         bool valid() const { return registry && property.ref; }
     };
 
+    // One override of a prefab instance (or of one nested in it), for the Overrides dropdown
+    struct PrefabOverrideEntry {
+        enum class Kind { Property, State, AddedComponent, RemovedComponent, AddedGameObject, RemovedGameObject };
+        Kind kind = Kind::Property;
+        Entity entity = NULL_ENTITY;        // the GameObject (an added one itself; a removed one: NULL)
+        Entity parent = NULL_ENTITY;        // AddedGameObject: the prefab GameObject it hangs from
+        ComponentType type = ComponentType::Transform;
+        std::set<std::string> properties;   // Property: the overridden names ("*": the whole component)
+        uint8_t state = 0;                  // State: PrefabObjectOverrides::State bits
+        PrefabRemovalInfo removal;          // RemovedGameObject
+    };
+
     // What putting prefab assets and the instances using them back takes: the undo of an
     // override operation (Project::capturePrefabUndoState)
     struct PrefabUndoState {
@@ -261,6 +328,47 @@ namespace jasperengine::editor{
         };
         std::vector<Asset> assets;
         std::vector<InstanceState> instances;
+    };
+
+    // ---- Replace Prefab, previews, usage (editor/project/ProjectPrefabReplace.cpp) ----
+
+    // Unity's PrefabReplacingSettings: how Replace Prefab carries an instance's overrides over
+    // to the new asset (editor/project/PREFABS.md, section 13)
+    struct PrefabReplaceSettings {
+        enum class Match {
+            ByName,       // the same name path from the root (Unity's default)
+            ByHierarchy,  // the same sibling index path from the root
+            None          // only the root: every other override is dropped
+        };
+        Match match = Match::ByName;
+        bool keepOverrides = true;   // false: Unity's ClearAllNonDefaultOverrides
+        bool renameRoot = true;      // Unity's changeRootNameToAssetName
+    };
+
+    // What a replace kept and dropped, for the log
+    struct PrefabReplaceReport {
+        size_t kept = 0;
+        std::vector<std::string> dropped;
+    };
+
+    // Where a prefab is used: by scene (closed ones read from their file), and the prefabs
+    // nesting it. Instances counts the instances in the scene itself (added prefab instances
+    // included), nested the ones inside other prefab instances.
+    struct PrefabSceneUsage {
+        uint32_t sceneId = NULL_PROJECT_SCENE;
+        std::string sceneName;
+        bool loaded = false;
+        size_t instances = 0;
+        size_t nested = 0;
+        size_t missing = 0;      // Missing Prefab instances of it (its GUID resolves to no file)
+    };
+    struct PrefabUsage {
+        std::string guid;
+        std::filesystem::path path;               // the last path known for a missing one
+        std::vector<PrefabSceneUsage> scenes;
+        std::vector<std::filesystem::path> nestedIn;
+        size_t totalInstances() const;
+        size_t totalMissing() const;
     };
 
     struct SharedMoveRecoveryEntry {
@@ -477,6 +585,21 @@ namespace jasperengine::editor{
         std::atomic<bool> generatedSourcesDirty{false};
 
         std::vector<SceneProject> scenes;
+
+        // Prefab Mode: the open prefab stages, bottom first (editor/PrefabStage.cpp)
+        std::vector<std::unique_ptr<PrefabStage>> prefabStages;
+        bool prefabAutoSave = true;
+        PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
+        // Saved from a stage while a scene played: the scene restored by Stop follows them then
+        std::set<std::filesystem::path> prefabsSavedWhilePlaying;
+        SceneProject* findPrefabStageScene(uint32_t sceneId) const;
+        bool pushPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId, Entity contextRoot, bool inContext);
+        bool loadPrefabStageContent(PrefabStage& stage);
+        void destroyPrefabStageContent(PrefabStage& stage);
+        void popPrefabStage();
+        YAML::Node encodePrefabStage(PrefabStage& stage);
+        void fixPrefabStageRoots(PrefabStage& stage);
+        void releasePrefabStageContext(PrefabStage& stage);
 
         // Scenes project.yaml lists that could not be loaded, the position they held
         // in that list and the view state kept for them. They never become a
@@ -1056,6 +1179,9 @@ namespace jasperengine::editor{
 
         std::vector<SceneProject>& getScenes();
         const std::vector<SceneProject>& getScenes() const;
+        // The scenes, then the prefab stages' scenes (Prefab Mode): for what applies to every
+        // GameObject being edited (script refreshes, asset path changes, tools)
+        std::vector<SceneProject*> getScenesAndPrefabStages();
 
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
@@ -1179,6 +1305,38 @@ namespace jasperengine::editor{
         // Rebuilds the Missing Prefab instances whose asset resolves again; returns how many
         size_t relinkMissingPrefabs();
 
+        // ---- Replace Prefab, previews, usage (ProjectPrefabReplace.cpp, PREFABS.md 12-14) ----
+        // An instance root Replace Prefab can swap: an outermost or added instance root, or a
+        // Missing Prefab root not nested in a live instance (a nested one belongs to its
+        // prefab), while nothing plays
+        bool canReplacePrefab(uint32_t sceneId, Entity entity) const;
+        // The root node (Stream::encodeEntity) and member ids an instance root is rebuilt from
+        bool capturePrefabInstanceState(uint32_t sceneId, Entity root, YAML::Node& node, PrefabMemberIds& memberIds);
+        // The node making the captured instance an instance of newPath: its PrefabComponent
+        // swapped, its overrides, removed and added GameObjects and member ids carried over to
+        // the new prefab's GameObjects by settings.match, the rest dropped (in the report)
+        bool buildReplacedPrefabNode(uint32_t sceneId, Entity root, const YAML::Node& node, const PrefabMemberIds& memberIds,
+            const std::filesystem::path& newPath, const PrefabReplaceSettings& settings,
+            YAML::Node& outNode, PrefabMemberIds& outMemberIds, PrefabReplaceReport* report = nullptr);
+        // Makes the root (a live or Missing instance root) what the node says: its name, state
+        // and components, then the instance of the node's prefab with the node's data, the
+        // members taking memberIds (ReplacePrefabCmd, both ways)
+        bool rebuildPrefabInstance(uint32_t sceneId, Entity root, const YAML::Node& node, const PrefabMemberIds& memberIds);
+        // An instance of the prefab built in `scene`, a scene of its own outside the project
+        // (thumbnails): returns its root, NULL_ENTITY when it cannot be made. Nothing of it is
+        // tracked afterwards.
+        Entity instantiatePrefabPreview(Scene* scene, const std::filesystem::path& filepath);
+        // The prefab files an instance of the prefab depends on (itself, the nested ones)
+        std::vector<std::filesystem::path> getPrefabDependencies(const std::filesystem::path& filepath);
+        // Usage of every prefab, by GUID (by "path:<path>" for one without): loaded scenes
+        // from their instances, closed ones from their file, and the prefab files nesting it
+        std::map<std::string, PrefabUsage> collectPrefabUsage();
+        // A raycast in the Scene view of sceneId leaving some GameObjects out (a dragged preview)
+        Entity findObjectByRayIgnoring(uint32_t sceneId, float x, float y, const std::unordered_set<Entity>& ignored);
+        // The scene's prefab list (SceneProject::prefabs) made again from its instances and
+        // Missing Prefabs, after a change made outside the import paths
+        void refreshScenePrefabList(uint32_t sceneId);
+
         // guid: the asset GUID to give the new file (a redo), empty for a new one
         bool createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid = std::string());
         bool removePrefab(const std::filesystem::path& filepath);
@@ -1222,16 +1380,54 @@ namespace jasperengine::editor{
             std::vector<Entity>* restoredEntities = nullptr);
         NodeRecovery removeEntityFromPrefab(uint32_t sceneId, Entity entity, bool destroyItself = true);
 
-        bool prefabPropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself = false);
-        bool prefabNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself = false);
-        // Active, tag or layer (PrefabObjectOverrides::State bits) of a prefab GameObject
-        // changed: shared with the prefab like a name, an override on an instance root
-        bool prefabStateChanged(uint32_t sceneId, Entity entity, uint8_t stateBits, bool changeItself = false);
         bool isEntityInPrefab(uint32_t sceneId, Entity entity) const;
 
-        bool addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool addToItself = true);
-        bool addComponentToPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery, bool addToItself = true);
-        ComponentRecovery removeComponentFromPrefab(uint32_t sceneId, Entity entity, ComponentType componentType, bool encodeComponent = true, bool removeToItself = true);
+        // ---- Unity's instance edits (editor/project/PREFABS.md, "Editing instances") ----
+        // An edit on a GameObject of a prefab instance (its root included) is an override of
+        // that instance only; the prefab asset changes through Apply or Prefab Mode. The
+        // record* calls below come after the edit (the GameObject has the new value), and
+        // return false when it is not an instance's GameObject or the edit is no override
+        // (an instance root's default overrides, a component the instance added, Prefab Mode).
+        // Commands keep the overrides from before the edit for their undo
+        // (getPrefabEditOverrides / setPrefabEditOverrides, command/PrefabEditUndo.h).
+
+        // Prefab Mode (agent D): true when `entity` is a GameObject of a prefab asset being
+        // edited in Prefab Mode, whose edits are asset edits, not instance overrides
+        bool isEditingPrefabAsset(uint32_t sceneId, Entity entity) const;
+        // Property edits ({} or "*": the whole component)
+        bool recordPrefabEdit(uint32_t sceneId, Entity entity, ComponentType type, const std::vector<std::string>& properties);
+        // A component rewritten whole (reset, pasted values): the properties that now differ
+        // from `before` (Stream components YAML holding that component) are recorded
+        bool recordPrefabComponentEdit(uint32_t sceneId, Entity entity, ComponentType type, const YAML::Node& before);
+        // Name, active, tag or layer (PrefabObjectOverrides::State bits)
+        bool recordPrefabStateEdit(uint32_t sceneId, Entity entity, uint8_t stateBits);
+        // A component added to / removed from the GameObject (already done in the scene):
+        // an added component override, or a removed one (removing an added one only drops it)
+        bool recordPrefabComponentAdded(uint32_t sceneId, Entity entity, ComponentType type);
+        bool recordPrefabComponentRemoved(uint32_t sceneId, Entity entity, ComponentType type);
+        // The overrides of a GameObject at its owning level, for undo; false when it is not a
+        // GameObject of an instance
+        bool getPrefabEditOverrides(uint32_t sceneId, Entity entity, Prefab::ObjectOverrides& overrides) const;
+        void setPrefabEditOverrides(uint32_t sceneId, Entity entity, const Prefab::ObjectOverrides& overrides);
+        // Apply writes prefab assets, which Play mode must leave alone (Unity's Overrides
+        // are not applied while playing either)
+        bool canApplyPrefabOverrides(std::string* reason = nullptr) const;
+        // Whether an override (a component's properties, "*"/{} the whole; ComponentType
+        // PrefabComponent with stateBits for state) can go to `target` (empty: the owning
+        // prefab), with why not
+        bool canApplyPrefabOverride(uint32_t sceneId, Entity entity, ComponentType type, const std::vector<std::string>& properties,
+            const std::filesystem::path& target = {}, std::string* reason = nullptr) const;
+        // Every override of the instance rooted at instanceRoot and of the instances nested in
+        // it, GameObject by GameObject in hierarchy order (the Overrides dropdown)
+        std::vector<PrefabOverrideEntry> getPrefabOverrideEntries(uint32_t sceneId, Entity instanceRoot) const;
+        // Play mode: the instances' bookkeeping (overrides, members, removals, Missing Prefab
+        // records) of a scene played in place, captured with the play snapshot and put back
+        // at Stop with it, so nothing done while playing outlives Play
+        PlayPrefabState capturePlayPrefabState(const SceneProject* sceneProject) const;
+        void restorePlayPrefabState(SceneProject* sceneProject);
+        // Stop's restore of a scene played in place: its snapshot (entities, components,
+        // prefab bookkeeping) back, what Play created destroyed; false without a snapshot
+        bool restorePlaySnapshot(SceneProject* sceneProject);
 
         SharedMoveRecovery moveEntityFromPrefab(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself = true);
         bool undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
@@ -1260,10 +1456,8 @@ namespace jasperengine::editor{
         // The removed GameObjects of the instance rooted at instanceRoot and of the instances
         // nested in it, in prefab order
         std::vector<PrefabRemovalInfo> getPrefabRemovals(uint32_t sceneId, Entity instanceRoot) const;
-        // The other overrides of that instance and the ones nested in it: overridden
-        // components (GameObject, component), and the GameObjects added below its Prefab
-        // GameObjects (top ones only, with their parent), in hierarchy order
-        std::vector<std::pair<Entity, ComponentType>> getPrefabComponentOverrides(uint32_t sceneId, Entity instanceRoot) const;
+        // The GameObjects added below the Prefab GameObjects of that instance and the ones
+        // nested in it (top ones only, with their parent), in hierarchy order
         std::vector<std::pair<Entity, Entity>> getPrefabAddedGameObjects(uint32_t sceneId, Entity instanceRoot) const;
         // Revert: the removed GameObject comes back with the Prefab's current values, in its
         // Prefab place, taking back the ids it had where they are free
@@ -1272,11 +1466,6 @@ namespace jasperengine::editor{
         // Apply: the GameObject is deleted from the Prefab asset, so from all its instances
         bool applyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
         void undoApplyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
-        // Apply of a component override: the instance's values become the Prefab's (and every
-        // instance that follows it); false when it holds a reference outside the instance
-        bool canApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const;
-        bool applyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, ComponentRecovery& recovery);
-        void undoApplyComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType, const ComponentRecovery& recovery);
 
         // ---- Override model v2 (editor/project/PREFABS.md, "Overrides" and "APIs") ----
 
@@ -1302,6 +1491,8 @@ namespace jasperengine::editor{
         // instance override of it. False when the prefab GameObject has no such component.
         bool getPrefabSourceValue(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property, PrefabSourceValue& value);
         YAML::Node getPrefabSourceComponent(uint32_t sceneId, Entity entity, ComponentType type);
+        // The same for the GameObject's name, active state, tag and layer
+        bool getPrefabSourceState(uint32_t sceneId, Entity entity, std::string& name, bool& active, std::string& tag, int& layer);
         // The prefabs an override of the GameObject can be applied to: the one owning it
         // first, then each prefab holding that instance as a nested one, outwards
         std::vector<std::filesystem::path> getPrefabApplyTargets(uint32_t sceneId, Entity entity) const;
@@ -1364,14 +1555,66 @@ namespace jasperengine::editor{
         // prefab's root: recorded in its asset-level data, or it is lost on the next import
         void recordNestedRootAssetOverride(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryEntity, ComponentType type,
             const std::vector<std::string>& properties);
-        // An edit-shared change on an instance root: its properties that differ from the
-        // prefab root's are overrides, the ones equal are not
-        void syncRootPropertyOverrides(uint32_t sceneId, Entity root, ComponentType type, const std::vector<std::string>& properties);
+        // Apply to the prefab of a nested instance root (`target`, which the owning level, the
+        // instance holding that root, sees only as its asset): the values go onto that
+        // prefab's root GameObject
+        bool isNestedRootApplyTarget(uint32_t sceneId, const PrefabObjectRef& ref, const std::filesystem::path& target) const;
         // A prefab instance (rooted at localRoot) that became a nested one of `prefab` at
         // registryRoot: what its scene data overrides goes into the prefab's asset-level
         // data, out of the scene's (its added GameObjects stay the scene's)
         void moveNestedInstanceDataToAsset(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryRoot,
             SceneProject* sceneProject, Entity localRoot);
+
+        //=== Prefab Mode (editor/PrefabStage.cpp, PREFABS.md section 16) ===
+
+        // Opens the prefab asset in a prefab stage. contextSceneId/contextRoot: the instance
+        // it is opened from (none: from the Project window); inContext draws that scene behind
+        // the stage (Unity's In Context), else the prefab is alone (In Isolation). Opened from
+        // an instance inside a stage, the new stage goes on top of that one (a breadcrumb);
+        // otherwise the open stages are closed first, each modified one asking to be saved.
+        // False when the asset cannot be opened (or a prompt was cancelled).
+        bool openPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId = NULL_PROJECT_SCENE,
+            Entity contextRoot = NULL_ENTITY, bool inContext = true);
+        // Closes the stages above `depth` (0: leaves Prefab Mode), top first; one with
+        // unsaved changes asks Save / Discard / Cancel (choice: 0 ask, 1 save, 2 discard, 3
+        // cancel, for scripted callers). done(false) when cancelled or a save failed.
+        void closePrefabStages(size_t depth, std::function<void(bool)> done = nullptr, int choice = 0);
+        // Writes the stage into its asset (version 3) and refreshes the asset's instances in
+        // every loaded scene; scenes not loaded read the file when they load
+        bool savePrefabStage(uint32_t sceneId);
+        bool isPrefabStage(uint32_t sceneId) const;
+        // Inside Prefab Mode every edit is an edit of the asset, not an instance override
+        bool isEditingPrefabAsset(const SceneProject* sceneProject) const;
+        PrefabStage* getPrefabStage(uint32_t sceneId);
+        const PrefabStage* getPrefabStage(uint32_t sceneId) const;
+        // The shown stage (the top one), nullptr outside Prefab Mode
+        PrefabStage* getActivePrefabStage();
+        size_t getPrefabStageCount() const { return prefabStages.size(); }
+        PrefabStage* getPrefabStageAt(size_t index) { return index < prefabStages.size() ? prefabStages[index].get() : nullptr; }
+        size_t getPrefabStageDepth(uint32_t sceneId) const;  // 1-based, 0 for a scene
+        bool hasUnsavedPrefabStage(uint32_t sceneId) const;
+        bool hasUnsavedPrefabStages() const;
+        // A regular scene for what needs one (Play, the build's start scene, the workspace):
+        // the scene Prefab Mode was entered from for a stage, sceneId itself otherwise
+        uint32_t getSceneBehindPrefabStage(uint32_t sceneId) const;
+        bool isPrefabStageRoot(uint32_t sceneId, Entity entity) const;
+        // Whether an instance of prefabPath may go into the scene: never into the stage of a
+        // prefab it holds (a prefab cannot contain itself)
+        bool canInstantiatePrefabIn(uint32_t sceneId, const std::filesystem::path& prefabPath);
+        // Once a frame: Auto Save (when the user is not in the middle of an edit), changes the
+        // asset got from outside the stage, the stage root kept single, lost contexts
+        void updatePrefabStages(bool userEditing);
+        // A command changed a scene (CommandHistory::onSceneModified)
+        void notePrefabStageChange(uint32_t sceneId);
+        bool isPrefabAutoSave() const { return prefabAutoSave; }
+        void setPrefabAutoSave(bool autoSave) { prefabAutoSave = autoSave; }
+        PrefabContextVisibility getPrefabContextVisibility() const { return prefabContextVisibility; }
+        void setPrefabContextVisibility(PrefabContextVisibility visibility);
+        // The Scene view of a stage In Context: before its activation (the context scene under
+        // it, its camera following the stage's), and around its draw (the instance edited hidden)
+        void preparePrefabStageView(uint32_t sceneId, int width, int height);
+        void beginPrefabStageDraw(uint32_t sceneId);
+        void endPrefabStageDraw(uint32_t sceneId);
 
         //=== end Prefab part ===
 

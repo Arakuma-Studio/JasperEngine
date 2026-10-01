@@ -41,6 +41,12 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    // Prefab Mode: a prefab cannot hold itself, nor one that holds it
+    if (!project->canInstantiatePrefabIn(sceneId, filepath)) {
+        Out::error("Prefab %s cannot go into this prefab: it would contain itself", filepath.string().c_str());
+        return false;
+    }
+
     // The prefab, read now: the instance's root takes its root GameObject's name
     Prefab* prefab = project->loadPrefabAsset(filepath);
     if (!prefab) {
@@ -103,6 +109,17 @@ bool editor::ImportPrefabCmd::execute(){
             rootTransform->position = placementPosition;
             rootTransform->rotation = placementRotation;
             rootTransform->scale = placementScale;
+            rootTransform->needUpdate = true;
+        }
+    }
+
+    if (hasDropPosition){
+        if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
+            const float z = rootTransform->position.z;
+            rootTransform->position = dropPosition;
+            if (dropKeepsZ){
+                rootTransform->position.z = z;
+            }
             rootTransform->needUpdate = true;
         }
     }
@@ -176,4 +193,14 @@ void editor::ImportPrefabCmd::setPlacement(const Vector3& position, const Quater
 
 void editor::ImportPrefabCmd::setQuiet(bool quiet){
     this->quiet = quiet;
+}
+
+void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keepZ){
+    hasDropPosition = true;
+    dropKeepsZ = keepZ;
+    dropPosition = position;
+}
+
+Entity editor::ImportPrefabCmd::getRootEntity() const{
+    return rootEntity;
 }

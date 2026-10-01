@@ -239,6 +239,12 @@ namespace jasperengine::editor{
 
         std::vector<Scene*> childSceneLayers;
 
+        // Prefab Mode In Context: the scene drawn under this one through underlayCamera,
+        // and a layer between them (the Gray context's veil)
+        Scene* underlayScene = nullptr;
+        Entity underlayCamera = NULL_ENTITY;
+        Scene* underlayVeil = nullptr;
+
         bool multipleEntitiesSelected;
         bool isPlaying;
 
@@ -309,6 +315,12 @@ namespace jasperengine::editor{
         bool isTerrainEditing() const;
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
+        // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen
+        // through `camera` without its editor overlays, then `veil` (may be null), then this
+        // scene as a layer over them. Null to stop; a change needs a new activate().
+        // Returns whether it changed.
+        bool setUnderlay(Scene* scene, Entity camera, Scene* veil);
+        bool hasUnderlay() const { return underlayScene != nullptr; }
 
         TextureRender& getTexture();
         Camera* getCamera();

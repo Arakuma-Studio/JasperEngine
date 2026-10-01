@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/PrefabEditUndo.h"
 #include "Scene.h"
 #include "math/Vector3.h"
 #include "ecs/Entity.h"
@@ -91,6 +92,8 @@ namespace jasperengine::editor{
         std::function<void()> onValueChanged;
 
         std::map<Entity,PropertyCmdValue<T>> values;
+        // Unity: a value edited on a prefab instance's GameObject is an override of it
+        PrefabEditUndo prefabUndo;
 
     public:
 
@@ -119,6 +122,7 @@ namespace jasperengine::editor{
                 }
 
                 value.oldValue = T(*valueRef);
+                prefabUndo.capture(project, sceneId, entity);
                 *valueRef = value.newValue;
 
                 // Read before the no-op check below: a command merging into this one adopts this
@@ -141,9 +145,7 @@ namespace jasperengine::editor{
 
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-                if (project->isEntityInPrefab(sceneId, entity)){
-                    project->prefabPropertyChanged(sceneId, entity, type, {propertyName});
-                }
+                project->recordPrefabEdit(sceneId, entity, type, {propertyName});
             }
 
             sceneProject->isModified = true;
@@ -182,11 +184,8 @@ namespace jasperengine::editor{
                 }
 
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
-
-                if (project->isEntityInPrefab(sceneId, entity)){
-                    project->prefabPropertyChanged(sceneId, entity, type, {propertyName});
-                }
             }
+            prefabUndo.restore(project, sceneId);
 
             sceneProject->isModified = wasModified;
 
@@ -212,6 +211,7 @@ namespace jasperengine::editor{
                             values[otherEntity] = otherValue;
                         }
                     }
+                    prefabUndo.mergeOlder(otherCmd->prefabUndo);
                     wasModified = wasModified && otherCmd->wasModified;
                     // Keep the most recent callback
                     if (otherCmd->onValueChanged) {

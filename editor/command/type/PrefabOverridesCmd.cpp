@@ -3,6 +3,10 @@
 
 #include "PrefabOverridesCmd.h"
 
+#include "command/type/AddEntityToPrefabCmd.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "command/type/PrefabOverrideCmd.h"
+
 using namespace jasperengine;
 
 editor::RevertPrefabRemovalCmd::RevertPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity){
@@ -43,7 +47,7 @@ editor::ApplyPrefabRemovalCmd::ApplyPrefabRemovalCmd(Project* project, uint32_t 
 
 bool editor::ApplyPrefabRemovalCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject) {
+    if (!sceneProject || !project->canApplyPrefabOverrides()) {
         return false;
     }
     wasModified = sceneProject->isModified;
@@ -58,33 +62,6 @@ void editor::ApplyPrefabRemovalCmd::undo(){
 }
 
 bool editor::ApplyPrefabRemovalCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
-
-editor::ApplyPrefabComponentCmd::ApplyPrefabComponentCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType){
-    this->project = project;
-    this->sceneId = sceneId;
-    this->entity = entity;
-    this->componentType = componentType;
-}
-
-bool editor::ApplyPrefabComponentCmd::execute(){
-    SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject) {
-        return false;
-    }
-    wasModified = sceneProject->isModified;
-    return project->applyComponentOverride(sceneId, entity, componentType, recovery);
-}
-
-void editor::ApplyPrefabComponentCmd::undo(){
-    project->undoApplyComponentOverride(sceneId, entity, componentType, recovery);
-    if (SceneProject* sceneProject = project->getScene(sceneId)) {
-        sceneProject->isModified = wasModified;
-    }
-}
-
-bool editor::ApplyPrefabComponentCmd::mergeWith(editor::Command* otherCommand){
     return false;
 }
 
@@ -131,4 +108,86 @@ void editor::PrefabOverridesCmd::undo(){
 
 bool editor::PrefabOverridesCmd::mergeWith(editor::Command* otherCommand){
     return false;
+}
+
+editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* project, uint32_t sceneId, Entity root){
+    using Kind = PrefabOverrideEntry::Kind;
+    using Operation = PrefabOverrideCmd::Operation;
+    const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
+    // Added GameObjects first (their delete reads the scene as it is), removed GameObjects
+    // before components (a reverted component pointing at one finds it back)
+    std::vector<std::unique_ptr<Command>> steps;
+    std::vector<Entity> addedEntities;
+    for (const PrefabOverrideEntry& entry : entries) {
+        if (entry.kind == Kind::AddedGameObject) addedEntities.push_back(entry.entity);
+    }
+    if (!addedEntities.empty()) {
+        steps.emplace_back(new DeleteEntityCmd(project, sceneId, addedEntities));
+    }
+    for (const PrefabOverrideEntry& entry : entries) {
+        if (entry.kind == Kind::RemovedGameObject) {
+            steps.emplace_back(new RevertPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity));
+        }
+    }
+    for (const PrefabOverrideEntry& entry : entries) {
+        switch (entry.kind) {
+            case Kind::State: steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertState, ComponentType::PrefabComponent, {}, entry.state)); break;
+            case Kind::Property: steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertProperty, entry.type, {})); break;
+            case Kind::AddedComponent: steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertAddedComponent, entry.type)); break;
+            case Kind::RemovedComponent: steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertRemovedComponent, entry.type)); break;
+            default: break;
+        }
+    }
+    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
+}
+
+editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* project, uint32_t sceneId, Entity root){
+    using Kind = PrefabOverrideEntry::Kind;
+    using Operation = PrefabOverrideCmd::Operation;
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene || !project->canApplyPrefabOverrides()) {
+        return nullptr;
+    }
+    const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(root);
+    if (!component) {
+        return nullptr;
+    }
+    const std::filesystem::path rootPath = component->path;
+    const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
+    // Added GameObjects first: each reads where it is when made
+    std::vector<std::unique_ptr<Command>> steps;
+    for (const PrefabOverrideEntry& entry : entries) {
+        if (entry.kind == Kind::AddedGameObject) {
+            steps.emplace_back(new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent));
+        }
+    }
+    for (const PrefabOverrideEntry& entry : entries) {
+        const std::vector<std::string> names(entry.properties.begin(), entry.properties.end());
+        switch (entry.kind) {
+            case Kind::State:
+                steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyState, ComponentType::PrefabComponent, {}, entry.state, rootPath));
+                break;
+            case Kind::Property:
+                if (project->canApplyPrefabOverride(sceneId, entry.entity, entry.type, names, rootPath)) {
+                    steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyProperty, entry.type, names, 0, rootPath));
+                }
+                break;
+            case Kind::AddedComponent:
+                if (project->canApplyPrefabOverride(sceneId, entry.entity, entry.type, {}, rootPath)) {
+                    steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyAddedComponent, entry.type, {}, 0, rootPath));
+                }
+                break;
+            case Kind::RemovedComponent:
+                steps.emplace_back(new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyRemovedComponent, entry.type, {}, 0, rootPath));
+                break;
+            default:
+                break;
+        }
+    }
+    for (const PrefabOverrideEntry& entry : entries) {
+        if (entry.kind == Kind::RemovedGameObject) {
+            steps.emplace_back(new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity));
+        }
+    }
+    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
 }

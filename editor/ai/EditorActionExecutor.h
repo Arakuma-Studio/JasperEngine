@@ -93,7 +93,7 @@ private:
     ActionResult importPrefabInstance(const Json& arguments);
     ActionResult addEntityToPrefab(const Json& arguments);
     ActionResult removeEntityFromPrefab(const Json& arguments);
-    ActionResult makePrefabComponentUnique(const Json& arguments);
+    ActionResult applyPrefabComponent(const Json& arguments);
     ActionResult revertPrefabComponent(const Json& arguments);
     ActionResult setStandalonePrefab(const Json& arguments);
     ActionResult exportProject(const Json& arguments, const std::atomic<bool>* cancel);
