@@ -9,6 +9,7 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace jasperengine {
@@ -33,6 +34,11 @@ namespace jasperengine {
         // the script instances of some GameObjects
         using ScriptHook = void (*)(Scene* scene, const Entity* entities, size_t count);
         static void setCppScriptHooks(ScriptHook initialize, ScriptHook cleanup);
+
+        // Told of the GameObjects destroy/destroyImmediate removed (after they are gone): the
+        // editor's Play drops them from what it shows
+        using DestroyListener = std::function<void(Scene* scene, const std::vector<Entity>& entities)>;
+        static void setDestroyListener(DestroyListener listener);
 
         // A prefab, in `scene` (the active scene when null). With a parent the root goes
         // below it, keeping the prefab root's local placement, or its world placement with

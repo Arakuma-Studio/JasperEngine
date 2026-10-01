@@ -307,6 +307,24 @@ void editor::Project::registerPrefabManager() {
     ObjectManager::clearAll();
     clearPlayPrefabTemplates();
 
+    // A scene GameObject a script destroys leaves what the editor shows (Stop brings it back)
+    ObjectManager::setDestroyListener([this](Scene* scene, const std::vector<Entity>& destroyed) {
+        SceneProject* sceneProject = findSceneProjectByScene(scene);
+        if (!sceneProject) {
+            return;
+        }
+        const std::unordered_set<Entity> gone(destroyed.begin(), destroyed.end());
+        auto drop = [&gone](std::vector<Entity>& list) {
+            const size_t before = list.size();
+            list.erase(std::remove_if(list.begin(), list.end(), [&gone](Entity entity) { return gone.count(entity) != 0; }), list.end());
+            return list.size() != before;
+        };
+        if (drop(sceneProject->entities) | drop(sceneProject->selectedEntities)) {
+            sceneProject->structureVersion++;
+        }
+        sceneProject->needUpdateRender = true;
+    });
+
     // The export's list and order (Generator::configure gets the same collectAllPrefabs),
     // so a prefab id is the same in Play and in the exported game
     const std::vector<PrefabSceneInfo> prefabs = collectAllPrefabs();

@@ -32,6 +32,8 @@ std::vector<PendingDestroy> pendingDestroys;
 
 std::vector<Scene*> activeScenes;
 
+ObjectManager::DestroyListener destroyListener;
+
 struct WorldPose {
     Matrix4 matrix;
     Quaternion rotation;
@@ -202,6 +204,10 @@ Entity cloneObject(Scene* scene, Entity original, Scene* target, std::vector<Ent
 
 }
 
+void ObjectManager::setDestroyListener(DestroyListener listener) {
+    destroyListener = std::move(listener);
+}
+
 void ObjectManager::setCppScriptHooks(ScriptHook initialize, ScriptHook cleanup) {
     cppInitializeHook = initialize;
     cppCleanupHook = cleanup;
@@ -325,6 +331,9 @@ void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
     // children first, a model taking the GameObjects it made along
     std::reverse(entities.begin(), entities.end());
     scene->destroyEntities(entities);
+    if (destroyListener) {
+        destroyListener(scene, entities);
+    }
 }
 
 }
@@ -428,4 +437,5 @@ void ObjectManager::forgetScene(Scene* scene) {
 void ObjectManager::clearAll() {
     pendingDestroys.clear();
     activeScenes.clear();
+    destroyListener = nullptr;
 }
