@@ -880,7 +880,21 @@ nested prefabs. Generator's scene side counts the same slots (`getPrefabMemberEn
 includes the GameObjects a prefab adds to its nested instances). Play imports with the
 editor (`registerPrefabManager`), the same code the bake uses.
 
-### Notes for Prefab Mode and Variants
+### Prefab Mode
+
+A stage (section 16) is a scene holding the asset's GameObjects with their file ids and its
+nested prefabs as instances whose scene data is the asset's nested data. `prefabNodeToStage`
+turns the GameObjects the asset adds to a nested instance into that instance's added
+GameObjects (`addedGameObjects` of its block or of the nested entry `addedTo` leads to, at
+`childIndex`, ids kept) before the stage is decoded; `resolveStageStrippedReferences` then
+maps stripped ids to the nested GameObjects (only those ids: everything else keeps its id).
+On save, after `loadRegistry` of the stage's encoding, `stageToPrefabAsset` makes the added
+GameObjects of the nested instances (at any depth) the asset's again (`addedObjects`,
+stripped parents; prefab instances among them nested roots with their data) and every
+reference the asset's (its GameObjects', stripped objects for the nested instances' with the
+ids the asset had, None outside), in its registry and in its nested data's values.
+
+### Notes for Variants
 
 - Everything here is keyed by a registry entity of the holding prefab that is a nested root
   (`Prefab::isNestedRoot`: a `PrefabComponent`, not the prefab's root). A Variant (a prefab
@@ -890,10 +904,10 @@ editor (`registerPrefabManager`), the same code the bake uses.
   root. `importPrefab` would import the base onto the root first (deferred), decode the
   variant's added GameObjects, then `applyHolderData(root, nestedInstances[root], map,
   registry, root)`; the scene layer stays as is.
-- Writing an edited instance back to its asset (Prefab Mode's save, Apply of an added
-  GameObject to an outer prefab) uses the same pieces as Create Prefab: GameObjects below a
-  nested instance become `addedObjects` with `makePrefabReference` parents, values go
-  through `encodeComponentForPrefab` / `remapReferencesToPrefab`.
+- Writing an edited instance back to its asset uses the same pieces as Create Prefab,
+  Apply and Prefab Mode: GameObjects below a nested instance become `addedObjects` with
+  `makePrefabReference` parents, values go through `encodeComponentForPrefab` /
+  `remapReferencesToPrefab`.
 
 ### Tests
 
@@ -916,5 +930,7 @@ checks: a fresh instance of each level equals what it was made from (by
 member ids, a second save byte for byte the same, Play's spawn equal to an instantiated
 instance, Apply of a reference into a nested prefab to the owning and to an outer prefab,
 undo / redo of Create Prefab holding an instance, a nested prefab going missing and coming
-back, Revert of a nested root after its prefab changed, and the generated sources.
+back, Revert of a nested root after its prefab changed, an added GameObject applied to an
+outer prefab, Prefab Mode (open and save changes nothing; a GameObject added below a nested
+GameObject and a reference into a nested prefab are kept), and the generated sources.
 `tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
