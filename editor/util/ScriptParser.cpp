@@ -169,6 +169,10 @@ ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string&
         return ScriptPropertyType::Vector4;
     }
 
+    if (bareType == "PrefabAsset" || bareType == "jasperengine::PrefabAsset") {
+        return ScriptPropertyType::Prefab;
+    }
+
     // Default to int if unknown
     Out::warning("Unknown C++ type '%s', defaulting to Int", cppType.c_str());
     return ScriptPropertyType::Int;
@@ -187,6 +191,7 @@ std::optional<ScriptPropertyType> editor::ScriptParser::parseExplicitType(const 
     if (cleanType == "Vector4") return ScriptPropertyType::Vector4;
     if (cleanType == "Color3") return ScriptPropertyType::Color3;
     if (cleanType == "Color4") return ScriptPropertyType::Color4;
+    if (cleanType == "Prefab") return ScriptPropertyType::Prefab;
     //if (cleanType == "Pointer") return ScriptPropertyType::Pointer;
 
     // Handle "Color" - infer based on C++ type
@@ -544,6 +549,16 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                     break;
                 }
 
+                case ScriptPropertyType::Prefab: {
+                    // a prefab is assigned in the Inspector (dragged from the Project window)
+                    if (!defaultValueStr.empty()) {
+                        Out::warning("Prefab property '%s' in %s: default values are not supported, it starts as None", varName.c_str(), sourceName.c_str());
+                    }
+                    prop.value = PrefabAsset();
+                    prop.defaultValue = PrefabAsset();
+                    break;
+                }
+
                 case ScriptPropertyType::EntityReference: {
                     // Pointers default to null entity
                     EntityReference val{NULL_ENTITY, 0};
@@ -593,6 +608,10 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::EntityReference:
                     prop.value = EntityReference{NULL_ENTITY, 0};
                     prop.defaultValue = EntityReference{NULL_ENTITY, 0};
+                    break;
+                case ScriptPropertyType::Prefab:
+                    prop.value = PrefabAsset();
+                    prop.defaultValue = PrefabAsset();
                     break;
             }
         }

@@ -27,6 +27,7 @@ Projects made before the rename are migrated once with
 | Removed GameObject overrides (deleting a Prefab GameObject in an instance); the Prefab bar's Overrides dropdown (Revert, Apply, Revert All, Apply All) | none (new): deleting removed it from the Prefab |
 | Asset GUID (a prefab found by GUID after a rename or move); Missing Prefab (red row, Inspector bar) | none (new): references were paths, a deleted bundle took its instances with it |
 | Assets > Prefabs... | Project > Bundles... |
+| A Prefab field in the Inspector (a script property of type Prefab: drag a `.prefab` from the Project window onto it) | none (new) |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |
 | Edit > Preferences... | Edit > Editor Settings... |
@@ -54,7 +55,10 @@ Projects made before the rename are migrated once with
 | `InputField` / `InputFieldComponent` | `TextEdit` / `TextEditComponent` |
 | `Tween` / `TweenComponent` | `TimedAction` / `TimedActionComponent` |
 | `PositionTween`, `RotationTween`, `ScaleTween`, `ColorTween`, `AlphaTween` | `PositionAction`, `RotationAction`, `ScaleAction`, `ColorAction`, `AlphaAction` |
-| `PrefabManager` (`createPrefab`, `destroyPrefab`) | `BundleManager` (`createBundle`, `destroyBundle`) |
+| `GameObject.instantiate` / `GameObject::instantiate` (Unity's `Object.Instantiate`: a prefab or a copy of a GameObject, optional parent and `instantiateInWorldSpace`, or position and rotation) | `BundleManager.createBundle`, then `PrefabManager.createPrefab` (removed) |
+| `GameObject.destroy(object [, delay])`, `GameObject.destroyImmediate(object)` (Unity's `Object.Destroy`, `DestroyImmediate`; Lua scripts get `onDestroy`) | `BundleManager.destroyBundle`, then `PrefabManager.destroyPrefab` (removed) |
+| `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
+| `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
 | `GameObject:getRigidbody2D()`, `getRigidbody()` | `Object:getBody2D()`, `getBody3D()` |
 | `AudioSource:getGameObject()` | `Sound:getObject()` |

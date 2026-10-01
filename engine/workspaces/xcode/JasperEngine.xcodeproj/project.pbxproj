@@ -44,10 +44,14 @@
 		1787AD8E2F673CE000DB1D75 /* PrefabComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8D2F673CE000DB1D75 /* PrefabComponent.h */; };
 		1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
 		1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD902F6C333300DB1D75 /* PrefabManager.cpp */; };
+		A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */; };
+		A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */; };
 		1787AD962F6C333300DB1D75 /* SceneManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD912F6C333300DB1D75 /* SceneManager.h */; };
 		1787AD972F6C333300DB1D75 /* PrefabManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8F2F6C333300DB1D75 /* PrefabManager.h */; };
 		1787AD982F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
 		1787AD992F6C333300DB1D75 /* PrefabManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD902F6C333300DB1D75 /* PrefabManager.cpp */; };
+		A6E1BBB0C286C20E302F0AE0 /* ObjectManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */; };
+		A6E16455A1CC719DB7052664 /* PrefabAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */; };
 		1789660C2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1789660B2F1D764600E89E52 /* ShaderDataSerializer.cpp */; };
 		1789660D2F1D764600E89E52 /* ShaderDataSerializer.h in Headers */ = {isa = PBXBuildFile; fileRef = 1789660A2F1D764600E89E52 /* ShaderDataSerializer.h */; };
 		1789660E2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1789660B2F1D764600E89E52 /* ShaderDataSerializer.cpp */; };
@@ -377,7 +381,9 @@
 		710EE49D2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
+		A6E1909131064483572D2D7E /* EntityCloner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E136BF610F65E67678CC69 /* EntityCloner.cpp */; };
 		71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
+		A6E1411B44856780E2563E4B /* EntityCloner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E136BF610F65E67678CC69 /* EntityCloner.cpp */; };
 		71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 71125F172E41845E006D11A1 /* EntityRegistry.h */; };
 		7AA5E0032F2A000000000001 /* TagManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AA5E0022F2A000000000001 /* TagManager.cpp */; };
 		7AB1C0032F2A000000000001 /* PhysicsLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */; };
@@ -1588,6 +1594,10 @@
 		1787AD8D2F673CE000DB1D75 /* PrefabComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabComponent.h; sourceTree = "<group>"; };
 		1787AD8F2F6C333300DB1D75 /* PrefabManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabManager.h; sourceTree = "<group>"; };
 		1787AD902F6C333300DB1D75 /* PrefabManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PrefabManager.cpp; sourceTree = "<group>"; };
+		A6E12FCBE466E705098A4DF0 /* ObjectManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjectManager.h; sourceTree = "<group>"; };
+		A6E122E3AD000EAC13F329C0 /* PrefabAsset.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabAsset.h; sourceTree = "<group>"; };
+		A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ObjectManager.cpp; sourceTree = "<group>"; };
+		A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PrefabAsset.cpp; sourceTree = "<group>"; };
 		1787AD912F6C333300DB1D75 /* SceneManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneManager.h; sourceTree = "<group>"; };
 		1787AD922F6C333300DB1D75 /* SceneManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SceneManager.cpp; sourceTree = "<group>"; };
 		1789660A2F1D764600E89E52 /* ShaderDataSerializer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderDataSerializer.h; sourceTree = "<group>"; };
@@ -2043,6 +2053,8 @@
 		710EE4A12A2E2A2000EB04EC /* macos */ = {isa = PBXFileReference; lastKnownFileType = folder; path = macos; sourceTree = "<group>"; };
 		71125F172E41845E006D11A1 /* EntityRegistry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EntityRegistry.h; sourceTree = "<group>"; };
 		71125F182E41845E006D11A1 /* EntityRegistry.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EntityRegistry.cpp; sourceTree = "<group>"; };
+		A6E1CE0B6406D27DD0C95E2C /* EntityCloner.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EntityCloner.h; sourceTree = "<group>"; };
+		A6E136BF610F65E67678CC69 /* EntityCloner.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EntityCloner.cpp; sourceTree = "<group>"; };
 		7AA5E0012F2A000000000001 /* TagManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TagManager.h; sourceTree = "<group>"; };
 		7AA5E0022F2A000000000001 /* TagManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TagManager.cpp; sourceTree = "<group>"; };
 		7AB1C0012F2A000000000001 /* PhysicsLayers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PhysicsLayers.h; sourceTree = "<group>"; };
@@ -3413,6 +3425,10 @@
 			children = (
 				1787AD8F2F6C333300DB1D75 /* PrefabManager.h */,
 				1787AD902F6C333300DB1D75 /* PrefabManager.cpp */,
+				A6E12FCBE466E705098A4DF0 /* ObjectManager.h */,
+				A6E122E3AD000EAC13F329C0 /* PrefabAsset.h */,
+				A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */,
+				A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */,
 				1787AD912F6C333300DB1D75 /* SceneManager.h */,
 				1787AD922F6C333300DB1D75 /* SceneManager.cpp */,
 			);
@@ -4062,6 +4078,8 @@
 			children = (
 				71125F172E41845E006D11A1 /* EntityRegistry.h */,
 				71125F182E41845E006D11A1 /* EntityRegistry.cpp */,
+				A6E1CE0B6406D27DD0C95E2C /* EntityCloner.h */,
+				A6E136BF610F65E67678CC69 /* EntityCloner.cpp */,
 				7AA5E0012F2A000000000001 /* TagManager.h */,
 				7AA5E0022F2A000000000001 /* TagManager.cpp */,
 				7AB1C0012F2A000000000001 /* PhysicsLayers.h */,
@@ -7451,6 +7469,8 @@
 				71E824952A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
 				1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
+				A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */,
+				A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */,
 				713D8295259D307F00567F9F /* UserSettings.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
@@ -7522,6 +7542,7 @@
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				A6E1909131064483572D2D7E /* EntityCloner.cpp in Sources */,
 				7AA5E0032F2A000000000001 /* TagManager.cpp in Sources */,
 				7AB1C0032F2A000000000001 /* PhysicsLayers.cpp in Sources */,
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
@@ -7644,6 +7665,8 @@
 				71E824942A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
 				1787AD982F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD992F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
+				A6E1BBB0C286C20E302F0AE0 /* ObjectManager.cpp in Sources */,
+				A6E16455A1CC719DB7052664 /* PrefabAsset.cpp in Sources */,
 				7162FE102596A5BE0075B97D /* SokolCamera.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
@@ -7716,6 +7739,7 @@
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				A6E1411B44856780E2563E4B /* EntityCloner.cpp in Sources */,
 				7AA5E0042F2A000000000001 /* TagManager.cpp in Sources */,
 				7AB1C0042F2A000000000001 /* PhysicsLayers.cpp in Sources */,
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,

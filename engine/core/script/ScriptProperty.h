@@ -11,6 +11,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "manager/PrefabAsset.h"
 
 // Macro with optional type parameter
 #define DPROPERTY_1(DisplayName) \
@@ -37,7 +38,8 @@ namespace jasperengine {
         Vector4,
         Color3,
         Color4,
-        EntityReference
+        EntityReference,
+        Prefab          // a PrefabAsset: a prefab dragged from the Project window
     };
 
     struct EntityReference {
@@ -54,7 +56,8 @@ namespace jasperengine {
         Vector2,
         Vector3,
         Vector4,
-        EntityReference
+        EntityReference,
+        PrefabAsset
     >;
 
     struct JASPERENGINE_API ScriptProperty {

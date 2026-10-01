@@ -53,6 +53,7 @@
 #include "shader/ShaderVariantCollector.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
+#include "ObjectManager.h"
 
 using namespace jasperengine;
 
@@ -138,6 +139,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const EntityReference* a = std::get_if<EntityReference>(&lhs);
             const EntityReference* b = std::get_if<EntityReference>(&rhs);
             return a && b && a->entity == b->entity;
+        }
+        case ScriptPropertyType::Prefab: {
+            const PrefabAsset* a = std::get_if<PrefabAsset>(&lhs);
+            const PrefabAsset* b = std::get_if<PrefabAsset>(&rhs);
+            return a && b && a->getGuid() == b->getGuid() && a->getPath() == b->getPath();
         }
     }
 
@@ -3883,6 +3889,9 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
         }
     }
 
+    // and the ones of prefabs only scripts instantiate
+    appendPrefabCppScripts(mergedScripts, uniquePaths);
+
     return mergedScripts;
 }
 
@@ -4119,8 +4128,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
 
-        // Destroy all prefab instances created during play before restoring snapshot
-        PrefabManager::destroyAllInstances(sceneProject->scene);
+        // GameObject.destroy calls still pending; what the game made goes with the snapshot
+        ObjectManager::forgetScene(sceneProject->scene);
 
         // Stop scene audio before restoring snapshot to prevent stale SoLoud handles on the next play
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
@@ -4232,9 +4241,11 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
-    editor::getEditorHost().enqueueMainThreadTask([]() {
+    editor::getEditorHost().enqueueMainThreadTask([this]() {
         SceneManager::clearAll();
         PrefabManager::clearAll();
+        ObjectManager::clearAll();
+        clearPlayPrefabTemplates();
         editor::getEditorHost().resetLastActivatedScene();
     });
 
@@ -4933,6 +4944,8 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 }
 
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
+    // prefabs only scripts reference or other prefabs nest get their sources too
+    loadBuildPrefabs();
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
         [this](const fs::path& path) { return getPrefabGuid(path); });
     generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
@@ -6447,6 +6460,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         SceneManager::clearAll();
         PrefabManager::clearAll();
+        ObjectManager::clearAll();
+        clearPlayPrefabTemplates();
         jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
@@ -6566,6 +6581,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     return;
                 }
 
+                // prefabs only scripts reference or other prefabs nest get their sources too
+                loadBuildPrefabs();
                 std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
                     [this](const fs::path& path) { return getPrefabGuid(path); });
                 generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
@@ -7219,6 +7236,8 @@ void editor::Project::stop(uint32_t sceneId) {
                 cleanupPlaySession(session);
                 SceneManager::clearAll();
                 PrefabManager::clearAll();
+                ObjectManager::clearAll();
+                clearPlayPrefabTemplates();
                 editor::getEditorHost().resetLastActivatedScene();
                 if (mainSceneProject) {
                     mainSceneProject->playState = ScenePlayState::STOPPED;

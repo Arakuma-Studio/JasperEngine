@@ -602,38 +602,46 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
     sourceContent += "    #define PROJECT_API\n";
     sourceContent += "#endif\n\n";
 
-    sourceContent += "extern \"C\" void PROJECT_API initScripts(jasperengine::Scene* scene) {\n";
-    sourceContent += "    LuaBinding::initializeLuaScripts(scene);\n";
-
     if (!scriptFiles.empty()) {
-
+        // The C++ scripts of one GameObject. A constructor can instantiate (which moves the
+        // components), so the component is looked up again after each one
+        sourceContent += "static void createCppScripts(jasperengine::Scene* scene, jasperengine::Entity entity) {\n";
+        sourceContent += "    jasperengine::ScriptComponent* scriptComp = scene->findComponent<jasperengine::ScriptComponent>(entity);\n";
+        sourceContent += "    for (size_t s = 0; scriptComp && s < scriptComp->scripts.size(); s++) {\n";
+        sourceContent += "        const jasperengine::ScriptEntry& scriptEntry = scriptComp->scripts[s];\n";
+        sourceContent += "        if (scriptEntry.type == ScriptType::LUA || scriptEntry.instance)\n";
+        sourceContent += "            continue;\n";
         sourceContent += "\n";
-
-        sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
-        sourceContent += "\n";
-
-        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
-        sourceContent += "        jasperengine::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
-        sourceContent += "        jasperengine::Entity entity = scriptsArray->getEntity(i);\n";
-        sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
-        sourceContent += "            if (scriptEntry.type == ScriptType::LUA) \n";
-        sourceContent += "                continue; \n";
-        sourceContent += "\n";
-
+        sourceContent += "        const std::string className = scriptEntry.className;\n";
+        sourceContent += "        void* instance = nullptr;\n";
         for (const auto& s : scriptFiles) {
-            sourceContent += "            if (scriptEntry.className == \"" + s.className + "\") {\n";
-            sourceContent += "                " + s.className + "* script = new " + s.className + "(scene, entity);\n";
-            sourceContent += "                scriptEntry.instance = static_cast<void*>(script);\n";
-            sourceContent += "            }\n";
+            sourceContent += "        if (className == \"" + s.className + "\") {\n";
+            sourceContent += "            instance = static_cast<void*>(new " + s.className + "(scene, entity));\n";
+            sourceContent += "        }\n";
         }
+        sourceContent += "        scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<jasperengine::ScriptComponent>(entity) : nullptr;\n";
+        sourceContent += "        if (scriptComp && s < scriptComp->scripts.size()) {\n";
+        sourceContent += "            scriptComp->scripts[s].instance = instance;\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
+        sourceContent += "}\n\n";
 
-        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
-        sourceContent += "        jasperengine::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
-        sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
-        sourceContent += "            if (scriptEntry.type == ScriptType::LUA) \n";
+        // Their properties: values and the GameObjects they point at
+        sourceContent += "static void bindCppScriptProperties(jasperengine::Scene* scene, jasperengine::Entity entity) {\n";
+        sourceContent += "    jasperengine::ScriptComponent* scriptCompPtr = scene->findComponent<jasperengine::ScriptComponent>(entity);\n";
+        sourceContent += "    if (!scriptCompPtr)\n";
+        sourceContent += "        return;\n";
+        sourceContent += "    {\n";
+        sourceContent += "        for (auto& scriptEntry : scriptCompPtr->scripts) {\n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA || !scriptEntry.instance) \n";
         sourceContent += "                continue; \n";
+        // bound already (a GameObject a script instantiated while the scene started)
+        sourceContent += "            bool bound = false;\n";
+        sourceContent += "            for (const auto& prop : scriptEntry.properties) {\n";
+        sourceContent += "                if (prop.memberPtr) { bound = true; break; }\n";
+        sourceContent += "            }\n";
+        sourceContent += "            if (bound)\n";
+        sourceContent += "                continue;\n";
         sourceContent += "\n";
 
         for (const auto& s : scriptFiles) {
@@ -714,11 +722,41 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
-
-    } else{
-        sourceContent += "    (void)scene; // Suppress unused parameter warning\n";
+        sourceContent += "}\n\n";
     }
 
+    sourceContent += "extern \"C\" void PROJECT_API initScripts(jasperengine::Scene* scene) {\n";
+    sourceContent += "    LuaBinding::initializeLuaScripts(scene);\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "\n";
+        // what a constructor instantiates goes to this scene, not yet the Engine's
+        sourceContent += "    ObjectManager::pushActiveScene(scene);\n";
+        sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
+        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
+        sourceContent += "        createCppScripts(scene, scriptsArray->getEntity(i));\n";
+        sourceContent += "    }\n";
+        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
+        sourceContent += "        bindCppScriptProperties(scene, scriptsArray->getEntity(i));\n";
+        sourceContent += "    }\n";
+        sourceContent += "    ObjectManager::popActiveScene();\n";
+    } else {
+        sourceContent += "    (void)scene; // Suppress unused parameter warning\n";
+    }
+    sourceContent += "}\n\n";
+
+    // GameObjects instantiated while the game runs (ObjectManager): their Lua scripts are
+    // started by the engine, these are the C++ ones
+    sourceContent += "extern \"C\" void PROJECT_API initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count) {\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
+        sourceContent += "        if (scene->isEntityCreated(entities[i])) createCppScripts(scene, entities[i]);\n";
+        sourceContent += "    }\n";
+        sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
+        sourceContent += "        if (scene->isEntityCreated(entities[i])) bindCppScriptProperties(scene, entities[i]);\n";
+        sourceContent += "    }\n";
+    } else {
+        sourceContent += "    (void)scene; (void)entities; (void)count;\n";
+    }
     sourceContent += "}\n\n";
 
     return sourceContent;
@@ -727,13 +765,9 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
 std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles) {
     std::string sourceContent;
 
-    sourceContent += "extern \"C\" void PROJECT_API cleanupScripts(jasperengine::Scene* scene) {\n";
-    sourceContent += "    LuaBinding::cleanupLuaScripts(scene);\n";
-
     if (!scriptFiles.empty()) {
-        sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
-        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
-        sourceContent += "        jasperengine::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
+        sourceContent += "static void deleteCppScripts(jasperengine::Scene* scene, jasperengine::ScriptComponent& scriptComp) {\n";
+        sourceContent += "    {\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
         sourceContent += "            if (scriptEntry.type == ScriptType::LUA) continue;\n";
         sourceContent += "\n";
@@ -782,8 +816,32 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
 
         sourceContent += "        }\n";
         sourceContent += "    }\n";
+        sourceContent += "}\n\n";
     }
 
+    sourceContent += "extern \"C\" void PROJECT_API cleanupScripts(jasperengine::Scene* scene) {\n";
+    sourceContent += "    LuaBinding::cleanupLuaScripts(scene);\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
+        sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
+        sourceContent += "        deleteCppScripts(scene, scriptsArray->getComponentFromIndex(i));\n";
+        sourceContent += "    }\n";
+    }
+    sourceContent += "}\n\n";
+
+    // GameObjects destroyed while the game runs (ObjectManager): the engine stops their Lua
+    // scripts, these are the C++ ones
+    sourceContent += "extern \"C\" void PROJECT_API cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count) {\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
+        sourceContent += "        if (!scene->isEntityCreated(entities[i])) continue;\n";
+        sourceContent += "        if (jasperengine::ScriptComponent* scriptComp = scene->findComponent<jasperengine::ScriptComponent>(entities[i])) {\n";
+        sourceContent += "            deleteCppScripts(scene, *scriptComp);\n";
+        sourceContent += "        }\n";
+        sourceContent += "    }\n";
+    } else {
+        sourceContent += "    (void)scene; (void)entities; (void)count;\n";
+    }
     sourceContent += "}\n";
 
     return sourceContent;
@@ -1240,17 +1298,16 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "The C++ language standard is Project Settings > Build > C++ Standard (`cxxStandard` in `project.yaml`): "
                      + editor::cxxStandardList() + ". Play and export both build with it; do not edit `CMAKE_CXX_STANDARD` in the generated CMakeLists.txt.\n";
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
-    agentsContent += "## PrefabManager API\n\n";
-    agentsContent += "`registerPrefab` factories return `bool`. Void-returning factories still register and are treated as success. "
-                     "Every createPrefab call creates its own instance root, so a prefab can be spawned repeatedly; the third argument is the entity the new root is parented to. "
-                     "Entity IDs are scene-local, so parent by name with `createPrefab(name, scene, parentName)` to resolve it in that scene.\n";
-    agentsContent += "A spawned instance root is named after its .prefab file, extension and directories dropped: `EnemyShip` for `enemies/EnemyShip.prefab`, which createPrefab still spawns by the full `enemies/EnemyShip`. "
-                     "It carries a `PrefabComponent` too, while an instance placed in a scene keeps the name the scene gave it. The prefab's own entities hang under the root, the same in the editor and in an exported build. "
-                     "Reach an entity inside an instance with `scene->findEntity(name, root)`, which is also what tells two instances apart when they share a name.\n";
-    agentsContent += "Each prefab header also declares `build_prefab_<name>(scene, root, members)`, the same factory appending the entities it creates to `members` in a fixed order; "
-                     "generated scene sources address instance entities through it, since their ids only exist at runtime. Register and spawn with `create_prefab_<name>`.\n";
-    agentsContent += "Only prefabs a scene instantiates and the ones listed under `standalonePrefabs` in `project.yaml` are built and registered. "
-                     "A prefab spawned by script alone must be in that list (JasperEngine Editor: Project > Prefabs), otherwise `createPrefab` reports it as not found.\n\n";
+    agentsContent += "## Instantiate and Destroy (prefabs at runtime)\n\n";
+    agentsContent += "Unity's Object.Instantiate / Destroy are `GameObject::instantiate`, `GameObject::destroy(object, delay)` and `GameObject::destroyImmediate` (Lua: `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate`). "
+                     "`instantiate` takes a `PrefabAsset` (a script property of type Prefab, or `PrefabAsset::load(\"enemies/EnemyShip\")`) or any GameObject to copy, then optionally a parent (+ `instantiateInWorldSpace`) or a world position and rotation (+ parent). "
+                     "It returns the new root, named `<name>(Clone)`, with the scripts of every new GameObject already started (Lua `init`, C++ constructors). "
+                     "A copy keeps the components and script property values; references among the copied GameObjects point to the copies. `destroy` removes the GameObject and its children after the frame's update (or `delay` seconds later), calling Lua `onDestroy` and C++ destructors first.\n";
+    agentsContent += "`PrefabManager` is the registry behind it: `registerPrefab(id, name, guid, factory)` is called by the generated `main.cpp` for every prefab of the build, ids in path order (the same ids the editor's Play uses). "
+                     "A factory builds the prefab on the bare root it is given and returns `bool`. Each prefab header also declares `build_prefab_<name>(scene, root, members)`, the same factory appending the entities it creates to `members` in a fixed order; "
+                     "generated scene sources address instance entities through it, since their ids only exist at runtime.\n";
+    agentsContent += "The build holds the prefabs scenes instantiate, the ones script properties of type Prefab reference, the ones listed under `standalonePrefabs` in `project.yaml` (JasperEngine Editor: Assets > Prefabs), and the prefabs those nest or reference. "
+                     "`PrefabAsset::load` finds a prefab of the build by path, name or GUID, and reports any other as not found.\n\n";
     agentsContent += "## Build modes\n\n";
     agentsContent += "- **Editor mode** (`JASPERENGINE_EDITOR_PLUGIN=ON`): builds as a shared library; `main.cpp` and Factory-generated scene sources are excluded. Used by the editor to hot-reload the project.\n";
     agentsContent += "- **Standalone mode** (`JASPERENGINE_EDITOR_PLUGIN=OFF`, default): builds as an executable; includes `main.cpp` and all Factory sources. This standalone build is for local testing only — production distribution uses the editor's separate export pipeline.\n";
@@ -1457,6 +1514,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     mainContent += "extern \"C\" void initScripts(jasperengine::Scene* scene);\n";
     mainContent += "extern \"C\" void cleanupScripts(jasperengine::Scene* scene);\n";
+    mainContent += "extern \"C\" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
+    mainContent += "extern \"C\" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
     mainContent += "\n";
 
     std::map<uint32_t, std::string> sceneIdToName;
@@ -1625,16 +1684,21 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     mainContent += "\n";
 
-    // Register all prefabs with PrefabManager
+    // Register all prefabs with PrefabManager: ids by path order (collectAllPrefabs), the
+    // ones the editor's Play registers, with their GUIDs (what script properties hold)
     for (size_t i = 0; i < prefabs.size(); i++) {
         fs::path noExt = prefabs[i].prefabPath;
         noExt.replace_extension();
         std::string prefabName = noExt.generic_string();
-        mainContent += "    PrefabManager::registerPrefab(" + std::to_string(i + 1) + ", \"" + prefabName + "\", " + prefabs[i].functionName + ");\n";
+        mainContent += "    PrefabManager::registerPrefab(" + std::to_string(i + 1) + ", " + Factory::formatString(prefabName) + ", " +
+            Factory::formatString(prefabs[i].guid) + ", " + prefabs[i].functionName + ");\n";
     }
     if (!prefabs.empty()) {
         mainContent += "\n";
     }
+
+    // C++ scripts of the GameObjects scripts instantiate and destroy (scene_scripts.cpp)
+    mainContent += "    ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);\n\n";
 
     // Loading screen, after the scene it names is registered
     const LoadingSettings defaults;

@@ -1751,8 +1751,10 @@ bool editor::Exporter::copyCppScripts() {
         return relPath;
     };
 
-    for (const auto& sceneProject : project->getScenes()) {
-        for (const auto& script : sceneProject.cppScripts) {
+    // the scenes' scripts and those of the prefabs scripts instantiate
+    const std::vector<SceneScriptSource> buildScripts = project->getBuildCppScripts();
+    {
+        for (const auto& script : buildScripts) {
             // Copy source file
             if (!script.path.empty()) {
                 fs::path srcPath = script.path;

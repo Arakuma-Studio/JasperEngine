@@ -6,9 +6,9 @@
 
 #include "Export.h"
 #include "Entity.h"
-#include "EntityHandle.h"
 #include <string>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 #include <cstdint>
 #include <type_traits>
@@ -18,93 +18,92 @@ namespace jasperengine {
 
     class Scene;
 
-    // PrefabManager registers named prefabs and instantiates/destroys them at runtime.
-    // A factory receives (Scene*, Entity root) and must return true on success. Failed
-    // factories are not recorded; entities created during the call are rolled back.
+    // The prefabs of the build: each one registered with an id, its name (the project
+    // relative path without extension, "enemies/EnemyShip"), its asset GUID and a factory.
+    // The exported game registers its generated factories in main.cpp, the editor registers
+    // its own when Play starts; both number the prefabs the same way (by path), so an id is
+    // the same in Play and in the exported game.
     //
-    // Each call creates its own root, so a prefab can be spawned any number of times. Entity IDs
-    // are scene-local, so parent by name in the destination scene:
-    //   PrefabManager::createPrefab("enemies/EnemyShip", mainScene, "spawn");
+    // A factory receives (Scene*, Entity root) and builds the prefab on that bare root: the
+    // root becomes the prefab's root GameObject (name, state, components, children). It
+    // returns true on success; on failure what it created is rolled back.
     //
-    // Usage from C++ (standalone generated code):
-    //   PrefabManager::registerPrefab(1, "enemies/EnemyShip", create_prefab_enemies_EnemyShip);
-    //   Entity root = PrefabManager::createPrefab("enemies/EnemyShip", scene);
-    //   PrefabManager::destroyPrefab(scene, root);
-    //
-    // Usage from Lua:
-    //   local root = PrefabManager.createPrefab("enemies/EnemyShip", scene)
-    //   PrefabManager.destroyPrefab(scene, root)
-
+    // Scripts do not call the factories: they instantiate with GameObject::instantiate
+    // (Lua GameObject.instantiate), which uses PrefabManager::instantiate and runs the
+    // scripts of the new GameObjects.
     class JASPERENGINE_API PrefabManager {
     private:
         struct PrefabEntry {
             uint32_t id;
             std::string name;
+            std::string guid;
             std::function<bool(Scene*, Entity)> factory;
-            std::function<bool(Scene*, Entity)> destroyer;
-        };
-
-        struct PrefabInstance {
-            Entity rootEntity;
-            Scene* scene;
-            uint32_t prefabId;
-            std::vector<Entity> entities; // all entities including root
         };
 
         static std::vector<PrefabEntry> entries;
-        static std::vector<PrefabInstance> instances;
+        static std::unordered_map<uint32_t, size_t> byId;
+        static std::unordered_map<std::string, size_t> byName;
+        static std::unordered_map<std::string, size_t> byGuid;
+        static uint32_t revision;
 
-        static PrefabEntry* findEntry(uint32_t id);
-        static PrefabEntry* findEntry(const std::string& name);
-        static Entity instantiate(uint32_t id, Scene* scene, Entity parent);
+        static const PrefabEntry* findEntry(uint32_t id);
+        static void rebuildIndex();
 
     public:
         // The factory must return true on success. Void-returning callables are accepted
         // and treated as always-successful.
-        static void registerPrefab(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer = nullptr);
+        static void registerPrefab(uint32_t id, const std::string& name, const std::string& guid, std::function<bool(Scene*, Entity)> factory);
+        static void registerPrefab(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory);
 
         template<typename Factory>
-        static auto registerPrefab(uint32_t id, const std::string& name, Factory&& factory, std::function<bool(Scene*, Entity)> destroyer = nullptr)
-            -> std::enable_if_t<std::is_invocable_v<Factory&, Scene*, Entity>, void>
+        static auto registerPrefab(uint32_t id, const std::string& name, const std::string& guid, Factory&& factory)
+            -> std::enable_if_t<std::is_invocable_v<Factory&, Scene*, Entity> &&
+                                !std::is_same_v<std::decay_t<Factory>, std::function<bool(Scene*, Entity)>>, void>
         {
             using Result = std::invoke_result_t<Factory&, Scene*, Entity>;
             if constexpr (std::is_void_v<Result>) {
-                registerPrefab(id, name, std::function<bool(Scene*, Entity)>(
+                registerPrefab(id, name, guid, std::function<bool(Scene*, Entity)>(
                     [factory = std::forward<Factory>(factory)](Scene* scene, Entity root) mutable -> bool {
                         factory(scene, root);
                         return true;
-                    }), std::move(destroyer));
+                    }));
             } else {
-                registerPrefab(id, name, std::function<bool(Scene*, Entity)>(
+                registerPrefab(id, name, guid, std::function<bool(Scene*, Entity)>(
                     [factory = std::forward<Factory>(factory)](Scene* scene, Entity root) mutable -> bool {
                         return static_cast<bool>(factory(scene, root));
-                    }), std::move(destroyer));
+                    }));
             }
         }
 
-        static Entity createPrefab(const std::string& name, Scene* scene);
-        static Entity createPrefab(uint32_t id, Scene* scene);
+        template<typename Factory>
+        static auto registerPrefab(uint32_t id, const std::string& name, Factory&& factory)
+            -> std::enable_if_t<std::is_invocable_v<Factory&, Scene*, Entity> &&
+                                !std::is_same_v<std::decay_t<Factory>, std::function<bool(Scene*, Entity)>>, void>
+        {
+            registerPrefab(id, name, std::string(), std::forward<Factory>(factory));
+        }
 
-        // Every overload creates the instance root; the third argument is the entity it is
-        // parented to, looked up by name in `scene` for the string form.
-        static Entity createPrefab(const std::string& name, Scene* scene, const std::string& parentName);
-        static Entity createPrefab(uint32_t id, Scene* scene, const std::string& parentName);
+        // The id of a prefab by GUID, by name ("enemies/EnemyShip"), by path with extension
+        // ("enemies/EnemyShip.prefab") or by file name ("EnemyShip") when only one prefab has
+        // it; 0 when there is none
+        static uint32_t findPrefab(const std::string& nameOrGuid);
+        static uint32_t findPrefabByGuid(const std::string& guid);
 
-        // For objects that already carry their own scene (GameObject, Button, ...)
-        static Entity createPrefab(const std::string& name, const EntityHandle& parent);
-        static Entity createPrefab(uint32_t id, const EntityHandle& parent);
+        // Builds the prefab on a new root GameObject of `scene`, at the prefab root's own
+        // placement, at the top of the hierarchy. Scripts are not started: see
+        // GameObject::instantiate. NULL_ENTITY on failure (logged).
+        static Entity instantiate(uint32_t id, Scene* scene);
 
-        static Entity createPrefab(const std::string& name, Scene* scene, Entity parent);
-        static Entity createPrefab(uint32_t id, Scene* scene, Entity parent);
-
-        static bool destroyPrefab(Scene* scene, Entity rootEntity);
-
+        static bool hasPrefab(uint32_t id);
         static uint32_t getPrefabId(const std::string& name);
         static std::string getPrefabName(uint32_t id);
+        static std::string getPrefabGuid(uint32_t id);
         static std::vector<std::string> getPrefabNames();
         static int getPrefabCount();
 
-        static void destroyAllInstances(Scene* scene);
+        // Changes on every register/clear, so cached lookups (PrefabAsset) know to look again
+        static uint32_t getRevision();
+
         static void clearAll();
     };
 

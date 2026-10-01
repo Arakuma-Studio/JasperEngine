@@ -855,7 +855,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_standalone_prefab",
-            "Add or remove a Prefab (.prefab) in the project standalone list. A Prefab no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with PrefabManager. Prefabs a scene instantiates are always built and are not listed.",
+            "Add or remove a Prefab (.prefab) in the project standalone list. A Prefab no scene instantiates is only built and registered while it is listed, so scripts can load it by path with PrefabAsset.load and instantiate it with GameObject.instantiate (a Prefab a script property references is built without being listed). Prefabs a scene instantiates are always built and are not listed.",
             objectSchema({
                 {"prefab_path", stringSchema("Safe project-relative .prefab (Prefab) path")},
                 {"standalone", boolSchema("true to list the Prefab, false to remove it. Default true")}

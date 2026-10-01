@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "ObjectManager.h"
 #include "Conector.h"
 
 #include "editor/Out.h"
@@ -151,11 +152,31 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
     }
 
     loadedLibCopy = copyPath;
+
+    // GameObjects a script instantiates or destroys start and stop their C++ scripts
+    // through these (generated with initScripts)
+    using EntityScriptsFunc = ObjectManager::ScriptHook;
+    #ifdef _WIN32
+        EntityScriptsFunc initEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "initEntityScripts"));
+        EntityScriptsFunc cleanupEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "cleanupEntityScripts"));
+    #else
+        EntityScriptsFunc initEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(dlsym(libHandle, "initEntityScripts"));
+        EntityScriptsFunc cleanupEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(dlsym(libHandle, "cleanupEntityScripts"));
+        dlerror();
+    #endif
+    if (!initEntityScriptsFn || !cleanupEntityScriptsFn) {
+        Out::warning("The script library has no initEntityScripts/cleanupEntityScripts: C++ scripts of instantiated GameObjects will not run");
+    }
+    ObjectManager::setCppScriptHooks(initEntityScriptsFn, cleanupEntityScriptsFn);
+
     Out::info("Successfully connected to library");
     return true;
 }
 
 void editor::Conector::disconnect(){
+    // the code behind them goes with the library
+    ObjectManager::setCppScriptHooks(nullptr, nullptr);
+
     if (libHandle) {
         unloadSharedLibrary(libHandle);
         libHandle = nullptr;

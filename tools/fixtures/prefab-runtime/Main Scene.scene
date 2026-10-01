@@ -1,0 +1,64 @@
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Game
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: PrefabRuntimeTest.lua
+            className: PrefabRuntimeTest
+            enabled: true
+            properties:
+              - name: enemyPrefab
+                displayName: Enemy Prefab
+                type: Prefab
+                value: {guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001, path: prefabs/Enemy.prefab}
+                defaultValue: {}
+              - name: spawnParent
+                displayName: Spawn Parent
+                type: EntityReference
+                ptrTypeName: GameObject
+                value: 1002
+                defaultValue: 0
+          - type: cpp
+            path: cpp/CppSpawner.cpp
+            headerPath: cpp/CppSpawner.h
+            className: CppSpawner
+            enabled: true
+            properties:
+              - name: bullet
+                displayName: Bullet
+                type: Prefab
+                value: {guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003, path: prefabs/Bullet.prefab}
+                defaultValue: {}
+  - type: Entity
+    entity: 1002
+    name: Spawner
+    components:
+      transform:
+        position: [10, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false

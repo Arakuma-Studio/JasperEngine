@@ -759,6 +759,7 @@ std::string editor::Stream::scriptPropertyTypeToString(ScriptPropertyType type) 
         case ScriptPropertyType::Color3: return "Color3";
         case ScriptPropertyType::Color4: return "Color4";
         case ScriptPropertyType::EntityReference: return "EntityReference";
+        case ScriptPropertyType::Prefab: return "Prefab";
         default: return "Bool";
     }
 }
@@ -774,6 +775,7 @@ ScriptPropertyType editor::Stream::stringToScriptPropertyType(const std::string&
     if (str == "Color3") return ScriptPropertyType::Color3;
     if (str == "Color4") return ScriptPropertyType::Color4;
     if (str == "EntityReference") return ScriptPropertyType::EntityReference;
+    if (str == "Prefab") return ScriptPropertyType::Prefab;
     return ScriptPropertyType::Bool;
 }
 
@@ -3387,6 +3389,18 @@ YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
             }
             break;
         }
+        case ScriptPropertyType::Prefab: {
+            // by GUID, the path a hint (PREFABS.md): {guid, path}, or empty for None
+            auto encodePrefab = [](const PrefabAsset& prefab) {
+                YAML::Node value(YAML::NodeType::Map);
+                if (!prefab.getGuid().empty()) value["guid"] = prefab.getGuid();
+                if (!prefab.getPath().empty()) value["path"] = prefab.getPath();
+                return value;
+            };
+            node["value"] = encodePrefab(prop.getValue<PrefabAsset>());
+            node["defaultValue"] = encodePrefab(prop.getDefaultValue<PrefabAsset>());
+            break;
+        }
     }
 
     return node;
@@ -3442,6 +3456,18 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = EntityReference{node["defaultValue"] ? node["defaultValue"].as<Entity>(NULL_ENTITY) : Entity(NULL_ENTITY), 0};
                 break;
             }
+            case ScriptPropertyType::Prefab: {
+                auto decodePrefab = [](const YAML::Node& value) {
+                    if (!value || !value.IsMap()) {
+                        return PrefabAsset();
+                    }
+                    return PrefabAsset(value["guid"] ? value["guid"].as<std::string>() : std::string(),
+                                       value["path"] ? value["path"].as<std::string>() : std::string());
+                };
+                prop.value = decodePrefab(node["value"]);
+                prop.defaultValue = decodePrefab(node["defaultValue"]);
+                break;
+            }
         }
     } else {
         // Initialize with default values if no value is provided
@@ -3456,6 +3482,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
             case ScriptPropertyType::Vector4:
             case ScriptPropertyType::Color4: prop.value = Vector4(); prop.defaultValue = Vector4(); break;
             case ScriptPropertyType::EntityReference: prop.value = EntityReference{NULL_ENTITY, 0}; prop.defaultValue = EntityReference{NULL_ENTITY, 0}; break;
+            case ScriptPropertyType::Prefab: prop.value = PrefabAsset(); prop.defaultValue = PrefabAsset(); break;
         }
     }
 
