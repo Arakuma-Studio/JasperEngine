@@ -64,7 +64,7 @@ namespace jasperengine::editor{
         bool wasModified = false;
 
         // Entities the model owns: nodes, parts, bones, animations and their tracks
-        static std::vector<Entity> collectOwnedEntities(Scene* scene, const ModelComponent& model);
+        static std::vector<Entity> collectOwnedEntities(Scene* scene, Entity entity, const ModelComponent& model);
         // Entities other than the model's own that sit on its nodes, which the delete would take along
         static std::vector<ParkedEntity> collectParkedEntities(Scene* scene, const std::vector<Entity>& owned, Entity entity);
         // Why the model's own entities cannot be deleted from this scene alone, empty when they can

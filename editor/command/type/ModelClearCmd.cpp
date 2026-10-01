@@ -10,6 +10,7 @@
 #include "subsystem/RenderSystem.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -95,7 +96,7 @@ bool editor::ModelClearCmd::canClear(Project* project, uint32_t sceneId, Entity 
     if (ModelLoadCmd::isLoadPending(sceneId, entity)) {
         return fail("The model is still loading");
     }
-    const std::string blocker = prefabNodesBlocker(project, sceneId, collectOwnedEntities(scene, *model));
+    const std::string blocker = prefabNodesBlocker(project, sceneId, collectOwnedEntities(scene, entity, *model));
     if (!blocker.empty()) {
         return fail(blocker);
     }
@@ -105,21 +106,29 @@ bool editor::ModelClearCmd::canClear(Project* project, uint32_t sceneId, Entity 
 std::string editor::ModelClearCmd::prefabNodesBlocker(Project* project, uint32_t sceneId, const std::vector<Entity>& owned){
     // A Prefab instance holds every GameObject of its Prefab: one cannot be left out of a single
     // instance, and deleting it deletes it from the Prefab and all its instances
-    for (Entity owner : owned) {
-        const std::filesystem::path prefabPath = project->findPrefabPathFor(sceneId, owner);
-        if (!prefabPath.empty()) {
-            return "The model's GameObjects are part of Prefab '" + prefabPath.stem().string() +
-                "': unpack the instance to empty its Model without changing the Prefab";
+    const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
+    for (const auto& [prefabPath, prefab] : project->getPrefabs(sceneId)) {
+        auto sceneInstances = prefab->instances.find(sceneId);
+        if (sceneInstances == prefab->instances.end()) {
+            continue;
+        }
+        for (const Prefab::Instance& instance : sceneInstances->second) {
+            for (const Prefab::EntityMember& member : instance.members) {
+                if (ownedSet.count(member.localEntity)) {
+                    return "The model's GameObjects are part of Prefab '" + prefabPath.stem().string() +
+                        "': unpack the instance to empty its Model without changing the Prefab";
+                }
+            }
         }
     }
     return std::string();
 }
 
-std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, const ModelComponent& model){
+std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, Entity entity, const ModelComponent& model){
     std::vector<Entity> owned;
     std::unordered_set<Entity> seen;
     auto add = [&](Entity e) {
-        if (e != NULL_ENTITY && scene->isEntityCreated(e) && seen.insert(e).second) {
+        if (e != NULL_ENTITY && e != entity && scene->isEntityCreated(e) && seen.insert(e).second) {
             owned.push_back(e);
         }
     };
@@ -131,7 +140,7 @@ std::vector<Entity> editor::ModelClearCmd::collectOwnedEntities(Scene* scene, co
     // The skeleton field can point anywhere; it is the model's only when it is one of its bones
     if (model.skeleton != NULL_ENTITY && scene->isEntityCreated(model.skeleton)) {
         const BoneComponent* bone = scene->findComponent<BoneComponent>(model.skeleton);
-        if (seen.count(model.skeleton) || (bone && seen.count(bone->model))) {
+        if (seen.count(model.skeleton) || (bone && bone->model == entity)) {
             add(model.skeleton);
         }
     }
@@ -296,7 +305,7 @@ bool editor::ModelClearCmd::execute(){
     hadMesh = mesh != nullptr;
     oldMesh.reset(hadMesh ? Stream::encodeMeshComponent(*mesh, false, false, false) : YAML::Node());
 
-    const std::vector<Entity> owned = collectOwnedEntities(scene, model);
+    const std::vector<Entity> owned = collectOwnedEntities(scene, entity, model);
     const std::unordered_set<Entity> ownedSet(owned.begin(), owned.end());
     if (!prefabNodesBlocker(project, sceneId, owned).empty()) {
         return false;
@@ -323,11 +332,15 @@ bool editor::ModelClearCmd::execute(){
             transformRoots.push_back(owner);
         }
     }
-    const std::vector<Entity>& tracked = sceneProject->entities;
-    auto trackedIndex = [&tracked](Entity e) {
-        return static_cast<size_t>(std::distance(tracked.begin(), std::find(tracked.begin(), tracked.end(), e)));
+    std::unordered_map<Entity, size_t> trackedIndex;
+    for (size_t i = 0; i < sceneProject->entities.size(); i++) {
+        trackedIndex.emplace(sceneProject->entities[i], i);
+    }
+    auto trackedPosition = [&trackedIndex](Entity e) {
+        auto it = trackedIndex.find(e);
+        return it != trackedIndex.end() ? it->second : trackedIndex.size();
     };
-    std::sort(flatRoots.begin(), flatRoots.end(), [&](Entity a, Entity b) { return trackedIndex(a) < trackedIndex(b); });
+    std::sort(flatRoots.begin(), flatRoots.end(), [&](Entity a, Entity b) { return trackedPosition(a) < trackedPosition(b); });
     std::sort(transformRoots.begin(), transformRoots.end(), [scene](Entity a, Entity b) {
         return ProjectUtils::getTransformIndex(scene, a) < ProjectUtils::getTransformIndex(scene, b);
     });
