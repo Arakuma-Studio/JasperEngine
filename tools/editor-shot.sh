@@ -12,6 +12,8 @@
 #   r:X,Y          right click          m:X,Y       move the mouse (hover)
 #   drag:X1,Y1,X2,Y2  left drag         wheel:X,Y,N scroll N notches (N<0: up)
 #   k:K, key:K, K  press xdotool key K (e.g. F5, ctrl+s, space)
+#   kd:K, ku:K     hold / release key K, for chords the editor must see across
+#                  frames (e.g. kd:ctrl kd:z w:0.3 ku:z ku:ctrl)
 #   w:N, sleep:N   wait N seconds
 #   shot:TAG       save <name>-TAG.png  s   save <name>-1.png, <name>-2.png, ...
 # EXPORT_DIR=build/x (under the repo) sets the default Build Settings output.
@@ -21,7 +23,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
 
-[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 && -f "$1/project.yaml" ]] || { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 NAME="${2:-editor}"
 SECS="${3:-15}"
@@ -60,6 +62,8 @@ steps() {
             sleep:*) sleep "${t#sleep:}" ;;
             k:*) xdotool key "${t#k:}" ;;
             key:*) xdotool key "${t#key:}" ;;
+            kd:*) xdotool keydown "${t#kd:}" ;;
+            ku:*) xdotool keyup "${t#ku:}" ;;
             m:*) IFS=, read -r x y <<< "${t#m:}"; xdotool mousemove "$x" "$y" ;;
             r:*) IFS=, read -r x y <<< "${t#r:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 3 ;;
             click:*) IFS=, read -r x y <<< "${t#click:}"; xdotool mousemove "$x" "$y"; sleep 0.2; xdotool click 1 ;;
