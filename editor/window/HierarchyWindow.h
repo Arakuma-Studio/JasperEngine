@@ -151,6 +151,15 @@ namespace jasperengine::editor{
         void showCreateMenuItems(bool atRoot, Entity parent, bool addToPrefab);
         void showSceneMenu(SceneProject* sceneProject);
         void showPrefabMenu(const TreeNode& node);
+
+        // Prefab Mode (HierarchyPrefabMode.cpp): the stage's header menu, Unity's "Open Asset
+        // in Context / in Isolation" items, and the row buttons (the header's back arrow, the
+        // open arrow of an instance root)
+        void showPrefabStageMenu(SceneProject* sceneProject);
+        void showOpenPrefabItems(const TreeNode& node);
+        void drawPrefabRowButtons(const TreeNode& node, bool renaming);
+        // The prefab asset and instance root a row opens in Prefab Mode (false if none)
+        bool getOpenPrefabTarget(const TreeNode& node, std::filesystem::path& path, Entity& instanceRoot) const;
         void beginRename(RenameTarget target, uint32_t sceneId, Entity entity, const std::string& currentName);
         bool isRenaming(const TreeNode& node) const;
         void drawRenameField();
@@ -198,8 +207,9 @@ namespace jasperengine::editor{
         // Alt-drop of a prefab asset on an instance root row replaces it (Alt+Shift: and
         // clears its overrides); true when it took the drop
         bool handlePrefabReplaceDrop(const TreeNode& node);
-        // Prefab Mode entry point of the ">" button ([D] openPrefabAsset)
-        void openPrefabFromHierarchy(const std::filesystem::path& path);
+        // Prefab Mode entry point of the ">" button: in context of instanceRoot (in the shown
+        // scene), in isolation without one (HierarchyPrefabMode.cpp)
+        void openPrefabFromHierarchy(const std::filesystem::path& path, Entity instanceRoot = NULL_ENTITY);
         // [E] Prefab Variants: whether the asset is a variant (its rows get the variant icon)
         bool isPrefabVariantAsset(const std::filesystem::path& path) const;
 

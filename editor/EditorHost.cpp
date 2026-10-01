@@ -77,6 +77,16 @@ void EditorHost::registerThreeButtonAlert(std::string, std::string, std::functio
     }
 }
 
+void EditorHost::registerSaveDiscardAlert(std::string, std::string, std::function<void()> onSave, std::function<void()>, std::function<void()>) {
+    if (onSave) {
+        onSave();
+    }
+}
+
+void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, uint32_t, bool) {
+    Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
+}
+
 void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {
     if (callback) {
         callback();

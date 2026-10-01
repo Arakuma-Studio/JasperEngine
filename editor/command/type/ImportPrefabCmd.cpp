@@ -41,6 +41,12 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    // Prefab Mode: a prefab cannot hold itself, nor one that holds it
+    if (!project->canInstantiatePrefabIn(sceneId, filepath)) {
+        Out::error("Prefab %s cannot go into this prefab: it would contain itself", filepath.string().c_str());
+        return false;
+    }
+
     // The prefab, read now: the instance's root takes its root GameObject's name
     Prefab* prefab = project->loadPrefabAsset(filepath);
     if (!prefab) {

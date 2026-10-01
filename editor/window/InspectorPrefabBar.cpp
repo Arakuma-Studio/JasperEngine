@@ -416,15 +416,18 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
         style.FramePadding.x * 6.0f + style.ItemInnerSpacing.x * 2.0f;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + gap, ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
-    // Open: Prefab Mode on the asset (agent D's App::openPrefabAsset). PREFAB-MODE-WIRE: when
-    // it exists, set prefabModeAvailable and uncomment the call below.
-    constexpr bool prefabModeAvailable = false;
-    ImGui::BeginDisabled(!prefabModeAvailable || mixedAsset || assetPath.empty());
+    // Open: Prefab Mode on the asset, in the context of this instance (Unity's Open on an
+    // instance); several instances of one prefab open it in isolation
+    ImGui::BeginDisabled(mixedAsset || assetPath.empty());
     if (ImGui::Button(openLabel)) {
-        // PREFAB-MODE-WIRE: Backend::getApp().openPrefabAsset(assetPath);
+        if (oneInstance) {
+            Backend::getApp().openPrefabAsset(assetPath, sceneProject->id, prefabRoots[0], true);
+        } else {
+            Backend::getApp().openPrefabAsset(assetPath);
+        }
     }
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip("%s", prefabModeAvailable ? "Open the Prefab asset in Prefab Mode" : "Prefab Mode is not available yet");
+    ImGui::SetItemTooltip("Open the Prefab asset in Prefab Mode");
 
     ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     ImGui::BeginDisabled(mixedAsset || assetPath.empty());

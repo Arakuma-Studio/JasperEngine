@@ -1016,7 +1016,8 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
         return;
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1054,7 +1055,8 @@ void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& delet
         }
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1152,7 +1154,8 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
         return;
     }
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1173,7 +1176,8 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
 }
 
 void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene || !visitAssetPathsInRegistry(sceneProject.scene, transform)) {
             continue;
         }
@@ -1280,7 +1284,8 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         return changed;
     };
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -1581,7 +1586,8 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
     this->canvasWidth = width;
     this->canvasHeight = height;
 
-    for (auto& sceneProject : scenes) {
+    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) {
             continue;
         }
@@ -3768,6 +3774,11 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
 }
 
 void editor::Project::resetConfigs() {
+    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+    while (!prefabStages.empty()) {
+        popPrefabStage();
+    }
+
     // Clear existing scenes
     for (auto& sceneProject : scenes) {
         deleteSceneProject(&sceneProject);
@@ -4739,6 +4750,13 @@ bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, Sc
 }
 
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
+    // Prefab Mode: saving its scene saves the prefab asset
+    if (isPrefabStage(sceneId)) {
+        const bool saved = savePrefabStage(sceneId);
+        if (callback) callback(saved);
+        return;
+    }
+
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Cannot save scene - invalid scene ID: %u", sceneId);
@@ -4985,8 +5003,9 @@ void editor::Project::writeMissingSceneSources() {
 }
 
 void editor::Project::configureGenerator() {
-    // the standalone build starts the selected scene
-    const uint32_t startId = getScene(selectedScene) ? selectedScene : startSceneId;
+    // the standalone build starts the selected scene (in Prefab Mode, the scene behind it)
+    const uint32_t selectedRegular = getSceneBehindPrefabStage(selectedScene);
+    const uint32_t startId = getScene(selectedRegular) ? selectedRegular : startSceneId;
 
     std::vector<editor::SceneBuildInfo> scenesToConfig;
     for (SceneProject& sceneConf : scenes) {
@@ -5072,6 +5091,12 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     std::vector<uint32_t> sceneIds;
+    // the prefab stages first: the scenes saved after them hold their assets' new state
+    for (const auto& stage : prefabStages) {
+        if (hasUnsavedPrefabStage(stage->sceneProject.id)) {
+            sceneIds.push_back(stage->sceneProject.id);
+        }
+    }
     for (auto& sceneProject : scenes) {
         if (hasSceneUnsavedChanges(sceneProject.id)) {
             sceneIds.push_back(sceneProject.id);
@@ -5108,9 +5133,9 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
         Transform& transform = scene->getComponent<Transform>(entity);
         float size = 16.0f;
         SceneRender* editorRender = nullptr;
-        for (const SceneProject& sceneProject : scenes){
-            if (sceneProject.scene == mainScene){
-                editorRender = sceneProject.sceneRender;
+        for (SceneProject* sceneProject : const_cast<Project*>(this)->getScenesAndPrefabStages()){
+            if (sceneProject->scene == mainScene){
+                editorRender = sceneProject->sceneRender;
                 break;
             }
         }
@@ -5650,6 +5675,10 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
     if (SceneProject* sceneProject = findScene<editor::SceneProject>(sceneId)) {
         return sceneProject;
     }
+    // a prefab stage's scene (Prefab Mode) answers to its id like any scene
+    if (SceneProject* stageScene = findPrefabStageScene(sceneId)) {
+        return stageScene;
+    }
     return findPlayRuntimeScene(sceneId);
 }
 
@@ -5657,6 +5686,9 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
 const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
     if (const SceneProject* sceneProject = findScene<const editor::SceneProject>(sceneId)) {
         return sceneProject;
+    }
+    if (const SceneProject* stageScene = findPrefabStageScene(sceneId)) {
+        return stageScene;
     }
     return findPlayRuntimeScene(sceneId);
 }
@@ -6250,6 +6282,11 @@ bool editor::Project::hasScenesUnsavedChanges() const{
         if (scene.isModified){
             return true;
         }
+    }
+
+    // Prefab Mode with Auto Save off
+    if (hasUnsavedPrefabStages()){
+        return true;
     }
 
     if (hasUnsavedPrefabs()){

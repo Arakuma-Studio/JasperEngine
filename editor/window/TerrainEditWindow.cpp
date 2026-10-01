@@ -528,7 +528,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     // components, so maps repointed by still-unsaved edits stay protected. Closed
     // scenes keep a null Scene* (deleteSceneProject) and are covered by pass 2.
     std::unordered_set<std::string> activeFiles;
-    for (SceneProject& sceneProject : project->getScenes()){
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()){
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene){
             continue;
         }
@@ -1369,9 +1370,9 @@ SceneProject* editor::TerrainEditWindow::findSceneProject(Scene* scene) const{
     if (!project || !scene){
         return nullptr;
     }
-    for (SceneProject& sceneProject : project->getScenes()){
-        if (sceneProject.scene == scene){
-            return &sceneProject;
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()){
+        if (sceneProject->scene == scene){
+            return sceneProject;
         }
     }
     return nullptr;
@@ -2271,7 +2272,8 @@ void editor::TerrainEditWindow::updateFoliagePreview(){
     }
 
     const bool editing = windowOpen && !project->isAnyScenePlaying() && hasValidTarget();
-    for (SceneProject& sceneProject : project->getScenes()){
+    for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()){
+        SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene){
             continue;
         }

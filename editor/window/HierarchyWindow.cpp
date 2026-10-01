@@ -665,6 +665,10 @@ void editor::HierarchyWindow::showSceneMenu(SceneProject* sceneProject){
     if (!sceneProject) {
         return;
     }
+    if (project->isPrefabStage(sceneProject->id)) {
+        showPrefabStageMenu(sceneProject);
+        return;
+    }
     const uint32_t sceneId = sceneProject->id;
     const bool busy = project->isAnyScenePlaying();
 
@@ -767,6 +771,7 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         if (itemsAbove) {
             ImGui::Separator();
         }
+        showOpenPrefabItems(node);
         std::filesystem::path assetPath = node.isPrefabRoot ? node.nestedPrefabFilepath : node.prefabFilepath;
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
@@ -1452,7 +1457,11 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     if (renamingNode){
         // no tooltip over the rename field
     }else if (node.isScene){
-        ImGui::SetItemTooltip("Scene: %s\nId: %u", node.name.c_str(), node.id);
+        if (const PrefabStage* stage = project->getPrefabStage(node.id)) {
+            ImGui::SetItemTooltip("Prefab Mode: %s%s", stage->assetPath.generic_string().c_str(), stage->inContext() ? "\nIn Context" : "");
+        } else {
+            ImGui::SetItemTooltip("Scene: %s\nId: %u", node.name.c_str(), node.id);
+        }
     }else if (node.isChildScene){
         const SceneProject* childScene = project->getScene(node.childSceneId);
         std::filesystem::path childScenePath = childScene ? childScene->filepath : std::filesystem::path();
@@ -2196,6 +2205,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::PopStyleColor(4);
     }
 
+    // Prefab Mode's back arrow on its header (HierarchyPrefabMode.cpp)
+    drawPrefabRowButtons(node, renamingNode);
     // ">" at the right end of an instance root's row: opens its prefab (HierarchyPrefabRows.cpp)
     if (!renamingNode) {
         showPrefabRowArrow(node);
@@ -2345,6 +2356,10 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     root.isScene = true;
     root.order = order++;
     root.name = sceneProject->name;
+    if (project->isPrefabStage(sceneProject->id)) {
+        // Prefab Mode: the header is the prefab's (Unity's Hierarchy header in a stage)
+        root.icon = ICON_FA_CUBE;
+    }
 
     // The GameObjects of a child scene under its node: the edit-time scene, or while the
     // game runs, its running copy with what the game made in it (read-only rows)

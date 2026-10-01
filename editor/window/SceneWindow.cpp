@@ -2069,12 +2069,35 @@ void editor::SceneWindow::show() {
         if (s.opened) openedScenesCount++;
     }
 
-    // Iterate through all scenes in the project
-    for (auto& sceneProject : project->getScenes()) {
-        if (!sceneProject.opened) continue;
+    // The open scenes, then Prefab Mode's tab for the shown stage
+    std::vector<SceneProject*> viewScenes;
+    for (auto& openScene : project->getScenes()) {
+        if (openScene.opened) viewScenes.push_back(&openScene);
+    }
+    PrefabStage* activeStage = project->getActivePrefabStage();
+    const uint32_t activeStageId = activeStage ? activeStage->sceneProject.id : NULL_PROJECT_SCENE;
+    bool focusStage = false;
+    uint32_t focusScene = NULL_PROJECT_SCENE;
+    if (activeStageId != shownPrefabStage) {
+        // a stage opened (or the breadcrumbs went to another): its tab comes forward; Prefab
+        // Mode left: the scene it was entered from does
+        focusStage = activeStageId != NULL_PROJECT_SCENE;
+        if (!focusStage) {
+            focusScene = project->getSelectedSceneId();
+        }
+        shownPrefabStage = activeStageId;
+    }
+    if (activeStage) {
+        viewScenes.push_back(&activeStage->sceneProject);
+    }
 
-        // Disable close button if this is the only open scene
-        bool canClose = openedScenesCount > 1;
+    // Iterate through all scenes in the project
+    for (SceneProject* viewScene : viewScenes) {
+        SceneProject& sceneProject = *viewScene;
+        const bool isStage = activeStage && &activeStage->sceneProject == viewScene;
+
+        // Disable close button if this is the only open scene (Prefab Mode's tab exits it)
+        bool canClose = isStage || openedScenesCount > 1;
         bool isOpen = true;
 
         const bool isRuntimeActive = sceneProject.playState == ScenePlayState::PLAYING
@@ -2088,7 +2111,11 @@ void editor::SceneWindow::show() {
         }
         ImGuiWindowFlags windowFlags = hasNotification[sceneProject.id] ? ImGuiWindowFlags_UnsavedDocument : 0;
         ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
-        const bool sceneWindowVisible = ImGui::Begin(getWindowTitle(sceneProject).c_str(), canClose ? &isOpen : nullptr, windowFlags);
+        if ((isStage && focusStage) || (!isStage && sceneProject.id == focusScene)) {
+            ImGui::SetNextWindowFocus();
+        }
+        const std::string windowTitle = isStage ? getPrefabStageWindowTitle(sceneProject) : getWindowTitle(sceneProject);
+        const bool sceneWindowVisible = ImGui::Begin(windowTitle.c_str(), canClose ? &isOpen : nullptr, windowFlags);
         if (hasNotification[sceneProject.id]) App::popTabNotificationStyle();
 
         if (!isRuntimeActive) {
@@ -2112,6 +2139,11 @@ void editor::SceneWindow::show() {
             Entity previewCameraEntity = isCameraPreview ? sceneProject.sceneRender->getPreviewCameraEntity() : NULL_ENTITY;
             if (isCameraPreview) {
                 sceneProject.needUpdateRender = true;
+            }
+
+            // Prefab Mode: its breadcrumbs and controls over the Scene view
+            if (isStage) {
+                drawPrefabStageBar(sceneProject);
             }
 
             // Scene view toolbar (Unity style): view-specific controls only. Play and the
@@ -2145,7 +2177,9 @@ void editor::SceneWindow::show() {
                 ImGui::SetItemTooltip("Exit camera preview (Esc)");
             }
 
-            drawParentSceneButton(sceneProject);
+            if (!isStage) {
+                drawParentSceneButton(sceneProject);
+            }
 
             {
                 const std::string gizmosPopupId = "GizmosPopup" + std::to_string(sceneProject.id);
@@ -2206,6 +2240,17 @@ void editor::SceneWindow::show() {
                     canvasDpiScale[sceneProject.id] = dpiScale;
 
                     sceneProject.needUpdateRender = true;
+                }
+
+                // A stage opened in isolation shows its prefab whole once the view has a size
+                if (isStage && activeStage->frameOnOpen && widthNew > 0 && heightNew > 0
+                        && sceneProject.scene->isEntityCreated(activeStage->root)) {
+                    // after a few drawn frames: the bounds and the camera's direction exist
+                    sceneProject.needUpdateRender = true;
+                    if (--activeStage->frameDelay <= 0) {
+                        activeStage->frameOnOpen = false;
+                        focusOnEntities(&sceneProject, {activeStage->root});
+                    }
                 }
 
                 ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());
@@ -2312,9 +2357,13 @@ void editor::SceneWindow::show() {
         }
         ImGui::End();
 
-        // Handle window closing
+        // Handle window closing (Prefab Mode's tab exits Prefab Mode)
         if (!isOpen) {
-            handleCloseScene(sceneProject.id);
+            if (isStage) {
+                requestExitPrefabStages(0);
+            } else {
+                handleCloseScene(sceneProject.id);
+            }
         }
     }
 

@@ -508,6 +508,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
+    ${EDITOR_DIR}/PrefabStage.cpp
     ${EDITOR_DIR}/Workspace.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
@@ -554,10 +555,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
+    ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
+    ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp

@@ -249,7 +249,8 @@ bool Workspace::save(const Project* project) {
     }
 
     YAML::Node root;
-    root["selectedScene"] = project->getSelectedSceneId();
+    // Prefab Mode is not reopened: the scene it was entered from is the one to come back to
+    root["selectedScene"] = project->getSceneBehindPrefabStage(project->getSelectedSceneId());
 
     YAML::Node tabsNode(YAML::NodeType::Sequence);
     for (const TabEntry& tab : project->getTabs()) {

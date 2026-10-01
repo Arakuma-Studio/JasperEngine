@@ -6,7 +6,7 @@ Sections 1-5: files, identity, GUIDs, Missing Prefab (A1). Sections 6-11: the re
 the override model v2 and its APIs (A2). Section 12: editing instances the Unity way (edits
 are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C). Sections 13-15:
 Replace Prefab, the Hierarchy rows, the Scene view drop, thumbnails and the Prefabs dialog (F).
-`tools/prefab-fixtures.py` makes test projects,
+Section 16: Prefab Mode (D, `editor/PrefabStage.*`). `tools/prefab-fixtures.py` makes test projects,
 `jasperengine-editor scene-dump --project <dir> [--save]` dumps what loading them gives.
 Read this before changing how prefabs are identified, stored or loaded.
 
@@ -471,10 +471,11 @@ scenes never see an instance edit. There is no "edit shared" path any more
   (`capturePlayPrefabState`: every prefab's `instances[scene]` and the Missing Prefab
   records); Stop's `restorePlaySnapshot` puts entities, components and that bookkeeping back,
   so nothing done while playing reaches the asset, another scene or the scene after Stop.
-- **Prefab Mode (D)**: `Project::isEditingPrefabAsset(sceneId, entity)` (stub: false) says
-  which GameObjects' edits are asset edits; the record calls ignore those. The Prefab bar's
-  Open button waits for `App::openPrefabAsset(path)` (`PREFAB-MODE-WIRE` in
-  InspectorPrefabBar.cpp: set `prefabModeAvailable`, uncomment the call).
+- **Prefab Mode (section 16)**: `Project::isEditingPrefabAsset(sceneId, entity)` says
+  which GameObjects' edits are asset edits (a prefab stage's own GameObjects); the record
+  calls ignore those. GameObjects of the instances nested in a stage are not: their edits
+  record overrides, which the stage saves as the asset's overrides of them. The Prefab
+  bar's Open button opens the instance's prefab in context (`openPrefabAsset`).
 
 ### Inspector (`editor/window/InspectorPrefabBar.cpp`)
 
@@ -619,3 +620,101 @@ each tree rebuild), `SceneWindow::updatePrefabDrag`.
   root node, then the nested prefabs of its asset minus the removed GameObjects of the
   scene's and the assets' layers, recursively, and the added GameObjects at every level),
   keyed by GUID (a reference without one by the GUID its path was upgraded to).
+
+## 16. Prefab Mode (prefab stages)
+
+Unity's Prefab Mode. `editor/PrefabStage.cpp` (Project), `PrefabStage` in `Project.h`, the
+Scene view bar in `window/PrefabStageBar.cpp`, the Hierarchy's part in
+`window/HierarchyPrefabMode.cpp`.
+
+**A stage is a scene.** `PrefabStage::sceneProject` is a `SceneProject` kept outside
+`Project::scenes` (so nothing that lists, saves or builds scenes sees it) that `getScene(id)`
+answers to like any scene: the Hierarchy, the Inspector, the Scene view, the commands, the
+undo history (`CommandHandle::get(stage id)`, one per stage) and the selection work on it
+unchanged. Loops that must reach every GameObject being edited (script refreshes, asset and
+shader path changes, terrain maps, tools) use `getScenesAndPrefabStages()`.
+
+- **Content**: the asset as `encodePrefabNode` gives it (the in-memory asset, upgraded),
+  decoded by `Stream::decodeSceneProjectEntities(..., reservedBelow = nextEntity)`. The
+  prefab's GameObjects keep their registry ids: **a stage entity id is the GameObject's
+  file id**, and new GameObjects take ids above the asset's `nextEntity` (the counter starts
+  there; ids under it are reserved for the members of the nested instances, which take ids
+  above too), so the identity contract of section 2 holds without any id mapping.
+- **Nested prefabs** are real instances in the stage, imported with the asset's
+  `prefabInstance` block of their root as their *instance data* (a nested root without a
+  block gets an empty v3 one first: without it the import reads it as a pre-v3 root). So
+  what is edited on them in the stage is recorded as their overrides, and on save those
+  are written back as the asset's block for that nested root: the asset-level override
+  (section 7, `Prefab::nestedInstances`). Unity's semantics: editing a nested instance in
+  Prefab Mode overrides it in the outer asset, the inner asset is unchanged.
+- **Save** (`savePrefabStage`): the stage's top-level GameObjects (root first) encoded
+  like a scene (`Stream::encodeEntity` with the stage), the scene-only keys of the blocks
+  dropped (`version`, `memberIds`), wrapped in the v3 header (`nextEntity` = max(asset's,
+  stage counter + 1)); then `Prefab::loadRegistry` (the registry is the stage), references
+  outside the asset's own GameObjects cleared (into nested members: B's stripped proxies),
+  `savePrefabToDisk`, prefabs nested in the stage that it changed saved too, and
+  `refreshPrefabInstances(path)`: every loaded instance (scenes and other stages, nested
+  ones included) follows, keeping its overrides; scenes not loaded read the file when they
+  load. The generated sources of the scenes using it are cleared (written again by
+  `updateGeneratedSources`) and the prefab sources rewritten; shader keys and the export
+  read the saved asset (`collectRequiredShaderKeys` reads the registry/file; the exporter
+  saves unsaved stages first).
+- **Single root**: a GameObject that ends up at the top of a stage (created there, dropped,
+  pasted, duplicated root) goes below the root (`fixPrefabStageRoots`, each frame and on
+  save; Unity does the same). The root cannot be deleted (`DeleteEntityCmd` refuses).
+- **Undo** is the stage's own history (Ctrl+Z with the stage shown). Deleting a nested
+  instance and undoing it gives it back where it was: `DeleteEntityCmd::undo` puts back the
+  saved local Transform values after re-parenting (an instance root's world matrix is the
+  prefab root's until the next update, so keeping its world placement moved it; this
+  affected scenes too).
+- **No cycles**: an instance of the stage's prefab, or of any prefab holding it or one of the
+  stages below it in the stack, is refused in a stage (`canInstantiatePrefabIn`, checked by
+  `ImportPrefabCmd` and `importPrefab`).
+- **Auto Save** (Unity's toggle, on by default, `Project::prefabAutoSave`): each command on
+  a stage (`CommandHistory::onSceneModified` -> `notePrefabStageChange`, which also marks
+  the stage modified: an undo past a save differs from the file again) arms a save that
+  runs 350 ms later once no edit is in progress (mouse button down, an active widget, text
+  input). Off, `Save` (bar, Hierarchy header menu, Ctrl+S: `saveScene(stage)` saves the
+  stage) writes it, and leaving a modified stage asks **Save / Discard Changes / Cancel**
+  (`closePrefabStages(depth, done, choice)`; `registerSaveDiscardAlert`). Unsaved stages
+  count as unsaved changes for quitting, switching projects and Save All
+  (`hasScenesUnsavedChanges`, `saveAllScenes`).
+- **Outside changes**: once a second a stage compares the asset (`encodePrefabNode`) with
+  what it last read or wrote: an unmodified stage reloads (its undo history cleared), a
+  modified one keeps its version and warns (saving writes it over the other).
+- **Stack (breadcrumbs)**: `prefabStages`, bottom first; the top one is shown in the one
+  "Prefab Mode" tab (`###PrefabMode`, docked with the scene tabs). Opening from an instance
+  inside a stage pushes; opening from the Project window or from a scene replaces the stack
+  (each modified stage asks first); the breadcrumbs (`Scenes > Outer > Inner`), the back
+  arrows (Scene view bar, Hierarchy header) and the Hierarchy header menu pop to a depth.
+  Leaving selects the stage below, or the scene Prefab Mode was entered from
+  (`returnSceneId`, `getSceneBehindPrefabStage`: also Play's, the build's start scene and
+  the workspace's selected scene).
+- **Environment**: a 3D stage gets the new-scene look as system entities (never listed,
+  picked or saved): a directional light, and a skybox in isolation. The scene type is the
+  context's, else that of a loaded scene using the prefab, else UI for a root with a
+  RectTransform/UI component (the canvas is the environment), 2D for 2D components, 3D.
+- **In Context** (from an instance; Unity's default from the Hierarchy arrow and the
+  Inspector): the context scene (a scene, or the stage below) is the Engine's main scene
+  under the stage (`SceneRender::setUnderlay`; the stage is a layer that keeps the colour),
+  seen through a system camera that follows the stage's editor camera mapped by the
+  instance root's world placement over the prefab root's, so the prefab stands where the
+  instance is; the instance itself is hidden while drawn (`begin/endPrefabStageDraw`). The
+  context is not pickable. **Context: Normal / Gray / Hidden** (default Gray: a translucent
+  veil layer, `PrefabContextOverlay`). A running or closed context leaves the stage in
+  isolation.
+- **Play**: Play runs the scene behind Prefab Mode; the stage stays open and editable
+  (Unity). Its saves update the loaded scenes that are stopped; the playing scene gets the
+  asset when it stops (its snapshot is re-imported from the asset).
+- **Entry points**: Project window double-click / Open Prefab on a `.prefab` (isolation;
+  "Open as Text" keeps the YAML reachable), Hierarchy instance arrow and Prefab > Open Asset
+  in Context / in Isolation, the Inspector's prefab bar through
+  `EditorHost::openPrefabAsset(path, sceneId, instanceRoot, inContext)`.
+  `Project::isEditingPrefabAsset(sceneProject)` tells the override machinery it is in a
+  stage. Headless: `scene-dump` ops `openPrefab`, `closePrefab`, `savePrefab`, `autoSave`,
+  `tickPrefab`, `undoStage`/`redoStage`, `setCmd`, `create`, `createChild`, `deleteEntity`
+  (`stage: true` addresses the shown stage); the dump lists the stages.
+- **Not covered yet** (other streams): GameObjects added below a nested instance's
+  GameObjects inside a stage are written as the nested block's `addedGameObjects`, which
+  instances do not import from asset layers yet (B); references from the asset's
+  GameObjects into nested instances are cleared on save until B's stripped proxies.
