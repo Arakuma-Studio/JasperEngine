@@ -128,6 +128,9 @@ namespace jasperengine::editor{
 
         static std::string createPrefab(const std::filesystem::path& prefabPath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath);
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
+        // Binds each camera-linked texture of the entities to its camera's framebuffer; with
+        // namedCamerasOnly, only links to cameras that have a variable in entityVarNames
+        static std::string createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly);
 
         static std::string setComponent(EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath);
         static std::string setAllComponents(EntityRegistry* scene, Entity entity, const fs::path& projectPath);

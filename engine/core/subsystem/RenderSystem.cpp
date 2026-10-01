@@ -1813,20 +1813,262 @@ bool RenderSystem::checkPBRFrabebufferUpdate(Material& material){
 }
 
 bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
-    bool hasBaseColor = !material.baseColorTexture.empty();
+    SubmeshShaderInputs inputs;
+    inputs.baseColorTexture = !material.baseColorTexture.empty();
+    inputs.metallicRoughnessTexture = !material.metallicRoughnessTexture.empty();
+    inputs.normalTexture = !material.normalTexture.empty();
+    inputs.occlusionTexture = !material.occlusionTexture.empty();
+    inputs.emissiveTexture = !material.emissiveTexture.empty();
+    inputs.receiveLights = receiveLights;
 
+    return checkPBRTextures(getMeshShaderEnvironment(), inputs);
+}
+
+bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
     bool hasOtherPBRTextures = false;
-    if (hasLights && receiveLights) {
-        hasOtherPBRTextures = !material.metallicRoughnessTexture.empty() ||
-                              !material.normalTexture.empty() ||
-                              !material.occlusionTexture.empty() ||
-                              !material.emissiveTexture.empty();
-    } else if (hasLights2D && receiveLights) {
+    if (environment.lights && inputs.receiveLights) {
+        hasOtherPBRTextures = inputs.metallicRoughnessTexture ||
+                              inputs.normalTexture ||
+                              inputs.occlusionTexture ||
+                              inputs.emissiveTexture;
+    } else if (environment.lights2D && inputs.receiveLights) {
         // the 2D light path samples only the normal map from the PBR set
-        hasOtherPBRTextures = !material.normalTexture.empty();
+        hasOtherPBRTextures = inputs.normalTexture;
     }
 
-    return hasBaseColor || hasOtherPBRTextures;
+    return inputs.baseColorTexture || hasOtherPBRTextures;
+}
+
+MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
+    MeshShaderEnvironment environment;
+    environment.lights = hasLights;
+    environment.shadows = hasShadows;
+    environment.ibl = hasIBL;
+    environment.reflectionProbes = hasReflectionProbes;
+    environment.fog = hasFog;
+    environment.lights2D = hasLights2D;
+    environment.shadows2D = hasShadows2D;
+    environment.ssao = scene->isSSAOEnabled();
+    environment.ssr = scene->isSSREnabled();
+    environment.depthPrepass = scene->isDepthPrepassEnabled();
+    return environment;
+}
+
+void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
+    // Reset before rescanning: model reloads can replace and reorder submeshes, so
+    // retaining a flag from the previous slot may select a shader attribute that the
+    // rebuilt submesh does not provide.
+    submesh.hasTexCoord1 = false;
+    submesh.hasTexCoord2 = false;
+    submesh.hasNormal = false;
+    submesh.hasNormalMap = false;
+    submesh.hasTangent = false;
+    submesh.hasVertexColor3 = false;
+    submesh.hasVertexColor4 = false;
+    submesh.hasSkinning = false;
+    submesh.hasMorphTarget = false;
+    submesh.hasMorphNormal = false;
+    submesh.hasMorphTangent = false;
+
+    auto scanAttribute = [&submesh](AttributeType type, const Attribute& attribute){
+        if (type == AttributeType::TEXCOORD1){
+            submesh.hasTexCoord1 = true;
+        }
+        if (type == AttributeType::TEXCOORD2){
+            submesh.hasTexCoord2 = true;
+        }
+        if (type == AttributeType::NORMAL){
+            submesh.hasNormal = true;
+        }
+        if (type == AttributeType::TANGENT){
+            submesh.hasTangent = true;
+        }
+        if (type == AttributeType::COLOR){
+            if (attribute.getElements() == 3){
+                submesh.hasVertexColor3 = true;
+            }else{
+                submesh.hasVertexColor4 = true;
+            }
+        }
+        if (type == AttributeType::BONEIDS || type == AttributeType::BONEWEIGHTS){
+            submesh.hasSkinning = true;
+        }
+        if (type == AttributeType::MORPHTARGET0){
+            submesh.hasMorphTarget = true;
+        }
+        if (type == AttributeType::MORPHNORMAL0){
+            submesh.hasMorphNormal = true;
+        }
+        if (type == AttributeType::MORPHTANGENT0){
+            submesh.hasMorphTangent = true;
+        }
+    };
+
+    for (const Buffer* buffer : buffers){
+        if (buffer->isRenderAttributes()) {
+            for (auto const &attr : buffer->getAttributes()) {
+                scanAttribute(attr.first, attr.second);
+            }
+        }
+    }
+    for (auto const& attr : submesh.attributes){
+        scanAttribute(attr.first, attr.second);
+    }
+
+    if (!submesh.material.normalTexture.empty()){
+        submesh.hasNormalMap = true;
+    }
+}
+
+SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror){
+    SubmeshShaderInputs inputs;
+
+    inputs.texCoord1 = submesh.hasTexCoord1;
+    inputs.texCoord2 = submesh.hasTexCoord2;
+    inputs.normal = submesh.hasNormal;
+    inputs.tangent = submesh.hasTangent;
+    inputs.vertexColor3 = submesh.hasVertexColor3;
+    inputs.vertexColor4 = submesh.hasVertexColor4;
+    inputs.textureRect = submesh.hasTextureRect;
+    inputs.skinning = submesh.hasSkinning;
+    inputs.morphTarget = submesh.hasMorphTarget;
+    inputs.morphNormal = submesh.hasMorphNormal;
+    inputs.morphTangent = submesh.hasMorphTangent;
+
+    const Material& material = submesh.material;
+    inputs.baseColorTexture = !material.baseColorTexture.empty();
+    inputs.metallicRoughnessTexture = !material.metallicRoughnessTexture.empty();
+    inputs.normalTexture = !material.normalTexture.empty();
+    inputs.occlusionTexture = !material.occlusionTexture.empty();
+    inputs.emissiveTexture = !material.emissiveTexture.empty();
+    inputs.alphaMode = material.alphaMode;
+    inputs.textureShadow = submesh.textureShadow;
+
+    inputs.receiveLights = mesh.receiveLights;
+    inputs.receiveIBL = mesh.receiveIBL;
+    inputs.receiveShadows = mesh.receiveShadows;
+    inputs.castShadows = mesh.castShadows;
+    inputs.customDepthShader = !mesh.customDepthShader.empty();
+
+    inputs.terrain = terrain != nullptr;
+    inputs.terrainBlendMaps = terrain && !terrain->blendMaps.empty();
+    // Painted layers that bring their own surface need the wider terrain path; a
+    // terrain of plain color layers keeps the cheaper one it always had.
+    inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
+    inputs.instanced = instmesh != nullptr;
+    // Opted in per field, not per band, so emptying the band (editor preview) neither
+    // rebuilds the shader nor drops the variant from an export.
+    inputs.instanceFade = instmesh && instmesh->distanceFade;
+    inputs.mirror = mirror;
+
+    return inputs;
+}
+
+SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
+    SubmeshShaderVariant variant;
+
+    const bool hasPBRTextures = checkPBRTextures(environment, inputs);
+
+    bool p_unlit = false;
+    bool p_punctual = false;
+    bool p_ibl = false;
+    bool p_hasTexture1 = false;
+    bool p_hasTexture2 = false;
+    bool p_hasNormalMap = false;
+    bool p_hasNormal = false;
+    bool p_hasTangent = false;
+    bool p_receiveShadows = false;
+
+    if (inputs.texCoord1 && hasPBRTextures){
+        p_hasTexture1 = true;
+    }
+    // second UV set: only when both UV attributes and PBR textures are present
+    // (never for terrain, which generates its UVs in the shader)
+    if (inputs.texCoord1 && inputs.texCoord2 && hasPBRTextures){
+        p_hasTexture2 = true;
+    }
+    if (inputs.terrain && (inputs.terrainBlendMaps || hasPBRTextures)){
+        p_hasTexture1 = true;
+    }
+    const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface;
+    const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
+    if ((environment.lights || useIBL) && inputs.receiveLights){
+        p_punctual = environment.lights;
+        p_ibl = useIBL;
+
+        p_hasNormal = true;
+        if (inputs.tangent){
+            p_hasTangent = true;
+        }
+        if (inputs.normalTexture){
+            p_hasNormalMap = true;
+        }
+        if (environment.shadows && inputs.receiveShadows){
+            p_receiveShadows = true;
+        }
+    }else{
+        p_unlit = true;
+    }
+
+    // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
+    // cheap unlit shader; accumulated 2D light multiplies the base color) and
+    // with the lit path in mixed scenes (contributions add)
+    const bool useLight2D = environment.lights2D && inputs.receiveLights;
+    const bool p_light2d = useLight2D;
+    const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
+    if (useLight2D){
+        p_hasNormal = true;
+        if (inputs.tangent){
+            p_hasTangent = true;
+        }
+        if (inputs.normalTexture){
+            p_hasNormalMap = true;
+        }
+    }
+
+    // screen-space AO modulates ambient/indirect light on lit submeshes.
+    const bool p_ssao = environment.ssao && !p_unlit && (p_punctual || p_ibl);
+    const bool p_alphaMask = inputs.alphaMode == MaterialAlphaMode::MASK;
+    const bool p_alphaOpaque = inputs.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
+    // AUTO + textureShadow preserves the legacy opt-in for editor-created
+    // materials; explicit glTF modes derive the depth behavior from alphaMode.
+    Material alphaMaterial;
+    alphaMaterial.alphaMode = inputs.alphaMode;
+    const bool p_depthAlphaMask = usesAlphaMask(alphaMaterial, inputs.textureShadow);
+    const bool p_depthTexture = p_depthAlphaMask && inputs.texCoord1 && inputs.baseColorTexture;
+    const bool p_instanceFade = inputs.instanced && inputs.instanceFade;
+
+    variant.properties = ShaderPool::getMeshProperties(
+                    p_unlit, p_hasTexture1, p_hasTexture2, p_punctual,
+                    p_receiveShadows, p_hasNormal, p_hasNormalMap,
+                    p_hasTangent, inputs.vertexColor3, inputs.vertexColor4, inputs.textureRect,
+                    environment.fog, inputs.skinning, inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
+                    inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
+                    p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface);
+
+    // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
+    // (SSR uses its own G-buffer shader). A depth fork is built even without a
+    // pass, so its uniforms and build errors show up in the editor.
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass;
+    variant.depth = variant.depthPass || inputs.customDepthShader;
+    if (variant.depth){
+        variant.depthProperties = ShaderPool::getDepthMeshProperties(
+            p_depthTexture, inputs.skinning, inputs.morphTarget,
+            inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
+            p_depthAlphaMask, p_instanceFade);
+    }
+
+    // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
+    // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
+    variant.gbuffer = environment.ssr;
+    if (variant.gbuffer){
+        variant.gbufferProperties = ShaderPool::getGBufferMeshProperties(
+            inputs.baseColorTexture, inputs.normal, inputs.skinning,
+            inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
+            inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal);
+    }
+
+    return variant;
 }
 
 bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights){
@@ -2686,189 +2928,46 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
     }
 
+    const MeshShaderEnvironment shaderEnvironment = getMeshShaderEnvironment();
+    const bool hasMirror = (scene->findComponent<MirrorComponent>(entity) != NULL);
+
+    std::vector<const Buffer*> attributeBuffers;
+    for (auto const& buf : buffers){
+        attributeBuffers.push_back(buf.second);
+    }
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
 
         ObjectRender& render = mesh.submeshes[i].render;
 
-        // These flags are derived from the current buffers/attributes below. Reset all
-        // of them before rescanning: model reloads can replace and reorder submeshes,
-        // so retaining a flag from the previous slot may select a shader attribute
-        // that the rebuilt submesh does not provide.
-        mesh.submeshes[i].hasTexCoord1 = false;
-        mesh.submeshes[i].hasTexCoord2 = false;
-        mesh.submeshes[i].hasNormal = false;
-        mesh.submeshes[i].hasNormalMap = false;
-        mesh.submeshes[i].hasTangent = false;
-        mesh.submeshes[i].hasVertexColor3 = false;
-        mesh.submeshes[i].hasVertexColor4 = false;
-        mesh.submeshes[i].hasSkinning = false;
-        mesh.submeshes[i].hasMorphTarget = false;
-        mesh.submeshes[i].hasMorphNormal = false;
-        mesh.submeshes[i].hasMorphTangent = false;
-
         render.beginLoad(mesh.submeshes[i].primitiveType);
 
-        bool hasPBRTextures = checkPBRTextures(mesh.submeshes[i].material, mesh.receiveLights);
+        // The vertex attribute flags come from the current buffers and attributes
+        scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
-        for (auto const& buf : buffers){
-            if (buf.second->isRenderAttributes()) {
-                for (auto const &attr : buf.second->getAttributes()) {
-                    if (attr.first == AttributeType::TEXCOORD1){
-                        mesh.submeshes[i].hasTexCoord1 = true;
-                    }
-                    if (attr.first == AttributeType::TEXCOORD2){
-                        mesh.submeshes[i].hasTexCoord2 = true;
-                    }
-                    if (attr.first == AttributeType::NORMAL){
-                        mesh.submeshes[i].hasNormal = true;
-                    }
-                    if (attr.first == AttributeType::TANGENT){
-                        mesh.submeshes[i].hasTangent = true;
-                    }
-                    if (attr.first == AttributeType::COLOR){
-                        if (attr.second.getElements() == 3){
-                            mesh.submeshes[i].hasVertexColor3 = true;
-                        }else{
-                            mesh.submeshes[i].hasVertexColor4 = true;
-                        }
-                    }
-                    if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
-                        mesh.submeshes[i].hasSkinning = true;
-                    }
-                    if (attr.first == AttributeType::MORPHTARGET0){
-                        mesh.submeshes[i].hasMorphTarget = true;
-                    }
-                    if (attr.first == AttributeType::MORPHNORMAL0){
-                        mesh.submeshes[i].hasMorphNormal = true;
-                    }
-                    if (attr.first == AttributeType::MORPHTANGENT0){
-                        mesh.submeshes[i].hasMorphTangent = true;
-                    }
-                }
-            }
-        }
-        for (auto const& attr : mesh.submeshes[i].attributes){
-            if (attr.first == AttributeType::TEXCOORD1){
-                mesh.submeshes[i].hasTexCoord1 = true;
-            }
-            if (attr.first == AttributeType::TEXCOORD2){
-                mesh.submeshes[i].hasTexCoord2 = true;
-            }
-            if (attr.first == AttributeType::NORMAL){
-                mesh.submeshes[i].hasNormal = true;
-            }
-            if (attr.first == AttributeType::TANGENT){
-                mesh.submeshes[i].hasTangent = true;
-            }
-            if (attr.first == AttributeType::COLOR){
-                if (attr.second.getElements() == 3){
-                    mesh.submeshes[i].hasVertexColor3 = true;
-                }else{
-                    mesh.submeshes[i].hasVertexColor4 = true;
-                }
-            }
-            if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
-                mesh.submeshes[i].hasSkinning = true;
-            }
-            if (attr.first == AttributeType::MORPHTARGET0){
-                mesh.submeshes[i].hasMorphTarget = true;
-            }
-            if (attr.first == AttributeType::MORPHNORMAL0){
-                mesh.submeshes[i].hasMorphNormal = true;
-            }
-            if (attr.first == AttributeType::MORPHTANGENT0){
-                mesh.submeshes[i].hasMorphTangent = true;
-            }
-        }
+        const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment,
+            getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror));
 
-        if (!mesh.submeshes[i].material.normalTexture.empty()){
-            mesh.submeshes[i].hasNormalMap = true;
-        }
-
-        bool p_unlit = false;
-        bool p_punctual = false;
-        bool p_ibl = false;
-        bool p_mirror = (scene->findComponent<MirrorComponent>(entity) != NULL);
-        bool p_hasTexture1 = false;
-        bool p_hasTexture2 = false;
-        bool p_hasNormalMap = false;
-        bool p_hasNormal = false;
-        bool p_hasTangent = false;
-        bool p_receiveShadows = false;
-
-        if (mesh.submeshes[i].hasTexCoord1 && hasPBRTextures){
-            p_hasTexture1 = true;
-        }
-        // second UV set: only when both UV attributes and PBR textures are present
-        // (never for terrain, which generates its UVs in the shader)
-        if (mesh.submeshes[i].hasTexCoord1 && mesh.submeshes[i].hasTexCoord2 && hasPBRTextures){
-            p_hasTexture2 = true;
-        }
-        if (terrain && (!terrain->blendMaps.empty() || hasPBRTextures)){
-            p_hasTexture1 = true;
-        }
-        // Painted layers that bring their own surface need the wider terrain path; a
-        // terrain of plain color layers keeps the cheaper one it always had.
-        const bool p_terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
-        bool useIBL = (hasIBL || hasReflectionProbes) && mesh.receiveIBL;
-        if ((hasLights || useIBL) && mesh.receiveLights){
-            p_punctual = hasLights;
-            p_ibl = useIBL;
-
-            p_hasNormal = true;
-            if (mesh.submeshes[i].hasTangent){
-                p_hasTangent = true;
-            }
-            if (mesh.submeshes[i].hasNormalMap){
-                p_hasNormalMap = true;
-            }
-            if (hasShadows && mesh.receiveShadows){
-                p_receiveShadows = true;
-            }
-        }else{
-            p_unlit = true;
-        }
-
-        // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
-        // cheap unlit shader; accumulated 2D light multiplies the base color) and
-        // with the lit path in mixed scenes (contributions add)
-        bool useLight2D = hasLights2D && mesh.receiveLights;
-        bool p_light2d = useLight2D;
-        bool p_shadows2d = useLight2D && hasShadows2D && mesh.receiveShadows;
-        if (useLight2D){
-            p_hasNormal = true;
-            if (mesh.submeshes[i].hasTangent){
-                p_hasTangent = true;
-            }
-            if (mesh.submeshes[i].hasNormalMap){
-                p_hasNormalMap = true;
-            }
-        }
+        // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
+        const uint32_t meshProperties = variant.properties;
+        const bool p_lit = !(meshProperties & (1u << 0));
+        const bool p_hasTexture2 = (meshProperties & (1u << 2)) != 0;
+        const bool p_receiveShadows = (meshProperties & (1u << 4)) != 0;
+        const bool p_ibl = (meshProperties & (1u << 19)) != 0;
+        const bool p_mirror = (meshProperties & (1u << 20)) != 0;
+        const bool p_light2d = (meshProperties & (1u << 22)) != 0;
+        const bool p_shadows2d = (meshProperties & (1u << 23)) != 0;
+        const bool p_instanceFade = (meshProperties & (1u << 26)) != 0;
+        const bool p_terrainSurface = (meshProperties & (1u << 27)) != 0;
+        // see ShaderPool::getDepthMeshProperties
+        const bool p_depthTexture = (variant.depthProperties & (1u << 0)) != 0;
+        const bool p_depthAlphaMask = (variant.depthProperties & (1u << 7)) != 0;
 
         // remember whether this submesh's lit shader applies IBL specular, so the SSR
         // G-buffer can flag those pixels for the energy-conserving composite
         mesh.submeshes[i].hasIBL = p_ibl;
 
-        // screen-space AO modulates ambient/indirect light on lit submeshes.
-        bool p_ssao = scene->isSSAOEnabled() && !p_unlit && (p_punctual || p_ibl);
-        bool p_alphaMask = mesh.submeshes[i].material.alphaMode == MaterialAlphaMode::MASK;
-        bool p_alphaOpaque = mesh.submeshes[i].material.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
-        // AUTO + textureShadow preserves the legacy opt-in for editor-created
-        // materials; explicit glTF modes derive the depth behavior from alphaMode.
-        bool p_depthAlphaMask = usesAlphaMask(mesh.submeshes[i].material, mesh.submeshes[i].textureShadow);
-        bool p_depthTexture = p_depthAlphaMask && mesh.submeshes[i].hasTexCoord1 &&
-            !mesh.submeshes[i].material.baseColorTexture.empty();
-
-        // Opted in per field, not per band, so emptying the band (editor preview) neither
-        // rebuilds the shader nor drops the variant from an export.
-        const bool p_instanceFade = instmesh && instmesh->distanceFade;
-        mesh.submeshes[i].shaderProperties = ShaderPool::getMeshProperties(
-                        p_unlit, p_hasTexture1, p_hasTexture2, p_punctual,
-                        p_receiveShadows, p_hasNormal, p_hasNormalMap,
-                        p_hasTangent, mesh.submeshes[i].hasVertexColor3, mesh.submeshes[i].hasVertexColor4, mesh.submeshes[i].hasTextureRect,
-                        hasFog, mesh.submeshes[i].hasSkinning, mesh.submeshes[i].hasMorphTarget, mesh.submeshes[i].hasMorphNormal, mesh.submeshes[i].hasMorphTangent,
-                        (terrain)?true:false, (instmesh)?true:false, p_ibl, p_mirror, p_ssao, p_light2d, p_shadows2d,
-                        p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface);
+        mesh.submeshes[i].shaderProperties = meshProperties;
         // a user-forked main shader overrides the built-in Mesh shader; the variant
         // (#define) system, depth/gbuffer passes and bind-slots are unchanged.
         // Priority: component customShader > scene default shader > built-in (empty)
@@ -2878,13 +2977,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
         // (SSR uses its own G-buffer shader, built below). A depth fork is built even
         // without a pass, so its uniforms and build errors show up in the editor.
-        const bool needPrepass = scene->isDepthPrepassEnabled();
-        bool needDepthPass = (hasShadows && mesh.castShadows) || scene->isSSAOEnabled() || needPrepass;
-        if (needDepthPass || !mesh.customDepthShader.empty()){
-            mesh.submeshes[i].depthShaderProperties = ShaderPool::getDepthMeshProperties(
-                p_depthTexture, mesh.submeshes[i].hasSkinning, mesh.submeshes[i].hasMorphTarget,
-                mesh.submeshes[i].hasMorphNormal, mesh.submeshes[i].hasMorphTangent, (terrain)?true:false, (instmesh)?true:false,
-                p_depthAlphaMask, p_instanceFade);
+        const bool needDepthPass = variant.depthPass;
+        if (variant.depth){
+            mesh.submeshes[i].depthShaderProperties = variant.depthProperties;
             mesh.submeshes[i].customDepthShaderId = ShaderPool::registerCustomShader(mesh.customDepthShader);
             mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId);
             if (!mesh.submeshes[i].depthShader->isCreated()){
@@ -2913,13 +3008,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
         // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
-        if (scene->isSSREnabled()){
-            bool gbufferHasBaseColorTex = !mesh.submeshes[i].material.baseColorTexture.empty();
-            bool gbufferHasMRTex = !mesh.submeshes[i].material.metallicRoughnessTexture.empty();
-            mesh.submeshes[i].gbufferShaderProperties = ShaderPool::getGBufferMeshProperties(
-                gbufferHasBaseColorTex, mesh.submeshes[i].hasNormal, mesh.submeshes[i].hasSkinning,
-                mesh.submeshes[i].hasMorphTarget, mesh.submeshes[i].hasMorphNormal, mesh.submeshes[i].hasMorphTangent,
-                (terrain)?true:false, (instmesh)?true:false, gbufferHasMRTex, p_terrainSurface && mesh.submeshes[i].hasNormal);
+        if (variant.gbuffer){
+            mesh.submeshes[i].gbufferShaderProperties = variant.gbufferProperties;
             mesh.submeshes[i].gbufferShader = ShaderPool::get(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties);
             if (!mesh.submeshes[i].gbufferShader->isCreated())
                 return false;
@@ -2956,7 +3046,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (p_mirror){
             mesh.submeshes[i].slotFSMirror = shaderData.getUniformBlockIndex(UniformBlockType::FS_MIRROR);
         }
-        if ((hasLights || useIBL) && mesh.receiveLights){
+        if (p_lit){
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -3210,7 +3300,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             bool depthFaceCulling = (mesh.submeshes[i].textureShadow)? false : mesh.submeshes[i].faceCulling;
 
             uint16_t depthPipelines = PIP_DEPTH | PIP_SHADOW_DEPTH;
-            if (needPrepass){
+            if (shaderEnvironment.depthPrepass){
                 if (pipelines & PIP_DEFAULT) depthPipelines |= PIP_ZPREPASS;
                 if (pipelines & PIP_RTT) depthPipelines |= PIP_ZPREPASS_RTT;
             }
@@ -6769,6 +6859,25 @@ bool RenderSystem::isAllLoaded() const{
     return loaded == total;
 }
 
+// A load that cannot finish: a shader it asked for is not in the build or failed to build
+// (ShaderPool stops trying it), so the object is not drawn. Counted as settled, so a loading
+// screen or a one-frame scene does not wait for it.
+static bool isShaderUnavailable(const std::shared_ptr<ShaderRender>& shader, ShaderType type, uint32_t properties, uint16_t customId){
+    return shader && !shader->isCreated() && ShaderPool::isShaderBuildFailed(type, properties, customId);
+}
+
+static bool isMeshShaderUnavailable(const MeshComponent& mesh){
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const Submesh& submesh = mesh.submeshes[s];
+        if (isShaderUnavailable(submesh.shader, ShaderType::MESH, submesh.shaderProperties, submesh.customShaderId) ||
+            isShaderUnavailable(submesh.depthShader, ShaderType::DEPTH, submesh.depthShaderProperties, submesh.customDepthShaderId) ||
+            isShaderUnavailable(submesh.gbufferShader, ShaderType::GBUFFER, submesh.gbufferShaderProperties, 0)){
+            return true;
+        }
+    }
+    return false;
+}
+
 void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     loaded = 0;
     total = 0;
@@ -6783,7 +6892,7 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        count(mesh.loaded);
+        count(mesh.loaded || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
     }
 
     // Check UIComponents
@@ -6794,14 +6903,14 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const size_t uiBufferSize = std::max(ui.buffer.getSize(),
                                              (size_t)ui.minBufferCount * ui.buffer.getStride());
         if (uiBufferSize > 0)
-            count(ui.loaded);
+            count(ui.loaded || (!ui.loadCalled && isShaderUnavailable(ui.shader, ShaderType::UI, ui.shaderProperties, ui.customShaderId)));
     }
 
     // Check PointsComponents
     auto pointsArray = scene->getComponentArray<PointsComponent>();
     for (int i = 0; i < pointsArray->size(); i++) {
         const PointsComponent& points = pointsArray->getComponentFromIndex(i);
-        count(points.loaded);
+        count(points.loaded || (!points.loadCalled && isShaderUnavailable(points.shader, ShaderType::POINTS, points.shaderProperties, points.customShaderId)));
     }
 
     // Check LineRendererComponents
@@ -6810,14 +6919,14 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
         if (!lines.lines.empty())
-            count(lines.loaded);
+            count(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)));
     }
 
     // Check SkyboxComponents
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     for (int i = 0; i < skyArray->size(); i++) {
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(i);
-        count(sky.loaded);
+        count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, 0, sky.customShaderId)));
     }
 }
 
@@ -9198,36 +9307,28 @@ void RenderSystem::draw(){
 #endif
 
     //---------Missing some shaders----------
-    if (ShaderPool::getMissingShaders().size() > 0){
-        const std::string shaderSpecs = ShaderPool::getMissingShadersDisplayList();
-        std::string shaderCliArgs = ShaderPool::getMissingShadersCliArgs();
+    // Like Unity, a shader variant the build lacks does not end the game: each one is
+    // reported once, and what draws with it is left out (its load fails, see
+    // ShaderPool::get) while everything else keeps rendering.
+    static size_t reportedMissingShaders = 0;
+    const std::vector<std::string>& missingShaders = ShaderPool::getMissingShaders();
+    for (; reportedMissingShaders < missingShaders.size(); reportedMissingShaders++){
+        const std::string& shaderStr = missingShaders[reportedMissingShaders];
+
+        std::string shaderSpec;
+        if (!ShaderPool::getShaderCliSpec(shaderStr, shaderSpec)) {
+            shaderSpec = "<shader-spec>";
+        }
         const std::string shaderOutputDir = System::instance().getShaderPath();
         const std::string shaderBackend = ShaderPool::getSuggestedCliBackend();
+        const std::string shaderCommand = "jasperengine-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + " --shader \"" + shaderSpec + "\"";
 
-        if (shaderCliArgs.empty()) {
-            shaderCliArgs = " --shader \"<shader-spec>\"";
-        }
-
-        const std::string shaderCommand = "jasperengine-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + shaderCliArgs;
-
-        Log::verbose(
-            "\n"
-            "-------------------\n"
-            "JasperEngine is missing precompiled shaders in:\n"
-            "%s\n"
-            "\n"
-            "Missing shaders:\n"
-            "%s\n"
-            "\n"
-            "Bundle precompiled shaders for graphic backend: %s\n"
-            "To generate them manually with JasperEngine Editor:\n"
-            "\n"
-            "> %s\n"
-            "\n"
-            "Current runtime shader format: %s\n"
-            "-------------------"
-            , shaderOutputDir.c_str(), shaderSpecs.c_str(), shaderBackend.c_str(), shaderCommand.c_str(), ShaderPool::getShaderLangStr().c_str());
-        exit(1);
+        Log::error(
+            "Missing shader: the build has no precompiled shader '%s' (%s) in %s; "
+            "objects drawn with it are not shown. Export the project again so it includes it, "
+            "add it under Shaders in the Build Settings window, or generate it with "
+            "JasperEngine Editor: %s",
+            shaderStr.c_str(), ShaderPool::getShaderLangStr().c_str(), shaderOutputDir.c_str(), shaderCommand.c_str());
     }
 }
 

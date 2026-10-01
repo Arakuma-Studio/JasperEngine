@@ -6820,6 +6820,10 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
         ImGui::EndPopup();
     }
 
+    RowSettings lightsSettings;
+    lightsSettings.help = "Light this mesh with the scene's lights, 2D lights and image-based lighting. Turn off to draw it unlit, in its base and emissive colors only.";
+    propertyRow(RowPropertyType::Bool, cpType, "receiveLights", "Receive Lights", sceneProject, entities, lightsSettings);
+
     RowSettings iblSettings;
     iblSettings.help = "Light this mesh with image-based lighting, from the scene's Skybox environment and from Reflection Probes. Skybox lighting requires a Skybox with a texture.";
     propertyRow(RowPropertyType::Bool, cpType, "receiveIBL", "Receive IBL", sceneProject, entities, iblSettings);

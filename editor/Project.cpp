@@ -51,6 +51,7 @@
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
+#include "shader/ShaderVariantCollector.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
 
@@ -93,10 +94,28 @@ static bool remapLocalEntity(Entity& value, const std::unordered_map<Entity, Ent
 }
 
 // Remap one entity-typed property in place. Cross-scene references are cleared only when
-// crossing a prefab boundary; recovery leaves them untouched.
-static bool remapEntityRef(const editor::PropertyData& property, const std::unordered_map<Entity, Entity>& entityMap, bool clearUnmapped) {
+// crossing a prefab boundary; recovery leaves them untouched. A render-to-texture link names
+// its camera like any other reference, and is bound to that camera of `registry`.
+static bool remapEntityRef(EntityRegistry* registry, const editor::PropertyData& property, const std::unordered_map<Entity, Entity>& entityMap, bool clearUnmapped) {
     if (!property.ref) {
         return false;
+    }
+    if (property.type == editor::PropertyType::Texture) {
+        Texture* texture = static_cast<Texture*>(property.ref);
+        const Entity camera = editor::CameraTextureLink::parse(texture->getId());
+        if (camera == NULL_ENTITY || (!clearUnmapped && !entityMap.count(camera))) {
+            return false;
+        }
+        Entity target = camera;
+        remapLocalEntity(target, entityMap, clearUnmapped);
+        // Bound even when the id stays: a texture copied from another registry still shows
+        // the framebuffer of that registry's camera
+        CameraComponent* targetCamera = (target != NULL_ENTITY && registry) ? registry->findComponent<CameraComponent>(target) : nullptr;
+        if (target == camera && texture->getFramebuffer() == (targetCamera ? targetCamera->framebuffer : nullptr)) {
+            return false;
+        }
+        editor::CameraTextureLink::retarget(registry, *texture, target);
+        return true;
     }
     if (property.type == editor::PropertyType::EntityReference) {
         EntityReference* ref = static_cast<EntityReference*>(property.ref);
@@ -288,6 +307,9 @@ static bool componentHasExternalEntityRef(EntityRegistry* registry, Entity entit
             target = ref->entity;
         } else if (property.type == editor::PropertyType::Entity) {
             target = *static_cast<Entity*>(property.ref);
+        } else if (property.type == editor::PropertyType::Texture) {
+            // Render to texture: the texture names its camera
+            target = editor::CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
         } else {
             continue;
         }
@@ -304,13 +326,13 @@ void editor::Project::remapEntityProperties(EntityRegistry* registry, const std:
     }
     for (Entity entity : entities) {
         for (ComponentType componentType : Catalog::findComponents(registry, entity)) {
-            if (!Catalog::mayHoldReferences(registry, entity, componentType, true, false)) {
+            if (!Catalog::mayHoldReferences(registry, entity, componentType, true, true)) {
                 continue;
             }
             uint64_t updateFlags = 0;
 
             for (auto& [propertyName, property] : Catalog::findEntityProperties(registry, entity, componentType)) {
-                if (remapEntityRef(property, entityMap, clearUnmapped)) {
+                if (remapEntityRef(registry, property, entityMap, clearUnmapped)) {
                     updateFlags |= property.updateFlags;
                 }
             }
@@ -329,7 +351,7 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
             continue;
         }
 
-        remapEntityRef(property, entityMap, true);
+        remapEntityRef(registry, property, entityMap, true);
     }
 }
 
@@ -3195,6 +3217,41 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     }
 }
 
+void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+
+    ShaderVariantContent sceneContent;
+    sceneContent.registry = sceneProject->scene;
+    sceneContent.entities = sceneProject->entities;
+
+    // The prefabs the build registers (Generator, registerPrefabManager): a script can spawn
+    // any of them into this scene. One not loaded here is read from its file.
+    std::vector<ShaderVariantContent> prefabContents;
+    std::vector<std::unique_ptr<EntityRegistry>> fileRegistries;
+    for (const PrefabSceneInfo& info : collectAllPrefabs()) {
+        ShaderVariantContent content;
+        if (const Prefab* prefab = getPrefab(info.prefabPath); prefab && prefab->registry) {
+            content.registry = prefab->registry.get();
+            content.entities = prefab->registryEntities;
+        } else {
+            try {
+                auto registry = std::make_unique<EntityRegistry>();
+                Stream::decodeEntitySelection(YAML::LoadFile((getProjectPath() / info.prefabPath).string()), registry.get(), &content.entities);
+                content.registry = registry.get();
+                fileRegistries.push_back(std::move(registry));
+            } catch (const std::exception& e) {
+                Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
+                continue;
+            }
+        }
+        prefabContents.push_back(std::move(content));
+    }
+
+    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys);
+}
+
 void editor::Project::buildStandaloneShaderCache() {
     // the generated main.cpp registers every scene stack, so any of them can be loaded
     std::set<ShaderKey> shaderKeys;
@@ -3202,6 +3259,7 @@ void editor::Project::buildStandaloneShaderCache() {
         shaderKeys.insert(sceneProject.shaderKeys.begin(), sceneProject.shaderKeys.end());
         // stored keys are only as new as the last save of that scene
         collectSceneShaderKeys(&sceneProject, shaderKeys);
+        collectRequiredShaderKeys(&sceneProject, shaderKeys);
     }
 
     ShaderBuilder builder;
@@ -5125,14 +5183,16 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     calculateSceneMaxValues(sceneProject, maxValues);
     sceneProject->maxValues = maxValues;
 
-    std::set<ShaderKey> shaderKeys;
-    collectSceneShaderKeys(sceneProject, shaderKeys);
-    // Merge with existing keys so those from components not yet rendered by RenderSystem are preserved.
-    shaderKeys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
-    sceneProject->shaderKeys = std::move(shaderKeys);
-
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
+
+    // What the content needs, the variants the scene drew since its last save (a script's
+    // runtime meshes in Play), and the keys saved before
+    std::set<ShaderKey> shaderKeys;
+    collectRequiredShaderKeys(sceneProject, shaderKeys);
+    collectSceneShaderKeys(sceneProject, shaderKeys);
+    shaderKeys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
+    sceneProject->shaderKeys = std::move(shaderKeys);
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);

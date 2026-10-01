@@ -107,7 +107,6 @@ namespace jasperengine{
         static void applyDefaultGLTFMaterial(Material& material);
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
-        static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
@@ -153,6 +152,19 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+
+        // What each generator makes of its mesh before filling the geometry: the submesh
+        // settings and the vertex attributes. The editor reads the shader variants of a
+        // generated mesh off them, without generating it.
+        static void prepareSpriteMesh(MeshComponent& mesh);
+        static void prepareMeshPolygonMesh(MeshComponent& mesh);
+        static void prepareTilemapMesh(MeshComponent& mesh);
+        // Both terrain submeshes (full and half resolution) draw with this layout
+        static void prepareTerrainMesh(MeshComponent& mesh);
+        // A texture rect other than the whole texture turns on the texture rect path (update())
+        static bool usesTextureRect(const Submesh& submesh);
+        // Puts the fields a model load must keep (Submesh::overrideFields) on a loaded submesh
+        static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
 

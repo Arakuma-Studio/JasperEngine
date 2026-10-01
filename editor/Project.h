@@ -642,6 +642,10 @@ namespace jasperengine::editor{
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
         void collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
+        // The shader keys a loaded scene needs, derived from content without drawing anything:
+        // its GameObjects and every prefab of the build (one a script spawns into it), in every
+        // lighting setup they can make (see ShaderVariantCollector)
+        void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
         std::string getName() const;
         void setName(std::string name);

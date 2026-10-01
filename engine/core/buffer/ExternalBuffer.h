@@ -6,13 +6,19 @@
 
 #include "buffer/Buffer.h"
 #include <string>
+#include <vector>
 
 namespace jasperengine {
 
+    // A buffer whose bytes usually live elsewhere: setData points it at memory someone else
+    // owns (a model file's data, a component's vector). Bytes written into it (importData,
+    // a saved mesh being loaded) are its own instead, kept and released with the buffer and
+    // copied with it.
     class JASPERENGINE_API ExternalBuffer : public Buffer {
 
     protected:
         std::string name;
+        std::vector<unsigned char> ownedData;
 
     public:
         ExternalBuffer();
@@ -21,7 +27,17 @@ namespace jasperengine {
         ExternalBuffer(const ExternalBuffer& rhs);
         ExternalBuffer& operator=(const ExternalBuffer& rhs);
 
+        // Writing starts storage of its own: what a setData pointer showed is not carried
+        // over, its owner may already have freed it
+        virtual bool increase(size_t newSize);
+        virtual void clearAll();
+
+        // Points the buffer at bytes owned elsewhere, releasing any of its own
         void setData(unsigned char* data, size_t size);
+
+        bool ownsData() const;
+        // Keeps a copy of the bytes it points at as its own, for when their owner goes
+        void copyToOwnData();
 
         void setName(const std::string& name);
         std::string getName() const;
