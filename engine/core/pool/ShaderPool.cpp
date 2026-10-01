@@ -5,15 +5,20 @@
 
 #include "Log.h"
 #include "Engine.h"
+#include "io/FileData.h"
+#include "shader/RuntimeShaderCompiler.h"
 #include "shader/ShaderDataSerializer.h"
 #include "util/Base64.h"
 #include <cstdint>
+#include <cstdlib>
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 #include <string>
 #include <mutex>
 #include <cctype>
 #include <set>
+#include <system_error>
 
 #ifdef SOKOL_GLCORE
 #include "glsl410.h"
@@ -126,6 +131,13 @@ std::vector<std::string>& ShaderPool::getMissingShaders(){
 // re-invoking the builder for these (the compile is expensive and spams errors every
 // frame) until the failure is cleared by remove()/destroyCustomShaders().
 static std::set<ShaderKey>& failedShaders(){
+    static std::set<ShaderKey>* set = new std::set<ShaderKey>();
+    return *set;
+};
+
+// Keys the build has no precompiled shader for: looked up once, then left to the
+// runtime compiler (or reported missing) without searching the build again.
+static std::set<ShaderKey>& notPrecompiledShaders(){
     static std::set<ShaderKey>* set = new std::set<ShaderKey>();
     return *set;
 };
@@ -586,29 +598,282 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t pr
                 Log::error("Shader build failed: %s", getShaderStr(shaderType, properties, customId).c_str());
             }
         } else {
-            ShaderData tempShaderData;
+            const std::string shaderStr = getShaderStr(shaderType, properties, customId);
 
-            std::string shaderStr = getShaderStr(shaderType, properties, customId);
-            std::string base64Shd = getBase64Shader(getShaderName(shaderStr));
-
-            // Validate against the storage key (customId stripped): the unique shaderStr
-            // already selected the forked source; the embedded key only checks type+props.
-            ShaderKey storageKey = getStorageKey(shaderKey);
-
-            if (!base64Shd.empty() && ShaderDataSerializer::readFromBytes(Base64::decode(base64Shd), storageKey, tempShaderData)){
-                shared->createShader(tempShaderData);
-            } else if (ShaderDataSerializer::readFromFile("shader://"+getShaderFile(shaderStr, ".sdat"), storageKey, tempShaderData)){
-                shared->createShader(tempShaderData);
+            ShaderData precompiled;
+            if (!notPrecompiledShaders().count(shaderKey) && loadPrecompiledShader(shaderKey, shaderStr, precompiled)){
+                shared->createShader(precompiled);
             } else {
-                // Not in this build: reported once (RenderSystem::draw), and not looked
-                // for again every frame by whatever needs it
-                addMissingShader(shaderStr);
-                failedShaders().insert(shaderKey);
+                // looked for once: what the build ships does not change
+                notPrecompiledShaders().insert(shaderKey);
+
+                if (RuntimeShaderCompiler::isEnabled()){
+                    // Built in the background: Loading leaves whatever draws with it out
+                    // until it is done, and the next get() creates it
+                    ShaderBuildResult result = RuntimeShaderCompiler::request(shaderKey);
+                    if (result.state == ResourceLoadState::Finished){
+                        shared->createShader(result.data);
+                    } else if (result.state == ResourceLoadState::Failed){
+                        failedShaders().insert(shaderKey);
+                        Log::error("Shader %s (%s) failed to compile at runtime: %s",
+                                   shaderStr.c_str(), getShaderLangStr().c_str(),
+                                   RuntimeShaderCompiler::getError(shaderKey).c_str());
+                    }
+                } else {
+                    // Not in this build: reported once (RenderSystem::draw), and not looked
+                    // for again every frame by whatever needs it
+                    addMissingShader(shaderStr);
+                    failedShaders().insert(shaderKey);
+                }
             }
         }
     }
 
     return shared;
+}
+
+bool ShaderPool::loadPrecompiledShader(ShaderKey shaderKey, const std::string& shaderStr, ShaderData& shaderData){
+    // Validate against the storage key (customId stripped): the unique shaderStr
+    // already selected the forked source; the embedded key only checks type+props.
+    const ShaderKey storageKey = getStorageKey(shaderKey);
+
+    const std::string base64Shd = getBase64Shader(getShaderName(shaderStr));
+    if (!base64Shd.empty() && ShaderDataSerializer::readFromBytes(Base64::decode(base64Shd), storageKey, shaderData)){
+        return true;
+    }
+    return ShaderDataSerializer::readFromFile("shader://"+getShaderFile(shaderStr, ".sdat"), storageKey, shaderData);
+}
+
+bool ShaderPool::warmUp(ShaderType shaderType, uint32_t properties, uint16_t customId){
+    std::shared_ptr<ShaderRender> shader = get(shaderType, properties, customId);
+    return shader && shader->isCreated();
+}
+
+bool ShaderPool::warmUp(ShaderKey shaderKey){
+    return warmUp(getShaderTypeFromKey(shaderKey), getPropertiesFromKey(shaderKey), getCustomIdFromKey(shaderKey));
+}
+
+bool ShaderPool::isShaderReady(ShaderType shaderType, uint32_t properties, uint16_t customId){
+    auto& map = getMap();
+    auto it = map.find(getShaderKey(shaderType, properties, customId));
+    return it != map.end() && it->second && it->second->isCreated();
+}
+
+ResourceLoadState ShaderPool::getShaderState(ShaderKey shaderKey){
+    if (failedShaders().count(shaderKey))
+        return ResourceLoadState::Failed;
+    auto& map = getMap();
+    auto it = map.find(shaderKey);
+    if (it == map.end() || !it->second)
+        return ResourceLoadState::NotStarted;
+    if (it->second->isCreated())
+        return ResourceLoadState::Finished;
+    if (it->second->isFailed())
+        return ResourceLoadState::Failed;
+    return ResourceLoadState::Loading;
+}
+
+std::vector<ShaderKey> ShaderPool::getPrecompiledShaderKeys(){
+    std::set<ShaderKey> keys;
+    const std::string suffix = "_" + getShaderLangStr();
+
+    auto addName = [&](std::string name){
+        if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0){
+            ShaderKey key;
+            // forked shaders' names carry their file, not a key: they warm up through a
+            // ShaderVariantCollection that names the fork
+            if (parseShaderStr(name.substr(0, name.size() - suffix.size()), key))
+                keys.insert(key);
+        }
+    };
+
+    for (const std::string& name : getBase64ShaderNames()){
+        addName(name);
+    }
+
+    // a binary export's shader directory (no listing where it is not a directory)
+    std::error_code ec;
+    const std::filesystem::path shaderDir(FileData::getSystemPath("shader://"));
+    for (std::filesystem::directory_iterator it(shaderDir, ec), end; !ec && it != end; it.increment(ec)){
+        const std::filesystem::path path = it->path();
+        if (path.extension() == ".sdat")
+            addName(path.stem().string());
+    }
+
+    return std::vector<ShaderKey>(keys.begin(), keys.end());
+}
+
+size_t ShaderPool::warmUpAllShaders(){
+    std::set<ShaderKey> keys;
+    for (ShaderKey key : getPrecompiledShaderKeys())
+        keys.insert(key);
+    if (RuntimeShaderCompiler::isEnabled()){
+        for (ShaderKey key : RuntimeShaderCompiler::getCachedKeys())
+            keys.insert(key);
+    }
+
+    size_t notReady = 0;
+    for (ShaderKey key : keys){
+        if (!warmUp(key) && !failedShaders().count(key))
+            notReady++;
+    }
+    return notReady;
+}
+
+size_t ShaderPool::getPendingShaderCount(){
+    return RuntimeShaderCompiler::getPendingCount();
+}
+
+bool ShaderPool::isRuntimeCompilationSupported(){
+    return RuntimeShaderCompiler::isSupported();
+}
+
+void ShaderPool::setRuntimeCompilationEnabled(bool enabled){
+    RuntimeShaderCompiler::setEnabled(enabled);
+}
+
+bool ShaderPool::isRuntimeCompilationEnabled(){
+    return RuntimeShaderCompiler::isEnabled();
+}
+
+void ShaderPool::setAsyncCompilation(bool async){
+    RuntimeShaderCompiler::setAsync(async);
+}
+
+bool ShaderPool::isAsyncCompilation(){
+    return RuntimeShaderCompiler::isAsync();
+}
+
+namespace {
+
+std::string normalizeSpecToken(const std::string& value) {
+    std::string result;
+    result.reserve(value.size());
+    for (char ch : value) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c)) {
+            result.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> splitSpecList(const std::string& value) {
+    std::string normalized = value;
+    for (char& ch : normalized) {
+        if (ch == '+' || ch == '|' || ch == ';') {
+            ch = ',';
+        }
+    }
+
+    std::vector<std::string> parts;
+    size_t start = 0;
+    while (start <= normalized.size()) {
+        size_t end = normalized.find(',', start);
+        if (end == std::string::npos)
+            end = normalized.size();
+        const std::string part = normalized.substr(start, end - start);
+        const size_t first = part.find_first_not_of(" \t\n\r");
+        const size_t last = part.find_last_not_of(" \t\n\r");
+        if (first != std::string::npos)
+            parts.push_back(part.substr(first, last - first + 1));
+        start = end + 1;
+    }
+    return parts;
+}
+
+bool parseSpecUInt32(const std::string& value, uint32_t& out) {
+    if (value.empty() || value[0] == '+' || value[0] == '-') {
+        return false;
+    }
+
+    char* end = nullptr;
+    unsigned long long parsed = std::strtoull(value.c_str(), &end, 0);
+    if (!end || *end != '\0' || parsed > UINT32_MAX) {
+        return false;
+    }
+
+    out = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+bool parseSpecTypeName(const std::string& value, ShaderType& out) {
+    const std::string token = normalizeSpecToken(value);
+    if (token == "points" || token == "point")  { out = ShaderType::POINTS; return true; }
+    if (token == "lines"  || token == "line")   { out = ShaderType::LINES;  return true; }
+    if (token == "mesh")                        { out = ShaderType::MESH;   return true; }
+    if (token == "sky"    || token == "skybox") { out = ShaderType::SKYBOX; return true; }
+    if (token == "depth")                       { out = ShaderType::DEPTH;  return true; }
+    if (token == "gbuffer")                     { out = ShaderType::GBUFFER; return true; }
+    if (token == "ui")                          { out = ShaderType::UI;     return true; }
+    if (token == "ssao")                        { out = ShaderType::SSAO;   return true; }
+    if (token == "ssaoblur")                    { out = ShaderType::SSAO_BLUR; return true; }
+    if (token == "ssr")                         { out = ShaderType::SSR;    return true; }
+    if (token == "ssrblur")                     { out = ShaderType::SSR_BLUR; return true; }
+    if (token == "composite")                   { out = ShaderType::COMPOSITE; return true; }
+    if (token == "shadow2d")                    { out = ShaderType::SHADOW2D; return true; }
+    if (token == "blit")                        { out = ShaderType::BLIT;   return true; }
+    if (token == "postprocess" || token == "post") { out = ShaderType::POSTPROCESS; return true; }
+    return false;
+}
+
+} // namespace
+
+bool ShaderPool::parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, std::string* error, const std::string& customShader){
+    auto fail = [error](const std::string& message){
+        if (error)
+            *error = message;
+        return false;
+    };
+
+    const size_t separator = spec.find(':');
+    const std::string typePart  = separator == std::string::npos ? spec : spec.substr(0, separator);
+    const std::string propsPart = separator == std::string::npos ? ""   : spec.substr(separator + 1);
+
+    ShaderType type;
+    if (!parseSpecTypeName(typePart, type)) {
+        return fail("Unknown shader type: " + typePart);
+    }
+
+    uint32_t properties = 0;
+    if (!propsPart.empty()) {
+        const bool numericMask =
+            std::isdigit(static_cast<unsigned char>(propsPart[0])) ||
+            propsPart.rfind("0x", 0) == 0 ||
+            propsPart.rfind("0X", 0) == 0;
+
+        if (numericMask) {
+            if (!parseSpecUInt32(propsPart, properties)) {
+                return fail("Invalid shader property mask: " + propsPart);
+            }
+        } else {
+            const int propCount = getShaderPropertyCount(type);
+            for (const std::string& prop : splitSpecList(propsPart)) {
+                const std::string propToken = normalizeSpecToken(prop);
+                bool found = false;
+                for (int bit = 0; bit < propCount; bit++) {
+                    const std::string shortName = normalizeSpecToken(getShaderPropertyName(type, bit, true));
+                    const std::string longName  = normalizeSpecToken(getShaderPropertyName(type, bit, false));
+                    if (propToken == shortName || propToken == longName) {
+                        properties |= (1u << bit);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    return fail("Unknown shader property '" + prop + "' for shader type " + typePart);
+                }
+            }
+        }
+    }
+
+    shaderKey = getShaderKey(type, properties, registerCustomShader(customShader));
+    return true;
+}
+
+bool ShaderPool::parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey){
+    std::string spec;
+    return getShaderCliSpec(shaderStr, spec) && parseShaderSpec(spec, shaderKey);
 }
 
 bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId){
@@ -802,6 +1067,9 @@ void ShaderPool::clear(){
     getMap().clear();
     getMissingShaders().clear();
     failedShaders().clear();
+    notPrecompiledShaders().clear();
+    // stops a compile in flight; what it compiled is in the disk cache for next time
+    RuntimeShaderCompiler::shutdown();
 
     std::lock_guard<std::mutex> lock(customShaderMutex());
     customShaderNames().clear();
@@ -820,6 +1088,9 @@ void ShaderPool::clearUnused(){
     // missing/failed entries or custom-shader name registrations.
     getMissingShaders().clear();
     failedShaders().clear();
+    notPrecompiledShaders().clear();
+    // its variants are keyed by the custom shader ids reset below
+    RuntimeShaderCompiler::shutdown();
     std::lock_guard<std::mutex> lock(customShaderMutex());
     customShaderNames().clear();
 }

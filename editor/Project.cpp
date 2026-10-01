@@ -1743,6 +1743,14 @@ bool editor::Project::isPhysics3DEnabled() const{
     return physics3DEnabled;
 }
 
+void editor::Project::setRuntimeShadersEnabled(bool enabled){
+    this->runtimeShadersEnabled = enabled;
+}
+
+bool editor::Project::isRuntimeShadersEnabled() const{
+    return runtimeShadersEnabled;
+}
+
 void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, const std::vector<std::string>& layerNames){
     TagManager::setTags(tags);
     TagManager::setLayerNames(layerNames);
@@ -3799,6 +3807,7 @@ void editor::Project::resetConfigs() {
     cxxStandard = defaultCxxStandard;
     physics2DEnabled = defaultPhysics2DEnabled;
     physics3DEnabled = defaultPhysics3DEnabled;
+    runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     packNativeResources = defaultPackNativeResources;

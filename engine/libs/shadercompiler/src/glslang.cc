@@ -430,8 +430,24 @@ const TBuiltInResource DefaultTBuiltInResource = {
         /* .generalConstantMatrixVectorIndexing = */ 1,
     }};
 
-bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args){
+void shadercompiler::initialize_process(){
     glslang::InitializeProcess();
+}
+
+void shadercompiler::finalize_process(){
+    glslang::FinalizeProcess();
+}
+
+namespace {
+    // Pairs every compile with one glslang process reference, also on the failure paths
+    struct ProcessScope {
+        ProcessScope() { glslang::InitializeProcess(); }
+        ~ProcessScope() { glslang::FinalizeProcess(); }
+    };
+}
+
+bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args){
+    ProcessScope processScope;
 
     std::list<glslang::TShader*> shaders;
 
@@ -556,6 +572,5 @@ bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std:
             : static_cast<FileIncluder*>(includer.get())->getIncludedFiles());
 
     cleanup_program_shaders(program, shaders);
-    glslang::FinalizeProcess();
     return true;
 }

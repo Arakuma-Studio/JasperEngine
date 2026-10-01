@@ -51,6 +51,7 @@ namespace jasperengine::editor {
         int m_cxxStandardIndex = 0;
         bool m_physics2DEnabled = true;
         bool m_physics3DEnabled = true;
+        bool m_runtimeShadersEnabled = true;
         bool m_packNativeResources = false;
         bool m_versionControlMetadata = true;
         char m_webApplicationNameBuffer[256] = {0};

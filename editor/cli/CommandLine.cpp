@@ -155,73 +155,9 @@ static bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat
     return false;
 }
 
-static bool parseShaderTypeName(const std::string& value, ShaderType& out) {
-    const std::string token = normalizeToken(value);
-    if (token == "points" || token == "point")  { out = ShaderType::POINTS; return true; }
-    if (token == "lines"  || token == "line")   { out = ShaderType::LINES;  return true; }
-    if (token == "mesh")                        { out = ShaderType::MESH;   return true; }
-    if (token == "sky"    || token == "skybox") { out = ShaderType::SKYBOX; return true; }
-    if (token == "depth")                       { out = ShaderType::DEPTH;  return true; }
-    if (token == "gbuffer")                     { out = ShaderType::GBUFFER; return true; }
-    if (token == "ui")                          { out = ShaderType::UI;     return true; }
-    if (token == "ssao")                        { out = ShaderType::SSAO;   return true; }
-    if (token == "ssaoblur")                    { out = ShaderType::SSAO_BLUR; return true; }
-    if (token == "ssr")                         { out = ShaderType::SSR;    return true; }
-    if (token == "ssrblur")                     { out = ShaderType::SSR_BLUR; return true; }
-    if (token == "composite")                   { out = ShaderType::COMPOSITE; return true; }
-    if (token == "shadow2d")                    { out = ShaderType::SHADOW2D; return true; }
-    if (token == "blit")                        { out = ShaderType::BLIT;   return true; }
-    if (token == "postprocess" || token == "post") { out = ShaderType::POSTPROCESS; return true; }
-    return false;
-}
-
+// The spec format the game's ShaderPool/ShaderVariantCollection take as well
 static bool parseShaderSpec(const std::string& value, ShaderKey& out, std::string& error) {
-    const size_t separator = value.find(':');
-    const std::string typePart  = separator == std::string::npos ? value : value.substr(0, separator);
-    const std::string propsPart = separator == std::string::npos ? ""    : value.substr(separator + 1);
-
-    ShaderType type;
-    if (!parseShaderTypeName(typePart, type)) {
-        error = "Unknown shader type: " + typePart;
-        return false;
-    }
-
-    uint32_t properties = 0;
-    if (!propsPart.empty()) {
-        const bool numericMask =
-            std::isdigit(static_cast<unsigned char>(propsPart[0])) ||
-            propsPart.rfind("0x", 0) == 0 ||
-            propsPart.rfind("0X", 0) == 0;
-
-        if (numericMask) {
-            if (!parseUInt32(propsPart, properties)) {
-                error = "Invalid shader property mask: " + propsPart;
-                return false;
-            }
-        } else {
-            const int propCount = ShaderPool::getShaderPropertyCount(type);
-            for (const std::string& prop : splitList(propsPart)) {
-                const std::string propToken = normalizeToken(prop);
-                bool found = false;
-                for (int bit = 0; bit < propCount; bit++) {
-                    const std::string shortName = normalizeToken(ShaderPool::getShaderPropertyName(type, bit, true));
-                    const std::string longName  = normalizeToken(ShaderPool::getShaderPropertyName(type, bit, false));
-                    if (propToken == shortName || propToken == longName) {
-                        properties |= (1u << bit);
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    error = "Unknown shader property '" + prop + "' for shader type " + typePart;
-                    return false;
-                }
-            }
-        }
-    }
-
-    out = ShaderPool::getShaderKey(type, properties);
-    return true;
+    return ShaderPool::parseShaderSpec(value, out, &error);
 }
 
 static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {

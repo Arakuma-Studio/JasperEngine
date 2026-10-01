@@ -5,8 +5,14 @@
 
 #include "spirv_cross.hpp"
 #include "spirv_glsl.hpp"
+// The HLSL and MSL back ends are optional (see CMakeLists.txt): a runtime build carries
+// only the language its graphics backend reads
+#ifdef SHADERCOMPILER_HLSL
 #include "spirv_hlsl.hpp"
+#endif
+#ifdef SHADERCOMPILER_MSL
 #include "spirv_msl.hpp"
+#endif
 #include "spirv_parser.hpp"
 
 #include <memory>
@@ -651,10 +657,14 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
         // Use spirv-cross to convert to other types of shader
         if (args.lang == LANG_GLSL) {
             compiler.reset(new spirv_cross::CompilerGLSL(std::move(spirv_parser.get_parsed_ir())));
+#ifdef SHADERCOMPILER_MSL
         } else if (args.lang == LANG_MSL) {
             compiler.reset(new spirv_cross::CompilerMSL(std::move(spirv_parser.get_parsed_ir())));
+#endif
+#ifdef SHADERCOMPILER_HLSL
         } else if (args.lang == LANG_HLSL) {
             compiler.reset(new spirv_cross::CompilerHLSL(std::move(spirv_parser.get_parsed_ir())));
+#endif
         } else {
             fprintf(stderr, "Language not implemented");
             return false;
@@ -675,6 +685,7 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
             opts.es = args.es;
             opts.version = args.version;
 
+#ifdef SHADERCOMPILER_HLSL
         } else if (args.lang == LANG_HLSL) {
 
             opts.emit_line_directives = true;
@@ -687,7 +698,9 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
             hlsl_opts.point_coord_compat = true;
 
             hlsl->set_hlsl_options(hlsl_opts);
+#endif
 
+#ifdef SHADERCOMPILER_MSL
         } else if (args.lang == LANG_MSL) {
 
             opts.emit_line_directives = true;
@@ -704,12 +717,14 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
             msl_opts.msl_version = args.version;
 
             msl->set_msl_options(msl_opts);
+#endif
 
         }
 
         compiler->set_common_options(opts);
 
         // Vertex attribute remap for HLSL
+#ifdef SHADERCOMPILER_HLSL
         if (args.lang == LANG_HLSL) {
             spirv_cross::CompilerHLSL* hlsl_compiler = (spirv_cross::CompilerHLSL*)compiler.get();
             for (int i = 0; i < VERTEX_ATTRIB_COUNT; i++) {
@@ -717,6 +732,7 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
                 hlsl_compiler->add_vertex_attribute_remap(remap);
             }
         }
+#endif
 
         fix_bind_slots(compiler.get(), inputs[i].stage_type, &args.lang);
 

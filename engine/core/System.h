@@ -106,6 +106,9 @@ namespace jasperengine {
         
         virtual std::string getAssetPath();
         virtual std::string getUserDataPath();
+        // Data the engine can rebuild (the runtime shader cache): the user data directory,
+        // except on Apple platforms, which keep caches apart from what the user saves
+        virtual std::string getCachePath();
         virtual std::string getLuaPath();
         virtual std::string getShaderPath();
 
@@ -121,6 +124,9 @@ namespace jasperengine {
 
         virtual FILE* platformFopen(const char* fname, const char* mode);
         virtual bool syncFileSystem();
+        // The user data directory holds what earlier runs saved there. The web build
+        // restores it from IndexedDB after it starts; what is written before that is lost.
+        virtual bool isUserDataLoaded();
 
         virtual void platformLog(const int type, const char *fmt, va_list args);
 

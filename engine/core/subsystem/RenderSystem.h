@@ -27,6 +27,7 @@
 #include "render/BufferRender.h"
 #include "render/FramebufferRender.h"
 #include "buffer/ExternalBuffer.h"
+#include "shader/ShaderBuildTypes.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -1199,6 +1200,12 @@ namespace jasperengine{
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
+
+		// The shader variants an entity draws with as it is now, in this scene: its mesh
+		// (with the shadow/depth and SSR G-buffer passes), UI, points, lines or sky. A
+		// forked shader also lists the built-in variant it falls back to. For warming
+		// them up before the entity shows (ShaderVariantCollection::addEntityVariants).
+		void getShaderVariants(Entity entity, std::vector<ShaderKey>& keys);
 
 		// copies the stacked scene composite to the swapchain (Engine::endCompositeFramebuffer)
 		void presentFramebufferToSwapchain(Framebuffer* source);

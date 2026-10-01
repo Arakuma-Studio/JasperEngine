@@ -1180,6 +1180,116 @@
 		71C00422D2E7A0100C91BA00 /* meshoptimizer.h in Headers */ = {isa = PBXBuildFile; fileRef = 71C00402D2E7A0100C91BA00 /* meshoptimizer.h */; };
 		71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */; };
 		71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */; };
+		7DC000472E7A0100C91BA0C0 /* args.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000162E7A0100C91BA0C0 /* args.cc */; };
+		7DC000492E7A0100C91BA0C0 /* input.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000172E7A0100C91BA0C0 /* input.cc */; };
+		7DC0004B2E7A0100C91BA0C0 /* glslang.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000182E7A0100C91BA0C0 /* glslang.cc */; };
+		7DC0004D2E7A0100C91BA0C0 /* spirvcross.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000192E7A0100C91BA0C0 /* spirvcross.cc */; };
+		7DC0004F2E7A0100C91BA0C0 /* CodeGen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001A2E7A0100C91BA0C0 /* CodeGen.cpp */; };
+		7DC000512E7A0100C91BA0C0 /* Link.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001B2E7A0100C91BA0C0 /* Link.cpp */; };
+		7DC000532E7A0100C91BA0C0 /* glslang_tab.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001C2E7A0100C91BA0C0 /* glslang_tab.cpp */; };
+		7DC000552E7A0100C91BA0C0 /* attribute.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001D2E7A0100C91BA0C0 /* attribute.cpp */; };
+		7DC000572E7A0100C91BA0C0 /* Constant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001E2E7A0100C91BA0C0 /* Constant.cpp */; };
+		7DC000592E7A0100C91BA0C0 /* iomapper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001F2E7A0100C91BA0C0 /* iomapper.cpp */; };
+		7DC0005B2E7A0100C91BA0C0 /* InfoSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000202E7A0100C91BA0C0 /* InfoSink.cpp */; };
+		7DC0005D2E7A0100C91BA0C0 /* Initialize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000212E7A0100C91BA0C0 /* Initialize.cpp */; };
+		7DC0005F2E7A0100C91BA0C0 /* IntermTraverse.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000222E7A0100C91BA0C0 /* IntermTraverse.cpp */; };
+		7DC000612E7A0100C91BA0C0 /* Intermediate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000232E7A0100C91BA0C0 /* Intermediate.cpp */; };
+		7DC000632E7A0100C91BA0C0 /* ParseContextBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000242E7A0100C91BA0C0 /* ParseContextBase.cpp */; };
+		7DC000652E7A0100C91BA0C0 /* ParseHelper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000252E7A0100C91BA0C0 /* ParseHelper.cpp */; };
+		7DC000672E7A0100C91BA0C0 /* PoolAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000262E7A0100C91BA0C0 /* PoolAlloc.cpp */; };
+		7DC000692E7A0100C91BA0C0 /* RemoveTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000272E7A0100C91BA0C0 /* RemoveTree.cpp */; };
+		7DC0006B2E7A0100C91BA0C0 /* Scan.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000282E7A0100C91BA0C0 /* Scan.cpp */; };
+		7DC0006D2E7A0100C91BA0C0 /* ShaderLang.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000292E7A0100C91BA0C0 /* ShaderLang.cpp */; };
+		7DC0006F2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002A2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp */; };
+		7DC000712E7A0100C91BA0C0 /* SymbolTable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002B2E7A0100C91BA0C0 /* SymbolTable.cpp */; };
+		7DC000732E7A0100C91BA0C0 /* Versions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002C2E7A0100C91BA0C0 /* Versions.cpp */; };
+		7DC000752E7A0100C91BA0C0 /* intermOut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002D2E7A0100C91BA0C0 /* intermOut.cpp */; };
+		7DC000772E7A0100C91BA0C0 /* limits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002E2E7A0100C91BA0C0 /* limits.cpp */; };
+		7DC000792E7A0100C91BA0C0 /* linkValidate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002F2E7A0100C91BA0C0 /* linkValidate.cpp */; };
+		7DC0007B2E7A0100C91BA0C0 /* parseConst.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000302E7A0100C91BA0C0 /* parseConst.cpp */; };
+		7DC0007D2E7A0100C91BA0C0 /* reflection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000312E7A0100C91BA0C0 /* reflection.cpp */; };
+		7DC0007F2E7A0100C91BA0C0 /* Pp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000322E7A0100C91BA0C0 /* Pp.cpp */; };
+		7DC000812E7A0100C91BA0C0 /* PpAtom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000332E7A0100C91BA0C0 /* PpAtom.cpp */; };
+		7DC000832E7A0100C91BA0C0 /* PpContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000342E7A0100C91BA0C0 /* PpContext.cpp */; };
+		7DC000852E7A0100C91BA0C0 /* PpScanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000352E7A0100C91BA0C0 /* PpScanner.cpp */; };
+		7DC000872E7A0100C91BA0C0 /* PpTokens.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000362E7A0100C91BA0C0 /* PpTokens.cpp */; };
+		7DC000892E7A0100C91BA0C0 /* propagateNoContraction.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000372E7A0100C91BA0C0 /* propagateNoContraction.cpp */; };
+		7DC0008B2E7A0100C91BA0C0 /* GlslangToSpv.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000382E7A0100C91BA0C0 /* GlslangToSpv.cpp */; };
+		7DC0008D2E7A0100C91BA0C0 /* InReadableOrder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000392E7A0100C91BA0C0 /* InReadableOrder.cpp */; };
+		7DC0008F2E7A0100C91BA0C0 /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003A2E7A0100C91BA0C0 /* Logger.cpp */; };
+		7DC000912E7A0100C91BA0C0 /* SpvBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003B2E7A0100C91BA0C0 /* SpvBuilder.cpp */; };
+		7DC000932E7A0100C91BA0C0 /* SpvPostProcess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003C2E7A0100C91BA0C0 /* SpvPostProcess.cpp */; };
+		7DC000952E7A0100C91BA0C0 /* doc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003D2E7A0100C91BA0C0 /* doc.cpp */; };
+		7DC000972E7A0100C91BA0C0 /* SpvTools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003E2E7A0100C91BA0C0 /* SpvTools.cpp */; };
+		7DC000992E7A0100C91BA0C0 /* disassemble.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003F2E7A0100C91BA0C0 /* disassemble.cpp */; };
+		7DC0009B2E7A0100C91BA0C0 /* ossource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000402E7A0100C91BA0C0 /* ossource.cpp */; };
+		7DC0009D2E7A0100C91BA0C0 /* spirv_cross.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000412E7A0100C91BA0C0 /* spirv_cross.cpp */; };
+		7DC0009F2E7A0100C91BA0C0 /* spirv_parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000422E7A0100C91BA0C0 /* spirv_parser.cpp */; };
+		7DC000A12E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000432E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp */; };
+		7DC000A32E7A0100C91BA0C0 /* spirv_cfg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000442E7A0100C91BA0C0 /* spirv_cfg.cpp */; };
+		7DC000A52E7A0100C91BA0C0 /* spirv_glsl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000452E7A0100C91BA0C0 /* spirv_glsl.cpp */; };
+		7DC000A72E7A0100C91BA0C0 /* spirv_msl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000462E7A0100C91BA0C0 /* spirv_msl.cpp */; };
+		7DC000072E7A0100C91BA0C0 /* libshadercompiler-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7DC000022E7A0100C91BA0C0 /* libshadercompiler-ios.a */; };
+		7DC000482E7A0100C91BA0C0 /* args.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000162E7A0100C91BA0C0 /* args.cc */; };
+		7DC0004A2E7A0100C91BA0C0 /* input.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000172E7A0100C91BA0C0 /* input.cc */; };
+		7DC0004C2E7A0100C91BA0C0 /* glslang.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000182E7A0100C91BA0C0 /* glslang.cc */; };
+		7DC0004E2E7A0100C91BA0C0 /* spirvcross.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000192E7A0100C91BA0C0 /* spirvcross.cc */; };
+		7DC000502E7A0100C91BA0C0 /* CodeGen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001A2E7A0100C91BA0C0 /* CodeGen.cpp */; };
+		7DC000522E7A0100C91BA0C0 /* Link.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001B2E7A0100C91BA0C0 /* Link.cpp */; };
+		7DC000542E7A0100C91BA0C0 /* glslang_tab.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001C2E7A0100C91BA0C0 /* glslang_tab.cpp */; };
+		7DC000562E7A0100C91BA0C0 /* attribute.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001D2E7A0100C91BA0C0 /* attribute.cpp */; };
+		7DC000582E7A0100C91BA0C0 /* Constant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001E2E7A0100C91BA0C0 /* Constant.cpp */; };
+		7DC0005A2E7A0100C91BA0C0 /* iomapper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0001F2E7A0100C91BA0C0 /* iomapper.cpp */; };
+		7DC0005C2E7A0100C91BA0C0 /* InfoSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000202E7A0100C91BA0C0 /* InfoSink.cpp */; };
+		7DC0005E2E7A0100C91BA0C0 /* Initialize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000212E7A0100C91BA0C0 /* Initialize.cpp */; };
+		7DC000602E7A0100C91BA0C0 /* IntermTraverse.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000222E7A0100C91BA0C0 /* IntermTraverse.cpp */; };
+		7DC000622E7A0100C91BA0C0 /* Intermediate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000232E7A0100C91BA0C0 /* Intermediate.cpp */; };
+		7DC000642E7A0100C91BA0C0 /* ParseContextBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000242E7A0100C91BA0C0 /* ParseContextBase.cpp */; };
+		7DC000662E7A0100C91BA0C0 /* ParseHelper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000252E7A0100C91BA0C0 /* ParseHelper.cpp */; };
+		7DC000682E7A0100C91BA0C0 /* PoolAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000262E7A0100C91BA0C0 /* PoolAlloc.cpp */; };
+		7DC0006A2E7A0100C91BA0C0 /* RemoveTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000272E7A0100C91BA0C0 /* RemoveTree.cpp */; };
+		7DC0006C2E7A0100C91BA0C0 /* Scan.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000282E7A0100C91BA0C0 /* Scan.cpp */; };
+		7DC0006E2E7A0100C91BA0C0 /* ShaderLang.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000292E7A0100C91BA0C0 /* ShaderLang.cpp */; };
+		7DC000702E7A0100C91BA0C0 /* SpirvIntrinsics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002A2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp */; };
+		7DC000722E7A0100C91BA0C0 /* SymbolTable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002B2E7A0100C91BA0C0 /* SymbolTable.cpp */; };
+		7DC000742E7A0100C91BA0C0 /* Versions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002C2E7A0100C91BA0C0 /* Versions.cpp */; };
+		7DC000762E7A0100C91BA0C0 /* intermOut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002D2E7A0100C91BA0C0 /* intermOut.cpp */; };
+		7DC000782E7A0100C91BA0C0 /* limits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002E2E7A0100C91BA0C0 /* limits.cpp */; };
+		7DC0007A2E7A0100C91BA0C0 /* linkValidate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0002F2E7A0100C91BA0C0 /* linkValidate.cpp */; };
+		7DC0007C2E7A0100C91BA0C0 /* parseConst.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000302E7A0100C91BA0C0 /* parseConst.cpp */; };
+		7DC0007E2E7A0100C91BA0C0 /* reflection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000312E7A0100C91BA0C0 /* reflection.cpp */; };
+		7DC000802E7A0100C91BA0C0 /* Pp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000322E7A0100C91BA0C0 /* Pp.cpp */; };
+		7DC000822E7A0100C91BA0C0 /* PpAtom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000332E7A0100C91BA0C0 /* PpAtom.cpp */; };
+		7DC000842E7A0100C91BA0C0 /* PpContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000342E7A0100C91BA0C0 /* PpContext.cpp */; };
+		7DC000862E7A0100C91BA0C0 /* PpScanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000352E7A0100C91BA0C0 /* PpScanner.cpp */; };
+		7DC000882E7A0100C91BA0C0 /* PpTokens.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000362E7A0100C91BA0C0 /* PpTokens.cpp */; };
+		7DC0008A2E7A0100C91BA0C0 /* propagateNoContraction.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000372E7A0100C91BA0C0 /* propagateNoContraction.cpp */; };
+		7DC0008C2E7A0100C91BA0C0 /* GlslangToSpv.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000382E7A0100C91BA0C0 /* GlslangToSpv.cpp */; };
+		7DC0008E2E7A0100C91BA0C0 /* InReadableOrder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000392E7A0100C91BA0C0 /* InReadableOrder.cpp */; };
+		7DC000902E7A0100C91BA0C0 /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003A2E7A0100C91BA0C0 /* Logger.cpp */; };
+		7DC000922E7A0100C91BA0C0 /* SpvBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003B2E7A0100C91BA0C0 /* SpvBuilder.cpp */; };
+		7DC000942E7A0100C91BA0C0 /* SpvPostProcess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003C2E7A0100C91BA0C0 /* SpvPostProcess.cpp */; };
+		7DC000962E7A0100C91BA0C0 /* doc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003D2E7A0100C91BA0C0 /* doc.cpp */; };
+		7DC000982E7A0100C91BA0C0 /* SpvTools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003E2E7A0100C91BA0C0 /* SpvTools.cpp */; };
+		7DC0009A2E7A0100C91BA0C0 /* disassemble.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0003F2E7A0100C91BA0C0 /* disassemble.cpp */; };
+		7DC0009C2E7A0100C91BA0C0 /* ossource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000402E7A0100C91BA0C0 /* ossource.cpp */; };
+		7DC0009E2E7A0100C91BA0C0 /* spirv_cross.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000412E7A0100C91BA0C0 /* spirv_cross.cpp */; };
+		7DC000A02E7A0100C91BA0C0 /* spirv_parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000422E7A0100C91BA0C0 /* spirv_parser.cpp */; };
+		7DC000A22E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000432E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp */; };
+		7DC000A42E7A0100C91BA0C0 /* spirv_cfg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000442E7A0100C91BA0C0 /* spirv_cfg.cpp */; };
+		7DC000A62E7A0100C91BA0C0 /* spirv_glsl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000452E7A0100C91BA0C0 /* spirv_glsl.cpp */; };
+		7DC000A82E7A0100C91BA0C0 /* spirv_msl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000462E7A0100C91BA0C0 /* spirv_msl.cpp */; };
+		7DC000112E7A0100C91BA0C0 /* libshadercompiler-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7DC0000C2E7A0100C91BA0C0 /* libshadercompiler-macos.a */; };
+		7DC000B02E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AA2E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp */; };
+		7DC000B32E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AC2E7A0100C91BA0C0 /* ShaderVariantCollection.cpp */; };
+		7DC000B62E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */; };
+		7DC000B12E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AA2E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp */; };
+		7DC000B42E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AC2E7A0100C91BA0C0 /* ShaderVariantCollection.cpp */; };
+		7DC000B72E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */; };
+		7DC000AF2E7A0100C91BA0C0 /* RuntimeShaderCompiler.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000A92E7A0100C91BA0C0 /* RuntimeShaderCompiler.h */; };
+		7DC000B22E7A0100C91BA0C0 /* ShaderVariantCollection.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000AB2E7A0100C91BA0C0 /* ShaderVariantCollection.h */; };
+		7DC000B52E7A0100C91BA0C0 /* ShaderVariantCompiler.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */; };
+		7DC000B92E7A0100C91BA0C0 /* shaderlib.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000B82E7A0100C91BA0C0 /* shaderlib.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1392,6 +1502,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 71C00482D2E7A0100C91BA00;
 			remoteInfo = "meshoptimizer-macos";
+		};
+		7DC000052E7A0100C91BA0C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7DC000012E7A0100C91BA0C0;
+			remoteInfo = "shadercompiler-ios";
+		};
+		7DC0000F2E7A0100C91BA0C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7DC0000B2E7A0100C91BA0C0;
+			remoteInfo = "shadercompiler-macos";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -2969,6 +3093,64 @@
 		71C00402D2E7A0100C91BA00 /* meshoptimizer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = meshoptimizer.h; sourceTree = "<group>"; };
 		71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libmeshoptimizer-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libmeshoptimizer-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DC000162E7A0100C91BA0C0 /* args.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = args.cc; path = src/args.cc; sourceTree = "<group>"; };
+		7DC000172E7A0100C91BA0C0 /* input.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = input.cc; path = src/input.cc; sourceTree = "<group>"; };
+		7DC000182E7A0100C91BA0C0 /* glslang.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = glslang.cc; path = src/glslang.cc; sourceTree = "<group>"; };
+		7DC000192E7A0100C91BA0C0 /* spirvcross.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirvcross.cc; path = src/spirvcross.cc; sourceTree = "<group>"; };
+		7DC0001A2E7A0100C91BA0C0 /* CodeGen.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = CodeGen.cpp; path = libs/glslang/glslang/GenericCodeGen/CodeGen.cpp; sourceTree = "<group>"; };
+		7DC0001B2E7A0100C91BA0C0 /* Link.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Link.cpp; path = libs/glslang/glslang/GenericCodeGen/Link.cpp; sourceTree = "<group>"; };
+		7DC0001C2E7A0100C91BA0C0 /* glslang_tab.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = glslang_tab.cpp; path = libs/glslang/glslang/MachineIndependent/glslang_tab.cpp; sourceTree = "<group>"; };
+		7DC0001D2E7A0100C91BA0C0 /* attribute.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = attribute.cpp; path = libs/glslang/glslang/MachineIndependent/attribute.cpp; sourceTree = "<group>"; };
+		7DC0001E2E7A0100C91BA0C0 /* Constant.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Constant.cpp; path = libs/glslang/glslang/MachineIndependent/Constant.cpp; sourceTree = "<group>"; };
+		7DC0001F2E7A0100C91BA0C0 /* iomapper.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = iomapper.cpp; path = libs/glslang/glslang/MachineIndependent/iomapper.cpp; sourceTree = "<group>"; };
+		7DC000202E7A0100C91BA0C0 /* InfoSink.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = InfoSink.cpp; path = libs/glslang/glslang/MachineIndependent/InfoSink.cpp; sourceTree = "<group>"; };
+		7DC000212E7A0100C91BA0C0 /* Initialize.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Initialize.cpp; path = libs/glslang/glslang/MachineIndependent/Initialize.cpp; sourceTree = "<group>"; };
+		7DC000222E7A0100C91BA0C0 /* IntermTraverse.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = IntermTraverse.cpp; path = libs/glslang/glslang/MachineIndependent/IntermTraverse.cpp; sourceTree = "<group>"; };
+		7DC000232E7A0100C91BA0C0 /* Intermediate.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Intermediate.cpp; path = libs/glslang/glslang/MachineIndependent/Intermediate.cpp; sourceTree = "<group>"; };
+		7DC000242E7A0100C91BA0C0 /* ParseContextBase.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ParseContextBase.cpp; path = libs/glslang/glslang/MachineIndependent/ParseContextBase.cpp; sourceTree = "<group>"; };
+		7DC000252E7A0100C91BA0C0 /* ParseHelper.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ParseHelper.cpp; path = libs/glslang/glslang/MachineIndependent/ParseHelper.cpp; sourceTree = "<group>"; };
+		7DC000262E7A0100C91BA0C0 /* PoolAlloc.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PoolAlloc.cpp; path = libs/glslang/glslang/MachineIndependent/PoolAlloc.cpp; sourceTree = "<group>"; };
+		7DC000272E7A0100C91BA0C0 /* RemoveTree.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = RemoveTree.cpp; path = libs/glslang/glslang/MachineIndependent/RemoveTree.cpp; sourceTree = "<group>"; };
+		7DC000282E7A0100C91BA0C0 /* Scan.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Scan.cpp; path = libs/glslang/glslang/MachineIndependent/Scan.cpp; sourceTree = "<group>"; };
+		7DC000292E7A0100C91BA0C0 /* ShaderLang.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ShaderLang.cpp; path = libs/glslang/glslang/MachineIndependent/ShaderLang.cpp; sourceTree = "<group>"; };
+		7DC0002A2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SpirvIntrinsics.cpp; path = libs/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp; sourceTree = "<group>"; };
+		7DC0002B2E7A0100C91BA0C0 /* SymbolTable.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SymbolTable.cpp; path = libs/glslang/glslang/MachineIndependent/SymbolTable.cpp; sourceTree = "<group>"; };
+		7DC0002C2E7A0100C91BA0C0 /* Versions.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Versions.cpp; path = libs/glslang/glslang/MachineIndependent/Versions.cpp; sourceTree = "<group>"; };
+		7DC0002D2E7A0100C91BA0C0 /* intermOut.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = intermOut.cpp; path = libs/glslang/glslang/MachineIndependent/intermOut.cpp; sourceTree = "<group>"; };
+		7DC0002E2E7A0100C91BA0C0 /* limits.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = limits.cpp; path = libs/glslang/glslang/MachineIndependent/limits.cpp; sourceTree = "<group>"; };
+		7DC0002F2E7A0100C91BA0C0 /* linkValidate.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = linkValidate.cpp; path = libs/glslang/glslang/MachineIndependent/linkValidate.cpp; sourceTree = "<group>"; };
+		7DC000302E7A0100C91BA0C0 /* parseConst.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parseConst.cpp; path = libs/glslang/glslang/MachineIndependent/parseConst.cpp; sourceTree = "<group>"; };
+		7DC000312E7A0100C91BA0C0 /* reflection.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = reflection.cpp; path = libs/glslang/glslang/MachineIndependent/reflection.cpp; sourceTree = "<group>"; };
+		7DC000322E7A0100C91BA0C0 /* Pp.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Pp.cpp; path = libs/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp; sourceTree = "<group>"; };
+		7DC000332E7A0100C91BA0C0 /* PpAtom.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PpAtom.cpp; path = libs/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp; sourceTree = "<group>"; };
+		7DC000342E7A0100C91BA0C0 /* PpContext.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PpContext.cpp; path = libs/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp; sourceTree = "<group>"; };
+		7DC000352E7A0100C91BA0C0 /* PpScanner.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PpScanner.cpp; path = libs/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp; sourceTree = "<group>"; };
+		7DC000362E7A0100C91BA0C0 /* PpTokens.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PpTokens.cpp; path = libs/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp; sourceTree = "<group>"; };
+		7DC000372E7A0100C91BA0C0 /* propagateNoContraction.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = propagateNoContraction.cpp; path = libs/glslang/glslang/MachineIndependent/propagateNoContraction.cpp; sourceTree = "<group>"; };
+		7DC000382E7A0100C91BA0C0 /* GlslangToSpv.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = GlslangToSpv.cpp; path = libs/glslang/SPIRV/GlslangToSpv.cpp; sourceTree = "<group>"; };
+		7DC000392E7A0100C91BA0C0 /* InReadableOrder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = InReadableOrder.cpp; path = libs/glslang/SPIRV/InReadableOrder.cpp; sourceTree = "<group>"; };
+		7DC0003A2E7A0100C91BA0C0 /* Logger.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Logger.cpp; path = libs/glslang/SPIRV/Logger.cpp; sourceTree = "<group>"; };
+		7DC0003B2E7A0100C91BA0C0 /* SpvBuilder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SpvBuilder.cpp; path = libs/glslang/SPIRV/SpvBuilder.cpp; sourceTree = "<group>"; };
+		7DC0003C2E7A0100C91BA0C0 /* SpvPostProcess.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SpvPostProcess.cpp; path = libs/glslang/SPIRV/SpvPostProcess.cpp; sourceTree = "<group>"; };
+		7DC0003D2E7A0100C91BA0C0 /* doc.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = doc.cpp; path = libs/glslang/SPIRV/doc.cpp; sourceTree = "<group>"; };
+		7DC0003E2E7A0100C91BA0C0 /* SpvTools.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SpvTools.cpp; path = libs/glslang/SPIRV/SpvTools.cpp; sourceTree = "<group>"; };
+		7DC0003F2E7A0100C91BA0C0 /* disassemble.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = disassemble.cpp; path = libs/glslang/SPIRV/disassemble.cpp; sourceTree = "<group>"; };
+		7DC000402E7A0100C91BA0C0 /* ossource.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ossource.cpp; path = libs/glslang/glslang/OSDependent/Unix/ossource.cpp; sourceTree = "<group>"; };
+		7DC000412E7A0100C91BA0C0 /* spirv_cross.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_cross.cpp; path = libs/spirv-cross/spirv_cross.cpp; sourceTree = "<group>"; };
+		7DC000422E7A0100C91BA0C0 /* spirv_parser.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_parser.cpp; path = libs/spirv-cross/spirv_parser.cpp; sourceTree = "<group>"; };
+		7DC000432E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_cross_parsed_ir.cpp; path = libs/spirv-cross/spirv_cross_parsed_ir.cpp; sourceTree = "<group>"; };
+		7DC000442E7A0100C91BA0C0 /* spirv_cfg.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_cfg.cpp; path = libs/spirv-cross/spirv_cfg.cpp; sourceTree = "<group>"; };
+		7DC000452E7A0100C91BA0C0 /* spirv_glsl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_glsl.cpp; path = libs/spirv-cross/spirv_glsl.cpp; sourceTree = "<group>"; };
+		7DC000462E7A0100C91BA0C0 /* spirv_msl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = spirv_msl.cpp; path = libs/spirv-cross/spirv_msl.cpp; sourceTree = "<group>"; };
+		7DC000022E7A0100C91BA0C0 /* libshadercompiler-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libshadercompiler-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DC0000C2E7A0100C91BA0C0 /* libshadercompiler-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libshadercompiler-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DC000A92E7A0100C91BA0C0 /* RuntimeShaderCompiler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RuntimeShaderCompiler.h; sourceTree = "<group>"; };
+		7DC000AA2E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RuntimeShaderCompiler.cpp; sourceTree = "<group>"; };
+		7DC000AB2E7A0100C91BA0C0 /* ShaderVariantCollection.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderVariantCollection.h; sourceTree = "<group>"; };
+		7DC000AC2E7A0100C91BA0C0 /* ShaderVariantCollection.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderVariantCollection.cpp; sourceTree = "<group>"; };
+		7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderVariantCompiler.h; sourceTree = "<group>"; };
+		7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderVariantCompiler.cpp; sourceTree = "<group>"; };
+		7DC000B82E7A0100C91BA0C0 /* shaderlib.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = shaderlib.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3021,6 +3203,7 @@
 				71A800092AD9A001007C91BA /* libharfbuzz-ios.a in Frameworks */,
 				71A800292AD9A002007C91BA /* libsheenbidi-ios.a in Frameworks */,
 				71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */,
+				7DC000072E7A0100C91BA0C0 /* libshadercompiler-ios.a in Frameworks */,
 				7105CEAD2AD62381007C91BA /* libjoltphysics-ios.a in Frameworks */,
 				71E824822A9C235A00C8E6F2 /* libbox2d-ios.a in Frameworks */,
 				717AD95B290B6275007D7DB5 /* libsoloud-ios.a in Frameworks */,
@@ -3072,6 +3255,7 @@
 				71A8000A2AD9A001007C91BA /* libharfbuzz-macos.a in Frameworks */,
 				71A8002A2AD9A002007C91BA /* libsheenbidi-macos.a in Frameworks */,
 				71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */,
+				7DC000112E7A0100C91BA0C0 /* libshadercompiler-macos.a in Frameworks */,
 				7105CEAA2AD62363007C91BA /* libjoltphysics-macos.a in Frameworks */,
 				71E8247F2A9C22E100C8E6F2 /* libbox2d-macos.a in Frameworks */,
 				7182C89429686E380013B9D8 /* liblua-macos.a in Frameworks */,
@@ -3201,6 +3385,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		71C004E2D2E7A0100C91BA00 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7DC000042E7A0100C91BA0C0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7DC0000E2E7A0100C91BA0C0 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -3989,6 +4187,8 @@
 				71A800282AD9A002007C91BA /* libsheenbidi-macos.a */,
 				71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */,
 				71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */,
+				7DC000022E7A0100C91BA0C0 /* libshadercompiler-ios.a */,
+				7DC0000C2E7A0100C91BA0C0 /* libshadercompiler-macos.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -4342,6 +4542,7 @@
 				71FCE4C328E0FA31003C5217 /* luabridge3 */,
 				71C00532D2E7A0100C91BA00 /* meshoptimizer */,
 				17BFFB742FF201F9008F5B7C /* nanosvg */,
+				7DC000152E7A0100C91BA0C0 /* shadercompiler */,
 				71A8002B2AD9A002007C91BA /* sheenbidi */,
 				7162FC9725962A0E0075B97D /* sokol */,
 				717AD7BA290B5DF2007D7DB5 /* soloud */,
@@ -4617,6 +4818,7 @@
 				718FDDF02837CA9A00AF314C /* glsl300es.h */,
 				718FDDF12837CA9A00AF314C /* glsl100.h */,
 				718FDDF22837CA9A00AF314C /* msl21macos.h */,
+				7DC000B82E7A0100C91BA0C0 /* shaderlib.h */,
 				718FDDF32837CA9A00AF314C /* glsl330.h */,
 				718FDDF42837CA9A00AF314C /* hlsl5.h */,
 			);
@@ -5430,6 +5632,12 @@
 				1789660B2F1D764600E89E52 /* ShaderDataSerializer.cpp */,
 				1776226A3058741F00F220CC /* ShaderUniforms.h */,
 				1776226B3058741F00F220CC /* ShaderUniforms.cpp */,
+				7DC000A92E7A0100C91BA0C0 /* RuntimeShaderCompiler.h */,
+				7DC000AA2E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp */,
+				7DC000AB2E7A0100C91BA0C0 /* ShaderVariantCollection.h */,
+				7DC000AC2E7A0100C91BA0C0 /* ShaderVariantCollection.cpp */,
+				7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */,
+				7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */,
 			);
 			path = shader;
 			sourceTree = "<group>";
@@ -5641,6 +5849,62 @@
 			path = meshoptimizer;
 			sourceTree = "<group>";
 		};
+		7DC000152E7A0100C91BA0C0 /* shadercompiler */ = {
+			isa = PBXGroup;
+			children = (
+				7DC000162E7A0100C91BA0C0 /* args.cc */,
+				7DC000172E7A0100C91BA0C0 /* input.cc */,
+				7DC000182E7A0100C91BA0C0 /* glslang.cc */,
+				7DC000192E7A0100C91BA0C0 /* spirvcross.cc */,
+				7DC0001A2E7A0100C91BA0C0 /* CodeGen.cpp */,
+				7DC0001B2E7A0100C91BA0C0 /* Link.cpp */,
+				7DC0001C2E7A0100C91BA0C0 /* glslang_tab.cpp */,
+				7DC0001D2E7A0100C91BA0C0 /* attribute.cpp */,
+				7DC0001E2E7A0100C91BA0C0 /* Constant.cpp */,
+				7DC0001F2E7A0100C91BA0C0 /* iomapper.cpp */,
+				7DC000202E7A0100C91BA0C0 /* InfoSink.cpp */,
+				7DC000212E7A0100C91BA0C0 /* Initialize.cpp */,
+				7DC000222E7A0100C91BA0C0 /* IntermTraverse.cpp */,
+				7DC000232E7A0100C91BA0C0 /* Intermediate.cpp */,
+				7DC000242E7A0100C91BA0C0 /* ParseContextBase.cpp */,
+				7DC000252E7A0100C91BA0C0 /* ParseHelper.cpp */,
+				7DC000262E7A0100C91BA0C0 /* PoolAlloc.cpp */,
+				7DC000272E7A0100C91BA0C0 /* RemoveTree.cpp */,
+				7DC000282E7A0100C91BA0C0 /* Scan.cpp */,
+				7DC000292E7A0100C91BA0C0 /* ShaderLang.cpp */,
+				7DC0002A2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp */,
+				7DC0002B2E7A0100C91BA0C0 /* SymbolTable.cpp */,
+				7DC0002C2E7A0100C91BA0C0 /* Versions.cpp */,
+				7DC0002D2E7A0100C91BA0C0 /* intermOut.cpp */,
+				7DC0002E2E7A0100C91BA0C0 /* limits.cpp */,
+				7DC0002F2E7A0100C91BA0C0 /* linkValidate.cpp */,
+				7DC000302E7A0100C91BA0C0 /* parseConst.cpp */,
+				7DC000312E7A0100C91BA0C0 /* reflection.cpp */,
+				7DC000322E7A0100C91BA0C0 /* Pp.cpp */,
+				7DC000332E7A0100C91BA0C0 /* PpAtom.cpp */,
+				7DC000342E7A0100C91BA0C0 /* PpContext.cpp */,
+				7DC000352E7A0100C91BA0C0 /* PpScanner.cpp */,
+				7DC000362E7A0100C91BA0C0 /* PpTokens.cpp */,
+				7DC000372E7A0100C91BA0C0 /* propagateNoContraction.cpp */,
+				7DC000382E7A0100C91BA0C0 /* GlslangToSpv.cpp */,
+				7DC000392E7A0100C91BA0C0 /* InReadableOrder.cpp */,
+				7DC0003A2E7A0100C91BA0C0 /* Logger.cpp */,
+				7DC0003B2E7A0100C91BA0C0 /* SpvBuilder.cpp */,
+				7DC0003C2E7A0100C91BA0C0 /* SpvPostProcess.cpp */,
+				7DC0003D2E7A0100C91BA0C0 /* doc.cpp */,
+				7DC0003E2E7A0100C91BA0C0 /* SpvTools.cpp */,
+				7DC0003F2E7A0100C91BA0C0 /* disassemble.cpp */,
+				7DC000402E7A0100C91BA0C0 /* ossource.cpp */,
+				7DC000412E7A0100C91BA0C0 /* spirv_cross.cpp */,
+				7DC000422E7A0100C91BA0C0 /* spirv_parser.cpp */,
+				7DC000432E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp */,
+				7DC000442E7A0100C91BA0C0 /* spirv_cfg.cpp */,
+				7DC000452E7A0100C91BA0C0 /* spirv_glsl.cpp */,
+				7DC000462E7A0100C91BA0C0 /* spirv_msl.cpp */,
+			);
+			path = shadercompiler;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -5795,6 +6059,10 @@
 				7105CAAC2AD61C7A007C91BA /* RigidbodyComponent.h in Headers */,
 				713E581227BA9CE400376680 /* Polygon.h in Headers */,
 				1789660D2F1D764600E89E52 /* ShaderDataSerializer.h in Headers */,
+				7DC000AF2E7A0100C91BA0C0 /* RuntimeShaderCompiler.h in Headers */,
+				7DC000B22E7A0100C91BA0C0 /* ShaderVariantCollection.h in Headers */,
+				7DC000B52E7A0100C91BA0C0 /* ShaderVariantCompiler.h in Headers */,
+				7DC000B92E7A0100C91BA0C0 /* shaderlib.h in Headers */,
 				71393EE928F8EF9F0074442E /* XMLUtils.h in Headers */,
 				71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */,
 				71033D6B2BD1A7F100D81FB5 /* Scrollbar.h in Headers */,
@@ -6207,6 +6475,7 @@
 				71A8001B2AD9A001007C91BA /* PBXTargetDependency */,
 				71A8003E2AD9A002007C91BA /* PBXTargetDependency */,
 				71C004B2D2E7A0100C91BA00 /* PBXTargetDependency */,
+				7DC000062E7A0100C91BA0C0 /* PBXTargetDependency */,
 				7105CEAC2AD62376007C91BA /* PBXTargetDependency */,
 				71E824812A9C22F100C8E6F2 /* PBXTargetDependency */,
 				717AD95A290B6268007D7DB5 /* PBXTargetDependency */,
@@ -6289,6 +6558,7 @@
 				71A8001D2AD9A001007C91BA /* PBXTargetDependency */,
 				71A800402AD9A002007C91BA /* PBXTargetDependency */,
 				71C004C2D2E7A0100C91BA00 /* PBXTargetDependency */,
+				7DC000102E7A0100C91BA0C0 /* PBXTargetDependency */,
 				7105CEA92AD62350007C91BA /* PBXTargetDependency */,
 				71E8247E2A9C22D000C8E6F2 /* PBXTargetDependency */,
 				7182C89329686E310013B9D8 /* PBXTargetDependency */,
@@ -6597,6 +6867,38 @@
 			productReference = 71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		7DC000012E7A0100C91BA0C0 /* shadercompiler-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7DC0000A2E7A0100C91BA0C0 /* Build configuration list for PBXNativeTarget "shadercompiler-ios" */;
+			buildPhases = (
+				7DC000032E7A0100C91BA0C0 /* Sources */,
+				7DC000042E7A0100C91BA0C0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "shadercompiler-ios";
+			productName = "shadercompiler-ios";
+			productReference = 7DC000022E7A0100C91BA0C0 /* libshadercompiler-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		7DC0000B2E7A0100C91BA0C0 /* shadercompiler-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7DC000142E7A0100C91BA0C0 /* Build configuration list for PBXNativeTarget "shadercompiler-macos" */;
+			buildPhases = (
+				7DC0000D2E7A0100C91BA0C0 /* Sources */,
+				7DC0000E2E7A0100C91BA0C0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "shadercompiler-macos";
+			productName = "shadercompiler-macos";
+			productReference = 7DC0000C2E7A0100C91BA0C0 /* libshadercompiler-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -6655,6 +6957,12 @@
 						CreatedOnToolsVersion = 14.3.1;
 					};
 					71C00482D2E7A0100C91BA00 = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					7DC000012E7A0100C91BA0C0 = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					7DC0000B2E7A0100C91BA0C0 = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
 					71BE602725B1C49C006D6E02 = {
@@ -6718,6 +7026,8 @@
 				71A8002F2AD9A002007C91BA /* sheenbidi-ios */,
 				71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */,
 				71C00472D2E7A0100C91BA00 /* meshoptimizer-ios */,
+				7DC0000B2E7A0100C91BA0C0 /* shadercompiler-macos */,
+				7DC000012E7A0100C91BA0C0 /* shadercompiler-ios */,
 			);
 		};
 /* End PBXProject section */
@@ -7241,6 +7551,9 @@
 				71CC83AC26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
 				1789660E2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
+				7DC000B02E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
+				7DC000B32E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,
+				7DC000B62E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp in Sources */,
 				71451BD5270CA17F00712643 /* Tween.cpp in Sources */,
 				17145B402FF7FC5E00543CB7 /* Light2D.cpp in Sources */,
 				17145B412FF7FC5E00543CB7 /* ShadowCaster2D.cpp in Sources */,
@@ -7432,6 +7745,9 @@
 				71CC83AB26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
 				1789660C2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
+				7DC000B12E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
+				7DC000B42E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,
+				7DC000B72E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp in Sources */,
 				71451BD4270CA17F00712643 /* Tween.cpp in Sources */,
 				17145B3E2FF7FC5E00543CB7 /* Light2D.cpp in Sources */,
 				17145B3F2FF7FC5E00543CB7 /* ShadowCaster2D.cpp in Sources */,
@@ -7772,6 +8088,118 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7DC000032E7A0100C91BA0C0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DC000472E7A0100C91BA0C0 /* args.cc in Sources */,
+				7DC000492E7A0100C91BA0C0 /* input.cc in Sources */,
+				7DC0004B2E7A0100C91BA0C0 /* glslang.cc in Sources */,
+				7DC0004D2E7A0100C91BA0C0 /* spirvcross.cc in Sources */,
+				7DC0004F2E7A0100C91BA0C0 /* CodeGen.cpp in Sources */,
+				7DC000512E7A0100C91BA0C0 /* Link.cpp in Sources */,
+				7DC000532E7A0100C91BA0C0 /* glslang_tab.cpp in Sources */,
+				7DC000552E7A0100C91BA0C0 /* attribute.cpp in Sources */,
+				7DC000572E7A0100C91BA0C0 /* Constant.cpp in Sources */,
+				7DC000592E7A0100C91BA0C0 /* iomapper.cpp in Sources */,
+				7DC0005B2E7A0100C91BA0C0 /* InfoSink.cpp in Sources */,
+				7DC0005D2E7A0100C91BA0C0 /* Initialize.cpp in Sources */,
+				7DC0005F2E7A0100C91BA0C0 /* IntermTraverse.cpp in Sources */,
+				7DC000612E7A0100C91BA0C0 /* Intermediate.cpp in Sources */,
+				7DC000632E7A0100C91BA0C0 /* ParseContextBase.cpp in Sources */,
+				7DC000652E7A0100C91BA0C0 /* ParseHelper.cpp in Sources */,
+				7DC000672E7A0100C91BA0C0 /* PoolAlloc.cpp in Sources */,
+				7DC000692E7A0100C91BA0C0 /* RemoveTree.cpp in Sources */,
+				7DC0006B2E7A0100C91BA0C0 /* Scan.cpp in Sources */,
+				7DC0006D2E7A0100C91BA0C0 /* ShaderLang.cpp in Sources */,
+				7DC0006F2E7A0100C91BA0C0 /* SpirvIntrinsics.cpp in Sources */,
+				7DC000712E7A0100C91BA0C0 /* SymbolTable.cpp in Sources */,
+				7DC000732E7A0100C91BA0C0 /* Versions.cpp in Sources */,
+				7DC000752E7A0100C91BA0C0 /* intermOut.cpp in Sources */,
+				7DC000772E7A0100C91BA0C0 /* limits.cpp in Sources */,
+				7DC000792E7A0100C91BA0C0 /* linkValidate.cpp in Sources */,
+				7DC0007B2E7A0100C91BA0C0 /* parseConst.cpp in Sources */,
+				7DC0007D2E7A0100C91BA0C0 /* reflection.cpp in Sources */,
+				7DC0007F2E7A0100C91BA0C0 /* Pp.cpp in Sources */,
+				7DC000812E7A0100C91BA0C0 /* PpAtom.cpp in Sources */,
+				7DC000832E7A0100C91BA0C0 /* PpContext.cpp in Sources */,
+				7DC000852E7A0100C91BA0C0 /* PpScanner.cpp in Sources */,
+				7DC000872E7A0100C91BA0C0 /* PpTokens.cpp in Sources */,
+				7DC000892E7A0100C91BA0C0 /* propagateNoContraction.cpp in Sources */,
+				7DC0008B2E7A0100C91BA0C0 /* GlslangToSpv.cpp in Sources */,
+				7DC0008D2E7A0100C91BA0C0 /* InReadableOrder.cpp in Sources */,
+				7DC0008F2E7A0100C91BA0C0 /* Logger.cpp in Sources */,
+				7DC000912E7A0100C91BA0C0 /* SpvBuilder.cpp in Sources */,
+				7DC000932E7A0100C91BA0C0 /* SpvPostProcess.cpp in Sources */,
+				7DC000952E7A0100C91BA0C0 /* doc.cpp in Sources */,
+				7DC000972E7A0100C91BA0C0 /* SpvTools.cpp in Sources */,
+				7DC000992E7A0100C91BA0C0 /* disassemble.cpp in Sources */,
+				7DC0009B2E7A0100C91BA0C0 /* ossource.cpp in Sources */,
+				7DC0009D2E7A0100C91BA0C0 /* spirv_cross.cpp in Sources */,
+				7DC0009F2E7A0100C91BA0C0 /* spirv_parser.cpp in Sources */,
+				7DC000A12E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp in Sources */,
+				7DC000A32E7A0100C91BA0C0 /* spirv_cfg.cpp in Sources */,
+				7DC000A52E7A0100C91BA0C0 /* spirv_glsl.cpp in Sources */,
+				7DC000A72E7A0100C91BA0C0 /* spirv_msl.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7DC0000D2E7A0100C91BA0C0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DC000482E7A0100C91BA0C0 /* args.cc in Sources */,
+				7DC0004A2E7A0100C91BA0C0 /* input.cc in Sources */,
+				7DC0004C2E7A0100C91BA0C0 /* glslang.cc in Sources */,
+				7DC0004E2E7A0100C91BA0C0 /* spirvcross.cc in Sources */,
+				7DC000502E7A0100C91BA0C0 /* CodeGen.cpp in Sources */,
+				7DC000522E7A0100C91BA0C0 /* Link.cpp in Sources */,
+				7DC000542E7A0100C91BA0C0 /* glslang_tab.cpp in Sources */,
+				7DC000562E7A0100C91BA0C0 /* attribute.cpp in Sources */,
+				7DC000582E7A0100C91BA0C0 /* Constant.cpp in Sources */,
+				7DC0005A2E7A0100C91BA0C0 /* iomapper.cpp in Sources */,
+				7DC0005C2E7A0100C91BA0C0 /* InfoSink.cpp in Sources */,
+				7DC0005E2E7A0100C91BA0C0 /* Initialize.cpp in Sources */,
+				7DC000602E7A0100C91BA0C0 /* IntermTraverse.cpp in Sources */,
+				7DC000622E7A0100C91BA0C0 /* Intermediate.cpp in Sources */,
+				7DC000642E7A0100C91BA0C0 /* ParseContextBase.cpp in Sources */,
+				7DC000662E7A0100C91BA0C0 /* ParseHelper.cpp in Sources */,
+				7DC000682E7A0100C91BA0C0 /* PoolAlloc.cpp in Sources */,
+				7DC0006A2E7A0100C91BA0C0 /* RemoveTree.cpp in Sources */,
+				7DC0006C2E7A0100C91BA0C0 /* Scan.cpp in Sources */,
+				7DC0006E2E7A0100C91BA0C0 /* ShaderLang.cpp in Sources */,
+				7DC000702E7A0100C91BA0C0 /* SpirvIntrinsics.cpp in Sources */,
+				7DC000722E7A0100C91BA0C0 /* SymbolTable.cpp in Sources */,
+				7DC000742E7A0100C91BA0C0 /* Versions.cpp in Sources */,
+				7DC000762E7A0100C91BA0C0 /* intermOut.cpp in Sources */,
+				7DC000782E7A0100C91BA0C0 /* limits.cpp in Sources */,
+				7DC0007A2E7A0100C91BA0C0 /* linkValidate.cpp in Sources */,
+				7DC0007C2E7A0100C91BA0C0 /* parseConst.cpp in Sources */,
+				7DC0007E2E7A0100C91BA0C0 /* reflection.cpp in Sources */,
+				7DC000802E7A0100C91BA0C0 /* Pp.cpp in Sources */,
+				7DC000822E7A0100C91BA0C0 /* PpAtom.cpp in Sources */,
+				7DC000842E7A0100C91BA0C0 /* PpContext.cpp in Sources */,
+				7DC000862E7A0100C91BA0C0 /* PpScanner.cpp in Sources */,
+				7DC000882E7A0100C91BA0C0 /* PpTokens.cpp in Sources */,
+				7DC0008A2E7A0100C91BA0C0 /* propagateNoContraction.cpp in Sources */,
+				7DC0008C2E7A0100C91BA0C0 /* GlslangToSpv.cpp in Sources */,
+				7DC0008E2E7A0100C91BA0C0 /* InReadableOrder.cpp in Sources */,
+				7DC000902E7A0100C91BA0C0 /* Logger.cpp in Sources */,
+				7DC000922E7A0100C91BA0C0 /* SpvBuilder.cpp in Sources */,
+				7DC000942E7A0100C91BA0C0 /* SpvPostProcess.cpp in Sources */,
+				7DC000962E7A0100C91BA0C0 /* doc.cpp in Sources */,
+				7DC000982E7A0100C91BA0C0 /* SpvTools.cpp in Sources */,
+				7DC0009A2E7A0100C91BA0C0 /* disassemble.cpp in Sources */,
+				7DC0009C2E7A0100C91BA0C0 /* ossource.cpp in Sources */,
+				7DC0009E2E7A0100C91BA0C0 /* spirv_cross.cpp in Sources */,
+				7DC000A02E7A0100C91BA0C0 /* spirv_parser.cpp in Sources */,
+				7DC000A22E7A0100C91BA0C0 /* spirv_cross_parsed_ir.cpp in Sources */,
+				7DC000A42E7A0100C91BA0C0 /* spirv_cfg.cpp in Sources */,
+				7DC000A62E7A0100C91BA0C0 /* spirv_glsl.cpp in Sources */,
+				7DC000A82E7A0100C91BA0C0 /* spirv_msl.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -7924,6 +8352,16 @@
 			isa = PBXTargetDependency;
 			target = 71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */;
 			targetProxy = 71C004A2D2E7A0100C91BA00 /* PBXContainerItemProxy */;
+		};
+		7DC000062E7A0100C91BA0C0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7DC000012E7A0100C91BA0C0 /* shadercompiler-ios */;
+			targetProxy = 7DC000052E7A0100C91BA0C0 /* PBXContainerItemProxy */;
+		};
+		7DC000102E7A0100C91BA0C0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7DC0000B2E7A0100C91BA0C0 /* shadercompiler-macos */;
+			targetProxy = 7DC0000F2E7A0100C91BA0C0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -8135,6 +8573,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8146,6 +8585,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -8165,6 +8606,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8176,6 +8618,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -8351,6 +8795,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8361,6 +8806,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8388,6 +8835,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8398,6 +8846,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8431,6 +8881,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8441,6 +8892,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8471,6 +8924,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8481,6 +8935,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8509,6 +8965,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8520,6 +8977,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -8542,6 +9001,7 @@
 					"$(inherited)",
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
+					JASPERENGINE_RUNTIME_SHADERS,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8553,6 +9013,8 @@
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../shaders",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -9230,6 +9692,111 @@
 			};
 			name = Release;
 		};
+		7DC000082E7A0100C91BA0C0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/shadercompiler/include",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/glslang",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/spirv-cross",
+				);
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ENABLE_OPT=0",
+					SHADERCOMPILER_MSL,
+				);
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7DC000092E7A0100C91BA0C0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/shadercompiler/include",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/glslang",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/spirv-cross",
+				);
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ENABLE_OPT=0",
+					SHADERCOMPILER_MSL,
+				);
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7DC000122E7A0100C91BA0C0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/shadercompiler/include",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/glslang",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/spirv-cross",
+				);
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ENABLE_OPT=0",
+					SHADERCOMPILER_MSL,
+				);
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		7DC000132E7A0100C91BA0C0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/shadercompiler/include",
+					"$(SRCROOT)/../../libs/shadercompiler/src",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/glslang",
+					"$(SRCROOT)/../../libs/shadercompiler/libs/spirv-cross",
+				);
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"ENABLE_OPT=0",
+					SHADERCOMPILER_MSL,
+				);
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -9490,6 +10057,24 @@
 			buildConfigurations = (
 				71C00562D2E7A0100C91BA00 /* Debug */,
 				71C00572D2E7A0100C91BA00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7DC0000A2E7A0100C91BA0C0 /* Build configuration list for PBXNativeTarget "shadercompiler-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7DC000082E7A0100C91BA0C0 /* Debug */,
+				7DC000092E7A0100C91BA0C0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7DC000142E7A0100C91BA0C0 /* Build configuration list for PBXNativeTarget "shadercompiler-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7DC000122E7A0100C91BA0C0 /* Debug */,
+				7DC000132E7A0100C91BA0C0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

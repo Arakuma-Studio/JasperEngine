@@ -7,6 +7,7 @@
 
 #include "shader/ShaderBuildTypes.h"
 #include "ShaderData.h"
+#include <atomic>
 #include <vector>
 #include <set>
 #include <unordered_map>
@@ -14,17 +15,11 @@
 #include <future>
 #include <filesystem>
 
-#include "shadercompiler.h"
-#include "shaders.h"
-
-namespace shadercompiler {
-    struct spirvcross_t;
-    struct input_t;
-    struct args_t;
-}
-
 namespace jasperengine::editor {
 
+    // The editor's shader builds: the engine's ShaderVariantCompiler (the same compiler
+    // a game uses at runtime) driven for the open project, with forked shaders read
+    // from the project, a disk cache, and builds on the thread pool.
     class ShaderBuilder {
     private:
         static std::unordered_map<ShaderKey, ShaderData> shaderDataCache;
@@ -33,37 +28,10 @@ namespace jasperengine::editor {
 
         static std::atomic<bool> shutdownRequested;
 
-        // Mapping functions declarations with camelCase
-        ShaderVertexType mapVertexType(shadercompiler::attribute_type_t type);
-        ShaderUniformType mapUniformType(shadercompiler::uniform_type_t type);
-        TextureType mapTextureType(shadercompiler::texture_type_t type);
-        TextureSamplerType mapSamplerType(shadercompiler::texture_samplertype_t type);
-        SamplerType mapSamplerFilterType(shadercompiler::sampler_type_t type);
-        ShaderStorageBufferType mapStorageType(shadercompiler::storage_buffer_type_t type);
-        ShaderStageType mapStageType(shadercompiler::stage_type_t type);
-        ShaderLang mapLang(shadercompiler::lang_type_t lang);
-        static void applyShaderBackend(shadercompiler::args_t& args, ShaderBackend backend);
-        static void setBackendLang(shadercompiler::args_t& args);
-
-        ShaderData convertToShaderData(
-            const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,
-            const std::vector<shadercompiler::input_t>& inputs,
-            const shadercompiler::args_t& args);
-
-        void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-        void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-        void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-        void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-        void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-        void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop);
-
-        bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32_t properties);
-        std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform);
-
-        // Sets entry-point files + defines for the key. For custom shaders, resolves only
-        // the exact transitive dependency graph from the fork's .vert/.frag entrypoints.
-        // Throws on failure.
-        void setupBuildArgs(shadercompiler::args_t& args, ShaderKey shaderKey, Project* project);
+        // Compiles the key for a backend. For custom shaders, resolves only the exact
+        // transitive dependency graph from the fork's .vert/.frag entrypoints.
+        // A cancellable build stops at an editor shutdown. Throws on failure.
+        ShaderData compileShader(ShaderKey shaderKey, Project* project, ShaderBackend backend, bool trackProgress, bool cancellable);
 
         ShaderData buildShaderInternal(ShaderKey shaderKey, Project* project, bool trackProgress);
         std::string getShaderDisplayName(ShaderKey key);

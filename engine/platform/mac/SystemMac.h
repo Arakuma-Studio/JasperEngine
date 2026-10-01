@@ -45,6 +45,7 @@ namespace jasperengine {
 
         std::string getAssetPath() override;
         std::string getUserDataPath() override;
+        std::string getCachePath() override;
         std::string getLuaPath() override;
         std::string getShaderPath() override;
     };

@@ -7,4 +7,4 @@ JasperEngine is a fork of [Doriax](https://github.com/doriaxengine/doriax) by Ed
 - The Doriax name was replaced with JasperEngine by `tools/rebrand.py`. Per-file copyright headers (`(c) Eduardo Doria and contributors`) are kept as they were.
 - Doriax's copyright notice is retained in [LICENSE](LICENSE), as the MIT License requires.
 
-Bundled third-party libraries under `libs/`, `engine/libs/`, and `shadercompiler/libs/` keep their own licenses.
+Bundled third-party libraries under `libs/`, `engine/libs/`, and `engine/libs/shadercompiler/libs/` keep their own licenses.

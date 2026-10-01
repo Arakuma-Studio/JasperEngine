@@ -25,6 +25,7 @@ private:
 
     static int syncWaitTime;
     static bool enabledIDB;
+    static bool loadedIDB;
 
     static int screenWidth;
     static int screenHeight;
@@ -92,6 +93,7 @@ public:
     virtual std::string getUserDataPath() override;
 
     virtual bool syncFileSystem() override;
+    virtual bool isUserDataLoaded() override;
 
     virtual std::string getStringForKey(const char *key, const std::string& defaultValue) override;
     virtual void setStringForKey(const char* key, const std::string& value) override;

@@ -29,6 +29,10 @@ namespace jasperengine{
 
         static void addMissingShader(const std::string& shaderStr);
 
+        // Loads the variant from what the build ships: the embedded headers, then the
+        // shader directory
+        static bool loadPrecompiledShader(ShaderKey shaderKey, const std::string& shaderStr, ShaderData& shaderData);
+
     public:
         // ShaderKey layout (uint64):
         //   bits [0..31]  properties bitfield
@@ -45,6 +49,46 @@ namespace jasperengine{
         // have the precompiled shader. The pool stops re-invoking the (expensive, error-spamming)
         // builder until the failure is cleared by remove()/destroyCustomShaders().
         static bool isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+
+        // ---- Warm-up (Unity: ShaderVariantCollection.WarmUp, Shader.WarmupAllShaders) ----
+        // A variant is ready once its GPU program exists. Asking for one that is not
+        // starts what it takes: loading it from the build, or compiling it at runtime
+        // (in the background, see RuntimeShaderCompiler). Call again (once a frame, say)
+        // until it reports ready; nothing that draws with it waits for it.
+
+        // Requests the variant; true once it is ready
+        static bool warmUp(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static bool warmUp(ShaderKey shaderKey);
+        // Ready, without requesting it
+        static bool isShaderReady(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        // NotStarted (never requested), Loading, Finished (ready) or Failed (not in the
+        // build and not compilable, or it failed to compile or to create)
+        static ResourceLoadState getShaderState(ShaderKey shaderKey);
+        // Requests every built-in variant the build ships precompiled and every one a
+        // previous run compiled into the runtime shader cache; how many are not ready yet
+        static size_t warmUpAllShaders();
+        // built-in variants the build ships precompiled for this backend
+        static std::vector<ShaderKey> getPrecompiledShaderKeys();
+        // variants being compiled at runtime
+        static size_t getPendingShaderCount();
+
+        // ---- Runtime compilation of variants the build lacks (RuntimeShaderCompiler) ----
+        // The build carries the compiler (export setting "Runtime shader compilation")
+        static bool isRuntimeCompilationSupported();
+        // On by default where supported; off, a missing variant is reported and skipped
+        static void setRuntimeCompilationEnabled(bool enabled);
+        static bool isRuntimeCompilationEnabled();
+        // Compile on a worker thread (default; not on the web) or on the main thread,
+        // one variant a frame: a hitch instead of the object showing up late
+        static void setAsyncCompilation(bool async);
+        static bool isAsyncCompilation();
+
+        // "type[:Prop,Prop...]" or "type:<mask>", as in Build Settings and the editor's
+        // shaders command ("mesh:Ult,Vc4", "depth:Ski", "mesh:0x41"). A custom shader is
+        // given apart (customShader: its project-relative base path, "" for built-in).
+        static bool parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, std::string* error = nullptr, const std::string& customShader = "");
+        // a built-in getShaderStr() back into its key
+        static bool parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey);
 
         static std::string getShaderStr(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
         static std::string getShaderTypeName(ShaderType shaderType, bool lowerCase = false);

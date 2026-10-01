@@ -152,6 +152,17 @@ std::string SystemMac::getUserDataPath() {
     return ".";
 }
 
+std::string SystemMac::getCachePath() {
+    // An app bundle gets its folder in ~/Library/Caches; a bare executable has no
+    // identity to name one after and keeps its caches with its data.
+    NSString* bundleId = [[NSBundle mainBundle] bundleIdentifier];
+    NSArray* paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+    if (!bundleId || [paths count] == 0) return getUserDataPath();
+
+    NSString* dir = [[paths objectAtIndex:0] stringByAppendingPathComponent:bundleId];
+    return [dir UTF8String];
+}
+
 std::string SystemMac::getLuaPath() {
     std::string bundlePath;
     if (bundleResourcePath(@"lua", bundlePath)) return bundlePath;

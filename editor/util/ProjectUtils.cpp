@@ -6,7 +6,7 @@
 #include "Out.h"
 #include "Catalog.h"
 #include "Stream.h"
-#include "shaders.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -170,8 +170,8 @@ std::map<std::string, std::string> collectBuiltInShaderIncludes(const std::strin
             if (!visited.insert(key).second)
                 continue;
 
-            auto sourceIt = editor::shaderMap.find(key);
-            if (sourceIt == editor::shaderMap.end())
+            auto sourceIt = ShaderVariantCompiler::getLibrarySources().find(key);
+            if (sourceIt == ShaderVariantCompiler::getLibrarySources().end())
                 continue;
 
             if (std::filesystem::path(key).extension() == ".glsl")
@@ -264,9 +264,9 @@ editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
 
     // fullscreen passes share one vertex entry point; the fork still gets its own copy
     std::string vertFile = (shaderType == ShaderType::POSTPROCESS) ? "fullscreen" : typeFile;
-    auto vertIt = editor::shaderMap.find(vertFile + ".vert");
-    auto fragIt = editor::shaderMap.find(typeFile + ".frag");
-    if (vertIt == editor::shaderMap.end() || fragIt == editor::shaderMap.end()) {
+    auto vertIt = ShaderVariantCompiler::getLibrarySources().find(vertFile + ".vert");
+    auto fragIt = ShaderVariantCompiler::getLibrarySources().find(typeFile + ".frag");
+    if (vertIt == ShaderVariantCompiler::getLibrarySources().end() || fragIt == ShaderVariantCompiler::getLibrarySources().end()) {
         plan.error = "The built-in shader source is unavailable.";
         return plan;
     }

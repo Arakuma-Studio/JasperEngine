@@ -208,6 +208,21 @@ std::string JasperEngineApple::getUserDataPath(){
     return [documentsDirectory UTF8String];
 }
 
+std::string JasperEngineApple::getCachePath(){
+    // Caches stay out of Documents, which iOS backs up; macOS shares ~/Library/Caches
+    // between apps, so each one keeps to its own folder there
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+    if ([paths count] == 0)
+        return getUserDataPath();
+
+    NSString *cachesDirectory = [paths objectAtIndex:0];
+    NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleId)
+        cachesDirectory = [cachesDirectory stringByAppendingPathComponent:bundleId];
+
+    return [cachesDirectory UTF8String];
+}
+
 std::string JasperEngineApple::getLuaPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"lua"];
 

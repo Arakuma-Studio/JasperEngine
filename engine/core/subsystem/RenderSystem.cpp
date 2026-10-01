@@ -19,6 +19,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "math/AABB.h"
 #include "pool/TextureDataPool.h"
+#include "subsystem/MeshSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -1133,6 +1134,7 @@ void RenderSystem::processLights2D(){
 bool RenderSystem::loadAndProcessFog(){
 
     FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    const bool hadFog = hasFog;
     hasFog = false;
     if (fog){
         hasFog = true;
@@ -1148,6 +1150,11 @@ bool RenderSystem::loadAndProcessFog(){
 
         fs_fog.color_type = Vector4(fog->color.x, fog->color.y, fog->color.z, fogTypeI);
         fs_fog.density_start_end = Vector4(fog->density, 0.0, fog->linearStart, fog->linearEnd);
+    }
+
+    // fog is a shader variant: a Fog added or removed while playing switches every mesh
+    if (hasFog != hadFog){
+        needReloadMeshes();
     }
 
     return hasFog;
@@ -1852,6 +1859,92 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
     return environment;
+}
+
+void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys){
+    auto addKey = [&keys](ShaderKey key){
+        if (std::find(keys.begin(), keys.end(), key) == keys.end())
+            keys.push_back(key);
+    };
+    // a fork that fails to build falls back to the built-in variant
+    auto add = [&addKey](ShaderType type, uint32_t properties, uint16_t customId){
+        addKey(ShaderPool::getShaderKey(type, properties, customId));
+        if (customId != 0)
+            addKey(ShaderPool::getShaderKey(type, properties, 0));
+    };
+    // the component's fork, the scene default, or built-in (as the load functions pick)
+    auto shaderId = [this](const std::string& customShader, ShaderType type){
+        return ShaderPool::registerCustomShader(customShader.empty() ? scene->getDefaultCustomShader(type) : customShader);
+    };
+
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        const bool mirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+
+        // the buffers loadMesh draws from
+        std::vector<const Buffer*> buffers;
+        if (mesh->buffer.getSize() > 0)
+            buffers.push_back(&mesh->buffer);
+        if (mesh->indices.getSize() > 0)
+            buffers.push_back(&mesh->indices);
+        for (int i = 0; i < mesh->numExternalBuffers; i++)
+            buffers.push_back(&mesh->eBuffers[i]);
+
+        if (!buffers.empty()){
+            const MeshShaderEnvironment environment = getMeshShaderEnvironment();
+            const uint16_t meshShaderId = shaderId(mesh->customShader, ShaderType::MESH);
+            const uint16_t depthShaderId = ShaderPool::registerCustomShader(mesh->customDepthShader);
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+                // a copy: scanning sets the submesh's attribute flags
+                Submesh submesh = mesh->submeshes[s];
+                // a terrain's submeshes draw with submesh 0's material (loadMesh)
+                if (terrain)
+                    submesh.material = mesh->submeshes[0].material;
+                // MeshSystem::update turns the texture rect path on before the mesh loads
+                if (MeshSystem::usesTextureRect(submesh))
+                    submesh.hasTextureRect = true;
+                scanSubmeshAttributes(submesh, buffers);
+
+                const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment,
+                    getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror));
+                add(ShaderType::MESH, variant.properties, meshShaderId);
+                if (variant.depth)
+                    add(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
+                if (variant.gbuffer)
+                    add(ShaderType::GBUFFER, variant.gbufferProperties, 0);
+            }
+        }
+    }
+
+    // as loadUI, loadPoints, loadLines and loadSky pick them
+    if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+        const bool isText = scene->findComponent<TextComponent>(entity) != nullptr;
+        bool hasTexture = false;
+        bool hasFontAtlasTexture = false;
+        bool vertexColorVec4 = true;
+        if (!ui->texture.empty()){
+            if (isText){
+                vertexColorVec4 = false;
+                hasFontAtlasTexture = true;
+            }else{
+                hasTexture = true;
+            }
+        }
+        add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4),
+            shaderId(ui->customShader, ShaderType::UI));
+    }
+    if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
+        const bool hasTexture = !points->texture.empty();
+        add(ShaderType::POINTS, ShaderPool::getPointsProperties(hasTexture, false, true, hasTexture && points->hasTextureRect),
+            shaderId(points->customShader, ShaderType::POINTS));
+    }
+    if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
+        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES));
+    }
+    if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
+        add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX));
+    }
 }
 
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
@@ -9323,12 +9416,18 @@ void RenderSystem::draw(){
         const std::string shaderBackend = ShaderPool::getSuggestedCliBackend();
         const std::string shaderCommand = "jasperengine-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + " --shader \"" + shaderSpec + "\"";
 
+        // why it was not compiled here instead
+        const char* runtimeCompilation = ShaderPool::isRuntimeCompilationSupported()
+            ? "Runtime shader compilation is turned off (ShaderPool::setRuntimeCompilationEnabled)"
+            : "This build has no runtime shader compiler (Project Settings > Graphics > Runtime Shader Compilation)";
+
         Log::error(
             "Missing shader: the build has no precompiled shader '%s' (%s) in %s; "
-            "objects drawn with it are not shown. Export the project again so it includes it, "
+            "objects drawn with it are not shown. %s. Export the project again so it includes it, "
             "add it under Shaders in the Build Settings window, or generate it with "
             "JasperEngine Editor: %s",
-            shaderStr.c_str(), ShaderPool::getShaderLangStr().c_str(), shaderOutputDir.c_str(), shaderCommand.c_str());
+            shaderStr.c_str(), ShaderPool::getShaderLangStr().c_str(), shaderOutputDir.c_str(),
+            runtimeCompilation, shaderCommand.c_str());
     }
 }
 
