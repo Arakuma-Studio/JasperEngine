@@ -662,6 +662,11 @@ shader path changes, terrain maps, tools) use `getScenesAndPrefabStages()`.
 - **Single root**: a GameObject that ends up at the top of a stage (created there, dropped,
   pasted, duplicated root) goes below the root (`fixPrefabStageRoots`, each frame and on
   save; Unity does the same). The root cannot be deleted (`DeleteEntityCmd` refuses).
+- **Undo** is the stage's own history (Ctrl+Z with the stage shown). Deleting a nested
+  instance and undoing it gives it back where it was: `DeleteEntityCmd::undo` puts back the
+  saved local Transform values after re-parenting (an instance root's world matrix is the
+  prefab root's until the next update, so keeping its world placement moved it; this
+  affected scenes too).
 - **No cycles**: an instance of the stage's prefab, or of any prefab holding it or one of the
   stages below it in the stack, is refused in a stage (`canInstantiatePrefabIn`, checked by
   `ImportPrefabCmd` and `importPrefab`).

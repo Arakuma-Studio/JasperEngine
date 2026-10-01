@@ -609,6 +609,18 @@ void editor::DeleteEntityCmd::undo(){
             if (entityData.hasTransform) {
                 ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities,
                     entityData.entity, restoredParent, entityData.entityIndex, true, false);
+                // The saved values are local to that parent: the move kept a world placement
+                // that, for a prefab instance root, is still the prefab's (its world matrix is
+                // the prefab root's until the next update), so they are put back
+                const YAML::Node savedTransform = entityData.data["components"] ? entityData.data["components"]["transform"] : YAML::Node();
+                Transform* transform = sceneProject->scene->findComponent<Transform>(entityData.entity);
+                if (transform && savedTransform && savedTransform.IsMap()) {
+                    const Transform saved = Stream::decodeTransform(savedTransform, transform);
+                    transform->position = saved.position;
+                    transform->rotation = saved.rotation;
+                    transform->scale = saved.scale;
+                    transform->needUpdate = true;
+                }
                 sortPending = true;
             } else {
                 // Its index is a position in the sorted list
