@@ -7482,11 +7482,23 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
                 Entity localEntity = decoded[0];
                 scene->addEntityChild(parentEntity, localEntity, true);
 
-                // Position at childIndex using moveChildToIndex
-                if (scene->findComponent<Transform>(localEntity)) {
+                // Position at childIndex among the parent's children. Each child is a whole
+                // branch in the Transform array, so the slot is where the childIndex-th other
+                // child starts, or the end of the parent's branch.
+                if (scene->findComponent<Transform>(localEntity) && scene->findComponent<Transform>(parentEntity)) {
                     auto transforms = scene->getComponentArray<Transform>();
-                    size_t parentIndex = transforms->getIndex(parentEntity);
-                    size_t targetIndex = parentIndex + 1 + childIndex;
+                    size_t targetIndex = scene->findBranchLastIndex(parentEntity) + 1;
+                    size_t siblings = 0;
+                    for (size_t i = transforms->getIndex(parentEntity) + 1; i < transforms->size(); i++) {
+                        if (transforms->getEntity(i) == localEntity || transforms->getComponentFromIndex(i).parent != parentEntity) {
+                            continue;
+                        }
+                        if (siblings == childIndex) {
+                            targetIndex = i;
+                            break;
+                        }
+                        siblings++;
+                    }
                     scene->moveChildToIndex(localEntity, targetIndex);
                 }
 

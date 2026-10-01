@@ -10,6 +10,8 @@
 #include "io/FileData.h"
 #include "Backend.h"
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -62,6 +64,7 @@ editor::ModelLoadCmd::~ModelLoadCmd(){
     if (asyncPending){
         Scene* scene = project->getScene(sceneId)->scene;
         scene->getSystem<MeshSystem>()->cancelAsyncModelLoad(entity, modelPath);
+        setAsyncPending(false);
     }
     if (oldSubEntitiesDeleteCmd) {
         delete oldSubEntitiesDeleteCmd;
@@ -343,7 +346,7 @@ void editor::ModelLoadCmd::schedulePoll(){
     Backend::getApp().enqueueMainThreadTask([this, cancel]() {
         if (cancel->load()) return;
         if (tryLoad()){
-            asyncPending = false;
+            setAsyncPending(false);
             finalizeLoad();
             return;
         }
@@ -352,9 +355,58 @@ void editor::ModelLoadCmd::schedulePoll(){
             schedulePoll();
         } else {
             // Terminal worker failure — drop pending state; rollback happens via the next undo
-            asyncPending = false;
+            setAsyncPending(false);
         }
     });
+}
+
+std::map<std::pair<uint32_t, Entity>, editor::ModelLoadCmd*>& editor::ModelLoadCmd::getPendingLoads(){
+    static std::map<std::pair<uint32_t, Entity>, ModelLoadCmd*> pendingLoads;
+    return pendingLoads;
+}
+
+void editor::ModelLoadCmd::setAsyncPending(bool pending){
+    asyncPending = pending;
+    auto& pendingLoads = getPendingLoads();
+    const std::pair<uint32_t, Entity> key{sceneId, entity};
+    if (pending){
+        pendingLoads[key] = this;
+    }else{
+        auto it = pendingLoads.find(key);
+        if (it != pendingLoads.end() && it->second == this){
+            pendingLoads.erase(it);
+        }
+    }
+}
+
+void editor::ModelLoadCmd::finishPendingLoad(){
+    if (!asyncPending){
+        return;
+    }
+    // The queued poll stands down: the load ends here, with what the worker parsed
+    if (cancelFlag) cancelFlag->store(true);
+    Scene* scene = project->getScene(sceneId)->scene;
+    std::shared_ptr<MeshSystem> meshSys = scene->getSystem<MeshSystem>();
+    bool loaded = false;
+    while (!(loaded = tryLoad()) && meshSys->isAsyncModelLoadPending(entity, modelPath)){
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    setAsyncPending(false);
+    if (loaded){
+        finalizeLoad();
+    }
+}
+
+bool editor::ModelLoadCmd::isLoadPending(uint32_t sceneId, Entity entity){
+    return getPendingLoads().count({sceneId, entity}) > 0;
+}
+
+void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
+    auto& pendingLoads = getPendingLoads();
+    auto it = pendingLoads.find({sceneId, entity});
+    if (it != pendingLoads.end()){
+        it->second->finishPendingLoad();
+    }
 }
 
 bool editor::ModelLoadCmd::execute(){
@@ -402,9 +454,11 @@ bool editor::ModelLoadCmd::execute(){
 
     // Save old component state
     const bool firstExecution = !oldModel.IsMap();
-    oldTransform = Stream::encodeTransform(transform);
-    oldMesh = Stream::encodeMeshComponent(mesh, false, false);
-    oldModel = Stream::encodeModelComponent(model);
+    // reset, not assignment: assigning to a yaml-cpp node that holds one keeps the old
+    // memory alive with it, which would grow on every redo
+    oldTransform.reset(Stream::encodeTransform(transform));
+    oldMesh.reset(Stream::encodeMeshComponent(mesh, false, false));
+    oldModel.reset(Stream::encodeModelComponent(model));
 
     // This is an import option for the current model asset, not an entity-wide preference.
     // A regular file assignment therefore returns to the default hierarchy behavior; the
@@ -479,7 +533,7 @@ bool editor::ModelLoadCmd::execute(){
 
     if (Engine::isAsyncLoading()){
         // Load is in progress on a worker thread — accept the command and finalize when ready
-        asyncPending = true;
+        setAsyncPending(true);
         cancelFlag = std::make_shared<std::atomic<bool>>(false);
         schedulePoll();
         return true;
@@ -509,7 +563,7 @@ void editor::ModelLoadCmd::undo(){
         // Async load still in flight — cancel it; no sub-entities have been created yet
         if (cancelFlag) cancelFlag->store(true);
         scene->getSystem<MeshSystem>()->cancelAsyncModelLoad(entity, modelPath);
-        asyncPending = false;
+        setAsyncPending(false);
     } else {
         // The attached entities sit on nodes this load created, which are removed below
         parkEntities(sceneProject);

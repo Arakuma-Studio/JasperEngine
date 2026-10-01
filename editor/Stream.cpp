@@ -5803,67 +5803,55 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     YAML::Node node;
     node["enabled"] = model.enabled;
 
-    if (!model.filename.empty()) {
-        node["filename"] = model.filename;
-    }
-
-    if (model.mergeStaticMeshes) {
-        node["mergeStaticMeshes"] = true;
-    }
+    // Every field is written, the empty ones too: decoding onto an existing Model (a Prefab
+    // override, a pasted value) keeps the fields a node leaves out, so an emptied Model would
+    // come back with the file and nodes it had.
+    node["filename"] = model.filename;
+    node["mergeStaticMeshes"] = model.mergeStaticMeshes;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
-    if (!model.animations.empty()) {
-        YAML::Node animsNode;
-        for (const auto& anim : model.animations) {
-            animsNode.push_back(static_cast<uint32_t>(anim));
-        }
-        node["animations"] = animsNode;
+    YAML::Node animsNode(YAML::NodeType::Sequence);
+    for (const auto& anim : model.animations) {
+        animsNode.push_back(static_cast<uint32_t>(anim));
     }
+    node["animations"] = animsNode;
 
-    if (!model.bonesIdMapping.empty()) {
-        YAML::Node bonesNode;
-        for (const auto& bone : model.bonesIdMapping) {
-            YAML::Node boneNode;
-            boneNode["id"] = bone.first;
-            boneNode["entity"] = static_cast<uint32_t>(bone.second);
-            bonesNode.push_back(boneNode);
-        }
-        node["bonesIdMapping"] = bonesNode;
+    YAML::Node bonesIdNode(YAML::NodeType::Sequence);
+    for (const auto& bone : model.bonesIdMapping) {
+        YAML::Node boneNode;
+        boneNode["id"] = bone.first;
+        boneNode["entity"] = static_cast<uint32_t>(bone.second);
+        bonesIdNode.push_back(boneNode);
     }
+    node["bonesIdMapping"] = bonesIdNode;
 
-    if (!model.bonesNameMapping.empty()) {
-        YAML::Node bonesNode;
-        for (const auto& bone : model.bonesNameMapping) {
-            YAML::Node boneNode;
-            boneNode["name"] = bone.first;
-            boneNode["entity"] = static_cast<uint32_t>(bone.second);
-            bonesNode.push_back(boneNode);
-        }
-        node["bonesNameMapping"] = bonesNode;
+    YAML::Node bonesNameNode(YAML::NodeType::Sequence);
+    for (const auto& bone : model.bonesNameMapping) {
+        YAML::Node boneNode;
+        boneNode["name"] = bone.first;
+        boneNode["entity"] = static_cast<uint32_t>(bone.second);
+        bonesNameNode.push_back(boneNode);
     }
+    node["bonesNameMapping"] = bonesNameNode;
 
-    if (!model.meshNodesMapping.empty()) {
-        YAML::Node meshNodesNode;
-        for (const auto& meshNode : model.meshNodesMapping) {
-            YAML::Node n;
-            n["node"] = meshNode.first;
-            n["entity"] = static_cast<uint32_t>(meshNode.second);
-            meshNodesNode.push_back(n);
-        }
-        node["meshNodesMapping"] = meshNodesNode;
+    YAML::Node meshNodesNode(YAML::NodeType::Sequence);
+    for (const auto& meshNode : model.meshNodesMapping) {
+        YAML::Node n;
+        n["node"] = meshNode.first;
+        n["entity"] = static_cast<uint32_t>(meshNode.second);
+        meshNodesNode.push_back(n);
     }
+    node["meshNodesMapping"] = meshNodesNode;
 
-    if (!model.nodesIdMapping.empty()) {
-        YAML::Node nodesNode;
-        for (const auto& mappedNode : model.nodesIdMapping) {
-            YAML::Node n;
-            n["node"] = mappedNode.first;
-            n["entity"] = static_cast<uint32_t>(mappedNode.second);
-            nodesNode.push_back(n);
-        }
-        node["nodesIdMapping"] = nodesNode;
+    YAML::Node nodesNode(YAML::NodeType::Sequence);
+    for (const auto& mappedNode : model.nodesIdMapping) {
+        YAML::Node n;
+        n["node"] = mappedNode.first;
+        n["entity"] = static_cast<uint32_t>(mappedNode.second);
+        nodesNode.push_back(n);
     }
+    node["nodesIdMapping"] = nodesNode;
 
     return node;
 }

@@ -628,6 +628,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/AddEntityToPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/MeshChangeCmd.cpp
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
+    ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
