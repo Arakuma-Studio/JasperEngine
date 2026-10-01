@@ -12,6 +12,7 @@
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
+#include "shader/ShaderVariantCompiler.h"
 
 #include "stb_image.h"
 #include "stb_image_resize2.h"
@@ -544,6 +545,8 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!copyCustomShaderSources()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCppScripts()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1621,6 +1624,52 @@ bool editor::Exporter::copyAssets() {
     return true;
 }
 
+bool editor::Exporter::copyCustomShaderSources() {
+    if (!project->isRuntimeShadersEnabled()) {
+        return true;
+    }
+
+    setProgress("Copying shader sources...", 0.38f);
+
+    // A fork's customShader value, and every path its includes resolve against, is
+    // project-relative; the runtime reads them from the asset root. With the assets
+    // directory at the project root they are already there.
+    const fs::path projectRoot = project->getProjectPath();
+    const fs::path assetsDst = getExportProjectRoot() / "assets";
+    std::error_code ec;
+    for (auto& entry : fs::recursive_directory_iterator(projectRoot, fs::directory_options::skip_permission_denied, ec)) {
+        if (!entry.is_regular_file()) continue;
+        fs::path relPath = fs::relative(entry.path(), projectRoot, ec);
+        if (ec || relPath.empty()) continue;
+
+        // Same skips as copyAssets: hidden directories (the project's own data) and builds
+        const std::string firstComponent = relPath.begin()->string();
+        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) continue;
+
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (ext != ".vert" && ext != ".frag" && ext != ".glsl") continue;
+
+        const fs::path destination = assetsDst / relPath;
+        fs::create_directories(destination.parent_path(), ec);
+        if (ec) {
+            setError("Failed to create " + destination.parent_path().string() + ": " + ec.message());
+            return false;
+        }
+        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy shader source " + relPath.generic_string() + ": " + ec.message());
+            return false;
+        }
+    }
+    if (ec) {
+        setError("Failed to list the project's shader sources: " + ec.message());
+        return false;
+    }
+
+    return true;
+}
+
 bool editor::Exporter::copyLua() {
     setProgress("Copying Lua scripts...", 0.3f);
 
@@ -1979,6 +2028,8 @@ bool editor::Exporter::copyEngine() {
     if (!copyDir("libs", true)) return false;
     if (!copyDir("platform", true)) return false;
     if (!copyDir("renders", true)) return false;
+    // the GLSL the build embeds for its runtime shader compiler
+    if (!copyDir("shaderlib", true)) return false;
     if (!copyDir("workspaces", true)) return false;
     if (config.mode == ExportMode::SourceCode) {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
@@ -2014,6 +2065,21 @@ bool editor::Exporter::copyEngine() {
             fs::copy_file(entry.path(), target, ec);
             if (ec) {
                 setError("Failed to copy shaders directory: " + ec.message());
+                return false;
+            }
+        }
+
+        // The Xcode workspace builds the engine from its own file list, with no step to
+        // embed the shader library, so it reads the one written here. CMake builds embed
+        // shaderlib/ themselves and prefer theirs.
+        if (project->isRuntimeShadersEnabled()) {
+            const auto& library = ShaderVariantCompiler::getLibrarySources();
+            const std::map<std::string, std::string> sorted(library.begin(), library.end());
+            FileUtils::writeIfChanged(dst / "shaderlib.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted));
+        } else {
+            fs::copy_file(src / "shaderlib.h", dst / "shaderlib.h", fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                setError("Failed to copy shaders/shaderlib.h: " + ec.message());
                 return false;
             }
         }
@@ -2101,6 +2167,7 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2718,6 +2785,13 @@ bool editor::Exporter::writeAppleProjectSettings() {
             "Rigidbody.cpp", "CollideShapeResult3D.cpp", "Contact3D.cpp", "Joint3D.cpp"
         });
         if (!unlinkBackend("joltphysics")) return false;
+    }
+
+    // Without runtime shader compilation the engine compiles without the compiler
+    // (ShaderVariantCompiler reports it unavailable) and does not link it
+    if (!project->isRuntimeShadersEnabled()) {
+        removeProjectLinesContaining("JASPERENGINE_RUNTIME_SHADERS,");
+        if (!unlinkBackend("shadercompiler")) return false;
     }
 
     std::string excludedSources;

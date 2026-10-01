@@ -8,6 +8,10 @@ endif()
 
 option(JASPERENGINE_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
+# Compiles at runtime the shader variants a build does not ship precompiled (scripted
+# meshes and materials, properties changed while playing) instead of leaving out what
+# draws with them. Adds the shader compiler and the engine shader library to the build.
+option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -731,6 +735,30 @@ add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
 
+if(JASPERENGINE_RUNTIME_SHADERS)
+    # A game only needs the back end of its own graphics API (GLSL is always in);
+    # the editor exports for every API.
+    if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        if(GRAPHIC_BACKEND STREQUAL "d3d11")
+            set(SHADERCOMPILER_HLSL ON CACHE BOOL "" FORCE)
+        else()
+            set(SHADERCOMPILER_HLSL OFF CACHE BOOL "" FORCE)
+        endif()
+        if(GRAPHIC_BACKEND STREQUAL "metal")
+            set(SHADERCOMPILER_MSL ON CACHE BOOL "" FORCE)
+        else()
+            set(SHADERCOMPILER_MSL OFF CACHE BOOL "" FORCE)
+        endif()
+        # a game compiles few variants; the editor compiles every shader of an export
+        set(SHADERCOMPILER_OPTIMIZE_SIZE ON CACHE BOOL "" FORCE)
+    else()
+        set(SHADERCOMPILER_HLSL ON CACHE BOOL "" FORCE)
+        set(SHADERCOMPILER_MSL ON CACHE BOOL "" FORCE)
+        set(SHADERCOMPILER_OPTIMIZE_SIZE OFF CACHE BOOL "" FORCE)
+    endif()
+    add_subdirectory(libs/shadercompiler)
+endif()
+
 # Set again here because standalone builds skip the root CMakeLists
 if(MSVC)
     set(EXTERNAL_WARNING_FLAG /w)
@@ -861,9 +889,12 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/UtilClassesLua.cpp
+    core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
     core/shader/ShaderUniforms.cpp
+    core/shader/ShaderVariantCollection.cpp
+    core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
@@ -944,6 +975,32 @@ target_link_libraries(
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+
+if(JASPERENGINE_RUNTIME_SHADERS)
+    # The engine shader library (shaderlib/), embedded as the sources the runtime
+    # compiler builds variants from. Ahead of shaders/, which holds a stand-in for
+    # builds that cannot generate it (the Xcode workspace).
+    set(JASPERENGINE_SHADERLIB_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib.h)
+    set(JASPERENGINE_EMBED_SHADERLIB ${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler/embed_shaderlib.cmake)
+    file(GLOB_RECURSE JASPERENGINE_SHADERLIB_FILES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.glsl
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.frag
+    )
+    add_custom_command(
+        OUTPUT ${JASPERENGINE_SHADERLIB_HEADER}
+        COMMAND ${CMAKE_COMMAND}
+                -DSHADERLIB_DIR=${CMAKE_CURRENT_SOURCE_DIR}/shaderlib
+                -DOUTPUT=${JASPERENGINE_SHADERLIB_HEADER}
+                -P ${JASPERENGINE_EMBED_SHADERLIB}
+        DEPENDS ${JASPERENGINE_EMBED_SHADERLIB} ${JASPERENGINE_SHADERLIB_FILES}
+        COMMENT "Embedding the engine shader library"
+    )
+    target_sources(jasperengine PRIVATE ${JASPERENGINE_SHADERLIB_HEADER})
+    target_include_directories(jasperengine BEFORE PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    target_compile_definitions(jasperengine PRIVATE JASPERENGINE_RUNTIME_SHADERS)
+    target_link_libraries(jasperengine PRIVATE shadercompiler)
+endif()
 
 # Checked after the marker above, so the value the Exporter injects is validated too
 if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)

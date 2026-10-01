@@ -11,8 +11,8 @@
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 
-#include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 
@@ -23,7 +23,6 @@
 #include <functional>
 #include <memory>
 #include <sstream>
-#include <unordered_set>
 
 //#include <thread>
 //#include <chrono>
@@ -33,9 +32,9 @@ using namespace jasperengine;
 namespace {
 
 struct CustomSourceSnapshot {
-    bool valid = false;
-    std::string error;
-    std::unordered_map<std::string, std::string> projectBuffers;
+    // entry points, reached project files and the resolved graph (ShaderVariantCompiler)
+    CustomShaderSources sources;
+    // SHA1 of sources.signature, persisted next to the cached build
     std::string signature;
 };
 
@@ -52,13 +51,6 @@ bool readTextFile(const std::filesystem::path& path, std::string& content) {
     return true;
 }
 
-// Length prefixes keep the concatenation unambiguous, so two different graphs
-// cannot hash to the same signature.
-void appendSignaturePart(std::string& input, const std::string& label, const std::string& content) {
-    input += std::to_string(label.size()) + ':' + label;
-    input += ':' + std::to_string(content.size()) + ':' + content + '\n';
-}
-
 std::string customSourceCacheKey(editor::Project* project, const std::string& customShader) {
     return project->getProjectPath().lexically_normal().generic_string() + '\n' + customShader;
 }
@@ -67,7 +59,7 @@ std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project
                                                                  const std::string& customShader) {
     if (!project || customShader.empty()) {
         auto invalid = std::make_shared<CustomSourceSnapshot>();
-        invalid->error = "Custom shader project or path is unavailable.";
+        invalid->sources.error = "Custom shader project or path is unavailable.";
         return invalid;
     }
 
@@ -76,77 +68,20 @@ std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project
     if (auto it = customSourceCache.find(cacheKey); it != customSourceCache.end())
         return it->second;
 
+    const std::filesystem::path projectRoot = project->getProjectPath();
     auto snapshot = std::make_shared<CustomSourceSnapshot>();
-    std::filesystem::path projectRoot = project->getProjectPath();
-    std::filesystem::path includeRootRel = editor::Util::getCustomShaderIncludeRoot(customShader);
-    editor::Util::CustomShaderPaths paths = editor::Util::resolveCustomShaderPaths(customShader);
-    std::string signatureInput;
-
-    auto loadEntryPoint = [&](const std::string& rel, const char* stage) -> bool {
-        std::string content;
-        if (!editor::Util::isSafeRelativePath(rel)) {
-            snapshot->error = std::string("Unsafe custom ") + stage + " shader path: " + rel;
-            return false;
-        }
-        if (!readTextFile(projectRoot / rel, content)) {
-            snapshot->error = std::string("Could not open custom ") + stage + " shader: " + rel;
-            return false;
-        }
-
-        snapshot->projectBuffers[rel] = content;
-        appendSignaturePart(signatureInput, std::string("entry:") + rel, content);
-        return true;
-    };
+    snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader,
+        [&projectRoot](const std::string& relativePath, std::string& content) {
+            std::error_code ec;
+            const std::filesystem::path path = projectRoot / relativePath;
+            return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
+        });
 
     // Failures are not cached: the file may be created or restored at any moment.
-    if (!loadEntryPoint(paths.vert, "vertex") || !loadEntryPoint(paths.frag, "fragment"))
+    if (!snapshot->sources.valid)
         return snapshot;
 
-    auto readCandidate = [](const std::filesystem::path& path, std::string& content) {
-        std::error_code ec;
-        return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
-    };
-
-    // An empty include root means the entry point sits at the project root, where the
-    // first two candidates would be the same file.
-    bool hasLocalRoot = !includeRootRel.empty() && includeRootRel != ".";
-
-    std::unordered_set<std::string> visited;
-    std::function<void(const std::string&)> visitSource = [&](const std::string& source) {
-        for (const std::string& key : editor::Util::getShaderIncludeKeys(source)) {
-            if (!visited.insert(key).second)
-                continue;
-
-            if (!editor::Util::isSafeRelativePath(key)) {
-                appendSignaturePart(signatureInput, "unsafe:" + key, "");
-                continue;
-            }
-
-            std::string content;
-            std::string origin;
-            if (hasLocalRoot && readCandidate(projectRoot / includeRootRel / key, content)) {
-                origin = "local:" + key;
-                snapshot->projectBuffers[key] = content;
-            } else if (readCandidate(projectRoot / key, content)) {
-                origin = "project:" + key;
-                snapshot->projectBuffers[key] = content;
-            } else if (auto engineIt = editor::shaderMap.find(key); engineIt != editor::shaderMap.end()) {
-                origin = "engine:" + key;
-                content = engineIt->second;
-            } else {
-                appendSignaturePart(signatureInput, "missing:" + key, "");
-                continue;
-            }
-
-            appendSignaturePart(signatureInput, origin, content);
-            visitSource(content);
-        }
-    };
-
-    visitSource(snapshot->projectBuffers[paths.vert]);
-    visitSource(snapshot->projectBuffers[paths.frag]);
-    snapshot->signature = editor::SHA1::hash(signatureInput);
-    snapshot->valid = true;
+    snapshot->signature = editor::SHA1::hash(snapshot->sources.signature);
     customSourceCache[cacheKey] = snapshot;
     return snapshot;
 }
@@ -168,15 +103,6 @@ void clearCustomSourceCache() {
     customSourceCache.clear();
 }
 
-bool hasAnnotation(const shadercompiler::args_t& args, const char* tag,
-                   const std::string& name, const char* value) {
-    const std::string annotation = std::string("@") + tag + " " + name + " " + value;
-    for (const auto& file : args.fileBuffers)
-        if (file.second.find(annotation) != std::string::npos)
-            return true;
-    return false;
-}
-
 } // namespace
 
 
@@ -189,323 +115,6 @@ editor::ShaderBuilder::ShaderBuilder(){
 }
 
 editor::ShaderBuilder::~ShaderBuilder(){
-}
-
-// Mapping functions implementation with camelCase
-ShaderVertexType editor::ShaderBuilder::mapVertexType(shadercompiler::attribute_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case attribute_type_t::FLOAT:  return ShaderVertexType::FLOAT;
-        case attribute_type_t::FLOAT2: return ShaderVertexType::FLOAT2;
-        case attribute_type_t::FLOAT3: return ShaderVertexType::FLOAT3;
-        case attribute_type_t::FLOAT4: return ShaderVertexType::FLOAT4;
-        case attribute_type_t::INT:    return ShaderVertexType::INT;
-        case attribute_type_t::INT2:   return ShaderVertexType::INT2;
-        case attribute_type_t::INT3:   return ShaderVertexType::INT3;
-        case attribute_type_t::INT4:   return ShaderVertexType::INT4;
-        default:                       return ShaderVertexType::FLOAT;
-    }
-}
-
-ShaderUniformType editor::ShaderBuilder::mapUniformType(shadercompiler::uniform_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case uniform_type_t::FLOAT:  return ShaderUniformType::FLOAT;
-        case uniform_type_t::FLOAT2: return ShaderUniformType::FLOAT2;
-        case uniform_type_t::FLOAT3: return ShaderUniformType::FLOAT3;
-        case uniform_type_t::FLOAT4: return ShaderUniformType::FLOAT4;
-        case uniform_type_t::INT:    return ShaderUniformType::INT;
-        case uniform_type_t::INT2:   return ShaderUniformType::INT2;
-        case uniform_type_t::INT3:   return ShaderUniformType::INT3;
-        case uniform_type_t::INT4:   return ShaderUniformType::INT4;
-        case uniform_type_t::MAT3:   return ShaderUniformType::MAT3;
-        case uniform_type_t::MAT4:   return ShaderUniformType::MAT4;
-        default:                     return ShaderUniformType::FLOAT;
-    }
-}
-
-TextureType editor::ShaderBuilder::mapTextureType(shadercompiler::texture_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case texture_type_t::TEXTURE_2D:    return TextureType::TEXTURE_2D;
-        case texture_type_t::TEXTURE_3D:    return TextureType::TEXTURE_3D;
-        case texture_type_t::TEXTURE_CUBE:  return TextureType::TEXTURE_CUBE;
-        case texture_type_t::TEXTURE_ARRAY: return TextureType::TEXTURE_ARRAY;
-        default:                            return TextureType::TEXTURE_2D;
-    }
-}
-
-TextureSamplerType editor::ShaderBuilder::mapSamplerType(shadercompiler::texture_samplertype_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case texture_samplertype_t::FLOAT: return TextureSamplerType::FLOAT;
-        case texture_samplertype_t::SINT:  return TextureSamplerType::SINT;
-        case texture_samplertype_t::UINT:  return TextureSamplerType::UINT;
-        case texture_samplertype_t::DEPTH: return TextureSamplerType::DEPTH;
-        default:                           return TextureSamplerType::FLOAT;
-    }
-}
-
-SamplerType editor::ShaderBuilder::mapSamplerFilterType(shadercompiler::sampler_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case sampler_type_t::FILTERING:   return SamplerType::FILTERING;
-        case sampler_type_t::COMPARISON:  return SamplerType::COMPARISON;
-        default:                          return SamplerType::FILTERING;
-    }
-}
-
-ShaderStorageBufferType editor::ShaderBuilder::mapStorageType(shadercompiler::storage_buffer_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case storage_buffer_type_t::STRUCT: return ShaderStorageBufferType::STRUCT;
-        default:                            return ShaderStorageBufferType::STRUCT;
-    }
-}
-
-ShaderStageType editor::ShaderBuilder::mapStageType(shadercompiler::stage_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case STAGE_VERTEX:   return ShaderStageType::VERTEX;
-        case STAGE_FRAGMENT: return ShaderStageType::FRAGMENT;
-        default:             return ShaderStageType::VERTEX;
-    }
-}
-
-ShaderLang editor::ShaderBuilder::mapLang(shadercompiler::lang_type_t lang) {
-    using namespace shadercompiler;
-    switch(lang) {
-        case LANG_GLSL:  return ShaderLang::GLSL;
-        case LANG_HLSL:  return ShaderLang::HLSL;
-        case LANG_MSL:   return ShaderLang::MSL;
-        case LANG_SPIRV: return ShaderLang::SPIRV;
-        default:         return ShaderLang::GLSL;
-    }
-}
-
-// Target selection must stay in step with ShaderPool::getShaderLangStr(backend), which
-// names the file the result is stored under.
-void editor::ShaderBuilder::applyShaderBackend(shadercompiler::args_t& args, ShaderBackend backend) {
-    switch (backend) {
-        case ShaderBackend::MetalMacOS:
-        case ShaderBackend::MetalIOS:
-            args.lang = shadercompiler::LANG_MSL;
-            args.version = 20100; // SPIRV-Cross MSL 2.1, as MMmmpp
-            args.platform = (backend == ShaderBackend::MetalIOS)
-                ? shadercompiler::SHADER_IOS : shadercompiler::SHADER_MACOS;
-            break;
-        case ShaderBackend::D3D11:
-            args.lang = shadercompiler::LANG_HLSL;
-            args.version = 50;
-            break;
-        case ShaderBackend::Vulkan:
-            args.lang = shadercompiler::LANG_SPIRV;
-            args.version = 10;
-            break;
-        case ShaderBackend::GLES3:
-            args.lang = shadercompiler::LANG_GLSL;
-            args.version = 300;
-            args.es = true;
-            break;
-        default:
-            args.lang = shadercompiler::LANG_GLSL;
-            args.version = 410;
-            break;
-    }
-}
-
-void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
-    applyShaderBackend(args, ShaderPool::getShaderBackend());
-}
-
-// Implementation of convertToShaderData
-ShaderData editor::ShaderBuilder::convertToShaderData(
-    const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,
-    const std::vector<shadercompiler::input_t>& inputs,
-    const shadercompiler::args_t& args) {
-
-    ShaderData shaderData;
-
-    shaderData.lang = mapLang(args.lang);
-    shaderData.version = args.version;
-    shaderData.es = args.es;
-
-    unsigned int texCount = 0, samplerCount = 0, ubCount = 0, sbCount = 0, pairCount = 0;
-
-    for (const auto& cross : spirvcrossvec) {
-        ShaderStage stage;
-        stage.type = mapStageType(cross.stage_type);
-        stage.name = args.output_basename;  // Using output basename for stage name
-        stage.source = cross.source;
-
-        // SPIRV (Vulkan) outputs bytecode instead of source
-        if (!cross.bytecode.empty()) {
-            stage.bytecode.size = static_cast<uint32_t>(cross.bytecode.size() * sizeof(uint32_t));
-            stage.bytecode.data = new unsigned char[stage.bytecode.size];
-            memcpy(stage.bytecode.data, cross.bytecode.data(), stage.bytecode.size);
-        }
-
-        // Attributes
-        for (const auto& attr : cross.inputs) {
-            ShaderAttr sa;
-            sa.name = attr.name;
-            sa.semanticName = attr.semantic_name;
-            sa.semanticIndex = attr.semantic_index;
-            sa.location = attr.location;
-            sa.type = mapVertexType(attr.type);
-            stage.attributes.push_back(sa);
-        }
-
-        // Uniform Blocks
-        for (const auto& ub : cross.uniform_blocks) {
-            ShaderUniformBlock sub;
-            sub.name = ub.name;
-            sub.instName = ub.inst_name;
-            sub.set = ub.set;
-            sub.binding = ub.binding;
-            sub.slot = ubCount++;
-            sub.sizeBytes = ub.size_bytes;
-            sub.flattened = ub.flattened;
-
-            for (const auto& u : ub.uniforms) {
-                ShaderUniform su;
-                su.name = ub.inst_name + "." + u.name;  // Qualified name
-                su.type = mapUniformType(u.type);
-                su.arrayCount = u.array_count;
-                su.offset = u.offset;
-                sub.uniforms.push_back(su);
-            }
-            stage.uniformblocks.push_back(sub);
-        }
-
-        // Storage Buffers
-        for (const auto& sb : cross.storage_buffers) {
-            ShaderStorageBuffer ssb;
-            ssb.name = sb.name;
-            ssb.instName = sb.inst_name;
-            ssb.set = sb.set;
-            ssb.binding = sb.binding;
-            ssb.slot = sbCount++;
-            ssb.sizeBytes = sb.size_bytes;
-            ssb.readonly = sb.readonly;
-            ssb.type = mapStorageType(sb.type);
-            stage.storagebuffers.push_back(ssb);
-        }
-
-        // Textures
-        for (const auto& tex : cross.textures) {
-            ShaderTexture st;
-            st.name = tex.name;
-            st.set = tex.set;
-            st.binding = tex.binding;
-            st.slot = texCount++;
-            st.type = mapTextureType(tex.type);
-            st.samplerType = hasAnnotation(args, "image_sample_type", tex.name, "unfilterable_float")
-                ? TextureSamplerType::UNFILTERABLE_FLOAT : mapSamplerType(tex.sampler_type);
-            stage.textures.push_back(st);
-        }
-
-        // Samplers
-        for (const auto& s : cross.samplers) {
-            ShaderSampler ss;
-            ss.name = s.name;
-            ss.set = s.set;
-            ss.binding = s.binding;
-            ss.slot = samplerCount++;
-            ss.type = hasAnnotation(args, "sampler_type", s.name, "nonfiltering")
-                ? SamplerType::NONFILTERING : mapSamplerFilterType(s.type);
-            stage.samplers.push_back(ss);
-        }
-
-        // Texture-Sampler Pairs
-        for (const auto& tsp : cross.texture_sampler_pairs) {
-            ShaderTextureSamplerPair pair;
-            pair.name = tsp.name;
-            pair.textureName = tsp.texture_name;
-            pair.samplerName = tsp.sampler_name;
-            pair.slot = pairCount++;
-            stage.textureSamplerPairs.push_back(pair);
-        }
-
-        shaderData.stages.push_back(stage);
-    }
-
-    return shaderData;
-}
-
-void editor::ShaderBuilder::addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"MATERIAL_UNLIT", "1"});            // 'Ult'
-    if (prop & (1 << 1))  defs.push_back({"HAS_UV_SET1", "1"});               // 'Uv1'
-    if (prop & (1 << 2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
-    if (prop & (1 << 3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
-    if (prop & (1 << 4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
-    // bit 5 reserved (was USE_SHADOWS_PCF; the PCF filter is uniform-driven now)
-    if (prop & (1 << 6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
-    if (prop & (1 << 7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
-    if (prop & (1 << 8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
-    if (prop & (1 << 9))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});     // 'Vc3'
-    if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});     // 'Vc4'
-    if (prop & (1 << 11)) defs.push_back({"HAS_TEXTURERECT", "1"});           // 'Txr'
-    if (prop & (1 << 12)) defs.push_back({"HAS_FOG", "1"});                   // 'Fog'
-    if (prop & (1 << 13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
-    if (prop & (1 << 14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
-    if (prop & (1 << 15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
-    if (prop & (1 << 16)) defs.push_back({"HAS_MORPHTANGENT", "1"});          // 'Mtg'
-    if (prop & (1 << 17)) defs.push_back({"HAS_TERRAIN", "1"});               // 'Ter'
-    if (prop & (1 << 18)) defs.push_back({"HAS_INSTANCING", "1"});            // 'Ist'
-    if (prop & (1 << 19)) defs.push_back({"USE_IBL", "1"});                   // 'Ibl'
-    if (prop & (1 << 20)) defs.push_back({"USE_MIRROR", "1"});                // 'Mir'
-    if (prop & (1 << 21)) defs.push_back({"USE_SSAO", "1"});                  // 'Sao'
-    if (prop & (1 << 22)) defs.push_back({"USE_LIGHT2D", "1"});               // 'L2d'
-    if (prop & (1 << 23)) defs.push_back({"USE_SHADOWS_2D", "1"});            // 'S2d'
-    if (prop & (1 << 24)) defs.push_back({"ALPHA_MASK", "1"});                 // 'Ams'
-    if (prop & (1 << 25)) defs.push_back({"ALPHA_OPAQUE", "1"});               // 'Aop'
-    if (prop & (1 << 26)) defs.push_back({"USE_INSTANCE_FADE", "1"});          // 'Ifd'
-    if (prop & (1 << 27)) defs.push_back({"HAS_TERRAIN_PBR", "1"});            // 'Tpb'
-}
-
-void editor::ShaderBuilder::addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});       // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
-    if (prop & (1 << 2))  defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
-    if (prop & (1 << 3))  defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
-    if (prop & (1 << 4))  defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
-    if (prop & (1 << 5))  defs.push_back({"HAS_TERRAIN", "1"});       // 'Ter'
-    if (prop & (1 << 6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
-    if (prop & (1 << 7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
-    if (prop & (1 << 8))  defs.push_back({"USE_INSTANCE_FADE", "1"}); // 'Ifd'
-}
-
-void editor::ShaderBuilder::addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_BASECOLOR_TEXTURE", "1"});         // 'Bct'
-    if (prop & (1 << 1))  defs.push_back({"HAS_NORMALS", "1"});                   // 'Nor'
-    if (prop & (1 << 2))  defs.push_back({"HAS_SKINNING", "1"});                  // 'Ski'
-    if (prop & (1 << 3))  defs.push_back({"HAS_MORPHTARGET", "1"});               // 'Mta'
-    if (prop & (1 << 4))  defs.push_back({"HAS_MORPHNORMAL", "1"});               // 'Mnr'
-    if (prop & (1 << 5))  defs.push_back({"HAS_MORPHTANGENT", "1"});              // 'Mtg'
-    if (prop & (1 << 6))  defs.push_back({"HAS_TERRAIN", "1"});                   // 'Ter'
-    if (prop & (1 << 7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
-    if (prop & (1 << 8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
-    if (prop & (1 << 9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
-}
-
-void editor::ShaderBuilder::addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
-    if (prop & (1 << 2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
-}
-
-void editor::ShaderBuilder::addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 2))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
-    if (prop & (1 << 3))  defs.push_back({"HAS_TEXTURERECT", "1"});          // 'Txr'
-}
-
-void editor::ShaderBuilder::addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
 }
 
 ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Project* project) {
@@ -632,248 +241,75 @@ void editor::ShaderBuilder::requestShutdown() {
     pendingBuilds.clear();
 }
 
-bool editor::ShaderBuilder::setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32_t properties) {
-    if (shaderType == ShaderType::MESH){
-        args.vert_file = "mesh.vert";
-        args.frag_file = "mesh.frag";
-        addMeshPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::DEPTH){
-        args.vert_file = "depth.vert";
-        args.frag_file = "depth.frag";
-        addDepthMeshPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::GBUFFER){
-        args.vert_file = "gbuffer.vert";
-        args.frag_file = "gbuffer.frag";
-        addGBufferMeshPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::UI){
-        args.vert_file = "ui.vert";
-        args.frag_file = "ui.frag";
-        addUIPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::POINTS){
-        args.vert_file = "points.vert";
-        args.frag_file = "points.frag";
-        addPointsPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::LINES){
-        args.vert_file = "lines.vert";
-        args.frag_file = "lines.frag";
-        addLinesPropertyDefinitions(args.defines, properties);
-    }else if (shaderType == ShaderType::SKYBOX){
-        args.vert_file = "sky.vert";
-        args.frag_file = "sky.frag";
-    }else if (shaderType == ShaderType::SSAO){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "ssao.frag";
-    }else if (shaderType == ShaderType::SSAO_BLUR){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "ssao_blur.frag";
-    }else if (shaderType == ShaderType::SSR){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "ssr.frag";
-    }else if (shaderType == ShaderType::SSR_BLUR){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "ssr_blur.frag";
-    }else if (shaderType == ShaderType::COMPOSITE){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "composite.frag";
-    }else if (shaderType == ShaderType::SHADOW2D){
-        args.vert_file = "shadow2d.vert";
-        args.frag_file = "shadow2d.frag";
-    }else if (shaderType == ShaderType::BLIT){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "blit.frag";
-    }else if (shaderType == ShaderType::POSTPROCESS){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "postprocess.frag";
-    }else{
-        return false;
-    }
 
-    if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
-        args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
-    }
-    if (shaderType == ShaderType::MESH){
-        args.defines.push_back({"MAX_LIGHTS", "6"});
-        args.defines.push_back({"MAX_LIGHTS_2D", std::to_string(MAX_LIGHTS_2D)});
-        args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
-        args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
-        args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
-    }
-    if (shaderType == ShaderType::GBUFFER){
-        // suppresses the terrain texture-coordinate varyings in the shared includes
-        // (the G-buffer fragment does not consume them); mirrors depth.vert
-        args.defines.push_back({"DEPTH_SHADER", "1"});
-    }
-    if (shaderType == ShaderType::SSAO){
-        args.defines.push_back({"SSAO_KERNEL_SIZE", "32"});
-    }
-    if (shaderType == ShaderType::SSR){
-        args.defines.push_back({"SSR_MAX_STEPS", "128"});
-    }
-    if (shaderType == ShaderType::SSR_BLUR){
-        args.defines.push_back({"SSR_BLUR_TAPS", "6"});
-    }
-
-    return true;
-}
-
-void editor::ShaderBuilder::setupBuildArgs(shadercompiler::args_t& args, ShaderKey shaderKey, Project* project) {
-    ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
-    uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
-    uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
-
-    // Built-in entry-point files + property #defines (the variant system is identical
-    // for forked shaders).
-    if (!setupShaderArgs(args, shaderType, properties)) {
-        throw std::runtime_error("Unknown shader type");
-    }
-
-    if (args.lang == shadercompiler::LANG_GLSL &&
-            (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH ||
-             shaderType == ShaderType::GBUFFER))
-        args.defines.push_back({"SKINNING_TEXTURE", "1"});
-
-    if (customId == 0)
-        return;
-
-    // Overlay the project's forked entry points and every include they reach onto the
-    // embedded engine file buffers.
-    if (!project) {
-        throw std::runtime_error("Custom shader requested without a project");
-    }
-
-    std::string customShader = ShaderPool::getCustomShaderName(customId);
-    if (customShader.empty()) {
-        throw std::runtime_error("Unknown custom shader id");
-    }
-
-    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader);
-    if (!sources->valid)
-        throw std::runtime_error(sources->error.empty() ? "Could not resolve custom shader sources" : sources->error);
-
-    // The .vert/.frag entry points may share a base name or live in separate files.
-    // Only project files that are actually reachable through #include are overlaid.
-    // Resolution order is the entry point's own directory, the project root, then the
-    // embedded engine shader library already present in args.fileBuffers.
-    const editor::Util::CustomShaderPaths customPaths = editor::Util::resolveCustomShaderPaths(customShader);
-    const std::string vertKey = customPaths.vert;
-    const std::string fragKey = customPaths.frag;
-    for (const auto& [key, content] : sources->projectBuffers)
-        args.fileBuffers[key] = content;
-    args.vert_file = vertKey;
-    args.frag_file = fragKey;
-}
-
-std::string editor::ShaderBuilder::getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform) {
-    if (lang == shadercompiler::LANG_GLSL) {
-        return es ? "_glsl" + std::to_string(version) + "es" : "_glsl" + std::to_string(version);
-    } else if (lang == shadercompiler::LANG_HLSL) {
-        return "_hlsl" + std::to_string(version);
-    } else if (lang == shadercompiler::LANG_MSL) {
-        return (platform == shadercompiler::SHADER_IOS) ? "_msl" + std::to_string(version) + "ios" : "_msl" + std::to_string(version) + "macos";
-    } else if (lang == shadercompiler::LANG_SPIRV) {
-        return "_spirv" + std::to_string(version);
-    }
-    return "";
-}
-
-ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Project* project, bool trackProgress){
-    if (shutdownRequested) {
+ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* project, ShaderBackend backend, bool trackProgress, bool cancellable){
+    if (cancellable && shutdownRequested) {
         throw std::runtime_error("Shutdown requested");
     }
     if (trackProgress) {
         ResourceProgress::updateProgress(shaderKey, 0.1f); // Starting
     }
 
-    ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
-    uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
-    uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
+    // A fork's entry points and every project include they reach are overlaid on the
+    // engine library (the variant system is identical for forked shaders)
+    std::shared_ptr<const CustomSourceSnapshot> custom;
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
+    if (customId != 0) {
+        std::string setupError;
+        if (!project) {
+            setupError = "Custom shader requested without a project";
+        } else {
+            const std::string customShader = ShaderPool::getCustomShaderName(customId);
+            if (customShader.empty()) {
+                setupError = "Unknown custom shader id";
+            } else {
+                custom = resolveCustomSources(project, customShader);
+                if (!custom->sources.valid) {
+                    setupError = custom->sources.error.empty() ? "Could not resolve custom shader sources" : custom->sources.error;
+                }
+            }
+        }
+        if (!setupError.empty()) {
+            if (trackProgress) {
+                ResourceProgress::failBuild(shaderKey);
+            }
+            throw std::runtime_error(setupError);
+        }
+    }
 
-    std::vector<shadercompiler::input_t> inputs;
-    shadercompiler::args_t args = shadercompiler::initialize_args();
-    args.isValid = true;
-    args.useBuffers = true;
-    args.fileBuffers = editor::shaderMap;
-    setBackendLang(args);
+    ShaderVariantCompiler::ProgressFn progress;
+    std::function<bool()> cancelled;
+    if (trackProgress) {
+        progress = [shaderKey](float value) {
+            // the last step is reported below, once the build is in the cache
+            if (value < 1.0f)
+                ResourceProgress::updateProgress(shaderKey, value);
+        };
+    }
+    if (cancellable) {
+        cancelled = []() { return shutdownRequested.load(); };
+    }
 
-    // Capture the GLSL compiler log so failures surface in the editor output window
-    // (otherwise the details only reach stderr/app output).
+    ShaderData shaderData;
+    std::string error;
     std::string compileLog;
-    args.error_output = &compileLog;
-
-    try {
-        setupBuildArgs(args, shaderKey, project);
-    } catch (const std::exception&) {
+    if (!ShaderVariantCompiler::compile(shaderKey, backend, custom ? &custom->sources : nullptr,
+                                        shaderData, &error, &compileLog, progress, cancelled)) {
+        if (cancellable && shutdownRequested) {
+            throw std::runtime_error("Shutdown requested");
+        }
         if (trackProgress) {
             ResourceProgress::failBuild(shaderKey);
         }
-        throw;
+        // the GLSL compiler log goes to the output window, where the details otherwise
+        // only reach stderr/app output
+        const char* failure = (error == "Error cross-compiling") ? "cross-compile" : "compile";
+        Out::error("Shader %s (%s) failed to %s:\n%s", getShaderDisplayName(shaderKey).c_str(),
+                   ShaderPool::getShaderLangStr(backend).c_str(), failure,
+                   compileLog.empty() ? error.c_str() : compileLog.c_str());
+        throw std::runtime_error(error);
     }
 
-    if (shutdownRequested) {
-        throw std::runtime_error("Shutdown requested");
-    }
-    if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 0.3f); // Setup complete
-    }
-
-    if (!shadercompiler::load_input(inputs, args)) {
-        //printf("Error loading shader input\n");
-        if (trackProgress) {
-            ResourceProgress::failBuild(shaderKey);
-        }
-        throw std::runtime_error("Error loading shader input");
-    }
-
-    if (shutdownRequested) {
-        throw std::runtime_error("Shutdown requested");
-    }
-    if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 0.5f); // Input loaded
-    }
-
-    std::vector<shadercompiler::spirv_t> spirvvec;
-    spirvvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args)) {
-        if (trackProgress) {
-            ResourceProgress::failBuild(shaderKey);
-        }
-        Out::error("Shader %s failed to compile:\n%s", getShaderDisplayName(shaderKey).c_str(),
-                   compileLog.empty() ? "(no compiler output)" : compileLog.c_str());
-        throw std::runtime_error("Error compiling to SPIRV");
-    }
-
-    if (shutdownRequested) {
-        throw std::runtime_error("Shutdown requested");
-    }
-    if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 0.8f); // SPIRV compiled
-    }
-
-    std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
-    spirvcrossvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args)) {
-        if (trackProgress) {
-            ResourceProgress::failBuild(shaderKey);
-        }
-        Out::error("Shader %s failed to cross-compile:\n%s", getShaderDisplayName(shaderKey).c_str(),
-                   compileLog.empty() ? "(no compiler output)" : compileLog.c_str());
-        throw std::runtime_error("Error cross-compiling");
-    }
-
-    if (shutdownRequested) {
-        throw std::runtime_error("Shutdown requested");
-    }
-    if (trackProgress) {
-        ResourceProgress::updateProgress(shaderKey, 0.9f); // Cross-compilation done
-    }
-
-    // Use a deterministic basename for stage naming and disk cache
-    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) + getLangSuffix(args.lang, args.version, args.es, args.platform);
-    ShaderData shaderData = convertToShaderData(spirvcrossvec, inputs, args);
-
-    if (shutdownRequested) {
-        throw std::runtime_error("Shutdown requested");
-    }
     if (trackProgress) {
         ResourceProgress::updateProgress(shaderKey, 1.0f); // Complete
         ResourceProgress::completeBuild(shaderKey);
@@ -882,9 +318,13 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     Out::build(
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
-        ShaderPool::getShaderLangStr(ShaderPool::getShaderBackend()).c_str());
+        ShaderPool::getShaderLangStr(backend).c_str());
 
     return shaderData;
+}
+
+ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Project* project, bool trackProgress){
+    return compileShader(shaderKey, project, ShaderPool::getShaderBackend(), trackProgress, true);
 }
 
 std::filesystem::path editor::ShaderBuilder::getShaderCachePath(ShaderKey shaderKey, Project* project) {
@@ -932,9 +372,9 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
 
     const std::string customShader = ShaderPool::getCustomShaderName(customId);
     const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader);
-    if (!sources->valid) {
+    if (!sources->sources.valid) {
         if (err)
-            *err = sources->error;
+            *err = sources->sources.error;
         return false;
     }
 
@@ -963,7 +403,7 @@ bool editor::ShaderBuilder::isCustomCacheStale(ShaderKey shaderKey, Project* pro
         return true;
 
     const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader);
-    if (!sources->valid)
+    if (!sources->sources.valid)
         return true;
 
     std::string cachedSignature;
@@ -1011,43 +451,5 @@ ShaderData& editor::ShaderBuilder::getShaderData(ShaderKey shaderKey) {
 }
 
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {
-    ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
-    uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
-    uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
-
-    std::vector<shadercompiler::input_t> inputs;
-    shadercompiler::args_t args = shadercompiler::initialize_args();
-    args.isValid = true;
-    args.useBuffers = true;
-    args.fileBuffers = editor::shaderMap;
-    applyShaderBackend(args, backend);
-
-    setupBuildArgs(args, shaderKey, project);
-
-    if (!shadercompiler::load_input(inputs, args)) {
-        throw std::runtime_error("Error loading shader input");
-    }
-
-    std::vector<shadercompiler::spirv_t> spirvvec;
-    spirvvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args)) {
-        throw std::runtime_error("Error compiling to SPIRV");
-    }
-
-    std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
-    spirvcrossvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args)) {
-        throw std::runtime_error("Error cross-compiling");
-    }
-
-    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
-                           getLangSuffix(args.lang, args.version, args.es, args.platform);
-    ShaderData shaderData = convertToShaderData(spirvcrossvec, inputs, args);
-
-    Out::build(
-        "Shader %s (%s) generated successfully",
-        getShaderDisplayName(shaderKey).c_str(),
-        ShaderPool::getShaderLangStr(backend).c_str());
-
-    return shaderData;
+    return compileShader(shaderKey, project, backend, false, false);
 }

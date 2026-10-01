@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include "Backend.h"
 #include "imgui.h"
+#include "shader/ShaderVariantCompiler.h"
 
 namespace jasperengine::editor{
     class Util{
@@ -133,19 +134,10 @@ namespace jasperengine::editor{
         };
 
         // Resolves a customShader value into its concrete .vert/.frag project-relative paths.
+        // The engine resolves them the same way when it compiles a fork at runtime.
         inline static CustomShaderPaths resolveCustomShaderPaths(const std::string& customShader) {
             CustomShaderPaths paths;
-            if (customShader.empty())
-                return paths;
-
-            size_t sep = customShader.find(customShaderSeparator);
-            if (sep != std::string::npos) {
-                paths.vert = customShader.substr(0, sep);
-                paths.frag = customShader.substr(sep + 1);
-            } else {
-                paths.vert = customShader + ".vert";
-                paths.frag = customShader + ".frag";
-            }
+            ShaderVariantCompiler::getCustomShaderPaths(customShader, paths.vert, paths.frag);
             return paths;
         }
 
@@ -172,32 +164,7 @@ namespace jasperengine::editor{
 
         // The paths quoted by every '#include "..."' in a GLSL source, in order.
         inline static std::vector<std::string> getShaderIncludeKeys(const std::string& source) {
-            auto skipBlanks = [](std::string_view line, size_t i) {
-                while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) i++;
-                return i;
-            };
-
-            std::vector<std::string> keys;
-            for (size_t lineStart = 0; lineStart <= source.size(); ) {
-                size_t lineEnd = source.find('\n', lineStart);
-                if (lineEnd == std::string::npos)
-                    lineEnd = source.size();
-
-                std::string_view line(source.data() + lineStart, lineEnd - lineStart);
-                lineStart = lineEnd + 1;
-
-                size_t i = skipBlanks(line, 0);
-                if (i >= line.size() || line[i] != '#') continue;
-                i = skipBlanks(line, i + 1);
-                if (i + 7 > line.size() || line.compare(i, 7, "include") != 0) continue;
-                i = skipBlanks(line, i + 7);
-                if (i >= line.size() || line[i] != '"') continue;
-
-                size_t close = line.find('"', ++i);
-                if (close != std::string_view::npos && close > i)
-                    keys.push_back(std::string(line.substr(i, close - i)));
-            }
-            return keys;
+            return ShaderVariantCompiler::getIncludeKeys(source);
         }
 
         // Directory an #include key resolves against before the project root and the

@@ -365,6 +365,7 @@ namespace jasperengine::editor{
         int cxxStandard;  // C++ standard for Play and exported builds
         bool physics2DEnabled;  // Box2D in exported builds; Play always has it
         bool physics3DEnabled;  // Jolt in exported builds; Play always has it
+        bool runtimeShadersEnabled;  // exported builds compile the shader variants they lack
         // Tags and Layers: user tags, and user layer names indexed by layer (MAX_LAYERS
         // entries, empty for built-in and unnamed layers)
         std::vector<std::string> tags;
@@ -635,6 +636,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultVersionControlMetadata = true;
         static constexpr bool defaultPhysics2DEnabled = true;
         static constexpr bool defaultPhysics3DEnabled = true;
+        static constexpr bool defaultRuntimeShadersEnabled = true;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
@@ -703,6 +705,13 @@ namespace jasperengine::editor{
 
         void setPhysics3DEnabled(bool enabled);
         bool isPhysics3DEnabled() const;
+
+        // Project Settings > Build > Runtime Shader Compilation: an exported build carries
+        // the shader compiler and builds the variants it does not ship precompiled
+        // (scripted meshes and materials) instead of leaving out what draws with them.
+        // The editor always compiles.
+        void setRuntimeShadersEnabled(bool enabled);
+        bool isRuntimeShadersEnabled() const;
 
         // Project Settings > Tags and Layers. Also sets the engine's TagManager, which the
         // Inspector and Play read; names are kept as TagManager accepts them (trimmed,

@@ -1,0 +1,22 @@
+name: RuntimeShaders
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  # Precompiled on top of what the scene asks for (nothing it draws: the script builds
+  # everything), so the ground and the shadow pass load from the build while the rest
+  # compiles at runtime
+  shaderAdditions:
+    - type: mesh
+      properties: 1112
+    - type: depth
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene

@@ -25,6 +25,7 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
 #endif
@@ -1091,6 +1092,10 @@ void Engine::systemDraw(){
 
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
+
+    // the main-thread share of runtime shader compilation (one variant a frame when
+    // compiling without a worker thread)
+    RuntimeShaderCompiler::beginFrame();
 
     frameRunning = true;
 

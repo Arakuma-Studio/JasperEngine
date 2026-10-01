@@ -34,6 +34,9 @@
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "pool/ShaderPool.h"
+#include "shader/ShaderVariantCollection.h"
+#include "object/EntityHandle.h"
 
 using namespace jasperengine;
 
@@ -442,6 +445,106 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("raycast", &luaRaycast<Vector2, false, true>)
         .addStaticFunction("raycastAll", &luaRaycast<Vector2, true, true>)
 #endif
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShaderType")
+        .addVariable("POINTS", ShaderType::POINTS)
+        .addVariable("LINES", ShaderType::LINES)
+        .addVariable("MESH", ShaderType::MESH)
+        .addVariable("SKYBOX", ShaderType::SKYBOX)
+        .addVariable("DEPTH", ShaderType::DEPTH)
+        .addVariable("GBUFFER", ShaderType::GBUFFER)
+        .addVariable("UI", ShaderType::UI)
+        .addVariable("SSAO", ShaderType::SSAO)
+        .addVariable("SSAO_BLUR", ShaderType::SSAO_BLUR)
+        .addVariable("SSR", ShaderType::SSR)
+        .addVariable("SSR_BLUR", ShaderType::SSR_BLUR)
+        .addVariable("COMPOSITE", ShaderType::COMPOSITE)
+        .addVariable("SHADOW2D", ShaderType::SHADOW2D)
+        .addVariable("BLIT", ShaderType::BLIT)
+        .addVariable("POSTPROCESS", ShaderType::POSTPROCESS)
+        .endNamespace();
+
+    // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
+    // optional last argument names a forked shader (its project-relative base path)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShaderPool>("ShaderPool")
+        .addStaticFunction("warmUp",
+            luabridge::overload<const std::string&>(+[](const std::string& spec) {
+                ShaderKey key;
+                return ShaderPool::parseShaderSpec(spec, key) && ShaderPool::warmUp(key);
+            }),
+            luabridge::overload<const std::string&, const std::string&>(+[](const std::string& spec, const std::string& customShader) {
+                ShaderKey key;
+                return ShaderPool::parseShaderSpec(spec, key, nullptr, customShader) && ShaderPool::warmUp(key);
+            }),
+            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
+                return ShaderPool::warmUp(type, properties);
+            }),
+            luabridge::overload<ShaderType, uint32_t, const std::string&>(+[](ShaderType type, uint32_t properties, const std::string& customShader) {
+                return ShaderPool::warmUp(type, properties, ShaderPool::registerCustomShader(customShader));
+            }))
+        .addStaticFunction("isShaderReady",
+            luabridge::overload<const std::string&>(+[](const std::string& spec) {
+                ShaderKey key;
+                return ShaderPool::parseShaderSpec(spec, key) && ShaderPool::getShaderState(key) == ResourceLoadState::Finished;
+            }),
+            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
+                return ShaderPool::isShaderReady(type, properties);
+            }))
+        .addStaticFunction("isShaderFailed", +[](const std::string& spec) {
+            ShaderKey key;
+            return !ShaderPool::parseShaderSpec(spec, key) || ShaderPool::getShaderState(key) == ResourceLoadState::Failed;
+        })
+        .addStaticFunction("warmUpAllShaders", &ShaderPool::warmUpAllShaders)
+        .addStaticFunction("getPendingShaderCount", &ShaderPool::getPendingShaderCount)
+        .addStaticFunction("isRuntimeCompilationSupported", &ShaderPool::isRuntimeCompilationSupported)
+        .addStaticProperty("runtimeCompilation", &ShaderPool::isRuntimeCompilationEnabled, &ShaderPool::setRuntimeCompilationEnabled)
+        .addStaticProperty("asyncCompilation", &ShaderPool::isAsyncCompilation, &ShaderPool::setAsyncCompilation)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShaderVariantCollection>("ShaderVariantCollection")
+        .addConstructor<void (*) (void)>()
+        .addFunction("add",
+            luabridge::overload<ShaderVariantCollection*, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec) {
+                return self->add(spec);
+            }),
+            luabridge::overload<ShaderVariantCollection*, const std::string&, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec, const std::string& customShader) {
+                return self->add(spec, customShader);
+            }),
+            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties) {
+                return self->add(type, properties);
+            }),
+            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t, const std::string&>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties, const std::string& customShader) {
+                return self->add(type, properties, customShader);
+            }))
+        .addFunction("addObject", +[](ShaderVariantCollection* self, EntityHandle* object) {
+            return object ? self->addEntityVariants(object->getScene(), object->getEntity()) : (size_t)0;
+        })
+        .addFunction("addEntityVariants", &ShaderVariantCollection::addEntityVariants)
+        .addFunction("remove",
+            luabridge::overload<ShaderVariantCollection*, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec) {
+                return self->remove(spec);
+            }),
+            luabridge::overload<ShaderVariantCollection*, const std::string&, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec, const std::string& customShader) {
+                return self->remove(spec, customShader);
+            }))
+        .addFunction("contains",
+            luabridge::overload<const ShaderVariantCollection*, const std::string&>(+[](const ShaderVariantCollection* self, const std::string& spec) {
+                return self->contains(spec);
+            }),
+            luabridge::overload<const ShaderVariantCollection*, const std::string&, const std::string&>(+[](const ShaderVariantCollection* self, const std::string& spec, const std::string& customShader) {
+                return self->contains(spec, customShader);
+            }))
+        .addFunction("clear", &ShaderVariantCollection::clear)
+        .addProperty("variantCount", &ShaderVariantCollection::getVariantCount)
+        .addFunction("warmUp", &ShaderVariantCollection::warmUp)
+        .addFunction("warmUpProgressively", &ShaderVariantCollection::warmUpProgressively)
+        .addProperty("isWarmedUp", &ShaderVariantCollection::isWarmedUp)
+        .addProperty("warmedUpVariantCount", &ShaderVariantCollection::getWarmedUpVariantCount)
+        .addProperty("failedVariantCount", &ShaderVariantCollection::getFailedVariantCount)
         .endClass();
 
     // The "no entity" sentinel, mirroring the C++ NULL_ENTITY macro. Scene:findEntity

@@ -55,7 +55,7 @@ std::string ShaderHeaderBuilder::buildShaderHeader(const std::string& suffix, st
     std::string content;
     content += "#ifndef SHADER_" + suffix + "_h\n";
     content += "#define SHADER_" + suffix + "_h\n\n";
-    content += "#include <string>\n\n";
+    content += "#include <string>\n#include <vector>\n\n";
 
     constexpr size_t chunkSize = 100;
     for (size_t i = 0; i < shaders.size(); ++i) {
@@ -85,8 +85,49 @@ std::string ShaderHeaderBuilder::buildShaderHeader(const std::string& suffix, st
         content += "\n    }";
     }
     content += "\n    return \"\";\n}\n\n";
+
+    // what the build ships, for ShaderPool::warmUpAllShaders
+    content += "std::vector<std::string> getBase64ShaderNames() {\n    return {";
+    for (size_t i = 0; i < shaders.size(); ++i) {
+        content += (i == 0) ? "\n        \"" : ",\n        \"";
+        content += shaders[i].name + "\"";
+    }
+    content += shaders.empty() ? "};\n}\n\n" : "\n    };\n}\n\n";
     content += "#endif //SHADER_" + suffix + "_h\n";
 
+    return content;
+}
+
+std::string ShaderHeaderBuilder::buildShaderLibHeader(const std::map<std::string, std::string>& sources) {
+    // Byte for byte what embed_shaderlib.cmake writes (std::map orders like list(SORT))
+    std::string content = "// Generated from engine/shaderlib. Do not edit.\n\n";
+    content += "#pragma once\n\n#include <cstddef>\n\n";
+    content += "namespace jasperengine { namespace shaderlib {\n\n";
+    content += "struct File { const char* name; const char* source; };\n\n";
+
+    std::string table;
+    size_t index = 0;
+    for (const auto& [name, source] : sources) {
+        std::string escaped;
+        escaped.reserve(source.size() + source.size() / 8);
+        for (char c : source) {
+            if (c == '\r') continue;
+            if (c == '\\') escaped += "\\\\";
+            else if (c == '"') escaped += "\\\"";
+            else if (c == '\n') escaped += "\\n\"\n    \"";
+            else escaped += c;
+        }
+        content += "static const char source" + std::to_string(index) + "[] =\n    \"" + escaped + "\";\n\n";
+        table += "    { \"" + name + "\", source" + std::to_string(index) + " },\n";
+        index++;
+    }
+
+    if (index == 0) {
+        content += "static const File files[1] = { { nullptr, nullptr } };\n";
+    } else {
+        content += "static const File files[] = {\n" + table + "};\n";
+    }
+    content += "static const size_t fileCount = " + std::to_string(index) + ";\n\n} }\n";
     return content;
 }
 

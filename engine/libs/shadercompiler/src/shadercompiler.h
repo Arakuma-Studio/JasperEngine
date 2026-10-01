@@ -323,6 +323,12 @@ namespace shadercompiler{
 
     args_t initialize_args();
 
+    // glslang builds its built-in symbol tables on the first compile and frees them when
+    // the last process reference goes away, which every compile_to_spirv() call drops.
+    // A host that compiles repeatedly holds a reference with these to keep the tables.
+    void initialize_process();
+    void finalize_process();
+
     bool load_input(std::vector<input_t>& inputs, const args_t& args);
 
     bool compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args);

@@ -26,6 +26,7 @@ std::string JasperEngineWeb::canvas;
 
 int JasperEngineWeb::syncWaitTime;
 bool JasperEngineWeb::enabledIDB;
+bool JasperEngineWeb::loadedIDB;
 
 int JasperEngineWeb::screenWidth;
 int JasperEngineWeb::screenHeight;
@@ -99,6 +100,12 @@ JasperEngineWeb::JasperEngineWeb(){
 
 void JasperEngineWeb::setEnabledIDB(bool enabledIDB){
     JasperEngineWeb::enabledIDB = enabledIDB;
+    // the restore from IndexedDB is over, whether it worked or not
+    JasperEngineWeb::loadedIDB = true;
+}
+
+bool JasperEngineWeb::isUserDataLoaded(){
+    return loadedIDB;
 }
 
 int JasperEngineWeb::getScreenWidth(){
@@ -157,6 +164,7 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     syncWaitTime = 0;
     enabledIDB = false;
+    loadedIDB = false;
     EM_ASM(
 		FS.mkdir('/datafs');
 		FS.mount(IDBFS, {}, '/datafs');

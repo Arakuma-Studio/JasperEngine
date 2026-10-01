@@ -146,6 +146,10 @@ namespace jasperengine::editor {
         bool loadAndSaveAllScenes();
         bool copyGenerated();
         bool copyAssets();
+        // Runtime shader compilation builds a fork's variants from its sources, which it
+        // reads from the build's assets at their project-relative paths: a script can
+        // put any fork of the project on a mesh, so all of them ship
+        bool copyCustomShaderSources();
         bool copyLua();
         bool copyCppScripts();
         bool copyEngine();

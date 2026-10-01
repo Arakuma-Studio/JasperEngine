@@ -141,6 +141,10 @@ std::string System::getUserDataPath(){
     return getAssetPath();
 }
 
+std::string System::getCachePath(){
+    return getUserDataPath();
+}
+
 std::string System::getLuaPath(){
     return getAssetPath();
 }
@@ -154,6 +158,10 @@ FILE* System::platformFopen(const char* fname, const char* mode){
 }
 
 bool System::syncFileSystem(){
+    return true;
+}
+
+bool System::isUserDataLoaded(){
     return true;
 }
 

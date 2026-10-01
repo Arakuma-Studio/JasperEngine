@@ -40,7 +40,9 @@ endif()
 
 set(JASPERENGINE_SHARED ON)
 
-set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
+# The editor builds, exports and plays every shader through the engine's shader
+# compiler (engine/libs/shadercompiler, ShaderVariantCompiler)
+set(JASPERENGINE_RUNTIME_SHADERS ON CACHE BOOL "Compile missing shader variants at runtime" FORCE)
 
 # Each desktop OS is served by its own native backend and nothing else, so this
 # is a detection rather than a choice.
@@ -325,8 +327,6 @@ if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     endif()
 endif()
 
-set(SHADERCOMPILER_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/shadercompiler)
-
 add_definitions("-DJASPERENGINE_EDITOR")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
@@ -346,29 +346,12 @@ add_definitions("-DWITH_MINIAUDIO") # For SoLoud
 set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK") # For NFD
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Enable parse tools" FORCE) # For yaml-cpp
 
-set(SHADERS_DIR "${CMAKE_SOURCE_DIR}/engine/shaderlib")
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
-set(SHADERS_HEADER "${GENERATED_DIR}/shaders.h")
-set(GENERATE_SHADERS_SCRIPT "${CMAKE_SOURCE_DIR}/generate_shaders.cmake")
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/EditorVersion.h.in"
     "${GENERATED_DIR}/EditorVersion.h"
     @ONLY
-)
-
-file(GLOB_RECURSE SHADER_FILES CONFIGURE_DEPENDS "${SHADERS_DIR}/*.glsl" "${SHADERS_DIR}/*.frag" "${SHADERS_DIR}/*.vert")
-
-add_custom_command(
-    OUTPUT ${SHADERS_HEADER}
-    COMMAND ${CMAKE_COMMAND}
-            -DSHADERS_DIR=${SHADERS_DIR}
-            -DSHADER_FILES="${SHADER_FILES}"
-            -DSHADERS_HEADER=${SHADERS_HEADER}
-            -P ${GENERATE_SHADERS_SCRIPT}
-    DEPENDS ${GENERATE_SHADERS_SCRIPT} ${SHADER_FILES}
-    COMMENT "Generating shaders.h"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 # Generate engine API suggestions header from Lua bindings and C++ headers
@@ -438,8 +421,6 @@ elseif(API_BACKEND STREQUAL "mac")
 endif()
 include_directories (${JASPERENGINE_ROOT}/renders)
 
-include_directories (${SHADERCOMPILER_ROOT}/src)
-
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -459,8 +440,6 @@ endif()
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
     target_link_libraries(jasperengine PUBLIC Vulkan::Vulkan)
 endif()
-
-add_subdirectory(${SHADERCOMPILER_ROOT} EXCLUDE_FROM_ALL)
 
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
@@ -502,7 +481,6 @@ set_property(
 
 include_directories (${EDITOR_DIR})
 
-add_custom_target(generate_shaders DEPENDS ${SHADERS_HEADER})
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER})
 
 set(JASPERENGINE_EDITOR_SOURCES
@@ -661,7 +639,7 @@ if(WIN32)
 endif()
 
 function(configure_jasperengine_editor_target target_name)
-    add_dependencies(${target_name} generate_shaders generate_api_suggestions)
+    add_dependencies(${target_name} generate_api_suggestions)
 
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
@@ -682,7 +660,6 @@ function(configure_jasperengine_editor_target target_name)
         ${OPENGL_LIBRARIES}
         Threads::Threads
         jasperengine
-        shadercompiler
         nfd
         yaml-cpp
     )

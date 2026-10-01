@@ -1945,6 +1945,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (project->isPhysics3DEnabled() != Project::defaultPhysics3DEnabled) {
         root["physics3D"] = project->isPhysics3DEnabled();
     }
+    if (project->isRuntimeShadersEnabled() != Project::defaultRuntimeShadersEnabled) {
+        root["runtimeShaders"] = project->isRuntimeShadersEnabled();
+    }
     if (project->shouldPackNativeResources() != Project::defaultPackNativeResources) {
         root["packNativeResources"] = project->shouldPackNativeResources();
     }
@@ -2297,6 +2300,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
     if (node["physics3D"]) {
         project->setPhysics3DEnabled(YamlNumbers::as<bool>(node["physics3D"]));
+    }
+    if (node["runtimeShaders"]) {
+        project->setRuntimeShadersEnabled(YamlNumbers::as<bool>(node["runtimeShaders"]));
     }
 
     // Backward compatibility: the compiler and job count used to live here before

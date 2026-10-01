@@ -112,7 +112,7 @@ jasperengine-editor benchmark --help  # measure scene FPS
 
 - `editor/` — desktop editor, AI assistant, project tools, build orchestration, and export flow
 - `engine/` — ECS runtime, platform layers, rendering, scripting, and project templates
-- `shadercompiler/` — shader compilation and cross-platform translation
+- `engine/libs/shadercompiler/` — shader compilation and cross-platform translation, shared by the editor and the runtime (which compiles the shader variants a build lacks)
 - `libs/` — bundled third-party dependencies
 - `docker/`, `tools/` — build images, build script, rebrand and art scripts
 

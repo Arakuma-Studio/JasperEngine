@@ -125,7 +125,7 @@ static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution"},
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
@@ -860,6 +860,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
     m_physics3DEnabled = project->isPhysics3DEnabled();
+    m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
 
     const ApplicationSettings& application = project->getApplicationSettings();
     snprintf(m_applicationNameBuffer, sizeof(m_applicationNameBuffer), "%s", application.name.c_str());
@@ -1293,6 +1294,14 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
+
+        if (beginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
+            m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
+        }
+        ImGui::Checkbox("##RuntimeShaders", &m_runtimeShadersEnabled);
+        endSettingsRow("Exported builds compile the shader variants they do not ship precompiled, such as those of meshes and materials "
+            "that scripts build or change, in the background and cache them on disk. When off, the build carries only the "
+            "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
     });
 }
 
@@ -1989,6 +1998,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
+    m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
 
     // The project already carries the values applied above
     const std::string inheritedName = m_project->getApplicationName();
