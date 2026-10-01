@@ -73,7 +73,6 @@
 #include "subsystem/AudioSystem.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
-#include <unordered_map>
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -14048,13 +14047,6 @@ void editor::InspectorWindow::show(){
         std::filesystem::path prefabPath;
         std::string names;
         bool isFirstEntity = true;
-        // Building the scene-wide map costs more than a few direct lookups.
-        constexpr size_t PREFAB_BULK_SELECTION_THRESHOLD = 256;
-        const bool useBulkPrefabPaths = entities.size() >= PREFAB_BULK_SELECTION_THRESHOLD;
-        std::unordered_map<Entity, std::filesystem::path> selectedPrefabPaths;
-        if (useBulkPrefabPaths) {
-            selectedPrefabPaths = project->getPrefabPathsForScene(sceneProject->id);
-        }
         for (Entity& entity : entities){
             std::vector<ComponentType> newComponents = Catalog::findComponents(scene, entity);
 
@@ -14062,12 +14054,7 @@ void editor::InspectorWindow::show(){
                 std::sort(newComponents.begin(), newComponents.end());
             }
 
-            std::filesystem::path newPrefabPath;
-            if (!useBulkPrefabPaths) {
-                newPrefabPath = project->findPrefabPathFor(sceneProject->id, entity);
-            } else if (auto it = selectedPrefabPaths.find(entity); it != selectedPrefabPaths.end()) {
-                newPrefabPath = it->second;
-            }
+            std::filesystem::path newPrefabPath = project->findPrefabPathFor(sceneProject->id, entity);
 
             if (isFirstEntity) {
                 components = newComponents;
