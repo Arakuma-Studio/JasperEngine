@@ -4814,8 +4814,9 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         return false;
     }
 
+    // Its prefabs with changes, and the ones read from a file of an older version (upgraded)
     for (const auto& [filepath, prefab] : prefabAssets) {
-        if (prefab.instances.find(sceneProject->id) != prefab.instances.end() && prefab.isModified) {
+        if (prefab.instances.find(sceneProject->id) != prefab.instances.end() && (prefab.isModified || prefab.needsUpgrade)) {
             savePrefabToDisk(filepath);
         }
     }

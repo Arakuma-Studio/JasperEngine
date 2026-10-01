@@ -479,10 +479,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
         if (guid == it->second.guid) {
             it->second.writeTime = current.writeTime;
             it->second.size = current.size;
+            changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else if (guid.empty()) {
             // Written again without its GUID (by another tool): it is still the same asset
             writeGuid(projectPath / relative, it->second.guid);
             stat(relative, it->second);
+            changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else {
             // Another asset now (a checkout replaced it)
             changes.push_back({Change::Type::Removed, it->second.guid, relative, {}});

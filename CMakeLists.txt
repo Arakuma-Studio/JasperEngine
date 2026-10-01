@@ -519,6 +519,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabImport.cpp
     ${EDITOR_DIR}/project/ProjectPrefabMissing.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
@@ -653,6 +654,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/PrefabOverridesCmd.cpp
+    ${EDITOR_DIR}/command/type/PrefabOverrideCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
 

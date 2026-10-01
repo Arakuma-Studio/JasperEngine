@@ -10,9 +10,11 @@
 #include "Out.h"
 #include "Stream.h"
 #include "util/Util.h"
+#include "util/YamlNumbers.h"
 
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <system_error>
 #include <unordered_set>
 
@@ -178,6 +180,25 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
         } else if (change.type == AssetDatabase::Change::Type::Added) {
             added = true;
         }
+    }
+    // Edited outside the editor: the loaded prefab is read again and its open instances
+    // follow (unsaved changes made in the editor win, and are written over it on save)
+    for (const AssetDatabase::Change& change : changes) {
+        if (change.type != AssetDatabase::Change::Type::Modified) {
+            continue;
+        }
+        prefabFileCache.erase(projectPath / change.path);
+        Prefab* prefab = getPrefab(change.path);
+        if (!prefab) {
+            continue;
+        }
+        if (prefab->isModified) {
+            Out::warning("Prefab \"%s\" changed on disk but has unsaved changes in the editor: the editor's are kept",
+                change.path.string().c_str());
+            continue;
+        }
+        Out::info("Prefab \"%s\" changed on disk: its instances are updated", change.path.string().c_str());
+        refreshPrefabInstances(change.path, true);
     }
     if (added) {
         for (const fs::path& prefabPath : std::vector<fs::path>(standalonePrefabs)) {
@@ -395,12 +416,8 @@ void editor::Project::loadStandalonePrefab(const std::filesystem::path& filepath
     }
 
     Prefab prefab;
-    try {
-        prefab.loadRegistry(YAML::LoadFile(fullPath.string()));
-        resolveRegistryPrefabRefs(prefab.registry.get());
+    if (readPrefabFile(filepath, prefab)) {
         prefabAssets.emplace(filepath, std::move(prefab));
-    } catch (const std::exception& e) {
-        Out::error("Failed to load prefab: %s", e.what());
     }
 }
 
@@ -445,6 +462,7 @@ void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
             fout << YAML::Dump(encodedNode);
             fout.close();
             prefab->isModified = false;
+            prefab->needsUpgrade = false;
             markReferencedSceneIdsPersisted(prefab->registry.get());
             // the database keeps the GUID and learns the file's new time and size
             assetDatabase.registerAsset(filepath, encodedNode["guid"].as<std::string>());
@@ -465,16 +483,52 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
         guid = AssetDatabase::legacyGuid(normalizeToProjectRelative(filepath));
     }
 
-    // Prefab file v2 (editor/project/PREFABS.md): the header always, the GameObjects
-    // under members even when there is only one
+    // Prefab file v3 (editor/project/PREFABS.md): the header always, the root GameObject
+    // first under members (then any GameObject without a Transform next to it), the
+    // instances nested in it with their `prefabInstance` block
     YAML::Node prefabNode;
     prefabNode["type"] = "Prefab";
     prefabNode["version"] = Prefab::FILE_VERSION;
     prefabNode["guid"] = guid;
     prefabNode["nextEntity"] = prefab->getNextEntity();
+    prefabNode["root"] = prefab->root;
+    std::vector<Entity> topLevel = getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
+    auto rootIt = std::find(topLevel.begin(), topLevel.end(), prefab->root);
+    if (rootIt != topLevel.end() && rootIt != topLevel.begin()) {
+        topLevel.erase(rootIt);
+        topLevel.insert(topLevel.begin(), prefab->root);
+    }
     YAML::Node membersNode(YAML::NodeType::Sequence);
-    for (Entity entity : getTopLevelEntities(prefab->registry.get(), prefab->registryEntities)) {
+    for (Entity entity : topLevel) {
         membersNode.push_back(Stream::encodeEntity(entity, prefab->registry.get(), this));
+    }
+
+    // What this prefab overrides of the instances nested in it, on their roots
+    std::function<void(YAML::Node)> addNestedBlocks = [&](YAML::Node node) {
+        if (!node.IsMap()) {
+            return;
+        }
+        const YAML::Node readNode = node;
+        if (readNode["entity"]) {
+            const Entity entity = YamlNumbers::as<Entity>(readNode["entity"]);
+            auto data = prefab->nestedInstances.find(entity);
+            if (data != prefab->nestedInstances.end() && prefab->isNestedRoot(entity)) {
+                YAML::Node block = Stream::encodePrefabInstanceBlock(data->second);
+                if (block.size() > 0) {
+                    node["prefabInstance"] = block;
+                }
+            }
+        }
+        if (readNode["children"] && readNode["children"].IsSequence()) {
+            for (YAML::Node child : node["children"]) {
+                addNestedBlocks(child);
+            }
+        }
+    };
+    if (!prefab->nestedInstances.empty()) {
+        for (YAML::Node member : membersNode) {
+            addNestedBlocks(member);
+        }
     }
     prefabNode["members"] = membersNode;
     return prefabNode;

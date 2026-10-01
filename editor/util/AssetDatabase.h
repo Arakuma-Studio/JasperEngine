@@ -22,7 +22,8 @@ namespace jasperengine::editor {
     class AssetDatabase {
     public:
         struct Change {
-            enum class Type { Added, Removed, Moved };
+            // Modified: the file's content changed outside the editor, same GUID
+            enum class Type { Added, Removed, Moved, Modified };
             Type type = Type::Added;
             std::string guid;
             std::filesystem::path path;     // project-relative; for Removed the last one it had

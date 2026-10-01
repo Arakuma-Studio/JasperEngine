@@ -21,60 +21,47 @@ editor::ComponentToPrefabSharedCmd::ComponentToPrefabSharedCmd(Project* project,
 
 bool editor::ComponentToPrefabSharedCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
-
-    for (ComponentToPrefabSharedData& entityData : entities){
-
-        fs::path filepath = project->findPrefabPathFor(sceneId, entityData.entity);
-        if (sceneProject && !filepath.empty()) {
-            Prefab* prefab = project->getPrefab(filepath);
-
-            Signature signature = Catalog::componentTypeToSignature(sceneProject->scene, componentType);
-            entityData.recovery = Stream::encodeComponents(entityData.entity, sceneProject->scene, signature);
-
-            if (!prefab->hasComponentOverride(sceneId, entityData.entity, componentType)){
-                return false;
-            }
-
-            // Clear the override and copy values from the prefab registry
-            prefab->clearComponentOverride(sceneProject->id, entityData.entity, componentType);
-
-            Entity registryEntity = prefab->getRegistryEntity(sceneId, entityData.entity);
-            Catalog::copyComponent(prefab->registry.get(), registryEntity, sceneProject->scene, entityData.entity, componentType);
-            std::unordered_map<Entity, Entity> registryToLocal;
-            if (const Prefab::Instance* instance = prefab->getInstance(sceneId, entityData.entity)) {
-                for (const auto& member : instance->members) {
-                    registryToLocal[member.registryEntity] = member.localEntity;
-                }
-            }
-            Project::remapEntityPropertiesInComponent(sceneProject->scene, entityData.entity, componentType, {}, registryToLocal);
-        }
-
+    if (!sceneProject) {
+        return false;
     }
 
-    sceneProject->isModified = true;
+    bool changed = false;
+    for (ComponentToPrefabSharedData& entityData : entities){
+        entityData.reverted = false;
+        if (!project->isComponentOverridden(sceneId, entityData.entity, componentType)) {
+            continue; // already following the prefab
+        }
+        Signature signature = Catalog::componentTypeToSignature(sceneProject->scene, componentType);
+        entityData.recovery = Stream::encodeComponents(entityData.entity, sceneProject->scene, signature);
+        entityData.properties = project->getOverriddenProperties(sceneId, entityData.entity, componentType);
 
-    return true;
+        // The prefab's values back (with what the prefabs holding the instance override),
+        // the override gone
+        entityData.reverted = project->revertPropertyOverride(sceneId, entityData.entity, componentType, {});
+        changed = changed || entityData.reverted;
+    }
+
+    if (changed) {
+        sceneProject->isModified = true;
+    }
+
+    return changed;
 }
 
 void editor::ComponentToPrefabSharedCmd::undo() {
     SceneProject* sceneProject = project->getScene(sceneId);
 
     for (ComponentToPrefabSharedData& entityData : entities){
-
-        fs::path filepath = project->findPrefabPathFor(sceneId, entityData.entity);
-        if (sceneProject && !filepath.empty()) {
-            Prefab* prefab = project->getPrefab(filepath);
-
-            prefab->setComponentOverride(sceneProject->id, entityData.entity, componentType);
-
-            Entity parent = NULL_ENTITY;
-            if (componentType == ComponentType::Transform){
-                parent = sceneProject->scene->getComponent<Transform>(entityData.entity).parent;
-            }
-
-            Stream::decodeComponents(entityData.entity, parent, sceneProject->scene, entityData.recovery);
+        if (!sceneProject || !entityData.reverted) {
+            continue;
         }
-
+        Entity parent = NULL_ENTITY;
+        if (Transform* transform = sceneProject->scene->findComponent<Transform>(entityData.entity)){
+            parent = transform->parent;
+        }
+        Stream::decodeComponents(entityData.entity, parent, sceneProject->scene, entityData.recovery);
+        project->recordPropertyOverride(sceneId, entityData.entity, componentType,
+            std::vector<std::string>(entityData.properties.begin(), entityData.properties.end()));
     }
 
     sceneProject->isModified = wasModified;

@@ -41,7 +41,22 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
-    // Create root entity with PrefabComponent (Preserve ID for Undo/Redo)
+    // The prefab, read now: the instance's root takes its root GameObject's name
+    Prefab* prefab = project->loadPrefabAsset(filepath);
+    if (!prefab) {
+        Out::error("Failed to read prefab %s", filepath.string().c_str());
+        return false;
+    }
+    std::string rootName = prefab->registry->getEntityName(prefab->root);
+    if (rootName.empty()) {
+        rootName = filepath.stem().string();
+    }
+    if (rootName.empty()) {
+        rootName = "Prefab";
+    }
+
+    // Create root entity with PrefabComponent (Preserve ID for Undo/Redo); the import gives
+    // it the prefab root's components, Transform included
     if (rootEntity == NULL_ENTITY){
         rootEntity = scene->createUserEntity();
     }else{
@@ -56,64 +71,15 @@ bool editor::ImportPrefabCmd::execute(){
     prefabComp.guid = guid;
     scene->addComponent<PrefabComponent>(rootEntity, prefabComp);
 
-    // Check if prefab has top-level entities with transforms to decide if root needs one
-    Prefab* prefab = project->getPrefab(filepath);
-    bool hasTopLevelTransform = false;
-
-    if (!prefab || prefab->registryEntities.empty()) {
-        // Prefab not loaded yet — load from disk to check
-        try {
-            std::filesystem::path fullPrefabPath = project->getProjectPath() / filepath;
-            YAML::Node node = YAML::LoadFile(fullPrefabPath.string());
-            // Temporarily decode to check for transforms
-            Prefab temp;
-            temp.loadRegistry(node);
-            std::vector<Entity> topLevel = Project::getTopLevelEntities(temp.registry.get(), temp.registryEntities);
-            for (Entity e : topLevel) {
-                if (temp.registry->getSignature(e).test(temp.registry->getComponentId<Transform>())) {
-                    hasTopLevelTransform = true;
-                    break;
-                }
-            }
-        } catch (const std::exception& e) {
-            Out::error("Failed to check prefab file: %s", e.what());
-            scene->destroyEntity(rootEntity);
-            rootEntity = NULL_ENTITY;
-            return false;
-        }
-    } else {
-        std::vector<Entity> topLevel = Project::getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
-        for (Entity e : topLevel) {
-            if (prefab->registry->getSignature(e).test(prefab->registry->getComponentId<Transform>())) {
-                hasTopLevelTransform = true;
-                break;
-            }
-        }
-    }
-
-    if (hasTopLevelTransform) {
-        scene->addComponent<Transform>(rootEntity, {});
-    }
-
-    // Set name
-    std::string rootName = filepath.stem().string();
-    if (rootName.empty()) {
-        rootName = "Prefab";
-    }
     scene->setEntityName(rootEntity, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
     sceneProject->entities.push_back(rootEntity);
-
-    // Reparent under drop target if provided
-    if (parent != NULL_ENTITY && hasTopLevelTransform) {
-        if (scene->findComponent<Transform>(parent)) {
-            scene->addEntityChild(parent, rootEntity, true);
-        }
-    }
 
     // Import prefab contents
     importedEntities = project->importPrefab(sceneProject, &sceneProject->entities, filepath, rootEntity, needSaveScene);
 
-    if (importedEntities.empty()){
+    prefab = project->getPrefab(filepath);
+    const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, rootEntity) : nullptr;
+    if (!instance || instance->rootEntity != rootEntity){
         // Clean up root if import failed
         project->clearMissingPrefab(sceneId, rootEntity);
         scene->destroyEntity(rootEntity);
@@ -123,6 +89,12 @@ bool editor::ImportPrefabCmd::execute(){
         }
         rootEntity = NULL_ENTITY;
         return false;
+    }
+
+    // Below the drop target, at the prefab root's own local placement (Unity's way)
+    if (parent != NULL_ENTITY && scene->findComponent<Transform>(parent) && scene->findComponent<Transform>(rootEntity)) {
+        scene->addEntityChild(parent, rootEntity, false);
+        ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
     }
 
     // Applied after the import so nothing the prefab brings in overwrites it.

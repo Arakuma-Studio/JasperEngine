@@ -12,6 +12,8 @@ namespace jasperengine::editor {
     struct ComponentToPrefabSharedData {
         Entity entity;
         YAML::Node recovery;
+        std::set<std::string> properties;  // what was overridden
+        bool reverted = false;
     };
 
     class ComponentToPrefabSharedCmd: public Command {

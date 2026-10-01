@@ -189,7 +189,23 @@ bool editor::RemoveComponentCmd::execute() {
                 if (prefab){
                     entityData.hasOverride = prefab->hasComponentOverride(sceneId, entityData.entity, componentType);
                     if (entityData.hasOverride){
+                        entityData.overriddenProperties = project->getOverriddenProperties(sceneId, entityData.entity, componentType);
                         prefab->clearComponentOverride(sceneId, entityData.entity, componentType);
+                    }
+                    // The prefab GameObject still has it: this instance removed it (or, added
+                    // by the instance, it is simply gone)
+                    PrefabObjectRef ref;
+                    if (project->findPrefabObject(sceneId, entityData.entity, ref)) {
+                        auto overrides = ref.instance->overrides.find(entityData.entity);
+                        if (overrides != ref.instance->overrides.end() && overrides->second.addedComponents.erase(componentType)) {
+                            entityData.recordedRemoval = false;
+                            entityData.wasAdded = true;
+                            if (overrides->second.empty()) {
+                                ref.instance->overrides.erase(overrides);
+                            }
+                        } else {
+                            entityData.recordedRemoval = project->recordRemovedComponent(sceneId, entityData.entity, componentType);
+                        }
                     }
                 }
 
@@ -222,12 +238,23 @@ void editor::RemoveComponentCmd::undo() {
 
                 ProjectUtils::addEntityComponent(scene, entityData.entity, componentType, sceneProject->entities, entityData.oldComponent);
 
-                if (entityData.hasOverride){
-                    fs::path prefabPath = project->findPrefabPathFor(sceneId, entityData.entity);
-                    Prefab* prefab = project->getPrefab(prefabPath);
-
-                    if (prefab){
-                        prefab->setComponentOverride(sceneId, entityData.entity, componentType);
+                PrefabObjectRef ref;
+                if (project->findPrefabObject(sceneId, entityData.entity, ref)) {
+                    if (entityData.recordedRemoval) {
+                        auto overrides = ref.instance->overrides.find(entityData.entity);
+                        if (overrides != ref.instance->overrides.end()) {
+                            overrides->second.removedComponents.erase(componentType);
+                            if (overrides->second.empty()) {
+                                ref.instance->overrides.erase(overrides);
+                            }
+                        }
+                    }
+                    if (entityData.wasAdded) {
+                        ref.instance->overrides[entityData.entity].addedComponents.insert(componentType);
+                    }
+                    if (entityData.hasOverride) {
+                        project->recordPropertyOverride(sceneId, entityData.entity, componentType,
+                            std::vector<std::string>(entityData.overriddenProperties.begin(), entityData.overriddenProperties.end()));
                     }
                 }
 

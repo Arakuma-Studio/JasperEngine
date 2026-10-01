@@ -213,9 +213,9 @@ size_t editor::Project::relinkMissingPrefabs() {
             sceneProject.missingPrefabs.erase(root);
 
             std::unordered_map<Entity, Entity> entityRemap;
+            const PrefabInstanceData data = Stream::decodePrefabInstanceData(missing.data);
             importPrefab(&sceneProject, &sceneProject.entities, reference.path, root, false,
-                missing.data["prefabOverrides"], missing.data["prefabLocalEntities"], &entityRemap,
-                missing.data["prefabRemovedGameObjects"], missing.memberIds.empty() ? nullptr : &missing.memberIds);
+                &data, &entityRemap, missing.memberIds.empty() ? nullptr : &missing.memberIds);
 
             const PrefabComponent* component = scene->findComponent<PrefabComponent>(root);
             const Prefab* prefab = component ? getPrefab(component->path) : nullptr;

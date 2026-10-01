@@ -18,19 +18,24 @@ editor::ComponentToPrefabLocalCmd::ComponentToPrefabLocalCmd(Project* project, u
 
 bool editor::ComponentToPrefabLocalCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject) {
+        return false;
+    }
+    changedEntities.clear();
     for (Entity entity : entities){
-        fs::path filepath = project->findPrefabPathFor(sceneId, entity);
-        if (sceneProject && !filepath.empty()) {
-            Prefab* prefab = project->getPrefab(filepath);
-
-            if (prefab->hasComponentOverride(sceneId, entity, componentType)){
-                return false;
-            }
-
-            prefab->setComponentOverride(sceneProject->id, entity, componentType);
+        // one already overriding it in whole stays as it is
+        std::set<std::string> properties = project->getOverriddenProperties(sceneId, entity, componentType);
+        if (properties.count(PrefabObjectOverrides::WHOLE_COMPONENT)) {
+            continue;
+        }
+        if (project->recordPropertyOverride(sceneId, entity, componentType, {})) {
+            changedEntities.emplace_back(entity, properties);
         }
     }
 
+    if (changedEntities.empty()) {
+        return false;
+    }
     sceneProject->isModified = true;
 
     return true;
@@ -38,22 +43,14 @@ bool editor::ComponentToPrefabLocalCmd::execute() {
 
 void editor::ComponentToPrefabLocalCmd::undo() {
     SceneProject* sceneProject = project->getScene(sceneId);
-    for (Entity entity : entities){
-        fs::path filepath = project->findPrefabPathFor(sceneId, entity);
-        if (sceneProject && !filepath.empty()) {
-            Prefab* prefab = project->getPrefab(filepath);
-
-            prefab->clearComponentOverride(sceneProject->id, entity, componentType);
-
-            Entity registryEntity = prefab->getRegistryEntity(sceneId, entity);
-            Catalog::copyComponent(prefab->registry.get(), registryEntity, sceneProject->scene, entity, componentType);
-            std::unordered_map<Entity, Entity> registryToLocal;
-            if (const Prefab::Instance* instance = prefab->getInstance(sceneId, entity)) {
-                for (const auto& member : instance->members) {
-                    registryToLocal[member.registryEntity] = member.localEntity;
-                }
-            }
-            Project::remapEntityPropertiesInComponent(sceneProject->scene, entity, componentType, {}, registryToLocal);
+    for (const auto& [entity, properties] : changedEntities){
+        if (!sceneProject) {
+            break;
+        }
+        // back to what it overrode before (its values were the prefab's for the rest)
+        project->clearPropertyOverride(sceneId, entity, componentType, {});
+        if (!properties.empty()) {
+            project->recordPropertyOverride(sceneId, entity, componentType, std::vector<std::string>(properties.begin(), properties.end()));
         }
     }
 
@@ -68,6 +65,7 @@ bool editor::ComponentToPrefabLocalCmd::mergeWith(Command* otherCommand){
             for (Entity& otherEntity :  otherCmd->entities){
                 entities.push_back(otherEntity);
             }
+            changedEntities.insert(changedEntities.end(), otherCmd->changedEntities.begin(), otherCmd->changedEntities.end());
 
             wasModified = wasModified && otherCmd->wasModified;
 

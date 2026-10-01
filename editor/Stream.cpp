@@ -2809,30 +2809,56 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
 namespace {
 
 // Only the keys that hold entity nodes: a component carries entity ids of its own, a model's
-// bones for one, and those are not ids this scene hands out.
-Entity lastSerializedEntity(const YAML::Node& entityNode) {
-    if (!entityNode || !entityNode.IsMap())
-        return NULL_ENTITY;
+// bones for one, and those are not ids this scene hands out. Every id goes to `ids`.
+void collectSerializedEntities(const YAML::Node& entityNode, std::unordered_set<Entity>& ids);
 
-    Entity last = NULL_ENTITY;
+// The ids a prefab instance block holds: its member ids and added GameObjects, at every
+// nested level
+void collectInstanceBlockEntities(const YAML::Node& block, std::unordered_set<Entity>& ids) {
+    if (!block || !block.IsMap()) {
+        return;
+    }
+    if (block["memberIds"] && block["memberIds"].IsSequence()) {
+        for (const auto& pair : block["memberIds"]) {
+            if (pair.IsSequence() && pair.size() == 2) {
+                ids.insert(editor::YamlNumbers::as<Entity>(pair[1]));
+            }
+        }
+    }
+    if (block["addedGameObjects"] && block["addedGameObjects"].IsSequence()) {
+        for (const auto& added : block["addedGameObjects"]) {
+            collectSerializedEntities(added, ids);
+        }
+    }
+    if (block["nested"] && block["nested"].IsSequence()) {
+        for (const auto& nested : block["nested"]) {
+            collectInstanceBlockEntities(nested, ids);
+        }
+    }
+}
+
+void collectSerializedEntities(const YAML::Node& entityNode, std::unordered_set<Entity>& ids) {
+    if (!entityNode || !entityNode.IsMap())
+        return;
+
     if (entityNode["entity"]) {
-        last = editor::YamlNumbers::as<Entity>(entityNode["entity"]);
+        ids.insert(editor::YamlNumbers::as<Entity>(entityNode["entity"]));
     }
 
     if (entityNode["children"] && entityNode["children"].IsSequence()) {
         for (const auto& child : entityNode["children"]) {
-            last = std::max(last, lastSerializedEntity(child));
+            collectSerializedEntities(child, ids);
         }
     }
 
-    // the scene entities an instance keeps under its prefab root, stored nowhere else
+    // the scene entities an instance keeps under its prefab root, stored nowhere else, and
+    // the ids its members had
+    collectInstanceBlockEntities(entityNode["prefabInstance"], ids);
     if (entityNode["prefabLocalEntities"] && entityNode["prefabLocalEntities"].IsSequence()) {
         for (const auto& local : entityNode["prefabLocalEntities"]) {
-            last = std::max(last, lastSerializedEntity(local));
+            collectSerializedEntities(local, ids);
         }
     }
-
-    return last;
 }
 
 }
@@ -2846,16 +2872,28 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     auto entitiesNode = node["entities"];
 
     // a prefab instance is rebuilt as the root holding it is decoded, so its members draw from
-    // the allocator while entities further down the file are still waiting to be recreated
-    Entity lastEntity = NULL_ENTITY;
+    // the allocator while entities further down the file are still waiting to be recreated:
+    // every id the file holds is reserved, and new ones start above them
+    std::unordered_set<Entity> serialized;
     for (const auto& entityNode : entitiesNode){
-        lastEntity = std::max(lastEntity, lastSerializedEntity(entityNode));
+        collectSerializedEntities(entityNode, serialized);
+    }
+    Entity lastEntity = NULL_ENTITY;
+    for (Entity entity : serialized) {
+        lastEntity = std::max(lastEntity, entity);
     }
     sceneProject->scene->setLastEntity(lastEntity);
+    sceneProject->reservedEntityIds = std::move(serialized);
 
-    for (const auto& entityNode : entitiesNode){
-        decodeEntity(entityNode, sceneProject->scene, &sceneProject->entities, project, sceneProject);
+    try {
+        for (const auto& entityNode : entitiesNode){
+            decodeEntity(entityNode, sceneProject->scene, &sceneProject->entities, project, sceneProject);
+        }
+    } catch (...) {
+        sceneProject->reservedEntityIds.clear();
+        throw;
     }
+    sceneProject->reservedEntityIds.clear();
 
     CameraTextureLink::resolve(sceneProject->scene);
 }

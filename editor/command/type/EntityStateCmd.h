@@ -49,6 +49,20 @@ namespace jasperengine::editor{
                 case EntityStateField::Tag: scene->setEntityTag(entity, value.tag); break;
                 case EntityStateField::Layer: scene->setEntityLayer(entity, value.layer); break;
             }
+            // Shared with the prefab like a name (an instance root's is an override), so it
+            // is saved and other instances follow
+            if (project->isEntityInPrefab(sceneId, entity)){
+                project->prefabStateChanged(sceneId, entity, stateBit());
+            }
+        }
+
+        uint8_t stateBit() const{
+            switch (field){
+                case EntityStateField::Active: return PrefabObjectOverrides::StateActive;
+                case EntityStateField::Tag: return PrefabObjectOverrides::StateTag;
+                case EntityStateField::Layer: return PrefabObjectOverrides::StateLayer;
+            }
+            return 0;
         }
 
     public:

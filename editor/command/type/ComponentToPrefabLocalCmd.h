@@ -14,6 +14,8 @@ namespace jasperengine::editor {
         Project* project;
         uint32_t sceneId;
         std::vector<Entity> entities;
+        // the ones it overrode, with what they overrode before
+        std::vector<std::pair<Entity, std::set<std::string>>> changedEntities;
         ComponentType componentType;
 
         bool wasModified;

@@ -8,6 +8,112 @@
 
 namespace jasperengine::editor {
 
+// ---- PrefabObjectOverrides ----
+
+bool PrefabObjectOverrides::hasProperty(ComponentType type, const std::string& property) const {
+    auto it = properties.find(type);
+    return it != properties.end() && (it->second.count(property) || it->second.count(WHOLE_COMPONENT));
+}
+
+bool PrefabObjectOverrides::isWholeComponent(ComponentType type) const {
+    auto it = properties.find(type);
+    return it != properties.end() && it->second.count(WHOLE_COMPONENT);
+}
+
+void PrefabObjectOverrides::addProperty(ComponentType type, const std::string& property) {
+    if (property.empty()) {
+        return;
+    }
+    if (property == WHOLE_COMPONENT) {
+        addWholeComponent(type);
+        return;
+    }
+    std::set<std::string>& set = properties[type];
+    if (!set.count(WHOLE_COMPONENT)) {
+        set.insert(property);
+    }
+}
+
+void PrefabObjectOverrides::addWholeComponent(ComponentType type) {
+    std::set<std::string>& set = properties[type];
+    set.clear();
+    set.insert(WHOLE_COMPONENT);
+}
+
+void PrefabObjectOverrides::merge(const PrefabObjectOverrides& other) {
+    for (const auto& [type, names] : other.properties) {
+        for (const std::string& name : names) {
+            addProperty(type, name);
+        }
+    }
+    state |= other.state;
+    addedComponents.insert(other.addedComponents.begin(), other.addedComponents.end());
+    for (ComponentType type : other.removedComponents) {
+        if (!addedComponents.count(type)) {
+            removedComponents.insert(type);
+        }
+    }
+}
+
+// ---- PrefabInstanceData ----
+
+const PrefabInstanceData* PrefabInstanceData::findNested(Entity registryRoot, const std::string& path) const {
+    if (registryRoot != NULL_ENTITY) {
+        for (const PrefabInstanceData& entry : nested) {
+            if (entry.nestedRoot == registryRoot) {
+                return &entry;
+            }
+        }
+    }
+    // the oldest entries name the nested prefab by its path only
+    if (!path.empty()) {
+        for (const PrefabInstanceData& entry : nested) {
+            if (entry.nestedRoot == NULL_ENTITY && entry.nestedPath == path) {
+                return &entry;
+            }
+        }
+    }
+    return nullptr;
+}
+
+PrefabInstanceData* PrefabInstanceData::findNested(Entity registryRoot, const std::string& path) {
+    return const_cast<PrefabInstanceData*>(static_cast<const PrefabInstanceData*>(this)->findNested(registryRoot, path));
+}
+
+PrefabInstanceData& PrefabInstanceData::nestedFor(Entity registryRoot, const std::string& path) {
+    if (PrefabInstanceData* found = findNested(registryRoot, path)) {
+        if (found->nestedRoot == NULL_ENTITY) {
+            found->nestedRoot = registryRoot;
+        }
+        return *found;
+    }
+    PrefabInstanceData entry;
+    entry.present = true;
+    entry.nestedRoot = registryRoot;
+    entry.nestedPath = path;
+    nested.push_back(std::move(entry));
+    return nested.back();
+}
+
+bool PrefabInstanceData::empty() const {
+    for (const auto& [registryEntity, object] : objects) {
+        if (!object.overrides.empty()) {
+            return false;
+        }
+    }
+    if (!removedGameObjects.empty() || !addedGameObjects.empty()) {
+        return false;
+    }
+    for (const PrefabInstanceData& entry : nested) {
+        if (!entry.empty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// ---- Prefab ----
+
 Prefab::FileHeader Prefab::readHeader(const YAML::Node& node) {
     FileHeader header;
     if (!node || !node.IsMap()) {
@@ -23,13 +129,40 @@ Prefab::FileHeader Prefab::readHeader(const YAML::Node& node) {
         if (node["nextEntity"]) {
             header.nextEntity = YamlNumbers::as<Entity>(node["nextEntity"]);
         }
+        if (node["root"]) {
+            header.root = YamlNumbers::as<Entity>(node["root"]);
+        }
     } catch (const std::exception&) {
         // read as a legacy header: the ids in the file still bound the counter
     }
     return header;
 }
 
-Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node) {
+namespace {
+
+    // Every entity node of a prefab file: the members and their children
+    template<typename Fn>
+    void forEachPrefabNode(const YAML::Node& node, Fn&& fn) {
+        if (!node || !node.IsMap()) {
+            return;
+        }
+        if (node["members"] && node["members"].IsSequence()) {
+            for (const YAML::Node& member : node["members"]) {
+                forEachPrefabNode(member, fn);
+            }
+            return;
+        }
+        fn(node);
+        if (node["children"] && node["children"].IsSequence()) {
+            for (const YAML::Node& child : node["children"]) {
+                forEachPrefabNode(child, fn);
+            }
+        }
+    }
+
+}
+
+Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::string& legacyRootName) {
     Entity counter = NULL_ENTITY;
     if (registry) {
         counter = registry->getLastEntity();
@@ -38,10 +171,12 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node) {
         registry = std::make_unique<EntityRegistry>();
     }
     registryEntities.clear();
+    nestedInstances.clear();
+    root = NULL_ENTITY;
 
     Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
 
-    const FileHeader header = readHeader(node);
+    FileHeader header = readHeader(node);
     Entity highest = counter;
     for (Entity entity : registryEntities) {
         highest = std::max(highest, entity);
@@ -50,6 +185,85 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node) {
         highest = std::max<Entity>(highest, header.nextEntity - 1);
     }
     registry->setLastEntity(highest);
+
+    const bool legacyFile = header.version < FILE_VERSION;
+    needsUpgrade = legacyFile;
+
+    // The asset-level data of the nested instances. A legacy file has none: its nested
+    // roots' own values are the old wrappers', made into overrides when first imported.
+    const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
+    forEachPrefabNode(node, [&](const YAML::Node& entityNode) {
+        const YAML::Node components = entityNode["components"];
+        if (!entityNode["entity"] || !components || !components.IsMap() || !components[prefabKey]) {
+            return;
+        }
+        const Entity id = YamlNumbers::as<Entity>(entityNode["entity"]);
+        if (!registry->isEntityCreated(id)) {
+            return;
+        }
+        PrefabInstanceData data;
+        if (!legacyFile && entityNode["prefabInstance"]) {
+            data = Stream::decodePrefabInstanceData(entityNode);
+        }
+        data.present = true;
+        data.legacy = legacyFile;
+        nestedInstances[id] = std::move(data);
+    });
+
+    std::vector<Entity> topLevel;
+    for (Entity entity : registryEntities) {
+        const Transform* transform = registry->findComponent<Transform>(entity);
+        if (!transform || transform->parent == NULL_ENTITY) {
+            topLevel.push_back(entity);
+        }
+    }
+
+    if (!legacyFile) {
+        if (header.root != NULL_ENTITY && registry->isEntityCreated(header.root)) {
+            root = header.root;
+        } else {
+            for (Entity entity : topLevel) {
+                if (registry->findComponent<Transform>(entity)) {
+                    root = entity;
+                    break;
+                }
+            }
+            if (root == NULL_ENTITY && !topLevel.empty()) {
+                root = topLevel.front();
+            }
+        }
+        if (root != NULL_ENTITY) {
+            // the root comes first, as the file writes it
+            auto it = std::find(registryEntities.begin(), registryEntities.end(), root);
+            if (it != registryEntities.end() && it != registryEntities.begin()) {
+                registryEntities.erase(it);
+                registryEntities.insert(registryEntities.begin(), root);
+            }
+        }
+        return header;
+    }
+
+    // Upgrade: the old per-instance wrapper becomes the prefab's root GameObject. It takes
+    // the next id, which no scene can have used for anything of this prefab, the same on
+    // every load until the upgraded file is written.
+    root = registry->createUserEntity();
+    registry->setEntityName(root, legacyRootName.empty() ? std::string("Prefab") : legacyRootName);
+    bool anyTransform = false;
+    for (Entity entity : topLevel) {
+        if (registry->findComponent<Transform>(entity)) {
+            anyTransform = true;
+            break;
+        }
+    }
+    if (anyTransform) {
+        registry->addComponent<Transform>(root, {});
+        for (Entity entity : topLevel) {
+            if (registry->findComponent<Transform>(entity)) {
+                registry->addEntityChild(root, entity, false);
+            }
+        }
+    }
+    registryEntities.insert(registryEntities.begin(), root);
     return header;
 }
 
@@ -64,23 +278,44 @@ Entity Prefab::getNextEntity() const {
     return highest + 1;
 }
 
+Entity Prefab::Instance::getRegistryEntity(Entity localEntity) const {
+    if (localEntity == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    if (localEntity == rootEntity) {
+        return rootRegistryEntity;
+    }
+    for (const EntityMember& member : members) {
+        if (member.localEntity == localEntity) {
+            return member.registryEntity;
+        }
+    }
+    return NULL_ENTITY;
+}
+
+Entity Prefab::Instance::getLocalEntity(Entity registryEntity) const {
+    if (registryEntity == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    if (registryEntity == rootRegistryEntity) {
+        return rootEntity;
+    }
+    for (const EntityMember& member : members) {
+        if (member.registryEntity == registryEntity) {
+            return member.localEntity;
+        }
+    }
+    return NULL_ENTITY;
+}
+
+const Prefab::ObjectOverrides* Prefab::Instance::findOverrides(Entity localEntity) const {
+    auto it = overrides.find(localEntity);
+    return it != overrides.end() ? &it->second : nullptr;
+}
+
 uint32_t Prefab::getInstanceId(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return instance.instanceId;
-			}
-
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return instance.instanceId;
-				}
-			}
-		}
-	}
-
-	return 0;
+	const Instance* instance = getInstance(sceneId, entity);
+	return instance ? instance->instanceId : 0;
 }
 
 Entity Prefab::getRegistryEntity(uint32_t sceneId, Entity entity) const {
@@ -98,95 +333,44 @@ Entity Prefab::getRegistryEntity(uint32_t sceneId, Entity entity) const {
 	return NULL_ENTITY;
 }
 
+Entity Prefab::getObjectRegistryEntity(uint32_t sceneId, Entity entity) const {
+	const Instance* instance = getInstance(sceneId, entity);
+	return instance ? instance->getRegistryEntity(entity) : NULL_ENTITY;
+}
+
 Entity Prefab::getLocalEntity(uint32_t sceneId, uint32_t instanceId, Entity registryEntity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.instanceId == instanceId) {
-				for (const auto& member : instance.members) {
-					if (member.registryEntity == registryEntity) {
-						return member.localEntity;
-					}
-				}
-			}
-		}
-	}
-	return NULL_ENTITY;
+	const Instance* instance = getInstanceById(sceneId, instanceId);
+	return instance ? instance->getLocalEntity(registryEntity) : NULL_ENTITY;
 }
 
 Entity Prefab::getRootEntity(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return instance.rootEntity;
-			}
-
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return instance.rootEntity;
-				}
-			}
-		}
-	}
-
-	return NULL_ENTITY;
+	const Instance* instance = getInstance(sceneId, entity);
+	return instance ? instance->rootEntity : NULL_ENTITY;
 }
+
 bool Prefab::hasInstances(uint32_t sceneId) const {
 	auto it = instances.find(sceneId);
 	return it != instances.end() && !it->second.empty();
 }
 
-
 std::vector<Entity> Prefab::getAllEntities(uint32_t sceneId, uint32_t instanceId) const {
-	auto it = instances.find(sceneId);
-	if (it == instances.end()) return {};
-	for (const auto& instance : it->second) {
-		if (instance.instanceId == instanceId) {
-			std::vector<Entity> result;
-			result.reserve(1 + instance.members.size());
-			result.push_back(instance.rootEntity);
-			for (const auto& member : instance.members) {
-				result.push_back(member.localEntity);
-			}
-			return result;
-		}
+	const Instance* instance = getInstanceById(sceneId, instanceId);
+	if (!instance) return {};
+	std::vector<Entity> result;
+	result.reserve(1 + instance->members.size());
+	result.push_back(instance->rootEntity);
+	for (const auto& member : instance->members) {
+		result.push_back(member.localEntity);
 	}
-	return {};
+	return result;
 }
 
 bool Prefab::containsEntity(uint32_t sceneId, Entity entity) const {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (const auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return true;
-			}
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
+	return getInstance(sceneId, entity) != nullptr;
 }
 
 Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (auto& instance : it->second) {
-			if (instance.rootEntity == entity) {
-				return &instance;
-			}
-			for (const auto& member : instance.members) {
-				if (member.localEntity == entity) {
-					return &instance;
-				}
-			}
-		}
-	}
-	return nullptr;
+	return const_cast<Instance*>(static_cast<const Prefab*>(this)->getInstance(sceneId, entity));
 }
 
 const Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) const {
@@ -207,15 +391,7 @@ const Prefab::Instance* Prefab::getInstance(uint32_t sceneId, Entity entity) con
 }
 
 Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t instanceId) {
-	auto it = instances.find(sceneId);
-	if (it != instances.end()) {
-		for (auto& instance : it->second) {
-			if (instance.instanceId == instanceId) {
-				return &instance;
-			}
-		}
-	}
-	return nullptr;
+	return const_cast<Instance*>(static_cast<const Prefab*>(this)->getInstanceById(sceneId, instanceId));
 }
 
 const Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t instanceId) const {
@@ -233,8 +409,7 @@ const Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t insta
 void Prefab::setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
 	Instance* instance = getInstance(sceneId, entity);
 	if (instance) {
-		uint64_t bit = 1ULL << static_cast<int>(componentType);
-		instance->overrides[entity] |= bit;
+		instance->overrides[entity].addWholeComponent(componentType);
 	}
 }
 
@@ -243,9 +418,8 @@ void Prefab::clearComponentOverride(uint32_t sceneId, Entity entity, ComponentTy
 	if (instance) {
 		auto entityIt = instance->overrides.find(entity);
 		if (entityIt != instance->overrides.end()) {
-			uint64_t bit = 1ULL << static_cast<int>(componentType);
-			entityIt->second &= ~bit;
-			if (entityIt->second == 0) {
+			entityIt->second.properties.erase(componentType);
+			if (entityIt->second.empty()) {
 				instance->overrides.erase(entityIt);
 			}
 		}
@@ -257,8 +431,7 @@ bool Prefab::hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType
 	if (instance) {
 		auto entityIt = instance->overrides.find(entity);
 		if (entityIt != instance->overrides.end()) {
-			uint64_t bit = 1ULL << static_cast<int>(componentType);
-			return (entityIt->second & bit) != 0;
+			return entityIt->second.hasComponent(componentType);
 		}
 	}
 	return false;
@@ -270,6 +443,14 @@ Entity Prefab::getRegistryParent(Entity registryEntity) const {
 	}
 	const Transform* transform = registry->findComponent<Transform>(registryEntity);
 	return transform ? transform->parent : NULL_ENTITY;
+}
+
+bool Prefab::isNestedRoot(Entity registryEntity) const {
+	if (!registry || registryEntity == NULL_ENTITY || registryEntity == root || !registry->isEntityCreated(registryEntity)) {
+		return false;
+	}
+	const PrefabComponent* component = registry->findComponent<PrefabComponent>(registryEntity);
+	return component && (!component->path.empty() || !component->guid.empty());
 }
 
 bool Prefab::isRegistryEntityAbsent(const Instance& instance, Entity registryEntity) const {
