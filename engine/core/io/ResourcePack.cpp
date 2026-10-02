@@ -238,16 +238,16 @@ namespace {
     }
 
     // Inverse of Exporter::obfuscate, which rotates right and then XORs
-    void deobfuscate(std::vector<unsigned char>& data, uint8_t key, uint32_t shift) {
-        if (data.empty()) return;
+    void deobfuscate(unsigned char* data, size_t size, uint8_t key, uint32_t shift) {
+        if (size == 0) return;
 
-        for (unsigned char& byte : data) {
-            byte ^= key;
+        for (size_t i = 0; i < size; i++) {
+            data[i] ^= key;
         }
 
-        shift %= data.size();
+        shift %= size;
         if (shift > 0) {
-            std::rotate(data.begin(), data.begin() + shift, data.end());
+            std::rotate(data, data + shift, data + size);
         }
     }
 
@@ -276,6 +276,31 @@ bool ResourcePack::read(const std::string& path, std::vector<unsigned char>& out
         return false;
     }
 
-    deobfuscate(outData, entry->key, entry->shift);
+    deobfuscate(outData.data(), outData.size(), entry->key, entry->shift);
+    return true;
+}
+
+bool ResourcePack::readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
+                             unsigned int& outSize) {
+    const PackEntry* entry = findEntry(path);
+    if (!entry) return false;
+
+    auto closeFile = [](FILE* handle) { std::fclose(handle); };
+    std::unique_ptr<FILE, decltype(closeFile)> file(
+        System::instance().platformFopen(state().filename.c_str(), "rb"), closeFile);
+    if (!file) return false;
+
+    bool ok = seekFile(file.get(), entry->offset);
+    std::unique_ptr<unsigned char[]> data;
+    if (ok) {
+        data.reset(new unsigned char[static_cast<size_t>(entry->size)]);
+        ok = entry->size == 0 || readExact(file.get(), data.get(), static_cast<size_t>(entry->size));
+    }
+
+    if (!ok) return false;
+
+    deobfuscate(data.get(), static_cast<size_t>(entry->size), entry->key, entry->shift);
+    outData = std::move(data);
+    outSize = static_cast<unsigned int>(entry->size);
     return true;
 }

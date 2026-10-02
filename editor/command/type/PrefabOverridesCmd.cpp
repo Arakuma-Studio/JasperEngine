@@ -33,10 +33,6 @@ void editor::RevertPrefabRemovalCmd::undo(){
     }
 }
 
-bool editor::RevertPrefabRemovalCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
-
 editor::ApplyPrefabRemovalCmd::ApplyPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity,
         const std::filesystem::path& target){
     this->project = project;
@@ -69,10 +65,6 @@ void editor::ApplyPrefabRemovalCmd::undo(){
     if (SceneProject* sceneProject = project->getScene(sceneId)) {
         sceneProject->isModified = wasModified;
     }
-}
-
-bool editor::ApplyPrefabRemovalCmd::mergeWith(editor::Command* otherCommand){
-    return false;
 }
 
 editor::PrefabOverridesCmd::PrefabOverridesCmd(Project* project, uint32_t sceneId, std::vector<std::unique_ptr<Command>> steps){
@@ -114,10 +106,6 @@ void editor::PrefabOverridesCmd::undo(){
     if (SceneProject* sceneProject = project->getScene(sceneId)) {
         sceneProject->isModified = wasModified;
     }
-}
-
-bool editor::PrefabOverridesCmd::mergeWith(editor::Command* otherCommand){
-    return false;
 }
 
 editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* project, uint32_t sceneId, Entity root){

@@ -17,10 +17,7 @@ RotateTracks::RotateTracks(Scene* scene, Entity entity): Action(scene, entity){
 
 }
 
-RotateTracks::RotateTracks(Scene* scene, std::vector<float> times, std::vector<Quaternion> values): Action(scene){
-    addComponent<KeyframeTracksComponent>();
-    addComponent<RotateTracksComponent>();
-
+RotateTracks::RotateTracks(Scene* scene, std::vector<float> times, std::vector<Quaternion> values): RotateTracks(scene){
     KeyframeTracksComponent& keyframe = getComponent<KeyframeTracksComponent>();
 
     keyframe.times = times;

@@ -181,7 +181,3 @@ void editor::CopyFileCmd::undo(){
     if (project && touchedShaderSource)
         project->invalidateCustomShaders();
 }
-
-bool editor::CopyFileCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

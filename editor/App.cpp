@@ -28,7 +28,6 @@
 #include "resources/fonts/fa-solid-900_ttf.h"
 #include "resources/fonts/jetbrains-mono-regular_ttf.h"
 #include "resources/fonts/roboto-latin-bold_ttf.h"
-//#include "recources/fonts/roboto-v20-latin-regular_ttf.h"
 #include "util/DefaultFont.h"
 #include "util/DefaultFontArabic.h"
 
@@ -1532,26 +1531,6 @@ ImGuiID editor::App::getCentralDockId(){
     return dockspace_id;
 }
 
-void editor::App::showStyleEditor(){
-    ImGui::Begin("Dear ImGui Style Editor", nullptr);
-    {
-        // Get the current IO object to access display size
-        ImGuiIO& io = ImGui::GetIO();
-        ImVec2 windowSize = ImGui::GetWindowSize();
-
-        // Calculate the centered position at the top
-        float windowX = (io.DisplaySize.x - windowSize.x - 200) / 2;
-        float windowY = 0.0f; // Top of the screen
-
-        // Set the window position
-        ImGui::SetWindowPos(ImVec2(windowX, windowY), ImGuiCond_Once);
-        ImGui::SetWindowCollapsed(true, ImGuiCond_Once);
-
-        ImGui::ShowStyleEditor();
-    }
-    ImGui::End();
-}
-
 ImFont* editor::App::getCodeFont() {
     return codeFont ? codeFont : ImGui::GetIO().Fonts->Fonts[0];
 }
@@ -1666,7 +1645,6 @@ void editor::App::setup() {
 
     //io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
 
-    //ImGui::StyleColorsDark();
     Theme::apply();
 
     // Fonts follow each viewport's monitor DPI. Style paddings are global, so
@@ -2029,10 +2007,6 @@ void editor::App::show(){
     }
 
     ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
-
-    #ifdef SHOW_STYLE_WINDOW
-    showStyleEditor();
-    #endif
 
     showAlert();
 
@@ -2538,7 +2512,6 @@ void editor::App::engineRender(){
             // to avoid delay when move objects with gizmo
             sceneRender->updateRenderSystem();
 
-            //TODO: avoid calling every frame
             project.updateSceneRender(sceneProject.id);
 
             // A paused game advances one frame here when Step was pressed
@@ -3164,10 +3137,6 @@ void editor::App::updateResourcesPath(){
     projectWindow->cleanupThumbnails();
 }
 
-void editor::App::requestDockspaceRebuild() {
-    dockspaceNeedsRebuild = true;
-}
-
 void editor::App::updateWindowTitle(const std::string& projectName) {
     Backend::updateWindowTitle(projectName);
 }
@@ -3439,14 +3408,6 @@ editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
 
 editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
-}
-
-editor::MainToolbar* editor::App::getMainToolbar() const{
-    return mainToolbar;
-}
-
-bool editor::App::isSceneWindowFocused() const{
-    return sceneWindow && sceneWindow->isFocused();
 }
 
 void editor::App::resetLayout(){

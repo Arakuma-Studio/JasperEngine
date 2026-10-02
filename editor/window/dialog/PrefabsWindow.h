@@ -38,9 +38,6 @@ namespace jasperengine::editor {
         void applyPrefabs();
 
     public:
-        PrefabsWindow() = default;
-        ~PrefabsWindow() = default;
-
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }

@@ -54,7 +54,7 @@ bool EditorFrame::detectActivity(bool& redrawRequested){
     // The code editor reads keys itself, with no io.WantTextInput or active item
     // to check. Keyboard range only: a resting stick would never let it idle.
     bool typing = io.InputQueueCharacters.Size > 0;
-    for (int key = ImGuiKey_Keyboard_BEGIN; !typing && key < ImGuiKey_Keyboard_END; key++){
+    for (int key = ImGuiKey_NamedKey_BEGIN; !typing && key < ImGuiKey_GamepadStart; key++){
         typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
     }
 

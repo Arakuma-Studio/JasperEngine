@@ -145,17 +145,3 @@ void Out::error(const std::string& message) {
 void Out::build(const std::string& message) {
     logMessage(LogType::Build, message, "[BUILD] ", std::cerr);
 }
-
-void Out::editor_assert(bool condition, const std::string& message) {
-    if (!condition) {
-        error("Assertion failed: " + message);
-        #ifdef _DEBUG
-            // Break into debugger if in debug mode
-            #if defined(_MSC_VER)
-                __debugbreak();
-            #elif defined(__GNUC__)
-                __builtin_trap();
-            #endif
-        #endif
-    }
-}

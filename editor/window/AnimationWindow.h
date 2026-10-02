@@ -100,7 +100,6 @@ namespace jasperengine::editor{
         // channel: 0 = position, 1 = rotation, 2 = scale
         void keyTargetChannels(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim, Entity target,
                                float time, const std::vector<int>& channels);
-        void keyTargetChannel(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim, Entity target, float time, int channel);
         void keyTrackChannel(Scene* scene, SceneProject* sceneProject, Entity trackEntity,
                              float localTime, float explicitDuration, int channel);
         bool hasSnapshotTracks(Scene* scene, const AnimationComponent& anim) const;
@@ -165,8 +164,6 @@ namespace jasperengine::editor{
 
         bool isPreviewingEntity(Entity entity, uint32_t sceneId) const;
         bool getIsPlaying() const;
-        bool getIsPreviewing() const;
-        float getCurrentTime() const;
 
         void externalPlay(Entity entity, uint32_t sceneId);
         void externalStop();

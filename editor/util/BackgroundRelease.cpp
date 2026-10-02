@@ -55,6 +55,6 @@ namespace {
 
 }
 
-void editor::BackgroundRelease::push(std::shared_ptr<HolderBase> holder) {
+void editor::BackgroundRelease::push(std::shared_ptr<void> holder) {
     releaser().push(std::move(holder));
 }

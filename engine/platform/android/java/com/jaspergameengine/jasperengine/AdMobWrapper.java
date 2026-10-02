@@ -1,7 +1,6 @@
 package com.jaspergameengine.jasperengine;
 
 import android.app.Activity;
-import android.content.Context;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -17,7 +16,6 @@ import com.google.android.gms.ads.initialization.InitializationStatus;
 import com.google.android.gms.ads.initialization.OnInitializationCompleteListener;
 import com.google.android.gms.ads.interstitial.InterstitialAd;
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
-import com.google.android.ump.ConsentDebugSettings;
 import com.google.android.ump.ConsentForm;
 import com.google.android.ump.ConsentInformation;
 import com.google.android.ump.ConsentRequestParameters;
@@ -117,22 +115,12 @@ public class AdMobWrapper {
     }
 
     private void requestConsent(boolean tagForUnderAgeOfConsent){
-        //ConsentDebugSettings debugSettings = new ConsentDebugSettings.Builder(activity)
-        //        .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
-        //        .addTestDeviceHashedId("TEST-DEVICE-HASHED-ID")
-        //        .build();
-
-        // Set tag for under age of consent. false means users are not under
-        // age.
         ConsentRequestParameters params = new ConsentRequestParameters
                 .Builder()
-                // call requestConsentInfoUpdate() without setting this value, your app logs the required ID hash when run
-                //.setConsentDebugSettings(debugSettings)
                 .setTagForUnderAgeOfConsent(tagForUnderAgeOfConsent)
                 .build();
 
         consentInformation = UserMessagingPlatform.getConsentInformation(activity);
-        //consentInformation.reset();
 
         consentInformation.requestConsentInfoUpdate(
                 activity,

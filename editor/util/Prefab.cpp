@@ -493,18 +493,6 @@ bool Prefab::hasInstances(uint32_t sceneId) const {
 	return it != instances.end() && !it->second.empty();
 }
 
-std::vector<Entity> Prefab::getAllEntities(uint32_t sceneId, uint32_t instanceId) const {
-	const Instance* instance = getInstanceById(sceneId, instanceId);
-	if (!instance) return {};
-	std::vector<Entity> result;
-	result.reserve(1 + instance->members.size());
-	result.push_back(instance->rootEntity);
-	for (const auto& member : instance->members) {
-		result.push_back(member.localEntity);
-	}
-	return result;
-}
-
 bool Prefab::containsEntity(uint32_t sceneId, Entity entity) const {
 	return getInstance(sceneId, entity) != nullptr;
 }

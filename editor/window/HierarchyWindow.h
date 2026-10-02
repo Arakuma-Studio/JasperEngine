@@ -230,7 +230,6 @@ namespace jasperengine::editor{
 
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
-        bool hasMatchingDescendant(const TreeNode& node, const std::string& searchLower);
         void markMatchingNodes(TreeNode& node, const std::string& searchLower);
 
     public:
@@ -258,4 +257,3 @@ namespace jasperengine::editor{
     };
 
 }
-

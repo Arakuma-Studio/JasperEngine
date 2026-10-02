@@ -1020,12 +1020,6 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
     }
 }
 
-// Store one target channel as the fine-grained right-click alternative.
-void editor::AnimationWindow::keyTargetChannel(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim,
-                                               Entity target, float time, int channel){
-    keyTargetChannels(scene, sceneProject, anim, target, time, {channel});
-}
-
 // Key the exact block selected by the context menu. Unlike empty-area keying,
 // this path must never search for a newer overlapping frame of the same type.
 void editor::AnimationWindow::keyTrackChannel(Scene* scene, SceneProject* sceneProject, Entity trackEntity,
@@ -2380,13 +2374,13 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
             ImGui::BeginDisabled(!canKey);
             if (ImGui::MenuItem(ICON_FA_KEY "  Key Position")) {
-                keyTargetChannel(scene, sceneProject, anim, target, keyPopupTime, 0);
+                keyTargetChannels(scene, sceneProject, anim, target, keyPopupTime, {0});
             }
             if (ImGui::MenuItem(ICON_FA_KEY "  Key Rotation")) {
-                keyTargetChannel(scene, sceneProject, anim, target, keyPopupTime, 1);
+                keyTargetChannels(scene, sceneProject, anim, target, keyPopupTime, {1});
             }
             if (ImGui::MenuItem(ICON_FA_KEY "  Key Scale")) {
-                keyTargetChannel(scene, sceneProject, anim, target, keyPopupTime, 2);
+                keyTargetChannels(scene, sceneProject, anim, target, keyPopupTime, {2});
             }
             ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_KEY "  Key Transform")) {
@@ -3080,14 +3074,6 @@ bool editor::AnimationWindow::isPreviewingEntity(Entity entity, uint32_t sceneId
 
 bool editor::AnimationWindow::getIsPlaying() const {
     return isPlaying;
-}
-
-bool editor::AnimationWindow::getIsPreviewing() const {
-    return isPreviewing;
-}
-
-float editor::AnimationWindow::getCurrentTime() const {
-    return currentTime;
 }
 
 void editor::AnimationWindow::externalPlay(Entity entity, uint32_t sceneId) {

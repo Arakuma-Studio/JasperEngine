@@ -96,6 +96,62 @@ std::filesystem::path editor::Project::findPrefabPathFor(uint32_t sceneId, Entit
     return std::filesystem::path();
 }
 
+// Bulk findPrefabPathFor for passes over every entity of a scene (the Hierarchy), with the
+// same precedence: a member match wins over every root match, a root's own PrefabComponent
+// prefab (the outermost level of a variant) comes before the path order, and the first
+// prefab in path order wins the remaining ties.
+std::unordered_map<Entity, std::filesystem::path> editor::Project::getPrefabPathsForScene(uint32_t sceneId) const {
+    std::unordered_map<Entity, std::filesystem::path> paths;
+
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
+            continue;
+        }
+        for (const auto& instance : sceneIt->second) {
+            for (const auto& member : instance.members) {
+                paths.try_emplace(member.localEntity, filepath);
+            }
+        }
+    }
+
+    const SceneProject* sceneProject = getScene(sceneId);
+    for (const auto& [filepath, prefab] : prefabAssets) {
+        auto sceneIt = prefab.instances.find(sceneId);
+        if (sceneIt == prefab.instances.end()) {
+            continue;
+        }
+        for (const auto& instance : sceneIt->second) {
+            const Entity root = instance.rootEntity;
+            if (paths.count(root)) {
+                continue;
+            }
+            if (sceneProject && sceneProject->scene && sceneProject->scene->isEntityCreated(root)) {
+                if (const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(root)) {
+                    const Prefab* own = getPrefab(component->path);
+                    const Prefab::Instance* ownInstance = own ? own->getInstance(sceneId, root) : nullptr;
+                    if (ownInstance && ownInstance->rootEntity == root) {
+                        paths.emplace(root, std::filesystem::path(component->path));
+                        continue;
+                    }
+                }
+            }
+            paths.emplace(root, filepath);
+        }
+    }
+
+    // findPrefabPathFor's callers ignore an empty result
+    for (auto it = paths.begin(); it != paths.end();) {
+        if (it->second.empty()) {
+            it = paths.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    return paths;
+}
+
 bool editor::Project::isEntityInPrefab(uint32_t sceneId, Entity entity) const{
     for (const auto& [filepath, prefab] : prefabAssets){
         if (prefab.containsEntity(sceneId, entity)) {

@@ -42,9 +42,6 @@ namespace jasperengine::editor {
         std::string keptParentNames(const SceneEntry& entry) const;
 
     public:
-        ScenesWindow() = default;
-        ~ScenesWindow() = default;
-
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }

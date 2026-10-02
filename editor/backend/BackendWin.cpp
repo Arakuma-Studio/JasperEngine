@@ -804,7 +804,6 @@ void processMessages(bool waitForMessage) {
 } // namespace
 
 editor::App editor::Backend::app;
-std::string editor::Backend::title;
 
 int editor::Backend::init(int argc, char* argv[]) {
     setEditorHost(&app);
@@ -1065,8 +1064,7 @@ sg_swapchain editor::Backend::getSokolSwapchain() {
 #endif
 
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
-    title = editor::EditorFrame::formatWindowTitle(projectName);
-    WindowWin::setTitle(title);
+    WindowWin::setTitle(editor::EditorFrame::formatWindowTitle(projectName));
 }
 
 void* editor::Backend::getNFDWindowHandle() {

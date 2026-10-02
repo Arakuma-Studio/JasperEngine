@@ -153,9 +153,6 @@ namespace jasperengine::editor {
         void startConfiguredExport(bool overwriteTarget);
 
     public:
-        ExportWindow() = default;
-        ~ExportWindow() = default;
-
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }

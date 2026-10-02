@@ -50,7 +50,6 @@ private:
 
 public:
     ComponentAddDialog();
-    ~ComponentAddDialog() = default;
 
     // anchorMin/anchorMax: screen rect of the Add Component button, the popup opens below it
     void open(

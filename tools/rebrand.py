@@ -15,7 +15,6 @@ Also usable on a patch cherry-picked from upstream Doriax: apply it, then run
 """
 
 import argparse
-import os
 import re
 import subprocess
 import sys

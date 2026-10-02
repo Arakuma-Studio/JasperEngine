@@ -29,27 +29,9 @@ Attribute::~Attribute(){
 
 }
 
-Attribute::Attribute(const Attribute& a){
-    this->dataType = a.dataType;
-    this->bufferName = a.bufferName;
-    this->elements = a.elements;
-    this->offset = a.offset;
-    this->count = a.count;
-    this->normalized = a.normalized;
-    this->perInstance = a.perInstance;
-}
+Attribute::Attribute(const Attribute& rhs) = default;
 
-Attribute& Attribute::operator = (const Attribute& a){
-    this->dataType = a.dataType;
-    this->bufferName = a.bufferName;
-    this->elements = a.elements;
-    this->offset = a.offset;
-    this->count = a.count;
-    this->normalized = a.normalized;
-    this->perInstance = a.perInstance;
-
-    return *this;
-}
+Attribute& Attribute::operator=(const Attribute& rhs) = default;
 
 AttributeDataType Attribute::getDataType() const {
     return dataType;

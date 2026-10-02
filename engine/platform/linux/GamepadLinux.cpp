@@ -159,7 +159,6 @@ void GamepadLinux::connect(int id, const char* path) {
 
     pad = Pad();
     pad.fd = fd;
-    pad.connected = true;
     // triggers rest at -1; seed so a resting trigger doesn't emit a spurious
     // axis move from 0 to -1 on connect
     pad.axes[4] = pad.axes[5] = -1.0f;
@@ -169,20 +168,19 @@ void GamepadLinux::connect(int id, const char* path) {
     char name[128] = "Gamepad";
     if (ioctl(fd, JSIOCGNAME(sizeof(name)), name) >= 0)
         name[sizeof(name) - 1] = '\0';
-    pad.name = name;
 
     // The joystick device sends the current state of every control on open, so
     // the mapped values settle on the first poll
     std::string guid;
     pad.mapped = readGuid(id, guid) && editor::findGamepadMapping(guid, pad.mapping);
 
-    Engine::systemGamepadConnect(id, pad.name);
+    Engine::systemGamepadConnect(id, name);
 }
 
 void GamepadLinux::disconnect(int id) {
     Pad& pad = pads[id];
-    if (!pad.connected) return;
-    if (pad.fd >= 0) close(pad.fd);
+    if (pad.fd < 0) return;
+    close(pad.fd);
     pad = Pad();
     Engine::systemGamepadDisconnect(id);
 }
@@ -198,7 +196,7 @@ void GamepadLinux::scan(double now) {
             const char* number = path + std::strlen(path);
             while (number > path && number[-1] >= '0' && number[-1] <= '9') --number;
             const int id = std::atoi(number);
-            if (id >= 0 && id < COUNT && !pads[id].connected)
+            if (id >= 0 && id < COUNT && pads[id].fd < 0)
                 connect(id, path);
         }
     }
@@ -248,7 +246,7 @@ void GamepadLinux::poll(double now) {
     scan(now);
     for (int id = 0; id < COUNT; ++id) {
         Pad& pad = pads[id];
-        if (!pad.connected) continue;
+        if (pad.fd < 0) continue;
         readEvents(id, pad);
     }
 }

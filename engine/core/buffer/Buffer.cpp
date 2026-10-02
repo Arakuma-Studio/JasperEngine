@@ -9,7 +9,6 @@
 using namespace jasperengine;
 
 Buffer::Buffer(){
-    attributes.clear();
     count = 0;
     type = BufferType::VERTEX_BUFFER;
     usage = BufferUsage::IMMUTABLE;
@@ -25,39 +24,9 @@ Buffer::Buffer(){
 Buffer::~Buffer(){
 }
 
-Buffer::Buffer(const Buffer& rhs){
-    attributes = rhs.attributes;
-    count = rhs.count;
-    type = rhs.type;
-    usage = rhs.usage;
+Buffer::Buffer(const Buffer& rhs) = default;
 
-    data = rhs.data;
-    size = rhs.size;
-    stride = rhs.stride;
-
-    renderAttributes = rhs.renderAttributes;
-    instanceBuffer = rhs.instanceBuffer;
-
-    render = rhs.render;
-}
-
-Buffer& Buffer::operator=(const Buffer& rhs){
-    attributes = rhs.attributes;
-    count = rhs.count;
-    type = rhs.type;
-    usage = rhs.usage;
-
-    data = rhs.data;
-    size = rhs.size;
-    stride = rhs.stride;
-
-    renderAttributes = rhs.renderAttributes;
-    instanceBuffer = rhs.instanceBuffer;
-
-    render = rhs.render;
-
-    return *this;
-}
+Buffer& Buffer::operator=(const Buffer& rhs) = default;
 
 bool Buffer::increase(size_t newSize){
     if (newSize >= size) {
@@ -100,50 +69,24 @@ BufferRender* Buffer::getRender(){
 }
 
 void Buffer::addAttribute(AttributeType attribute, AttributeDataType dataType, unsigned int elements, size_t offset){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(dataType);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, Attribute(dataType, "", elements, offset, 0, true, false));
 }
 
 void Buffer::addAttribute(AttributeType attribute, unsigned int elements, size_t offset, bool perInstance){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(AttributeDataType::FLOAT);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-    attData.setPerInstance(perInstance);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, Attribute(AttributeDataType::FLOAT, "", elements, offset, 0, true, perInstance));
 }
 
 void Buffer::addAttribute(AttributeType attribute, unsigned int elements, size_t offset){
-    Attribute attData;
-    attData.setCount(0);
-    attData.setDataType(AttributeDataType::FLOAT);
-    attData.setElements(elements);
-    attData.setOffset(offset);
-
-    addAttribute(attribute, attData);
+    addAttribute(attribute, elements, offset, false);
 }
 
 void Buffer::addAttribute(AttributeType attribute, Attribute attributeData){
-    //if (size == 0) {
     attributes[attribute] = attributeData;
-    //}else{
-    //    Log::error("Cannot add attribute with not cleared buffer");
-    //}
 }
 
 Attribute* Buffer::getAttribute(AttributeType attribute){
-    if (attributes.count(attribute) > 0){
-        return &attributes[attribute];
-    }
-
-    return NULL;
+    auto it = attributes.find(attribute);
+    return it != attributes.end() ? &it->second : nullptr;
 }
 
 std::map<AttributeType, Attribute> Buffer::getAttributes() const{
@@ -244,10 +187,8 @@ void Buffer::setValues(unsigned int index, Attribute* attribute, unsigned int nu
 
         increase(pos + (numValues * typesize));
 
-        for (int i = 0; i < numValues; i++) {
-            memcpy(&data[pos], &vector[i*typesize], typesize);
-            pos += typesize;
-        }
+        if (numValues != 0)
+            memcpy(&data[pos], vector, numValues * typesize);
 
         if (attribute->count > count)
             count = attribute->count;
@@ -383,7 +324,7 @@ Vector4 Buffer::getVector4(Attribute* attribute, unsigned int index){
 }
 
 unsigned char* Buffer::getData() const{
-    return data ? &data[0] : nullptr;
+    return data;
 }
 
 void Buffer::setSize(size_t size){

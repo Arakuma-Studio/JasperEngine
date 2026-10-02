@@ -18,31 +18,9 @@ SokolFramebuffer::SokolFramebuffer(){
     numColorAttachments = 1;
 }
 
-SokolFramebuffer::SokolFramebuffer(const SokolFramebuffer& rhs){
-    for (int a = 0; a < MAX_COLOR_ATTACHMENTS; a++){
-        for (int i = 0; i < 6; i++){
-            colorAttachmentViews[a][i] = rhs.colorAttachmentViews[a][i];
-        }
-        colorTexture[a] = rhs.colorTexture[a];
-    }
-    depthAttachmentView = rhs.depthAttachmentView;
-    depthTexture = rhs.depthTexture;
-    numColorAttachments = rhs.numColorAttachments;
-}
+SokolFramebuffer::SokolFramebuffer(const SokolFramebuffer& rhs) = default;
 
-SokolFramebuffer& SokolFramebuffer::operator=(const SokolFramebuffer& rhs){
-    for (int a = 0; a < MAX_COLOR_ATTACHMENTS; a++){
-        for (int i = 0; i < 6; i++){
-            colorAttachmentViews[a][i] = rhs.colorAttachmentViews[a][i];
-        }
-        colorTexture[a] = rhs.colorTexture[a];
-    }
-    depthAttachmentView = rhs.depthAttachmentView;
-    depthTexture = rhs.depthTexture;
-    numColorAttachments = rhs.numColorAttachments;
-
-    return *this;
-}
+SokolFramebuffer& SokolFramebuffer::operator=(const SokolFramebuffer& rhs) = default;
 
 bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
     if ((textureType != TextureType::TEXTURE_2D) && (textureType != TextureType::TEXTURE_CUBE)){

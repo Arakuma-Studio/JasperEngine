@@ -40,10 +40,6 @@ BodyType getB2ToBodyType(b2BodyType type){
     return BodyType::DYNAMIC;
 }
 
-Vector2 getB2ToVector2(b2Vec2 vec2){
-    return Vector2(vec2.x, vec2.y);
-}
-
 static int appendCollider2D(Rigidbody2DComponent& body){
     if (!body.colliders.validIndex(body.numColliders)){
         Log::error("Cannot add more shapes in this body");
@@ -62,19 +58,9 @@ Rigidbody2D::Rigidbody2D(Scene* scene, Entity entity): EntityHandle(scene, entit
 
 }
 
-Rigidbody2D::~Rigidbody2D(){
-
-}
-
-Rigidbody2D::Rigidbody2D(const Rigidbody2D& rhs): EntityHandle(rhs){
-    
-}
-
-Rigidbody2D& Rigidbody2D::operator=(const Rigidbody2D& rhs){
-    EntityHandle::operator =(rhs);
-
-    return *this;
-}
+Rigidbody2D::~Rigidbody2D() = default;
+Rigidbody2D::Rigidbody2D(const Rigidbody2D& rhs) = default;
+Rigidbody2D& Rigidbody2D::operator=(const Rigidbody2D& rhs) = default;
 
 void Rigidbody2D::checkBody(const Rigidbody2DComponent& body) const{
     if (!b2Body_IsValid(body.body)){
@@ -1035,4 +1021,3 @@ void Rigidbody2D::applyAngularImpulse(float impulse, bool wake){
     checkBody(body);
     b2Body_ApplyAngularImpulse(body.body, impulse, wake);
 }
-

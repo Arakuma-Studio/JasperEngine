@@ -74,23 +74,14 @@ private:
     EGLConfig mEglConfig;
 
     int mSurfWidth, mSurfHeight;
-    int mApiVersion;
-    int mScreenDensity;
-    uint64_t mActiveAxisIds;
-
     std::string mInternalDataPath;
-    std::string mExternalDataPath;
 
     JNIEnv *mJniEnv;
     JniData mJniData;
 
     struct NativeEngineSavedState mState;
 
-    bool mIsFirstFrame;
-
     GameTextInputState mGameTextInputState;
-
-    int mSystemBarOffset;
 
     bool initDisplay();
     bool initSurface();
@@ -100,7 +91,6 @@ private:
     void killSurface();
     void killDisplay();
 
-    bool initGLObjects();
     void killGLObjects();
 
     int getGamepadSlot(int32_t deviceId);
@@ -113,12 +103,11 @@ private:
 
     bool isAnimating();
 
-    void updateSystemBarOffset();
-
     void handleGameActivityInput();
 
+    void setupJNI();
+
 public:
-    // create an engine
     NativeEngine(struct android_app *app);
 
     ~NativeEngine();
@@ -126,24 +115,18 @@ public:
     static NativeEngine *getInstance();
     JNIEnv* getJniEnv();
     GameActivity* getActivity();
-    jobject getJavaGameActivity();
     JniData& getJniData();
 
     void handleCommand(int32_t cmd);
 
     void gameLoop();
 
-    void setupJNI();
-
     int getSurfWidth();
     int getSurfHeight();
-    int getScreenDensity();
-
     void showSoftInput(std::wstring text);
     void hideSoftInput();
 
     std::string getInternalDataPath();
-    std::string getExternalDataPath();
 
     AAssetManager* getAssetManager();
 };

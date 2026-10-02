@@ -179,10 +179,6 @@ void editor::ImportPrefabCmd::undo(){
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ImportPrefabCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
-
 std::vector<Entity> editor::ImportPrefabCmd::getImportedEntities() const{
     return importedEntities;
 }

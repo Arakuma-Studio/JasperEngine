@@ -8,12 +8,9 @@ using namespace jasperengine;
 
 BufferRender::BufferRender(){ }
 
-BufferRender::BufferRender(const BufferRender& rhs) : backend(rhs.backend) { }
+BufferRender::BufferRender(const BufferRender& rhs) = default;
 
-BufferRender& BufferRender::operator=(const BufferRender& rhs) { 
-    backend = rhs.backend; 
-    return *this; 
-}
+BufferRender& BufferRender::operator=(const BufferRender& rhs) = default;
 
 BufferRender::~BufferRender(){
     //Cannot destroy because its a handle

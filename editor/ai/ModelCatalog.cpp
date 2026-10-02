@@ -163,7 +163,7 @@ ModelCatalog::~ModelCatalog() {
 std::vector<ModelInfo> ModelCatalog::models(const std::string& account) const {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = cache.find(account);
-    if (it != cache.end() && it->second.status == CatalogStatus::Loaded && !it->second.models.empty()) {
+    if (it != cache.end() && it->second.status == CatalogStatus::Loaded) {
         return it->second.models;
     }
     // No fabricated fallback: the list is only what the provider actually returns.

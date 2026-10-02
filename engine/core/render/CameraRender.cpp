@@ -9,12 +9,9 @@ using namespace jasperengine;
 
 CameraRender::CameraRender(){ }
 
-CameraRender::CameraRender(const CameraRender& rhs) : backend(rhs.backend) { }
+CameraRender::CameraRender(const CameraRender& rhs) = default;
 
-CameraRender& CameraRender::operator=(const CameraRender& rhs) { 
-    backend = rhs.backend; 
-    return *this; 
-}
+CameraRender& CameraRender::operator=(const CameraRender& rhs) = default;
 
 CameraRender::~CameraRender(){ }
 

@@ -9,7 +9,6 @@
 #include <linux/input.h>
 
 #include <array>
-#include <string>
 
 namespace jasperengine {
 
@@ -33,8 +32,6 @@ namespace jasperengine {
     private:
         struct Pad {
             int fd = -1;
-            bool connected = false;
-            std::string name;
             std::array<unsigned char, ABS_CNT> axisMap{};
             // js_event.number is a device index, not an input code; the kernel
             // reports the code each index stands for.

@@ -40,13 +40,6 @@ int validUtf8PrefixLength(const char* text, int textLen, int maxBytes) {
     return valid;
 }
 
-std::string defaultCopyRange(const char* buffer, int start, int end) {
-    if (!buffer || end <= start) {
-        return {};
-    }
-    return std::string(buffer + start, buffer + end);
-}
-
 int replaceRange(char* buffer, size_t bufferSize, int start, int end, const char* insertText) {
     if (!buffer || bufferSize == 0) {
         return 0;
@@ -126,7 +119,7 @@ bool InputTextContextMenu::drawForLastItem(char* buffer, size_t bufferSize,
         if (options.copyRange) {
             return options.copyRange(buffer, selectionStart, selectionEnd, options.userData);
         }
-        return defaultCopyRange(buffer, selectionStart, selectionEnd);
+        return std::string(buffer + selectionStart, buffer + selectionEnd);
     };
 
     auto applyEdit = [&](int replaceStart, int replaceEnd, const char* insertText) {

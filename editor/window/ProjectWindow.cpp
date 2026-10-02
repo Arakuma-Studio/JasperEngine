@@ -19,6 +19,7 @@
 #include "resources/icons/font-icon_png.h"
 
 #include "command/type/CopyFileCmd.h"
+#include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
@@ -35,6 +36,7 @@
 #include "subsystem/MeshSystem.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -304,12 +306,10 @@ void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) 
     fs::path thumbnailPath = project->getThumbnailPath(filePath);
     evictThumbnailTexture(thumbnailPath.string());
 
-    for (auto& file : files) {
-        if ((currentPath / file.name) == filePath) {
-            file.hasThumbnail = false;
-            file.thumbnailPath.clear();
-            break;
-        }
+    if (auto it = fileIndex.find(filePath); it != fileIndex.end()) {
+        FileEntry& file = files[it->second];
+        file.hasThumbnail = false;
+        file.thumbnailPath.clear();
     }
 
     queueThumbnailGeneration(filePath, type, true);
@@ -1061,7 +1061,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
         ImGui::SameLine();
     }
 
-    bool segmentTooltipShown = false;
     for (size_t i = firstVisible; i < segments.size(); i++) {
         if (i > firstVisible || firstVisible > 0) {
             ImGui::AlignTextToFramePadding();
@@ -1081,7 +1080,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             ImGui::SetTooltip("%s", segments[i].second.string().c_str());
-            segmentTooltipShown = true;
         }
         ImGui::PopID();
         ImGui::SameLine();
@@ -1102,7 +1100,6 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
     }
 
     ImGui::EndChild();
-    (void)segmentTooltipShown;
 
     if (!navigateTo.empty()) {
         // Clicking a path segment leaves search mode, like Unity.
@@ -1533,23 +1530,23 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (isSelected) drawList->AddRectFilled(itemMin, itemMax, selectionCol);
                     else if (hovered) drawList->AddRectFilled(itemMin, itemMax, hoverCol);
                     const float rowH = itemMax.y - itemMin.y;
-                    const float small = std::min(lineHeight, rowH);
-                    float w = small, h = small;
+                    const float iconExtent = std::min(lineHeight, rowH);
+                    float w = iconExtent, h = iconExtent;
                     if (dispW > 0.0f && dispH > 0.0f){
-                        float scale = std::min(small / dispW, small / dispH);
+                        float scale = std::min(iconExtent / dispW, iconExtent / dispH);
                         w = dispW * scale;
                         h = dispH * scale;
                     }
-                    ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (small - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
+                    ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (iconExtent - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
                         drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
                     }
                     if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
-                        const float badge = std::max(Theme::dpi(8.0f), small * 0.55f);
-                        UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconMin.x, iconMin.y + small - badge), ImVec2(iconMin.x + badge, iconMin.y + small),
+                        const float badge = std::max(Theme::dpi(8.0f), iconExtent * 0.55f);
+                        UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconMin.x, iconMin.y + iconExtent - badge), ImVec2(iconMin.x + badge, iconMin.y + iconExtent),
                             IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
-                    ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + small, itemMin.y + (rowH - lineHeight) * 0.5f);
+                    ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + iconExtent, itemMin.y + (rowH - lineHeight) * 0.5f);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
                                               file.displayName.c_str(), nullptr, nullptr);
@@ -2012,6 +2009,7 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
     // A search lists matches from this folder and everything below it instead.
     if (!searchText.empty()) {
         collectSearchResults();
+        rebuildFileIndex();
         return;
     }
 
@@ -2033,6 +2031,15 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
         }
 
         files.push_back(makeFileEntry(entry, entry.path().filename().string()));
+    }
+    rebuildFileIndex();
+}
+
+void editor::ProjectWindow::rebuildFileIndex() {
+    fileIndex.clear();
+    fileIndex.reserve(files.size());
+    for (size_t i = 0; i < files.size(); ++i) {
+        fileIndex.emplace(currentPath / files[i].name, i);
     }
 }
 
@@ -3162,18 +3169,16 @@ void editor::ProjectWindow::show() {
         }
         // Find and mark the corresponding file entry; the texture itself is
         // created on demand when the item becomes visible
-        for (auto& file : files) {
-            if ((currentPath / file.name) == thumbFile.path) {
-                fs::path thumbnailPath = project->getThumbnailPath(thumbFile.path);
-                std::error_code ec;
-                if (fs::exists(thumbnailPath, ec) && !ec) {
-                    file.hasThumbnail = true;
-                    file.thumbnailPath = thumbnailPath.string();
-                } else {
-                    file.hasThumbnail = false;
-                    file.thumbnailPath.clear();
-                }
-                break;
+        if (auto it = fileIndex.find(thumbFile.path); it != fileIndex.end()) {
+            FileEntry& file = files[it->second];
+            fs::path thumbnailPath = project->getThumbnailPath(thumbFile.path);
+            std::error_code ec;
+            if (fs::exists(thumbnailPath, ec) && !ec) {
+                file.hasThumbnail = true;
+                file.thumbnailPath = thumbnailPath.string();
+            } else {
+                file.hasThumbnail = false;
+                file.thumbnailPath.clear();
             }
         }
     }
@@ -3204,9 +3209,6 @@ void editor::ProjectWindow::show() {
     ctrlPressed = ImGui::GetIO().KeyCtrl;
     shiftPressed = ImGui::GetIO().KeyShift;
 
-    windowPos = ImGui::GetWindowPos();
-    scrollOffset = ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
-
     if (focusRequested) {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
@@ -3226,9 +3228,6 @@ void editor::ProjectWindow::show() {
         return;
     }
 
-    windowPos = ImGui::GetWindowPos();
-    scrollOffset = ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
-
     // Determine effective layout when in AUTO mode: Unity's two-column layout
     // (folder tree + grid with subfolders) unless the panel is too narrow.
     LayoutType effectiveLayout = currentLayout;
@@ -3240,6 +3239,7 @@ void editor::ProjectWindow::show() {
     // Folders first, then names (the listing has no sortable header)
     if (requestSort) {
         sortWithSortSpecs(nullptr, files);
+        rebuildFileIndex();
         requestSort = false;
     }
 
@@ -3252,7 +3252,6 @@ void editor::ProjectWindow::show() {
     // (saved as Prefabs) land in the folder being shown.
     auto acceptListingDrops = [&]() {
         if (ImGui::BeginDragDropTarget()) {
-            isDragDropTarget = true;
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
                 importExternalPaths(Util::getStringsFromPayload(payload));
             }
@@ -3592,6 +3591,5 @@ void editor::ProjectWindow::assetsImport() {
 }
 
 void editor::ProjectWindow::assetsRefresh() {
-    refreshProjectFiles();
     refreshCurrentDirectory();
 }

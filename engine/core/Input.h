@@ -233,7 +233,6 @@ namespace jasperengine {
 
         static void addGamepad(int id, const std::string& name);
         static void removeGamepad(int id);
-        static void clearGamepads();
         static void addGamepadButtonPressed(int id, int button);
         static void releaseGamepadButtonPressed(int id, int button);
         static void setGamepadAxisValue(int id, int axis, float value);

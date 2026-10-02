@@ -24,9 +24,6 @@
 #include <memory>
 #include <sstream>
 
-//#include <thread>
-//#include <chrono>
-
 using namespace jasperengine;
 
 namespace {
@@ -110,12 +107,6 @@ std::unordered_map<ShaderKey, ShaderData> editor::ShaderBuilder::shaderDataCache
 std::unordered_map<ShaderKey, std::future<ShaderData>> editor::ShaderBuilder::pendingBuilds;
 std::mutex editor::ShaderBuilder::cacheMutex;
 std::atomic<bool> editor::ShaderBuilder::shutdownRequested{false};
-
-editor::ShaderBuilder::ShaderBuilder(){
-}
-
-editor::ShaderBuilder::~ShaderBuilder(){
-}
 
 ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Project* project) {
     std::unique_lock<std::mutex> lock(cacheMutex);
@@ -443,11 +434,6 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
             ++it;
     }
     clearCustomSourceCache();
-}
-
-ShaderData& editor::ShaderBuilder::getShaderData(ShaderKey shaderKey) { 
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    return shaderDataCache[shaderKey]; 
 }
 
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {

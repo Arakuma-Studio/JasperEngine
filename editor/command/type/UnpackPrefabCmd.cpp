@@ -59,7 +59,3 @@ void editor::UnpackPrefabCmd::undo(){
         sceneProject->isModified = wasModified;
     }
 }
-
-bool editor::UnpackPrefabCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

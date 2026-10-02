@@ -139,6 +139,9 @@ bool ShaderHeaderBuilder::writeShaderHeader(const std::filesystem::path& outputP
         return false;
     }
 
-    FileUtils::writeIfChanged(outputPath, buildShaderHeader(suffix, shaders));
+    if (!FileUtils::writeIfChanged(outputPath, buildShaderHeader(suffix, shaders))) {
+        err = "Failed to write shader header: " + outputPath.string();
+        return false;
+    }
     return true;
 }

@@ -32,11 +32,10 @@ namespace jasperengine::editor {
         void forwardKeyboard(ImGuiIO& io, int mods);
         void releaseKeys(int mods);
         void releaseMouseButtons(int mods);
+        static int currentMods();
 
     public:
         explicit PlayInput(Project* project);
-
-        static int currentMods();
 
         // Forwards this frame's input to the game of sceneId. canvasMin is the screen
         // position of the game image's top-left corner and scale converts ImGui pixels

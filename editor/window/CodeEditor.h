@@ -71,6 +71,7 @@ namespace jasperengine::editor {
         // Re-parses properties of script files edited outside the editor (e.g. in nano)
         void checkExternalScriptChanges();
         bool loadFileContent(EditorInstance& instance);
+        bool save(EditorInstance& instance);
         void handleFileChangePopup();
         std::string getWindowTitle(const EditorInstance& instance) const;
         void updateScriptProperties(const EditorInstance& instance, const std::string& inMemoryContent = "");
@@ -105,8 +106,6 @@ namespace jasperengine::editor {
         bool isFocused() const;
         void closeAll();
 
-        bool save(const std::string& filepath);
-        bool save(EditorInstance& instance);
         bool saveLastFocused();
         void saveAll();
         void undoLastFocused();
@@ -121,8 +120,6 @@ namespace jasperengine::editor {
         void closeFile(const std::string& filepath);
         bool isFileOpen(const std::string& filepath) const;
         bool isFileModified(const std::string& filepath) const;
-        void setText(const std::string& filepath, const std::string& text);
-        std::string getText(const std::string& filepath) const;
         bool handleFileRename(const fs::path& oldPath, const fs::path& newPath);
 
         void show();

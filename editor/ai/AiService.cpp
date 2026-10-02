@@ -481,7 +481,6 @@ void AiService::update() {
 
     ProviderRequest request;
     int retryAttempt = 0;
-    bool dispatch = false;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (pendingRetry) {
@@ -492,11 +491,11 @@ void AiService::update() {
             retryAttempt = pendingRetry->attempt;
             pendingRetry.reset();
             retryScheduled.store(false);
-            dispatch = true;
         } else {
             const int maxRounds = std::max(1, settings.maxToolRounds);
-            if (!needsContinuationLocked() || toolRounds >= maxRounds) {
-                if (needsContinuationLocked() && toolRounds >= maxRounds) {
+            const bool needsContinuation = needsContinuationLocked();
+            if (!needsContinuation || toolRounds >= maxRounds) {
+                if (needsContinuation && toolRounds >= maxRounds) {
                     appendAssistantMessageLocked(
                         "Reached the tool-step limit for this request. Send another message to continue.");
                     finishTurnLocked(false);
@@ -508,12 +507,9 @@ void AiService::update() {
             }
             ++toolRounds;
             request = buildRequestSnapshotLocked();
-            dispatch = true;
         }
     }
-    if (dispatch) {
-        dispatchRequest(std::move(request), retryAttempt);
-    }
+    dispatchRequest(std::move(request), retryAttempt);
 }
 
 std::vector<ChatMessage> AiService::getMessages() const {
@@ -824,15 +820,8 @@ void AiService::dispatchRequest(ProviderRequest request, int retryAttempt) {
 bool AiService::needsContinuationLocked() const {
     // Continue only when the conversation ends on tool results the model has
     // not yet responded to, and nothing is still awaiting user approval.
-    if (messages.empty() || messages.back().role != ChatRole::Tool) {
-        return false;
-    }
-    for (const auto& proposal : proposals) {
-        if (!proposal.executed) {
-            return false;
-        }
-    }
-    return true;
+    return !messages.empty() && messages.back().role == ChatRole::Tool &&
+           !hasPendingProposalsLocked();
 }
 
 bool AiService::hasPendingProposalsLocked() const {
@@ -906,7 +895,6 @@ void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
                 const int nextAttempt = retryAttempt + 1;
                 const std::chrono::milliseconds delay =
                     retryDelay(httpResponse, errorBody, nextAttempt);
-                bool scheduled = false;
                 bool cancelled = false;
                 {
                     std::lock_guard<std::mutex> lock(mutex);
@@ -921,22 +909,19 @@ void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
                             nextAttempt
                         };
                         retryScheduled.store(true);
-                        scheduled = true;
                     }
                 }
                 if (cancelled) {
                     busy.store(false);
                     return;
                 }
-                if (scheduled) {
-                    Out::warning(
-                        "AI provider rate limit reached; retrying in %.2f seconds "
-                        "(attempt %d/%d)",
-                        static_cast<double>(delay.count()) / 1000.0,
-                        nextAttempt, kMaxRateLimitRetries);
-                    busy.store(false);
-                    return;
-                }
+                Out::warning(
+                    "AI provider rate limit reached; retrying in %.2f seconds "
+                    "(attempt %d/%d)",
+                    static_cast<double>(delay.count()) / 1000.0,
+                    nextAttempt, kMaxRateLimitRetries);
+                busy.store(false);
+                return;
             }
 
             parsed.error = humanizeProviderError(httpResponse.status, errorBody.error);

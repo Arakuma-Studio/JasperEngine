@@ -142,11 +142,6 @@ namespace jasperengine::editor{
             sceneProject->isModified = wasModified;
         }
 
-        bool mergeWith(Command* otherCommand) override{
-            (void)otherCommand;
-            return false;
-        }
-
         // the Hierarchy greys out inactive GameObjects
         bool affectsStructure() const override{
             return field == EntityStateField::Active;

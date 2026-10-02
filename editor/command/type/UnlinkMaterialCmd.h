@@ -41,7 +41,6 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
     };
 
 }

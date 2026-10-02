@@ -20,7 +20,6 @@ public:
     static std::vector<ToolDefinition> tools();
     static bool hasTool(const std::string& name);
     static bool isReadOnly(const std::string& name);
-    static ToolDefinition getTool(const std::string& name);
     static ValidationResult validate(const std::string& name, const Json& arguments);
     static std::string describe(const std::string& name, const Json& arguments);
 };

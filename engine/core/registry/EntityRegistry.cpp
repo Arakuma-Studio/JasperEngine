@@ -71,11 +71,11 @@ EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
 }
 
 EntityRegistry::~EntityRegistry(){
-    std::vector<Entity> entityList = entityManager.getEntityList();
-    while(entityList.size() > 0){
-        destroyEntity(entityList.front());
-        // some entities can destroy other entities (ex: models)
-        entityList = entityManager.getEntityList();
+    Entity entity;
+    while (entityManager.getFirstEntity(entity)) {
+        // Destroy callbacks may remove other entities, so inspect the current first
+        // entity each time without copying the entire registry.
+        destroyEntity(entity);
     }
 }
 
@@ -148,7 +148,6 @@ void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound
         auto transforms = componentManager.getComponentArray<Transform>();
 
         size_t entityIndex = transforms->getIndex(entity);
-        //auto teste = transforms->getComponent(entity);
         Entity entityParent = transforms->getComponent(entity).parent;
 
         size_t nextIndex = entityIndex;
@@ -497,15 +496,6 @@ void EntityRegistry::clear() {
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){
-    //----------DEBUG
-    //printf("Add child - BEFORE\n");
-    //auto transforms = componentManager.getComponentArray<Transform>();
-    //for (int i = 0; i < transforms->size(); i++){
-    //	auto transform = transforms->getComponentFromIndex(i);
-    //	printf("Transform %i - Entity: %i - Parent: %i: %s\n", i, transforms->getEntity(i), transform.parent, getEntityName(transforms->getEntity(i)).c_str());
-    //}
-    //----------DEBUG
-
     Signature childSignature = entityManager.getSignature(child);
     if (childSignature.test(getComponentId<Transform>())){
         Transform& transformChild = componentManager.getComponent<Transform>(child);
@@ -556,14 +546,6 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
         }
     }
 
-    //----------DEBUG
-    //printf("Add child - AFTER\n");
-    //for (int i = 0; i < transforms->size(); i++){
-    //	auto transform = transforms->getComponentFromIndex(i);
-    //	printf("Transform %i - Entity: %i - Parent: %i: %s\n", i, transforms->getEntity(i), transform.parent, getEntityName(transforms->getEntity(i)).c_str());
-    //}
-    //printf("\n");
-    //----------DEBUG
 }
 
 void EntityRegistry::moveChildToIndex(Entity entity, size_t index){

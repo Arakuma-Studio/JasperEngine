@@ -41,8 +41,3 @@ void editor::SetMainCameraCmd::undo(){
     sceneProject->mainCamera = oldMainCamera;
     sceneProject->isModified = wasModified;
 }
-
-bool editor::SetMainCameraCmd::mergeWith(editor::Command* otherCommand){
-
-    return false;
-}

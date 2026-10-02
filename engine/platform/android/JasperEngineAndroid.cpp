@@ -9,7 +9,7 @@
 #include <android/asset_manager.h>
 #include "NativeEngine.h"
 
-int android_read(void* cookie, char* buf, int size) {
+static int android_read(void* cookie, char* buf, int size) {
     return AAsset_read((AAsset*)cookie, buf, size);
 }
 
@@ -24,10 +24,6 @@ static fpos_t android_seek(void* cookie, fpos_t offset, int whence) {
 static int android_close(void* cookie) {
     AAsset_close((AAsset*)cookie);
     return 0;
-}
-
-JasperEngineAndroid::JasperEngineAndroid(){
-    logtag = "JasperEngine";
 }
 
 int JasperEngineAndroid::getScreenWidth(){
@@ -89,7 +85,7 @@ void JasperEngineAndroid::platformLog(const int type, const char *fmt, va_list a
         priority = ANDROID_LOG_ERROR;
     }
 
-    __android_log_vprint(priority, logtag, fmt, args);
+    __android_log_vprint(priority, "JasperEngine", fmt, args);
 }
 
 bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){

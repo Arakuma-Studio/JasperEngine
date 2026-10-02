@@ -830,7 +830,6 @@ void waitForGpu() {
 @end
 
 editor::App editor::Backend::app;
-std::string editor::Backend::title;
 
 int editor::Backend::init(int argc, char* argv[]) {
     @autoreleasepool {
@@ -1228,7 +1227,7 @@ sg_swapchain editor::Backend::getSokolSwapchain() {
 }
 
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
-    title = projectName.empty()
+    const std::string title = projectName.empty()
         ? "Empty project - JasperEngine"
         : projectName + " - JasperEngine";
     WindowMac::setTitle(title);

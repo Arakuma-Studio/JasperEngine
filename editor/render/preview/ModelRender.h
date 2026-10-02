@@ -12,30 +12,27 @@ namespace jasperengine::editor{
 
     class ModelRender{
     private:
-        Scene* scene;
-        Camera* camera;
-        Light* light;
-        Model* model;
+        Scene* scene = nullptr;
+        Camera* camera = nullptr;
+        Light* light = nullptr;
+        Model* model = nullptr;
+
+        void clearAndInitScene();
 
     public:
-        ModelRender();
-        virtual ~ModelRender();
+        ModelRender() = default;
+        ~ModelRender();
 
         ModelRender(const ModelRender&) = delete;
         ModelRender& operator=(const ModelRender&) = delete;
-        ModelRender(ModelRender&&) noexcept = default;
-        ModelRender& operator=(ModelRender&&) noexcept = default;
 
         void clearScene();
-        void clearAndInitScene();
         bool loadModel(const std::string& filename);
         void positionCameraForModel();
         void fixDarkMaterials();
 
         Framebuffer* getFramebuffer();
-        Texture getTexture();
         Scene* getScene();
-        GameObject* getGameObject();
     };
 
 }

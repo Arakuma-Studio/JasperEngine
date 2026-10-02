@@ -1432,15 +1432,6 @@ bool editor::CodeEditor::saveLastFocused(){
     return true;
 }
 
-bool editor::CodeEditor::save(const std::string& filepath) {
-    auto it = editors.find(toRelativePath(filepath));
-    if (it == editors.end()) {
-        return false;
-    }
-
-    return save(it->second);
-}
-
 void editor::CodeEditor::saveAll() {
     for (auto& [filepath, instance] : editors) {
         if (instance.isModified) {
@@ -1552,27 +1543,6 @@ bool editor::CodeEditor::isFileOpen(const std::string& filepath) const {
 bool editor::CodeEditor::isFileModified(const std::string& filepath) const {
     auto it = editors.find(toRelativePath(filepath));
     return it != editors.end() && it->second.isModified;
-}
-
-void editor::CodeEditor::setText(const std::string& filepath, const std::string& text) {
-    std::string key = toRelativePath(filepath);
-    if (auto it = editors.find(key); it != editors.end()) {
-        it->second.editor->SetText(text);
-        it->second.savedUndoIndex = it->second.editor->GetUndoIndex();
-        it->second.isModified = false;
-        try {
-            it->second.lastWriteTime = fs::last_write_time(resolveFilepath(key));
-        } catch (const std::exception&) {
-            // Keeps the previous timestamp, the watcher reloads on the next tick
-        }
-    }
-}
-
-std::string editor::CodeEditor::getText(const std::string& filepath) const {
-    if (auto it = editors.find(toRelativePath(filepath)); it != editors.end()) {
-        return it->second.editor->GetText();
-    }
-    return "";
 }
 
 bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::path& newPath) {

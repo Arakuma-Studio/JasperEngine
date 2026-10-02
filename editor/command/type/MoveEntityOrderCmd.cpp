@@ -74,7 +74,3 @@ void editor::MoveEntityOrderCmd::undo(){
 
     sceneProject->isModified = wasModified;
 }
-
-bool editor::MoveEntityOrderCmd::mergeWith(Command* otherCommand){
-    return false;
-}

@@ -185,16 +185,6 @@ struct MaterialInfo{
     vec3 n;
     vec3 baseColor; // getBaseColor()
 
-    //float sheenRoughnessFactor;
-    //vec3 sheenColorFactor;
-
-    //vec3 clearcoatF0;
-    //vec3 clearcoatF90;
-    //float clearcoatFactor;
-    //vec3 clearcoatNormal;
-    //float clearcoatRoughness;
-
-    //float transmissionFactor;
 };
 
 struct NormalInfo {
@@ -279,14 +269,11 @@ void main() {
     #ifndef MATERIAL_UNLIT
         NormalInfo normalInfo = getNormalInfo();
         vec3 n = normalInfo.n;
-        vec3 t = normalInfo.t;
-        vec3 b = normalInfo.b;
 
         MaterialInfo materialInfo = {0.0, vec3(0.0), 0.0, vec3(0.0), vec3(0.0), 0.0, vec3(0.0), vec3(0.0)};
         materialInfo.baseColor = baseColor.rgb;
 
         // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.
-        float ior = 1.5;
         float f0_ior = 0.04;
 
         materialInfo = getMetallicRoughnessInfo(materialInfo, f0_ior);
@@ -372,8 +359,6 @@ void main() {
         #ifdef USE_PUNCTUAL
             for (int i = 0; i < MAX_LIGHTS; ++i){
 
-                //Cannot be in function to avoid GLES2 index errors
-                //TODO: check this again, removed GLES2 support
                 Light light = Light(
                     int(lighting.position_type[i].w),
                     lighting.direction_range[i].xyz,
@@ -404,7 +389,6 @@ void main() {
                     float NdotL = clampedDot(n, l);
                     float NdotV = clampedDot(n, v);
                     float NdotH = clampedDot(n, h);
-                    float LdotH = clampedDot(l, h);
                     float VdotH = clampedDot(v, h);
 
                     float shadow = 1.0;

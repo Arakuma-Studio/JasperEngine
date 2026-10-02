@@ -7,6 +7,7 @@
 #include "Export.h"
 
 #include <string>
+#include <memory>
 #include <vector>
 
 namespace jasperengine {
@@ -19,6 +20,9 @@ namespace jasperengine {
         // Paths are the ones Data::open() takes: asset://, lua:// or asset-relative
         static bool contains(const std::string& path);
         static bool read(const std::string& path, std::vector<unsigned char>& outData);
+        // Data::open can take ownership directly, without copying the packed bytes.
+        static bool readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
+                              unsigned int& outSize);
     };
 
 }

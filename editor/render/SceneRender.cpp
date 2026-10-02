@@ -42,8 +42,6 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
     this->previewCameraEntity = NULL_ENTITY;
 
     this->multipleEntitiesSelected = false;
-    // displaySettings initialised with struct defaults
-
     this->zoom = 1.0f;
 
     selLines = overlay(new LineRenderer(scene));
@@ -779,7 +777,6 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     CameraComponent& cameracomp = scene->getComponent<CameraComponent>(cameraEntity);
     Transform& cameratransform = scene->getComponent<Transform>(cameraEntity);
 
-    // TODO: avoid get gizmo position and rotation every frame
     Vector3 gizmoPosition;
     Quaternion gizmoRotation;
 
@@ -1112,7 +1109,6 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         gizmoStartPosition = gizmoPosition;
         cursorStartOffset = gizmoPosition - rretrun.point;
         rotationStartOffset = gizmoRotation;
-        scaleStartOffset = Vector3(1,1,1);
 
         for (Entity& entity: selEntities){
             Signature signature = target->getSignature(entity);
@@ -1197,9 +1193,6 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
             Transform* instTransform = target->findComponent<Transform>(selectedInstanceEntity);
             if (instmesh && instTransform && selectedInstanceIndex < (int)instmesh->instances.size()){
                 const InstanceData& inst = instmesh->instances[selectedInstanceIndex];
-                instanceStartPosition = inst.position;
-                instanceStartRotation = inst.rotation;
-                instanceStartScale = inst.scale;
 
                 OBB instOBB = getInstanceOBB(selectedInstanceEntity, selectedInstanceIndex);
                 if (!instOBB.isNull()){
@@ -1362,9 +1355,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 }
 
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newPos;
-                lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
+                Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                CommandHandle::get(sceneId)->addCommand(lastCommand);
+                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
+                    lastCommand = dragCommand;
+                }
 
             }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D
                 && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
@@ -1386,9 +1381,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newWorldPos;
                 newLocalPos.z = oldLocal.z;
 
-                lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
+                Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                CommandHandle::get(sceneId)->addCommand(lastCommand);
+                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
+                    lastCommand = dragCommand;
+                }
             }
         }
     }
@@ -1400,6 +1397,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
         }
         Transform* transform = target->findComponent<Transform>(entity);
         if (transform){
+            Command* dragCommand = nullptr;
             RayReturn rretrun = mouseRay.intersects(cursorPlane);
 
     
@@ -1423,7 +1421,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 }else if (gz == GizmoSelected::SCALE){
                     multiCmd->addPropertyCmd<Vector3>(project, commandSceneId, entity, ComponentType::InstancedMeshComponent, prefix + ".scale", newScale);
                 }
-                lastCommand = multiCmd;
+                dragCommand = multiCmd;
             };
 
             if (rretrun){
@@ -1456,9 +1454,9 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 "positionOffset", getAnchoredPositionOffset(target, entity, newPosition, Vector2(layout->width, layout->height)));
                             multiCmd->addCommand(std::make_unique<ObjectTransformCmd>(project, commandSceneId, entity,
                                 transform->position, newRotation, newScale));
-                            lastCommand = multiCmd;
+                            dragCommand = multiCmd;
                         }else{
-                            lastCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
+                            dragCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
                         }
                     }
                 };
@@ -1503,7 +1501,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             Vector3 newLocalPos = lineTransform->modelMatrix.inverse() * newPos;
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
-                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
+                            dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else if (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity){
@@ -1512,7 +1510,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         if (polyTransform){
                             Vector3 newLocalPos = polyTransform->modelMatrix.inverse() * newPos;
                             std::string pointProp = "points[" + std::to_string(selectedPolygonPointIndex) + "].position";
-                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
+                            dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 selectedPolygonPointIsMesh ? ComponentType::MeshPolygonComponent : ComponentType::PolygonComponent,
                                 pointProp, newLocalPos);
                         }
@@ -1573,7 +1571,6 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         newScale = Vector3(1, radioY, radioZ);
                     }
 
-                    newScale = newScale * scaleStartOffset;
                     newScale = Vector3(abs(newScale.x), abs(newScale.y), abs(newScale.z));
 
                     Matrix4 gizmoMatrix = Matrix4::translateMatrix(gizmoPosition) * gizmoRMatrix * Matrix4::scaleMatrix(newScale);
@@ -1606,7 +1603,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             std::vector<Vector2> newPoints = occluder->points;
                             newPoints[selectedOccluderPointIndex] = Vector2(newLocalPos.x, newLocalPos.y);
 
-                            lastCommand = new PropertyCmd<std::vector<Vector2>>(project, commandSceneId, entity,
+                            dragCommand = new PropertyCmd<std::vector<Vector2>>(project, commandSceneId, entity,
                                 ComponentType::ShadowCaster2DComponent, "points", newPoints);
                         }
                     }else
@@ -1637,7 +1634,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             newLocalPos.z = localPoint.z;
 
                             std::string pointProp = "lines[" + std::to_string(lineIndex) + (isPointA ? "].pointA" : "].pointB");
-                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
+                            dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 ComponentType::LineRendererComponent, pointProp, newLocalPos);
                         }
                     }else
@@ -1665,7 +1662,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             newLocalPos.z = oldLocal.z;
 
                             std::string pointProp = "points[" + std::to_string(selectedPolygonPointIndex) + "].position";
-                            lastCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
+                            dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, entity,
                                 selectedPolygonPointIsMesh ? ComponentType::MeshPolygonComponent : ComponentType::PolygonComponent,
                                 pointProp, newLocalPos);
                         }
@@ -1830,7 +1827,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                     prefix + ".width", newTileW);
                                 multiCmd->addPropertyCmd<float>(project, commandSceneId, entity, ComponentType::TilemapComponent,
                                     prefix + ".height", newTileH);
-                                lastCommand = multiCmd;
+                                dragCommand = multiCmd;
                             }
                         }
                     }else if (isInstanceDrag){
@@ -1984,13 +1981,13 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         }else{
                             multiCmd->addPropertyCmd<Vector3>(project, commandSceneId, entity, ComponentType::Transform, "position", pos);
                         }
-                        lastCommand = multiCmd;
+                        dragCommand = multiCmd;
                     }
                     } // end else (entity-level OBJECT2D)
                 }
 
-                if (lastCommand){
-                    CommandHandle::get(sceneId)->addCommand(lastCommand);
+                if (dragCommand && CommandHandle::get(sceneId)->addCommand(dragCommand)){
+                    lastCommand = dragCommand;
                 }
             }
         }
@@ -2109,7 +2106,6 @@ void editor::SceneRender::updateTerrainBrushCursor(){
 }
 
 TextureRender& editor::SceneRender::getTexture(){
-    //return camera->getFramebuffer()->getRender().getColorTexture();
     return framebuffer.getRender().getColorTexture();
 }
 

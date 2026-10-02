@@ -14,7 +14,7 @@ namespace jasperengine::editor{
 
     private:
         std::vector<Command*> list;
-        size_t index = 0; // real index is (index-1)
+        size_t index = 0;
         size_t sceneId = 0;
 
         // Play mode: the scene is restored from a snapshot on Stop, so commands made while
@@ -30,9 +30,9 @@ namespace jasperengine::editor{
         static std::function<void(size_t, bool)> onSceneModified;
 
         explicit CommandHistory(size_t sceneId = 0);
-        virtual ~CommandHistory();
+        ~CommandHistory();
 
-        void addCommand(Command* cmd);
+        bool addCommand(Command* cmd);
         void addCommandNoMerge(Command* cmd);
 
         void undo();
@@ -50,4 +50,3 @@ namespace jasperengine::editor{
     };
 
 }
-

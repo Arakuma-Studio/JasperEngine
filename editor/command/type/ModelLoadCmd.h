@@ -112,7 +112,6 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
 
         // Whether a load into this Model is still running on a worker
         static bool isLoadPending(uint32_t sceneId, Entity entity);

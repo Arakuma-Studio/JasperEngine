@@ -27,7 +27,3 @@ void editor::CreateDirCmd::undo(){
         printf("Error: Undo creating directory %s: %s\n", directory.string().c_str(), e.what());
     }
 }
-
-bool editor::CreateDirCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

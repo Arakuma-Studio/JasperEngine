@@ -297,11 +297,6 @@ RayReturn Ray::intersects(const Sphere& sphere) const{
     Vector3 rayorig = origin - sphere.center;
     float radius = sphere.radius;
 
-    // discard inside sphere
-    //if (rayorig.squaredLength() <= radius*radius && discardInside){
-    //    return {true, 0, Vector3::ZERO, Vector3::ZERO, NULL_ENTITY, 0};
-    //}
-
     float a = direction.dotProduct(direction);
     float b = 2 * rayorig.dotProduct(direction);
     float c = rayorig.dotProduct(rayorig) - radius * radius;

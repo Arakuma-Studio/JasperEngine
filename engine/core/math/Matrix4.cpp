@@ -4,6 +4,7 @@
 #include "Matrix4.h"
 
 #include "util/Angle.h"
+#include <algorithm>
 #include <cmath>
 #include <cassert>
 #include <string.h>
@@ -47,7 +48,9 @@ Matrix4::Matrix4 (float fEntry00, float fEntry10, float fEntry20, float fEntry30
 }
 
 Matrix4::Matrix4(const float **matrix){
-    std::copy(&matrix[0][0], &matrix[0][0]+16,&this->matrix[0][0]);
+    for (int column = 0; column < 4; ++column) {
+        std::copy_n(matrix[column], 4, this->matrix[column]);
+    }
 }
 
 

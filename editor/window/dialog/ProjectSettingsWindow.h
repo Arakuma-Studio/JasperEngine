@@ -152,9 +152,6 @@ namespace jasperengine::editor {
         bool applySettings();
 
     public:
-        ProjectSettingsWindow() = default;
-        ~ProjectSettingsWindow() = default;
-
         // category: a page to show, e.g. "Player"; nullptr keeps the last one.
         void open(Project* project, const char* category = nullptr);
         void show();

@@ -28,8 +28,6 @@ void LuaBinding::registerUtilClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Base64>("Base64")
-        //.addStaticFunction("encode", &Base64::encode)  //TODO: read and write data in Lua
-        //.addStaticFunction("decode", &Base64::decode)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

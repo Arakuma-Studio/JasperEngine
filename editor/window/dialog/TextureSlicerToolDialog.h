@@ -77,9 +77,6 @@ private:
     SliceResult buildResult();
 
 public:
-    TextureSlicerToolDialog() = default;
-    ~TextureSlicerToolDialog() = default;
-
     void open(const Texture& previewTexture,
               int sheetWidth, int sheetHeight,
               std::function<void(const SliceResult&)> onApply,

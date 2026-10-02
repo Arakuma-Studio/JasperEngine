@@ -42,48 +42,6 @@ float D_GGX(float NdotH, float alphaRoughness){
     return alphaRoughnessSq / (M_PI * f * f);
 }
 
-float lambdaSheenNumericHelper(float x, float alphaG){
-    float oneMinusAlphaSq = (1.0 - alphaG) * (1.0 - alphaG);
-    float a = mix(21.5473, 25.3245, oneMinusAlphaSq);
-    float b = mix(3.82987, 3.32435, oneMinusAlphaSq);
-    float c = mix(0.19823, 0.16801, oneMinusAlphaSq);
-    float d = mix(-1.97760, -1.27393, oneMinusAlphaSq);
-    float e = mix(-4.32054, -4.85967, oneMinusAlphaSq);
-    return a / (1.0 + b * pow(x, c)) + d * x + e;
-}
-
-float lambdaSheen(float cosTheta, float alphaG){
-    if(abs(cosTheta) < 0.5)
-    {
-        return exp(lambdaSheenNumericHelper(cosTheta, alphaG));
-    }
-    else
-    {
-        return exp(2.0 * lambdaSheenNumericHelper(0.5, alphaG) - lambdaSheenNumericHelper(1.0 - cosTheta, alphaG));
-    }
-}
-
-float V_Sheen(float NdotL, float NdotV, float sheenRoughness){
-    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]
-    float alphaG = sheenRoughness * sheenRoughness;
-
-    return clamp(1.0 / ((1.0 + lambdaSheen(NdotV, alphaG) + lambdaSheen(NdotL, alphaG)) *
-        (4.0 * NdotV * NdotL)), 0.0, 1.0);
-}
-
-//Sheen implementation-------------------------------------------------------------------------------------
-// See  https://github.com/sebavan/glTF/tree/KHR_materials_sheen/extensions/2.0/Khronos/KHR_materials_sheen
-
-// Estevez and Kulla http://www.aconty.com/pdf/s2017_pbs_imageworks_sheen.pdf
-float D_Charlie(float sheenRoughness, float NdotH){
-    sheenRoughness = max(sheenRoughness, 0.000001); //clamp (0,1]
-    float alphaG = sheenRoughness * sheenRoughness;
-    float invR = 1.0 / alphaG;
-    float cos2h = NdotH * NdotH;
-    float sin2h = 1.0 - cos2h;
-    return (2.0 + invR) * pow(sin2h, invR * 0.5) / (2.0 * M_PI);
-}
-
 //https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB
 vec3 BRDF_lambertian(vec3 f0, vec3 f90, vec3 diffuseColor, float VdotH){
     // see https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
@@ -97,11 +55,4 @@ vec3 BRDF_specularGGX(vec3 f0, vec3 f90, float alphaRoughness, float VdotH, floa
     float D = D_GGX(NdotH, alphaRoughness);
 
     return F * Vis * D;
-}
-
-// f_sheen
-vec3 BRDF_specularSheen(vec3 sheenColor, float sheenRoughness, float NdotL, float NdotV, float NdotH){
-    float sheenDistribution = D_Charlie(sheenRoughness, NdotH);
-    float sheenVisibility = V_Sheen(NdotL, NdotV, sheenRoughness);
-    return sheenColor * sheenDistribution * sheenVisibility;
 }

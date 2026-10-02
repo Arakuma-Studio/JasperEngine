@@ -3,7 +3,7 @@
 
 #include "AiTypes.h"
 
-#include <cctype>
+#include "AiPathUtils.h"
 
 namespace jasperengine::editor::ai {
 
@@ -103,18 +103,7 @@ const std::vector<EndpointPreset>& endpointPresets() {
 }
 
 std::string makeEndpointId(const Settings& settings, const std::string& label) {
-    std::string base;
-    for (char c : label) {
-        unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc)) {
-            base.push_back(static_cast<char>(std::tolower(uc)));
-        } else if (!base.empty() && base.back() != '-') {
-            base.push_back('-');
-        }
-    }
-    while (!base.empty() && base.back() == '-') base.pop_back();
-    if (base.empty()) base = "endpoint";
-
+    const std::string base = PathUtils::slugify(label, "endpoint");
     std::string candidate = base;
     for (int suffix = 2; findEndpoint(settings, candidate) != nullptr; ++suffix) {
         candidate = base + "-" + std::to_string(suffix);

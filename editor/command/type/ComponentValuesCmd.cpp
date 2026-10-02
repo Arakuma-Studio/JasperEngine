@@ -325,10 +325,6 @@ void editor::ComponentValuesCmd::undo(){
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ComponentValuesCmd::mergeWith(Command* otherCommand){
-    return false;
-}
-
 bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
                                                 ComponentType type, const ComponentClip* clip, std::string* reason){
     auto fail = [reason](const std::string& message) {

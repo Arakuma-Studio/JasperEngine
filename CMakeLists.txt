@@ -94,11 +94,7 @@ if(WIN32)
  
     if(MSVC)
         set(PLATFORM_PROPERTIES_FLAGS LINK_FLAGS "/ENTRY:mainCRTStartup")
-        if(JASPERENGINE_SHARED)
-            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-        else()
-            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        endif()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     elseif(MINGW)
         # Same call as the CRT above: a shared engine means one GCC runtime for
         # the editor, the DLL and the plugins, shipped beside the binaries.
@@ -226,10 +222,6 @@ if(NOT WIN32)
     find_package(CURL REQUIRED)
 endif()
 
-if(UNIX AND NOT APPLE)
-    find_package(X11 QUIET)
-endif()
-
 set(BACKEND_SOURCES)
 set(BACKEND_LIBS)
 
@@ -331,7 +323,6 @@ add_definitions("-DJASPERENGINE_EDITOR")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
-#add_definitions("-DNO_CPP_INIT")
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
     add_definitions("-DSOKOL_VULKAN")
 elseif(GRAPHIC_BACKEND STREQUAL "metal")
@@ -424,7 +415,7 @@ include_directories (${JASPERENGINE_ROOT}/renders)
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
-if(WIN32 AND JASPERENGINE_SHARED)
+if(WIN32)
     jasperengine_add_windows_resource(
         JASPERENGINE_LIB_ICON_OBJECTS
         jasperengine
@@ -803,13 +794,11 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/resources/Info.plist"
     )
 
-    if(JASPERENGINE_SHARED)
-        add_custom_command(TARGET jasperengine-editor POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:jasperengine> $<TARGET_FILE_DIR:jasperengine-editor>
-            COMMENT "Copying the engine runtime into the bundle"
-        )
-    endif()
+    add_custom_command(TARGET jasperengine-editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:jasperengine> $<TARGET_FILE_DIR:jasperengine-editor>
+        COMMENT "Copying the engine runtime into the bundle"
+    )
 endif()
 
 # In the bundle this has to be Resources, not MacOS: codesign treats everything in
@@ -825,10 +814,12 @@ endif()
 
 add_custom_target(copy_jasperengine_editor_engine
     ${JASPERENGINE_CLEAN_STALE_ENGINE}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/engine
-        ${JASPERENGINE_EDITOR_ENGINE_DIR}
+    COMMAND ${CMAKE_COMMAND}
+        -DENGINE_SOURCE:PATH=${CMAKE_SOURCE_DIR}/engine
+        -DENGINE_DEST:PATH=${JASPERENGINE_EDITOR_ENGINE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake
     COMMENT "Copying engine next to the editor"
+    VERBATIM
 )
 
 add_dependencies(jasperengine-editor copy_jasperengine_editor_engine)
@@ -842,7 +833,7 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 # EXCLUDE_FROM_ALL keeps it out of the default ("all") build, so local and IDE
 # builds only produce jasperengine-editor. Release builds compile it explicitly by
 # name (`cmake --build --target jasperengine-editor-cmd`, see
-# .github/workflows/cmake.yml); the install rule below still installs it because
+# .github/workflows/ci.yml); the install rule below still installs it because
 # CI builds it before installing.
 if(WIN32)
     # Its own icon because both executables install to the same folder
@@ -893,6 +884,10 @@ else()
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
             CONFIGURATIONS Release MinSizeRel
+            PATTERN ".cxx" EXCLUDE
+            PATTERN ".gradle" EXCLUDE
+            PATTERN "build" EXCLUDE
+            PATTERN ".git" EXCLUDE
     )
 endif()
 

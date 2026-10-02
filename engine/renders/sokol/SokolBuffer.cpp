@@ -13,14 +13,9 @@ SokolBuffer::SokolBuffer(){
     view.id = SG_INVALID_ID;
 }
 
-SokolBuffer::SokolBuffer(const SokolBuffer& rhs): buffer(rhs.buffer), view(rhs.view), createdUsage(rhs.createdUsage) {}
+SokolBuffer::SokolBuffer(const SokolBuffer& rhs) = default;
 
-SokolBuffer& SokolBuffer::operator=(const SokolBuffer& rhs){
-    buffer = rhs.buffer;
-    view = rhs.view;
-    createdUsage = rhs.createdUsage;
-    return *this;
-}
+SokolBuffer& SokolBuffer::operator=(const SokolBuffer& rhs) = default;
 
 bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage){
     sg_buffer_desc vbuf_desc = {0};
@@ -69,10 +64,6 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
         }
     }
 
-    // cannot two updates in same draw loop
-    //if (usage != BufferUsage::IMMUTABLE){
-    //    updateBuffer(size, data);
-    //}
 
     if (buffer.id != SG_INVALID_ID)
         return true;

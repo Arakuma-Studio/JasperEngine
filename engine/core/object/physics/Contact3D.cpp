@@ -17,27 +17,9 @@ Contact3D::Contact3D(Scene* scene, const JPH::Body* body1, const JPH::Body* body
     this->contactSettings = contactSettings;
 }
 
-Contact3D::~Contact3D(){
-
-}
-
-Contact3D::Contact3D(const Contact3D& rhs){
-    scene = rhs.scene;
-    body1 = rhs.body1;
-    body2 = rhs.body2;
-    contactManifold = rhs.contactManifold;
-    contactSettings = rhs.contactSettings;
-}
-
-Contact3D& Contact3D::operator=(const Contact3D& rhs){
-    scene = rhs.scene;
-    body1 = rhs.body1;
-    body2 = rhs.body2;
-    contactManifold = rhs.contactManifold;
-    contactSettings = rhs.contactSettings;
-    
-    return *this;
-}
+Contact3D::~Contact3D() = default;
+Contact3D::Contact3D(const Contact3D& rhs) = default;
+Contact3D& Contact3D::operator=(const Contact3D& rhs) = default;
 
 const JPH::ContactManifold* Contact3D::getJoltContactManifold() const{
     return contactManifold;
@@ -100,4 +82,3 @@ bool Contact3D::isSensor() const{
 void Contact3D::setIsSensor(bool sensor){
     contactSettings->mIsSensor = sensor;
 }
-

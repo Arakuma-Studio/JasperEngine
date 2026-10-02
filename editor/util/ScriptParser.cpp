@@ -133,7 +133,7 @@ ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string&
     bareType.erase(std::remove(bareType.begin(), bareType.end(), '&'), bareType.end());
     bareType.erase(std::remove(bareType.begin(), bareType.end(), '*'), bareType.end());
 
-    // If it's a pointer type, store the type name without * and return Pointer
+    // If it's a pointer type, store the type name without * and return EntityReference
     if (isPointer) {
         ptrTypeName = bareType; // Store "Mesh", "GameObject", etc. (without *)
         return ScriptPropertyType::EntityReference;
@@ -192,7 +192,6 @@ std::optional<ScriptPropertyType> editor::ScriptParser::parseExplicitType(const 
     if (cleanType == "Color3") return ScriptPropertyType::Color3;
     if (cleanType == "Color4") return ScriptPropertyType::Color4;
     if (cleanType == "Prefab") return ScriptPropertyType::Prefab;
-    //if (cleanType == "Pointer") return ScriptPropertyType::Pointer;
 
     // Handle "Color" - infer based on C++ type
     if (cleanType == "Color") {

@@ -326,10 +326,6 @@ std::string key_to_string(const Key& key) {
 // building a stream for each lookup that misses
 inline std::string key_to_string(const std::string& key) { return key; }
 inline std::string key_to_string(const char* key) { return std::string(key); }
-template <std::size_t N>
-std::string key_to_string(const char (&key)[N]) {
-  return std::string(key);
-}
 
 // indexing
 template <typename Key>

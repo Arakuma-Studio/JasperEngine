@@ -220,10 +220,6 @@ void editor::DuplicateEntityCmd::undo(){
     }
 }
 
-bool editor::DuplicateEntityCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
-
 std::vector<Entity> editor::DuplicateEntityCmd::getCreatedEntities() const{
     return createdEntities;
 }

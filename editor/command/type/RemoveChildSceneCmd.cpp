@@ -46,7 +46,3 @@ void editor::RemoveChildSceneCmd::undo() {
         }
     }
 }
-
-bool editor::RemoveChildSceneCmd::mergeWith(Command* otherCommand){
-    return false;
-}

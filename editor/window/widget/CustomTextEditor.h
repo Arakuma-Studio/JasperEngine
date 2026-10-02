@@ -6,7 +6,6 @@
 #include "imgui.h"
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <unordered_set>
 #include <functional>
 #include <memory>
@@ -128,7 +127,6 @@ namespace jasperengine::editor {
 
         // Language and styling
         void SetLanguage(SyntaxLanguage lang);
-        SyntaxLanguage GetLanguage() const { return language; }
         const char* GetLanguageName() const;
 
         // Cursor and selection
@@ -144,7 +142,6 @@ namespace jasperengine::editor {
         // Multi-cursor support
         void AddCursor(int line, int column);
         void ClearExtraCursors();
-        int GetCursorCount() const { return static_cast<int>(cursors.size()); }
 
         // Editing operations
         void InsertText(const std::string& text, bool allowAutoIndent = true);
@@ -175,14 +172,12 @@ namespace jasperengine::editor {
         bool ReplaceNext();
         void OpenFind();
         void CloseFind();
-        bool IsFindOpen() const { return showFindDialog; }
         int ReplaceAll(const std::string& find, const std::string& replace, bool caseSensitive = true);
 
         // Editor settings
         void SetReadOnly(bool value) { readOnly = value; }
         bool IsReadOnly() const { return readOnly; }
         void SetTabSize(int size) { tabSize = size; }
-        int GetTabSize() const { return tabSize; }
         void SetShowLineNumbers(bool show) { showLineNumbers = show; }
         void SetAutoIndent(bool enable) { autoIndent = enable; }
         void SetHighlightCurrentLine(bool enable) { highlightCurrentLine = enable; }
@@ -195,7 +190,6 @@ namespace jasperengine::editor {
         void SetAutoComplete(bool enable) { autoComplete = enable; }
         void TriggerAutoComplete(bool manualInvoke = false);
         void CloseAutoComplete();
-        bool IsAutoCompleteOpen() const { return showAutoComplete; }
 
         struct ProjectSymbol {
             std::string name;
@@ -383,7 +377,6 @@ namespace jasperengine::editor {
         void renderCursors(ImDrawList* drawList, const ImVec2& origin);
         void renderMatchingBrackets(ImDrawList* drawList, const ImVec2& origin);
         void renderSearchHighlights(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
-        void renderAutoComplete(const ImVec2& origin);
         void renderFindDialog(const ImVec2& editorPos, const ImVec2& editorSize);
         void renderContextMenu();
 

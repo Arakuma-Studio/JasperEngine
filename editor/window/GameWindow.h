@@ -52,6 +52,7 @@ namespace jasperengine::editor {
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax);
         bool computeAspect(float& aspect) const;
+        uint32_t getTargetSceneId() const;
 
     public:
         static constexpr const char* WINDOW_NAME = "Game";
@@ -65,8 +66,6 @@ namespace jasperengine::editor {
         // Brings the Game tab to front, opening it if needed (play start)
         void requestFocus();
 
-        // Scene the view shows: the play session's main scene, else the selected one
-        uint32_t getTargetSceneId() const;
         // sceneId is the running game: it renders into this view's framebuffer at
         // getRenderWidth() x getRenderHeight(), whether the view is shown or not
         bool hostsScene(uint32_t sceneId) const;
@@ -87,7 +86,6 @@ namespace jasperengine::editor {
         bool isGameCursorInView() const;
         // The game image has keyboard focus (keys go to the game while playing)
         bool hasKeyboardFocus() const;
-        bool isMaximizedOnPlay();
 
         void resetProjectState();
     };

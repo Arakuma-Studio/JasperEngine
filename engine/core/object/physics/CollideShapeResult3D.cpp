@@ -16,25 +16,9 @@ CollideShapeResult3D::CollideShapeResult3D(Scene* scene, const JPH::Body* body1,
     this->collideShapeResult = collideShapeResult;
 }
 
-CollideShapeResult3D::~CollideShapeResult3D(){
-
-}
-
-CollideShapeResult3D::CollideShapeResult3D(const CollideShapeResult3D& rhs){
-    scene = rhs.scene;
-    body1 = rhs.body1;
-    body2 = rhs.body2;
-    collideShapeResult = rhs.collideShapeResult;
-}
-
-CollideShapeResult3D& CollideShapeResult3D::operator=(const CollideShapeResult3D& rhs){
-    scene = rhs.scene;
-    body1 = rhs.body1;
-    body2 = rhs.body2;
-    collideShapeResult = rhs.collideShapeResult;
-    
-    return *this;
-}
+CollideShapeResult3D::~CollideShapeResult3D() = default;
+CollideShapeResult3D::CollideShapeResult3D(const CollideShapeResult3D& rhs) = default;
+CollideShapeResult3D& CollideShapeResult3D::operator=(const CollideShapeResult3D& rhs) = default;
 
 const JPH::CollideShapeResult* CollideShapeResult3D::getJoltCollideShapeResult() const{
     return collideShapeResult;

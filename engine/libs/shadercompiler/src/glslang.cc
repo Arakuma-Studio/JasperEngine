@@ -15,8 +15,6 @@
 
 #include "SPIRV/GlslangToSpv.h"
 #include "SPIRV/SpvTools.h"
-#include "SPIRV/disassemble.h"
-#include "SPIRV/spirv.hpp"
 #if ENABLE_OPT
 #include "spirv-tools/libspirv.h"
 #include "spirv-tools/optimizer.hpp"
@@ -25,7 +23,6 @@
 using namespace shadercompiler;
 
 
-// TODO: can be replaced with glslang/MachineIndependent/DirStackFileIncluder.h
 class FileIncluder : public glslang::TShader::Includer {
 private:
     std::vector<std::string> localDirectories;
@@ -38,14 +35,14 @@ private:
         return new IncludeResult(path, content, length, content);
     }
 
-    std::string getDirectory(const std::string path) const {
+    std::string getDirectory(const std::string& path) const {
         size_t last = path.find_last_of("/\\");
         return last == std::string::npos ? "." : path.substr(0, last);
     }
 
 public:
-    virtual IncludeResult* includeLocal(const char* headerName, 
-                                        const char* includerName, 
+    IncludeResult* includeLocal(const char* headerName,
+                                        const char* includerName,
                                         size_t inclusionDepth) override {
         
         localDirectories.resize((int)inclusionDepth + (int)localDirectories.size());
@@ -66,26 +63,24 @@ public:
     }
 
      // Not using search for a <system> path.
-    virtual IncludeResult* includeSystem(const char* headerName,
+    IncludeResult* includeSystem(const char* /*headerName*/,
                                          const char* /*includerName*/,
                                          size_t /*inclusionDepth*/) override {
         return nullptr;
     }
 
-    virtual void releaseInclude(IncludeResult* result) override {
+    void releaseInclude(IncludeResult* result) override {
         if (result != nullptr) {
             delete [] static_cast<char*>(result->userData);
             delete result;
         }
     }
 
-    virtual ~FileIncluder() override { }
-
     void addLocalDirectory(const std::string& dir) {
         localDirectories.push_back(dir);
     }
 
-    virtual std::set<std::string> getIncludedFiles() {
+    const std::set<std::string>& getIncludedFiles() const {
         return includedFiles;
     }
 };
@@ -105,8 +100,8 @@ public:
     BufferIncluder(const std::unordered_map<std::string, std::string>& fileBuffers_)
         : fileBuffers(fileBuffers_) {}
 
-    virtual IncludeResult* includeLocal(const char* headerName, 
-                                        const char* includerName, 
+    IncludeResult* includeLocal(const char* headerName,
+                                        const char* /*includerName*/,
                                         size_t /*inclusionDepth*/) override {
         std::string path(headerName);
         auto it = fileBuffers.find(path);
@@ -118,28 +113,24 @@ public:
     }
 
     // Not using search for a <system> path.
-    virtual IncludeResult* includeSystem(const char* headerName,
+    IncludeResult* includeSystem(const char* /*headerName*/,
                                          const char* /*includerName*/,
                                          size_t /*inclusionDepth*/) override {
         return nullptr;
     }
 
-    virtual void releaseInclude(IncludeResult* result) override {
+    void releaseInclude(IncludeResult* result) override {
         if (result != nullptr) {
             delete [] static_cast<char*>(result->userData);
             delete result;
         }
     }
 
-    virtual ~BufferIncluder() override { }
-
-    virtual std::set<std::string> getIncludedFiles() {
+    const std::set<std::string>& getIncludedFiles() const {
         return includedFiles;
     }
 };
 
-
-extern const TBuiltInResource DefaultTBuiltInResource;
 
 static void output_error(const char* str, const char* header, std::string* sink = nullptr){
     if (str && str[0]){
@@ -156,7 +147,7 @@ static void output_error(const char* str, const char* header, std::string* sink 
 
 static void output_included_files(const std::set<std::string>& includedFiles){
     fprintf(stdout, "Included files:\n");
-    for(auto f : includedFiles) {
+    for(const auto& f : includedFiles) {
         fprintf(stdout, "%s\n", f.c_str());
     }
 }
@@ -210,7 +201,7 @@ static void add_defines(glslang::TShader* shader, const args_t& args, std::strin
 //
 
 // Callback passed to spvtools::Optimizer::SetMessageConsumer
-void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
+static void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
         const spv_position_t &position, const char *message)
 {
     auto &out = std::cerr;
@@ -244,7 +235,7 @@ void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
 }
 
 // Apply the SPIRV-Tools optimizer to generated SPIR-V.  HLSL SPIR-V is legalized in the process.
-void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
+static void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
                          spv::SpvBuildLogger* logger, const glslang::SpvOptions* options)
 {
     spv_target_env target_env = glslang::MapToSpirvToolsEnv(intermediate.getSpv(), logger);
@@ -261,8 +252,6 @@ void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsi
     }
     optimizer.RegisterPass(spvtools::CreateWrapOpKillPass());
     optimizer.RegisterPass(spvtools::CreateDeadBranchElimPass());
-    //optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
-    //optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
     optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
     optimizer.RegisterPass(spvtools::CreateScalarReplacementPass());
     optimizer.RegisterPass(spvtools::CreateLocalAccessChainConvertPass());
@@ -274,8 +263,6 @@ void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsi
     optimizer.RegisterPass(spvtools::CreateDeadInsertElimPass());
     optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
     optimizer.RegisterPass(spvtools::CreateDeadBranchElimPass());
-    //optimizer.RegisterPass(spvtools::CreateBlockMergePass());
-    //optimizer.RegisterPass(spvtools::CreateLocalMultiStoreElimPass());
     optimizer.RegisterPass(spvtools::CreateIfConversionPass());
     optimizer.RegisterPass(spvtools::CreateSimplificationPass());
     optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());

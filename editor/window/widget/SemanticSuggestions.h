@@ -8,9 +8,6 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
-#include <functional>
-#include <algorithm>
-#include <cctype>
 
 namespace jasperengine::editor {
 
@@ -48,8 +45,6 @@ namespace jasperengine::editor {
     struct SuggestionContext {
         std::string currentWord;     // Word being typed
         std::string lineContent;     // Full line content
-        int cursorColumn;            // Cursor position in line
-        int lineNumber;              // Current line number
         std::string previousWord;    // Word before current (for context)
         bool afterDot = false;               // Is cursor after a '.' (member access)
         bool afterArrow = false;             // Is cursor after '->' (pointer member access)
@@ -64,14 +59,10 @@ namespace jasperengine::editor {
 
     class SemanticSuggestions {
     public:
-        SemanticSuggestions();
-        ~SemanticSuggestions();
+        SemanticSuggestions() = default;
 
         // Configuration
-        void SetMinPrefixLength(int length) { minPrefixLength = length; }
         void SetMaxSuggestions(int max) { maxSuggestions = max; }
-        void SetFuzzyMatching(bool enable) { fuzzyMatching = enable; }
-        void SetCaseSensitive(bool sensitive) { caseSensitive = sensitive; }
 
         // Language setup
         void SetKeywords(const std::unordered_set<std::string>& keywords);
@@ -108,14 +99,10 @@ namespace jasperengine::editor {
         // UI helpers
         static const char* GetKindIcon(SuggestionKind kind);
         static ImVec4 GetKindColor(SuggestionKind kind);
-        static const char* GetKindName(SuggestionKind kind);
 
     private:
         // Settings
-        int minPrefixLength;
-        int maxSuggestions;
-        bool fuzzyMatching;
-        bool caseSensitive;
+        int maxSuggestions = 20;
 
         // Word sources
         std::unordered_set<std::string> keywords;

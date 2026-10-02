@@ -7,8 +7,6 @@
 #include "object/Camera.h"
 #include "Engine.h"
 
-#include "object/Camera.h"
-
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"

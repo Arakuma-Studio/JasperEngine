@@ -11,7 +11,7 @@
 #include "ResourcePack.h"
 
 #include <string.h>
-#include <vector>
+#include <memory>
 
 using namespace jasperengine;
 
@@ -131,14 +131,11 @@ unsigned int Data::open(const char *aFilename) {
     dataOwned = false;
     offset = 0;
 
-    std::vector<unsigned char> packedData;
-    if (ResourcePack::read(aFilename, packedData)) {
-        dataLength = static_cast<unsigned int>(packedData.size());
-        dataPtr = new unsigned char[dataLength];
-        if (dataPtr == NULL)
-            return FileErrors::OUT_OF_MEMORY;
-        if (dataLength > 0)
-            memcpy(dataPtr, packedData.data(), dataLength);
+    std::unique_ptr<unsigned char[]> packedData;
+    unsigned int packedSize = 0;
+    if (ResourcePack::readOwned(aFilename, packedData, packedSize)) {
+        dataLength = packedSize;
+        dataPtr = packedData.release();
         dataOwned = true;
         return FileErrors::FILEDATA_OK;
     }

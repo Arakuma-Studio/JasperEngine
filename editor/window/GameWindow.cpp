@@ -167,11 +167,6 @@ bool editor::GameWindow::hasKeyboardFocus() const {
     return focused;
 }
 
-bool editor::GameWindow::isMaximizedOnPlay() {
-    loadSettings();
-    return settings.maximizeOnPlay;
-}
-
 void editor::GameWindow::resetProjectState() {
     playInput->releaseAll();
     visible = false;

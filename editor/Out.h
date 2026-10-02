@@ -15,28 +15,18 @@ namespace jasperengine::editor {
         static ConsoleWindow* consoleWindow;
         static void logMessage(LogType type, const std::string& message, const char* fallbackPrefix, std::ostream& fallbackStream);
 
-        // Helper method for formatting with no arguments
-        static std::string formatMessage(const char* fmt) {
-            return std::string(fmt);
-        }
-
-        // Helper method for formatting with arguments
         template<typename... Args>
         static std::string formatMessage(const char* fmt, Args... args) {
             if (!fmt) return std::string();
 
-            // Calculate buffer size needed
             int size = snprintf(nullptr, 0, fmt, args...);
             if (size <= 0) return std::string();
 
-            // Create buffer with required size (+1 for null terminator)
             std::string result;
             result.resize(size + 1);
 
-            // Format the string
             snprintf(&result[0], size + 1, fmt, args...);
 
-            // Remove null terminator from string
             result.resize(size);
             return result;
         }
@@ -94,8 +84,5 @@ namespace jasperengine::editor {
             build(formatMessage(fmt, args...));
         }
 
-        // Debug assertion
-        static void editor_assert(bool condition, const std::string& message);
     };
 }
-

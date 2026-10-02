@@ -225,8 +225,3 @@ void editor::CreatePrefabCmd::undo(){
     // Restore modified state
     sceneProject->isModified = wasModified;
 }
-
-bool editor::CreatePrefabCmd::mergeWith(editor::Command* otherCommand){
-    // Create Prefab commands typically don't merge with each other
-    return false;
-}

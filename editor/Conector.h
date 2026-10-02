@@ -16,7 +16,6 @@ namespace jasperengine::editor{
         void* libHandle;
         fs::path loadedLibCopy;
 
-        bool fileExists(const fs::path& path);
         void* loadSharedLibrary(const std::string& libPath);
         void unloadSharedLibrary(void* libHandle);
 

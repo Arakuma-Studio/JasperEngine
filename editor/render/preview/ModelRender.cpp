@@ -7,13 +7,6 @@
 
 using namespace jasperengine;
 
-editor::ModelRender::ModelRender(){
-    scene = nullptr;
-    camera = nullptr;
-    light = nullptr;
-    model = nullptr;
-}
-
 editor::ModelRender::~ModelRender(){
     clearScene();
 }
@@ -142,14 +135,6 @@ Framebuffer* editor::ModelRender::getFramebuffer(){
     return camera->getFramebuffer();
 }
 
-Texture editor::ModelRender::getTexture(){
-    return Texture(getFramebuffer());
-}
-
 Scene* editor::ModelRender::getScene(){
     return scene;
-}
-
-GameObject* editor::ModelRender::getGameObject(){
-    return model;
 }

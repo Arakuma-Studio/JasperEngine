@@ -17,7 +17,6 @@ namespace editor {
     class ProjectSaveDialog {
     private:
         bool m_isOpen = false;
-        std::string m_projectName;
         fs::path m_projectPath;
         char m_projectNameBuffer[256] = "";
 
@@ -25,9 +24,6 @@ namespace editor {
         std::function<void()> m_onCancel;
 
     public:
-        ProjectSaveDialog() = default;
-        ~ProjectSaveDialog() = default;
-
         void open(const std::string& defaultName, 
             std::function<void(const std::string&, const fs::path&)> onSave,
             std::function<void()> onCancel = nullptr);

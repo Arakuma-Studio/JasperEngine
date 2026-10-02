@@ -20,7 +20,7 @@ namespace jasperengine::editor {
         // Developer check: dumps every scene's GameObjects of a project (see CommandLine.cpp)
         static int runSceneDumpCommand(int argc, char** argv, const char* executableName);
 
-        static int runBenchmarkHelp(int argc, char** argv, const char* executableName);
+        static int runBenchmarkHelp(const char* executableName);
 
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);

@@ -209,10 +209,8 @@ namespace jasperengine::editor{
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
 
         // Sound preview helpers
-        SoundPreviewRuntime& soundPreview();
         bool ensureSoundPreviewInitialized();
         void stopSoundPreview(bool unload = false);
-        std::filesystem::path resolveSoundPreviewPath(const std::string& filename);
         void applySoundPreviewSettings(const AudioSourceComponent& audio);
         bool loadSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);
         bool startSoundPreview(SceneProject* sceneProject, Entity entity, const AudioSourceComponent& audio);
@@ -226,12 +224,6 @@ namespace jasperengine::editor{
         // For entity picker popup
         char entityPickerSearchBuffer[128] = {};
 
-        // For component menu
-        char componentSearchBuffer[128] = "";
-        int hoveredComponentIndex = -1;
-        bool addComponentModalOpen = false;
-        bool componentMenuJustOpened = false;
-
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
         ShaderForkDialog shaderForkDialog;
@@ -240,8 +232,6 @@ namespace jasperengine::editor{
 
         static RowPropertyType scriptPropertyTypeToRowPropertyType(ScriptPropertyType scriptType);
 
-        // replace [number] with []
-        std::string replaceNumberedBrackets(const std::string& input);
         Vector3 roundZero(const Vector3& val, const float threshold) const;
         float snapDisplayedAngle(float angle, float threshold) const;
         Vector3 getDisplayedEulerAngles(const Quaternion& value, const RotationOrder& order, float zeroThreshold) const;

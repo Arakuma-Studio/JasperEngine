@@ -47,33 +47,21 @@ void ThreadPoolManager::initialize(size_t maxThreads) {
 }
 
 size_t ThreadPoolManager::getQueueSize() const {
-    std::lock_guard<std::mutex> lock(queueMutex);  // Now works because queueMutex is mutable
+    std::lock_guard<std::mutex> lock(queueMutex);
     return tasks.size();
 }
 
 void ThreadPoolManager::shutdown() {
     std::lock_guard<std::mutex> lock(instanceMutex);
-    if (instance && !instance->isShutdown.load()) {
-        instance->isShutdown = true;
-        instance->stop = true;
-        instance->condition.notify_all();
-        for(std::thread &worker: instance->workers) {
-            if (worker.joinable()) {
-                worker.join();
-            }
-        }
-        instance.reset();
-    }
+    instance.reset();
 }
 
 ThreadPoolManager::~ThreadPoolManager() {
-    if (!isShutdown.load()) {
-        stop = true;
-        condition.notify_all();
-        for(std::thread &worker: workers) {
-            if (worker.joinable()) {
-                worker.join();
-            }
+    stop = true;
+    condition.notify_all();
+    for(std::thread &worker: workers) {
+        if (worker.joinable()) {
+            worker.join();
         }
     }
 }

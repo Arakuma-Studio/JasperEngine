@@ -170,10 +170,6 @@ static bool parseUInt32(const std::string& value, uint32_t& out) {
     return true;
 }
 
-static bool isAllBackendsToken(const std::string& value) {
-    return normalizeToken(value) == "all";
-}
-
 static bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat& out) {
     const std::string token = normalizeToken(value);
     if (token == "binary" || token == "sdat") {
@@ -203,7 +199,7 @@ static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {
 
 static bool parseBackendList(const std::string& value, std::set<ShaderBackend>& backends, std::string& error) {
     for (const std::string& name : splitList(value)) {
-        if (isAllBackendsToken(name)) {
+        if (normalizeToken(name) == "all") {
             addAllSupportedBackends(backends);
             continue;
         }
@@ -592,11 +588,9 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     return 0;
 }
 
-int CommandLine::runBenchmarkHelp(int argc, char** argv, const char* executableName) {
+int CommandLine::runBenchmarkHelp(const char* executableName) {
     attachHostConsoleIfNeeded();
     printBenchmarkUsage(getCommandName(executableName));
-    (void)argc;
-    (void)argv;
     return 0;
 }
 

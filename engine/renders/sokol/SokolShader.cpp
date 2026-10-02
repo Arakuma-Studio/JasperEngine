@@ -17,12 +17,9 @@ SokolShader::SokolShader(){
     shader.id = SG_INVALID_ID;
 }
 
-SokolShader::SokolShader(const SokolShader& rhs) : shader(rhs.shader) {}
+SokolShader::SokolShader(const SokolShader& rhs) = default;
 
-SokolShader& SokolShader::operator=(const SokolShader& rhs){ 
-    shader = rhs.shader; 
-    return *this;
-}
+SokolShader& SokolShader::operator=(const SokolShader& rhs) = default;
 
 int SokolShader::roundup(int val, int round_to) {
     return (val + (round_to - 1)) & ~(round_to - 1);
@@ -237,7 +234,7 @@ bool SokolShader::createShader(ShaderData& shaderData){
                 img->stage = shader_stage;
                 img->image_type = textureToSokolType(stage->textures[t].type);
                 img->sample_type = textureSamplerToSokolType(stage->textures[t].samplerType);
-                img->multisampled = false; // TODO
+                img->multisampled = false;
                 img->hlsl_register_t_n = stage->textures[t].binding;
                 img->msl_texture_n = stage->textures[t].binding;
                 img->wgsl_group1_binding_n = stage->textures[t].binding;

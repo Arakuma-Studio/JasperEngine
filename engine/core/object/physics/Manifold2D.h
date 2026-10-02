@@ -23,6 +23,7 @@ namespace jasperengine{
 
             const b2Manifold* getBox2DManifold() const;
     
+            // Point accessors require 0 <= index < getPointCount().
             Vector2 getManifoldPointAnchorA(int32_t index) const;
             Vector2 getManifoldPointAnchorB(int32_t index) const;
             Vector2 getManifoldPointPosition(int32_t index) const;

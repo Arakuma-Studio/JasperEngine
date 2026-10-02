@@ -14,7 +14,6 @@
 #include "Input.h"
 #include "System.h"
 #include "Log.h"
-#include "AudioSystem.h"
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -133,34 +132,26 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     int sWidth = DEFAULT_WINDOW_WIDTH;
     int sHeight = DEFAULT_WINDOW_HEIGHT;
-    if ((argv[1] != NULL && argv[1] != 0) && (argv[2] != NULL && argv[2] != 0)){
+    if (argv[1] != NULL && argv[2] != NULL){
         sWidth = atoi(argv[1]);
         sHeight = atoi(argv[2]);
     }
 
-    bool antiAlias = true;
-
-    EMSCRIPTEN_RESULT ret = emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
-    ret = emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
-    ret = emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
-    ret = emscripten_set_mousedown_callback(canvas.c_str(), 0, true, mouse_callback);
-    ret = emscripten_set_mouseup_callback(canvas.c_str(), 0, true, mouse_callback);
-    ret = emscripten_set_mousemove_callback(canvas.c_str(), 0, true, mouse_callback);
-    ret = emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, mouse_callback);
-    ret = emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, mouse_callback);
-    ret = emscripten_set_wheel_callback(canvas.c_str(), 0, true, wheel_callback);
-    ret = emscripten_set_touchstart_callback(canvas.c_str(), 0, true, touch_callback);
-    ret = emscripten_set_touchmove_callback(canvas.c_str(), 0, true, touch_callback);
-    ret = emscripten_set_touchend_callback(canvas.c_str(), 0, true, touch_callback);
-    ret = emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, touch_callback);
-    ret = emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, webgl_context_callback);
-    ret = emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, webgl_context_callback);
-
-    // necessary if canvas size is relative by window
-    //ret = emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 1, resize_callback);
-
-    // removed because emscripten_set_canvas_element_size is not working on this callback
-    //ret = emscripten_set_fullscreenchange_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 1, fullscreenchange_callback);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
+    emscripten_set_mousedown_callback(canvas.c_str(), 0, true, mouse_callback);
+    emscripten_set_mouseup_callback(canvas.c_str(), 0, true, mouse_callback);
+    emscripten_set_mousemove_callback(canvas.c_str(), 0, true, mouse_callback);
+    emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, mouse_callback);
+    emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, mouse_callback);
+    emscripten_set_wheel_callback(canvas.c_str(), 0, true, wheel_callback);
+    emscripten_set_touchstart_callback(canvas.c_str(), 0, true, touch_callback);
+    emscripten_set_touchmove_callback(canvas.c_str(), 0, true, touch_callback);
+    emscripten_set_touchend_callback(canvas.c_str(), 0, true, touch_callback);
+    emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, touch_callback);
+    emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, webgl_context_callback);
+    emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, webgl_context_callback);
 
     syncWaitTime = 0;
     enabledIDB = false;
@@ -175,21 +166,20 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb());
 
-    sampleCount = (antiAlias) ? 4 : 1;
+    sampleCount = 4;
 
     EmscriptenWebGLContextAttributes attr;
     emscripten_webgl_init_context_attributes(&attr);
     attr.alpha = true;
     attr.depth = true;
     attr.stencil = true;
-    attr.antialias = false;
+    attr.antialias = true;
     attr.preserveDrawingBuffer = false;
     attr.failIfMajorPerformanceCaveat = false;
     attr.enableExtensionsByDefault = true;
     attr.premultipliedAlpha = true;
     attr.majorVersion = 2;
     attr.minorVersion = 0;
-    attr.antialias = antiAlias;
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(canvas.c_str(), &attr);
     
     emscripten_webgl_make_context_current(ctx);
@@ -232,7 +222,7 @@ void JasperEngineWeb::changeCanvasSize(int width, int height){
 
 bool JasperEngineWeb::isFullscreen(){
     EmscriptenFullscreenChangeEvent fsce;
-    EMSCRIPTEN_RESULT ret = emscripten_get_fullscreen_status(&fsce);
+    emscripten_get_fullscreen_status(&fsce);
 
     return fsce.isFullscreen;
 }
@@ -245,11 +235,11 @@ void JasperEngineWeb::requestFullscreen(){
     strategy.canvasResizedCallback = canvas_resize;
     strategy.canvasResizedCallbackUserData = NULL;
 
-    EMSCRIPTEN_RESULT ret = emscripten_request_fullscreen_strategy(canvas.c_str(), 1, &strategy);
+    emscripten_request_fullscreen_strategy(canvas.c_str(), 1, &strategy);
 }
 
 void JasperEngineWeb::exitFullscreen(){
-    EMSCRIPTEN_RESULT ret = emscripten_exit_fullscreen();
+    emscripten_exit_fullscreen();
 }
 
 void JasperEngineWeb::setWindowTitle(const std::string& title){
@@ -444,14 +434,6 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
     return EM_TRUE;
 }
 
-EM_BOOL JasperEngineWeb::resize_callback(int event_type, const EmscriptenUiEvent* ui_event, void* user_data){
-    int w, h;
-    emscripten_get_canvas_element_size(canvas.c_str(), &w, &h);
-    changeCanvasSize(w, h);
-
-    return 0;
-}
-
 EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void *userData){
     int w, h;
     emscripten_get_canvas_element_size(canvas.c_str(), &w, &h);
@@ -467,7 +449,6 @@ wchar_t JasperEngineWeb::toCodepoint(const std::string &u){
     int l = u.length();
     if (l<1) return -1; unsigned char u0 = u[0]; if (u0>=0   && u0<=127) return u0;
     if (l<2) return -1; unsigned char u1 = u[1]; if (u0>=192 && u0<=223) return (u0-192)*64 + (u1-128);
-    //if (u[0]==0xed && (u[1] & 0xa0) == 0xa0) return -1; //code points, 0xd800 to 0xdfff
     if (l<3) return -1; unsigned char u2 = u[2]; if (u0>=224 && u0<=239) return (u0-224)*4096 + (u1-128)*64 + (u2-128);
     if (l<4) return -1; unsigned char u3 = u[3]; if (u0>=240 && u0<=247) return (u0-240)*262144 + (u1-128)*4096 + (u2-128)*64 + (u3-128);
     return -1;
@@ -763,7 +744,7 @@ int JasperEngineWeb::jasperengine_input(const char code[32]){
     if (!strcmp(code,"KeyZ")) return D_KEY_Z;
     if (!strcmp(code,"BracketLeft")) return D_KEY_LEFT_BRACKET; /* [ */
     if (!strcmp(code,"Backslash")) return D_KEY_BACKSLASH;  /* \ */
-    if (!strcmp(code,"BracketLeft")) return D_KEY_RIGHT_BRACKET;  /* ] */
+    if (!strcmp(code,"BracketRight")) return D_KEY_RIGHT_BRACKET;  /* ] */
     if (!strcmp(code,"Backquote")) return D_KEY_GRAVE_ACCENT; /* ` */
 
     if (!strcmp(code,"Escape")) return D_KEY_ESCAPE;
@@ -981,11 +962,6 @@ void JasperEngineWeb::initializeCrazyGamesSDK(){
 
             document.body.appendChild(scriptEle);
 
-            // success event
-            scriptEle.addEventListener("load", () => {
-                //console.log("File loaded");
-            });
-            // error event
             scriptEle.addEventListener("error", (ev) => {
                 console.log("Error on loading file", ev);
             });

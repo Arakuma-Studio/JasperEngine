@@ -27,7 +27,7 @@ namespace jasperengine::editor {
             using Value = std::remove_cv_t<std::remove_reference_t<T>>;
             static_assert(!std::is_lvalue_reference<T>::value, "move the value in");
             // Type-erased owner; destroying it destroys the value
-            push(std::make_shared<Holder<Value>>(std::move(value)));
+            push(std::make_shared<Value>(std::move(value)));
         }
 
         // A YAML::Node copies instead of moving, and assigning to it writes through to the
@@ -41,16 +41,7 @@ namespace jasperengine::editor {
         }
 
     private:
-        struct HolderBase {
-            virtual ~HolderBase() = default;
-        };
-        template<typename T>
-        struct Holder : HolderBase {
-            T value;
-            explicit Holder(T v) : value(std::move(v)) {}
-        };
-
-        static void push(std::shared_ptr<HolderBase> holder);
+        static void push(std::shared_ptr<void> holder);
     };
 
 }

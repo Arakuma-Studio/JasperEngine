@@ -76,8 +76,3 @@ void editor::AddEntityToPrefabCmd::undo(){
 
     project->getScene(sceneId)->isModified = wasModified;
 }
-
-bool editor::AddEntityToPrefabCmd::mergeWith(editor::Command* otherCommand){
-
-    return false;
-}

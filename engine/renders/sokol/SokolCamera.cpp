@@ -4,7 +4,6 @@
 #include "SokolCamera.h"
 
 #include "System.h"
-#include "SokolCmdQueue.h"
 
 #include "sokol_gfx.h"
 #include <cmath>
@@ -16,12 +15,9 @@ SokolCamera::SokolCamera(){
     pass.action.colors[0].load_action = SG_LOADACTION_LOAD;
 }
 
-SokolCamera::SokolCamera(const SokolCamera& rhs) : pass(rhs.pass) {}
+SokolCamera::SokolCamera(const SokolCamera& rhs) = default;
 
-SokolCamera& SokolCamera::operator=(const SokolCamera& rhs) { 
-    pass = rhs.pass; 
-    return *this;
-}
+SokolCamera& SokolCamera::operator=(const SokolCamera& rhs) = default;
 
 SokolCamera::~SokolCamera(){
 
@@ -46,7 +42,6 @@ void SokolCamera::setLoadActionLoad(){
 void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
     pass.swapchain = {};
     pass.attachments = framebuffer->backend.get(face);
-    //SokolCmdQueue::add_command_begin_pass(pass);
     sg_begin_pass(pass);
 }
 
@@ -55,14 +50,12 @@ void SokolCamera::startRenderPass(int width, int height){
     pass.swapchain = System::instance().getSokolSwapchain();
     pass.swapchain.width = width;
     pass.swapchain.height = height;
-    //SokolCmdQueue::add_command_begin_pass(pass);
     sg_begin_pass(pass);
 }
 
 void SokolCamera::startRenderPass(){
     pass.attachments = {};
     pass.swapchain = System::instance().getSokolSwapchain();
-    //SokolCmdQueue::add_command_begin_pass(pass);
     sg_begin_pass(pass);
 }
 
@@ -75,8 +68,6 @@ void SokolCamera::applyViewport(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-
-    //SokolCmdQueue::add_command_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
     sg_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -89,12 +80,9 @@ void SokolCamera::applyScissor(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-
-    //SokolCmdQueue::add_command_apply_scissor_rect(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
     sg_apply_scissor_rect(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
 void SokolCamera::endRenderPass(){
-    //SokolCmdQueue::add_command_end_pass();
     sg_end_pass();
 }

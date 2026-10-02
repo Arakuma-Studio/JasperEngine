@@ -106,7 +106,7 @@ OverallBuildProgress ResourceProgress::getOverallProgress() {
     if (recentIt != activeBuilds.end()) {
         overall.currentBuildName = recentIt->second.name;
         overall.currentBuildType = recentIt->second.type;
-    } else if (!activeBuilds.empty()) {
+    } else {
         // Fallback if most recent isn't found
         overall.currentBuildName = activeBuilds.begin()->second.name;
         overall.currentBuildType = activeBuilds.begin()->second.type;
@@ -149,7 +149,7 @@ std::vector<ResourceBuildInfo> ResourceProgress::getAllActiveBuilds() {
         builds.push_back(build);
     }
 
-    // Sort by start time (most recent first) or by name for consistent ordering
+    // Sort by start time, most recent first.
     std::sort(builds.begin(), builds.end(), 
         [](const ResourceBuildInfo& a, const ResourceBuildInfo& b) {
             return a.startTime > b.startTime; // Most recent first

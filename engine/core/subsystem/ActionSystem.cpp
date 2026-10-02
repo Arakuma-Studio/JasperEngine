@@ -490,7 +490,6 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
     if (actionsPassed || durationPassed) {
         if (!animcomp.loop) {
             actionStop(entity);
-            //onFinish.call(object);
         }else{
             float loopDuration = durationPassed ? (animcomp.duration / action.speed) : actionsEnd;
 
@@ -618,7 +617,6 @@ void ActionSystem::tweenStop(TweenComponent& tween){
 void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween){
     if ((tween.time == 1) && !tween.loop){
         actionStop(entity);
-        //onFinish.call(object);
     } else {
         float duration = tween.duration / action.speed;
 
@@ -638,7 +636,6 @@ void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
         }
 
         tween.value = tween.function.call(tween.time);
-        //Log::debug("step time %f value %f \n", tween.time, tween.value);
     }
 }
 
@@ -1239,7 +1236,6 @@ void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target
 
     if (!existParticles && !particles.emitter){
         actionStop(entity);
-        //onFinish.call(object);
     } else if (particles.loop) {
         float cycleDuration = getParticleCycleDuration(particles);
         if (cycleDuration > 0.0f){
@@ -1312,7 +1308,6 @@ void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target
 
     if (!existParticles && !particles.emitter){
         actionStop(entity);
-        //onFinish.call(object);
     } else if (particles.loop) {
         float cycleDuration = getParticleCycleDuration(particles);
         if (cycleDuration > 0.0f){

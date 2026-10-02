@@ -9,13 +9,9 @@ using namespace jasperengine;
 
 ObjectRender::ObjectRender(){ }
 
-ObjectRender::ObjectRender(const ObjectRender& rhs) : backend(rhs.backend), primitiveType(rhs.primitiveType) { }
+ObjectRender::ObjectRender(const ObjectRender& rhs) = default;
 
-ObjectRender& ObjectRender::operator=(const ObjectRender& rhs) { 
-    backend = rhs.backend; 
-    primitiveType = rhs.primitiveType;
-    return *this; 
-}
+ObjectRender& ObjectRender::operator=(const ObjectRender& rhs) = default;
 
 ObjectRender::~ObjectRender(){
     //Cannot destroy because its a handle

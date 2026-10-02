@@ -3,6 +3,7 @@
 
 #include "SceneWindow.h"
 #include "util/BidiText.h"
+#include "imgui_internal.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -11,6 +12,7 @@
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
+#include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/CreateEntityCmd.h"
@@ -20,6 +22,7 @@
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
+#include "render/gizmo/ViewportGizmo.h"
 #include "subsystem/MeshSystem.h"
 #include "Stream.h"
 #include "Out.h"
@@ -2390,17 +2393,19 @@ void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) c
 }
 
 int editor::SceneWindow::getWidth(uint32_t sceneId) const{
-    if (!width.count(sceneId) || width.at(sceneId) <= 0){
+    const auto it = width.find(sceneId);
+    if (it == width.end() || it->second <= 0){
         return 0;
     }
-    return std::max(1, (int)std::lround((float)width.at(sceneId) * canvasEngineScale(sceneId).x));
+    return std::max(1, (int)std::lround((float)it->second * canvasEngineScale(sceneId).x));
 }
 
 int editor::SceneWindow::getHeight(uint32_t sceneId) const{
-    if (!height.count(sceneId) || height.at(sceneId) <= 0){
+    const auto it = height.find(sceneId);
+    if (it == height.end() || it->second <= 0){
         return 0;
     }
-    return std::max(1, (int)std::lround((float)height.at(sceneId) * canvasEngineScale(sceneId).y));
+    return std::max(1, (int)std::lround((float)it->second * canvasEngineScale(sceneId).y));
 }
 
 float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {

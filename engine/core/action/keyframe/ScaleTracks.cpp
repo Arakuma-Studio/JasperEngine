@@ -17,10 +17,7 @@ ScaleTracks::ScaleTracks(Scene* scene, Entity entity): Action(scene, entity){
 
 }
 
-ScaleTracks::ScaleTracks(Scene* scene, std::vector<float> times, std::vector<Vector3> values): Action(scene){
-    addComponent<KeyframeTracksComponent>();
-    addComponent<ScaleTracksComponent>();
-
+ScaleTracks::ScaleTracks(Scene* scene, std::vector<float> times, std::vector<Vector3> values): ScaleTracks(scene){
     KeyframeTracksComponent& keyframe = getComponent<KeyframeTracksComponent>();
 
     keyframe.times = times;

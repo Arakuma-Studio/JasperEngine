@@ -4,7 +4,6 @@
 #pragma once
 
 #include "command/Command.h"
-#include <vector>
 #include <string>
 #include <filesystem>
 
@@ -24,7 +23,6 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
     };
 
 }

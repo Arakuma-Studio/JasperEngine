@@ -100,7 +100,3 @@ void editor::LinkMaterialCmd::undo(){
         onValueChanged();
     }
 }
-
-bool editor::LinkMaterialCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

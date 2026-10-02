@@ -7,9 +7,7 @@
 
 #define MAX_TOUCHES 10
 
-@implementation EngineView{
-
-}
+@implementation EngineView
 
 static UITouch* touches[MAX_TOUCHES];
 
@@ -67,10 +65,6 @@ static UITouch* touches[MAX_TOUCHES];
     return CGPointMake(pointX, pointY);
 }
 
--(NSUInteger)getTouchId:(UITouch*)touch{
-    return [self getTouchId:touch andRemove:false];
-}
-
 -(NSInteger)getTouchId:(UITouch*)touch andRemove:(bool)remove{
     NSInteger next = -1;
     for (NSInteger i = 0; i < MAX_TOUCHES; i++) {
@@ -96,7 +90,7 @@ static UITouch* touches[MAX_TOUCHES];
     [super touchesBegan:touches withEvent:event];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
-        const int identifier = (int)[self getTouchId:touch];
+        const int identifier = (int)[self getTouchId:touch andRemove:false];
         jasperengine::Engine::systemTouchStart(identifier, point.x, point.y);
     }
 }
@@ -105,7 +99,7 @@ static UITouch* touches[MAX_TOUCHES];
     [super touchesMoved:touches withEvent:event];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
-        const int identifier = (int)[self getTouchId:touch];
+        const int identifier = (int)[self getTouchId:touch andRemove:false];
         jasperengine::Engine::systemTouchMove(identifier, point.x, point.y);
     }
 }

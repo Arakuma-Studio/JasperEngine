@@ -99,7 +99,7 @@ web)
     BT="${BUILD_TYPE:-Debug}"
     run bash -euo pipefail -c "
         emcmake cmake -S engine -B $OUT -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
-        cmake --build $OUT --target $ENGINE_TARGET
+        cmake --build $OUT --target $ENGINE_TARGET $JOBS_FLAG
     "
     ;;
 android)

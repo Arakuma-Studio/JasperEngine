@@ -56,9 +56,6 @@ private:
     void apply();
 
 public:
-    AiSettingsWindow() = default;
-    ~AiSettingsWindow() = default;
-
     void open(ai::AiService* service);
     void show();
     bool isOpen() const { return m_isOpen; }

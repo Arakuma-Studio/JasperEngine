@@ -11,8 +11,6 @@ IndexBuffer::IndexBuffer(): Buffer(){
     createIndexAttribute();
 
     type = BufferType::INDEX_BUFFER;
-
-    data = nullptr;
 }
 
 IndexBuffer::~IndexBuffer(){
@@ -59,13 +57,11 @@ void IndexBuffer::clearAll(){
     Buffer::clearAll();
 
     createIndexAttribute();
-    vectorBuffer.clear();
-    data = nullptr; // Explicitly set to nullptr since buffer is cleared
 }
 
 void IndexBuffer::clear(){
     Buffer::clear();
 
-    vectorBuffer.resize(0); // Resize to 0 but keep capacity to avoid reallocation
+    vectorBuffer.clear();
     data = vectorBuffer.empty() ? nullptr : &vectorBuffer[0];
 }

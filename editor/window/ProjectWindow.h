@@ -97,6 +97,9 @@ namespace jasperengine::editor {
         fs::path currentPath;
         fs::path treeSelectedPath;
         std::vector<editor::FileEntry> files;
+        // Thumbnail completions arrive one at a time; resolve their file without
+        // walking the entire directory on every completed request.
+        std::unordered_map<fs::path, size_t> fileIndex;
 
         Texture folderIcon;
         Texture fileIcon;
@@ -127,10 +130,7 @@ namespace jasperengine::editor {
         bool isDragging;
         ImVec2 dragStart;
         ImVec2 dragEnd;
-        ImVec2 windowPos;
-        ImVec2 scrollOffset;
 
-        bool isDragDropTarget;
         bool isExternalDragHovering;
 
         std::vector<std::string> clipboardFiles;
@@ -206,7 +206,6 @@ namespace jasperengine::editor {
         std::mutex completedThumbnailMutex;
         std::queue<ThumbnailRequest> completedThumbnailQueue;
 
-        // Add these to the private section of the ProjectWindow class
         fs::path pendingMaterialPath;
         bool hasPendingMaterialRender = false; // guarded by thumbnailMutex
         uint64_t pendingMaterialGeneration = 0; // guarded by thumbnailMutex
@@ -252,6 +251,7 @@ namespace jasperengine::editor {
         const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
+        void rebuildFileIndex();
         FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
         void collectSearchResults();
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
@@ -294,7 +294,6 @@ namespace jasperengine::editor {
         void handleExternalDragEnter();
         void handleExternalDragLeave();
 
-        // need to be after draw
         void processMaterialThumbnails();
         void processModelThumbnails();
         void processPrefabThumbnails();
@@ -333,4 +332,3 @@ namespace jasperengine::editor {
     };
 
 }
-

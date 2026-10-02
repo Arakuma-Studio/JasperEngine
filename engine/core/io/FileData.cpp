@@ -50,22 +50,7 @@ unsigned int FileData::read32(){
 }
 
 bool FileData::beginWith(const std::string& path, const std::string& prefix){
-    if (prefix.length() > path.length()) {
-        return false;
-    }
-
-    if (prefix.length() == 0) {
-        return true;
-    }
-
-    int i;
-    for (i = 0; i < prefix.length(); i++) {
-        if (path[i] != prefix[i]) {
-            return false;
-        }
-    }
-
-    return i == prefix.length();
+    return path.compare(0, prefix.size(), prefix) == 0;
 }
 
 std::string FileData::getBaseDir(const std::string& filepath){

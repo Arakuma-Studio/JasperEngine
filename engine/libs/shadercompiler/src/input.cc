@@ -3,53 +3,34 @@
 
 #include "shadercompiler.h"
 
-#include <iostream>
+#include <cstdio>
 #include <fstream>
-#include <string>
+#include <iterator>
 
 using namespace shadercompiler;
 
-static bool load_string_from_file(std::string& buffer, std::string path){
-    std::ifstream ifs (path);
-
-  	if (ifs.is_open()){
-        buffer.assign(std::istreambuf_iterator<char>(ifs) ,std::istreambuf_iterator<char>());
-    }else{
-        fprintf(stderr, "Unable to open file: %s\n", path.c_str());
-        return false;
-    }
-
-    return true;
-}
-
 bool shadercompiler::load_input(std::vector<input_t>& inputs, const args_t& args){
+    for (stage_type_t stage : {STAGE_VERTEX, STAGE_FRAGMENT}){
+        const std::string& filename = stage == STAGE_VERTEX ? args.vert_file : args.frag_file;
+        if (filename.empty())
+            continue;
 
-    std::string buffer;
-
-    if (!args.vert_file.empty()){
+        std::string buffer;
         if (args.useBuffers){
-            if (args.fileBuffers.find(args.vert_file) == args.fileBuffers.end())
+            auto it = args.fileBuffers.find(filename);
+            if (it == args.fileBuffers.end())
                 return false;
-            buffer = args.fileBuffers.at(args.vert_file);
+            buffer = it->second;
         }else{
-            if (!load_string_from_file(buffer, args.vert_file))
+            std::ifstream file(filename);
+            if (!file.is_open()){
+                fprintf(stderr, "Unable to open file: %s\n", filename.c_str());
                 return false;
+            }
+            buffer.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
         }
 
-        inputs.push_back({STAGE_VERTEX, args.vert_file, buffer});
-    }
-    
-    if (!args.frag_file.empty()){
-        if (args.useBuffers){
-            if (args.fileBuffers.find(args.frag_file) == args.fileBuffers.end())
-                return false;
-            buffer = args.fileBuffers.at(args.frag_file);
-        }else{
-            if (!load_string_from_file(buffer, args.frag_file))
-                return false;
-        }
-
-        inputs.push_back({STAGE_FRAGMENT, args.frag_file, buffer});
+        inputs.push_back({stage, filename, buffer});
     }
 
     return true;

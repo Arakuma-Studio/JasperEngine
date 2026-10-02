@@ -30,7 +30,6 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
-        bool mergeWith(Command* otherCommand) override;
     };
 
     // Apply to Prefab of a removed GameObject: it is deleted from the Prefab asset, so from
@@ -56,7 +55,6 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
-        bool mergeWith(Command* otherCommand) override;
     };
 
     // Revert All / Apply All: the steps run in order as one undo step, undone in reverse.
@@ -83,7 +81,6 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
-        bool mergeWith(Command* otherCommand) override;
     };
 
 }

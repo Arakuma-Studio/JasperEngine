@@ -449,8 +449,6 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "    add_definitions(\"-DJASPERENGINE_WINDOW_RESIZABLE=" + std::string(windowSettings.resizable ? "1" : "0") + "\")\n";
     content += "    add_definitions(\"-DJASPERENGINE_WINDOW_TITLE=\\\"" + cmakeTitle + "\\\"\")\n";
     content += "\n";
-    content += "    set(COMPILE_ZLIB OFF)\n";
-    content += "    set(IS_ARM OFF)\n";
     content += "\n";
     content += "    add_definitions(\"-DWITH_MINIAUDIO\") # For SoLoud\n";
     content += "\n";

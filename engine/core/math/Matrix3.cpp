@@ -34,7 +34,9 @@ Matrix3::Matrix3 (float fEntry00, float fEntry10, float fEntry20,
 }
 
 Matrix3::Matrix3(const float **matrix) {
-    std::copy(&matrix[0][0], &matrix[0][0]+16, &this->matrix[0][0]);
+    for (int column = 0; column < 3; ++column) {
+        std::copy_n(matrix[column], 3, this->matrix[column]);
+    }
 }
 
 std::string Matrix3::toString() const{

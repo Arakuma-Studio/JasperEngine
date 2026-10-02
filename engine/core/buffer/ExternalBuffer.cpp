@@ -7,9 +7,7 @@
 
 using namespace jasperengine;
 
-ExternalBuffer::ExternalBuffer(): Buffer(){
-    name = "";
-}
+ExternalBuffer::ExternalBuffer(): Buffer(){}
 
 ExternalBuffer::~ExternalBuffer(){
 

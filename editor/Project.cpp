@@ -3722,39 +3722,6 @@ std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
     return childSceneIds;
 }
 
-Entity editor::Project::createNewEntity(uint32_t sceneId, std::string entityName){
-    for (int i = 0; i < scenes.size(); i++){
-        if (scenes[i].id == sceneId){
-            Entity entity = scenes[i].scene->createEntity();
-            scenes[i].scene->setEntityName(entity, entityName);
-
-            scenes[i].entities.push_back(entity);
-
-            setSelectedEntity(sceneId, entity);
-
-            return entity;
-        }
-    }
-
-    return NULL_ENTITY;
-}
-
-bool editor::Project::createNewComponent(uint32_t sceneId, Entity entity, ComponentType component){
-    for (int i = 0; i < scenes.size(); i++){
-        if (scenes[i].id == sceneId){
-            if (component == ComponentType::Transform){
-                scenes[i].scene->addComponent<Transform>(entity, {});
-            }
-            if (component == ComponentType::MeshComponent){
-                scenes[i].scene->addComponent<MeshComponent>(entity, {});
-            }
-            return true;
-        }
-    }
-
-    return false;
-}
-
 void editor::Project::deleteSceneProject(SceneProject* sceneProject){
     if (sceneProject->sceneRender) {
         Camera* editorCam = sceneProject->sceneRender->getCamera();
@@ -5967,8 +5934,6 @@ void editor::Project::setSelectedSceneId(uint32_t selectedScene){
         if (SceneProject* sceneProject = getScene(selectedScene)){
             sceneProject->needUpdateRender = true;
         }
-
-        //debugSceneHierarchy();
     }
 }
 
@@ -6161,10 +6126,6 @@ fs::path editor::Project::getThumbnailPath(const fs::path& originalPath) const {
     return thumbsDir / thumbFilename;
 }
 
-std::vector<Entity> editor::Project::getEntities(uint32_t sceneId) const{
-    return getScene(sceneId)->entities;
-}
-
 // The selection outline and gizmo are drawn, so a selection change needs a redraw: of the
 // scene, and of the scenes that show it as an inline child scene (their tools edit it)
 void editor::Project::markSelectionChanged(SceneProject* sceneProject){
@@ -6283,10 +6244,6 @@ bool editor::Project::hasSelectedEntities(uint32_t sceneId) const{
 
 bool editor::Project::hasSelectedSceneUnsavedChanges() const{
     return hasSceneUnsavedChanges(selectedScene);
-}
-
-bool editor::Project::hasSelectedSceneUnsavedPrefabs() const{
-    return hasUnsavedPrefabs(selectedScene);
 }
 
 bool editor::Project::hasLocalUnsavedChanges(uint32_t sceneId) const{
@@ -7514,16 +7471,4 @@ std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes
     }
 
     return runningLayers;
-}
-
-void editor::Project::debugSceneHierarchy(){
-    if (SceneProject* sceneProject = getSelectedScene()){
-        printf("Debug scene: %s\n", sceneProject->name.c_str());
-        auto transforms = sceneProject->scene->getComponentArray<Transform>();
-        for (int i = 0; i < transforms->size(); i++){
-            auto transform = transforms->getComponentFromIndex(i);
-            printf("Transform %i - Entity: %i - Parent: %i: %s\n", i, transforms->getEntity(i), transform.parent, sceneProject->scene->getEntityName(transforms->getEntity(i)).c_str());
-        }
-        printf("\n");
-    }
 }

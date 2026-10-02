@@ -24,12 +24,10 @@ namespace jasperengine::editor{
         bool receiveIBL = true;
     public:
         MaterialRender();
-        virtual ~MaterialRender();
+        ~MaterialRender();
 
         MaterialRender(const MaterialRender&) = delete;
         MaterialRender& operator=(const MaterialRender&) = delete;
-        MaterialRender(MaterialRender&&) noexcept = default;
-        MaterialRender& operator=(MaterialRender&&) noexcept = default;
 
         void applyMaterial(const Material& material);
         const Material getMaterial();
@@ -40,7 +38,6 @@ namespace jasperengine::editor{
         Framebuffer* getFramebuffer();
         Texture getTexture();
         Scene* getScene();
-        GameObject* getGameObject();
     };
 
 }

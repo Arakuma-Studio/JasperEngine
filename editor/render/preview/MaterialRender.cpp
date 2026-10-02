@@ -84,7 +84,3 @@ Texture editor::MaterialRender::getTexture(){
 Scene* editor::MaterialRender::getScene(){
     return scene;
 }
-
-GameObject* editor::MaterialRender::getGameObject(){
-    return sphere;
-}

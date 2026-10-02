@@ -606,7 +606,3 @@ void editor::ModelLoadCmd::undo(){
         entity = NULL_ENTITY;
     }
 }
-
-bool editor::ModelLoadCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}

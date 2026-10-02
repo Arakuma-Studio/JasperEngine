@@ -63,7 +63,7 @@ namespace jasperengine{
             return this->lastUserEntity;
         }
 
-        // System entity in range [1,100], first free slot
+        // System entity in range [1,1000], first free slot
         Entity createSystemEntity() {
             for (Entity e = FIRST_SYSTEM_ENTITY; e <= LAST_SYSTEM_ENTITY; ++e){
                 if (metadata.count(e) == 0){
@@ -71,16 +71,12 @@ namespace jasperengine{
                     return e;
                 }
             }
-            Log::error("No free system entity slot available in range [1..100]");
+            Log::error("No free system entity slot available in range [1..1000]");
             return NULL_ENTITY;
         }
 
-        // User entity in range [101..max], monotonically increasing, skipping used ids
+        // User entity in range [1001..max], monotonically increasing, skipping used ids
         Entity createUserEntity() {
-            if (lastUserEntity < LAST_SYSTEM_ENTITY){
-                lastUserEntity = LAST_SYSTEM_ENTITY;
-            }
-
             Entity candidate = lastUserEntity;
             while (true){
                 if (candidate == std::numeric_limits<Entity>::max()){
@@ -88,11 +84,6 @@ namespace jasperengine{
                     return NULL_ENTITY;
                 }
                 candidate++;
-
-                // Safety: if wrapped into system range by some means, jump to first user id
-                if (candidate <= LAST_SYSTEM_ENTITY){
-                    candidate = FIRST_USER_ENTITY;
-                }
 
                 if (metadata.count(candidate) == 0){
                     break;
@@ -127,34 +118,47 @@ namespace jasperengine{
             return list;
         }
 
+        bool getFirstEntity(Entity& entity) const {
+            if (metadata.empty())
+                return false;
+            entity = metadata.begin()->first;
+            return true;
+        }
+
         void setSignature(Entity entity, Signature signature) {
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to set signature");
+                it = metadata.try_emplace(entity).first;
             }
-            metadata[entity].signature = signature;
+            it->second.signature = signature;
         }
 
         Signature getSignature(Entity entity) const{
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to get signature");
                 return Signature();
             }
-            return metadata.at(entity).signature;
+            return it->second.signature;
         }
 
         void setName(Entity entity, const std::string& name) {
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to set name");
+                it = metadata.try_emplace(entity).first;
             }
-            metadata[entity].name = name;
+            it->second.name = name;
         }
 
         std::string getName(Entity entity) const{
-            if (metadata.count(entity)==0){
+            auto it = metadata.find(entity);
+            if (it == metadata.end()){
                 Log::error("Entity does not exist to get name");
                 return std::string();
             }
-            return metadata.at(entity).name;
+            return it->second.name;
         }
 
         // Returns true when the flag changed

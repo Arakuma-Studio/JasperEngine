@@ -24,15 +24,7 @@ obj_models_t& ModelPool::getObjMap(){
 
 std::shared_ptr<tinygltf::Model> ModelPool::getGLTF(const std::string& id){
     auto it = getMap().find(id);
-    if (it == getMap().end()){
-        return nullptr;
-    }
-
-    if (it->second.use_count() > 0){
-        return it->second;
-    }
-
-    return nullptr;
+    return it == getMap().end() ? nullptr : it->second;
 }
 
 std::shared_ptr<tinygltf::Model> ModelPool::addGLTF(const std::string& id, std::shared_ptr<tinygltf::Model> model){
@@ -48,15 +40,7 @@ std::shared_ptr<tinygltf::Model> ModelPool::addGLTF(const std::string& id, std::
 
 std::shared_ptr<ObjModelData> ModelPool::getObj(const std::string& id){
     auto it = getObjMap().find(id);
-    if (it == getObjMap().end()){
-        return nullptr;
-    }
-
-    if (it->second.use_count() > 0){
-        return it->second;
-    }
-
-    return nullptr;
+    return it == getObjMap().end() ? nullptr : it->second;
 }
 
 std::shared_ptr<ObjModelData> ModelPool::addObj(const std::string& id, std::shared_ptr<ObjModelData> model){
@@ -71,21 +55,17 @@ std::shared_ptr<ObjModelData> ModelPool::addObj(const std::string& id, std::shar
 }
 
 void ModelPool::removeGLTF(const std::string& id){
-    if (getMap().count(id)){
-        auto& shared = getMap()[id];
-        if (shared.use_count() <= 1){
-            getMap().erase(id);
-        }
-    }
+    auto& map = getMap();
+    auto it = map.find(id);
+    if (it != map.end() && it->second.use_count() <= 1)
+        map.erase(it);
 }
 
 void ModelPool::removeObj(const std::string& id){
-    if (getObjMap().count(id)){
-        auto& shared = getObjMap()[id];
-        if (shared.use_count() <= 1){
-            getObjMap().erase(id);
-        }
-    }
+    auto& map = getObjMap();
+    auto it = map.find(id);
+    if (it != map.end() && it->second.use_count() <= 1)
+        map.erase(it);
 }
 
 void ModelPool::clear(){

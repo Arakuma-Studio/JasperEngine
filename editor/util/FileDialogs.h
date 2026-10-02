@@ -3,12 +3,11 @@
 
 #pragma once
 
+#include <cstdio>
 #include <vector>
 #include <string>
 #include "Backend.h"
-#include "imgui.h"
 #include "nfd.hpp"
-#include "util/Util.h"
 
 namespace jasperengine::editor{
 
@@ -37,7 +36,6 @@ namespace jasperengine::editor{
                 args.defaultPath = defaultPath.c_str();
                 args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
 
-                // Use NFD_PickFolderU8_With for consistency with other functions
                 nfdresult_t result = NFD_PickFolderU8_With(&outPath, &args);
 
                 if (result == NFD_OKAY) {
@@ -51,46 +49,30 @@ namespace jasperengine::editor{
                 nfdu8char_t* path;
                 nfdopendialogu8args_t args = {0};
 
-                std::string imageExtensions;
-                std::string fontExtensions;
-                std::string modelExtensions;
-                std::string audioExtensions;
-                std::string shaderExtensions;
-                std::string scriptExtensions;
-                std::string prefabExtensions;
-                std::string materialExtensions;
                 std::vector<nfdfilteritem_t> filterItems;
                 if (filterFlags & FILE_DIALOG_IMAGE) {
-                    imageExtensions = Util::getImageExtensions();
-                    filterItems.push_back({ "Image files", imageExtensions.c_str() });
+                    filterItems.push_back({ "Image files", "png,jpg,jpeg,bmp,tga,gif,hdr,psd,pic,pnm,svg" });
                 }
                 if (filterFlags & FILE_DIALOG_FONT) {
-                    fontExtensions = Util::getFontExtensions();
-                    filterItems.push_back({ "Font files", fontExtensions.c_str() });
+                    filterItems.push_back({ "Font files", "ttf,otf" });
                 }
                 if (filterFlags & FILE_DIALOG_MODEL) {
-                    modelExtensions = Util::getModelExtensions();
-                    filterItems.push_back({ "Model files", modelExtensions.c_str() });
+                    filterItems.push_back({ "Model files", "gltf,glb,obj" });
                 }
                 if (filterFlags & FILE_DIALOG_AUDIO) {
-                    audioExtensions = Util::getAudioExtensions();
-                    filterItems.push_back({ "Sound files", audioExtensions.c_str() });
+                    filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });
                 }
                 if (filterFlags & FILE_DIALOG_SHADER) {
-                    shaderExtensions = Util::getShaderExtensions();
-                    filterItems.push_back({ "Shader files", shaderExtensions.c_str() });
+                    filterItems.push_back({ "Shader files", "vert,frag" });
                 }
                 if (filterFlags & FILE_DIALOG_SCRIPT) {
-                    scriptExtensions = Util::getScriptExtensions();
-                    filterItems.push_back({ "Script files", scriptExtensions.c_str() });
+                    filterItems.push_back({ "Script files", "lua,cpp,cc,cxx,h,hh,hpp,hxx" });
                 }
                 if (filterFlags & FILE_DIALOG_PREFAB) {
-                    prefabExtensions = Util::getPrefabExtensions();
-                    filterItems.push_back({ "Prefabs", prefabExtensions.c_str() });
+                    filterItems.push_back({ "Prefabs", "prefab" });
                 }
                 if (filterFlags & FILE_DIALOG_MATERIAL) {
-                    materialExtensions = Util::getMaterialExtensions();
-                    filterItems.push_back({ "Material files", materialExtensions.c_str() });
+                    filterItems.push_back({ "Material files", "material" });
                 }
 
                 if (!filterItems.empty()) {
@@ -194,37 +176,6 @@ namespace jasperengine::editor{
             return folderPaths;
         }
 
-        inline static std::string saveFileDialog(std::string defaultPath = "", std::string defaultName = "", bool sceneOnly = false) {
-            std::string retPath;
-            char* path;
-            nfdsavedialogu8args_t args = {0};
-
-            if (sceneOnly) {
-                nfdfilteritem_t filterItem[1] = {
-                    { "Scene files", "scene" }
-                };
-                args.filterCount = 1;
-                args.filterList = filterItem;
-            }
-            args.defaultPath = defaultPath.c_str();
-            args.defaultName = defaultName.c_str();  // Set the default filename
-            args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
-
-            const nfdresult_t res = NFD_SaveDialogU8_With(&path, &args);
-            switch (res) {
-                case NFD_OKAY:
-                    retPath = path;
-                    NFD_FreePathU8(path);
-                    break;
-                case NFD_ERROR:
-                    printf("Error: %s", NFD_GetError());
-                    break;
-                default:
-                    break;
-            }
-
-            return retPath;
-        }
     };
 
 }

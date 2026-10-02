@@ -77,13 +77,6 @@ namespace jasperengine::editor{
         std::vector<unsigned char> pixels;
     };
 
-    struct TerrainMapInfo{
-        bool present = false;
-        bool sizeKnown = false;
-        int width = 0;
-        int height = 0;
-    };
-
     struct ActiveStroke{
         bool active = false;
         uint32_t sceneId = NULL_PROJECT_SCENE;
@@ -219,14 +212,12 @@ namespace jasperengine::editor{
         std::string makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
         int expectedChannels(TerrainMapTarget target);
         ColorFormat expectedFormat(TerrainMapTarget target);
-        int expectedBytesPerTexel(TerrainMapTarget target);
         static float decodeHeightTexel(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel);
         static void encodeHeightTexel(unsigned char* pixels, size_t texelIndex, int bytesPerChannel, float value);
         unsigned char clampByte(float value);
         bool setFileBackedTextureData(Project* project, Texture& texture, const std::string& relativePath, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
         bool isOwnedEditableTexturePath(const std::string& path, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
         bool loadTerrainTextureDataFromPath(Project* project, const std::string& path, TextureData& data);
-        TerrainMapInfo getTerrainMapInfo(Texture& texture);
         std::vector<unsigned char> copyTexturePixels(TextureData& data);
         std::vector<unsigned char> convertTexturePixels(TextureData& data, TerrainMapTarget target);
         std::vector<unsigned char> makeInitialMapPixels(TerrainMapTarget target, int width, int height);

@@ -920,7 +920,6 @@ bool MeshSystem::readWholeFile(std::vector<unsigned char> *out, std::string *err
     out->resize(sz);
     f.read(reinterpret_cast<char *>(&out->at(0)),
            static_cast<std::streamsize>(sz));
-    //f.close();
 
     return true;
 }
@@ -5450,37 +5449,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         ResourceProgress::updateProgress(buildId, 0.95f); // Animations processed
     }
 
-/*
-    //BEGIN DEBUG
-    for (auto &gltfmesh : gltfModel->meshes) {
-        Log::verbose("mesh : %s", gltfmesh.name.c_str());
-        for (auto &primitive : gltfmesh.primitives) {
-            const tinygltf::Accessor &indexAccessor = gltfModel->accessors[primitive.indices];
-
-            Log::verbose("indexaccessor: count %i, type %i", indexAccessor.count,
-                    indexAccessor.componentType);
-
-            tinygltf::Material &mat = gltfModel->materials[primitive.material];
-            for (auto &mats : mat.values) {
-                Log::verbose("mat : %s", mats.first.c_str());
-            }
-
-            for (auto &image : gltfModel->images) {
-                Log::verbose("image name : %s", image.uri.c_str());
-                Log::verbose("  size : %i", image.image.size());
-                Log::verbose("  w/h : %i/%i", image.width, image.height);
-            }
-
-            Log::verbose("indices : %i", primitive.indices);
-            Log::verbose("mode     : %i", primitive.mode);
-
-            for (auto &attrib : primitive.attributes) {
-                Log::verbose("attribute : %s", attrib.first.c_str());
-            }
-        }
-    }
-    //END DEBUG
-*/
     // Root-mesh finalization (flat path only). In the child-entity path each child mesh was
     // already finalized in the loop, the root mesh is an empty container, and adding child
     // MeshComponents may have reallocated the component array — so the `mesh` reference captured
@@ -5857,7 +5825,6 @@ void MeshSystem::removeInstancedMesh(Entity entity){
     Signature signature = scene->getSignature(entity);
 
     if (signature.test(scene->getComponentId<InstancedMeshComponent>())){
-        //destroyInstancedMesh(scene->getComponent<RigidbodyComponent>(entity));
         scene->removeComponent<InstancedMeshComponent>(entity);
 
         if (signature.test(scene->getComponentId<MeshComponent>())){

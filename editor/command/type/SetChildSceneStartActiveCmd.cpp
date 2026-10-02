@@ -38,7 +38,3 @@ void editor::SetChildSceneStartActiveCmd::undo() {
         sceneProject->isModified = wasModified;
     }
 }
-
-bool editor::SetChildSceneStartActiveCmd::mergeWith(Command* otherCommand) {
-    return false;
-}

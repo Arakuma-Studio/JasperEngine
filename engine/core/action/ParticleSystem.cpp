@@ -26,11 +26,7 @@ void ParticleSystem::reset(){
 void ParticleSystem::setMaxParticles(unsigned int maxParticles){
     ParticleSystemComponent& particomp = getComponent<ParticleSystemComponent>();
 
-    if (particomp.maxParticles != maxParticles){
-        particomp.maxParticles = maxParticles;
-
-        //particomp.needReload = true;
-    }
+    particomp.maxParticles = maxParticles;
 }
 
 unsigned int ParticleSystem::getMaxParticles() const{

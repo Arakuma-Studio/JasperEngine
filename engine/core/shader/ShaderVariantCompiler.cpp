@@ -701,7 +701,6 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
     shadercompiler::args_t args = shadercompiler::initialize_args();
-    args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = getLibrarySources();
     applyShaderBackend(args, backend);

@@ -56,10 +56,8 @@ namespace jasperengine {
         static int getActiveBuildCount();
         static std::vector<ResourceBuildInfo> getAllActiveBuilds();
 
-        // Keep for backward compatibility if needed
         static ResourceBuildInfo getCurrentBuild();
 
-        // Helper methods
         static std::string getResourceTypeName(ResourceType type);
     };
 

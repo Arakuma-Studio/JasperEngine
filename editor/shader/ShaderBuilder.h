@@ -43,9 +43,6 @@ namespace jasperengine::editor {
         static bool isCustomCacheStale(ShaderKey shaderKey, Project* project, const std::filesystem::path& cachePath);
 
     public:
-        ShaderBuilder();
-        virtual ~ShaderBuilder();
-
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
         ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend);
 
@@ -62,7 +59,6 @@ namespace jasperengine::editor {
         // Serialize ShaderData cache on demand (no disk I/O inside buildShaderInternal).
         static bool saveShaderDataCache(ShaderKey shaderKey, Project* project, const ShaderData& shaderData, std::string* err = nullptr);
 
-        ShaderData& getShaderData(ShaderKey shaderKey);
     };
 
 }
