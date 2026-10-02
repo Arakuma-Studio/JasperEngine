@@ -318,6 +318,63 @@ check(compare(ed + '/H.yaml', ed + '/H.yaml', '--subtree=Field/Ship 4:Spawned'),
 editor(E, os.path.join(ed, 'reload.yaml'), name='edit-reload')
 check(compare(ed + '/final.yaml', ed + '/reload.yaml', '--ids'), 'all of it saved and reloaded the same')
 
+print('== undo / redo of Create Variant, Apply All and Revert All on a variant instance, copy and paste')
+U = os.path.join(WORK, 'undo')
+shutil.copytree(P, U)
+ud = os.path.join(WORK, 'undo-dumps')
+os.makedirs(ud)
+ops = [
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': V1, 'below': True},
+    {'op': 'set', 'entity': 'Field/Ship 2/Hull', 'component': 'transform', 'property': 'scale', 'value': [6, 6, 1]},
+    {'op': 'addObject', 'entity': 'Field/Ship 2/Wing/Flag', 'name': 'Ribbon'},
+    {'op': 'dump', 'out': ud + '/before.yaml'},
+    {'op': 'createVariant', 'entity': 'Field/Ship 2', 'path': 'prefabs/Ship Variant 3.prefab'},
+    {'op': 'dump', 'out': ud + '/made.yaml'},
+    {'op': 'undo'},
+    {'op': 'dump', 'out': ud + '/undone.yaml'},
+    {'op': 'redo'},
+    {'op': 'dump', 'out': ud + '/redone.yaml'},
+    # Apply All on an instance of the variant of a variant: overrides at every level, an
+    # added and a removed GameObject, all of them the variant's (its prefab's) now
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': V2, 'below': True},
+    {'op': 'set', 'entity': 'Field/Ship 3/Hull', 'component': 'transform', 'property': 'position', 'value': [0, -80, 0]},
+    {'op': 'set', 'entity': 'Field/Ship 3/Wing/Flag', 'component': 'transform', 'property': 'scale', 'value': [2, 2, 1]},
+    {'op': 'set', 'entity': 'Field/Ship 3/Wing/Flag/Pole', 'component': 'transform', 'property': 'scale', 'value': [3, 3, 1]},
+    {'op': 'set', 'entity': 'Field/Ship 3/Engine/Flame', 'component': 'transform', 'property': 'position', 'value': [7, 7, 0]},
+    {'op': 'set', 'entity': 'Field/Ship 3', 'component': 'transform', 'property': 'scale', 'value': [2, 2, 1]},
+    {'op': 'addObject', 'entity': 'Field/Ship 3/Hull', 'name': 'Bolt'},
+    {'op': 'delete', 'entity': 'Field/Ship 3/Eye'},
+    {'op': 'dump', 'out': ud + '/apply-before.yaml'},
+    {'op': 'applyAll', 'entity': 'Field/Ship 3'},
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': V2, 'below': True},
+    {'op': 'dump', 'out': ud + '/apply-after.yaml'},
+    {'op': 'undo'},
+    {'op': 'undo'},
+    {'op': 'dump', 'out': ud + '/apply-undone.yaml'},
+    {'op': 'revertAll', 'entity': 'Field/Ship 3'},
+    {'op': 'instantiate', 'entity': 'Field', 'prefab': V2, 'below': True},
+    {'op': 'dump', 'out': ud + '/reverted.yaml'},
+    {'op': 'copyPaste', 'entity': 'Ship'},
+    {'op': 'dump', 'out': ud + '/pasted.yaml'},
+]
+undo_log = editor(U, os.path.join(ud, 'final.yaml'), ops_file('undo', ops), name='undo')
+check(compare(ud + '/before.yaml', ud + '/made.yaml', '--ignore-prefab-info', '--ids'), 'Create Variant (with an added GameObject): nothing changes in the scene')
+check(compare(ud + '/before.yaml', ud + '/undone.yaml', '--ids') and 'Removed prefab file' in undo_log,
+      'undo of Create Variant: the instance is one of the base again, as it was; the file is gone')
+check(compare(ud + '/made.yaml', ud + '/redone.yaml', '--ids'), 'redo: as made')
+check(compare(ud + '/apply-before.yaml', ud + '/apply-after.yaml', '--subtree=Field/Ship 3:Field/Ship 4', '--ignore-prefab-info'),
+      'Apply All on an instance of a variant of a variant: a new instance of it is the same (every level, added and removed GameObjects)')
+aa = load(ud + '/apply-after.yaml')
+check(not any((aa.get(p) or {}).get('overrides') for p in ('Field/Ship 3/Hull', 'Field/Ship 3/Wing/Flag', 'Field/Ship 3/Engine/Flame')),
+      'and the instance has no override left')
+check(compare(ud + '/apply-before.yaml', ud + '/apply-undone.yaml', '--ids'), 'undo of Apply All: as before')
+rv = load(ud + '/reverted.yaml')
+check(compare(ud + '/reverted.yaml', ud + '/reverted.yaml', '--subtree=Field/Ship 3:Field/Ship 4'),
+      'Revert All on a variant instance: it is a plain instance of the variant again')
+pasted = load(ud + '/pasted.yaml')
+copies = [k for k in pasted if k.startswith(('Ship ', 'Ship#')) and '/' not in k]
+check(copies and compare(ud + '/pasted.yaml', ud + '/pasted.yaml', '--subtree=Ship:' + copies[0]), 'copy and paste of a variant instance: the same')
+
 print('== Replace between a prefab and its variants')
 R = os.path.join(WORK, 'replace')
 shutil.copytree(P, R)

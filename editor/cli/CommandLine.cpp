@@ -36,6 +36,9 @@
 #include "command/type/UnpackPrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "command/type/PasteEntitiesCmd.h"
+#include "util/EntityClipboard.h"
+#include "imgui.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include <chrono>
@@ -966,6 +969,29 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             const Entity target = findDumpEntity(project, op, owner);
             if (target == NULL_ENTITY) return false;
             runCommand(new DuplicateEntityCmd(&project, owner->id, {target}));
+            continue;
+        }
+        if (name == "copyPaste") {
+            // Edit > Copy, then Paste at the scene's root (the clipboard's parsed copy)
+            SceneProject* owner = nullptr;
+            const Entity target = findDumpEntity(project, op, owner);
+            if (target == NULL_ENTITY) return false;
+            // headless: an ImGui context of its own holds the clipboard text in memory
+            ImGuiContext* previous = ImGui::GetCurrentContext();
+            ImGuiContext* context = previous ? nullptr : ImGui::CreateContext();
+            std::shared_ptr<const GameObjectsClip> clip;
+            if (EntityClipboard::copyGameObjects(&project, owner->id, {target})) {
+                EntityClipboard::finishPendingWrite();
+                clip = EntityClipboard::readGameObjects(&project);
+            }
+            if (clip) {
+                runCommand(new PasteEntitiesCmd(&project, owner->id, clip, EntityClipboard::Placement::Root, NULL_ENTITY));
+            } else {
+                std::cout << "  (failed)\n";
+            }
+            if (context) {
+                ImGui::DestroyContext(context);
+            }
             continue;
         }
         if (name == "createVariantAsset") {
