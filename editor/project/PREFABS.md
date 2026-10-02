@@ -8,7 +8,8 @@ are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C
 Replace Prefab, the Hierarchy rows, the Scene view drop, thumbnails and the Prefabs dialog (F).
 Section 16: Prefab Mode (D, `editor/PrefabStage.*`). Section 17: nested prefabs in assets,
 stripped objects (references into nested prefabs), the layered import and the baked export
-(B). `tools/prefab-fixtures.py` makes test projects, `jasperengine-editor scene-dump --project
+(B). Section 18: Prefab Variants (E, `editor/project/ProjectPrefabVariant.cpp`).
+`tools/prefab-fixtures.py` makes test projects, `jasperengine-editor scene-dump --project
 <dir> [--save] [--ops <file>]` dumps what loading them gives (and runs prefab operations
 headless).
 Read this before changing how prefabs are identified, stored or loaded.
@@ -617,7 +618,8 @@ each tree rebuild), `SceneWindow::updatePrefabDrag`.
 - **Instance roots**: blue cube and blue name, members blue; a ">" button at the right end
   of the row opens the prefab: `HierarchyWindow::openPrefabFromHierarchy(path)` is the one
   line Prefab Mode (D, `openPrefabAsset`) wires; until then it shows the asset in the
-  Project window. `isPrefabVariantAsset(path)` is the hook Prefab Variants (E) fill.
+  Project window. `isPrefabVariantAsset(path)` says a row is an instance root of a Prefab
+  Variant: it gets the variant badge (section 18).
 - **Missing Prefab roots**: red, "(Missing Prefab)" after the name, the last path and the
   GUID in the tooltip; their Prefab submenu: the last path and GUID, Copy GUID, Select
   Missing Asset Folder, Replace... (relink), Unpack (`UnpackMissingPrefabCmd`), Remove
@@ -894,20 +896,11 @@ stripped parents; prefab instances among them nested roots with their data) and 
 reference the asset's (its GameObjects', stripped objects for the nested instances' with the
 ids the asset had, None outside), in its registry and in its nested data's values.
 
-### Notes for Variants
+### Variants
 
-- Everything here is keyed by a registry entity of the holding prefab that is a nested root
-  (`Prefab::isNestedRoot`: a `PrefabComponent`, not the prefab's root). A Variant (a prefab
-  whose root is an instance of its base) is the same model with the root as that nested
-  root: its asset-level data `nestedInstances[root]`, its added GameObjects the root's
-  registry children, its references into the base stripped ids whose way starts at the
-  root. `importPrefab` would import the base onto the root first (deferred), decode the
-  variant's added GameObjects, then `applyHolderData(root, nestedInstances[root], map,
-  registry, root)`; the scene layer stays as is.
-- Writing an edited instance back to its asset uses the same pieces as Create Prefab,
-  Apply and Prefab Mode: GameObjects below a nested instance become `addedObjects` with
-  `makePrefabReference` parents, values go through `encodeComponentForPrefab` /
-  `remapReferencesToPrefab`.
+Everything here is keyed by a registry entity of the holding prefab that roots an instance
+of another prefab: a nested root (`Prefab::isNestedRoot`), or the root of a Prefab Variant
+(its base). `Prefab::isInstanceRoot` is either; section 18 builds Variants on it.
 
 ### Tests
 
@@ -934,3 +927,285 @@ back, Revert of a nested root after its prefab changed, an added GameObject appl
 outer prefab, Prefab Mode (open and save changes nothing; a GameObject added below a nested
 GameObject and a reference into a nested prefab are kept), and the generated sources.
 `tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
+
+## 18. Prefab Variants (E)
+
+Unity's Prefab Variants: a prefab made of an instance of another prefab (its *base*) plus
+overrides of any kind and GameObjects of its own. Base edits reach every variant and every
+variant instance except where a level above overrides them; a variant of a variant is a
+chain of any length. Code: `editor/project/ProjectPrefabVariant.cpp` (levels, chains,
+creation); the rest is the nested-prefab model of section 17, with the root as the nested
+root, made level-aware.
+
+### Model and file schema
+
+A variant file is a version 3 prefab whose root member carries a `prefab` component naming
+its base (`name`, `path`, `guid`; the GUID wins, the path is a hint). That is all that marks
+it (`Prefab::isVariant`, `Prefab::getBaseComponent`). `Prefab::isInstanceRoot(e)` is
+`isNestedRoot(e)` or the root of a variant. Everything else is section 17 keyed by the root:
+
+- The root member: the root's own components (a registry entity of the variant), and
+  `prefabInstance` = the variant's overrides of its base (`nestedInstances[root]`:
+  properties, added / removed components, removed GameObjects, state, keyed by the *base's*
+  registry ids).
+- `children` of the root: GameObjects the variant adds, each with `addedTo` (a stripped id
+  of a base GameObject) and `childIndex` (section 17).
+- `stripped`: references into the base, `source` a way starting at the root:
+  `[V.root, b]` for a GameObject b of the base, `[V2.root, V1.root, b]` through a chain,
+  `[V.root, nestedRoot, x]` into a prefab nested in the base.
+- A variant never lists its base's members. A variant made in the Project window is the
+  root alone (its components copied from the base's root, an empty `prefabInstance`).
+
+Example (`Ship Variant.prefab` of `Ship.prefab`, a Flag added under Ship's Wing):
+
+```yaml
+root: 1001
+members:
+  - entity: 1001
+    name: Ship
+    components: {transform: ..., sprite: ..., prefab: {name: Ship, path: prefabs/Ship.prefab, guid: 9a0d...}}
+    children:
+      - {entity: 1002, name: Flag, components: ..., addedTo: 1003, childIndex: 0}
+    prefabInstance:
+      overrides:
+        - {registryEntity: 1001, properties: {transform: [scale]}}
+stripped:
+  - {entity: 1003, source: [1001, 1003]}
+```
+
+Bases are read without importing:
+
+- `getPrefabFileBase(path)` reads the `prefab` component of a file's root (cached by time
+  and size, at most one stat a second).
+- `getVariantBasePath`, `getPrefabBasePath` (a loaded asset), `isPrefabVariant`.
+- `getPrefabVariantChain(path, &broken)` lists the variant first and the original last;
+  `broken` is set when a base is missing or the chain cycles.
+- `findPrefabVariantsOf(path)` lists the direct variants.
+
+Cycles:
+
+- Import refuses a variant whose chain is broken or holds a prefab being imported up the
+  stack; the instance becomes a Missing Prefab.
+- Prefab Mode refuses an instance holding the stage's asset: `canInstantiatePrefabIn`
+  follows the variant's `prefab` root component like any nested one.
+- The creation paths only ever name an existing base.
+
+### Instance levels (in memory) and the scene schema
+
+The root GameObject of a variant instance roots one `Prefab::Instance` per chain level,
+outermost first: V2 (the prefab its scene `PrefabComponent` names), then V1, then the
+original.
+
+- `findInstanceAt(sceneId, root, path)`, `getInstanceLevels(sceneId, root)`
+  (`PrefabInstanceLevel {path, prefab, instance}`), and `instancePathAt`.
+- `getNestedInstanceLevels(prefab, instance)` lists the nested instances of an instance as
+  `NestedInstanceLevel {registryEntity, localRoot, path, instance, variantBase}`, with a
+  variant's base level marked by `variantBase`.
+- `findPrefabHolder` (`PrefabHolderLink`) gives the level holding another one: the variant
+  over a base level at the same root, else the instance the root is a member of. Overrides,
+  stripped references and Apply climb these links.
+
+The scene's `prefabInstance` block writes the base levels as nested entries keyed by the
+variant's root (`prefabRootRegistryEntity` = the root's registry id), so one root has a
+chain of nested blocks:
+
+```yaml
+prefabInstance:
+  version: 3
+  memberIds: [[1002, 1033]]                  # Ship Variant 2's own members
+  nested:
+    - prefabRootRegistryEntity: 1001         # its root: the base level, Ship Variant
+      prefabPath: prefabs/Ship Variant.prefab
+      memberIds: [[1002, 1023]]
+      nested:
+        - prefabRootRegistryEntity: 1001     # and its base, Ship
+          prefabPath: prefabs/Ship.prefab
+          memberIds: [[1002, 1002], [1003, 1003], ...]
+          nested:
+            - {prefabRootRegistryEntity: 1007, prefabPath: prefabs/Engine.prefab, memberIds: ...}
+```
+
+`PrefabMemberIds` (preferred ids on import, Missing Prefab data) keys a base level with
+`prefabLevelKey(root, depth)` = `(depth << 27) | (root & 0x07FFFFFF)`, so the levels at one
+root never collide. As for nested prefabs, the scene overrides of every level stay in the
+one scene layer of the outermost instance (section 7).
+
+### Import
+
+`importPrefab` of a variant:
+
+1. It checks the chain. A missing base or a cycle makes the whole instance a Missing
+   Prefab (section 4), with its block and member ids kept verbatim.
+2. It makes the root from its own member, skips decoding the root's registry children,
+   and imports the base first onto the same root. Three thread-locals pass state to the
+   base import: `nextImportPath` (the base path), `nextImportLevel` (its depth) and
+   `nextImportRootKept` (root components and state the levels above add, remove or keep, so
+   the base import does not drop them).
+3. It decodes its added GameObjects onto the base's members by stripped ids.
+4. `applyHolderData(..., level)` applies the variant's own overrides.
+5. The scene layer of the outermost instance goes last (`applyLayersAbove` per level).
+
+Instances of a variant are instances like any other. Everything in sections 7-14 that takes
+"the instance" now takes a level (default `{}` = the outermost).
+
+### Create
+
+From the Hierarchy (an instance root > Prefab > *Create Variant*), or by dragging an
+instance root into the Project window, which asks "Create a new original Prefab or a variant
+of this Prefab?" (*Original Prefab* / *Prefab Variant* / *Cancel*; a variant is named
+"<name> Variant"):
+
+- `canCreatePrefabVariant` requires a live outermost (or added) instance root: not a Missing
+  Prefab, not inside another instance.
+- `createPrefabVariant(sceneId, root, filepath)` (from `CreatePrefabCmd` with
+  `setVariant(i, true)`):
+  1. Builds the variant's root from the scene root (its components, `prefab` = the base).
+  2. Pushes the variant level at the root and names the variant in the scene's
+     `PrefabComponent`.
+  3. Moves every override of the instance and its added GameObjects into the asset
+     (`moveNestedInstancesToAsset` with `{root -> prefab.root}`).
+  4. Remaps references to the asset; references outside it stay scene overrides
+     (`overrideOutsideReferences`).
+  5. Registers the GUID and saves.
+
+  Nothing in the scene changes (checked by dump). Undo is `removePrefabVariantInstance`: it
+  deletes the file, restores the scene node and reimports the instance as it was.
+
+From the Project window (a prefab > Create > *Prefab Variant*): `createPrefabVariantAsset(base,
+path)` through `CreatePrefabVariantAssetCmd` ("<base> Variant.prefab"; undo deletes the file).
+
+### Apply, Revert, Unpack
+
+- **Apply targets** (`getPrefabApplyTargets`), innermost first:
+  1. The levels at the GameObject's instance root, from the original out to each variant.
+  2. The prefab owning the GameObject in an outer instance.
+  3. The holders.
+
+  The Inspector labels them Unity's way (`applyTargetLabel`):
+  - "Apply to Prefab 'X'" for the innermost original.
+  - "Apply to Base Prefab 'X'" (or "Base Prefab Variant") when a variant over it holds the
+    instance.
+  - "Apply to Prefab Variant 'X'" for the instance's own variant.
+  - "Apply as Override in Prefab (Variant) 'X'" for the outer ones.
+- **Applying to a lower level** writes there and, as in Unity, clears the same property's
+  overrides in every level between it and the instance (`clearIntermediateOverrides`).
+  After "Apply to Base Prefab", the variant no longer overrides the value.
+- **Removed and added GameObjects and components** apply to any level of the chain
+  (`applyPrefabRemovalTo`, `ApplyPrefabRemovalCmd` with a target).
+- **Revert** goes back to what the level below gives: in a variant instance, the variant's
+  value; in the variant's Prefab Mode (its root an instance of the base), the base value.
+- **Unpack** follows Unity and removes one level.
+  - A variant instance becomes an instance of the base. The root's `PrefabComponent` is
+    switched to the base, and the variant's data (its overrides, added GameObjects and
+    stripped references) is promoted into the scene layer
+    (`promoteNestedAssetData(..., includeBase=true)`), so nothing visible changes.
+  - *Unpack Completely* removes every level, leaving plain GameObjects.
+  - Both undo (`PrefabUnpackRecord::NestedState::path`).
+
+### Prefab Mode on a variant
+
+- The stage's root is an instance of the base (`PrefabStage` detects the scene type over the
+  whole chain).
+- The variant's overrides show as instance overrides (bold, in the Overrides dropdown), and
+  its added GameObjects as added ones. Apply and Revert target the base.
+- Saving writes the variant file through `stageToPrefabAsset` (section 16): the root's
+  `prefabInstance` and its stripped references.
+- When the base is missing, the stage root is a Missing Prefab instance of the base, and
+  saving keeps the variant's data (unresolved stripped ids are kept).
+
+### Missing base, renames, GUIDs
+
+- Bases are found by GUID first. Renames and moves, made in the editor or with the project
+  closed, need no rewrite: scene files and variant files resolve by GUID (a stale `path`
+  hint is only a fallback).
+- A deleted base makes every instance of its variants a Missing Prefab with its data kept
+  (the scene block and member ids by level key; the variant file is untouched).
+- Putting the base back restores everything with the same ids.
+
+### Replace, copy, duplicate, Play
+
+- **Replace Prefab** (section 13) across a chain: `remapChainInstance` matches GameObjects
+  by keys over the whole effective tree (`ChainNode` = (level, entity)). Replacing base ↔
+  variant ↔ variant of a variant keeps matched GameObjects and their overrides.
+- **Duplicate and copy / paste** (`EntityClipboard`, `PasteEntitiesCmd`) and **Delete and
+  undo** (`DeleteEntityCmd`) snapshot every level.
+- **Play spawning** and the runtime import path take a variant like any prefab.
+
+### Export (bake)
+
+`build_prefab_*` of a variant appends, in order:
+
+1. Its own members: the root and its added GameObjects.
+2. Its base's subtree, in the base's `build_prefab_*` order (recursively for a chain). A
+   member removed by a level is kept as a `NULL_ENTITY` slot.
+3. The nested subtrees.
+
+In the Generator and the Factory:
+
+- `subtreeSize` includes the base.
+- A variant instance's `PrefabInstanceInfo` carries `baseLevel` and `baseSize`. `baseLevel`
+  is the base level's info, attached to the variant's info (recursively) rather than listed
+  at the top level.
+- `Factory::createScene` maps the base members and emits the overrides of every level.
+- Shader key collection (`collectRequiredShaderKeys`) instantiates any prefab with an
+  instance root (nested or variant) to see its effective materials.
+
+### UI
+
+- **Badge** (`UIUtils::drawPrefabVariantBadge`, a dark round mark with an arrow):
+  - drawn over the prefab icon in the Project window (list, tile and classic views);
+  - drawn on Hierarchy rows of variant instance roots
+    (`HierarchyPrefabRows::isPrefabVariantAsset`);
+  - its tooltips name the base.
+- **Inspector prefab bar**: "Prefab Variant" (with the badge) instead of "Prefab", and a
+  "Base" row where the base is selectable ("(a variant of X)" further up the chain).
+- **Hierarchy Prefab menu**: *Select Base* and *Create Variant*.
+- **Project context menu**: Create > *Prefab Variant*, and *Select Base*.
+- **Prefabs dialog**:
+  - "Variant of X" with *Select Base* (red when the base is missing);
+  - "Variants: ..." on a base;
+  - the usage counts a variant instance for the variant, and as nested for its bases
+    (`PrefabUsage::base`, `baseMissing`, `variants`).
+- **Prefab Mode breadcrumb**: the badge and "Prefab Variant of X".
+- **Thumbnails**: `instantiatePrefabPreview` imports the chain.
+
+### CLI ops and tests
+
+`scene-dump` ops:
+
+- `createVariant` (entity, path) and `createVariantAsset` (prefab, path).
+- `variantInfo` prints `chain <path>: <V> ... <original>` and the direct variants.
+- `levels` prints the levels at an entity.
+- `unpack` (`completely: true` for Unpack Completely).
+- `applyRemovals` / `revertRemovals` (with `target`).
+- `renameFile`, `deleteFile`, `duplicate`.
+- `copyPaste` (it creates a temporary ImGui context when headless).
+- `usage` also prints bases and variants.
+
+Fixtures (`tools/prefab-fixtures.py`):
+
+- `variant <dir>` writes Engine and Ship (Engine nested), plus the build ops that make Ship
+  Variant and Ship Variant 2 from instances with overrides of every kind at both levels.
+- `variant_export <dir>` writes a copy of the TappyPlane fixture with Badge, Badge Red (a
+  variant) and Badge Green (a variant of it) spawned and placed, for the smoke test.
+
+`FIXTURE=<TappyPlane fixture> tools/prefab-variant-test.py [work-dir]` checks:
+
+- Creation changes nothing, and fresh instances equal what they were made from at every
+  level.
+- Base edits propagate except where overridden.
+- Apply targets and labels of chains; Apply to the base clears intermediate overrides.
+- Revert in a variant's Prefab Mode.
+- Unpack (one level and completely), with undo.
+- Removed and added GameObjects applied to a variant or to the base.
+- Duplicate, copy / paste, Play spawn, and Replace between a prefab and its variants.
+- Undo / redo of Create Variant, Apply All and Revert All.
+- Save and reload, byte for byte.
+- The base and the variants renamed and moved, with the scene open or closed.
+- The base deleted (Missing Prefab with its data kept; the Prefab Mode save keeps the file)
+  and put back.
+- A cycle of bases edited in by hand.
+- The generated sources.
+
+`tools/smoke-test.sh` on the `variant_export` project exports, builds and runs it; the
+game's screenshot matches the editor's Game view.

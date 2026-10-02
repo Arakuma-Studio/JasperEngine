@@ -931,7 +931,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
             }
         }
         if (broken || chain.size() < 2) {
-            Out::warning("Prefab Variant %s: its base cannot be found", pathStr.c_str());
+            Out::warning("Prefab Variant %s: a base of it cannot be found (or its bases make a cycle)", pathStr.c_str());
             return missingPrefab();
         }
         basePath = chain[1];

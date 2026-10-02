@@ -483,6 +483,24 @@ rc = load(md + '/renamed-closed.yaml')
 check(rc['Ship'].get('prefab') == 'prefabs/Ship Top.prefab' and rc['Ship/Wing/Flag'].get('prefab') == 'prefabs/Ship Mid.prefab',
       'and its instance names the renamed variants')
 
+print('== a cycle of bases (a file edited by hand)')
+C = os.path.join(WORK, 'cycle')
+shutil.rmtree(C, ignore_errors=True)
+shutil.copytree(M, C)
+top = yaml.safe_load(open(os.path.join(C, 'prefabs', 'Ship Top.prefab')))
+base_file = os.path.join(C, 'prefabs', 'base', 'Hull Base.prefab')
+base = yaml.safe_load(open(base_file))
+base_root = [m for m in base['members'] if m['entity'] == base['root']][0]
+base_root['components']['prefab'] = {'name': 'Ship Top', 'path': 'prefabs/Ship Top.prefab', 'guid': top['guid']}
+yaml.safe_dump(base, open(base_file, 'w'), sort_keys=False)
+editor(C, C + '-load.yaml', name='cycle', allow_errors=True)
+cy_log = open(os.path.join(WORK, 'cycle.log')).read()
+cy = load(C + '-load.yaml')
+check('make a cycle' in cy_log, 'a cycle of bases: reported')
+check(cy['Ship'].get('missingPrefab') and 'Ship/Hull' not in cy, 'and the variant instance is a Missing Prefab (no endless import)')
+cy_after = yaml.safe_load(open(os.path.join(C, 'Variant Scene.scene')))
+check(cy_after == yaml.safe_load(open(os.path.join(M, 'Variant Scene.scene'))), 'and its scene file is untouched')
+
 print('== generated sources')
 gen = open(os.path.join(bake, [f for f in os.listdir(bake) if 'Variant_2' in f and f.endswith('.cpp')][0])).read()
 check(gen.count('scene->createEntity()') == 8 and all('"%s"' % n in gen for n in ('Pole', 'Flag', 'Hull', 'Wing', 'Gun', 'Engine', 'Eye', 'Flame'))
