@@ -254,7 +254,7 @@ std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(u
 
     // The levels unpacked at each root: the outermost one; every level (a variant's bases)
     // when unpacking completely. Unity: unpacking an instance of a Prefab Variant makes it
-    // an instance of the variant's base (PREFABS.md 18).
+    // an instance of the variant's base (PREFABS.md 19).
     std::set<std::pair<Entity, std::filesystem::path>> unpackLevels;
     std::unordered_map<Entity, std::filesystem::path> becomesBase;
     for (Entity root : unpackRoots) {

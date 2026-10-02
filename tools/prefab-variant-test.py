@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scripted checks of Prefab Variants (editor/project/PREFABS.md, section 18).
+"""Scripted checks of Prefab Variants (editor/project/PREFABS.md, section 19).
 
     FIXTURE=<TappyPlane fixture project> tools/prefab-variant-test.py [work-dir]
 

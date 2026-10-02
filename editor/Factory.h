@@ -49,7 +49,7 @@ namespace jasperengine::editor{
         std::vector<size_t> nestedSizes;
         // A Prefab Variant's instance: the instance of its base at the same root, whose
         // GameObjects build_prefab_* appends right after the variant's own members
-        // (editor/project/PREFABS.md 18), and how many entities that is
+        // (editor/project/PREFABS.md 19), and how many entities that is
         std::shared_ptr<PrefabInstanceInfo> baseLevel;
         size_t baseSize = 0;
     };

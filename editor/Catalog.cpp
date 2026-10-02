@@ -852,6 +852,10 @@ namespace {
                         result.ref = &prop.valueRef<EntityReference>().entity;
                         result.def = &prop.defaultValueRef<EntityReference>().entity;
                         break;
+                    case ScriptPropertyType::Prefab:
+                        result.ref = &prop.valueRef<PrefabAsset>();
+                        result.def = &prop.defaultValueRef<PrefabAsset>();
+                        break;
                     default:
                         result.ref = nullptr;
                         result.def = nullptr;
@@ -2632,6 +2636,10 @@ namespace {
                         case ScriptPropertyType::EntityReference:
                             propData.ref = &prop.valueRef<EntityReference>().entity;
                             propData.def = &prop.defaultValueRef<EntityReference>().entity;
+                            break;
+                        case ScriptPropertyType::Prefab:
+                            propData.ref = &prop.valueRef<PrefabAsset>();
+                            propData.def = &prop.defaultValueRef<PrefabAsset>();
                             break;
                         default:
                             propData.ref = nullptr;

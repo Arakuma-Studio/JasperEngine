@@ -286,7 +286,7 @@ namespace jasperengine::editor{
         std::vector<NestedState> nestedBefore;
     };
 
-    // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 18) ----
+    // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 19) ----
 
     // One prefab level of the instances rooted at one GameObject. A Prefab Variant's root is
     // an instance of its base, so the root of an instance of a variant roots the instance of
@@ -409,7 +409,7 @@ namespace jasperengine::editor{
         std::filesystem::path path;               // the last path known for a missing one
         std::vector<PrefabSceneUsage> scenes;
         std::vector<std::filesystem::path> nestedIn;
-        // Prefab Variants (PREFABS.md 18): its base (a variant), and the variants of it
+        // Prefab Variants (PREFABS.md 19): its base (a variant), and the variants of it
         std::filesystem::path base;
         bool baseMissing = false;
         std::vector<std::filesystem::path> variants;
@@ -816,7 +816,28 @@ namespace jasperengine::editor{
             Entity registryEntity, Entity localEntity, Entity localParent, bool keepWorldTransform);
 
         std::vector<SceneScriptSource> collectAllSceneCppScripts() const;
+        // The prefabs of the build, sorted by path (PrefabManager ids are their positions +
+        // 1, in Play and in the export alike): every prefab a scene instantiates or a script
+        // property references, the standalone ones, and the prefabs those nest or reference
         std::vector<PrefabSceneInfo> collectAllPrefabs() const;
+        // Loads every prefab of the build, so their sources are generated
+        void loadBuildPrefabs();
+        // The prefabs the Prefab script properties of a registry reference (resolved paths)
+        std::vector<std::filesystem::path> findScriptPrefabReferences(EntityRegistry* registry) const;
+        // Lists them in the scene's prefabs (written in its file, read by the build)
+        void addScriptPrefabReferences(SceneProject* sceneProject);
+        // The C++ scripts of the build's prefabs, which no scene may hold an instance of
+        void appendPrefabCppScripts(std::vector<SceneScriptSource>& scripts, std::unordered_set<std::string>& uniquePaths) const;
+
+        // Play: a prefab instantiated by a script is copied from a template, imported once
+        // per Play into a scene nobody sees (no YAML read per instance)
+        struct PlayPrefabTemplate {
+            std::vector<Entity> entities; // the root first, hierarchy order
+        };
+        std::unique_ptr<SceneProject> playTemplateProject;
+        std::map<std::filesystem::path, PlayPrefabTemplate> playPrefabTemplates;
+        const PlayPrefabTemplate* getPlayPrefabTemplate(const std::filesystem::path& prefabPath);
+        void clearPlayPrefabTemplates();
 
         void pauseEngineScene(Scene* scene, bool pause) const;
 
@@ -903,6 +924,9 @@ namespace jasperengine::editor{
         void buildStandaloneShaderCache();
 
     public:
+        // The C++ scripts the build compiles: every scene's and the build prefabs'
+        std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
+
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;
@@ -1673,7 +1697,7 @@ namespace jasperengine::editor{
         // instance of a variant the outermost level, see findInstanceAt)
         Prefab::Instance* findInstanceRootedAt(SceneProject* sceneProject, Entity root, std::filesystem::path* path = nullptr);
 
-        // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 18) ----
+        // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 19) ----
 
         // The instance of `path` rooted at `root` (any level of a variant instance's root);
         // the outermost (findInstanceRootedAt) for an empty path
@@ -1752,7 +1776,7 @@ namespace jasperengine::editor{
         // it added to them become theirs by themselves. `before` gets their previous state
         // (repack puts it back); instances rooted in `skip` (unpacked too) are left alone.
         // includeBase: an instance of a variant unpacked one level becomes an instance of its
-        // base, which takes what the variant overrides of it as its own (PREFABS.md 18)
+        // base, which takes what the variant overrides of it as its own (PREFABS.md 19)
         void promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
             std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase = false);
         // Prefab Mode (PrefabStage): the asset's members as a stage reads them (the GameObjects

@@ -1,0 +1,441 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#include "ObjectManager.h"
+#include "PrefabManager.h"
+#include "PrefabAsset.h"
+#include "Engine.h"
+#include "Scene.h"
+#include "Log.h"
+#include "registry/EntityCloner.h"
+#include "script/LuaBinding.h"
+#include "component/Transform.h"
+#include "component/RectTransformComponent.h"
+#include "component/ScriptComponent.h"
+
+#include <algorithm>
+#include <unordered_set>
+
+using namespace jasperengine;
+
+namespace {
+
+ObjectManager::ScriptHook cppInitializeHook = nullptr;
+ObjectManager::ScriptHook cppCleanupHook = nullptr;
+
+struct PendingDestroy {
+    Scene* scene;
+    Entity entity;
+    double timeLeft;
+};
+std::vector<PendingDestroy> pendingDestroys;
+
+std::vector<Scene*> activeScenes;
+
+ObjectManager::DestroyListener destroyListener;
+
+struct WorldPose {
+    Matrix4 matrix;
+    Quaternion rotation;
+    Vector3 scale = Vector3(1, 1, 1);
+};
+
+// The world placement from the Transforms as they are now: what the RenderSystem would
+// compute this frame, for GameObjects it has not updated yet (one just made)
+WorldPose worldPose(Scene* scene, Entity entity, int depth = 0) {
+    WorldPose pose;
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || depth > 1024) {
+        return pose;
+    }
+    Vector3 origin = transform->position;
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
+    if (layout && layout->pivot != Vector2(0, 0)) {
+        origin += getUIPivotShift(*layout, transform->rotation, transform->scale);
+    }
+    const Matrix4 local = Matrix4::translateMatrix(origin) * transform->rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform->scale);
+    if (transform->parent != NULL_ENTITY && scene->isEntityCreated(transform->parent)) {
+        WorldPose parent = worldPose(scene, transform->parent, depth + 1);
+        pose.matrix = parent.matrix * local;
+        pose.rotation = parent.rotation * transform->rotation;
+        pose.scale = parent.scale * transform->scale;
+    } else {
+        pose.matrix = local;
+        pose.rotation = transform->rotation;
+        pose.scale = transform->scale;
+    }
+    return pose;
+}
+
+Vector3 worldPosition(Scene* scene, Entity entity) {
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) {
+        return Vector3(0, 0, 0);
+    }
+    if (transform->parent != NULL_ENTITY && scene->isEntityCreated(transform->parent)) {
+        return worldPose(scene, transform->parent).matrix * transform->position;
+    }
+    return transform->position;
+}
+
+float safeDivide(float value, float by) {
+    return by != 0.0f ? value / by : value;
+}
+
+// Sets the local placement of `entity` (below `parent`, or at the top when NULL_ENTITY)
+// that puts it at this world position, rotation and scale
+void setWorldPlacement(Scene* scene, Entity entity, Entity parent, const Vector3& position, const Quaternion& rotation, const Vector3* scale) {
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) {
+        return;
+    }
+    if (parent != NULL_ENTITY && scene->findComponent<Transform>(parent)) {
+        const WorldPose parentPose = worldPose(scene, parent);
+        transform->position = parentPose.matrix.inverse() * position;
+        transform->rotation = parentPose.rotation.inverse() * rotation;
+        if (scale) {
+            transform->scale = Vector3(safeDivide(scale->x, parentPose.scale.x), safeDivide(scale->y, parentPose.scale.y), safeDivide(scale->z, parentPose.scale.z));
+        }
+    } else {
+        transform->position = position;
+        transform->rotation = rotation;
+        if (scale) {
+            transform->scale = *scale;
+        }
+    }
+    transform->needUpdate = true;
+}
+
+// Puts the new root below its parent (keeping its local placement) and the arrays kept
+// in Transform order back in it
+void attachRoot(Scene* scene, Entity root, Entity parent, const std::vector<Entity>& entities) {
+    if (parent == NULL_ENTITY || !scene->findComponent<Transform>(root)) {
+        return;
+    }
+    if (!scene->isEntityCreated(parent) || !scene->findComponent<Transform>(parent)) {
+        Log::error("Instantiate: the parent %u has no Transform, the new GameObject stays at the top", parent);
+        return;
+    }
+    scene->addEntityChild(parent, root, false);
+    Signature signature;
+    for (Entity entity : entities) {
+        signature |= scene->getSignature(entity);
+    }
+    scene->sortComponentsByTransform(signature);
+}
+
+void nameClone(Scene* scene, Entity root) {
+    scene->setEntityName(root, scene->getEntityName(root) + "(Clone)");
+}
+
+// Unity copies the current values of a script's serialized fields, not the ones it
+// started with
+void readScriptValues(Scene* scene, const std::vector<Entity>& entities) {
+    for (Entity entity : entities) {
+        ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+        if (!scripts) {
+            continue;
+        }
+        for (ScriptEntry& entry : scripts->scripts) {
+            if (!entry.instance) {
+                continue;
+            }
+            for (ScriptProperty& property : entry.properties) {
+                if (property.memberPtr || property.luaRef != 0) {
+                    property.syncFromMember();
+                }
+            }
+        }
+    }
+}
+
+// What the prefab factory made: user ids count up, so everything above the counter as it
+// was before, the root first
+std::vector<Entity> createdSince(Scene* scene, Entity lastBefore, Entity root) {
+    std::vector<Entity> created;
+    created.push_back(root);
+    const Entity lastAfter = scene->getLastEntity();
+    for (Entity e = lastBefore + 1; e <= lastAfter && e != NULL_ENTITY; e++) {
+        if (e != root && scene->isEntityCreated(e)) {
+            created.push_back(e);
+        }
+    }
+    return created;
+}
+
+Entity instantiatePrefab(const PrefabAsset& prefab, Scene* scene, std::vector<Entity>& created) {
+    if (!scene) {
+        Log::error("Instantiate: no scene to instantiate the prefab in");
+        return NULL_ENTITY;
+    }
+    const uint32_t id = prefab.getId();
+    if (id == 0) {
+        if (prefab.isEmpty()) {
+            Log::error("Instantiate: the prefab is None");
+        } else {
+            Log::error("Instantiate: prefab '%s' is not in the build", prefab.getPath().c_str());
+        }
+        return NULL_ENTITY;
+    }
+    const Entity lastBefore = scene->getLastEntity();
+    const Entity root = PrefabManager::instantiate(id, scene);
+    if (root == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    created = createdSince(scene, lastBefore, root);
+    nameClone(scene, root);
+    return root;
+}
+
+Entity cloneObject(Scene* scene, Entity original, Scene* target, std::vector<Entity>& created) {
+    if (!scene || original == NULL_ENTITY || !scene->isEntityCreated(original)) {
+        Log::error("Instantiate: the GameObject to copy does not exist");
+        return NULL_ENTITY;
+    }
+    std::vector<Entity> sources = EntityCloner::collectHierarchy(scene, original);
+    readScriptValues(scene, sources);
+    created = EntityCloner::clone(scene, sources, target);
+    if (created.empty()) {
+        return NULL_ENTITY;
+    }
+    nameClone(target, created[0]);
+    return created[0];
+}
+
+}
+
+void ObjectManager::setDestroyListener(DestroyListener listener) {
+    destroyListener = std::move(listener);
+}
+
+void ObjectManager::setCppScriptHooks(ScriptHook initialize, ScriptHook cleanup) {
+    cppInitializeHook = initialize;
+    cppCleanupHook = cleanup;
+}
+
+Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, Entity parent, bool worldSpace) {
+    scene = scene ? scene : getActiveScene();
+    std::vector<Entity> created;
+    const Entity root = instantiatePrefab(prefab, scene, created);
+    if (root == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    if (parent != NULL_ENTITY) {
+        if (worldSpace) {
+            // the prefab root's placement is its world placement
+            if (Transform* transform = scene->findComponent<Transform>(root)) {
+                const Vector3 position = transform->position;
+                const Quaternion rotation = transform->rotation;
+                const Vector3 scale = transform->scale;
+                setWorldPlacement(scene, root, parent, position, rotation, &scale);
+            }
+        }
+        attachRoot(scene, root, parent, created);
+    }
+    initializeScripts(scene, created);
+    return root;
+}
+
+Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, const Vector3& position, const Quaternion& rotation, Entity parent) {
+    scene = scene ? scene : getActiveScene();
+    std::vector<Entity> created;
+    const Entity root = instantiatePrefab(prefab, scene, created);
+    if (root == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    setWorldPlacement(scene, root, parent, position, rotation, nullptr);
+    attachRoot(scene, root, parent, created);
+    initializeScripts(scene, created);
+    return root;
+}
+
+Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetScene, Entity parent, bool worldSpace) {
+    Scene* target = targetScene ? targetScene : scene;
+    std::vector<Entity> created;
+    const Entity root = cloneObject(scene, original, target, created);
+    if (root == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    if (Transform* source = scene->findComponent<Transform>(original)) {
+        if (parent == NULL_ENTITY || worldSpace) {
+            // where the original is in the world (its own scale, Unity's localScale)
+            const WorldPose pose = worldPose(scene, original);
+            const Vector3 position = worldPosition(scene, original);
+            const Vector3 scale = parent == NULL_ENTITY ? source->scale : pose.scale;
+            setWorldPlacement(target, root, parent, position, pose.rotation, &scale);
+        }
+    }
+    attachRoot(target, root, parent, created);
+    initializeScripts(target, created);
+    return root;
+}
+
+Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetScene, const Vector3& position, const Quaternion& rotation, Entity parent) {
+    Scene* target = targetScene ? targetScene : scene;
+    std::vector<Entity> created;
+    const Entity root = cloneObject(scene, original, target, created);
+    if (root == NULL_ENTITY) {
+        return NULL_ENTITY;
+    }
+    setWorldPlacement(target, root, parent, position, rotation, nullptr);
+    attachRoot(target, root, parent, created);
+    initializeScripts(target, created);
+    return root;
+}
+
+Scene* ObjectManager::getActiveScene() {
+    if (!activeScenes.empty()) {
+        return activeScenes.back();
+    }
+    return Engine::getScene();
+}
+
+void ObjectManager::pushActiveScene(Scene* scene) {
+    activeScenes.push_back(scene);
+}
+
+void ObjectManager::popActiveScene() {
+    if (!activeScenes.empty()) {
+        activeScenes.pop_back();
+    }
+}
+
+void ObjectManager::destroy(Scene* scene, Entity entity, float delay) {
+    if (!scene || entity == NULL_ENTITY) {
+        return;
+    }
+    pendingDestroys.push_back({scene, entity, delay > 0.0f ? (double)delay : 0.0});
+}
+
+namespace {
+
+// GameObjects of one scene with their children: scripts stopped first, then destroyed
+// together (one pass over the component arrays)
+void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
+    std::vector<Entity> entities;
+    std::unordered_set<Entity> seen;
+    for (Entity root : roots) {
+        if (root == NULL_ENTITY || seen.count(root) || !scene->isEntityCreated(root)) {
+            continue;
+        }
+        for (Entity entity : EntityCloner::collectHierarchy(scene, root)) {
+            if (seen.insert(entity).second) {
+                entities.push_back(entity);
+            }
+        }
+    }
+    if (entities.empty()) {
+        return;
+    }
+    ObjectManager::cleanupScripts(scene, entities);
+    // children first, a model taking the GameObjects it made along
+    std::reverse(entities.begin(), entities.end());
+    scene->destroyEntities(entities);
+    if (destroyListener) {
+        destroyListener(scene, entities);
+    }
+}
+
+}
+
+void ObjectManager::destroyImmediate(Scene* scene, Entity entity) {
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
+        return;
+    }
+    destroyNow(scene, {entity});
+}
+
+namespace {
+
+// Which kinds of scripts these GameObjects have
+void scriptKinds(Scene* scene, const std::vector<Entity>& entities, bool& lua, bool& cpp) {
+    lua = false;
+    cpp = false;
+    for (Entity entity : entities) {
+        if (!scene->isEntityCreated(entity)) {
+            continue;
+        }
+        if (ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity)) {
+            for (const ScriptEntry& entry : scripts->scripts) {
+                (entry.type == ScriptType::LUA ? lua : cpp) = true;
+            }
+        }
+    }
+}
+
+}
+
+void ObjectManager::initializeScripts(Scene* scene, const std::vector<Entity>& entities) {
+    if (!scene || entities.empty()) {
+        return;
+    }
+    bool lua, cpp;
+    scriptKinds(scene, entities, lua, cpp);
+    // Lua first, as initScripts does for a scene; what they instantiate goes to their scene
+    pushActiveScene(scene);
+    if (lua) {
+        LuaBinding::initializeLuaScripts(scene, entities);
+    }
+    if (cpp && cppInitializeHook) {
+        cppInitializeHook(scene, entities.data(), entities.size());
+    }
+    popActiveScene();
+}
+
+void ObjectManager::cleanupScripts(Scene* scene, const std::vector<Entity>& entities) {
+    if (!scene || entities.empty()) {
+        return;
+    }
+    bool lua, cpp;
+    scriptKinds(scene, entities, lua, cpp);
+    pushActiveScene(scene);
+    if (lua) {
+        LuaBinding::cleanupLuaScripts(scene, entities);
+    }
+    if (cpp && cppCleanupHook) {
+        cppCleanupHook(scene, entities.data(), entities.size());
+    }
+    popActiveScene();
+}
+
+void ObjectManager::update(double deltatime) {
+    if (pendingDestroys.empty()) {
+        return;
+    }
+    // what is due now; a script stopped here may ask for more, which waits for the next frame
+    std::vector<PendingDestroy> due;
+    std::vector<PendingDestroy> waiting;
+    waiting.reserve(pendingDestroys.size());
+    for (PendingDestroy& entry : pendingDestroys) {
+        entry.timeLeft -= deltatime;
+        if (entry.timeLeft <= 0.0) {
+            due.push_back(entry);
+        } else {
+            waiting.push_back(entry);
+        }
+    }
+    pendingDestroys.swap(waiting);
+    // by scene, each scene's in one pass
+    while (!due.empty()) {
+        Scene* scene = due.front().scene;
+        std::vector<Entity> roots;
+        std::vector<PendingDestroy> others;
+        for (const PendingDestroy& entry : due) {
+            (entry.scene == scene ? roots.push_back(entry.entity) : others.push_back(entry));
+        }
+        destroyNow(scene, roots);
+        due.swap(others);
+    }
+}
+
+void ObjectManager::forgetScene(Scene* scene) {
+    activeScenes.erase(std::remove(activeScenes.begin(), activeScenes.end(), scene), activeScenes.end());
+    pendingDestroys.erase(std::remove_if(pendingDestroys.begin(), pendingDestroys.end(),
+        [scene](const PendingDestroy& entry) { return entry.scene == scene; }), pendingDestroys.end());
+}
+
+void ObjectManager::clearAll() {
+    pendingDestroys.clear();
+    activeScenes.clear();
+    destroyListener = nullptr;
+}

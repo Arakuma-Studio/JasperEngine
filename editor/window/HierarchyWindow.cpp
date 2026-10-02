@@ -776,7 +776,7 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
         }
-        // ---- Prefab Variants (PREFABS.md 18) ----
+        // ---- Prefab Variants (PREFABS.md 19) ----
         {
             const std::filesystem::path basePath = assetPath.empty() ? std::filesystem::path() : project->getPrefabFileBase(assetPath);
             if (!basePath.empty()) {
@@ -1040,6 +1040,12 @@ void editor::HierarchyWindow::moveDraggedEntitiesToTarget(const std::vector<Enti
     }
 
     uint32_t sceneId = project->getSelectedSceneId();
+
+    // Unity refuses the whole drop when a member of a Prefab instance is in it, and offers
+    // to open the Prefab (HierarchyPrefabRows.cpp)
+    if (refusePrefabRestructure(sceneId, draggedEntities)) {
+        return;
+    }
 
     if (draggedEntities.size() == 1) {
         CommandHandle::get(sceneId)->addCommand(new MoveEntityOrderCmd(project, sceneId, draggedEntities[0], target, type));
@@ -2950,6 +2956,7 @@ void editor::HierarchyWindow::show(){
     }
 
     showReplacePrefabPopup();
+    showRestructurePopup();
 
     ImGui::End();
 

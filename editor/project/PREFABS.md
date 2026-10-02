@@ -8,10 +8,11 @@ are overrides, Apply pushes them), Play mode, and the Inspector's override UI (C
 Replace Prefab, the Hierarchy rows, the Scene view drop, thumbnails and the Prefabs dialog (F).
 Section 16: Prefab Mode (D, `editor/PrefabStage.*`). Section 17: nested prefabs in assets,
 stripped objects (references into nested prefabs), the layered import and the baked export
-(B). Section 18: Prefab Variants (E, `editor/project/ProjectPrefabVariant.cpp`).
+(B). Section 19: Prefab Variants (E, `editor/project/ProjectPrefabVariant.cpp`).
 `tools/prefab-fixtures.py` makes test projects, `jasperengine-editor scene-dump --project
 <dir> [--save] [--ops <file>]` dumps what loading them gives (and runs prefab operations
-headless).
+headless). Section 18: prefabs at runtime (Instantiate, Destroy, Prefab script properties,
+the build's prefab list; G).
 Read this before changing how prefabs are identified, stored or loaded.
 
 ## 1. Prefab file format (version 3)
@@ -145,8 +146,9 @@ marked modified (`SceneProject::prefabRefsChanged`). Paths inside prefab files a
 memory only (`resolveRegistryPrefabRefs`); the files get the new hint when saved anyway.
 Renaming or moving a prefab rewrites nothing on disk but the project's standalone list.
 
-Exported games resolve by path: generated code sets `PrefabComponent::{name, path, guid}`
-on spawned roots, and PrefabManager registers prefabs by id/name as before.
+Exported games: generated code sets `PrefabComponent::{name, path, guid}` on spawned
+roots, and PrefabManager registers every prefab of the build with its id, name and GUID;
+Prefab script properties find theirs by GUID (section 18).
 
 ## 4. Missing Prefab
 
@@ -466,8 +468,8 @@ bookkeeping helpers (whole component, no undo).
   the prefab's plus the overrides), overridden state set; the root's removed components are
   removed after its build. References to members, nested ones included, go through the
   members vector.
-- Play (`registerPrefabManager`): the factory names a bare root after the prefab root and
-  imports onto it (the import adds the root's components), as the export does.
+- Play (`registerPrefabManager`): the factory makes the bare root a copy of a template
+  imported once per prefab (section 18), as the export's `build_prefab` builds it.
 
 ## 12. Editing instances (Unity semantics)
 
@@ -490,6 +492,21 @@ scenes never see an instance edit. There is no "edit shared" path any more
 | component added (AddComponentCmd) | an added component; one of the prefab's this instance had removed comes back as a `"*"` override |
 | component removed (RemoveComponentCmd) | a removed component; an added one is simply gone. What the component owned (an Action's or Animation's GameObjects) leaves this instance only (removed GameObject overrides) |
 
+- **Restructuring an instance is refused** (Unity: "Children of a Prefab instance cannot be
+  rearranged. Open the Prefab to restructure it."): a member of an instance (a GameObject
+  of its prefab, a nested instance root included) cannot be reordered among its siblings,
+  reparented, or moved out of the instance, by any path: `MoveEntityOrderCmd` (Hierarchy
+  drag and drop, the AI's reparent / move actions, Reset Mesh Parenting) checks
+  `MoveEntityOrderCmd::getPrefabRestructureBlock` and fails with the message; the
+  Hierarchy refuses the whole drop and shows Unity's "Cannot restructure Prefab instance"
+  dialog with **Open Prefab** (Prefab Mode in context of the instance holding it,
+  `openPrefabFromHierarchy`), the AI actions return the message. Nothing reaches the asset
+  (`moveEntityFromPrefab` is no instance path any more). Free: an instance root and an added
+  GameObject (moved below an instance's GameObject it is an added GameObject of it, its
+  sibling place saved with it; moved out it is a plain GameObject again), and a Prefab
+  Mode stage's own GameObjects (`isEditingPrefabAsset`: an asset edit). Deleting a member
+  stays a removed GameObject override. `scene-dump --ops` `move {entity, target,
+  insertion}` runs MoveEntityOrderCmd.
 - Not overrides: an instance root's default overrides (section 6), a component the
   instance added (it is the instance's already), GameObjects added to the instance, edits in
   Prefab Mode (`isEditingPrefabAsset`). A value set back equal to the prefab's stays
@@ -504,8 +521,7 @@ scenes never see an instance edit. There is no "edit shared" path any more
   removed GameObjects, then state and components; Apply All goes to the instance's prefab,
   the outermost, so nested instances' overrides become its overrides of them).
 - **Play mode**: edits while playing record overrides like at edit time, and Apply is
-  refused (`canApplyPrefabOverrides`; reordering an instance's GameObjects, which edits the
-  asset, too).
+  refused (`canApplyPrefabOverrides`).
   Play's snapshot of the played scene takes its instances' bookkeeping with it
   (`capturePlayPrefabState`: every prefab's `instances[scene]` and the Missing Prefab
   records); Stop's `restorePlaySnapshot` puts entities, components and that bookkeeping back,
@@ -619,7 +635,7 @@ each tree rebuild), `SceneWindow::updatePrefabDrag`.
   of the row opens the prefab: `HierarchyWindow::openPrefabFromHierarchy(path)` is the one
   line Prefab Mode (D, `openPrefabAsset`) wires; until then it shows the asset in the
   Project window. `isPrefabVariantAsset(path)` says a row is an instance root of a Prefab
-  Variant: it gets the variant badge (section 18).
+  Variant: it gets the variant badge (section 19).
 - **Missing Prefab roots**: red, "(Missing Prefab)" after the name, the last path and the
   GUID in the tooltip; their Prefab submenu: the last path and GUID, Copy GUID, Select
   Missing Asset Folder, Replace... (relink), Unpack (`UnpackMissingPrefabCmd`), Remove
@@ -900,7 +916,7 @@ ids the asset had, None outside), in its registry and in its nested data's value
 
 Everything here is keyed by a registry entity of the holding prefab that roots an instance
 of another prefab: a nested root (`Prefab::isNestedRoot`), or the root of a Prefab Variant
-(its base). `Prefab::isInstanceRoot` is either; section 18 builds Variants on it.
+(its base). `Prefab::isInstanceRoot` is either; section 19 builds Variants on it.
 
 ### Tests
 
@@ -928,7 +944,144 @@ outer prefab, Prefab Mode (open and save changes nothing; a GameObject added bel
 GameObject and a reference into a nested prefab are kept), and the generated sources.
 `tools/smoke-test.sh <work-dir>/project` exports, builds and runs that project.
 
-## 18. Prefab Variants (E)
+## 18. Runtime: Instantiate, Destroy, Prefab properties
+
+Unity's runtime API. Engine: `engine/core/manager/{ObjectManager,PrefabManager,PrefabAsset}`,
+`engine/core/registry/EntityCloner`; Lua in `GameObjectClassesLua.cpp` / `CoreClassesLua.cpp`.
+Editor: `editor/project/ProjectPrefabRuntime.cpp`, `Generator` (main.cpp, `scene_scripts.cpp`).
+
+### API (Lua and C++ alike)
+
+| | |
+|---|---|
+| `GameObject.instantiate(original)` | `original`: a `PrefabAsset`, a prefab path/name/GUID string, a prefab id, a GameObject (any handle) or a Lua script (`self`, whose copy's script of the same class is returned) |
+| `... (original, parent [, instantiateInWorldSpace])` | below `parent` at the original's local placement, or at its world placement |
+| `... (original, position, rotation [, parent])` | at that world position and rotation |
+| `... (prefab, scene [, position, rotation])` | a prefab into a given scene (default: the active scene, `ObjectManager::getActiveScene`: the scene whose scripts are starting, else `Engine::getScene`) |
+| `GameObject.destroy(object [, delay])` | the GameObject and its children, after this frame's update (before the draw), or `delay` seconds of game time later |
+| `GameObject.destroyImmediate(object)` | now |
+| `PrefabAsset.load(path or id)`, `.valid`, `.id`, `.guid`, `.path`, `.name` | a reference to a prefab of the build |
+| `PrefabManager.findPrefab(name)`, `getPrefabNames()`, `prefabCount` | the registry |
+
+C++: `GameObject::instantiate(...)` (the same overloads, returns a `GameObject` whose entity is
+`NULL_ENTITY` on failure), `GameObject::destroy`, `GameObject::destroyImmediate`;
+`ObjectManager` has the scene/entity forms. `createPrefab` / `destroyPrefab` are gone
+(clean break): `GameObject.instantiate(PrefabAsset.load(name), parent)` replaces them.
+
+- The new root is named `<name>(Clone)` (Unity). A prefab's copy carries its
+  `PrefabComponent` but is not a tracked prefab instance (Unity: a runtime clone is not
+  connected to its prefab): Stop removes it like any GameObject the game made.
+- Placement: a prefab's root keeps its own position/rotation/scale (no parent), or that
+  local placement below a parent, or that as world placement with `instantiateInWorldSpace`.
+  A copied GameObject goes where the original is in the world (no parent), keeps its local
+  placement below a parent, or its world placement with `instantiateInWorldSpace`. World
+  values are computed from the Transforms as they are (not last frame's matrices).
+- Scripts: every new GameObject's scripts start before `instantiate` returns: Lua instances
+  are made, their properties set (entity references resolved), then `init()` of each;
+  C++ scripts are constructed and their properties bound (`initEntityScripts`, below).
+  `destroy` calls Lua `onDestroy()` (new, Unity's OnDestroy; only for GameObjects
+  destroyed this way, not when a scene unloads) then releases the instances and deletes
+  C++ scripts (`cleanupEntityScripts`). The GameObjects due at the end of a frame are
+  destroyed together, per scene (`EntityRegistry::destroyEntities`: every removal
+  callback, then each component array compacted once); `destroyImmediate` compacts once
+  per call. A Lua script file is compiled once per Play/run
+  (`LuaBinding` chunk cache); its chunk still runs per instance (module-level locals stay
+  per instance, as before).
+
+### Copying (`EntityCloner`)
+
+`collectHierarchy(registry, root)`: the root, its Transform descendants (the branch after
+it in the Transform array), and the GameObjects without a Transform that belong to them
+(actions targeting one of them, a model's `animations`, an animation's tracks), to any
+depth; foliage a terrain streams in is left out. `clone(source, entities, target,
+targetRoot)` copies them, across registries too (Play copies from a template scene):
+
+- Components are copied whole, then what the engine made of them at runtime is reset
+  (`prepare<T>`): GPU objects (renders, shaders, buffers' render handles, sky env maps,
+  bones buffers), physics bodies/shapes/joints, sound voices and samples, a camera's
+  framebuffer (a new one; textures showing the original camera's show the copy's when
+  both are copied), text atlases, `loaded` flags, runtime buffers (particles, render
+  instances), event subscriptions (`onClick`, `onStart`, ...). Actions restart (a Running
+  one gets `startTrigger`, as a loaded scene does). A `Playing` sound plays again (play on
+  awake).
+- External buffers pointing into a model's file data stay pointed when that model is
+  copied too (the copy shares the parsed file), else take a copy of the bytes.
+- Entity references in components (Transform parent, action target, model mappings and
+  skins, bone model, UI parts, joints, collider sources, layout boxes, animation tracks)
+  and in script properties (`EntityReference` with no scene id): a copied GameObject goes
+  to its copy; another one is kept within one registry and cleared across registries.
+- Script properties take the original's current values first (`syncFromMember`, Unity
+  copies the current serialized fields); instances, member pointers and Lua refs are
+  cleared on the copy.
+- Ids: user ids count up, so what a factory made is every id above the counter before.
+
+### Prefab script properties
+
+`ScriptPropertyType::Prefab`, value a `PrefabAsset{guid, path}` (the variant's last type).
+
+- Declared in Lua as `{ name = "enemy", type = "Prefab" }` (or `"PrefabAsset"`), in C++ as
+  `DPROPERTY("Enemy") PrefabAsset enemy;` (or `DPROPERTY("Enemy", Prefab)`). No default
+  value: None. Lua sees a `PrefabAsset` or nil; C++ the member (`syncToMember`).
+- Scene and prefab files: `value: {guid, path}` (empty map for None); generated code
+  `PrefabAsset("<guid>", "<path>")`.
+- Inspector (script properties section): the prefab's name, a drop target for a `.prefab`
+  from the Project window, a button back to None; Missing when its GUID resolves to no file.
+  One `PropertyCmd<PrefabAsset>` per GameObject (undo).
+- Resolution at runtime: by GUID in `PrefabManager` (registered with GUIDs), the path only
+  when the property has no GUID or the registry entry has none.
+
+### The build's prefabs and their ids (`collectAllPrefabs`)
+
+One list for Play (`registerPrefabManager`) and the export (`Generator::configure` ->
+`main.cpp`): the prefabs scenes list (`sceneProject.prefabs`: instances, Missing Prefabs,
+and, through `updateScenePrefabs` -> `addScriptPrefabReferences`, the prefabs the scene's
+Prefab script properties reference, saved in the scene file's `prefabs:` so closed scenes
+keep them), the open scenes' script references as they are now, the standalone list, then
+everything those prefabs nest or their scripts reference, to any depth; files that exist
+only. Sorted by path: the id is the position + 1, the same in Play and the export,
+whatever is loaded. `loadBuildPrefabs()` (from `writeSceneSource` and Play) loads them all
+so `writePrefabSources` writes their sources; `appendPrefabCppScripts` adds the C++ scripts
+of those prefabs to the build (a prefab only scripts instantiate can carry C++ scripts
+no scene holds).
+
+### Play: templates
+
+`registerPrefabManager` registers, per prefab of the list, a factory that copies a
+template: on first use the prefab is imported (`importPrefab`, with nesting and
+asset-level overrides) into a hidden `SceneProject` (`playTemplateProject`, a `Scene` no
+window shows nor the Engine runs, so its scripts never start), its instance tracking
+dropped, and the GameObjects kept (`playPrefabTemplates`). Each instantiate is then an
+`EntityCloner::clone` from it: no YAML per instance. Cleared at Stop
+(`clearPlayPrefabTemplates`) and when Play starts.
+
+### Export
+
+`main.cpp`: `PrefabManager::registerPrefab(id, name, guid, create_prefab_<name>)` per
+prefab, then `ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts)`.
+`scene_scripts.cpp` has, next to `initScripts` / `cleanupScripts`, those two functions
+(`extern "C"`; Play's script library exports them and `Conector::connect` hands them to
+the engine, `disconnect` takes them back). Factories build each instance in generated
+code: no file reading at runtime.
+
+### Timings
+
+`tools/fixtures/prefab-runtime` (Enemy: 4 GameObjects with a nested prefab, a Lua script
+with 3 properties), Linux container capped at 2 CPUs, Release, `os.clock()` in the test
+(`[PRT] ...` lines), over several runs:
+
+| | exported game | editor Play |
+|---|---|---|
+| 1000 `instantiate` of the prefab (scripts started) | 30-44 ms (generated code) | 26-41 ms (template copies) |
+| 1000 copies of live instances | 43-62 ms | 50-66 ms |
+| 1000 `destroyImmediate`, oldest first | 115-193 ms (each compacts the arrays' tail; 15 ms newest first) | 140-187 ms |
+| the frame destroying 1001 with `destroy` | 32-57 ms | 94-125 ms (editor frame) |
+
+The test (`tools/smoke-test.sh tools/fixtures/prefab-runtime`, and Play in the editor)
+also checks names, placements, parenting, references into the copies, script values,
+scripts on copies (Lua and C++), delayed destroy, a scene GameObject destroyed and back
+after Stop, and the prefab ids.
+
+## 19. Prefab Variants (E)
 
 Unity's Prefab Variants: a prefab made of an instance of another prefab (its *base*) plus
 overrides of any kind and GameObjects of its own. Base edits reach every variant and every

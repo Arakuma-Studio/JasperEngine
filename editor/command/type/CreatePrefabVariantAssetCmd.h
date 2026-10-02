@@ -13,7 +13,7 @@ namespace jasperengine::editor {
 
     // Unity's Project window Create > Prefab Variant on a prefab asset: a new variant of it
     // (its root an instance of the prefab, nothing overridden) saved next to it, as one undo
-    // step of the project history (editor/project/PREFABS.md, section 18)
+    // step of the project history (editor/project/PREFABS.md, section 19)
     class CreatePrefabVariantAssetCmd: public Command {
     private:
         Project* project;

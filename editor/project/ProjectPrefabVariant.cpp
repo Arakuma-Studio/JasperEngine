@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Unity's Prefab Variants (editor/project/PREFABS.md, section 18). A variant is a prefab
+// Unity's Prefab Variants (editor/project/PREFABS.md, section 19). A variant is a prefab
 // whose root GameObject is an instance of another prefab, its base: the nested model of
 // section 17 with the root as the nested root. What the variant overrides of its base is
 // its nestedInstances[root], the GameObjects it adds are the root's registry children, its

@@ -2455,6 +2455,7 @@ ActionResult EditorActionExecutor::reparentEntity(const Json& arguments) {
     if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
     Entity entity = resolveEntity(sceneProject, arguments);
     if (entity == NULL_ENTITY) return failResult("GameObject not found.");
+    if (std::string blocked = MoveEntityOrderCmd::getPrefabRestructureBlock(project, sceneId, entity); !blocked.empty()) return failResult(blocked);
 
     Entity parent = NULL_ENTITY;
     if (arguments.contains("parent_id") || arguments.contains("parent_name")) {
@@ -2491,6 +2492,7 @@ ActionResult EditorActionExecutor::moveEntityOrder(const Json& arguments) {
     Entity entity = resolveEntity(sceneProject, arguments);
     Entity target = resolveEntityByKeys(sceneProject, arguments, "target_id", "target_name");
     if (entity == NULL_ENTITY || target == NULL_ENTITY) return failResult("GameObject or target not found.");
+    if (std::string blocked = MoveEntityOrderCmd::getPrefabRestructureBlock(project, sceneId, entity); !blocked.empty()) return failResult(blocked);
 
     std::string insertion = lower(arguments.value("insertion", ""));
     InsertionType type = InsertionType::AFTER;

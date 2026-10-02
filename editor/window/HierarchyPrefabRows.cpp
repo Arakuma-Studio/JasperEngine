@@ -19,6 +19,7 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
 #include "Stream.h"
+#include "command/type/MoveEntityOrderCmd.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -197,7 +198,7 @@ void editor::HierarchyWindow::showPrefabRowArrow(const TreeNode& node) {
 }
 
 bool editor::HierarchyWindow::isPrefabVariantAsset(const std::filesystem::path& path) const {
-    // A Prefab Variant: its root is an instance of its base (PREFABS.md 18), read from the
+    // A Prefab Variant: its root is an instance of its base (PREFABS.md 19), read from the
     // loaded asset or, cached, from its file
     return !path.empty() && !project->getPrefabFileBase(path).empty();
 }
@@ -442,4 +443,65 @@ bool editor::HierarchyWindow::handlePrefabReplaceDrop(const TreeNode& node) {
         }
     }
     return true;
+}
+
+// ---- Restructuring a Prefab instance (Unity refuses it) ----
+
+bool editor::HierarchyWindow::refusePrefabRestructure(uint32_t sceneId, const std::vector<Entity>& entities) {
+    for (Entity entity : entities) {
+        std::filesystem::path prefab;
+        Entity instanceRoot = NULL_ENTITY;
+        if (!MoveEntityOrderCmd::getPrefabRestructureBlock(project, sceneId, entity, &prefab, &instanceRoot).empty()) {
+            SceneProject* sceneProject = project->getScene(sceneId);
+            restructureRefusal.pending = true;
+            restructureRefusal.delay = 1;
+            restructureRefusal.prefab = prefab;
+            restructureRefusal.instanceRoot = instanceRoot;
+            restructureRefusal.name = sceneProject && sceneProject->scene ? sceneProject->scene->getEntityName(entity) : std::string();
+            Out::warning("Cannot move '%s': %s", restructureRefusal.name.c_str(), MoveEntityOrderCmd::PREFAB_RESTRUCTURE_MESSAGE);
+            return true;
+        }
+    }
+    return false;
+}
+
+void editor::HierarchyWindow::showRestructurePopup() {
+    static constexpr const char* POPUP = "Cannot restructure Prefab instance##PrefabRestructure";
+    static RestructureRefusal shown;
+    // a frame after the drop: the drop's own frame (its release, the drag ending) closes a
+    // popup opened in it
+    if (restructureRefusal.pending && restructureRefusal.delay-- <= 0) {
+        shown = restructureRefusal;
+        restructureRefusal = RestructureRefusal();
+        ImGui::OpenPopup(POPUP);
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(POPUP, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + Theme::dpi(380.0f));
+    ImGui::TextUnformatted(MoveEntityOrderCmd::PREFAB_RESTRUCTURE_MESSAGE);
+    if (!shown.name.empty()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("'%s' belongs to %s", shown.name.c_str(), shown.prefab.generic_string().c_str());
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    const float buttonWidth = Theme::dpi(110.0f);
+    ImGui::Dummy(ImVec2(Theme::dpi(380.0f) - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x * 2.0f, 0.0f));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(shown.prefab.empty());
+    const bool open = ImGui::Button("Open Prefab", ImVec2(buttonWidth, 0));
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        ImGui::CloseCurrentPopup();
+    } else if (open) {
+        ImGui::CloseCurrentPopup();
+        // Prefab Mode in context of the instance holding it
+        openPrefabFromHierarchy(shown.prefab, shown.instanceRoot);
+    }
+    ImGui::EndPopup();
 }

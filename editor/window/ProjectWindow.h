@@ -174,7 +174,7 @@ namespace jasperengine::editor {
         bool showDeleteConfirmation;
 
         // Unity's "Create Prefab or Variant?": GameObjects dragged into the Project window,
-        // some of them Prefab instance roots, wait for the answer (PREFABS.md 18)
+        // some of them Prefab instance roots, wait for the answer (PREFABS.md 19)
         struct PendingPrefabDrop {
             uint32_t sceneId = 0;
             std::vector<std::pair<fs::path, YAML::Node>> prefabs;

@@ -495,6 +495,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Project.cpp
     ${EDITOR_DIR}/project/ProjectPrefabEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabImport.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabRuntime.cpp
     ${EDITOR_DIR}/project/ProjectPrefabInstanceEdit.cpp
     ${EDITOR_DIR}/project/ProjectPrefabMissing.cpp
     ${EDITOR_DIR}/project/ProjectPrefabReplace.cpp

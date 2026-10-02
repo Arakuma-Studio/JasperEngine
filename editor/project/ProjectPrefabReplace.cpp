@@ -169,7 +169,7 @@ namespace {
     PrefabInstanceData remapInstanceLevel(const ReplaceContext& ctx, const Prefab* oldPrefab, const Prefab& newPrefab,
             const PrefabInstanceData& in, Entity localRoot, const std::string& where, size_t depth);
 
-    // ---- Prefab Variants (PREFABS.md 18): an instance of a variant is one per level of its
+    // ---- Prefab Variants (PREFABS.md 19): an instance of a variant is one per level of its
     // chain (the variant, its base, ...), each with its data; Replace matches GameObjects of
     // the whole chain by their keys in the GameObject tree an instance of it has ----
 
@@ -1296,7 +1296,7 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
             continue;
         }
         std::set<std::string> listed;
-        // a variant: its base lists it (Prefab Variants, PREFABS.md 18)
+        // a variant: its base lists it (Prefab Variants, PREFABS.md 19)
         if (const PrefabComponent* base = prefab->getBaseComponent()) {
             const std::filesystem::path basePath = resolvePrefabPath(base->guid, base->path);
             PrefabUsage& entry = basePath.empty() ? entryFor(base->guid, base->path) : entryFor(getPrefabGuid(basePath), basePath);

@@ -230,6 +230,35 @@ void EntityRegistry::destroyEntity(Entity entity) {
     entityManager.destroy(entity);
 }
 
+void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
+    if (entities.size() == 1) {
+        if (isEntityCreated(entities[0])) {
+            destroyEntity(entities[0]);
+        }
+        return;
+    }
+    for (Entity entity : entities) {
+        // a callback can destroy others of the list (a model its nodes)
+        if (isEntityCreated(entity)) {
+            onEntityDestroyed(entity, entityManager.getSignature(entity));
+        }
+    }
+    std::unordered_set<Entity> doomed;
+    doomed.reserve(entities.size());
+    for (Entity entity : entities) {
+        if (isEntityCreated(entity)) {
+            doomed.insert(entity);
+        }
+    }
+    if (doomed.empty()) {
+        return;
+    }
+    componentManager.entitiesDestroyed(doomed);
+    for (Entity entity : doomed) {
+        entityManager.destroy(entity);
+    }
+}
+
 Signature EntityRegistry::getSignature(Entity entity) const {
     return entityManager.getSignature(entity);
 }

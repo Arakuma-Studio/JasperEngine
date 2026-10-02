@@ -186,7 +186,7 @@ bool editor::Project::isNestedRootApplyTarget(uint32_t sceneId, const PrefabObje
         return false;
     }
     // The prefabs the GameObject roots instances of: a nested root's prefab and its bases,
-    // a variant instance root's bases (PREFABS.md 18)
+    // a variant instance root's bases (PREFABS.md 19)
     const std::vector<std::filesystem::path> levels = getInstanceRootLevels(sceneId, ref.localEntity);
     return std::find(levels.begin(), levels.end(), target) != levels.end();
 }

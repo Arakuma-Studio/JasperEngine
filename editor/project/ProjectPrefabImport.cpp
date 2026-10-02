@@ -59,46 +59,12 @@ void editor::Project::updateScenePrefabs(SceneProject* sceneProject) {
             sceneProject->prefabs.push_back(std::move(info));
         }
     }
+
+    // Prefabs its scripts can instantiate (Prefab script properties) are built with it
+    addScriptPrefabReferences(sceneProject);
 }
 
-std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const {
-    std::unordered_set<std::string> uniquePaths;
-    std::vector<PrefabSceneInfo> result;
-
-    for (const auto& sceneProject : scenes) {
-        for (const auto& prefab : sceneProject.prefabs) {
-            std::string pathKey = prefab.prefabPath.generic_string();
-            if (!uniquePaths.insert(pathKey).second) {
-                continue;
-            }
-
-            fs::path fullPath = prefab.prefabPath;
-            if (fullPath.is_relative()) {
-                fullPath = getProjectPath() / fullPath;
-            }
-            if (!fs::exists(fullPath)) {
-                continue;
-            }
-
-            result.push_back(prefab);
-        }
-    }
-
-    // Standalone prefabs have no scene recording them, and only the loaded ones get a source
-    for (const fs::path& prefabPath : standalonePrefabs) {
-        const Prefab* prefab = getPrefab(prefabPath);
-        if (!prefab || !prefab->registry || !uniquePaths.insert(prefabPath.generic_string()).second) {
-            continue;
-        }
-
-        PrefabSceneInfo info;
-        info.prefabPath = prefabPath;
-        info.functionName = Factory::prefabToFunctionName(prefabPath);
-        result.push_back(std::move(info));
-    }
-
-    return result;
-}
+// collectAllPrefabs: ProjectPrefabRuntime.cpp
 
 namespace jasperengine::editor::prefabinternal {
 
@@ -919,7 +885,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         return missingPrefab();
     }
     // A Prefab Variant needs its whole chain of bases: one missing (or a cycle) makes the
-    // instance a Missing Prefab as a whole, keeping its data (PREFABS.md 18)
+    // instance a Missing Prefab as a whole, keeping its data (PREFABS.md 19)
     std::filesystem::path basePath;
     if (prefabPtr->isVariant()) {
         bool broken = false;
@@ -1961,125 +1927,7 @@ std::vector<editor::Prefab::EntityMember> editor::Project::instantiatePrefabBran
     return created;
 }
 
-void editor::Project::registerPrefabManager() {
-    PrefabManager::clearAll();
-    uint32_t prefabId = 0;
-    for (const auto& [prefabPath, prefab] : prefabAssets) {
-        // Same set the standalone build compiles, see collectAllPrefabs
-        if (prefab.instances.empty() && !isStandalonePrefab(prefabPath)) {
-            continue;
-        }
-
-        prefabId++;
-        fs::path capturablePrefabPath = prefabPath;
-        fs::path noExt = prefabPath;
-        noExt.replace_extension();
-        std::string prefabName = noExt.generic_string();
-
-        PrefabManager::registerPrefab(prefabId, prefabName,
-            // Factory: the bare root PrefabManager made becomes the prefab's root GameObject
-            // (its components, Transform included, come from importPrefab), the export's way
-            [this, capturablePrefabPath](Scene* scene, Entity root) -> bool {
-                SceneProject* sceneProject = findSceneProjectByScene(scene);
-                if (!sceneProject) return false;
-
-                Prefab* existingPrefab = getPrefab(capturablePrefabPath);
-                if (existingPrefab) {
-                    const Prefab::Instance* existing = existingPrefab->getInstance(sceneProject->id, root);
-                    if (existing && existing->rootEntity == root) {
-                        Out::error("PrefabManager: root entity %u already hosts prefab '%s'",
-                            root, capturablePrefabPath.string().c_str());
-                        return false;
-                    }
-                }
-
-                const std::string oldName = scene->getEntityName(root);
-                const bool addedPrefab = !scene->findComponent<PrefabComponent>(root);
-                const std::vector<ComponentType> oldComponents = Catalog::findComponents(scene, root);
-                const std::vector<Entity> entitiesSnapshot = sceneProject->entities;
-
-                // PrefabManager destroys the entities created by the import, this only has to
-                // undo what the factory and the import changed on the root plus the instance
-                // metadata
-                auto restoreRoot = [&]() {
-                    removePrefabInstanceTracking(sceneProject->id, root);
-                    if (scene->isEntityCreated(root)) {
-                        scene->setEntityName(root, oldName);
-                        std::vector<Entity> unused;
-                        for (ComponentType type : Catalog::findComponents(scene, root)) {
-                            if (std::find(oldComponents.begin(), oldComponents.end(), type) == oldComponents.end()) {
-                                ProjectUtils::removeEntityComponent(scene, root, type, unused);
-                            }
-                        }
-                    }
-                    sceneProject->entities = entitiesSnapshot;
-                };
-
-                if (oldName.empty()) {
-                    // the prefab root's name, not a unique one: a "Prefab 2" is a name the same
-                    // script would not find in the export, which names the root the same way
-                    const Prefab* asset = loadPrefabAsset(capturablePrefabPath);
-                    std::string rootName = asset ? asset->registry->getEntityName(asset->root) : capturablePrefabPath.stem().string();
-                    if (rootName.empty())
-                        rootName = "Prefab";
-                    scene->setEntityName(root, rootName);
-                }
-
-                if (addedPrefab) {
-                    PrefabComponent prefabComp;
-                    prefabComp.name = capturablePrefabPath.stem().string();
-                    prefabComp.path = capturablePrefabPath.string();
-                    prefabComp.guid = getPrefabGuid(capturablePrefabPath);
-                    scene->addComponent<PrefabComponent>(root, prefabComp);
-                }
-
-                if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), root) == sceneProject->entities.end())
-                    sceneProject->entities.push_back(root);
-
-                try {
-                    importPrefab(sceneProject, &sceneProject->entities, capturablePrefabPath, root, false);
-                } catch (const std::exception& e) {
-                    Out::error("PrefabManager: import of '%s' failed: %s",
-                        capturablePrefabPath.string().c_str(), e.what());
-                    restoreRoot();
-                    return false;
-                } catch (...) {
-                    Out::error("PrefabManager: import of '%s' failed",
-                        capturablePrefabPath.string().c_str());
-                    restoreRoot();
-                    return false;
-                }
-
-                Prefab* prefab = getPrefab(capturablePrefabPath);
-                const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneProject->id, root) : nullptr;
-                if (instance && instance->rootEntity == root)
-                    return true;
-
-                restoreRoot();
-                return false;
-            },
-            // Destroyer: remove prefab instance via unimportPrefab
-            [this, capturablePrefabPath](Scene* scene, Entity root) -> bool {
-                SceneProject* sceneProject = findSceneProjectByScene(scene);
-                if (!sceneProject) return false;
-
-                Prefab* prefab = getPrefab(capturablePrefabPath);
-                if (!prefab) return false;
-
-                const Prefab::Instance* instance = prefab->getInstance(sceneProject->id, root);
-                if (!instance || instance->rootEntity != root) return false;
-
-                std::vector<Entity> members;
-                for (const auto& m : instance->members)
-                    members.push_back(m.localEntity);
-                bool wasModified = sceneProject->isModified;
-                bool result = unimportPrefab(sceneProject->id, capturablePrefabPath, root, members);
-                sceneProject->isModified = wasModified;
-                return result;
-            }
-        );
-    }
-}
+// registerPrefabManager: ProjectPrefabRuntime.cpp
 
 std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Project::bakePrefabsForExport() {
     std::map<std::filesystem::path, std::shared_ptr<BakedPrefab>> baked;

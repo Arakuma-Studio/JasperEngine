@@ -12,6 +12,7 @@
 #include "Rigidbody.h"
 #endif
 #include "math/Ray.h"
+#include "manager/PrefabAsset.h"
 
 namespace jasperengine{
 
@@ -20,6 +21,30 @@ namespace jasperengine{
         GameObject(Scene* scene);
         GameObject(Scene* scene, Entity entity);
         virtual ~GameObject();
+
+        // Unity's Object.Instantiate. From a prefab: in the active scene (Engine::getScene)
+        // or `scene`; from a GameObject: a copy with its children, components and scripts
+        // (references among them go to the copies), in the original's scene. The root is
+        // named "<name>(Clone)". Below `parent` it keeps its local placement, or its world
+        // one with instantiateInWorldSpace; `position` and `rotation` are world values.
+        // The scripts of the new GameObjects run (init) before it returns. A GameObject
+        // whose entity is NULL_ENTITY on failure (logged).
+        static GameObject instantiate(const PrefabAsset& prefab);
+        static GameObject instantiate(const PrefabAsset& prefab, Scene* scene);
+        static GameObject instantiate(const PrefabAsset& prefab, const EntityHandle& parent, bool instantiateInWorldSpace = false);
+        static GameObject instantiate(const PrefabAsset& prefab, const Vector3& position, const Quaternion& rotation);
+        static GameObject instantiate(const PrefabAsset& prefab, const Vector3& position, const Quaternion& rotation, const EntityHandle& parent);
+        static GameObject instantiate(const PrefabAsset& prefab, Scene* scene, const Vector3& position, const Quaternion& rotation);
+        static GameObject instantiate(const EntityHandle& original);
+        static GameObject instantiate(const EntityHandle& original, const EntityHandle& parent, bool instantiateInWorldSpace = false);
+        static GameObject instantiate(const EntityHandle& original, const Vector3& position, const Quaternion& rotation);
+        static GameObject instantiate(const EntityHandle& original, const Vector3& position, const Quaternion& rotation, const EntityHandle& parent);
+
+        // Unity's Object.Destroy: the GameObject and its children go after this frame's
+        // update, or `delay` seconds later; their scripts stop first
+        static void destroy(const EntityHandle& object, float delay = 0.0f);
+        // Unity's Object.DestroyImmediate
+        static void destroyImmediate(const EntityHandle& object);
 
         void addChild(GameObject* child);
         void addChild(Entity child);

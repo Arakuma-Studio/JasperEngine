@@ -567,7 +567,7 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
     }
     // Into a prefab holding the parent's instance: a GameObject it adds to that nested instance.
     // Below the root of an instance of a variant, into any level of it (the variant, its base,
-    // ...: the root GameObject of each, PREFABS.md 18).
+    // ...: the root GameObject of each, PREFABS.md 19).
     fs::path filepath;
     if (!target.empty()) {
         const std::vector<std::filesystem::path> rootLevels = getInstanceRootLevels(sceneId, parent);

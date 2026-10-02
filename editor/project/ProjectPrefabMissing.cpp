@@ -160,7 +160,7 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
         }
         Entity outer = getOutermostPrefabRoots(sceneId, {root})[0];
         // the base of a variant instance (its root names the variant): the variant's
-        // instance goes Missing as a whole when built again (PREFABS.md 18)
+        // instance goes Missing as a whole when built again (PREFABS.md 19)
         std::filesystem::path outermostPath;
         const bool variantBase = findInstanceRootedAt(sceneProject, root, &outermostPath) && outermostPath != filepath;
         if (outer == NULL_ENTITY || (outer == root && !variantBase)) {

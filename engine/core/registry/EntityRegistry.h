@@ -99,6 +99,9 @@ namespace jasperengine {
         bool isEntityCreated(Entity entity) const;
 
         void destroyEntity(Entity entity);
+        // Several entities: every component removal callback first, then each component
+        // array compacted once (destroying many one by one shifts the arrays each time)
+        void destroyEntities(const std::vector<Entity>& entities);
 
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 

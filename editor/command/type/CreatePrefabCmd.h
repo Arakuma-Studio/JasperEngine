@@ -33,7 +33,7 @@ namespace jasperengine::editor{
             // become the new prefab's)
             std::vector<std::pair<Entity, YAML::Node>> nestedRoots;
             // Unity's Prefab Variant: the selected instance root becomes an instance of a new
-            // variant of its prefab (PREFABS.md 18) instead of the root of an original prefab;
+            // variant of its prefab (PREFABS.md 19) instead of the root of an original prefab;
             // the root as it was (an instance of the base)
             bool variant = false;
             YAML::Node variantRootNode;

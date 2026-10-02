@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "manager/ObjectManager.h"
 #include "Scene.h"
 
 #include "object/Camera.h"
@@ -43,6 +44,8 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    // GameObject::destroy calls still pending for it
+    ObjectManager::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
     getSystem<AudioSystem>()->stopSceneSounds();
     destroy();

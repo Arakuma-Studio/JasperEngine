@@ -207,6 +207,46 @@ return Watcher
 """
 
 
+BADGE_SPAWNER_LUA = """local BadgeSpawner = {}
+
+-- Prefab Variants at runtime (variant_export): instantiates the variants by path and checks
+-- their GameObjects (Badge Green removes its base's Tag, Badge Red keeps it)
+local function fail(fmt, ...)
+    BadgeSpawner.failures = BadgeSpawner.failures + 1
+    print("[ERROR] [VARIANT] " .. string.format(fmt, ...))
+end
+
+function BadgeSpawner:init()
+    BadgeSpawner.failures = 0
+    local scene = self.scene
+    local red = GameObject.instantiate("prefabs/Badge Red.prefab", Vector3(510, 300, 5), Quaternion())
+    local green = GameObject.instantiate("prefabs/Badge Green.prefab", Vector3(690, 300, 5), Quaternion())
+    if red == nil or green == nil then
+        fail("instantiate of a variant returned nil")
+        return
+    end
+    if red.name ~= "Badge Red(Clone)" then fail("the red copy is named %s", red.name) end
+    if green.name ~= "Badge Green(Clone)" then fail("the green copy is named %s", green.name) end
+    local redGem = scene:findEntity("Gem", red.entity)
+    local greenGem = scene:findEntity("Gem", green.entity)
+    if redGem == 0 or greenGem == 0 then fail("a copy has no Gem") end
+    if scene:findEntity("Tag", red.entity) == 0 then fail("Badge Red's copy lost its Tag") end
+    if scene:findEntity("Tag", green.entity) ~= 0 then fail("Badge Green's copy has the Tag it removes") end
+    if redGem ~= 0 then
+        local c = Sprite(scene, redGem).color
+        if not (c.x > 0.9 and c.y < 0.6) then fail("Badge Red's Gem is not red (%.2f, %.2f, %.2f)", c.x, c.y, c.z) end
+    end
+    if green ~= nil then
+        local c = Sprite(scene, green.entity).color
+        if not (c.y > 0.9 and c.x < 0.7) then fail("Badge Green is not green (%.2f, %.2f, %.2f)", c.x, c.y, c.z) end
+    end
+    if BadgeSpawner.failures == 0 then print("[VARIANT] PASS") end
+end
+
+return BadgeSpawner
+"""
+
+
 def camera_components(x=0.0, y=0.0):
     return {
         "transform": transform(x, y),
@@ -419,7 +459,7 @@ def nested(out):
 
 
 def variant(out):
-    """Prefab Variants (PREFABS.md section 18): a scene of plain GameObjects (a Ship holding an
+    """Prefab Variants (PREFABS.md section 19): a scene of plain GameObjects (a Ship holding an
     Engine, with a camera, an action and children) and the scene-dump ops that make, through
     the editor, Engine and Ship (Engine nested in it), a Ship Variant from an instance of Ship
     with overrides of every kind (properties, state, added and removed components, added and
@@ -551,14 +591,19 @@ def variant_export(out):
     for the export check (tools/smoke-test.sh): a Badge prefab (three sprites), Badge Red (a
     variant of it: a red, wider gem), Badge Green (a variant of Badge Red: green, its Tag
     removed) and an instance of each with an override of its own, side by side above the
-    plane. Writes <out>/ (the project) and <out>.ops/build.yaml (the ops that make the
-    prefabs, then save)."""
+    plane. A Spawner script instantiates Badge Red and Badge Green at runtime
+    (GameObject.instantiate, by path) lower down and checks what it gets ("[VARIANT] PASS",
+    "[ERROR] [VARIANT] ..." otherwise). Writes <out>/ (the project) and <out>.ops/build.yaml
+    (the ops that make the prefabs, then save)."""
     here = os.path.dirname(os.path.abspath(__file__))
     fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
     if not os.path.isdir(fixture):
         sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
     os.system('rm -rf "%s" && cp -r "%s" "%s"' % (out, fixture, out))
     os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
+    with open(os.path.join(out, "scripts", "BadgeSpawner.lua"), "w") as f:
+        f.write(BADGE_SPAWNER_LUA)
     path = os.path.join(out, "Main Scene.scene")
     scene = yaml.safe_load(open(path))
     badge = entity(1900, "Badge", sprite_components("sprites/rock.png", 60, 120, x=150, y=470), [
@@ -569,6 +614,11 @@ def variant_export(out):
         for comps in (node["components"],):
             comps["transform"]["position"][2] = 5
     scene["entities"].append(badge)
+    scene["entities"].append(entity(1910, "Spawner", {
+        "transform": transform(0, 0),
+        "script": {"scripts": [{"type": "lua", "path": "BadgeSpawner.lua", "className": "BadgeSpawner",
+                                "enabled": True, "properties": []}]},
+    }))
     write_yaml(path, scene)
 
     color = "submeshes[0].material.baseColorFactor"

@@ -66,7 +66,7 @@ namespace {
     // Unity's apply menu entries (targets innermost first): the innermost is "Apply to
     // Prefab", "Apply to Base Prefab" when a variant over it holds the instance, "Apply to
     // Prefab Variant" when it is a variant itself; the outer ones "Apply as Override in
-    // Prefab (Variant)" (PREFABS.md 18)
+    // Prefab (Variant)" (PREFABS.md 19)
     std::string applyTargetLabel(editor::Project* project, const std::vector<std::filesystem::path>& targets, size_t t, uint32_t sceneId) {
         const std::string name = "'" + prefabName(targets[t]) + "'";
         const bool variant = !project->getPrefabFileBase(targets[t]).empty();

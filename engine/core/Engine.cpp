@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "manager/ObjectManager.h"
 #include "Engine.h"
 #include "Log.h"
 #include "Scene.h"
@@ -167,7 +168,8 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    return Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is)
+    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
@@ -341,7 +343,7 @@ Scene* Engine::getMainScene(){
 
 Scene* Engine::getLastScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    return scenes.back();
+    return scenes.empty() ? nullptr : scenes.back();
 }
 
 void Engine::pauseGameEvents(bool pause) {
@@ -1152,6 +1154,9 @@ void Engine::systemDraw(){
             scenes[i]->update(frameDelta);
         }
         Engine::onPostUpdate.call();
+
+        // GameObject::destroy: after the update, before the draw (Unity)
+        ObjectManager::update(frameDelta);
     }
 
     Engine::onDraw.call();
