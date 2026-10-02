@@ -3,6 +3,8 @@
 
     tools/prefab-fixtures.py legacy <out-dir>
     tools/prefab-fixtures.py nested <out-dir>     (see nested())
+    tools/prefab-fixtures.py variant <out-dir>    (see variant())
+    tools/prefab-fixtures.py variant_export <out-dir>   (see variant_export())
 
 `legacy` writes a project (FIXTURE: the TappyPlane fixture project, for its sprites) in the formats written before the real-root model (prefab
 files version 1 and 2, wrapper-root instances with whole-component overrides): a
@@ -202,6 +204,47 @@ function Watcher:init()
 end
 
 return Watcher
+"""
+
+
+BADGE_SPAWNER_LUA = """local BadgeSpawner = {}
+
+-- Prefab Variants at runtime (variant_export): instantiates the variants by path and checks
+-- their GameObjects (Badge Green removes its base's Tag, Badge Red keeps it)
+local function fail(fmt, ...)
+    BadgeSpawner.failures = BadgeSpawner.failures + 1
+    print("[ERROR] [VARIANT] " .. string.format(fmt, ...))
+end
+
+function BadgeSpawner:init()
+    BadgeSpawner.failures = 0
+    local scene = self.scene
+    local red = GameObject.instantiate("prefabs/Badge Red.prefab", Vector3(510, 300, 5), Quaternion())
+    local green = GameObject.instantiate("prefabs/Badge Green.prefab", Vector3(690, 300, 5), Quaternion())
+    if red == nil or green == nil then
+        fail("instantiate of a variant returned nil")
+        return
+    end
+    -- named after the variant root's GameObject (the instance it was made from), as originals
+    if red.name ~= "Badge 2(Clone)" then fail("the red copy is named %s", red.name) end
+    if green.name ~= "Badge 3(Clone)" then fail("the green copy is named %s", green.name) end
+    local redGem = scene:findEntity("Gem", red.entity)
+    local greenGem = scene:findEntity("Gem", green.entity)
+    if redGem == 0 or greenGem == 0 then fail("a copy has no Gem") end
+    if scene:findEntity("Tag", red.entity) == 0 then fail("Badge Red's copy lost its Tag") end
+    if scene:findEntity("Tag", green.entity) ~= 0 then fail("Badge Green's copy has the Tag it removes") end
+    if redGem ~= 0 then
+        local c = Sprite(scene, redGem).color
+        if not (c.x > 0.9 and c.y < 0.6) then fail("Badge Red's Gem is not red (%.2f, %.2f, %.2f)", c.x, c.y, c.z) end
+    end
+    if green ~= nil then
+        local c = Sprite(scene, green.entity).color
+        if not (c.y > 0.9 and c.x < 0.7) then fail("Badge Green is not green (%.2f, %.2f, %.2f)", c.x, c.y, c.z) end
+    end
+    if BadgeSpawner.failures == 0 then print("[VARIANT] PASS") end
+end
+
+return BadgeSpawner
 """
 
 
@@ -416,6 +459,192 @@ def nested(out):
     write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
 
 
+def variant(out):
+    """Prefab Variants (PREFABS.md section 19): a scene of plain GameObjects (a Ship holding an
+    Engine, with a camera, an action and children) and the scene-dump ops that make, through
+    the editor, Engine and Ship (Engine nested in it), a Ship Variant from an instance of Ship
+    with overrides of every kind (properties, state, added and removed components, added and
+    removed GameObjects, an override of the nested Engine, references into it) and a Ship
+    Variant 2 (a variant of the variant) from an instance of that one with overrides of its
+    own, a fresh instance of each compared with what it was made from, and a variant made
+    from the Project window. Writes <out>/ (the project) and <out>.ops/build.yaml."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
+    if not os.path.isdir(fixture):
+        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    os.makedirs(out, exist_ok=True)
+    os.system('cp -r "%s/assets" "%s/"' % (fixture, out))
+    os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    project = yaml.safe_load(open(os.path.join(fixture, "project.yaml")))
+    project["name"] = "PrefabVariants"
+    project["scenes"] = [{"filepath": "Variant Scene.scene"}]
+    project["startSceneId"] = 1
+    project.pop("standalonePrefabs", None)
+    write_yaml(os.path.join(out, "project.yaml"), project)
+
+    os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
+    with open(os.path.join(out, "scripts", "Watcher.lua"), "w") as f:
+        f.write(WATCHER_LUA)
+
+    def watcher(x=0.0, y=0.0):
+        return {
+            "transform": transform(x, y),
+            "script": {"scripts": [{
+                "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
+                "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
+                                "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
+            }]},
+        }
+
+    ship = entity(1001, "Ship", sprite_components("sprites/plane-sheet.png", 88, 73, x=300, y=300), [
+        entity(1002, "Hull", sprite_components("sprites/rock.png", 60, 120, x=0, y=-60, color=(1, 1, 1, 1))),
+        entity(1003, "Wing", sprite_components("sprites/ground.png", 160, 30, x=0, y=20), [
+            entity(1004, "Tip", sprite_components("sprites/rock.png", 20, 40, x=80, y=0)),
+        ]),
+        entity(1005, "Gun", dict({"transform": transform(40, 0)}, **action_components())),
+        entity(1006, "Cam", camera_components(0, 0)),
+        entity(1007, "Engine", sprite_components("sprites/rock-down.png", 40, 60, x=-60, y=0, color=(0.6, 0.6, 1, 1)), [
+            entity(1008, "Flame", sprite_components("sprites/rock.png", 20, 30, x=0, y=-40, color=(1, 0.5, 0, 1))),
+        ]),
+        entity(1009, "Eye", watcher(0, 40)),
+    ])
+    entities = [
+        ship,
+        entity(1020, "Field", sprite_components("sprites/ground.png", 300, 30, x=900, y=30)),
+        entity(1021, "Pointer", action_components()),
+        entity(1022, "Spy", watcher(0, 0)),
+    ]
+    scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
+    scene["name"] = "Variant Scene"
+    scene["id"] = 1
+    scene.pop("childScenes", None)
+    scene.pop("cppScripts", None)
+    scene["prefabs"] = []
+    scene["gravity2D"] = [0, 0]
+    scene["entities"] = entities
+    write_yaml(os.path.join(out, "Variant Scene.scene"), scene)
+
+    color = "submeshes[0].material.baseColorFactor"
+    S = "Ship"
+    ops = [
+        # ---- Engine, then Ship holding an instance of it, a reference into it ----
+        {"op": "createPrefab", "entity": S + "/Engine", "path": "prefabs/Engine.prefab"},
+        {"op": "setRef", "entity": S + "/Gun", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "setRef", "entity": S + "/Eye", "component": "script", "property": "scripts[0].target", "target": S + "/Hull"},
+        {"op": "createPrefab", "entity": S, "path": "prefabs/Ship.prefab"},
+        {"op": "dump", "out": "@/0-ship.yaml"},
+        # ---- the Ship instance: overrides of every kind ----
+        {"op": "set", "entity": S + "/Hull", "component": "mesh", "property": color, "value": [1, 0, 0, 1]},
+        {"op": "setState", "entity": S + "/Wing", "tag": "Enemy"},
+        {"op": "addComponent", "entity": S + "/Hull", "component": "action"},
+        {"op": "setRef", "entity": S + "/Hull", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "removeComponent", "entity": S + "/Cam", "component": "camera"},
+        {"op": "delete", "entity": S + "/Wing/Tip"},
+        {"op": "addObject", "entity": S + "/Wing", "name": "Flag"},
+        {"op": "set", "entity": S + "/Engine/Flame", "component": "transform", "property": "scale", "value": [2, 2, 1]},
+        {"op": "set", "entity": S, "component": "transform", "property": "scale", "value": [1.5, 1.5, 1]},
+        {"op": "dump", "out": "@/1-before-variant.yaml"},
+        # ---- Ship Variant from it ----
+        {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant.prefab"},
+        {"op": "levels", "entity": S},
+        {"op": "dump", "out": "@/2-variant.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant.prefab", "below": True},
+        {"op": "dump", "out": "@/2-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        # ---- the variant's instance: overrides of its own (its GameObjects and the base's) ----
+        {"op": "set", "entity": S + "/Hull", "component": "transform", "property": "scale", "value": [3, 1, 1]},
+        {"op": "addObject", "entity": S + "/Wing/Flag", "name": "Pole"},
+        {"op": "set", "entity": S + "/Wing/Flag", "component": "transform", "property": "position", "value": [5, 5, 0]},
+        {"op": "set", "entity": S + "/Engine/Flame", "component": "mesh", "property": color, "value": [0, 1, 0, 1]},
+        {"op": "delete", "entity": S + "/Cam"},
+        {"op": "setRef", "entity": S + "/Gun", "component": "action", "property": "target", "target": S + "/Wing/Flag"},
+        {"op": "dump", "out": "@/3-before-variant2.yaml"},
+        # ---- Ship Variant 2, a variant of the variant ----
+        {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant 2.prefab"},
+        {"op": "levels", "entity": S},
+        {"op": "dump", "out": "@/4-variant2.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant 2.prefab", "below": True},
+        {"op": "dump", "out": "@/4-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        # ---- a variant made from the Project window: an instance of it is one of the base ----
+        {"op": "createVariantAsset", "prefab": "prefabs/Ship.prefab", "path": "prefabs/Ship Plain Variant.prefab"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship.prefab", "below": True},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Plain Variant.prefab", "below": True},
+        {"op": "dump", "out": "@/5-plain.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        {"op": "delete", "entity": "Field/Ship 3"},
+        # ---- scene references into the variant instance's GameObjects at every level ----
+        {"op": "setRef", "entity": "Pointer", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "setRef", "entity": "Spy", "component": "script", "property": "scripts[0].target", "target": S + "/Wing/Flag/Pole"},
+        {"op": "variantInfo", "prefab": "prefabs/Ship Variant 2.prefab"},
+        {"op": "variantInfo", "prefab": "prefabs/Ship.prefab"},
+        {"op": "usage"},
+        {"op": "dump", "out": "@/6-final.yaml"},
+        {"op": "bake", "out": "@/bake"},
+        {"op": "save"},
+    ]
+    os.makedirs(out + ".ops", exist_ok=True)
+    write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
+
+
+def variant_export(out):
+    """The TappyPlane fixture project itself (FIXTURE) with Prefab Variants in its Main Scene,
+    for the export check (tools/smoke-test.sh): a Badge prefab (three sprites), Badge Red (a
+    variant of it: a red, wider gem), Badge Green (a variant of Badge Red: green, its Tag
+    removed) and an instance of each with an override of its own, side by side above the
+    plane. A Spawner script instantiates Badge Red and Badge Green at runtime
+    (GameObject.instantiate, by path) lower down and checks what it gets ("[VARIANT] PASS",
+    "[ERROR] [VARIANT] ..." otherwise). Writes <out>/ (the project) and <out>.ops/build.yaml
+    (the ops that make the prefabs, then save)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
+    if not os.path.isdir(fixture):
+        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    os.system('rm -rf "%s" && cp -r "%s" "%s"' % (out, fixture, out))
+    os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
+    with open(os.path.join(out, "scripts", "BadgeSpawner.lua"), "w") as f:
+        f.write(BADGE_SPAWNER_LUA)
+    path = os.path.join(out, "Main Scene.scene")
+    scene = yaml.safe_load(open(path))
+    badge = entity(1900, "Badge", sprite_components("sprites/rock.png", 60, 120, x=150, y=470), [
+        entity(1901, "Gem", sprite_components("sprites/rock-down.png", 30, 60, x=40, y=40, color=(1, 1, 0.4, 1))),
+        entity(1902, "Tag", sprite_components("sprites/ground.png", 80, 20, x=0, y=-20)),
+    ])
+    for node in [badge]:
+        for comps in (node["components"],):
+            comps["transform"]["position"][2] = 5
+    scene["entities"].append(badge)
+    scene["entities"].append(entity(1910, "Spawner", {
+        "transform": transform(0, 0),
+        "script": {"scripts": [{"type": "lua", "path": "BadgeSpawner.lua", "className": "BadgeSpawner",
+                                "enabled": True, "properties": []}]},
+    }))
+    write_yaml(path, scene)
+
+    color = "submeshes[0].material.baseColorFactor"
+    ops = [
+        {"op": "createPrefab", "entity": "Badge", "path": "prefabs/Badge.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge.prefab"},
+        {"op": "set", "entity": "Badge 2", "component": "transform", "property": "position", "value": [330, 470, 5]},
+        {"op": "set", "entity": "Badge 2/Gem", "component": "mesh", "property": color, "value": [1, 0.15, 0.15, 1]},
+        {"op": "set", "entity": "Badge 2/Gem", "component": "transform", "property": "scale", "value": [1.8, 1, 1]},
+        {"op": "createVariant", "entity": "Badge 2", "path": "prefabs/Badge Red.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge Red.prefab"},
+        {"op": "set", "entity": "Badge 3", "component": "transform", "property": "position", "value": [510, 470, 5]},
+        {"op": "set", "entity": "Badge 3", "component": "mesh", "property": color, "value": [0.3, 1, 0.3, 1]},
+        {"op": "delete", "entity": "Badge 3/Tag"},
+        {"op": "createVariant", "entity": "Badge 3", "path": "prefabs/Badge Green.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge Green.prefab"},
+        {"op": "set", "entity": "Badge 4", "component": "transform", "property": "position", "value": [690, 470, 5]},
+        {"op": "set", "entity": "Badge 4/Gem", "component": "transform", "property": "scale", "value": [2.5, 2.5, 1]},
+        {"op": "dump", "out": "@/after.yaml"},
+        {"op": "save"},
+    ]
+    os.makedirs(out + ".ops", exist_ok=True)
+    write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
+
+
 def replace(out):
     """The legacy project plus prefabs to replace its instances with (Replace Prefab, PREFABS.md
     section 12): Boulder (a Rock under another prefab name, its Pebble at another id, no
@@ -450,6 +679,6 @@ def replace(out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested"):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested", "variant", "variant_export"):
         sys.exit(__doc__)
     globals()[sys.argv[1]](sys.argv[2])

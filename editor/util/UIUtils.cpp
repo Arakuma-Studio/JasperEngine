@@ -234,4 +234,21 @@ bool UIUtils::sliderFloatInput(const char* id, float* value, float minValue, flo
     return changed;
 }
 
+void UIUtils::drawPrefabVariantBadge(ImDrawList* drawList, const ImVec2& iconMin, const ImVec2& iconMax, ImU32 color) {
+    // a round dark mark on the lower left corner of the icon with an arrow pointing up and
+    // right in it (Unity's variant icon: the prefab cube with an arrow)
+    const float height = std::max(6.0f, iconMax.y - iconMin.y);
+    const float radius = std::max(3.5f, height * 0.30f);
+    const ImVec2 center(iconMin.x + radius * 0.55f, iconMax.y - radius * 0.55f);
+    drawList->AddCircleFilled(center, radius + 1.0f, IM_COL32(0, 0, 0, 220), 20);
+    drawList->AddCircleFilled(center, radius, IM_COL32(28, 30, 34, 245), 20);
+    drawList->AddCircle(center, radius, color, 20, std::max(1.0f, radius * 0.12f));
+    const float reach = radius * 0.52f;
+    const ImVec2 tail(center.x - reach, center.y + reach);
+    const ImVec2 tip(center.x + reach, center.y - reach);
+    const float head = radius * 0.62f;
+    drawList->AddLine(tail, ImVec2(tip.x - head * 0.30f, tip.y + head * 0.30f), color, std::max(1.0f, radius * 0.22f));
+    drawList->AddTriangleFilled(tip, ImVec2(tip.x - head, tip.y), ImVec2(tip.x, tip.y + head), color);
+}
+
 }

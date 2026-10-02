@@ -25,5 +25,10 @@ namespace jasperengine::editor {
         // into selectedPath. Shared by the creation dialogs.
         static void directoryTreeBrowser(const std::filesystem::path& currentPath,
                                          std::string& selectedPath);
+
+        // Unity's Prefab Variant icon: the prefab cube with an arrow, drawn over the lower
+        // left of a prefab icon (iconMin/iconMax: the icon's box), outlined to stay readable
+        // over thumbnails and the selection
+        static void drawPrefabVariantBadge(ImDrawList* drawList, const ImVec2& iconMin, const ImVec2& iconMax, ImU32 color);
     };
 }

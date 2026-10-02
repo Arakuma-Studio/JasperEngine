@@ -24,6 +24,7 @@
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
+#include "command/type/CreatePrefabVariantAssetCmd.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -1434,6 +1435,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 ImGui::SetCursorScreenPos(ImVec2(imageX, imageY));
                 if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.4f);
                 Widgets::image(fileIconImage, ImVec2(dispW, dispH));
+                if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
+                    const float badge = std::max(Theme::dpi(10.0f), std::min(dispW, dispH) * 0.34f);
+                    UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(imageX + Theme::dpi(3.0f), imageY + dispH - badge - Theme::dpi(2.0f)),
+                        ImVec2(imageX + Theme::dpi(3.0f) + badge, imageY + dispH - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, 255));
+                }
 
                 // --- Extension badge over thumbnail -------------------------
                 if (!extLabel.empty()){
@@ -1538,6 +1544,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (fileIconImage != ImTextureID{}){
                         drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
                     }
+                    if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
+                        const float badge = std::max(Theme::dpi(8.0f), small * 0.55f);
+                        UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconMin.x, iconMin.y + small - badge), ImVec2(iconMin.x + badge, iconMin.y + small),
+                            IM_COL32(140, 205, 255, (int)(255 * alpha)));
+                    }
                     ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + small, itemMin.y + (rowH - lineHeight) * 0.5f);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
@@ -1561,6 +1572,12 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImVec2 imgMin(iconBoxMin.x + (uiIconSize - dispW) * 0.5f, iconBoxMin.y + (uiIconSize - dispH) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
                         drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                    }
+                    // Unity's Prefab Variant icon: the prefab's with an arrow
+                    if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
+                        const float badge = std::max(Theme::dpi(10.0f), uiIconSize * 0.34f);
+                        UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconBoxMin.x + Theme::dpi(3.0f), iconBoxMax.y - badge - Theme::dpi(2.0f)),
+                            ImVec2(iconBoxMin.x + Theme::dpi(3.0f) + badge, iconBoxMax.y - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
 
                     // One line, centred when it fits, cut with an ellipsis when not
@@ -1645,6 +1662,28 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     }
                     if (ImGui::MenuItem(ICON_FA_FILE_CODE " Open as Text")) {
                         codeEditor->openFile((currentPath / file.name).string(), true);
+                    }
+                    // Unity's Create > Prefab Variant on a prefab: a variant of it next to it
+                    if (ImGui::BeginMenu(ICON_FA_PLUS " Create")) {
+                        if (ImGui::MenuItem(ICON_FA_CLONE " Prefab Variant")) {
+                            const fs::path base = project->normalizeToProjectRelative(currentPath / file.name);
+                            CreatePrefabVariantAssetCmd* command = new CreatePrefabVariantAssetCmd(project, base, fs::path());
+                            const fs::path created = command->getPath();
+                            project->getProjectCommandHistory()->addCommandNoMerge(command);
+                            scanDirectory(currentPath);
+                            selectedFiles.clear();
+                            selectedFiles.insert(created.filename().string());
+                            lastSelectedFile = created.filename().string();
+                        }
+                        ImGui::SetItemTooltip("A new Prefab Variant of this Prefab: an instance of it as its root, with overrides of its own");
+                        ImGui::EndMenu();
+                    }
+                    const fs::path base = project->getPrefabFileBase(currentPath / file.name);
+                    if (!base.empty()) {
+                        if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Select Base")) {
+                            revealAsset(project->getProjectPath() / base);
+                        }
+                        ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
                     }
                     ImGui::Separator();
                 }
@@ -1741,6 +1780,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         drawList->AddRect(rectMin, rectMax, IM_COL32(100, 150, 255, 255));
         drawList->AddRectFilled(rectMin, rectMax, IM_COL32(100, 150, 255, 50));
     }
+
+    // --- Create Prefab or Variant? (a Prefab instance dropped in) ----------
+    showPrefabOrVariantPopup();
 
     // --- Delete confirmation modal (unchanged) -----------------------------
     if (showDeleteConfirmation){
@@ -2907,10 +2949,97 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         prefabs.emplace_back(relativePath, prefabNode);
     }
 
-    CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, project->getSelectedSceneId(), prefabs);
-    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(createPrefabCmd);
+    // Unity: a Prefab instance root dragged in asks "Create Prefab or Variant?" (an original
+    // prefab from its GameObjects, or a variant of its prefab it becomes an instance of)
+    const uint32_t sceneId = project->getSelectedSceneId();
+    PendingPrefabDrop pending;
+    pending.sceneId = sceneId;
+    for (size_t i = 0; i < roots.size(); i++) {
+        const Entity root = roots[i]["entity"] ? roots[i]["entity"].as<Entity>() : NULL_ENTITY;
+        const bool instanceRoot = root != NULL_ENTITY && project->canCreatePrefabVariant(sceneId, root);
+        pending.instanceRoots.push_back(instanceRoot);
+        fs::path variantPath;
+        if (instanceRoot) {
+            const std::string rootName = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string();
+            std::string baseName = (rootName.empty() ? std::string("Prefab") : rootName) + " Variant";
+            variantPath = uniqueRelativePath(directory, baseName, ".prefab");
+            for (int counter = 1; usedNames.count(variantPath.generic_string()); counter++) {
+                variantPath = uniqueRelativePath(directory, baseName + " " + std::to_string(counter), ".prefab");
+            }
+            usedNames.insert(variantPath.generic_string());
+            if (pending.firstInstance.empty()) {
+                pending.firstInstance = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string("GameObject");
+            }
+        }
+        pending.variantPaths.push_back(variantPath);
+    }
+    if (!pending.firstInstance.empty()) {
+        pending.prefabs = std::move(prefabs);
+        pending.open = true;
+        pendingPrefabDrop = std::move(pending);
+        return;
+    }
+
+    CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, sceneId, prefabs);
+    CommandHandle::get(sceneId)->addCommandNoMerge(createPrefabCmd);
 
     scanDirectory(currentPath);
+}
+
+void editor::ProjectWindow::showPrefabOrVariantPopup() {
+    static constexpr const char* POPUP = "Create Prefab or Variant?";
+    if (pendingPrefabDrop.open) {
+        ImGui::OpenPopup(POPUP);
+        pendingPrefabDrop.open = false;
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        return;
+    }
+    // Unity's dialog
+    ImGui::TextUnformatted("Would you like to create a new original Prefab or a variant of this Prefab?");
+    ImGui::TextDisabled("%s", pendingPrefabDrop.prefabs.size() > 1 ?
+        "Prefab instance roots of the selection become variants of their Prefabs; the other GameObjects original Prefabs" :
+        ("'" + pendingPrefabDrop.firstInstance + "' is a Prefab instance").c_str());
+    ImGui::Spacing();
+    const float buttonWidth = Theme::dpi(130.0f);
+    bool done = false;
+    if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+        CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
+        done = true;
+    }
+    ImGui::SetItemTooltip("A new Prefab of these GameObjects: the instance is unpacked into it (nested Prefabs stay nested)");
+    ImGui::SameLine();
+    if (ImGui::Button("Prefab Variant", ImVec2(buttonWidth, 0))) {
+        std::vector<std::pair<fs::path, YAML::Node>> prefabs = pendingPrefabDrop.prefabs;
+        for (size_t i = 0; i < prefabs.size(); i++) {
+            if (i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]) {
+                prefabs[i].first = pendingPrefabDrop.variantPaths[i];
+            }
+        }
+        CreatePrefabCmd* command = new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, prefabs);
+        for (size_t i = 0; i < prefabs.size(); i++) {
+            command->setVariant(i, i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]);
+        }
+        CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(command);
+        done = true;
+    }
+    ImGui::SetItemTooltip("A Prefab Variant of the instance's Prefab: its overrides become the variant's, and it is an instance of the variant");
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        done = true;
+    }
+    if (done) {
+        pendingPrefabDrop = PendingPrefabDrop();
+        scanDirectory(currentPath);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+bool editor::ProjectWindow::isVariantFile(const fs::path& path) {
+    return Util::isPrefabFile(path.string()) && !project->getPrefabFileBase(path).empty();
 }
 
 void editor::ProjectWindow::cleanupThumbnails() {

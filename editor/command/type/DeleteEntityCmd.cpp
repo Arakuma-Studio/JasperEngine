@@ -153,10 +153,9 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
             // members of an already covered prefab instance.
             if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
                 component && !component->path.empty()) {
-                const Prefab* prefab = project->getPrefab(component->path);
-                const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, entity) : nullptr;
-                if (instance && instance->rootEntity == entity) {
-                    for (const Prefab::EntityMember& member : instance->members) {
+                // every level rooted here (an instance of a variant roots its bases' too)
+                for (const PrefabInstanceLevel& level : project->getInstanceLevels(project->getScene(sceneId), entity)) {
+                    for (const Prefab::EntityMember& member : level.instance->members) {
                         addEntity(member.localEntity, root);
                     }
                 }
@@ -299,8 +298,10 @@ std::vector<size_t> editor::DeleteEntityCmd::prepareDeleteSet(){
     };
 
     for (Entity entity : coverage.allEntities) {
-        if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity)) {
-            rememberPrefabInstance(component->path, entity);
+        if (scene->findComponent<PrefabComponent>(entity)) {
+            for (const PrefabInstanceLevel& level : project->getInstanceLevels(project->getScene(sceneId), entity)) {
+                rememberPrefabInstance(level.path, entity);
+            }
         }
     }
 

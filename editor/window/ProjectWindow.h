@@ -173,6 +173,21 @@ namespace jasperengine::editor {
 
         bool showDeleteConfirmation;
 
+        // Unity's "Create Prefab or Variant?": GameObjects dragged into the Project window,
+        // some of them Prefab instance roots, wait for the answer (PREFABS.md 19)
+        struct PendingPrefabDrop {
+            uint32_t sceneId = 0;
+            std::vector<std::pair<fs::path, YAML::Node>> prefabs;
+            std::vector<bool> instanceRoots;   // which prefabs could be variants
+            std::vector<fs::path> variantPaths; // the names they take as variants ("<name> Variant")
+            std::string firstInstance;         // a name for the question
+            bool open = false;
+        };
+        PendingPrefabDrop pendingPrefabDrop;
+        void showPrefabOrVariantPopup();
+        // A .prefab file's base (empty for an original), for its variant badge
+        bool isVariantFile(const fs::path& path);
+
         MaterialRender materialRender;
         ModelRender modelRender;
 

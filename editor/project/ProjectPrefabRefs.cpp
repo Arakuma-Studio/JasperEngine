@@ -175,19 +175,25 @@ void editor::Project::remapEntityPropertiesInComponent(EntityRegistry* registry,
 
 // ---- References into nested prefabs: stripped objects (PREFABS.md 17) ----
 
-std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot) {
+std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level) {
     std::unordered_set<Entity> objects;
     SceneProject* sceneProject = getScene(sceneId);
-    std::vector<Entity> pending{instanceRoot};
+    std::filesystem::path path;
+    const Prefab::Instance* top = findInstanceAt(sceneProject, instanceRoot, level, &path);
+    if (!top) {
+        return objects;
+    }
+    // the instance, the ones nested in it and, for a variant, its bases' (at its root)
+    std::vector<std::pair<const Prefab::Instance*, std::filesystem::path>> pending{{top, path}};
     for (size_t next = 0; next < pending.size() && next < 100000; next++) {
-        const Prefab::Instance* instance = findInstanceRootedAt(sceneProject, pending[next]);
-        if (!instance) {
-            continue;
-        }
+        const Prefab::Instance* instance = pending[next].first;
         objects.insert(instance->rootEntity);
         for (const Prefab::EntityMember& member : instance->members) {
-            if (objects.insert(member.localEntity).second) {
-                pending.push_back(member.localEntity);
+            objects.insert(member.localEntity);
+        }
+        for (const NestedInstanceLevel& nested : getNestedInstanceLevels(sceneProject, pending[next].second, *instance)) {
+            if (nested.instance) {
+                pending.emplace_back(nested.instance, nested.path);
             }
         }
     }
@@ -196,10 +202,11 @@ std::unordered_set<Entity> editor::Project::collectInstanceTreeObjects(uint32_t 
 
 namespace {
 
-    // The way from `instance` down to `target` (registry entities: the nested roots, then
-    // the GameObject in the innermost prefab); `instance`'s own GameObjects give a way of one
-    bool findWayDown(editor::Project* project, editor::SceneProject* sceneProject, const editor::Prefab::Instance& instance, Entity target,
-            std::vector<Entity>& way, size_t depth) {
+    // The way from `instance` (of `path`) down to `target` (registry entities: the nested
+    // roots, a variant's root for its base level, then the GameObject in the innermost
+    // prefab); `instance`'s own GameObjects give a way of one
+    bool findWayDown(editor::Project* project, editor::SceneProject* sceneProject, const std::filesystem::path& path,
+            const editor::Prefab::Instance& instance, Entity target, std::vector<Entity>& way, size_t depth) {
         const Entity own = instance.getRegistryEntity(target);
         if (own != NULL_ENTITY) {
             way.push_back(own);
@@ -208,13 +215,16 @@ namespace {
         if (depth > 64) {
             return false;
         }
-        for (const editor::Prefab::EntityMember& member : instance.members) {
-            const editor::Prefab::Instance* nested = project->findInstanceRootedAt(sceneProject, member.localEntity);
-            if (!nested) {
+        for (const editor::NestedInstanceLevel& nested : project->getNestedInstanceLevels(sceneProject, path, instance)) {
+            if (!nested.instance) {
                 continue;
             }
-            way.push_back(member.registryEntity);
-            if (findWayDown(project, sceneProject, *nested, target, way, depth + 1)) {
+            // (a variant's root is the base's root too: a way to it stays a way of one)
+            if (nested.variantBase && target == nested.localRoot) {
+                continue;
+            }
+            way.push_back(nested.registryEntity);
+            if (findWayDown(project, sceneProject, nested.path, *nested.instance, target, way, depth + 1)) {
                 return true;
             }
             way.pop_back();
@@ -246,16 +256,16 @@ namespace {
 
 }
 
-Entity editor::Project::makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget) {
+Entity editor::Project::makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget, const std::filesystem::path& level) {
     SceneProject* sceneProject = getScene(sceneId);
     std::filesystem::path path;
-    const Prefab::Instance* instance = findInstanceRootedAt(sceneProject, instanceRoot, &path);
+    const Prefab::Instance* instance = findInstanceAt(sceneProject, instanceRoot, level, &path);
     Prefab* prefab = instance ? getPrefab(path) : nullptr;
     if (!prefab || localTarget == NULL_ENTITY) {
         return NULL_ENTITY;
     }
     std::vector<Entity> way;
-    if (!findWayDown(this, sceneProject, *instance, localTarget, way, 0)) {
+    if (!findWayDown(this, sceneProject, path, *instance, localTarget, way, 0)) {
         return NULL_ENTITY;
     }
     if (way.size() == 1) {
@@ -269,14 +279,14 @@ Entity editor::Project::makePrefabReference(uint32_t sceneId, Entity instanceRoo
     return id;
 }
 
-Entity editor::Project::resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId) {
-    const std::unordered_map<Entity, Entity> map = getPrefabReferenceMap(sceneId, instanceRoot);
+Entity editor::Project::resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId, const std::filesystem::path& level) {
+    const std::unordered_map<Entity, Entity> map = getPrefabReferenceMap(sceneId, instanceRoot, level);
     auto it = map.find(prefabId);
     return it != map.end() ? it->second : NULL_ENTITY;
 }
 
 bool editor::Project::remapReferencesToPrefab(uint32_t sceneId, Entity instanceRoot, EntityRegistry* registry, Entity entity, ComponentType type,
-        const std::vector<std::string>& properties) {
+        const std::vector<std::string>& properties, const std::filesystem::path& level) {
     if (!registry || !registry->isEntityCreated(entity)) {
         return true;
     }
@@ -294,7 +304,7 @@ bool editor::Project::remapReferencesToPrefab(uint32_t sceneId, Entity instanceR
         if (target == NULL_ENTITY || map.count(target)) {
             continue;
         }
-        const Entity id = makePrefabReference(sceneId, instanceRoot, target);
+        const Entity id = makePrefabReference(sceneId, instanceRoot, target, level);
         if (id != NULL_ENTITY) {
             map[target] = id;
         } else {
@@ -305,7 +315,8 @@ bool editor::Project::remapReferencesToPrefab(uint32_t sceneId, Entity instanceR
     return inside;
 }
 
-YAML::Node editor::Project::encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside) {
+YAML::Node editor::Project::encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside,
+        const std::filesystem::path& level) {
     SceneProject* sceneProject = getScene(sceneId);
     if (outside) {
         *outside = false;
@@ -315,48 +326,40 @@ YAML::Node editor::Project::encodeComponentForPrefab(uint32_t sceneId, Entity in
     }
     prefabinternal::ScratchEntity scratch;
     scratch.takeComponents(sceneProject->scene, entity, Catalog::componentTypeToSignature(sceneProject->scene, type));
-    const bool inside = remapReferencesToPrefab(sceneId, instanceRoot, scratch.registry.get(), scratch.entity, type);
+    const bool inside = remapReferencesToPrefab(sceneId, instanceRoot, scratch.registry.get(), scratch.entity, type, {}, level);
     if (outside) {
         *outside = !inside;
     }
     return prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
 }
 
-bool editor::Project::componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type) {
+bool editor::Project::componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type,
+        const std::filesystem::path& level) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
         return false;
     }
-    return componentHasExternalEntityRef(sceneProject->scene, entity, type, collectInstanceTreeObjects(sceneId, instanceRoot));
+    return componentHasExternalEntityRef(sceneProject->scene, entity, type, collectInstanceTreeObjects(sceneId, instanceRoot, level));
 }
 
-Entity editor::Project::findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target) {
+Entity editor::Project::findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target,
+        const std::filesystem::path& level) {
     SceneProject* sceneProject = getScene(sceneId);
     Entity current = instanceRoot;
+    std::filesystem::path path;
+    if (!findInstanceAt(sceneProject, current, level, &path)) {
+        return NULL_ENTITY;
+    }
     for (size_t depth = 0; depth < 64 && current != NULL_ENTITY; depth++) {
-        std::filesystem::path path;
-        if (!findInstanceRootedAt(sceneProject, current, &path)) {
-            return NULL_ENTITY;
-        }
         if (path == target) {
             return current;
         }
-        Entity holder = NULL_ENTITY;
-        for (auto& [otherPath, other] : prefabAssets) {
-            auto sceneIt = other.instances.find(sceneId);
-            if (sceneIt == other.instances.end()) continue;
-            for (const Prefab::Instance& instance : sceneIt->second) {
-                for (const Prefab::EntityMember& member : instance.members) {
-                    if (member.localEntity == current) {
-                        holder = instance.rootEntity;
-                        break;
-                    }
-                }
-                if (holder != NULL_ENTITY) break;
-            }
-            if (holder != NULL_ENTITY) break;
+        PrefabHolderLink holder;
+        if (!findPrefabHolder(sceneProject, current, path, holder)) {
+            return NULL_ENTITY;
         }
-        current = holder;
+        current = holder.instance->rootEntity;
+        path = holder.path;
     }
     return NULL_ENTITY;
 }
@@ -576,7 +579,9 @@ void editor::Project::stageToPrefabAsset(SceneProject* stage, Prefab& prefab, co
     std::unordered_set<Entity> own(prefab.registryEntities.begin(), prefab.registryEntities.end());
     std::unordered_map<Entity, Entity> resolved;
     auto prefabId = [&](Entity target) -> Entity {
-        if (target == NULL_ENTITY || own.count(target)) {
+        // (a stripped id the stage could not resolve, into a Missing nested prefab: kept as it is;
+        // the nested GameObjects of the stage take ids above every id of the asset)
+        if (target == NULL_ENTITY || own.count(target) || (previousStripped.count(target) && !stage->scene->isEntityCreated(target))) {
             return target;
         }
         auto known = resolved.find(target);
@@ -585,9 +590,10 @@ void editor::Project::stageToPrefabAsset(SceneProject* stage, Prefab& prefab, co
         }
         Entity id = NULL_ENTITY;
         for (Entity entity : prefab.registryEntities) {
-            const Prefab::Instance* nested = prefab.isNestedRoot(entity) ? findInstanceRootedAt(stage, entity) : nullptr;
+            std::filesystem::path nestedPath;
+            const Prefab::Instance* nested = prefab.isInstanceRoot(entity) ? findInstanceRootedAt(stage, entity, &nestedPath) : nullptr;
             std::vector<Entity> way;
-            if (nested && findWayDown(this, stage, *nested, target, way, 0)) {
+            if (nested && findWayDown(this, stage, nestedPath, *nested, target, way, 0)) {
                 way.insert(way.begin(), entity);
                 id = prefab.addStripped(way);
                 break;

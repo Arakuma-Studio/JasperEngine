@@ -515,7 +515,7 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
         if (readNode["entity"]) {
             const Entity entity = YamlNumbers::as<Entity>(readNode["entity"]);
             auto data = prefab->nestedInstances.find(entity);
-            if (data != prefab->nestedInstances.end() && prefab->isNestedRoot(entity)) {
+            if (data != prefab->nestedInstances.end() && prefab->isInstanceRoot(entity)) {
                 YAML::Node block = Stream::encodePrefabInstanceBlock(data->second);
                 if (block.size() > 0) {
                     node["prefabInstance"] = block;
@@ -547,7 +547,7 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
     if (!prefab->stripped.empty()) {
         YAML::Node strippedNode(YAML::NodeType::Sequence);
         for (const auto& [id, source] : prefab->stripped) {
-            if (source.empty() || !prefab->isNestedRoot(source[0])) {
+            if (source.empty() || !prefab->isInstanceRoot(source[0])) {
                 continue; // into a nested instance the prefab no longer has
             }
             YAML::Node entry;

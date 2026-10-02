@@ -1367,9 +1367,30 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
             PrefabComponent* bc = registry->findComponent<PrefabComponent>(member);
             if (bc && !bc->path.empty()) total += self(self, bc->path);
         }
+        // a Prefab Variant: its base's GameObjects after its own
+        if (const PrefabComponent* base = it->second.getBaseComponent(); base && !base->path.empty()) {
+            total += self(self, base->path);
+        }
         subtreeSizes[path] = total;
         return total;
     };
+
+    // The base level of a variant instance (an instance of the base at the root of an
+    // instance of the variant): described with the variant's instance, not on its own
+    auto variantOver = [&](const fs::path& prefabPath, Entity root) -> const fs::path* {
+        for (const auto& [otherPath, other] : prefabAssets) {
+            const PrefabComponent* base = other.getBaseComponent();
+            if (!base || fs::path(base->path) != prefabPath) continue;
+            auto sceneIt = other.instances.find(sceneId);
+            if (sceneIt == other.instances.end()) continue;
+            for (const auto& instance : sceneIt->second) {
+                if (instance.rootEntity == root) return &otherPath;
+            }
+        }
+        return nullptr;
+    };
+    std::map<std::pair<std::string, Entity>, std::shared_ptr<PrefabInstanceInfo>> baseLevels;
+    std::vector<std::pair<fs::path, size_t>> variantInfos;  // (base path, index in prefabInstances)
 
     for (const auto& [prefabPath, prefab] : prefabAssets) {
         auto sceneIt = prefab.instances.find(sceneId);
@@ -1409,6 +1430,13 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
                     }
                 }
 
+                if (variantOver(prefabPath, instance.rootEntity)) {
+                    baseLevels[{prefabPath.generic_string(), instance.rootEntity}] = std::make_shared<PrefabInstanceInfo>(std::move(info));
+                    continue;
+                }
+                if (const PrefabComponent* base = prefab.getBaseComponent(); base && !base->path.empty()) {
+                    variantInfos.emplace_back(fs::path(base->path), prefabInstances.size());
+                }
                 prefabInstances.push_back(std::move(info));
             }
         }
@@ -1427,6 +1455,25 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
         std::string prefabFileName = Factory::prefabToFileName(prefabPath);
         FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".h"), headerContent);
         FileUtils::writeIfChanged(generatedPath / (prefabFileName + ".cpp"), sourceContent);
+    }
+
+    // Each variant instance gets its base level (and that one its own, down the chain)
+    std::function<void(PrefabInstanceInfo&, const fs::path&, size_t)> attachBase = [&](PrefabInstanceInfo& info, const fs::path& basePath, size_t depth) {
+        auto found = baseLevels.find({basePath.generic_string(), info.rootEntity});
+        if (found == baseLevels.end() || depth > 64) {
+            return;
+        }
+        info.baseLevel = found->second;
+        info.baseSize = subtreeSize(subtreeSize, basePath);
+        auto baseIt = prefabAssets.find(basePath);
+        if (baseIt != prefabAssets.end()) {
+            if (const PrefabComponent* deeper = baseIt->second.getBaseComponent(); deeper && !deeper->path.empty()) {
+                attachBase(*info.baseLevel, fs::path(deeper->path), depth + 1);
+            }
+        }
+    };
+    for (const auto& [basePath, index] : variantInfos) {
+        attachBase(prefabInstances[index], basePath, 0);
     }
 
     return prefabInstances;

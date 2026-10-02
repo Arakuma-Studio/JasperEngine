@@ -2523,8 +2523,11 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     for (const auto& bi : prefabInstances) {
         prefabRoots.insert(bi.rootEntity);
         rootToInstance[bi.rootEntity] = &bi;
-        for (Entity member : bi.memberEntities) {
-            prefabMemberEntities.insert(member);
+        // (a variant's instance: its base levels' GameObjects are the build's too)
+        for (const PrefabInstanceInfo* level = &bi; level; level = level->baseLevel.get()) {
+            for (Entity member : level->memberEntities) {
+                prefabMemberEntities.insert(member);
+            }
         }
         std::string headerName = prefabToFileName(bi.prefabPath) + ".h";
         prefabHeaderIncludes.insert(headerName);
@@ -2587,8 +2590,13 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
             builtVarNames[member] = "NULL_ENTITY";
             rootMembers[topRoot].push_back(member);
         }
-        // the factory appends each nested subtree whether or not this scene has an instance for it
+        // the factory appends each nested subtree whether or not this scene has an instance for
+        // it; a variant's base subtree first
         size_t next = base + bi->orderedMembers.size();
+        if (bi->baseLevel) {
+            self(self, bi->baseLevel.get(), topRoot, next);
+        }
+        next += bi->baseSize;
         for (size_t i = 0; i < bi->nestedSizes.size(); i++) {
             if (bi->nestedSizes[i] == 0) continue;
             auto nestedIt = rootToInstance.find(bi->orderedMembers[i]);
@@ -2610,6 +2618,10 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     std::map<Entity, std::vector<size_t>> absentMembers;
     auto mapAbsentMembers = [&](auto&& self, const PrefabInstanceInfo* bi, Entity topRoot, size_t base) -> void {
         size_t next = base + bi->orderedMembers.size();
+        if (bi->baseLevel) {
+            self(self, bi->baseLevel.get(), topRoot, next);
+        }
+        next += bi->baseSize;
         for (size_t i = 0; i < bi->orderedMembers.size(); i++) {
             const size_t nestedSize = i < bi->nestedSizes.size() ? bi->nestedSizes[i] : 0;
             if (bi->orderedMembers[i] == NULL_ENTITY) {
@@ -2718,6 +2730,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
                 overrides << ind3 << "scene->setEntityLayer(" << targetIt->second << ", " << formatInt(scene->getEntityLayer(ovr.sceneEntity)) << ");\n";
             }
             overrides << ind2 << "}\n";
+        }
+        if (bi->baseLevel) {
+            self(self, bi->baseLevel.get());
         }
         for (Entity member : bi->orderedMembers) {
             auto nestedIt = rootToInstance.find(member);

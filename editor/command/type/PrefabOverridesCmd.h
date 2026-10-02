@@ -34,7 +34,8 @@ namespace jasperengine::editor{
     };
 
     // Apply to Prefab of a removed GameObject: it is deleted from the Prefab asset, so from
-    // every instance of it
+    // every instance of it. With a target holding the instance (a variant of the prefab, a
+    // prefab it is nested in): Apply as Override there, the GameObject left out by its data.
     class ApplyPrefabRemovalCmd: public Command{
     private:
         Project* project;
@@ -42,11 +43,16 @@ namespace jasperengine::editor{
         std::filesystem::path path;
         Entity instanceRoot;
         Entity registryEntity;
+        std::filesystem::path target;
         PrefabRemovalApply apply;
+        PrefabUndoState before;
         bool wasModified = false;
 
+        bool toOuter() const { return !target.empty() && target != path; }
+
     public:
-        ApplyPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity);
+        ApplyPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity,
+            const std::filesystem::path& target = {});
 
         bool execute() override;
         void undo() override;
