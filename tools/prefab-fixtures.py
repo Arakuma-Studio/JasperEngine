@@ -225,8 +225,9 @@ function BadgeSpawner:init()
         fail("instantiate of a variant returned nil")
         return
     end
-    if red.name ~= "Badge Red(Clone)" then fail("the red copy is named %s", red.name) end
-    if green.name ~= "Badge Green(Clone)" then fail("the green copy is named %s", green.name) end
+    -- named after the variant root's GameObject (the instance it was made from), as originals
+    if red.name ~= "Badge 2(Clone)" then fail("the red copy is named %s", red.name) end
+    if green.name ~= "Badge 3(Clone)" then fail("the green copy is named %s", green.name) end
     local redGem = scene:findEntity("Gem", red.entity)
     local greenGem = scene:findEntity("Gem", green.entity)
     if redGem == 0 or greenGem == 0 then fail("a copy has no Gem") end

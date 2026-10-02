@@ -1282,7 +1282,11 @@ path)` through `CreatePrefabVariantAssetCmd` ("<base> Variant.prefab"; undo dele
   variant ↔ variant of a variant keeps matched GameObjects and their overrides.
 - **Duplicate and copy / paste** (`EntityClipboard`, `PasteEntitiesCmd`) and **Delete and
   undo** (`DeleteEntityCmd`) snapshot every level.
-- **Play spawning** and the runtime import path take a variant like any prefab.
+- **Play spawning** and the runtime import path take a variant like any prefab:
+  `GameObject.instantiate` (section 18) of a variant builds its whole chain, both in Play
+  (the template made by `importPrefab`) and in the export (`build_prefab_*`). The build's
+  prefab list (`collectAllPrefabs`) follows a variant's root `prefab` component to its
+  bases.
 
 ### Export (bake)
 
@@ -1340,7 +1344,10 @@ Fixtures (`tools/prefab-fixtures.py`):
 - `variant <dir>` writes Engine and Ship (Engine nested), plus the build ops that make Ship
   Variant and Ship Variant 2 from instances with overrides of every kind at both levels.
 - `variant_export <dir>` writes a copy of the TappyPlane fixture with Badge, Badge Red (a
-  variant) and Badge Green (a variant of it) spawned and placed, for the smoke test.
+  variant) and Badge Green (a variant of it) placed in the scene, for the smoke test. A
+  `BadgeSpawner.lua` instantiates Badge Red and Badge Green at runtime by path, checks
+  their GameObjects and colours, and logs `[VARIANT] PASS` (or `[ERROR] [VARIANT] ...`,
+  which fails the smoke test).
 
 `FIXTURE=<TappyPlane fixture> tools/prefab-variant-test.py [work-dir]` checks:
 
@@ -1360,5 +1367,5 @@ Fixtures (`tools/prefab-fixtures.py`):
 - A cycle of bases edited in by hand.
 - The generated sources.
 
-`tools/smoke-test.sh` on the `variant_export` project exports, builds and runs it; the
-game's screenshot matches the editor's Game view.
+`tools/smoke-test.sh` on the `variant_export` project exports, builds and runs it. The
+game's screenshot matches the editor's Game view, plus the two runtime copies.
