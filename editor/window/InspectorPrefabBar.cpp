@@ -67,22 +67,24 @@ namespace {
     // Prefab", "Apply to Base Prefab" when a variant over it holds the instance, "Apply to
     // Prefab Variant" when it is a variant itself; the outer ones "Apply as Override in
     // Prefab (Variant)" (PREFABS.md 18)
-    std::string applyTargetLabel(editor::Project* project, const std::vector<std::filesystem::path>& targets, size_t t) {
+    std::string applyTargetLabel(editor::Project* project, const std::vector<std::filesystem::path>& targets, size_t t, uint32_t sceneId) {
         const std::string name = "'" + prefabName(targets[t]) + "'";
         const bool variant = !project->getPrefabFileBase(targets[t]).empty();
         if (t > 0) {
             return (variant ? "Apply as Override in Prefab Variant " : "Apply as Override in Prefab ") + name;
         }
-        if (variant) {
-            return "Apply to Prefab Variant " + name;
+        // a base of a variant over it: a later target, or the variant edited in Prefab Mode
+        std::vector<std::filesystem::path> over(targets.begin() + 1, targets.end());
+        if (const editor::PrefabStage* stage = project->getPrefabStage(sceneId)) {
+            over.push_back(stage->assetPath);
         }
-        for (size_t u = 1; u < targets.size(); u++) {
-            const std::vector<std::filesystem::path> chain = project->getPrefabVariantChain(targets[u]);
+        for (const std::filesystem::path& outer : over) {
+            const std::vector<std::filesystem::path> chain = project->getPrefabVariantChain(outer);
             if (chain.size() > 1 && std::find(chain.begin() + 1, chain.end(), targets[t]) != chain.end()) {
-                return "Apply to Base Prefab " + name;
+                return (variant ? "Apply to Base Prefab Variant " : "Apply to Base Prefab ") + name;
             }
         }
-        return "Apply to Prefab " + name;
+        return (variant ? "Apply to Prefab Variant " : "Apply to Prefab ") + name;
     }
 
 }
@@ -218,7 +220,7 @@ void editor::InspectorWindow::drawPrefabApplyRevertItems(SceneProject* sceneProj
     };
     for (size_t t = targets.size(); t-- > 0;){
         const std::filesystem::path& target = targets[t];
-        const std::string label = applyTargetLabel(project, targets, t);
+        const std::string label = applyTargetLabel(project, targets, t, sceneId);
         std::string reason = playReason;
         bool enabled = !readOnly && canApplyNow;
         if (enabled && items.front().apply == Operation::ApplyProperty){
@@ -441,20 +443,7 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
             ImGui::SetTooltip("Instances of %s", assetPath.c_str());
         }
     }
-    if (!basePath.empty()) {
-        // the base, selectable (Unity's Prefab Variant header shows its base)
-        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        const std::string baseLabel = "of " + basePath.stem().string() + "##prefab_base";
-        if (ImGui::SmallButton(baseLabel.c_str())) {
-            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
-                projectWindow->revealAsset(project->getProjectPath() / basePath);
-            }
-        }
-        ImGui::PopStyleColor(2);
-        ImGui::SetItemTooltip("Base Prefab: %s (click to select it in the Project window)", basePath.generic_string().c_str());
-    }
+
 
     const char* openLabel = "Open";
     const char* selectLabel = "Select";
@@ -504,6 +493,28 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
     if (showOverrides && ImGui::BeginPopup("prefab_overrides_menu")) {
         drawPrefabOverridesPopup(sceneProject, prefabRoots[0], readOnly);
         ImGui::EndPopup();
+    }
+
+    // A Prefab Variant: its base, selectable (Unity's variant header names its base)
+    if (!basePath.empty()) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Base");
+        ImGui::SameLine(0.0f, gap);
+        ImGui::PushStyleColor(ImGuiCol_Text, prefabTextColor);
+        const std::string baseLabel = std::string(ICON_FA_CUBE "  ") + basePath.stem().string() + "##prefab_base";
+        if (ImGui::Selectable(baseLabel.c_str(), false, ImGuiSelectableFlags_None,
+                ImVec2(ImGui::CalcTextSize(baseLabel.c_str(), nullptr, true).x, 0.0f))) {
+            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+                projectWindow->revealAsset(project->getProjectPath() / basePath);
+            }
+        }
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("Base Prefab: %s\nClick to select it in the Project window", basePath.generic_string().c_str());
+        const std::filesystem::path deeper = project->getPrefabFileBase(basePath);
+        if (!deeper.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(a variant of %s)", deeper.stem().string().c_str());
+        }
     }
 }
 
@@ -585,15 +596,10 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     // Revert and Apply for this item
     std::vector<std::filesystem::path> targets;
     if (entry.kind == Kind::AddedGameObject) {
-        // the prefab of its parent GameObject, then each prefab holding that instance (a
-        // GameObject the outer prefab adds to its nested instance, PREFABS.md 17)
+        // the prefab of its parent GameObject (for an instance root its prefab, and that
+        // prefab's bases for a variant: their root GameObject), then each prefab holding that
+        // instance (a GameObject the outer prefab adds to its nested instance, PREFABS.md 17)
         targets = project->getPrefabApplyTargets(sceneId, entry.parent);
-        if (project->isPrefabInstanceRoot(sceneId, entry.parent)) {
-            if (const PrefabComponent* component = scene->findComponent<PrefabComponent>(entry.parent)) {
-                targets.erase(std::remove(targets.begin(), targets.end(), std::filesystem::path(component->path)), targets.end());
-                targets.insert(targets.begin(), component->path);
-            }
-        }
         if (targets.empty()) {
             targets.push_back(project->findPrefabPathFor(sceneId, entry.parent));
         }
@@ -665,11 +671,11 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     if (!canApply && !reason.empty()) {
         ImGui::SetItemTooltip("%s", reason.c_str());
     } else if (!targets.empty()) {
-        ImGui::SetItemTooltip("%s%s", applyTargetLabel(project, targets, 0).c_str(), menuApply ? " or a Prefab holding it" : "");
+        ImGui::SetItemTooltip("%s%s", applyTargetLabel(project, targets, 0, sceneId).c_str(), menuApply ? " or a Prefab holding it" : "");
     }
     if (ImGui::BeginPopup("prefab_apply_targets")) {
         for (size_t t = targets.size(); t-- > 0;) {
-            const std::string label = applyTargetLabel(project, targets, t);
+            const std::string label = applyTargetLabel(project, targets, t, sceneId);
             std::string targetReason;
             bool enabled = true;
             if (entry.kind == Kind::Property || entry.kind == Kind::AddedComponent) {

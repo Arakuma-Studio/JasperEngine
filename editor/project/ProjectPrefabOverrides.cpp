@@ -661,6 +661,20 @@ bool editor::Project::restorePrefabBranch(uint32_t sceneId, const PrefabBranchRe
     }
     ProjectUtils::moveEntityOrderByIndex(scene, sceneProject->entities, decoded[0], remapped(recovery.parent),
         recovery.index, recovery.hasTransform);
+    // The saved values are local to that parent: the move kept a world placement the new
+    // GameObject has not computed yet, so they are put back (as DeleteEntityCmd's undo does)
+    if (recovery.hasTransform) {
+        const YAML::Node readNode = recovery.node;
+        const YAML::Node savedTransform = readNode["components"] ? readNode["components"]["transform"] : YAML::Node();
+        Transform* transform = scene->findComponent<Transform>(decoded[0]);
+        if (transform && savedTransform && savedTransform.IsMap()) {
+            const Transform saved = Stream::decodeTransform(savedTransform, transform);
+            transform->position = saved.position;
+            transform->rotation = saved.rotation;
+            transform->scale = saved.scale;
+            transform->needUpdate = true;
+        }
+    }
 
     // Nested members got new ids from the import: matched by their registry entity
     for (const NestedPrefabRecovery& saved : recovery.nestedPrefabs) {

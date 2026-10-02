@@ -1629,7 +1629,8 @@ namespace jasperengine::editor{
             const std::vector<Prefab::EntityMember>& nestedRoots);
         // Components of the instance's GameObjects referring outside it (and the instances
         // nested in it) become whole-component overrides: the prefab cannot hold them
-        void overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot);
+        void overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level = {},
+            const std::unordered_set<Entity>* only = nullptr);
 
         // ---- Nested prefabs in assets, stripped objects (editor/project/PREFABS.md 17) ----
 

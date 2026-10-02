@@ -579,7 +579,9 @@ void editor::Project::stageToPrefabAsset(SceneProject* stage, Prefab& prefab, co
     std::unordered_set<Entity> own(prefab.registryEntities.begin(), prefab.registryEntities.end());
     std::unordered_map<Entity, Entity> resolved;
     auto prefabId = [&](Entity target) -> Entity {
-        if (target == NULL_ENTITY || own.count(target)) {
+        // (a stripped id the stage could not resolve, into a Missing nested prefab: kept as it is;
+        // the nested GameObjects of the stage take ids above every id of the asset)
+        if (target == NULL_ENTITY || own.count(target) || (previousStripped.count(target) && !stage->scene->isEntityCreated(target))) {
             return target;
         }
         auto known = resolved.find(target);

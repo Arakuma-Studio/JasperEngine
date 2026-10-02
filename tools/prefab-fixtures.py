@@ -4,6 +4,7 @@
     tools/prefab-fixtures.py legacy <out-dir>
     tools/prefab-fixtures.py nested <out-dir>     (see nested())
     tools/prefab-fixtures.py variant <out-dir>    (see variant())
+    tools/prefab-fixtures.py variant_export <out-dir>   (see variant_export())
 
 `legacy` writes a project (FIXTURE: the TappyPlane fixture project, for its sprites) in the formats written before the real-root model (prefab
 files version 1 and 2, wrapper-root instances with whole-component overrides): a
@@ -545,6 +546,54 @@ def variant(out):
     write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
 
 
+def variant_export(out):
+    """The TappyPlane fixture project itself (FIXTURE) with Prefab Variants in its Main Scene,
+    for the export check (tools/smoke-test.sh): a Badge prefab (three sprites), Badge Red (a
+    variant of it: a red, wider gem), Badge Green (a variant of Badge Red: green, its Tag
+    removed) and an instance of each with an override of its own, side by side above the
+    plane. Writes <out>/ (the project) and <out>.ops/build.yaml (the ops that make the
+    prefabs, then save)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
+    if not os.path.isdir(fixture):
+        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    os.system('rm -rf "%s" && cp -r "%s" "%s"' % (out, fixture, out))
+    os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    path = os.path.join(out, "Main Scene.scene")
+    scene = yaml.safe_load(open(path))
+    badge = entity(1900, "Badge", sprite_components("sprites/rock.png", 60, 120, x=150, y=470), [
+        entity(1901, "Gem", sprite_components("sprites/rock-down.png", 30, 60, x=40, y=40, color=(1, 1, 0.4, 1))),
+        entity(1902, "Tag", sprite_components("sprites/ground.png", 80, 20, x=0, y=-20)),
+    ])
+    for node in [badge]:
+        for comps in (node["components"],):
+            comps["transform"]["position"][2] = 5
+    scene["entities"].append(badge)
+    write_yaml(path, scene)
+
+    color = "submeshes[0].material.baseColorFactor"
+    ops = [
+        {"op": "createPrefab", "entity": "Badge", "path": "prefabs/Badge.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge.prefab"},
+        {"op": "set", "entity": "Badge 2", "component": "transform", "property": "position", "value": [330, 470, 5]},
+        {"op": "set", "entity": "Badge 2/Gem", "component": "mesh", "property": color, "value": [1, 0.15, 0.15, 1]},
+        {"op": "set", "entity": "Badge 2/Gem", "component": "transform", "property": "scale", "value": [1.8, 1, 1]},
+        {"op": "createVariant", "entity": "Badge 2", "path": "prefabs/Badge Red.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge Red.prefab"},
+        {"op": "set", "entity": "Badge 3", "component": "transform", "property": "position", "value": [510, 470, 5]},
+        {"op": "set", "entity": "Badge 3", "component": "mesh", "property": color, "value": [0.3, 1, 0.3, 1]},
+        {"op": "delete", "entity": "Badge 3/Tag"},
+        {"op": "createVariant", "entity": "Badge 3", "path": "prefabs/Badge Green.prefab"},
+        {"op": "instantiate", "entity": "Badge", "prefab": "prefabs/Badge Green.prefab"},
+        {"op": "set", "entity": "Badge 4", "component": "transform", "property": "position", "value": [690, 470, 5]},
+        {"op": "set", "entity": "Badge 4/Gem", "component": "transform", "property": "scale", "value": [2.5, 2.5, 1]},
+        {"op": "dump", "out": "@/after.yaml"},
+        {"op": "save"},
+    ]
+    os.makedirs(out + ".ops", exist_ok=True)
+    write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
+
+
 def replace(out):
     """The legacy project plus prefabs to replace its instances with (Replace Prefab, PREFABS.md
     section 12): Boulder (a Rock under another prefab name, its Pebble at another id, no
@@ -579,6 +628,6 @@ def replace(out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested", "variant"):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested", "variant", "variant_export"):
         sys.exit(__doc__)
     globals()[sys.argv[1]](sys.argv[2])

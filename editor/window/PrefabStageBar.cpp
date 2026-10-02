@@ -10,6 +10,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
+#include "util/UIUtils.h"
 
 #include <algorithm>
 
@@ -100,7 +101,18 @@ void editor::SceneWindow::drawPrefabStageBar(SceneProject& sceneProject) {
             requestExitPrefabStages(i + 1);
         }
         ImGui::PopID();
-        ImGui::SetItemTooltip("%s%s", crumbStage->assetPath.generic_string().c_str(),
+        // a Prefab Variant: Unity's variant icon, its base in the tooltip
+        const std::filesystem::path base = project->getPrefabFileBase(crumbStage->assetPath);
+        if (!base.empty()) {
+            const ImVec2 itemMin = ImGui::GetItemRectMin();
+            const float fontSize = ImGui::GetFontSize();
+            const float iconX = itemMin.x + (current ? 0.0f : ImGui::GetStyle().FramePadding.x);
+            const float iconY = itemMin.y + (ImGui::GetItemRectSize().y - fontSize) * 0.5f;
+            UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(iconX, iconY),
+                ImVec2(iconX + ImGui::CalcTextSize(ICON_FA_CUBE).x, iconY + fontSize), ImGui::GetColorU32(Theme::Colors::PrefabText));
+        }
+        ImGui::SetItemTooltip("%s%s%s%s", crumbStage->assetPath.generic_string().c_str(),
+            base.empty() ? "" : "\nPrefab Variant of ", base.empty() ? "" : base.generic_string().c_str(),
             crumbStage->inContext() ? "\nIn Context" : "");
     }
 

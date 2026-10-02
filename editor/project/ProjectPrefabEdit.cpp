@@ -187,20 +187,25 @@ bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::No
     return true;
 }
 
-void editor::Project::overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot) {
+void editor::Project::overrideOutsideReferences(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level,
+        const std::unordered_set<Entity>* only) {
     SceneProject* sceneProject = getScene(sceneId);
-    Prefab::Instance* instance = findInstanceRootedAt(sceneProject, instanceRoot);
+    Prefab::Instance* instance = findInstanceAt(sceneProject, instanceRoot, level);
     if (!instance) {
         return;
     }
     // References to the GameObjects of the instances nested in it are the prefab's too
-    const std::unordered_set<Entity> inside = collectInstanceTreeObjects(sceneId, instanceRoot);
-    std::vector<Entity> objects{instance->rootEntity};
+    const std::unordered_set<Entity> inside = collectInstanceTreeObjects(sceneId, instanceRoot, level);
+    // (the root's overrides are the outermost level's: a variant's base level leaves it)
+    std::vector<Entity> objects;
+    if (findInstanceRootedAt(sceneProject, instanceRoot) == instance) {
+        objects.push_back(instance->rootEntity);
+    }
     for (const Prefab::EntityMember& member : instance->members) {
         objects.push_back(member.localEntity);
     }
     for (Entity object : objects) {
-        if (!sceneProject->scene->isEntityCreated(object)) {
+        if (!sceneProject->scene->isEntityCreated(object) || (only && !only->count(object))) {
             continue;
         }
         for (ComponentType componentType : Catalog::findComponents(sceneProject->scene, object)) {
@@ -560,29 +565,41 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
     if (!sceneProject || !sceneProject->scene){
         return false;
     }
-    // Into a prefab holding the parent's instance: a GameObject it adds to that nested instance
+    // Into a prefab holding the parent's instance: a GameObject it adds to that nested instance.
+    // Below the root of an instance of a variant, into any level of it (the variant, its base,
+    // ...: the root GameObject of each, PREFABS.md 18).
+    fs::path filepath;
     if (!target.empty()) {
-        PrefabObjectRef ref;
-        std::filesystem::path own;
-        if (findPrefabObject(sceneId, parent, ref)) {
-            own = ref.path;
-            if (!ref.isRoot && isPrefabInstanceRoot(sceneId, parent)) {
-                if (const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(parent)) {
-                    own = component->path;
+        const std::vector<std::filesystem::path> rootLevels = getInstanceRootLevels(sceneId, parent);
+        if (std::find(rootLevels.begin(), rootLevels.end(), target) != rootLevels.end()) {
+            filepath = target;
+        } else {
+            PrefabObjectRef ref;
+            std::filesystem::path own;
+            if (findPrefabObject(sceneId, parent, ref)) {
+                own = ref.path;
+                if (!ref.isRoot && isPrefabInstanceRoot(sceneId, parent)) {
+                    if (const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(parent)) {
+                        own = component->path;
+                    }
                 }
             }
-        }
-        if (target != own) {
-            return addEntityToOuterPrefab(sceneId, entity, parent, target);
+            if (target != own) {
+                return addEntityToOuterPrefab(sceneId, entity, parent, target);
+            }
         }
     }
 
     Scene* scene = sceneProject->scene;
 
     // Find which prefab the parent belongs to
-    // First check if parent is a prefab root (for explicit "Insert to Prefab" targeting)
-    fs::path filepath;
+    // First check if parent is a prefab root (for explicit "Insert to Prefab" targeting): the
+    // outermost level of the instances rooted there
+    if (filepath.empty()) {
+        findInstanceRootedAt(sceneProject, parent, &filepath);
+    }
     for (const auto& [prefabPath, prefab] : prefabAssets) {
+        if (!filepath.empty()) break;
         auto sceneIt = prefab.instances.find(sceneId);
         if (sceneIt == prefab.instances.end()) continue;
         for (const auto& instance : sceneIt->second) {
@@ -591,7 +608,6 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
                 break;
             }
         }
-        if (!filepath.empty()) break;
     }
     // Fall back to general lookup if parent is not a root
     if (filepath.empty()) {
@@ -674,11 +690,15 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
         }
         for (ComponentType type : Catalog::findComponents(prefab->registry.get(), registryEntity)) {
             if (type != ComponentType::PrefabComponent && Catalog::mayHoldReferences(prefab->registry.get(), registryEntity, type, true, true)) {
-                remapReferencesToPrefab(sceneId, instanceRoot, prefab->registry.get(), registryEntity, type);
+                remapReferencesToPrefab(sceneId, instanceRoot, prefab->registry.get(), registryEntity, type, {}, filepath);
             }
         }
     }
-    overrideOutsideReferences(sceneId, instanceRoot);
+    // (the GameObjects put in: what the instance had of its own already is not this one's to
+    // change, and for a variant's base level a reference the variant's data gives is no
+    // reference outside)
+    const std::unordered_set<Entity> putIn(srcBranch.begin(), srcBranch.end());
+    overrideOutsideReferences(sceneId, instanceRoot, filepath, &putIn);
     prefab->isModified = true;
     sceneProject->isModified = true;
 
@@ -765,6 +785,7 @@ bool editor::Project::restoreRegistryEntityToPrefab(const std::filesystem::path&
         Entity parent = NULL_ENTITY;
         size_t transformIndex = 0;
         bool decodeBranch = false;
+        YAML::Node node;   // the branch decoded (its local Transform values are put back)
     };
 
     std::vector<PendingInstanceRecovery> pendingRecoveries;
@@ -941,7 +962,7 @@ bool editor::Project::restoreRegistryEntityToPrefab(const std::filesystem::path&
         pendingRecoveries.push_back({target.sceneId, target.instanceId, recoveredEntry,
             std::move(newOtherEntities), std::move(membersToRestore),
             std::move(recoveredLocalIds), otherParent, transformIndex,
-            decodeBranch});
+            decodeBranch, nodeData});
         if (!canPairMembers) {
             validRecovery = false;
             break;
@@ -1024,6 +1045,18 @@ bool editor::Project::restoreRegistryEntityToPrefab(const std::filesystem::path&
                 otherScene->getComponentId<Transform>());
             ProjectUtils::moveEntityOrderByIndex(otherScene, pendingScene->entities,
                 pending.entities[0], pending.parent, pending.transformIndex, hasTransform);
+            // the move kept a world placement not computed yet: the local values come back
+            const YAML::Node readNode = pending.node;
+            const YAML::Node savedTransform = hasTransform && pending.decodeBranch && readNode.IsMap() && readNode["components"] ?
+                readNode["components"]["transform"] : YAML::Node();
+            Transform* transform = otherScene->findComponent<Transform>(pending.entities[0]);
+            if (transform && savedTransform && savedTransform.IsMap()) {
+                const Transform saved = Stream::decodeTransform(savedTransform, transform);
+                transform->position = saved.position;
+                transform->rotation = saved.rotation;
+                transform->scale = saved.scale;
+                transform->needUpdate = true;
+            }
         }
 
         instance->members.insert(instance->members.end(),
@@ -1591,21 +1624,25 @@ bool editor::Project::addEntityToOuterPrefab(uint32_t sceneId, Entity entity, En
         return false;
     }
     Entity owningRoot = ref.instance->rootEntity;
+    std::filesystem::path owningPath = ref.path;
     if (ref.isRoot == false && isPrefabInstanceRoot(sceneId, parent)) {
         owningRoot = parent; // a nested root: below it in its own instance
+        owningPath.clear();
     }
-    const Entity holderRoot = findHolderInstanceRoot(sceneId, owningRoot, target);
-    Prefab::Instance* holder = holderRoot != NULL_ENTITY ? findInstanceRootedAt(sceneProject, holderRoot) : nullptr;
-    if (!holder || holderRoot == owningRoot) {
+    const Entity holderRoot = findHolderInstanceRoot(sceneId, owningRoot, target, owningPath);
+    Prefab::Instance* holder = holderRoot != NULL_ENTITY ? findInstanceAt(sceneProject, holderRoot, target) : nullptr;
+    if (!holder || (holderRoot == owningRoot && (owningPath.empty() || owningPath == target))) {
         Out::error("%s does not hold the instance GameObject %u is in", target.string().c_str(), parent);
         return false;
     }
+    // the instance nested in the holder that holds the parent: one of its members' or, for
+    // a variant, its base's at its root
     Entity nestedLocal = NULL_ENTITY;
     Entity nestedRegistry = NULL_ENTITY;
-    for (const Prefab::EntityMember& member : holder->members) {
-        if (prefab->isNestedRoot(member.registryEntity) && collectInstanceTreeObjects(sceneId, member.localEntity).count(parent)) {
-            nestedLocal = member.localEntity;
-            nestedRegistry = member.registryEntity;
+    for (const NestedInstanceLevel& level : getNestedInstanceLevels(sceneProject, target, *holder)) {
+        if (level.instance && collectInstanceTreeObjects(sceneId, level.localRoot, level.path).count(parent)) {
+            nestedLocal = level.localRoot;
+            nestedRegistry = level.registryEntity;
             break;
         }
     }
@@ -1656,7 +1693,7 @@ bool editor::Project::addEntityToOuterPrefab(uint32_t sceneId, Entity entity, En
     Prefab::AddedObject added;
     added.childIndex = childIndex;
     if (parent != nestedLocal) {
-        added.parent = makePrefabReference(sceneId, holderRoot, parent);
+        added.parent = makePrefabReference(sceneId, holderRoot, parent, target);
     }
     prefab->addedObjects[regEntities[0]] = added;
 
@@ -1672,11 +1709,12 @@ bool editor::Project::addEntityToOuterPrefab(uint32_t sceneId, Entity entity, En
         }
         for (ComponentType type : Catalog::findComponents(prefab->registry.get(), registryEntity)) {
             if (type != ComponentType::PrefabComponent && Catalog::mayHoldReferences(prefab->registry.get(), registryEntity, type, true, true)) {
-                remapReferencesToPrefab(sceneId, holderRoot, prefab->registry.get(), registryEntity, type);
+                remapReferencesToPrefab(sceneId, holderRoot, prefab->registry.get(), registryEntity, type, {}, target);
             }
         }
     }
-    overrideOutsideReferences(sceneId, holderRoot);
+    const std::unordered_set<Entity> putIn(srcBranch.begin(), srcBranch.end());
+    overrideOutsideReferences(sceneId, holderRoot, target, &putIn);
     prefab->isModified = true;
     sceneProject->isModified = true;
     refreshPrefabInstances(target);

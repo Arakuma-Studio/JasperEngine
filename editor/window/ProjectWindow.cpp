@@ -2960,7 +2960,8 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         pending.instanceRoots.push_back(instanceRoot);
         fs::path variantPath;
         if (instanceRoot) {
-            std::string baseName = prefabs[i].first.stem().string() + " Variant";
+            const std::string rootName = roots[i]["name"] ? roots[i]["name"].as<std::string>() : std::string();
+            std::string baseName = (rootName.empty() ? std::string("Prefab") : rootName) + " Variant";
             variantPath = uniqueRelativePath(directory, baseName, ".prefab");
             for (int counter = 1; usedNames.count(variantPath.generic_string()); counter++) {
                 variantPath = uniqueRelativePath(directory, baseName + " " + std::to_string(counter), ".prefab");
