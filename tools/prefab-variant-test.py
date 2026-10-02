@@ -458,6 +458,31 @@ editor(M, md + '/back.yaml', name='back')
 check(compare(os.path.join(OPS, '6-final.yaml'), md + '/back.yaml', '--ignore-prefab-info', '--ids'),
       'base back: every variant instance as before (ids included)')
 
+print('== the variants renamed with the scene closed')
+ops = [
+    {'op': 'close', 'scene': 'Variant Scene'},
+    {'op': 'usage'},
+    {'op': 'renameFile', 'from': V1, 'to': 'prefabs/Ship Mid.prefab'},
+    {'op': 'renameFile', 'from': V2, 'to': 'prefabs/Ship Top.prefab'},
+    {'op': 'variantInfo', 'prefab': 'prefabs/Ship Top.prefab'},
+]
+out = editor(M, os.path.join(md, 'closed.yaml'), ops_file('closed', ops), name='closed')
+usage = [l.strip() for l in out.splitlines() if l.strip().startswith('usage ')]
+ship_usage = [l for l in usage if l.startswith('usage prefabs/base/Hull Base.prefab')]
+top_usage = [l for l in usage if l.startswith('usage prefabs/Ship Variant 2.prefab')]
+check(ship_usage and '[Variant Scene closed instances 0 nested 1' in ship_usage[0] and 'variant prefabs/Ship Variant.prefab' in ship_usage[0]
+      and top_usage and '[Variant Scene closed instances 1 nested 0' in top_usage[0],
+      'Prefabs dialog, the scene closed: the variant instance counts for the variant, and as nested for its bases')
+chain = lines_of(out, 'chain')
+check(chain and chain[-1].endswith(': prefabs/Ship Top.prefab prefabs/Ship Mid.prefab prefabs/base/Hull Base.prefab'),
+      'renamed variants: the chain follows (by GUID)')
+editor(M, md + '/renamed-closed.yaml', name='renamed-closed', save=True)
+check(compare(os.path.join(OPS, '6-final.yaml'), md + '/renamed-closed.yaml', '--ignore-prefab-info', '--ids'),
+      'variants renamed while the scene was closed: the scene loads every instance as before')
+rc = load(md + '/renamed-closed.yaml')
+check(rc['Ship'].get('prefab') == 'prefabs/Ship Top.prefab' and rc['Ship/Wing/Flag'].get('prefab') == 'prefabs/Ship Mid.prefab',
+      'and its instance names the renamed variants')
+
 print('== generated sources')
 gen = open(os.path.join(bake, [f for f in os.listdir(bake) if 'Variant_2' in f and f.endswith('.cpp')][0])).read()
 check(gen.count('scene->createEntity()') == 8 and all('"%s"' % n in gen for n in ('Pole', 'Flag', 'Hull', 'Wing', 'Gun', 'Engine', 'Eye', 'Flame'))
