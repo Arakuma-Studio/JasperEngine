@@ -37,12 +37,14 @@ bool editor::RevertPrefabRemovalCmd::mergeWith(editor::Command* otherCommand){
     return false;
 }
 
-editor::ApplyPrefabRemovalCmd::ApplyPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity){
+editor::ApplyPrefabRemovalCmd::ApplyPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity,
+        const std::filesystem::path& target){
     this->project = project;
     this->sceneId = sceneId;
     this->path = path;
     this->instanceRoot = instanceRoot;
     this->registryEntity = registryEntity;
+    this->target = target;
 }
 
 bool editor::ApplyPrefabRemovalCmd::execute(){
@@ -51,11 +53,19 @@ bool editor::ApplyPrefabRemovalCmd::execute(){
         return false;
     }
     wasModified = sceneProject->isModified;
+    if (toOuter()) {
+        before = project->capturePrefabUndoState(sceneId, instanceRoot, {target});
+        return project->applyPrefabRemovalTo(sceneId, path, instanceRoot, registryEntity, target);
+    }
     return project->applyPrefabRemoval(sceneId, path, instanceRoot, registryEntity, apply);
 }
 
 void editor::ApplyPrefabRemovalCmd::undo(){
-    project->undoApplyPrefabRemoval(sceneId, path, instanceRoot, registryEntity, apply);
+    if (toOuter()) {
+        project->restorePrefabUndoState(before);
+    } else {
+        project->undoApplyPrefabRemoval(sceneId, path, instanceRoot, registryEntity, apply);
+    }
     if (SceneProject* sceneProject = project->getScene(sceneId)) {
         sceneProject->isModified = wasModified;
     }
@@ -187,7 +197,9 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
     }
     for (const PrefabOverrideEntry& entry : entries) {
         if (entry.kind == Kind::RemovedGameObject) {
-            steps.emplace_back(new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity));
+            // to the instance's prefab too: as its override of a nested instance or of its base
+            steps.emplace_back(new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity,
+                rootPath));
         }
     }
     return new PrefabOverridesCmd(project, sceneId, std::move(steps));

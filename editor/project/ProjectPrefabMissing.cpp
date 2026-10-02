@@ -12,6 +12,7 @@
 #include "util/ProjectUtils.h"
 
 #include <algorithm>
+#include <functional>
 #include <set>
 #include <tuple>
 #include <unordered_set>
@@ -103,18 +104,34 @@ void editor::Project::collectPrefabMemberIds(uint32_t sceneId, const Prefab::Ins
     if (!sceneProject || !sceneProject->scene || depth > 64) {
         return;
     }
-    std::unordered_map<Entity, Entity>& members = ids[instance.rootEntity];
-    for (const Prefab::EntityMember& member : instance.members) {
-        members[member.registryEntity] = member.localEntity;
-    }
-    for (const Prefab::EntityMember& member : instance.members) {
-        const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(member.localEntity);
-        const Prefab* nestedPrefab = component ? getPrefab(component->path) : nullptr;
-        const Prefab::Instance* nested = nestedPrefab ? nestedPrefab->getInstance(sceneId, member.localEntity) : nullptr;
-        if (nested && nested->rootEntity == member.localEntity) {
-            collectPrefabMemberIds(sceneId, *nested, ids, depth + 1);
+    // Every level at each root: a variant's bases' members under prefabLevelKey(root, n)
+    std::function<void(const std::filesystem::path&, const Prefab::Instance&, size_t, size_t)> collect =
+            [&](const std::filesystem::path& path, const Prefab::Instance& current, size_t level, size_t nesting) {
+        std::unordered_map<Entity, Entity>& members = ids[prefabLevelKey(current.rootEntity, level)];
+        for (const Prefab::EntityMember& member : current.members) {
+            members[member.registryEntity] = member.localEntity;
+        }
+        if (nesting > 64) {
+            return;
+        }
+        for (const NestedInstanceLevel& nested : getNestedInstanceLevels(sceneProject, path, current)) {
+            if (nested.instance) {
+                collect(nested.path, *nested.instance, nested.variantBase ? level + 1 : 0, nesting + 1);
+            }
+        }
+    };
+    std::filesystem::path path;
+    for (const auto& [candidate, prefab] : getPrefabs(sceneId)) {
+        auto sceneIt = prefab->instances.find(sceneId);
+        if (sceneIt != prefab->instances.end()) {
+            for (const Prefab::Instance& other : sceneIt->second) {
+                if (&other == &instance) {
+                    path = candidate;
+                }
+            }
         }
     }
+    collect(path, instance, 0, depth);
 }
 
 void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::path& filepath) {
@@ -141,8 +158,12 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
         if (!sceneProject || !sceneProject->scene) {
             continue;
         }
-        const Entity outer = getOutermostPrefabRoots(sceneId, {root})[0];
-        if (outer == NULL_ENTITY || outer == root) {
+        Entity outer = getOutermostPrefabRoots(sceneId, {root})[0];
+        // the base of a variant instance (its root names the variant): the variant's
+        // instance goes Missing as a whole when built again (PREFABS.md 18)
+        std::filesystem::path outermostPath;
+        const bool variantBase = findInstanceRootedAt(sceneProject, root, &outermostPath) && outermostPath != filepath;
+        if (outer == NULL_ENTITY || (outer == root && !variantBase)) {
             continue;
         }
         nestedRoots.insert({sceneId, root});

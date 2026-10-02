@@ -203,6 +203,8 @@ namespace jasperengine::editor{
         // Missing Prefab rows: the Prefab submenu
         void showMissingPrefabMenu(const TreeNode& node);
         void requestReplacePrefab(uint32_t sceneId, const std::vector<Entity>& roots);
+        // Prefab > Create Variant: a variant of the instance's prefab made from it (PREFABS.md 18)
+        void requestCreateVariant(uint32_t sceneId, Entity root);
         void showReplacePrefabPopup();
         // Alt-drop of a prefab asset on an instance root row replaces it (Alt+Shift: and
         // clears its overrides); true when it took the drop

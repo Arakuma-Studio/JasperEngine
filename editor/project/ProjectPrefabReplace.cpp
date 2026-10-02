@@ -166,11 +166,415 @@ namespace {
         return NULL_ENTITY;
     }
 
+    PrefabInstanceData remapInstanceLevel(const ReplaceContext& ctx, const Prefab* oldPrefab, const Prefab& newPrefab,
+            const PrefabInstanceData& in, Entity localRoot, const std::string& where, size_t depth);
+
+    // ---- Prefab Variants (PREFABS.md 18): an instance of a variant is one per level of its
+    // chain (the variant, its base, ...), each with its data; Replace matches GameObjects of
+    // the whole chain by their keys in the GameObject tree an instance of it has ----
+
+    struct PrefabChain {
+        std::vector<const Prefab*> levels;           // the prefab, its base, ...
+        std::vector<std::filesystem::path> paths;    // (paths[0] empty: the caller's)
+    };
+
+    PrefabChain prefabChain(editor::Project* project, const Prefab* top) {
+        PrefabChain chain;
+        std::set<const Prefab*> seen;
+        std::filesystem::path path;
+        for (const Prefab* level = top; level && level->registry && chain.levels.size() < 64 && seen.insert(level).second;) {
+            chain.levels.push_back(level);
+            chain.paths.push_back(path);
+            const PrefabComponent* base = level->getBaseComponent();
+            if (!base) {
+                break;
+            }
+            path = project->resolvePrefabPath(base->guid, base->path);
+            level = path.empty() ? nullptr : project->loadPrefabAsset(path);
+        }
+        return chain;
+    }
+
+    using ChainNode = std::pair<size_t, Entity>;   // (level, registry entity in that level's prefab)
+
+    struct ChainKeys {
+        std::map<ChainNode, std::string> keyOf;
+        std::map<std::string, ChainNode> nodeOf;
+    };
+
+    // The node a way of stripped steps from a level's root names: a GameObject of one of the
+    // levels below (its base, its base's base, ...); NULL entity for one deeper in a nested
+    // instance
+    ChainNode chainNodeOfWay(const PrefabChain& chain, size_t level, const std::vector<Entity>& way) {
+        if (way.size() < 2 || way[0] != chain.levels[level]->root) {
+            return {level, NULL_ENTITY};
+        }
+        size_t current = level;
+        size_t i = 1;
+        while (i + 1 < way.size() && current + 1 < chain.levels.size() && way[i] == chain.levels[current + 1]->root) {
+            current++;
+            i++;
+        }
+        if (i + 1 == way.size() && current + 1 < chain.levels.size()) {
+            return {current + 1, way[i]};
+        }
+        return {level, NULL_ENTITY};
+    }
+
+    ChainKeys buildChainKeys(const PrefabChain& chain, PrefabReplaceSettings::Match match) {
+        ChainKeys keys;
+        const size_t count = chain.levels.size();
+        if (count == 0) {
+            return keys;
+        }
+        const ChainNode rootNode{count - 1, chain.levels[count - 1]->root};
+        // a level's root is its base's root (the same GameObject)
+        auto canonical = [&](ChainNode node) -> ChainNode {
+            return node.second == chain.levels[node.first]->root ? rootNode : node;
+        };
+        auto add = [&keys](ChainNode node, const std::string& key) {
+            if (keys.nodeOf.count(key) == 0 && keys.keyOf.count(node) == 0) {
+                keys.keyOf[node] = key;
+                keys.nodeOf[key] = node;
+            }
+        };
+        for (size_t k = 0; k < count; k++) {
+            keys.keyOf[{k, chain.levels[k]->root}] = "";
+        }
+        keys.nodeOf[""] = rootNode;
+        if (match == PrefabReplaceSettings::Match::None) {
+            return keys;
+        }
+
+        std::map<ChainNode, std::vector<ChainNode>> children;
+        std::vector<ChainNode> loose;
+        // the original first: a variant puts what it adds among its base's children
+        for (size_t k = count; k-- > 0;) {
+            const Prefab& prefab = *chain.levels[k];
+            EntityRegistry* registry = prefab.registry.get();
+            std::unordered_set<Entity> withTransform;
+            auto transforms = registry->getComponentArray<Transform>();
+            for (size_t i = 0; i < transforms->size(); i++) {
+                const Entity entity = transforms->getEntity(i);
+                withTransform.insert(entity);
+                if (entity == prefab.root) {
+                    continue;
+                }
+                const Entity registryParent = transforms->getComponentFromIndex(i).parent;
+                if (k + 1 < count && registryParent == prefab.root) {
+                    // a GameObject this variant adds to its base: below the base GameObject
+                    // its addedTo names, at its childIndex
+                    ChainNode parent = rootNode;
+                    int childIndex = -1;
+                    auto added = prefab.addedObjects.find(entity);
+                    if (added != prefab.addedObjects.end()) {
+                        childIndex = added->second.childIndex;
+                        auto way = added->second.parent != NULL_ENTITY ? prefab.stripped.find(added->second.parent) : prefab.stripped.end();
+                        if (way != prefab.stripped.end()) {
+                            const ChainNode resolved = chainNodeOfWay(chain, k, way->second);
+                            if (resolved.second != NULL_ENTITY) {
+                                parent = canonical(resolved);
+                            }
+                        }
+                    }
+                    std::vector<ChainNode>& siblings = children[parent];
+                    if (childIndex >= 0 && static_cast<size_t>(childIndex) <= siblings.size()) {
+                        siblings.insert(siblings.begin() + childIndex, {k, entity});
+                    } else {
+                        siblings.push_back({k, entity});
+                    }
+                } else {
+                    children[canonical({k, registryParent})].push_back({k, entity});
+                }
+            }
+            for (Entity entity : prefab.registryEntities) {
+                if (!withTransform.count(entity) && entity != prefab.root) {
+                    loose.push_back({k, entity});
+                }
+            }
+        }
+
+        auto nameOf = [&](ChainNode node) {
+            return chain.levels[node.first]->registry->getEntityName(node.second);
+        };
+        auto segments = [&](const std::vector<ChainNode>& siblings) {
+            std::vector<std::string> result;
+            std::map<std::string, int> seen;
+            for (size_t i = 0; i < siblings.size(); i++) {
+                if (match == PrefabReplaceSettings::Match::ByHierarchy) {
+                    result.push_back("#" + std::to_string(i));
+                } else {
+                    const std::string name = nameOf(siblings[i]);
+                    const int seenCount = seen[name]++;
+                    result.push_back(seenCount == 0 ? name : name + "#" + std::to_string(seenCount));
+                }
+            }
+            return result;
+        };
+        std::function<void(ChainNode, const std::string&, size_t)> visit = [&](ChainNode node, const std::string& key, size_t depth) {
+            if (!key.empty()) {
+                add(node, key);
+            }
+            auto it = children.find(node);
+            if (it == children.end() || depth > 256) {
+                return;
+            }
+            const std::vector<std::string> names = segments(it->second);
+            for (size_t i = 0; i < it->second.size(); i++) {
+                visit(it->second[i], key + "/" + names[i], depth + 1);
+            }
+        };
+        visit(rootNode, "", 0);
+        const std::vector<std::string> looseNames = segments(loose);
+        for (size_t i = 0; i < loose.size(); i++) {
+            visit(loose[i], "~" + looseNames[i], 0);
+        }
+        return keys;
+    }
+
+    // The instance data of an instance of oldChain (one block per level, each holding the
+    // next as its nested entry at the level's root) carried over to newChain
+    PrefabInstanceData remapChainInstance(const ReplaceContext& ctx, const PrefabChain& oldChain, const PrefabChain& newChain,
+            const PrefabInstanceData& in, Entity localRoot, const std::string& where, size_t depth) {
+        const size_t newCount = newChain.levels.size();
+        std::vector<PrefabInstanceData> outs(newCount);
+        for (PrefabInstanceData& out : outs) {
+            out.present = true;
+        }
+        outs[0].nestedRoot = in.nestedRoot;
+        outs[0].nestedPath = in.nestedPath;
+        const ChainKeys oldKeys = buildChainKeys(oldChain, ctx.settings.match);
+        const ChainKeys newKeys = buildChainKeys(newChain, ctx.settings.match);
+        const ChainNode newRoot{newCount - 1, newChain.levels[newCount - 1]->root};
+
+        auto map = [&](ChainNode oldNode) -> ChainNode {
+            auto key = oldKeys.keyOf.find(oldNode);
+            if (key == oldKeys.keyOf.end()) {
+                return {0, NULL_ENTITY};
+            }
+            auto target = newKeys.nodeOf.find(key->second);
+            if (target == newKeys.nodeOf.end()) {
+                return {0, NULL_ENTITY};
+            }
+            // the root's data is the outermost level's
+            return key->second.empty() ? ChainNode{0, newChain.levels[0]->root} : target->second;
+        };
+        auto isRoot = [&](ChainNode node) {
+            return node.second != NULL_ENTITY && node.second == newChain.levels[node.first]->root;
+        };
+        auto oldName = [&](ChainNode node) -> std::string {
+            const Prefab* prefab = node.first < oldChain.levels.size() ? oldChain.levels[node.first] : nullptr;
+            if (prefab && prefab->registry && prefab->registry->isEntityCreated(node.second)) {
+                return prefab->registry->getEntityName(node.second);
+            }
+            return "GameObject " + std::to_string(node.second);
+        };
+        (void)newRoot;
+
+        // the old data, level by level (each in the one above as its nested entry at its root)
+        std::vector<const PrefabInstanceData*> oldData(oldChain.levels.size(), nullptr);
+        oldData[0] = &in;
+        for (size_t k = 0; k + 1 < oldChain.levels.size(); k++) {
+            oldData[k + 1] = oldData[k] ? oldData[k]->findNested(oldChain.levels[k]->root, std::string()) : nullptr;
+        }
+        std::map<size_t, std::unordered_map<Entity, Entity>> newMemberIds;   // by new level, ctx.memberIds
+
+        for (size_t k = 0; k < oldChain.levels.size(); k++) {
+            const PrefabInstanceData* data = oldData[k];
+            if (!data) {
+                continue;
+            }
+            for (const auto& [registryEntity, object] : data->objects) {
+                if (k > 0 && registryEntity == oldChain.levels[k]->root) {
+                    continue;  // a base level's root is the outermost level's
+                }
+                const ChainNode target = map({k, registryEntity});
+                if (target.second == NULL_ENTITY) {
+                    ctx.drop("overrides of '" + oldName({k, registryEntity}) + "'" + where + ": no matching GameObject");
+                    continue;
+                }
+                if (!ctx.settings.keepOverrides) {
+                    ctx.drop("overrides of '" + oldName({k, registryEntity}) + "'" + where + " (cleared)");
+                    continue;
+                }
+                EntityRegistry* newRegistry = newChain.levels[target.first]->registry.get();
+                const PrefabObjectOverrides& overrides = object.overrides;
+                PrefabInstanceData::Object kept;
+                kept.values = object.values ? YAML::Clone(object.values) : YAML::Node();
+                kept.overrides.state = overrides.state;
+                kept.overrides.addedComponents = overrides.addedComponents;
+                std::set<editor::ComponentType> lost;
+                for (const auto& [type, properties] : overrides.properties) {
+                    if (hasComponent(newRegistry, target.second, type) || overrides.addedComponents.count(type)) {
+                        kept.overrides.properties[type] = properties;
+                    } else {
+                        lost.insert(type);
+                    }
+                }
+                for (editor::ComponentType type : overrides.removedComponents) {
+                    if (hasComponent(newRegistry, target.second, type)) {
+                        kept.overrides.removedComponents.insert(type);
+                    } else {
+                        lost.insert(type);
+                    }
+                }
+                if (!lost.empty()) {
+                    ctx.drop("overrides of " + componentNames(lost) + " on '" + oldName({k, registryEntity}) + "'" + where +
+                        ": the new GameObject has no such component");
+                }
+                if (!kept.overrides.empty()) {
+                    outs[target.first].objects[target.second].overrides.merge(kept.overrides);
+                    PrefabInstanceData::Object& placed = outs[target.first].objects[target.second];
+                    if (kept.values && kept.values.IsMap()) {
+                        if (!placed.values || !placed.values.IsMap()) {
+                            placed.values = YAML::Node(YAML::NodeType::Map);
+                        }
+                        for (auto it = kept.values.begin(); it != kept.values.end(); ++it) {
+                            placed.values[it->first.as<std::string>()] = YAML::Clone(it->second);
+                        }
+                    }
+                    ctx.keep();
+                }
+            }
+            for (Entity removed : data->removedGameObjects) {
+                const ChainNode target = map({k, removed});
+                if (target.second == NULL_ENTITY || isRoot(target)) {
+                    ctx.drop("removal of '" + oldName({k, removed}) + "'" + where + ": no matching GameObject");
+                } else if (!ctx.settings.keepOverrides) {
+                    ctx.drop("removal of '" + oldName({k, removed}) + "'" + where + " (cleared)");
+                } else {
+                    outs[target.first].removedGameObjects.insert(target.second);
+                    ctx.keep();
+                }
+            }
+            for (const YAML::Node& added : data->addedGameObjects) {
+                const std::string name = added["name"] ? added["name"].as<std::string>() : std::string("GameObject");
+                if (!ctx.settings.keepOverrides) {
+                    ctx.drop("added GameObject '" + name + "'" + where + " (cleared)");
+                    continue;
+                }
+                const Entity parent = added["parentRegistryEntity"] ? added["parentRegistryEntity"].as<Entity>() : NULL_ENTITY;
+                ChainNode target = parent == NULL_ENTITY ? ChainNode{0, NULL_ENTITY} : map({k, parent});
+                YAML::Node node = YAML::Clone(added);
+                if (parent != NULL_ENTITY && (target.second == NULL_ENTITY || outs[target.first].removedGameObjects.count(target.second))) {
+                    target = {0, NULL_ENTITY};
+                    node.remove("childIndex");
+                    editor::Out::warning("Replace Prefab: added GameObject '%s'%s now goes below the root, its parent '%s' is not in the new prefab",
+                        name.c_str(), where.c_str(), oldName({k, parent}).c_str());
+                }
+                if (isRoot(target)) {
+                    target = {0, NULL_ENTITY};  // below the root: the outermost level's
+                }
+                node["parentRegistryEntity"] = target.second;
+                outs[target.first].addedGameObjects.push_back(node);
+                ctx.keep();
+            }
+            for (const PrefabInstanceData& nested : data->nested) {
+                if (nested.nestedRoot == oldChain.levels[k]->root) {
+                    continue;  // the next level
+                }
+                if (!ctx.settings.keepOverrides) {
+                    if (!nested.empty()) {
+                        ctx.drop("overrides of the nested prefab '" + oldName({k, nested.nestedRoot}) + "'" + where + " (cleared)");
+                    }
+                    continue;
+                }
+                if (nested.nestedRoot == NULL_ENTITY) {
+                    if (k == 0) {
+                        outs[0].nested.push_back(nested);
+                    }
+                    continue;
+                }
+                const ChainNode target = map({k, nested.nestedRoot});
+                const Prefab* newLevel = target.second != NULL_ENTITY ? newChain.levels[target.first] : nullptr;
+                if (!newLevel || !newLevel->isNestedRoot(target.second)) {
+                    ctx.drop("data of the nested prefab '" + oldName({k, nested.nestedRoot}) + "'" + where + ": no matching nested prefab");
+                    continue;
+                }
+                const PrefabComponent& newComponent = newLevel->registry->getComponent<PrefabComponent>(target.second);
+                const Prefab* oldLevel = oldChain.levels[k];
+                const PrefabComponent* oldComponent = oldLevel->registry->isEntityCreated(nested.nestedRoot) ?
+                    oldLevel->registry->findComponent<PrefabComponent>(nested.nestedRoot) : nullptr;
+                auto local = data->memberIds.find(nested.nestedRoot);
+                Entity nestedLocal = local != data->memberIds.end() ? local->second : NULL_ENTITY;
+                if (nestedLocal == NULL_ENTITY && ctx.memberIds) {
+                    auto ids = ctx.memberIds->find(editor::Project::prefabLevelKey(localRoot, k));
+                    if (ids != ctx.memberIds->end()) {
+                        auto found = ids->second.find(nested.nestedRoot);
+                        nestedLocal = found != ids->second.end() ? found->second : NULL_ENTITY;
+                    }
+                }
+                PrefabInstanceData carried;
+                if (oldComponent && sameAsset(ctx.project, *oldComponent, newComponent)) {
+                    carried = nested;
+                } else {
+                    const Prefab* oldNested = oldComponent ? ctx.project->loadPrefabAsset(resolvedPath(ctx.project, *oldComponent)) : nullptr;
+                    const Prefab* newNested = ctx.project->loadPrefabAsset(resolvedPath(ctx.project, newComponent));
+                    if (!newNested) {
+                        ctx.drop("data of the nested prefab '" + oldName({k, nested.nestedRoot}) + "'" + where + ": its prefab cannot be read");
+                        continue;
+                    }
+                    carried = remapInstanceLevel(ctx, oldNested, *newNested, nested, nestedLocal,
+                        where + " > " + newLevel->registry->getEntityName(target.second), depth + 1);
+                }
+                carried.nestedRoot = target.second;
+                carried.nestedPath = newComponent.path;
+                if (!carried.empty()) {
+                    ctx.keep();
+                }
+                outs[target.first].nested.push_back(std::move(carried));
+            }
+            // member ids follow the keys
+            for (const auto& [registryEntity, local] : data->memberIds) {
+                const ChainNode target = map({k, registryEntity});
+                if (target.second != NULL_ENTITY && !isRoot(target)) {
+                    outs[target.first].memberIds[target.second] = local;
+                }
+            }
+            if (ctx.memberIds && localRoot != NULL_ENTITY) {
+                auto it = ctx.memberIds->find(editor::Project::prefabLevelKey(localRoot, k));
+                if (it != ctx.memberIds->end()) {
+                    for (const auto& [registryEntity, local] : it->second) {
+                        const ChainNode target = map({k, registryEntity});
+                        if (target.second != NULL_ENTITY && !isRoot(target)) {
+                            newMemberIds[target.first][target.second] = local;
+                        }
+                    }
+                }
+            }
+        }
+        if (ctx.memberIds && localRoot != NULL_ENTITY) {
+            for (size_t k = 0; k < std::max(oldChain.levels.size(), newCount); k++) {
+                ctx.memberIds->erase(editor::Project::prefabLevelKey(localRoot, k));
+            }
+            for (auto& [level, ids] : newMemberIds) {
+                (*ctx.memberIds)[editor::Project::prefabLevelKey(localRoot, level)] = std::move(ids);
+            }
+        }
+
+        // each level in the one above, at its root (the variant's base entry)
+        for (size_t k = newCount - 1; k-- > 0;) {
+            PrefabInstanceData base = std::move(outs[k + 1]);
+            base.nestedRoot = newChain.levels[k]->root;
+            base.nestedPath = newChain.paths[k + 1].generic_string();
+            outs[k].nested.push_back(std::move(base));
+        }
+        return std::move(outs[0]);
+    }
+
     // One level of instance data (keyed by oldPrefab's registry entities) carried over to
     // newPrefab. oldPrefab null: the old asset is gone, only the root matches. localRoot: the
     // level's root in the scene, whose member ids (ctx.memberIds[localRoot]) follow the keys.
     PrefabInstanceData remapInstanceLevel(const ReplaceContext& ctx, const Prefab* oldPrefab, const Prefab& newPrefab,
             const PrefabInstanceData& in, Entity localRoot, const std::string& where, size_t depth) {
+        // a Prefab Variant on either side: the GameObjects of the whole chains
+        if (depth <= 32 && oldPrefab && newPrefab.registry && (oldPrefab->isVariant() || newPrefab.isVariant())) {
+            const PrefabChain oldChain = prefabChain(ctx.project, oldPrefab);
+            const PrefabChain newChain = prefabChain(ctx.project, &newPrefab);
+            if (!oldChain.levels.empty() && !newChain.levels.empty()) {
+                return remapChainInstance(ctx, oldChain, newChain, in, localRoot, where, depth);
+            }
+        }
         PrefabInstanceData out;
         out.present = true;
         out.legacy = in.legacy;
@@ -743,8 +1147,9 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
         if (!asset || !asset->registry) {
             return;
         }
+        // (a variant's base is held at its root: used through each instance of the variant)
         for (Entity registryEntity : std::vector<Entity>(asset->registryEntities)) {
-            if (!asset->isNestedRoot(registryEntity)) {
+            if (!asset->isInstanceRoot(registryEntity)) {
                 continue;
             }
             bool removed = false;
@@ -841,7 +1246,11 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
                 }
                 for (const Prefab::Instance& instance : sceneIt->second) {
                     PrefabSceneUsage& scene = sceneFor(entryFor(getPrefabGuid(path), path), sceneProject);
-                    if (members.count(instance.rootEntity)) {
+                    // the base level of a variant instance is inside the variant's instance
+                    std::filesystem::path outermost;
+                    const bool variantBase = findInstanceRootedAt(const_cast<SceneProject*>(&sceneProject), instance.rootEntity, &outermost) &&
+                        outermost != path;
+                    if (members.count(instance.rootEntity) || variantBase) {
                         scene.nested++;
                     } else {
                         scene.instances++;
@@ -887,6 +1296,16 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
             continue;
         }
         std::set<std::string> listed;
+        // a variant: its base lists it (Prefab Variants, PREFABS.md 18)
+        if (const PrefabComponent* base = prefab->getBaseComponent()) {
+            const std::filesystem::path basePath = resolvePrefabPath(base->guid, base->path);
+            PrefabUsage& entry = basePath.empty() ? entryFor(base->guid, base->path) : entryFor(getPrefabGuid(basePath), basePath);
+            entry.variants.push_back(path);
+            if (PrefabUsage* own = &entryFor(getPrefabGuid(path), path)) {
+                own->base = basePath.empty() ? std::filesystem::path(base->path) : basePath;
+                own->baseMissing = basePath.empty();
+            }
+        }
         auto components = prefab->registry->getComponentArray<PrefabComponent>();
         for (size_t i = 0; i < components->size(); i++) {
             const Entity entity = components->getEntity(i);

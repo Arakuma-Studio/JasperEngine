@@ -377,12 +377,12 @@ Entity Prefab::addStripped(const std::vector<Entity>& source) {
 }
 
 Entity Prefab::getAddedObjectNestedRoot(Entity registryEntity) const {
-    if (!registry || registryEntity == NULL_ENTITY || !registry->isEntityCreated(registryEntity) || isNestedRoot(registryEntity)) {
+    if (!registry || registryEntity == NULL_ENTITY || !registry->isEntityCreated(registryEntity) || isInstanceRoot(registryEntity)) {
         return NULL_ENTITY;
     }
     Entity current = getRegistryParent(registryEntity);
     for (size_t depth = 0; current != NULL_ENTITY && depth <= registryEntities.size(); depth++) {
-        if (isNestedRoot(current)) {
+        if (isInstanceRoot(current)) {
             return current;
         }
         current = getRegistryParent(current);
@@ -392,7 +392,7 @@ Entity Prefab::getAddedObjectNestedRoot(Entity registryEntity) const {
 
 std::vector<Entity> Prefab::getAddedObjectTops(Entity nestedRoot) const {
     std::vector<Entity> tops;
-    if (!registry || !isNestedRoot(nestedRoot)) {
+    if (!registry || !isInstanceRoot(nestedRoot)) {
         return tops;
     }
     auto transforms = registry->getComponentArray<Transform>();
@@ -591,6 +591,22 @@ bool Prefab::isNestedRoot(Entity registryEntity) const {
 	}
 	const PrefabComponent* component = registry->findComponent<PrefabComponent>(registryEntity);
 	return component && (!component->path.empty() || !component->guid.empty());
+}
+
+bool Prefab::isVariant() const {
+	return getBaseComponent() != nullptr;
+}
+
+const PrefabComponent* Prefab::getBaseComponent() const {
+	if (!registry || root == NULL_ENTITY || !registry->isEntityCreated(root)) {
+		return nullptr;
+	}
+	const PrefabComponent* component = registry->findComponent<PrefabComponent>(root);
+	return component && (!component->path.empty() || !component->guid.empty()) ? component : nullptr;
+}
+
+bool Prefab::isInstanceRoot(Entity registryEntity) const {
+	return isNestedRoot(registryEntity) || (registryEntity != NULL_ENTITY && registryEntity == root && isVariant());
 }
 
 bool Prefab::isRegistryEntityAbsent(const Instance& instance, Entity registryEntity) const {

@@ -16,6 +16,9 @@
 #include "command/CommandHandle.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
+#include "command/type/CreatePrefabCmd.h"
+#include "command/type/CreatePrefabVariantAssetCmd.h"
+#include "Stream.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -34,6 +37,7 @@ namespace {
     const ImVec4 ADDED_BADGE_COLOR = ImVec4(0.55f, 0.85f, 0.45f, 1.0f);       // Unity's green "+"
     const ImVec4 MISSING_BADGE_COLOR = ImVec4(0.96f, 0.36f, 0.36f, 1.0f);
     const ImVec4 ARROW_COLOR = ImVec4(0.70f, 0.70f, 0.70f, 1.0f);
+    const ImVec4 VARIANT_BADGE_COLOR = ImVec4(0.55f, 0.80f, 1.0f, 1.0f);
 
     // The GameObjects of a scene's prefab instances
     struct SceneInstanceSets {
@@ -92,10 +96,8 @@ void editor::HierarchyWindow::markPrefabRows(SceneProject* sceneProject, TreeNod
                     component = nodeScene->scene ? nodeScene->scene->findComponent<PrefabComponent>(node.id) : nullptr;
                 }
                 node.canOpenPrefab = component && !component->path.empty();
+                // Unity's variant icon: the prefab cube with an arrow (drawPrefabRowOverlay)
                 node.isPrefabVariant = component && isPrefabVariantAsset(component->path);
-                if (node.isPrefabVariant) {
-                    node.icon = ICON_FA_CUBES;   // Unity's variant icon: a prefab cube over another
-                }
             }
             if (node.isMissingPrefab) {
                 kind = 2;
@@ -114,13 +116,30 @@ void editor::HierarchyWindow::markPrefabRows(SceneProject* sceneProject, TreeNod
 }
 
 void editor::HierarchyWindow::drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax) {
-    if (!node.isAddedGameObject || node.isScene || node.isChildScene) {
+    if (node.isScene || node.isChildScene) {
         return;
     }
-    // A small "+" on the lower right of the row's icon (the label starts with it)
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const float iconX = rowMin.x + ImGui::GetTreeNodeToLabelSpacing();
     const float iconWidth = ImGui::CalcTextSize(node.icon.c_str()).x;
+    // An instance root of a Prefab Variant: Unity's variant icon, the cube with an arrow
+    if (node.isPrefabVariant) {
+        const float fontSize = ImGui::GetFontSize();
+        const float top = rowMin.y + (rowMax.y - rowMin.y - fontSize) * 0.5f;
+        UIUtils::drawPrefabVariantBadge(drawList, ImVec2(iconX, top), ImVec2(iconX + iconWidth, top + fontSize),
+            ImGui::GetColorU32(VARIANT_BADGE_COLOR));
+        if (ImGui::IsMouseHoveringRect(ImVec2(iconX - fontSize * 0.2f, rowMin.y), ImVec2(iconX + iconWidth, rowMax.y)) && !ImGui::GetDragDropPayload()) {
+            const SceneProject* sceneProject = project->getScene(getNodeSceneId(node));
+            const PrefabComponent* component = sceneProject && sceneProject->scene ?
+                sceneProject->scene->findComponent<PrefabComponent>(node.id) : nullptr;
+            const std::filesystem::path base = component ? project->getPrefabFileBase(component->path) : std::filesystem::path();
+            ImGui::SetTooltip("Prefab Variant instance%s%s", base.empty() ? "" : " (base: ", base.empty() ? "" : (base.stem().string() + ")").c_str());
+        }
+    }
+    if (!node.isAddedGameObject) {
+        return;
+    }
+    // A small "+" on the lower right of the row's icon (the label starts with it)
     ImFont* font = ImGui::GetFont();
     const float size = ImGui::GetFontSize() * 0.85f;
     const ImVec2 textSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, "+");
@@ -178,10 +197,23 @@ void editor::HierarchyWindow::showPrefabRowArrow(const TreeNode& node) {
 }
 
 bool editor::HierarchyWindow::isPrefabVariantAsset(const std::filesystem::path& path) const {
-    // [E] Prefab Variants: return whether the asset at `path` is a variant (its base being an
-    // instance at its root); its instance rows then take the variant icon.
-    (void)path;
-    return false;
+    // A Prefab Variant: its root is an instance of its base (PREFABS.md 18), read from the
+    // loaded asset or, cached, from its file
+    return !path.empty() && !project->getPrefabFileBase(path).empty();
+}
+
+void editor::HierarchyWindow::requestCreateVariant(uint32_t sceneId, Entity root) {
+    // Unity's Create Prefab Variant from an instance: the variant goes next to the base,
+    // named after it; the instance becomes an instance of it
+    SceneProject* sceneProject = project->getScene(sceneId);
+    std::filesystem::path base;
+    if (!sceneProject || !sceneProject->scene || !project->findInstanceRootedAt(sceneProject, root, &base)) {
+        return;
+    }
+    const std::filesystem::path path = CreatePrefabVariantAssetCmd::defaultPath(project, base);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, sceneId,
+        {{path, Stream::encodeEntity(root, sceneProject->scene, project, sceneProject)}}, true));
+    revealInProject(path);
 }
 
 void editor::HierarchyWindow::showMissingPrefabMenu(const TreeNode& node) {

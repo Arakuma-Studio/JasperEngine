@@ -32,6 +32,12 @@ namespace jasperengine::editor{
             // The prefab instances nested in the selection, as they were (their overrides
             // become the new prefab's)
             std::vector<std::pair<Entity, YAML::Node>> nestedRoots;
+            // Unity's Prefab Variant: the selected instance root becomes an instance of a new
+            // variant of its prefab (PREFABS.md 18) instead of the root of an original prefab;
+            // the root as it was (an instance of the base)
+            bool variant = false;
+            YAML::Node variantRootNode;
+            Entity variantRoot = NULL_ENTITY;
         };
 
         Project* project;
@@ -44,7 +50,11 @@ namespace jasperengine::editor{
 
     public:
         CreatePrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, const YAML::Node& prefabNode);
-        CreatePrefabCmd(Project* project, uint32_t sceneId, const std::vector<std::pair<fs::path, YAML::Node>>& prefabs);
+        // variants: every item a Prefab Variant of its instance root's prefab
+        CreatePrefabCmd(Project* project, uint32_t sceneId, const std::vector<std::pair<fs::path, YAML::Node>>& prefabs, bool variants = false);
+        // One item made a Prefab Variant (the others stay originals): the Project window drop
+        // answered "Prefab Variant" for a selection holding instance roots
+        void setVariant(size_t index, bool variant) { if (index < items.size()) items[index].variant = variant; }
 
         bool execute() override;
         void undo() override;

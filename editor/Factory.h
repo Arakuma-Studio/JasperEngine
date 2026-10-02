@@ -47,6 +47,11 @@ namespace jasperengine::editor{
         std::vector<Entity> orderedMembers;
         // Entities the nested factory of each member appends, 0 for a plain member
         std::vector<size_t> nestedSizes;
+        // A Prefab Variant's instance: the instance of its base at the same root, whose
+        // GameObjects build_prefab_* appends right after the variant's own members
+        // (editor/project/PREFABS.md 18), and how many entities that is
+        std::shared_ptr<PrefabInstanceInfo> baseLevel;
+        size_t baseSize = 0;
     };
 
     // A prefab as its instances are, for the export: one instance of it made by the editor's

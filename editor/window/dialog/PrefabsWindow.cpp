@@ -3,7 +3,10 @@
 
 #include "PrefabsWindow.h"
 #include "Theme.h"
+#include "Backend.h"
+#include "App.h"
 #include "util/UIUtils.h"
+#include "window/ProjectWindow.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <algorithm>
@@ -192,6 +195,41 @@ void PrefabsWindow::drawPrefabs() {
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                     ImGui::SetTooltip("%s\n%s", entry.path.generic_string().c_str(),
                         locked ? ("In the build: listed by " + entry.usedBy).c_str() : "Check to build it without a scene instance");
+                }
+                // Prefab Variants: the base it is a variant of (selectable), the variants of it
+                if (!entry.usage.base.empty()) {
+                    const ImVec2 iconMin = ImGui::GetCursorScreenPos();
+                    const float fontSize = ImGui::GetFontSize();
+                    ImGui::Dummy(ImVec2(fontSize, fontSize));
+                    UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(iconMin.x + fontSize * 0.2f, iconMin.y),
+                        ImVec2(iconMin.x + fontSize, iconMin.y + fontSize), ImGui::GetColorU32(ImVec4(0.55f, 0.80f, 1.0f, 1.0f)));
+                    ImGui::SameLine();
+                    if (entry.usage.baseMissing) {
+                        ImGui::TextColored(MISSING_COLOR, "Variant of %s (missing)", entry.usage.base.generic_string().c_str());
+                    } else {
+                        ImGui::TextDisabled("Variant of %s", entry.usage.base.stem().string().c_str());
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Select Base")) {
+                            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+                                projectWindow->revealAsset(m_project->getProjectPath() / entry.usage.base);
+                            }
+                        }
+                        ImGui::SetItemTooltip("Selects %s in the Project window", entry.usage.base.generic_string().c_str());
+                    }
+                }
+                if (!entry.usage.variants.empty()) {
+                    std::string variants;
+                    for (const fs::path& variant : entry.usage.variants) {
+                        variants += (variants.empty() ? "" : ", ") + variant.stem().string();
+                    }
+                    ImGui::TextDisabled("Variants: %s", variants.c_str());
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        for (const fs::path& variant : entry.usage.variants) {
+                            ImGui::TextUnformatted(variant.generic_string().c_str());
+                        }
+                        ImGui::EndTooltip();
+                    }
                 }
 
                 ImGui::TableNextColumn();

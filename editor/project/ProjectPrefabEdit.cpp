@@ -248,10 +248,10 @@ namespace {
 
 void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::filesystem::path& prefabPath, SceneProject* sceneProject,
         Entity holderRoot, const std::vector<Prefab::EntityMember>& nestedRoots) {
-    (void)prefabPath;
+
     Scene* scene = sceneProject->scene;
     const uint32_t sceneId = sceneProject->id;
-    Prefab::Instance* holder = findInstanceRootedAt(sceneProject, holderRoot);
+    Prefab::Instance* holder = findInstanceAt(sceneProject, holderRoot, prefabPath);
     if (!holder) {
         return;
     }
@@ -261,13 +261,19 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
     //    prefab's GameObjects now: registry children of the nested root, below the nested
     //    GameObject a stripped object names, at their place among its children. Prefab
     //    instances among them are nested in the prefab too, and go the same way.
+    // (each nested root's prefab is the one this prefab's registry names: for a variant's
+    // root, its base, at the same GameObject as the variant's instance)
+    auto nestedPathOf = [&](const Prefab::EntityMember& nested) {
+        return instancePathAt(prefab, nested.registryEntity);
+    };
     std::vector<Prefab::EntityMember> all = nestedRoots;
     for (size_t next = 0; next < all.size(); next++) {
         const Prefab::EntityMember nested = all[next];
-        if (!findInstanceRootedAt(sceneProject, nested.localEntity)) {
+        const std::filesystem::path nestedPath = nestedPathOf(nested);
+        if (!findInstanceAt(sceneProject, nested.localEntity, nestedPath)) {
             continue;
         }
-        const std::unordered_set<Entity> inside = collectInstanceTreeObjects(sceneId, nested.localEntity);
+        const std::unordered_set<Entity> inside = collectInstanceTreeObjects(sceneId, nested.localEntity, nestedPath);
         std::unordered_set<Entity> instanceObjects;
         for (const auto& [path, other] : prefabAssets) {
             auto sceneIt = other.instances.find(sceneId);
@@ -308,7 +314,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
             Prefab::AddedObject added;
             added.childIndex = childIndex;
             if (parentLocal != nested.localEntity) {
-                added.parent = makePrefabReference(sceneId, holderRoot, parentLocal);
+                added.parent = makePrefabReference(sceneId, holderRoot, parentLocal, prefabPath);
             }
             prefab.addedObjects[regBranch[0]] = added;
         }
@@ -318,11 +324,12 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
     //    that nested instance, references in the prefab's ids. A component referring to
     //    something outside stays overridden in the scene.
     std::set<std::pair<Entity, ComponentType>> kept;
-    std::function<PrefabInstanceData(Entity, bool, size_t)> capture = [&](Entity root, bool top, size_t depth) {
+    std::function<PrefabInstanceData(Entity, const std::filesystem::path&, bool, size_t)> capture =
+            [&](Entity root, const std::filesystem::path& levelPath, bool top, size_t depth) {
         PrefabInstanceData data;
         data.present = true;
         std::filesystem::path path;
-        Prefab::Instance* instance = findInstanceRootedAt(sceneProject, root, &path);
+        Prefab::Instance* instance = findInstanceAt(sceneProject, root, levelPath, &path);
         if (!instance || depth > 64) {
             return data;
         }
@@ -355,7 +362,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
             }
             for (ComponentType type : types) {
                 bool outside = false;
-                YAML::Node value = encodeComponentForPrefab(sceneId, holderRoot, local, type, &outside);
+                YAML::Node value = encodeComponentForPrefab(sceneId, holderRoot, local, type, &outside, prefabPath);
                 if (outside) {
                     kept.insert({local, type});
                     object.overrides.properties.erase(type);
@@ -376,16 +383,14 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
         for (const auto& [registryEntity, members] : snapshot.removed) {
             data.removedGameObjects.insert(registryEntity);
         }
-        for (const Prefab::EntityMember& member : snapshot.members) {
-            if (!nestedPrefab || !nestedPrefab->isNestedRoot(member.registryEntity)) {
-                continue;
-            }
+        (void)nestedPrefab;
+        // the instances nested in it (its base's at its root, for a variant)
+        for (const NestedInstanceLevel& level : getNestedInstanceLevels(sceneProject, path, snapshot)) {
             PrefabInstanceData entry;
-            std::filesystem::path innerPath;
-            if (findInstanceRootedAt(sceneProject, member.localEntity, &innerPath)) {
-                entry = capture(member.localEntity, false, depth + 1);
-                entry.nestedPath = innerPath.string();
-            } else if (const MissingPrefabInstance* missing = getMissingPrefab(sceneId, member.localEntity)) {
+            if (level.instance) {
+                entry = capture(level.localRoot, level.path, false, depth + 1);
+                entry.nestedPath = level.path.string();
+            } else if (const MissingPrefabInstance* missing = getMissingPrefab(sceneId, level.localRoot)) {
                 // a Missing Prefab keeps what it was loaded with
                 entry = Stream::decodePrefabInstanceData(missing->data);
                 entry.memberIds.clear();
@@ -394,7 +399,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
             } else {
                 continue;
             }
-            entry.nestedRoot = member.registryEntity;
+            entry.nestedRoot = level.registryEntity;
             if (!entry.empty()) {
                 data.nested.push_back(std::move(entry));
             }
@@ -402,8 +407,9 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
         return data;
     };
     // the scene's data goes, what refers outside stays
-    std::function<void(Entity, size_t)> clear = [&](Entity root, size_t depth) {
-        Prefab::Instance* instance = findInstanceRootedAt(sceneProject, root);
+    std::function<void(Entity, const std::filesystem::path&, size_t)> clear = [&](Entity root, const std::filesystem::path& levelPath, size_t depth) {
+        std::filesystem::path path;
+        Prefab::Instance* instance = findInstanceAt(sceneProject, root, levelPath, &path);
         if (!instance || depth > 64) {
             return;
         }
@@ -423,18 +429,21 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
             }
         }
         instance->removed.clear();
-        std::vector<Entity> inner;
-        for (const Prefab::EntityMember& member : instance->members) {
-            inner.push_back(member.localEntity);
+        std::vector<std::pair<Entity, std::filesystem::path>> inner;
+        for (const NestedInstanceLevel& level : getNestedInstanceLevels(sceneProject, path, *instance)) {
+            if (level.instance) {
+                inner.emplace_back(level.localRoot, level.path);
+            }
         }
-        for (Entity member : inner) {
-            clear(member, depth + 1);
+        for (const auto& [member, memberPath] : inner) {
+            clear(member, memberPath, depth + 1);
         }
     };
     for (const Prefab::EntityMember& nested : all) {
         PrefabInstanceData data;
-        if (findInstanceRootedAt(sceneProject, nested.localEntity)) {
-            data = capture(nested.localEntity, true, 0);
+        const std::filesystem::path nestedPath = nestedPathOf(nested);
+        if (findInstanceAt(sceneProject, nested.localEntity, nestedPath)) {
+            data = capture(nested.localEntity, nestedPath, true, 0);
         } else if (const MissingPrefabInstance* missing = getMissingPrefab(sceneId, nested.localEntity)) {
             data = Stream::decodePrefabInstanceData(missing->data);
             data.memberIds.clear();
@@ -455,7 +464,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
         prefab.nestedInstances[nested.registryEntity] = std::move(data);
     }
     for (const Prefab::EntityMember& nested : all) {
-        clear(nested.localEntity, 0);
+        clear(nested.localEntity, nestedPathOf(nested), 0);
     }
     prefab.isModified = true;
 }

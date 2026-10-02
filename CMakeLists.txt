@@ -501,6 +501,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
+    ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
     ${EDITOR_DIR}/Conector.cpp
@@ -635,6 +636,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
     ${EDITOR_DIR}/command/type/PrefabOverridesCmd.cpp

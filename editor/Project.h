@@ -281,8 +281,41 @@ namespace jasperengine::editor{
             Entity root = NULL_ENTITY;
             std::map<Entity, Prefab::ObjectOverrides> overrides;
             std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removed;
+            std::filesystem::path path;   // the level at that root (a variant's base level)
         };
         std::vector<NestedState> nestedBefore;
+    };
+
+    // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 18) ----
+
+    // One prefab level of the instances rooted at one GameObject. A Prefab Variant's root is
+    // an instance of its base, so the root of an instance of a variant roots the instance of
+    // that base too (and of the base's base, down the chain): one level each, the outermost
+    // (the prefab the GameObject's PrefabComponent names) first.
+    struct PrefabInstanceLevel {
+        std::filesystem::path path;
+        Prefab* prefab = nullptr;
+        Prefab::Instance* instance = nullptr;
+    };
+
+    // An instance nested in another one, as the holding instance sees it: a member that is a
+    // nested root, or, for an instance of a variant, the instance of its base at the same root
+    struct NestedInstanceLevel {
+        Entity registryEntity = NULL_ENTITY;      // in the holder's prefab: a nested root, or its root (variant)
+        Entity localRoot = NULL_ENTITY;
+        std::filesystem::path path;               // the nested instance's prefab
+        Prefab::Instance* instance = nullptr;     // nullptr: a Missing Prefab
+        bool variantBase = false;                 // the base level of a variant instance
+    };
+
+    // The instance holding another one (the next level outwards): the instance it is a member
+    // of, or the instance of the variant whose base it is (same root)
+    struct PrefabHolderLink {
+        std::filesystem::path path;
+        Prefab* prefab = nullptr;
+        Prefab::Instance* instance = nullptr;
+        Entity registryEntity = NULL_ENTITY;      // the held instance's root in `prefab`
+        bool variant = false;
     };
 
     // A GameObject of a prefab instance, at the level that owns its overrides: the instance
@@ -376,6 +409,10 @@ namespace jasperengine::editor{
         std::filesystem::path path;               // the last path known for a missing one
         std::vector<PrefabSceneUsage> scenes;
         std::vector<std::filesystem::path> nestedIn;
+        // Prefab Variants (PREFABS.md 18): its base (a variant), and the variants of it
+        std::filesystem::path base;
+        bool baseMissing = false;
+        std::vector<std::filesystem::path> variants;
         size_t totalInstances() const;
         size_t totalMissing() const;
     };
@@ -702,6 +739,16 @@ namespace jasperengine::editor{
         };
         std::map<std::filesystem::path, PrefabFileCache> prefabFileCache;
         YAML::Node loadPrefabFile(const std::filesystem::path& fullPath);
+        // getPrefabFileBase: the base each .prefab file names (empty: an original), by the
+        // file's time and size, looked at again at most once a second
+        struct PrefabBaseCache {
+            std::filesystem::file_time_type writeTime{};
+            std::uintmax_t size = 0;
+            std::string baseGuid;
+            std::filesystem::path basePath;
+            std::chrono::steady_clock::time_point checked{};
+        };
+        std::map<std::filesystem::path, PrefabBaseCache> prefabBaseCache;
         std::vector<std::filesystem::path> standalonePrefabs;  // built without a scene instance
 
         // GUID <-> path of the prefab files (and later other asset types)
@@ -1454,6 +1501,11 @@ namespace jasperengine::editor{
         void undoRevertPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, const PrefabRemovalRevert& revert);
         // Apply: the GameObject is deleted from the Prefab asset, so from all its instances
         bool applyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
+        // Apply as Override in `target` (a prefab holding that instance: a variant of its
+        // prefab, or one it is nested in, see getPrefabApplyTargets): the GameObject stays out
+        // of the instances through that prefab's data (undo: PrefabUndoState)
+        bool applyPrefabRemovalTo(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity,
+            const std::filesystem::path& target);
         void undoApplyPrefabRemoval(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity, PrefabRemovalApply& apply);
 
         // ---- Override model v2 (editor/project/PREFABS.md, "Overrides" and "APIs") ----
@@ -1533,7 +1585,15 @@ namespace jasperengine::editor{
         // The asset layers (importPrefab's assetLayers) of the instance rooted at
         // instanceRoot: what the prefabs holding it as a nested one override of it, innermost
         // first; empty for a top-level instance
-        std::vector<PrefabInstanceData*> getPrefabAssetLayers(uint32_t sceneId, Entity instanceRoot);
+        std::vector<PrefabInstanceData*> getPrefabAssetLayers(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level = {});
+        // The prefabs a GameObject roots instances of, outermost first (a variant instance's
+        // root: the variant, its base, ...; empty when it roots none)
+        std::vector<std::filesystem::path> getInstanceRootLevels(uint32_t sceneId, Entity entity) const;
+        // The value of a component of the root GameObject of `path` as an instance rooted at
+        // localRoot has it from its prefab: a variant's from its base (down the chain) with
+        // what it overrides of it, references in local ids
+        bool buildRootSource(SceneProject* sceneProject, Entity localRoot, const std::filesystem::path& path, ComponentType type,
+            prefabinternal::ScratchEntity& out, size_t depth = 0);
         // The prefab's value of a component of the GameObject (with the layers of the
         // prefabs holding its instance), references in the instance's local ids
         bool buildPrefabSource(uint32_t sceneId, Entity entity, ComponentType type, prefabinternal::ScratchEntity& scratch, PrefabObjectRef* ref = nullptr);
@@ -1544,6 +1604,17 @@ namespace jasperengine::editor{
         // prefab's root: recorded in its asset-level data, or it is lost on the next import
         void recordNestedRootAssetOverride(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryEntity, ComponentType type,
             const std::vector<std::string>& properties);
+        // The same for its state (active, tag, layer) and a component removed from it
+        void recordNestedRootAssetState(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryEntity, uint8_t stateBits);
+        void recordNestedRootAssetRemoval(Prefab& prefab, const std::filesystem::path& prefabPath, Entity registryEntity, ComponentType type);
+        // Whether the root of `path` has the component as its instances have it (a variant's:
+        // its base's root with what the variant adds and removes)
+        bool buildRootHas(const std::filesystem::path& path, ComponentType type, size_t depth = 0);
+        // An override applied to `target`: what the prefabs between it and the instance (the
+        // later apply targets: variants over it, prefabs holding it) override of the same
+        // property (or state bits) goes from them, so the applied value is what shows (Unity)
+        void clearIntermediateOverrides(uint32_t sceneId, const PrefabObjectRef& ref, const std::filesystem::path& target,
+            ComponentType type, const std::vector<std::string>& properties, uint8_t stateBits);
         // Apply to the prefab of a nested instance root (`target`, which the owning level, the
         // instance holding that root, sees only as its asset): the values go onto that
         // prefab's root GameObject
@@ -1567,34 +1638,95 @@ namespace jasperengine::editor{
         // the instance (its root included), the stripped id (made when the prefab has none
         // yet: the prefab is then modified) of a GameObject of an instance nested in it at
         // any depth, NULL_ENTITY for anything else (outside: a prefab cannot hold it)
-        Entity makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget);
+        // (`level`: which instance at that root, for the levels of a variant instance, PREFABS.md
+        // 18; empty: the outermost, the one the root's PrefabComponent names)
+        Entity makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget, const std::filesystem::path& level = {});
         // The scene GameObject a reference of that prefab (a registry entity or a stripped
         // id) means in the instance rooted at instanceRoot
-        Entity resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId);
+        Entity resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId, const std::filesystem::path& level = {});
         // The references of a component of `registry` (the scene, a prefab registry holding a
         // copy, or a scratch one), local ids of the scene, made the ids of the prefab of the
         // instance rooted at instanceRoot (makePrefabReference), in place. `properties`
         // limits it (empty: all). False when one pointed outside the instance (it is None
         // now). Unchanged ids where `registry` already holds the prefab's are not expected.
         bool remapReferencesToPrefab(uint32_t sceneId, Entity instanceRoot, EntityRegistry* registry, Entity entity, ComponentType type,
-            const std::vector<std::string>& properties = {});
+            const std::vector<std::string>& properties = {}, const std::filesystem::path& level = {});
         // A component of a scene GameObject as the prefab of the instance rooted at
         // instanceRoot stores it (references in its ids); `outside` reports a reference it
         // could not hold (None in the result)
-        YAML::Node encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside = nullptr);
+        YAML::Node encodeComponentForPrefab(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type, bool* outside = nullptr,
+            const std::filesystem::path& level = {});
         // Whether a component of a scene GameObject refers to something outside the instance
         // rooted at instanceRoot and the instances nested in it (what no prefab can hold)
-        bool componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type);
+        bool componentReferencesOutside(uint32_t sceneId, Entity instanceRoot, Entity entity, ComponentType type,
+            const std::filesystem::path& level = {});
         // The root of the instance of `target` holding (at any depth) the instance rooted at
-        // instanceRoot (itself when it is one of `target`), NULL_ENTITY when none
-        Entity findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target);
-        // Registry entity (and stripped id) -> local entity of the instance rooted at instanceRoot
-        std::unordered_map<Entity, Entity> getPrefabReferenceMap(uint32_t sceneId, Entity instanceRoot);
-        // The instance whose root is `root` (of the prefab its PrefabComponent names)
+        // instanceRoot (itself when it is one of `target`), NULL_ENTITY when none. The
+        // variants an instance is the base of hold it too, at the same root.
+        Entity findHolderInstanceRoot(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& target,
+            const std::filesystem::path& level = {});
+        // Registry entity (and stripped id) -> local entity of the instance rooted at
+        // instanceRoot (of `level`, the outermost when empty: see findInstanceAt)
+        std::unordered_map<Entity, Entity> getPrefabReferenceMap(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level = {});
+        // The instance whose root is `root` (of the prefab its PrefabComponent names: for an
+        // instance of a variant the outermost level, see findInstanceAt)
         Prefab::Instance* findInstanceRootedAt(SceneProject* sceneProject, Entity root, std::filesystem::path* path = nullptr);
+
+        // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 18) ----
+
+        // The instance of `path` rooted at `root` (any level of a variant instance's root);
+        // the outermost (findInstanceRootedAt) for an empty path
+        Prefab::Instance* findInstanceAt(SceneProject* sceneProject, Entity root, const std::filesystem::path& path,
+            std::filesystem::path* resolved = nullptr);
+        const Prefab::Instance* findInstanceAt(const SceneProject* sceneProject, Entity root, const std::filesystem::path& path,
+            std::filesystem::path* resolved = nullptr) const;
+        // Every level rooted at `root`, outermost first (one for an original prefab)
+        std::vector<PrefabInstanceLevel> getInstanceLevels(SceneProject* sceneProject, Entity root);
+        // The instances nested in an instance of `path`: its variant base level first, then
+        // its members that are nested roots (a Missing one without instance)
+        std::vector<NestedInstanceLevel> getNestedInstanceLevels(SceneProject* sceneProject, const std::filesystem::path& path,
+            const Prefab::Instance& instance);
+        std::vector<NestedInstanceLevel> getNestedInstanceLevels(const SceneProject* sceneProject, const std::filesystem::path& path,
+            const Prefab::Instance& instance) const;
+        // The next level outwards of the instance of `path` rooted at `root`; false for an
+        // outermost instance
+        bool findPrefabHolder(SceneProject* sceneProject, Entity root, const std::filesystem::path& path, PrefabHolderLink& link);
+        // The prefab the instance rooted at a registry entity of `holder` instantiates (a
+        // nested root, or the root of a variant: its base), by its PrefabComponent
+        std::filesystem::path instancePathAt(const Prefab& holder, Entity registryEntity) const;
+        // The base of a variant (resolved, read when not loaded), empty for an original
+        // prefab or a base that cannot be found
+        std::filesystem::path getVariantBasePath(const Prefab& prefab);
+        std::filesystem::path getPrefabBasePath(const std::filesystem::path& filepath);
+        bool isPrefabVariant(const std::filesystem::path& filepath);
+        // The variant and its bases, the variant first; stops at a base that cannot be found
+        // or would make a cycle (cycle set then)
+        std::vector<std::filesystem::path> getPrefabVariantChain(const std::filesystem::path& filepath, bool* broken = nullptr);
+        // Cheap and cached for the UI (Project window, Hierarchy rows, Prefabs dialog): the
+        // base's path of a .prefab file as its file says (empty for an original), read again
+        // when the file changes; no asset is loaded
+        std::filesystem::path getPrefabFileBase(const std::filesystem::path& filepath);
+        // The prefab files whose base is `filepath` (direct variants), from the files
+        std::vector<std::filesystem::path> findPrefabVariantsOf(const std::filesystem::path& filepath);
+        // The key PrefabMemberIds uses for the base levels of a variant root: depth 0 is the
+        // root itself, depth n its n-th base
+        static Entity prefabLevelKey(Entity root, size_t depth);
+        // Unity's Create Prefab Variant: the instance rooted at `root` (an outermost instance
+        // root, or an added one) becomes an instance of a new variant of its prefab saved at
+        // `filepath`; its overrides, the GameObjects added to it and the references into it
+        // become the variant's (as Create Prefab does for nested instances). guid: a redo's.
+        bool createPrefabVariant(uint32_t sceneId, const std::filesystem::path& filepath, Entity root, const std::string& guid = std::string());
+        // Undo of createPrefabVariant: the instance is one of its base again, with what it had
+        bool removePrefabVariantInstance(uint32_t sceneId, const std::filesystem::path& filepath, Entity root, const YAML::Node& rootNode);
+        // Project window, Create > Prefab Variant: a new variant asset of `base` (no instance)
+        bool createPrefabVariantAsset(const std::filesystem::path& base, const std::filesystem::path& filepath, const std::string& guid = std::string());
+        // Whether an instance root can be made a variant (an outermost or added live instance root)
+        bool canCreatePrefabVariant(uint32_t sceneId, Entity root, std::string* reason = nullptr) const;
         // The scene GameObject a stripped object's way down names, from the holding
-        // instance's registry-to-local map
-        Entity resolveStrippedObject(SceneProject* sceneProject, const std::unordered_map<Entity, Entity>& registryToLocal, const std::vector<Entity>& source);
+        // instance's registry-to-local map (holder: the prefab holding the stripped object,
+        // whose registry says which prefab each step is in)
+        Entity resolveStrippedObject(SceneProject* sceneProject, const std::unordered_map<Entity, Entity>& registryToLocal, const std::vector<Entity>& source,
+            const Prefab* holder = nullptr);
         void addStrippedToMap(SceneProject* sceneProject, const Prefab& prefab, std::unordered_map<Entity, Entity>& registryToLocal);
         // The local root of the instance nested in `instance` a nested data entry is for
         Entity findNestedLocalRoot(SceneProject* sceneProject, const Prefab& prefab, const Prefab::Instance& instance, const PrefabInstanceData& entry);
@@ -1602,22 +1734,26 @@ namespace jasperengine::editor{
         // (values in the holder's ids, made local by holderMap; the root's from the holder's
         // registry entity holderEntity when given), and the scene's data and added
         // GameObjects for an instance tree
+        // (level: the prefab of the instance at that root, for a variant's base levels)
         void applyHolderData(SceneProject* sceneProject, Entity nestedRoot, const PrefabInstanceData& data, const std::unordered_map<Entity, Entity>& holderMap,
-            const EntityRegistry* holderRegistry, Entity holderEntity, bool skipRoot, size_t depth = 0);
-        void applySceneData(SceneProject* sceneProject, Entity instanceRoot, const PrefabInstanceData& data, size_t depth = 0);
+            const EntityRegistry* holderRegistry, Entity holderEntity, bool skipRoot, size_t depth = 0, const std::filesystem::path& level = {});
+        void applySceneData(SceneProject* sceneProject, Entity instanceRoot, const PrefabInstanceData& data, size_t depth = 0,
+            const std::filesystem::path& level = {});
         void decodeSceneAddedGameObjects(SceneProject* sceneProject, std::vector<Entity>* entities, Entity instanceRoot, const PrefabInstanceData& data,
-            std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allResult, size_t depth = 0);
+            std::unordered_map<Entity, Entity>* entityRemap, std::vector<Entity>& allResult, size_t depth = 0, const std::filesystem::path& level = {});
         // What the prefabs holding the instance rooted at instanceRoot (outwards) override of
         // some of its GameObjects (registry entities) and of some instances nested in it
         void applyLayersAbove(SceneProject* sceneProject, Entity instanceRoot, const std::unordered_set<Entity>& registryEntities,
-            const std::vector<Prefab::EntityMember>& nestedRoots);
+            const std::vector<Prefab::EntityMember>& nestedRoots, const std::filesystem::path& level = {});
         // Unpack of the instance rooted at instanceRoot (of `path`): what its prefab (and the
         // prefabs it nests, down the chain) override of the instances nested in it becomes
         // their own (scene) overrides and removed GameObjects, as Unity does; the GameObjects
         // it added to them become theirs by themselves. `before` gets their previous state
         // (repack puts it back); instances rooted in `skip` (unpacked too) are left alone.
+        // includeBase: an instance of a variant unpacked one level becomes an instance of its
+        // base, which takes what the variant overrides of it as its own (PREFABS.md 18)
         void promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
-            std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip);
+            std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase = false);
         // Prefab Mode (PrefabStage): the asset's members as a stage reads them (the GameObjects
         // the prefab adds to its nested instances become those instances' added GameObjects);
         // once decoded, the stage's references to stripped objects made the nested GameObjects'
@@ -1631,7 +1767,7 @@ namespace jasperengine::editor{
         static void placeAtChildIndex(Scene* scene, Entity parent, Entity local, int childIndex);
         // The scene GameObjects of the instance rooted at instanceRoot and of every instance
         // nested in it, at any depth (roots and members)
-        std::unordered_set<Entity> collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot);
+        std::unordered_set<Entity> collectInstanceTreeObjects(uint32_t sceneId, Entity instanceRoot, const std::filesystem::path& level = {});
         // Prefab assets baked for the export: each prefab instantiated in a scratch scene
         // (every layer applied, like the editor's instances), its GameObjects in
         // build_prefab_* order (Factory::BakedPrefab)

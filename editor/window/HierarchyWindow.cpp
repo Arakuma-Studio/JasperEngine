@@ -776,6 +776,23 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Asset", nullptr, false, !assetPath.empty())) {
             revealInProject(assetPath);
         }
+        // ---- Prefab Variants (PREFABS.md 18) ----
+        {
+            const std::filesystem::path basePath = assetPath.empty() ? std::filesystem::path() : project->getPrefabFileBase(assetPath);
+            if (!basePath.empty()) {
+                if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Base", nullptr, false, true)) {
+                    revealInProject(basePath);
+                }
+                ImGui::SetItemTooltip("This Prefab is a Variant of '%s': selects it in the Project window", basePath.stem().string().c_str());
+            }
+            std::string variantReason;
+            const bool canVariant = node.isPrefabRoot && project->canCreatePrefabVariant(sceneId, node.id, &variantReason);
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Create Variant", nullptr, false, canVariant)) {
+                requestCreateVariant(sceneId, node.id);
+            }
+            ImGui::SetItemTooltip("%s", canVariant ? "Makes a Prefab Variant of this instance's Prefab from it: its overrides become the variant's, and it is an instance of the variant"
+                : (variantReason.empty() ? "Only a Prefab instance root" : variantReason.c_str()));
+        }
         // ---- Replace Prefab (HierarchyPrefabRows.cpp) ----
         {
             std::vector<Entity> replaceRoots = ReplacePrefabCmd::replaceableRoots(project, sceneId, targets);
@@ -793,8 +810,13 @@ void editor::HierarchyWindow::showPrefabMenu(const TreeNode& node){
         if (ImGui::MenuItem(ICON_FA_BOX_OPEN "  Unpack", nullptr, false, canUnpack)) {
             CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, false));
         }
-        ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack"
-            : "Turns the Prefab instance into regular GameObjects; nested Prefab instances stay");
+        {
+            // Unity: an instance of a Prefab Variant unpacks to an instance of its base
+            const std::filesystem::path unpackBase = assetPath.empty() || !node.isPrefabRoot ? std::filesystem::path() : project->getPrefabFileBase(assetPath);
+            const std::string unpackTip = !unpackBase.empty() ? "Makes it an instance of the base Prefab '" + unpackBase.stem().string() + "', the variant's overrides kept as its own"
+                : std::string("Turns the Prefab instance into regular GameObjects; nested Prefab instances stay");
+            ImGui::SetItemTooltip("%s", project->isAnyScenePlaying() ? "Stop the scene to unpack" : unpackTip.c_str());
+        }
         if (ImGui::MenuItem(ICON_FA_BOXES_PACKING "  Unpack Completely", nullptr, false, canUnpack)) {
             CommandHandle::get(sceneId)->addCommandNoMerge(new UnpackPrefabCmd(project, sceneId, targets, true));
         }

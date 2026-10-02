@@ -363,13 +363,33 @@ bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uin
         }
     }
     if (!typed) {
-        EntityRegistry* registry = prefab->registry.get();
-        if (hasAnyComponent(this, registry, {prefab->root}, {ComponentType::RectTransformComponent, ComponentType::UIComponent})) {
-            type = SceneType::SCENE_UI;
-        } else if (hasAnyComponent(this, registry, prefab->registryEntities, {ComponentType::SpriteComponent, ComponentType::TilemapComponent,
+        // (a variant's GameObjects are mostly its bases': the whole chain says)
+        std::vector<Prefab*> chain;
+        for (const std::filesystem::path& level : getPrefabVariantChain(relative)) {
+            if (Prefab* levelPrefab = getPrefab(level); levelPrefab && levelPrefab->registry) {
+                chain.push_back(levelPrefab);
+            }
+        }
+        if (chain.empty()) {
+            chain.push_back(prefab);
+        }
+        bool ui = false;
+        bool twoD = false;
+        for (Prefab* levelPrefab : chain) {
+            EntityRegistry* registry = levelPrefab->registry.get();
+            ui = ui || hasAnyComponent(this, registry, {levelPrefab->root}, {ComponentType::RectTransformComponent, ComponentType::UIComponent});
+            twoD = twoD || hasAnyComponent(this, registry, levelPrefab->registryEntities, {ComponentType::SpriteComponent, ComponentType::TilemapComponent,
                 ComponentType::Rigidbody2DComponent, ComponentType::Joint2DComponent, ComponentType::Light2DComponent,
-                ComponentType::ShadowCaster2DComponent, ComponentType::SpriteAnimationComponent})) {
+                ComponentType::ShadowCaster2DComponent, ComponentType::SpriteAnimationComponent});
+        }
+        if (ui) {
+            type = SceneType::SCENE_UI;
+        } else if (twoD) {
             type = SceneType::SCENE_2D;
+        }
+        prefab = loadPrefabAsset(relative);
+        if (!prefab) {
+            return false;
         }
     }
 

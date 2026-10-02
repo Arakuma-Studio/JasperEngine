@@ -234,4 +234,21 @@ bool UIUtils::sliderFloatInput(const char* id, float* value, float minValue, flo
     return changed;
 }
 
+void UIUtils::drawPrefabVariantBadge(ImDrawList* drawList, const ImVec2& iconMin, const ImVec2& iconMax, ImU32 color) {
+    // an arrow pointing up and right out of the lower left corner of the icon
+    const float size = std::max(4.0f, (iconMax.y - iconMin.y) * 0.55f);
+    const ImVec2 tail(iconMin.x - size * 0.10f, iconMax.y + size * 0.05f);
+    const ImVec2 tip(tail.x + size * 0.85f, tail.y - size * 0.85f);
+    const float thickness = std::max(1.0f, size * 0.16f);
+    const float head = size * 0.42f;
+    const ImU32 outline = IM_COL32(0, 0, 0, 210);
+    auto arrow = [&](ImU32 c, float grow) {
+        drawList->AddLine(tail, ImVec2(tip.x - head * 0.35f, tip.y + head * 0.35f), c, thickness + grow);
+        drawList->AddTriangleFilled(ImVec2(tip.x + grow * 0.5f, tip.y - grow * 0.5f),
+            ImVec2(tip.x - head - grow, tip.y + grow * 0.2f), ImVec2(tip.x - grow * 0.2f, tip.y + head + grow), c);
+    };
+    arrow(outline, 2.0f);
+    arrow(color, 0.0f);
+}
+
 }

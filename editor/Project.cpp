@@ -2906,8 +2906,33 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     // any of them into this scene. One not loaded here is read from its file.
     std::vector<ShaderVariantContent> prefabContents;
     std::vector<std::unique_ptr<EntityRegistry>> fileRegistries;
+    std::vector<std::unique_ptr<Scene>> previewScenes;
     for (const PrefabSceneInfo& info : collectAllPrefabs()) {
         ShaderVariantContent content;
+        // A Prefab Variant, or a prefab holding instances of others: most of what an instance
+        // draws is in the other prefabs and in what each level overrides of them, so its
+        // content is an instance of it as the editor makes it (PREFABS.md 17, 18)
+        const Prefab* loadedPrefab = getPrefab(info.prefabPath);
+        bool layered = false;
+        if (loadedPrefab && loadedPrefab->registry) {
+            for (Entity entity : loadedPrefab->registryEntities) {
+                if (loadedPrefab->isInstanceRoot(entity)) {
+                    layered = true;
+                    break;
+                }
+            }
+        }
+        if (layered) {
+            auto previewScene = std::make_unique<Scene>();
+            const Entity previewRoot = const_cast<Project*>(this)->instantiatePrefabPreview(previewScene.get(), info.prefabPath);
+            if (previewRoot != NULL_ENTITY) {
+                content.registry = previewScene.get();
+                content.entities = previewScene->getEntityList();
+                previewScenes.push_back(std::move(previewScene));
+                prefabContents.push_back(std::move(content));
+                continue;
+            }
+        }
         if (const Prefab* prefab = getPrefab(info.prefabPath); prefab && prefab->registry) {
             content.registry = prefab->registry.get();
             content.entities = prefab->registryEntities;

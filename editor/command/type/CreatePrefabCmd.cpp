@@ -56,7 +56,7 @@ editor::CreatePrefabCmd::CreatePrefabCmd(Project* project, uint32_t sceneId, con
     : CreatePrefabCmd(project, sceneId, std::vector<std::pair<fs::path, YAML::Node>>{{filepath, prefabNode}}) {
 }
 
-editor::CreatePrefabCmd::CreatePrefabCmd(Project* project, uint32_t sceneId, const std::vector<std::pair<fs::path, YAML::Node>>& prefabs){
+editor::CreatePrefabCmd::CreatePrefabCmd(Project* project, uint32_t sceneId, const std::vector<std::pair<fs::path, YAML::Node>>& prefabs, bool variants){
     this->project = project;
     this->sceneId = sceneId;
     this->wasModified = project->getScene(sceneId)->isModified;
@@ -64,6 +64,7 @@ editor::CreatePrefabCmd::CreatePrefabCmd(Project* project, uint32_t sceneId, con
         Item item;
         item.filepath = filepath;
         item.prefabNode = YAML::Clone(node);
+        item.variant = variants;
         items.push_back(std::move(item));
     }
 }
@@ -103,6 +104,18 @@ bool editor::CreatePrefabCmd::execute(){
         }
         const Entity root = rootNode["entity"].as<Entity>();
         if (!scene->isEntityCreated(root)) {
+            continue;
+        }
+
+        // Unity's Prefab Variant: the instance stays one, of the new variant of its prefab
+        if (item.variant) {
+            item.variantRoot = root;
+            item.variantRootNode.reset(Stream::encodeEntity(root, scene, project, sceneProject));
+            if (project->createPrefabVariant(sceneId, item.filepath, root, item.guid)) {
+                item.guid = project->getPrefabGuid(item.filepath);
+                item.created = true;
+                any = true;
+            }
             continue;
         }
 
@@ -181,6 +194,13 @@ void editor::CreatePrefabCmd::undo(){
             project->getAssetDatabase().removeAssets(fullPath);
         } catch (const std::exception& e) {
             editor::Out::warning("Failed to remove prefab file: %s", e.what());
+        }
+
+        if (item.variant) {
+            // the instance is one of the base again, as it was
+            project->removePrefabVariantInstance(sceneId, item.filepath, item.variantRoot, item.variantRootNode);
+            item.created = false;
+            continue;
         }
 
         // The prefab and its link on the root go

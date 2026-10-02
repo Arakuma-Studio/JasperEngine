@@ -314,14 +314,13 @@ bool editor::PasteEntitiesCmd::execute(){
         if (!component || component->path.empty()) {
             continue;
         }
-        const Prefab* prefab = project->getPrefab(component->path);
-        const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, entity) : nullptr;
-        if (!instance || instance->rootEntity != entity) {
-            continue;
-        }
-        for (const Prefab::EntityMember& member : instance->members) {
-            auto overrides = instance->overrides.find(member.localEntity);
-            memberOverrides[member.localEntity] = overrides != instance->overrides.end() ? overrides->second : Prefab::ObjectOverrides();
+        // every level rooted there (an instance of a Prefab Variant roots its bases' too)
+        for (const PrefabInstanceLevel& level : project->getInstanceLevels(project->getScene(sceneId), entity)) {
+            const Prefab::Instance* instance = level.instance;
+            for (const Prefab::EntityMember& member : instance->members) {
+                auto overrides = instance->overrides.find(member.localEntity);
+                memberOverrides[member.localEntity] = overrides != instance->overrides.end() ? overrides->second : Prefab::ObjectOverrides();
+            }
         }
     }
 

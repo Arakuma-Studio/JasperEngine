@@ -335,8 +335,12 @@ namespace {
         collectBranch(scene, root, coverage);
         std::unordered_set<Entity> seen(coverage.begin(), coverage.end());
         for (size_t i = 0; i < coverage.size(); i++) {
-            if (const editor::Prefab::Instance* instance = instanceRootedAt(project, scene, sceneId, coverage[i])) {
-                for (const editor::Prefab::EntityMember& member : instance->members) {
+            if (!instanceRootedAt(project, scene, sceneId, coverage[i])) {
+                continue;
+            }
+            // every level rooted there (an instance of a Prefab Variant roots its bases' too)
+            for (const editor::PrefabInstanceLevel& level : project->getInstanceLevels(project->getScene(sceneId), coverage[i])) {
+                for (const editor::Prefab::EntityMember& member : level.instance->members) {
                     if (scene->isEntityCreated(member.localEntity) && seen.insert(member.localEntity).second) {
                         coverage.push_back(member.localEntity);
                     }
@@ -627,12 +631,17 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     clip->selectedRoots = userRoots;
 
     YAML::Node instancesNode(YAML::NodeType::Sequence);
+    std::vector<std::tuple<Entity, std::filesystem::path, const Prefab::Instance*>> levels;
     for (Entity entity : covered) {
-        std::filesystem::path path;
-        const Prefab::Instance* instance = instanceRootedAt(project, scene, sceneId, entity, &path);
-        if (!instance) {
+        if (!instanceRootedAt(project, scene, sceneId, entity)) {
             continue;
         }
+        // outer levels first (a variant's, then its bases')
+        for (const PrefabInstanceLevel& level : project->getInstanceLevels(sceneProject, entity)) {
+            levels.emplace_back(entity, level.path, level.instance);
+        }
+    }
+    for (const auto& [entity, path, instance] : levels) {
         ClipboardPrefabInstance snapshot;
         snapshot.path = path;
         snapshot.root = entity;

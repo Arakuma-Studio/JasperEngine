@@ -233,6 +233,16 @@ public:
     Entity getRegistryParent(Entity registryEntity) const;
     // Whether a registry entity is the root of a prefab instance nested in this prefab
     bool isNestedRoot(Entity registryEntity) const;
+    // Unity's Prefab Variant: the prefab's root GameObject is an instance of another prefab
+    // (its base), named by the root's PrefabComponent (PREFABS.md 18). A variant is the
+    // nested model with the root as the nested root: what it overrides of its base is
+    // nestedInstances[root], the GameObjects it adds are the root's registry children.
+    bool isVariant() const;
+    // The base's PrefabComponent on the root, nullptr for an original prefab
+    const PrefabComponent* getBaseComponent() const;
+    // A registry entity rooting an instance of another prefab: a nested root, or the root of
+    // a variant (its base). Everything keyed by a nested root works on both.
+    bool isInstanceRoot(Entity registryEntity) const;
 
     // ---- Stripped objects and added GameObjects of nested instances (PREFABS.md 17) ----
 

@@ -182,15 +182,13 @@ bool editor::Project::canApplyPrefabOverrides(std::string* reason) const {
 }
 
 bool editor::Project::isNestedRootApplyTarget(uint32_t sceneId, const PrefabObjectRef& ref, const std::filesystem::path& target) const {
-    if (ref.isRoot || target.empty() || target == ref.path) {
+    if (target.empty() || target == ref.path) {
         return false;
     }
-    const SceneProject* sceneProject = getScene(sceneId);
-    if (!sceneProject || !sceneProject->scene || !isPrefabInstanceRoot(sceneId, ref.localEntity)) {
-        return false;
-    }
-    const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(ref.localEntity);
-    return component && std::filesystem::path(component->path) == target;
+    // The prefabs the GameObject roots instances of: a nested root's prefab and its bases,
+    // a variant instance root's bases (PREFABS.md 18)
+    const std::vector<std::filesystem::path> levels = getInstanceRootLevels(sceneId, ref.localEntity);
+    return std::find(levels.begin(), levels.end(), target) != levels.end();
 }
 
 bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, ComponentType type, const std::vector<std::string>& properties,
@@ -222,8 +220,8 @@ bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, Co
     const std::filesystem::path resolved = target.empty() ? ref.path : target;
     Project* self = const_cast<Project*>(this);
     const Entity holderRoot = isNestedRootApplyTarget(sceneId, ref, resolved) ? entity :
-        self->findHolderInstanceRoot(sceneId, ref.instance->rootEntity, resolved);
-    const std::unordered_set<Entity> members = self->collectInstanceTreeObjects(sceneId, holderRoot);
+        self->findHolderInstanceRoot(sceneId, ref.instance->rootEntity, resolved, ref.path);
+    const std::unordered_set<Entity> members = self->collectInstanceTreeObjects(sceneId, holderRoot, resolved);
     if (componentHasExternalEntityRef(sceneProject->scene, entity, type, members)) {
         return fail("It references a GameObject outside the Prefab, which the Prefab cannot hold");
     }
@@ -240,31 +238,31 @@ std::vector<editor::PrefabOverrideEntry> editor::Project::getPrefabOverrideEntri
     Scene* scene = sceneProject->scene;
 
     // The overrides by GameObject: each owning instance holds its own GameObjects' (a nested
-    // root's are the holding instance's)
+    // root's are the holding instance's, a variant root's the variant level's)
     std::map<Entity, const Prefab::ObjectOverrides*> objectOverrides;
-    std::function<void(Entity, size_t)> collect = [&](Entity root, size_t depth) {
-        const PrefabComponent* component = scene->findComponent<PrefabComponent>(root);
-        const Prefab* prefab = component ? getPrefab(component->path) : nullptr;
-        const Prefab::Instance* instance = prefab ? prefab->getInstance(sceneId, root) : nullptr;
-        if (!instance || instance->rootEntity != root || depth > 64) {
+    std::function<void(const Prefab::Instance*, const std::filesystem::path&, size_t)> collect =
+            [&](const Prefab::Instance* instance, const std::filesystem::path& path, size_t depth) {
+        if (!instance || depth > 64) {
             return;
         }
         for (const auto& [local, overrides] : instance->overrides) {
             // the root's own entry only at the top: a nested root's belong to the holder
-            if (local == root && depth > 0) {
+            if (local == instance->rootEntity && depth > 0) {
                 continue;
             }
             if (!overrides.empty()) {
                 objectOverrides[local] = &overrides;
             }
         }
-        for (const Prefab::EntityMember& member : instance->members) {
-            if (isPrefabInstanceRoot(sceneId, member.localEntity)) {
-                collect(member.localEntity, depth + 1);
-            }
+        for (const NestedInstanceLevel& nested : getNestedInstanceLevels(sceneProject, path, *instance)) {
+            collect(nested.instance, nested.path, depth + 1);
         }
     };
-    collect(instanceRoot, 0);
+    {
+        std::filesystem::path rootPath;
+        const Prefab::Instance* top = findInstanceAt(sceneProject, instanceRoot, std::filesystem::path(), &rootPath);
+        collect(top, rootPath, 0);
+    }
 
     // Added GameObjects by the GameObject they hang from
     std::multimap<Entity, Entity> addedBelow;

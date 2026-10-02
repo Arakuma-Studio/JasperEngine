@@ -33,6 +33,11 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReplacePrefabCmd.h"
+#include "command/type/UnpackPrefabCmd.h"
+#include "command/type/CreatePrefabVariantAssetCmd.h"
+#include "command/type/DuplicateEntityCmd.h"
+#include "command/type/RenameFileCmd.h"
+#include "command/type/DeleteFileCmd.h"
 #include <chrono>
 #include <thread>
 #include "pool/ShaderPool.h"
@@ -886,6 +891,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                               << " nested " << scene.nested << " missing " << scene.missing << "]";
                 }
                 for (const fs::path& path : usage.nestedIn) std::cout << " in " << path.generic_string();
+                if (!usage.base.empty()) std::cout << " base " << usage.base.generic_string() << (usage.baseMissing ? " (missing)" : "");
+                for (const fs::path& path : usage.variants) std::cout << " variant " << path.generic_string();
                 std::cout << "\n";
             }
             continue;
@@ -941,6 +948,42 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 first->scene->setEntityName(spawned, op["name"].as<std::string>());
             }
             project.importPrefab(first, &first->entities, prefabPath, spawned, false);
+            continue;
+        }
+        if (name == "renameFile" || name == "deleteFile") {
+            // the Project window's Rename (same folder) and Delete (to the trash, undoable)
+            if (name == "renameFile") {
+                const fs::path from = op["from"].as<std::string>();
+                runCommand(new RenameFileCmd(&project, from.filename().string(), fs::path(op["to"].as<std::string>()).filename().string(),
+                    (project.getProjectPath() / from.parent_path()).string()));
+            } else {
+                runCommand(new DeleteFileCmd(&project, {project.getProjectPath() / op["path"].as<std::string>()}, project.getProjectPath()));
+            }
+            continue;
+        }
+        if (name == "duplicate") {
+            SceneProject* owner = nullptr;
+            const Entity target = findDumpEntity(project, op, owner);
+            if (target == NULL_ENTITY) return false;
+            runCommand(new DuplicateEntityCmd(&project, owner->id, {target}));
+            continue;
+        }
+        if (name == "createVariantAsset") {
+            // Project window, Create > Prefab Variant on a prefab (E)
+            CreatePrefabVariantAssetCmd command(&project, op["prefab"].as<std::string>(), op["path"].as<std::string>());
+            if (!command.execute()) {
+                std::cout << "  (failed)\n";
+            }
+            continue;
+        }
+        if (name == "variantInfo") {
+            // the variant chain of a prefab, its direct variants (E)
+            const fs::path prefab = op["prefab"].as<std::string>();
+            std::cout << "  chain " << prefab.generic_string() << ":";
+            for (const fs::path& path : project.getPrefabVariantChain(prefab)) std::cout << " " << path.generic_string();
+            std::cout << "\n  fileBase " << project.getPrefabFileBase(prefab).generic_string() << "\n  variants:";
+            for (const fs::path& path : project.findPrefabVariantsOf(prefab)) std::cout << " " << path.generic_string();
+            std::cout << "\n";
             continue;
         }
         if (name == "addObject" && (!op["entity"] || op["entity"].as<std::string>().empty())) {
@@ -1180,6 +1223,42 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             // as the Hierarchy's Create Prefab: the GameObject (with its project context)
             runCommand(new CreatePrefabCmd(&project, sceneProject->id, op["path"].as<std::string>(),
                 Stream::encodeEntity(entity, scene, &project, sceneProject)));
+            continue;
+        }
+        if (name == "createVariant") {
+            // Hierarchy > Prefab > Create Variant, or an instance root dragged into the Project
+            // window answered "Prefab Variant" (CreatePrefabCmd with variants)
+            runCommand(new CreatePrefabCmd(&project, sceneProject->id, {{op["path"].as<std::string>(),
+                Stream::encodeEntity(entity, scene, &project, sceneProject)}}, true));
+            continue;
+        }
+        if (name == "unpack") {
+            // Prefab > Unpack (completely: Unpack Completely)
+            runCommand(new UnpackPrefabCmd(&project, sceneProject->id, {entity}, op["completely"] && op["completely"].as<bool>()));
+            continue;
+        }
+        if (name == "applyRemovals" || name == "revertRemovals") {
+            // the removed GameObjects of the instance rooted here (and nested in it), applied
+            // to `target` (empty: each to its own prefab) or reverted
+            std::vector<std::unique_ptr<Command>> steps;
+            const fs::path target = op["target"] ? fs::path(op["target"].as<std::string>()) : fs::path();
+            for (const PrefabRemovalInfo& removal : project.getPrefabRemovals(sceneProject->id, entity)) {
+                if (name == "applyRemovals") {
+                    steps.emplace_back(new ApplyPrefabRemovalCmd(&project, sceneProject->id, removal.path, removal.instanceRoot, removal.registryEntity, target));
+                } else {
+                    steps.emplace_back(new RevertPrefabRemovalCmd(&project, sceneProject->id, removal.path, removal.instanceRoot, removal.registryEntity));
+                }
+            }
+            runCommand(new PrefabOverridesCmd(&project, sceneProject->id, std::move(steps)));
+            continue;
+        }
+        if (name == "levels") {
+            // the prefab levels a GameObject roots and the apply targets of it (E)
+            std::cout << "  levels:";
+            for (const fs::path& path : project.getInstanceRootLevels(sceneProject->id, entity)) std::cout << " " << path.generic_string();
+            std::cout << "\n  targets:";
+            for (const fs::path& path : project.getPrefabApplyTargets(sceneProject->id, entity)) std::cout << " " << path.generic_string();
+            std::cout << "\n";
             continue;
         }
         if (name == "instantiate") {

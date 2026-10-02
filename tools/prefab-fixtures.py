@@ -3,6 +3,7 @@
 
     tools/prefab-fixtures.py legacy <out-dir>
     tools/prefab-fixtures.py nested <out-dir>     (see nested())
+    tools/prefab-fixtures.py variant <out-dir>    (see variant())
 
 `legacy` writes a project (FIXTURE: the TappyPlane fixture project, for its sprites) in the formats written before the real-root model (prefab
 files version 1 and 2, wrapper-root instances with whole-component overrides): a
@@ -416,6 +417,134 @@ def nested(out):
     write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
 
 
+def variant(out):
+    """Prefab Variants (PREFABS.md section 18): a scene of plain GameObjects (a Ship holding an
+    Engine, with a camera, an action and children) and the scene-dump ops that make, through
+    the editor, Engine and Ship (Engine nested in it), a Ship Variant from an instance of Ship
+    with overrides of every kind (properties, state, added and removed components, added and
+    removed GameObjects, an override of the nested Engine, references into it) and a Ship
+    Variant 2 (a variant of the variant) from an instance of that one with overrides of its
+    own, a fresh instance of each compared with what it was made from, and a variant made
+    from the Project window. Writes <out>/ (the project) and <out>.ops/build.yaml."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    fixture = os.environ.get("FIXTURE", os.path.join(here, "..", "build", "fixture-unity"))
+    if not os.path.isdir(fixture):
+        sys.exit("needs the TappyPlane fixture project (build/fixture-unity, or FIXTURE=<dir>)")
+    os.makedirs(out, exist_ok=True)
+    os.system('cp -r "%s/assets" "%s/"' % (fixture, out))
+    os.makedirs(os.path.join(out, "prefabs"), exist_ok=True)
+    project = yaml.safe_load(open(os.path.join(fixture, "project.yaml")))
+    project["name"] = "PrefabVariants"
+    project["scenes"] = [{"filepath": "Variant Scene.scene"}]
+    project["startSceneId"] = 1
+    project.pop("standalonePrefabs", None)
+    write_yaml(os.path.join(out, "project.yaml"), project)
+
+    os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
+    with open(os.path.join(out, "scripts", "Watcher.lua"), "w") as f:
+        f.write(WATCHER_LUA)
+
+    def watcher(x=0.0, y=0.0):
+        return {
+            "transform": transform(x, y),
+            "script": {"scripts": [{
+                "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
+                "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
+                                "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
+            }]},
+        }
+
+    ship = entity(1001, "Ship", sprite_components("sprites/plane-sheet.png", 88, 73, x=300, y=300), [
+        entity(1002, "Hull", sprite_components("sprites/rock.png", 60, 120, x=0, y=-60, color=(1, 1, 1, 1))),
+        entity(1003, "Wing", sprite_components("sprites/ground.png", 160, 30, x=0, y=20), [
+            entity(1004, "Tip", sprite_components("sprites/rock.png", 20, 40, x=80, y=0)),
+        ]),
+        entity(1005, "Gun", dict({"transform": transform(40, 0)}, **action_components())),
+        entity(1006, "Cam", camera_components(0, 0)),
+        entity(1007, "Engine", sprite_components("sprites/rock-down.png", 40, 60, x=-60, y=0, color=(0.6, 0.6, 1, 1)), [
+            entity(1008, "Flame", sprite_components("sprites/rock.png", 20, 30, x=0, y=-40, color=(1, 0.5, 0, 1))),
+        ]),
+        entity(1009, "Eye", watcher(0, 40)),
+    ])
+    entities = [
+        ship,
+        entity(1020, "Field", sprite_components("sprites/ground.png", 300, 30, x=900, y=30)),
+        entity(1021, "Pointer", action_components()),
+        entity(1022, "Spy", watcher(0, 0)),
+    ]
+    scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
+    scene["name"] = "Variant Scene"
+    scene["id"] = 1
+    scene.pop("childScenes", None)
+    scene.pop("cppScripts", None)
+    scene["prefabs"] = []
+    scene["gravity2D"] = [0, 0]
+    scene["entities"] = entities
+    write_yaml(os.path.join(out, "Variant Scene.scene"), scene)
+
+    color = "submeshes[0].material.baseColorFactor"
+    S = "Ship"
+    ops = [
+        # ---- Engine, then Ship holding an instance of it, a reference into it ----
+        {"op": "createPrefab", "entity": S + "/Engine", "path": "prefabs/Engine.prefab"},
+        {"op": "setRef", "entity": S + "/Gun", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "setRef", "entity": S + "/Eye", "component": "script", "property": "scripts[0].target", "target": S + "/Hull"},
+        {"op": "createPrefab", "entity": S, "path": "prefabs/Ship.prefab"},
+        {"op": "dump", "out": "@/0-ship.yaml"},
+        # ---- the Ship instance: overrides of every kind ----
+        {"op": "set", "entity": S + "/Hull", "component": "mesh", "property": color, "value": [1, 0, 0, 1]},
+        {"op": "setState", "entity": S + "/Wing", "tag": "Enemy"},
+        {"op": "addComponent", "entity": S + "/Hull", "component": "action"},
+        {"op": "setRef", "entity": S + "/Hull", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "removeComponent", "entity": S + "/Cam", "component": "camera"},
+        {"op": "delete", "entity": S + "/Wing/Tip"},
+        {"op": "addObject", "entity": S + "/Wing", "name": "Flag"},
+        {"op": "set", "entity": S + "/Engine/Flame", "component": "transform", "property": "scale", "value": [2, 2, 1]},
+        {"op": "set", "entity": S, "component": "transform", "property": "scale", "value": [1.5, 1.5, 1]},
+        {"op": "dump", "out": "@/1-before-variant.yaml"},
+        # ---- Ship Variant from it ----
+        {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant.prefab"},
+        {"op": "levels", "entity": S},
+        {"op": "dump", "out": "@/2-variant.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant.prefab", "below": True},
+        {"op": "dump", "out": "@/2-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        # ---- the variant's instance: overrides of its own (its GameObjects and the base's) ----
+        {"op": "set", "entity": S + "/Hull", "component": "transform", "property": "scale", "value": [3, 1, 1]},
+        {"op": "addObject", "entity": S + "/Wing/Flag", "name": "Pole"},
+        {"op": "set", "entity": S + "/Wing/Flag", "component": "transform", "property": "position", "value": [5, 5, 0]},
+        {"op": "set", "entity": S + "/Engine/Flame", "component": "mesh", "property": color, "value": [0, 1, 0, 1]},
+        {"op": "delete", "entity": S + "/Cam"},
+        {"op": "setRef", "entity": S + "/Gun", "component": "action", "property": "target", "target": S + "/Wing/Flag"},
+        {"op": "dump", "out": "@/3-before-variant2.yaml"},
+        # ---- Ship Variant 2, a variant of the variant ----
+        {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant 2.prefab"},
+        {"op": "levels", "entity": S},
+        {"op": "dump", "out": "@/4-variant2.yaml"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant 2.prefab", "below": True},
+        {"op": "dump", "out": "@/4-fresh.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        # ---- a variant made from the Project window: an instance of it is one of the base ----
+        {"op": "createVariantAsset", "prefab": "prefabs/Ship.prefab", "path": "prefabs/Ship Plain Variant.prefab"},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship.prefab", "below": True},
+        {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Plain Variant.prefab", "below": True},
+        {"op": "dump", "out": "@/5-plain.yaml"},
+        {"op": "delete", "entity": "Field/Ship 2"},
+        {"op": "delete", "entity": "Field/Ship 3"},
+        # ---- scene references into the variant instance's GameObjects at every level ----
+        {"op": "setRef", "entity": "Pointer", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
+        {"op": "setRef", "entity": "Spy", "component": "script", "property": "scripts[0].target", "target": S + "/Wing/Flag/Pole"},
+        {"op": "variantInfo", "prefab": "prefabs/Ship Variant 2.prefab"},
+        {"op": "variantInfo", "prefab": "prefabs/Ship.prefab"},
+        {"op": "usage"},
+        {"op": "dump", "out": "@/6-final.yaml"},
+        {"op": "bake", "out": "@/bake"},
+        {"op": "save"},
+    ]
+    os.makedirs(out + ".ops", exist_ok=True)
+    write_yaml(os.path.join(out + ".ops", "build.yaml"), ops)
+
+
 def replace(out):
     """The legacy project plus prefabs to replace its instances with (Replace Prefab, PREFABS.md
     section 12): Boulder (a Rock under another prefab name, its Pebble at another id, no
@@ -450,6 +579,6 @@ def replace(out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested"):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("legacy", "replace", "nested", "variant"):
         sys.exit(__doc__)
     globals()[sys.argv[1]](sys.argv[2])
