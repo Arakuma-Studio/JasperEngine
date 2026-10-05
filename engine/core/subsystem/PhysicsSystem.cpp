@@ -1518,6 +1518,8 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     settings.mMotionQuality = getRigidbodyMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
     settings.mGravityFactor = body.gravityFactor;
+    settings.mFriction = body.friction;
+    settings.mRestitution = body.restitution;
     settings.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(body.allowedDOFs);
 
     JPH::BodyInterface &body_interface = getBodyInterface3D();
@@ -1652,6 +1654,26 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
     return true;
 }
 
+bool PhysicsSystem::ensureRigidbody2DLoaded(Entity entity){
+    Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+    if (!body){
+        return false;
+    }
+    if (b2Body_IsValid(body->body)){
+        return true;
+    }
+
+    if (loadRigidbody2D(entity)){
+        body = scene->findComponent<Rigidbody2DComponent>(entity);
+        if (body && b2Body_IsValid(body->body)){
+            updateRigidbody2DPosition(scene->getSignature(entity), entity, *body);
+        }
+    }
+
+    body = scene->findComponent<Rigidbody2DComponent>(entity);
+    return body && b2Body_IsValid(body->body);
+}
+
 void PhysicsSystem::destroyRigidbody2D(Rigidbody2DComponent& body){
     // When a world leaves scope or is deleted by calling delete on a pointer
     // all the memory reserved for bodies, fixtures, and joints is freed
@@ -1689,6 +1711,30 @@ bool PhysicsSystem::loadRigidbody(Entity entity){
     }
 
     return true;
+}
+
+bool PhysicsSystem::ensureRigidbodyLoaded(Entity entity){
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body){
+        return false;
+    }
+    if (!body->body.IsInvalid()){
+        return true;
+    }
+    // a contact callback runs inside the step, which cannot take a new body
+    if (steppingWorld3D){
+        return false;
+    }
+
+    if (loadRigidbody(entity)){
+        body = scene->findComponent<RigidbodyComponent>(entity);
+        if (body && !body->body.IsInvalid()){
+            updateRigidbodyPosition(scene->getSignature(entity), entity, *body);
+        }
+    }
+
+    body = scene->findComponent<RigidbodyComponent>(entity);
+    return body && !body->body.IsInvalid();
 }
 
 void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){

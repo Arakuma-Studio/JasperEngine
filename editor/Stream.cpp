@@ -4722,8 +4722,18 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     // Model-backed meshes regenerate these matrices from their skeleton on load.
     if (encodeBones) {
-        YAML::Node bonesNode;
-        for (size_t i = 0; i < mesh.bonesMatrix.size(); i++)
+        // Trailing identity matrices are what a decoded mesh starts with, so they are left
+        // out: every mesh made in the editor (a box, a sphere) holds MAX_BONES of them,
+        // ~8 KB of YAML each. An array grown past MAX_BONES keeps its size (export reads it).
+        size_t count = mesh.bonesMatrix.size();
+        if (count <= MAX_BONES) {
+            const Matrix4 identity;
+            while (count > 0 && mesh.bonesMatrix[count - 1] == identity) {
+                count--;
+            }
+        }
+        YAML::Node bonesNode(YAML::NodeType::Sequence);
+        for (size_t i = 0; i < count; i++)
             bonesNode.push_back(encodeMatrix4(mesh.bonesMatrix[i]));
         node["bonesMatrix"] = bonesNode;
     }
@@ -4810,7 +4820,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
         for (size_t i = 0; i < bonesNode.size() &&
                 mesh.bonesMatrix.validIndex(static_cast<int>(i)); i++)
             mesh.bonesMatrix[i] = decodeMatrix4(bonesNode[i]);
-        mesh.needUpdateBones = bonesNode.size() > 0;
+        // an empty list is a trimmed one (all identity), which still counts as written
+        mesh.needUpdateBones = true;
     }
 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
@@ -6544,6 +6555,8 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["motionQuality"] = rigidbodyMotionQualityToString(body.motionQuality);
     node["sensor"] = body.sensor;
     node["gravityFactor"] = body.gravityFactor;
+    node["friction"] = body.friction;
+    node["restitution"] = body.restitution;
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -6616,6 +6629,8 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["motionQuality"]) body.motionQuality = stringToRigidbodyMotionQuality(node["motionQuality"].as<std::string>());
     if (node["sensor"]) body.sensor = YamlNumbers::as<bool>(node["sensor"]);
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
+    if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
+    if (node["restitution"]) body.restitution = YamlNumbers::as<float>(node["restitution"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
