@@ -108,6 +108,7 @@ void McpTransportStdio::writeLoop() {
             }
             written += static_cast<size_t>(n);
         }
+        McpServer::trace("wrote", line.substr(0, 80));
         {
             std::lock_guard<std::mutex> lock(writeMutex);
             writing = false;
@@ -177,6 +178,7 @@ void McpTransportStdio::readLoop() {
 }
 
 void McpTransportStdio::handleLine(const std::string& line) {
+    McpServer::trace("read", line.substr(0, 120));
     Json message = McpServer::parseMessage(line);
     auto reply = std::make_shared<StdioReply>(this);
     if (message.is_discarded()) {

@@ -176,6 +176,9 @@ namespace jasperengine::editor::mcp {
         static Json makeResult(const Json& id, Json result);
 
         // --- helpers for transports (any thread) ---
+        // JASPER_MCP_TRACE=1: one stderr line per request read, run, answered and written
+        static bool traceEnabled();
+        static void trace(const char* stage, const std::string& detail);
         // Parses one JSON-RPC message. Invalid UTF-8 inside it is replaced by U+FFFD rather
         // than failing the whole request. Discarded (is_discarded()) when it is not JSON.
         static Json parseMessage(const std::string& text);

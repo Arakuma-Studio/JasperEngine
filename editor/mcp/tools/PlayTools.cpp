@@ -1152,6 +1152,23 @@ void finishStartWaits(McpContext& ctx) {
 
 // ================================================================== tool: play
 
+// A console error from a game script that failed while Play started (a Lua init() that
+// threw, a script that did not load, a C++ script crash). Other errors (no audio device...)
+// don't make the start a failure.
+bool isScriptStartupError(const Json& entry) {
+    if (entry.value("type", "") != "error") return false;
+    const std::string message = entry.value("message", "");
+    static const char* const markers[] = {
+        "Lua Error:", "Lua script file not found", "Failed to load Lua file", "Failed to execute Lua module",
+        "did not return a table", "Script crash in scene"
+    };
+    for (const char* marker : markers) {
+        if (message.find(marker) != std::string::npos) return true;
+    }
+    // LuaBinding: "Lua init() failed for 'Player': ..."
+    return message.rfind("Lua ", 0) == 0 && message.find("() failed for") != std::string::npos;
+}
+
 ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLater) {
     (void)screenshotLater;
     Json data = job.result();
@@ -1159,6 +1176,23 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     data["job_id"] = job.id();
     std::string text;
     const Json problems = data.value("problems", Json::array());
+    Json scriptErrors = Json::array();
+    for (const Json& entry : problems) {
+        if (entry.is_object() && isScriptStartupError(entry)) scriptErrors.push_back(entry);
+    }
+    if (job.status() == JobStatus::Succeeded && !scriptErrors.empty()) {
+        // The game runs, but a script failed while it started: report it as the error it is
+        data["script_errors"] = scriptErrors;
+        text = "Play started but " + std::to_string(scriptErrors.size()) +
+               " script error(s) happened at startup (the game is still running; fix the script, then play "
+               "{action: \"restart\"}, or stop it):\n" + w3::formatConsoleText(scriptErrors, 6000);
+        Json others = Json::array();
+        for (const Json& entry : problems) {
+            if (!(entry.is_object() && isScriptStartupError(entry))) others.push_back(entry);
+        }
+        if (!others.empty()) text += "\nOther console problems since start:\n" + w3::formatConsoleText(others, 2000);
+        return ToolResult::error(text, data);
+    }
     if (job.status() == JobStatus::Succeeded) {
         text = job.message() + " Started in " + std::to_string(data.value("startup_seconds", 0.0)).substr(0, 5) + " s.";
         if (!problems.empty()) {

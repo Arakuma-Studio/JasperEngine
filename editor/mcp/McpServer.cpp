@@ -14,7 +14,9 @@
 #include "Out.h"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstdio>
 
 using namespace jasperengine::editor;
@@ -300,6 +302,21 @@ constexpr size_t MAX_RESULT_TEXT_BYTES = 256 * 1024;
 constexpr size_t MAX_RESULT_STRUCTURED_BYTES = 1024 * 1024;
 
 } // namespace
+
+bool McpServer::traceEnabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("JASPER_MCP_TRACE");
+        return value && *value && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+void McpServer::trace(const char* stage, const std::string& detail) {
+    if (!traceEnabled()) return;
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::fprintf(stderr, "[mcp-trace %lld] %s %s\n", static_cast<long long>(ms % 100000000), stage, detail.c_str());
+}
 
 std::string McpServer::sanitizeUtf8(const std::string& text) {
     std::string out;
@@ -638,6 +655,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 inflight.erase(key);
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
+            trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
             // A cancelled request gets no response (MCP cancellation)
             if (!done.cancelled()) {
                 Json out = result.toJson();
@@ -666,7 +684,9 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         inflight[key] = call;
     }
 
-    runOnMainThread([this, call, name]() {
+    trace("queued", name + " " + key);
+    runOnMainThread([this, call, name, key]() {
+        trace("run", name + " " + key);
         const ToolDef* def = reg.findTool(name);
         if (!def) {
             call->fail("Unknown tool: " + name);

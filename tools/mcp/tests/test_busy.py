@@ -8,12 +8,15 @@ exclusively refuse the calls that would race them, with the job id and how to wa
 """
 
 import asyncio
+import os
 import shutil
+import subprocess
 import time
 
 from harness import Editor, skip
 
-EDITOR = {"create": True, "name": "Busy Test"}
+# the harness owns the Xvfb so xdotool can press keys in the editor window
+EDITOR = {"create": True, "name": "Busy Test", "xvfb": "harness"}
 TIMEOUT = 1800
 JOBS = 3
 
@@ -37,6 +40,38 @@ async def refused(ed: Editor, tool: str, job_id: str, **args) -> str:
     busy = (r.structured or {}).get("busy") or {}
     ed.check(busy.get("job_id") == job_id, f"{tool}: structured busy info: {r.structured!r}")
     return r.text
+
+
+async def human_play_attempt(ed: Editor, job_id: str) -> None:
+    """A human pressing F5 (Play) while the job runs: Play must not start; the editor shows
+    a Cannot Play alert naming the job (when the key reaches the window)."""
+    if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
+        print("     (no xdotool / harness Xvfb: human Play not tried)")
+        return
+    env = dict(os.environ, DISPLAY=ed._xvfb.display)
+    def xdo(*args):
+        return subprocess.run(["xdotool", *args], env=env, capture_output=True, text=True, timeout=20).stdout.split()
+    wins = xdo("search", "--name", ".")
+    if not wins:
+        print("     (no editor window found: human Play not tried)")
+        return
+    xdo("windowfocus", "--sync", wins[-1])
+    await ed.call("get_job", job_id=job_id)
+    xdo("key", "F5")
+    dialog = None
+    for _ in range(20):
+        st = await ed.call("editor_status")
+        ed.check(not st["playing"], f"a human Play started during {job_id}")
+        dialog = st.get("dialog")
+        if dialog:
+            break
+        await asyncio.sleep(0.25)
+    if not dialog:
+        print("     (F5 did not reach the editor window: no alert seen)")
+        return
+    ed.check_in("Cannot Play", dialog["title"])
+    ed.check_in(job_id, dialog["message"])
+    await ed.call("respond_dialog", choice="ok")
 
 
 async def test_prepare(ed: Editor):
@@ -76,6 +111,7 @@ async def test_export_job_refusals(ed: Editor):
                            stop_on_error=False)
         ed.check_eq(b["failed"], 1, f"batch: {b!r}")
         ed.check(job_id in b["results"][1]["text"], f"nested refusal names the job: {b['results'][1]}")
+        await human_play_attempt(ed, job_id)
     finally:
         await ed.call("cancel_job", job_id=job_id)
         job = await wait_job(ed, job_id, 300)

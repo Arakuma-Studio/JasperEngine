@@ -598,6 +598,34 @@ async def test_calls_while_window_unmapped(ed: Editor):
     await ed.check_alive()
 
 
+async def test_selection_changes_while_window_unmapped(ed: Editor):
+    """The reported hang: the Inspector queues a one-shot preview render (a light's direction,
+    a mesh's material) and the selection changes in a frame that renders nothing (minimized
+    window, or a skipped frame under load). Its cleanup loop then neither erased the unused
+    preview (its scene still queued) nor advanced: the main thread spun forever (~70% CPU),
+    calls were never run, ping still answered."""
+    display, win = await _editor_window(ed)
+    made = await ed.call("create_scene", name="PreviewHang", type="3D")
+    sid = made["scene"]["id"]
+    await ed.call("select_scene", scene=sid)
+    _xdotool(display, "windowunmap", "--sync", win)
+    try:
+        await asyncio.sleep(0.5)
+        for i in range(3):
+            # each create selects the new GameObject: the Inspector shows its preview
+            await ed.call("create_entity", name=f"Sun{i}", type="directional_light", scene=sid, timeout=30)
+            await ed.call("wait", frames=3, timeout=30)
+            await ed.call("create_entity", name=f"Box{i}", type="box", scene=sid, timeout=30)
+            await ed.call("wait", frames=3, timeout=30)
+            await ed.call("create_entity", name=f"Empty{i}", type="empty", scene=sid, timeout=30)
+            await ed.call("wait", frames=3, timeout=30)
+            await ed.call("editor_status", timeout=30)
+    finally:
+        _xdotool(display, "windowmap", "--sync", win)
+    await ed.call("close_scene", scene=sid, unsaved="discard", timeout=30)
+    await ed.check_alive()
+
+
 async def test_calls_during_project_switch(ed: Editor):
     """Calls over HTTP keep getting answers while the editor switches projects (stdio)."""
     c = await http_client()

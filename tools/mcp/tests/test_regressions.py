@@ -148,3 +148,37 @@ async def test_delete_two_last_empties_reversed_undo(ed: Editor):
     ed.check(close(await world_position(ed, x2), [3, 0, 0]), "TailX2 changed when a GameObject was created")
     await ed.call("delete_entities", entities=[n, x1, x2], scene=SCENE["id"])
     await ed.check_alive()
+
+
+# -- play: a Lua init() that fails at startup is an error, not a success ------------
+# play {action: start} returned success with the script error only under problems, so an
+# agent could miss that its game never initialized.
+
+BROKEN_INIT = """local BrokenInit = {
+}
+
+function BrokenInit:init()
+    error("boom from init")
+end
+
+return BrokenInit
+"""
+
+
+async def test_play_reports_lua_init_error(ed: Editor):
+    sid = await scene3d(ed)
+    holder = await create(ed, "empty", "BrokenHolder")
+    await ed.call("create_script", kind="lua", name="BrokenInit", content=BROKEN_INIT, entity=holder)
+    await ed.call("save_scene", scene=sid, path="scenes/Regress3D")
+    r = await ed.call_raw("play", {"action": "start", "scene": sid, "timeout_seconds": 120})
+    try:
+        ed.check(r.is_error, f"play start should report the failed init(): {r.text[:500]}")
+        ed.check("boom from init" in r.text, f"the script error is in the text: {r.text[:500]}")
+        ed.check((r.structured or {}).get("script_errors"), f"structured script_errors: {r.structured!r}")
+    finally:
+        await ed.call_raw("play", {"action": "stop"})
+    # a clean start is still a success
+    await ed.call("detach_script", entity=holder, script="BrokenInit", scene=sid)
+    ok = await ed.call_raw("play", {"action": "start", "scene": sid, "timeout_seconds": 120})
+    ed.check(not ok.is_error, f"a clean play start failed: {ok.text[:500]}")
+    await ed.call("play", action="stop")
