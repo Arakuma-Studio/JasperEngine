@@ -720,6 +720,13 @@ function(configure_jasperengine_editor_target target_name)
             set_target_properties(${target_name} PROPERTIES ENABLE_EXPORTS ON)
         endif()
     endif()
+    # Large translation units (editor/mcp/tools/WorldTools.cpp, Stream.cpp) pass the COFF
+    # section limit; /utf-8: sources (tool descriptions) are UTF-8 whatever the code page
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /bigobj /utf-8)
+    elseif(MINGW)
+        target_compile_options(${target_name} PRIVATE -Wa,-mbig-obj)
+    endif()
 
     if(X11_FOUND)
         target_compile_definitions(${target_name} PRIVATE JASPERENGINE_HAS_X11_CLIPBOARD)

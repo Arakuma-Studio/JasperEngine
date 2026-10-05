@@ -92,12 +92,23 @@ bool takeOverStdio(McpLaunchOptions& options) {
     if (outFd < 0 || inFd < 0) return false;
     _setmode(outFd, _O_BINARY);
     _setmode(inFd, _O_BINARY);
-    _dup2(_fileno(stderr), _fileno(stdout));
-    SetStdHandle(STD_OUTPUT_HANDLE, GetStdHandle(STD_ERROR_HANDLE));
+    // _dup makes inheritable handles: child processes (cmake, MSBuild nodes, a run player)
+    // would keep the client's pipes open after the editor exits, so it never sees EOF
+    SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(outFd)), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(inFd)), HANDLE_FLAG_INHERIT, 0);
+    // fd 1 must stop being the protocol pipe, or every printf corrupts the stream. A GUI
+    // process may have no valid stderr (_fileno(stderr) < 0): use NUL then.
+    if (_fileno(stderr) < 0 || _dup2(_fileno(stderr), _fileno(stdout)) != 0) {
+        const int nulOut = _open("NUL", _O_WRONLY);
+        if (nulOut < 0 || _dup2(nulOut, _fileno(stdout)) != 0) return false;
+        _close(nulOut);
+    }
+    SetStdHandle(STD_OUTPUT_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdout))));
     const int nul = _open("NUL", _O_RDONLY);
     if (nul >= 0) {
         _dup2(nul, _fileno(stdin));
         _close(nul);
+        SetStdHandle(STD_INPUT_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdin))));
     }
 #else
     const int outFd = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 3);
@@ -117,7 +128,7 @@ bool takeOverStdio(McpLaunchOptions& options) {
     return true;
 }
 
-#ifndef _WIN32
+#ifdef __linux__
 // Xvfb -displayfd writes the display number it picked once it accepts connections
 bool startXvfb(std::string& error) {
     int fds[2];
@@ -257,7 +268,8 @@ int prepareMcpCommand(int argc, char** argv, const char* executableName) {
         options.createDir = path;
     }
 
-#ifndef _WIN32
+#ifdef __linux__
+    // Xvfb only makes sense for the X11 editor: Windows and macOS have their own displays
     if (options.headless) {
         const char* display = std::getenv("DISPLAY");
         if (!display || !*display) {
@@ -268,6 +280,10 @@ int prepareMcpCommand(int argc, char** argv, const char* executableName) {
             }
         }
         setenv("LIBGL_ALWAYS_SOFTWARE", "1", 0);
+    }
+#else
+    if (options.headless) {
+        std::cerr << "[mcp] --headless only applies on Linux (Xvfb); ignored here.\n";
     }
 #endif
 

@@ -1460,7 +1460,7 @@ void compileScriptsTool(const CallPtr& call) {
                               {"header_path", script.headerPath.generic_string()}});
     }
 
-    JobPtr job = ctx.jobs().create("compile_scripts", "Compile C++ scripts");
+    JobPtr job = ctx.jobs().create("compile_scripts", "Compile C++ scripts", JobBusy::ScriptCompile);
     {
         std::lock_guard<std::mutex> lock(compileMutex);
         runningCompile = job;
@@ -1819,6 +1819,7 @@ void registerScriptTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "compile_scripts";
+        tool.activity = ToolActivity::ScriptCompile;  // busy policy (McpServer::busyRefusal)
         tool.title = "Compile C++ Scripts";
         tool.description =
             "Build the project's C++ scripts plugin now, without entering Play (the same CMake build Play runs, so the "

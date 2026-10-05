@@ -75,8 +75,9 @@ namespace jasperengine::editor::mcp {
         // notifications/progress to the client, when it sent a progressToken. Best effort,
         // thread-safe; `total` <= 0 means unknown.
         void progress(double done, double total, const std::string& message);
-        // The client sent notifications/cancelled for this request (or the editor is closing).
-        bool cancelled() const { return isCancelled.load(); }
+        // The client sent notifications/cancelled for this request (or the editor is closing),
+        // or for the batch this call runs in.
+        bool cancelled() const;
 
         // Milliseconds since the call was created
         double elapsedMs() const;
@@ -86,6 +87,8 @@ namespace jasperengine::editor::mcp {
         // Adjusts the result right before completion (runs on the completing thread)
         void setFinalizer(std::function<void(ToolResult&)> fn) { finalizer = std::move(fn); }
         void requestCancel() { isCancelled = true; }
+        // A call run inside another (batch): cancelling the parent cancels it too
+        void setParent(const std::shared_ptr<McpCall>& parent) { parentCall = parent; }
 
     private:
         McpServer& owner;
@@ -98,6 +101,7 @@ namespace jasperengine::editor::mcp {
         std::atomic<bool> isCompleted{false};
         std::atomic<bool> isCancelled{false};
         bool isDetached = false;
+        std::weak_ptr<McpCall> parentCall;
         ToolResult finalResult;
         std::chrono::steady_clock::time_point startTime;
     };

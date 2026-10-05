@@ -18,6 +18,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
 
 #include "App.h"
@@ -1251,6 +1252,8 @@ void playStop(const CallPtr& call, std::function<void()> after) {
 }
 
 void playStart(const CallPtr& call, const Json& sceneRef) {
+    // Play builds the C++ scripts: not while an export or compile_scripts job holds the project
+    if (call->server().refuseIfBusy(call, ToolActivity::PlayStart)) return;
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     const Json& args = call->args();
@@ -2585,6 +2588,7 @@ void registerPlayTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "play";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Play Mode";
         tool.description =
             "Control Play mode like the toolbar. action start: plays the scene (default: the selected one, as the Play "

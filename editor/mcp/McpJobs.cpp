@@ -17,10 +17,20 @@ const char* jasperengine::editor::mcp::jobStatusName(JobStatus status) {
     return "unknown";
 }
 
-McpJob::McpJob(std::string id, std::string kind, std::string title)
+const char* jasperengine::editor::mcp::jobBusyName(JobBusy busy) {
+    switch (busy) {
+        case JobBusy::None: return "none";
+        case JobBusy::Export: return "export";
+        case JobBusy::ScriptCompile: return "script_compile";
+    }
+    return "none";
+}
+
+McpJob::McpJob(std::string id, std::string kind, std::string title, JobBusy busy)
     : jobId(std::move(id))
     , jobKind(std::move(kind))
     , jobTitle(std::move(title))
+    , jobBusy(busy)
     , startTime(std::chrono::steady_clock::now()) {
 }
 
@@ -115,6 +125,7 @@ Json McpJob::toJson(int logLines) const {
         {"elapsed_seconds", std::chrono::duration<double>(end - startTime).count()}
     };
     out["progress"] = jobProgress >= 0.0 ? Json(jobProgress) : Json(nullptr);
+    if (jobBusy != JobBusy::None) out["holds"] = jobBusyName(jobBusy);
     if (cancelFlag) out["cancel_requested"] = true;
     Json tail = Json::array();
     const size_t count = std::min(this->logLines.size(), static_cast<size_t>(std::max(0, logLines)));
@@ -126,9 +137,9 @@ Json McpJob::toJson(int logLines) const {
     return out;
 }
 
-JobPtr McpJobs::create(const std::string& kind, const std::string& title) {
+JobPtr McpJobs::create(const std::string& kind, const std::string& title, JobBusy busy) {
     std::lock_guard<std::mutex> lock(mutex);
-    auto job = std::make_shared<McpJob>("job-" + std::to_string(nextId++), kind, title);
+    auto job = std::make_shared<McpJob>("job-" + std::to_string(nextId++), kind, title, busy);
     jobs.push_back(job);
 
     // Keep every running job and the 50 most recent finished ones
@@ -151,6 +162,14 @@ JobPtr McpJobs::find(const std::string& id) const {
     std::lock_guard<std::mutex> lock(mutex);
     for (const JobPtr& job : jobs) {
         if (job->id() == id) return job;
+    }
+    return nullptr;
+}
+
+JobPtr McpJobs::runningBusy(JobBusy busy) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    for (const JobPtr& job : jobs) {
+        if (job->busy() == busy && !job->finished()) return job;
     }
     return nullptr;
 }
@@ -198,6 +217,10 @@ void jasperengine::editor::mcp::replyWhenJobDone(const CallPtr& call, const JobP
         finish();
         return;
     }
+    // waitUntil reads a timeout <= 0 as "no timeout": a timeout_seconds of 0 (or NaN, or one
+    // that overflows int milliseconds) must not make the call wait forever
+    if (!(timeoutSeconds > 0.0)) wait = false;
+    timeoutSeconds = std::min(timeoutSeconds, 24.0 * 3600.0);
     if (!wait) {
         stillRunning();
         return;

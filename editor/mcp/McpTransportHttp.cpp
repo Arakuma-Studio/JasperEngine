@@ -9,12 +9,16 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <map>
 #include <memory>
+#include <stdexcept>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -27,6 +31,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -60,6 +65,18 @@ constexpr int SEND_FLAGS = 0;
 
 constexpr size_t MAX_HEADER_BYTES = 64 * 1024;
 constexpr size_t MAX_BODY_BYTES = 64 * 1024 * 1024;
+
+// Child processes (cmake, a run player, Xvfb) must not inherit the server's sockets: a
+// child holding the listen socket keeps the port bound after the editor quits, and one
+// holding a connection keeps it from closing
+void setNoInherit(socket_t s) {
+#ifdef _WIN32
+    SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
+#else
+    const int flags = ::fcntl(s, F_GETFD);
+    if (flags >= 0) ::fcntl(s, F_SETFD, flags | FD_CLOEXEC);
+#endif
+}
 
 bool ensureSocketsInitialized() {
 #ifdef _WIN32
@@ -160,10 +177,76 @@ bool readRequest(socket_t s, std::string& buffer, HttpRequest& request, int& sta
         pos = next + 2;
     }
 
-    if (lowerCase(request.header("transfer-encoding")).find("chunked") != std::string::npos) {
-        status = 411;
-        return false;
+    // Reads more bytes into buffer; false on EOF / error
+    auto readMore = [&]() {
+        char chunk[65536];
+        const int n = static_cast<int>(::recv(s, chunk, sizeof(chunk), 0));
+        if (n <= 0) return false;
+        buffer.append(chunk, static_cast<size_t>(n));
+        return true;
+    };
+    // curl and some HTTP clients wait for this before sending a large body
+    if (lowerCase(request.header("expect")) == "100-continue") {
+        if (!sendAll(s, "HTTP/1.1 100 Continue\r\n\r\n")) return false;
     }
+
+    if (lowerCase(request.header("transfer-encoding")).find("chunked") != std::string::npos) {
+        // chunk-size [;ext] CRLF data CRLF ... 0 CRLF [trailers] CRLF
+        std::string body;
+        while (true) {
+            size_t lineEnd;
+            while ((lineEnd = buffer.find("\r\n")) == std::string::npos) {
+                if (buffer.size() > 1024) {
+                    status = 400;
+                    return false;
+                }
+                if (!readMore()) return false;
+            }
+            const std::string sizeLine = buffer.substr(0, buffer.find_first_of(";\r"));
+            size_t chunkSize = 0;
+            try {
+                size_t used = 0;
+                chunkSize = static_cast<size_t>(std::stoull(trim(sizeLine), &used, 16));
+                if (used == 0) throw std::invalid_argument("chunk size");
+            } catch (...) {
+                status = 400;
+                return false;
+            }
+            buffer.erase(0, lineEnd + 2);
+            if (chunkSize == 0) {
+                // no trailers: an empty line; else trailer lines ending with an empty line
+                while (true) {
+                    if (buffer.size() >= 2 && buffer.compare(0, 2, "\r\n") == 0) {
+                        buffer.erase(0, 2);
+                        break;
+                    }
+                    const size_t trailersEnd = buffer.find("\r\n\r\n");
+                    if (trailersEnd != std::string::npos) {
+                        buffer.erase(0, trailersEnd + 4);
+                        break;
+                    }
+                    if (buffer.size() > MAX_HEADER_BYTES) {
+                        status = 431;
+                        return false;
+                    }
+                    if (!readMore()) return false;
+                }
+                break;
+            }
+            if (body.size() + chunkSize > MAX_BODY_BYTES) {
+                status = 413;
+                return false;
+            }
+            while (buffer.size() < chunkSize + 2) {
+                if (!readMore()) return false;
+            }
+            body.append(buffer, 0, chunkSize);
+            buffer.erase(0, chunkSize + 2);
+        }
+        request.body = std::move(body);
+        return true;
+    }
+
     size_t length = 0;
     const std::string lengthText = request.header("content-length");
     if (!lengthText.empty()) {
@@ -179,10 +262,7 @@ bool readRequest(socket_t s, std::string& buffer, HttpRequest& request, int& sta
         return false;
     }
     while (buffer.size() < length) {
-        char chunk[65536];
-        const int n = static_cast<int>(::recv(s, chunk, sizeof(chunk), 0));
-        if (n <= 0) return false;
-        buffer.append(chunk, static_cast<size_t>(n));
+        if (!readMore()) return false;
     }
     request.body = buffer.substr(0, length);
     buffer.erase(0, length);
@@ -201,6 +281,7 @@ const char* statusText(int status) {
         case 405: return "Method Not Allowed";
         case 406: return "Not Acceptable";
         case 411: return "Length Required";
+        case 417: return "Expectation Failed";
         case 413: return "Payload Too Large";
         case 415: return "Unsupported Media Type";
         case 431: return "Request Header Fields Too Large";
@@ -322,14 +403,25 @@ bool McpTransportHttp::start(int port, std::string& errorOut) {
         return false;
     }
 
+#ifdef _WIN32
+    socket_t s = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_NO_HANDLE_INHERIT);
+#elif defined(SOCK_CLOEXEC)
+    socket_t s = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+#else
     socket_t s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
+    if (s != INVALID_SOCK) setNoInherit(s);
     if (s == INVALID_SOCK) {
         errorOut = "socket() failed (" + std::to_string(lastSocketError()) + ")";
         std::lock_guard<std::mutex> lock(mutex);
         error = errorOut;
         return false;
     }
-#ifndef _WIN32
+#ifdef _WIN32
+    // No other process may bind the same port while the editor listens on it
+    BOOL exclusive = TRUE;
+    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive), sizeof(exclusive));
+#else
     int reuse = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #endif
@@ -400,6 +492,7 @@ void McpTransportHttp::acceptLoop(intptr_t listenFd) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
+        setNoInherit(client);
         int noDelay = 1;
         setsockopt(client, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));
         {
@@ -466,7 +559,7 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
             continue;
         }
 
-        Json message = Json::parse(request.body, nullptr, false);
+        Json message = McpServer::parseMessage(request.body);
         if (message.is_discarded()) {
             if (!sendResponse(s, 400, "application/json", jsonError(-32700, "Parse error: the body must be one JSON-RPC message.").dump(),
                               {}, keepAlive) || !keepAlive) return;

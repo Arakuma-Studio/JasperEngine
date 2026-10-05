@@ -162,8 +162,30 @@ namespace jasperengine::editor::mcp {
         // A short description of the dialog blocking edits (empty if none)
         std::string blockingDialogMessage() const;
 
+        // --- busy policy (main thread) ---
+        // Why `activity` can't run now: a running job holding what it needs (JobBusy), or an
+        // export started in the Build Settings window. Empty when it can run. forAgent adds
+        // how to wait (get_job); `info` (optional) gets {job_id, kind, title, holds}.
+        std::string busyRefusal(ToolActivity activity, Json* info = nullptr, bool forAgent = true) const;
+        // Fails the call with busyRefusal's message when busy; true if it did.
+        bool refuseIfBusy(const CallPtr& call, ToolActivity activity);
+        // The activity the busy policy applies to a tool (resolves ToolActivity::Auto)
+        static ToolActivity effectiveActivity(const ToolDef& def);
+
         static Json makeError(const Json& id, int code, const std::string& message, Json data = nullptr);
         static Json makeResult(const Json& id, Json result);
+
+        // --- helpers for transports (any thread) ---
+        // Parses one JSON-RPC message. Invalid UTF-8 inside it is replaced by U+FFFD rather
+        // than failing the whole request. Discarded (is_discarded()) when it is not JSON.
+        static Json parseMessage(const std::string& text);
+        // Replaces every invalid UTF-8 sequence with U+FFFD
+        static std::string sanitizeUtf8(const std::string& text);
+        // Cuts text to at most maxBytes without splitting a UTF-8 sequence
+        static void truncateUtf8(std::string& text, size_t maxBytes);
+        // Caps a tools/call result (text items and structuredContent) so one call can't
+        // flood the client; truncated parts say so. Returns true if it changed anything.
+        static bool capResultSize(Json& result);
 
     private:
         McpServer() = default;

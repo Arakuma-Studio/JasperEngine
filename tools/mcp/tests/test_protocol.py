@@ -12,7 +12,7 @@ from harness import Editor, ProtocolError, RawEditor, ToolError, entity_id_of, f
 PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
 # Tools that list a scene's GameObjects: W1's name first, then the legacy one.
-LIST_TOOLS = ("list_entities", "get_hierarchy", "list_scene_entities")
+LIST_TOOLS = ("find_entities", "get_scene_tree", "list_entities", "get_hierarchy", "list_scene_entities")
 UNDO_TOOLS = ("undo", "undo_editor")
 REDO_TOOLS = ("redo", "redo_editor")
 

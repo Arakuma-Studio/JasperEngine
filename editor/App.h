@@ -103,6 +103,9 @@ namespace jasperengine::editor{
         // backend loop uses to decide when it can idle.
         bool renderedSceneThisFrame = false;
         std::function<void()> wakeCallback;
+        // Guards wakeCallback: worker threads (MCP transports) wake the loop while the main
+        // thread may be clearing it at shutdown
+        mutable std::mutex wakeMutex;
 
         bool redrawRequested = false;
         bool frameRequested = false;
@@ -317,6 +320,7 @@ namespace jasperengine::editor{
         void flushSceneMaterialWrites(uint32_t sceneId) override;
         void saveAllCodeEditors() override;
         void requestScenePlayFocus(uint32_t sceneId) override;
+        std::string backgroundWorkConflict(const std::string& action) const override;
 
         void registerAlert(std::string title, std::string message) override;
         void registerAlert(std::string title, std::string message, std::string note); // note is rendered highlighted below the message
@@ -395,6 +399,8 @@ namespace jasperengine::editor{
         // MCP: answers it like pressing the button (applied on the next frame)
         bool answerDialog(const std::string& choice, std::string& error);
         uint64_t getAlertSerial() const { return alertSerial; }
+        // MCP busy policy: an export started in the Build Settings window is running
+        bool isExportRunning() const { return exportWindow.isExporting(); }
         // MCP stdio client gone: close without save prompts, reporting unsaved changes on stderr
         void quitWithoutPrompts(const std::string& reason);
     };

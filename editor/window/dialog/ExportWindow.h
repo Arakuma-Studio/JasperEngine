@@ -156,6 +156,7 @@ namespace jasperengine::editor {
         void open(Project* project);
         void show();
         bool isOpen() const { return m_isOpen; }
+        bool isExporting() const { return m_exporter.isRunning(); }
         // Player Settings... closes Build Settings and asks for Project Settings.
         bool consumePlayerSettingsRequest();
     };
