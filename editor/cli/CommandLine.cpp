@@ -231,7 +231,9 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " export [options]         Export a project.\n"
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
-        << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n\n"
+        << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
+        << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
+        << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 

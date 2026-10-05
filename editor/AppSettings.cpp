@@ -3,7 +3,6 @@
 
 #include "AppSettings.h"
 #include "Out.h"
-#include "ai/SecretStore.h"
 #include <fstream>
 #include <algorithm>
 #include <cstdlib>
@@ -43,34 +42,6 @@ bool isWritableDirectory(const std::filesystem::path& dir) {
     return true;
 }
 
-// Upgrades the single "custom_endpoint" URL to the named endpoint list. An empty
-// URL used to mean OpenRouter.
-void migrateLegacyEndpoint(ai::Settings& settings, const std::string& url) {
-    const std::string legacyAccount = ai::toString(ai::ProviderId::OpenAICompatible);
-    if (url.empty() && settings.provider != ai::ProviderId::OpenAICompatible &&
-        !ai::SecretStore::hasApiKey(legacyAccount)) {
-        return; // never configured; do not invent an entry
-    }
-
-    ai::CustomEndpoint endpoint;
-    endpoint.id = "custom";
-    endpoint.label = "Custom endpoint";
-    endpoint.url = url;
-    for (const ai::EndpointPreset& preset : ai::endpointPresets()) {
-        if (url.empty() ? preset.id == "openrouter" : preset.url == url) {
-            endpoint = {preset.id, preset.label, preset.url};
-            break;
-        }
-    }
-
-    settings.customEndpoints.push_back(endpoint);
-    if (settings.provider == ai::ProviderId::OpenAICompatible) {
-        settings.endpointId = endpoint.id;
-    }
-    ai::SecretStore::renameAccount(legacyAccount,
-                                   ai::accountKey(ai::ProviderId::OpenAICompatible, endpoint.id));
-}
-
 } // namespace
 
 // Initialize static members
@@ -98,7 +69,9 @@ bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
-ai::Settings AppSettings::aiSettings;
+bool AppSettings::mcpHttpEnabled = false;
+int AppSettings::mcpHttpPort = 47615;
+std::string AppSettings::mcpHttpToken;
 
 bool AppSettings::initialize() {
     // Settings live in the working directory, where a run from a build tree
@@ -253,7 +226,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
-                if (panelsNode["ai_chat"]) panelVisibility.aiChat = panelsNode["ai_chat"].as<bool>();
+                if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
             }
             if (editorNode["game_view"]) {
@@ -265,35 +238,12 @@ bool AppSettings::loadSettings() {
             }
         }
 
-        // Load AI assistant settings (no API keys)
-        if (settingsData["ai_assistant"]) {
-            auto aiNode = settingsData["ai_assistant"];
-            if (aiNode["provider"]) aiSettings.provider = ai::providerFromString(aiNode["provider"].as<std::string>());
-            if (aiNode["model"]) aiSettings.model = aiNode["model"].as<std::string>();
-            if (aiNode["endpoint_id"]) aiSettings.endpointId = aiNode["endpoint_id"].as<std::string>();
-            if (aiNode["custom_endpoints"] && aiNode["custom_endpoints"].IsSequence()) {
-                // Replace, not append: initialize() runs on the CLI and App paths.
-                aiSettings.customEndpoints.clear();
-                for (const auto& endpointNode : aiNode["custom_endpoints"]) {
-                    ai::CustomEndpoint endpoint;
-                    if (endpointNode["id"]) endpoint.id = endpointNode["id"].as<std::string>();
-                    if (endpointNode["label"]) endpoint.label = endpointNode["label"].as<std::string>();
-                    if (endpointNode["url"]) endpoint.url = endpointNode["url"].as<std::string>();
-                    // Duplicate ids would share one key and one model list.
-                    if (endpoint.id.empty() || ai::findEndpoint(aiSettings, endpoint.id)) continue;
-                    aiSettings.customEndpoints.push_back(endpoint);
-                }
-            }
-            if (aiNode["custom_endpoint"] && aiSettings.customEndpoints.empty()) {
-                migrateLegacyEndpoint(aiSettings, aiNode["custom_endpoint"].as<std::string>());
-            }
-            if (aiNode["approval_mode"]) aiSettings.approvalMode = ai::approvalModeFromString(aiNode["approval_mode"].as<std::string>());
-            if (aiNode["request_timeout_seconds"]) aiSettings.requestTimeoutSeconds = aiNode["request_timeout_seconds"].as<int>();
-            if (aiNode["max_output_tokens"]) aiSettings.maxOutputTokens = aiNode["max_output_tokens"].as<int>();
-            if (aiNode["max_tool_rounds"]) aiSettings.maxToolRounds = aiNode["max_tool_rounds"].as<int>();
-            if (aiSettings.model.empty()) {
-                aiSettings.model = ai::defaultModelForProvider(aiSettings.provider);
-            }
+        // The former AI assistant's "ai_assistant" section is ignored (and dropped on save)
+        if (settingsData["mcp"]) {
+            auto mcpNode = settingsData["mcp"];
+            if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
+            if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
+            if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
         }
 
         return true;
@@ -395,7 +345,7 @@ bool AppSettings::saveSettings() {
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["terrain"] = panelVisibility.terrain;
-        panelsNode["ai_chat"] = panelVisibility.aiChat;
+        panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         editorNode["panels"] = panelsNode;
         YAML::Node gameNode;
@@ -406,25 +356,13 @@ bool AppSettings::saveSettings() {
         editorNode["game_view"] = gameNode;
         settingsData["editor"] = editorNode;
 
-        // AI assistant settings. Secrets must never be serialized here.
-        YAML::Node aiNode;
-        aiNode["provider"] = ai::toString(aiSettings.provider);
-        aiNode["model"] = aiSettings.model;
-        aiNode["endpoint_id"] = aiSettings.endpointId;
-        YAML::Node endpointsNode(YAML::NodeType::Sequence);
-        for (const ai::CustomEndpoint& endpoint : aiSettings.customEndpoints) {
-            YAML::Node endpointNode;
-            endpointNode["id"] = endpoint.id;
-            endpointNode["label"] = endpoint.label;
-            endpointNode["url"] = endpoint.url;
-            endpointsNode.push_back(endpointNode);
-        }
-        aiNode["custom_endpoints"] = endpointsNode;
-        aiNode["approval_mode"] = ai::toString(aiSettings.approvalMode);
-        aiNode["request_timeout_seconds"] = aiSettings.requestTimeoutSeconds;
-        aiNode["max_output_tokens"] = aiSettings.maxOutputTokens;
-        aiNode["max_tool_rounds"] = aiSettings.maxToolRounds;
-        settingsData["ai_assistant"] = aiNode;
+        // MCP server
+        YAML::Node mcpNode;
+        mcpNode["http_enabled"] = mcpHttpEnabled;
+        mcpNode["http_port"] = mcpHttpPort;
+        if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        settingsData["mcp"] = mcpNode;
+        if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
         // Save to file
         std::ofstream fout(configFilePath.string());
@@ -656,15 +594,21 @@ void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
     saveSettings();
 }
 
-ai::Settings AppSettings::getAiSettings() {
-    return aiSettings;
+bool AppSettings::getMcpHttpEnabled() {
+    return mcpHttpEnabled;
 }
 
-void AppSettings::setAiSettings(const ai::Settings& settings) {
-    aiSettings = settings;
-    if (aiSettings.model.empty()) {
-        aiSettings.model = ai::defaultModelForProvider(aiSettings.provider);
-    }
+int AppSettings::getMcpHttpPort() {
+    return mcpHttpPort;
+}
+
+std::string AppSettings::getMcpHttpToken() {
+    return mcpHttpToken;
+}
+
+void AppSettings::setMcpHttp(bool enabled, int port) {
+    mcpHttpEnabled = enabled;
+    mcpHttpPort = port;
     saveSettings();
 }
 

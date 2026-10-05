@@ -151,15 +151,17 @@ void SceneSaveDialog::show() {
                 m_onSave(fullPath);
             }
             m_isOpen = false;
+            m_cancelRequested = false;
 
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
             (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
+            m_cancelRequested = false;
 
             if (m_onCancel) {
                 m_onCancel();
@@ -176,6 +178,7 @@ void SceneSaveDialog::show() {
         // This happens if user presses ESC or clicks outside the modal
         if (m_isOpen) {
             m_isOpen = false;
+            m_cancelRequested = false;
 
             // If dialog was closed without explicit button press,
             // we still need to call the cancel callback
