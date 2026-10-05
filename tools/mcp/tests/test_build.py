@@ -125,6 +125,10 @@ async def test_cancel_desktop_build(ed: Editor):
     ed.check_in(job_id, msg)
     info = await ed.call("get_build_info")
     ed.check_eq(info["running_job"], job_id)
+    # the exporter reads the project from its thread: project tools wait for it
+    msg = await ed.call("set_project_settings", values={"quality.vsync": True}, expect_error=True)
+    ed.check_in(job_id, msg)
+    await ed.call("create_project", path=str(ed.scratch.root / "not-now"), expect_error=True)
 
     await asyncio.sleep(2)
     await ed.call("cancel_job", job_id=job_id)
@@ -208,9 +212,13 @@ async def test_desktop_build_and_run(ed: Editor):
     (ed.project / "cpp").mkdir(exist_ok=True)
     (ed.project / "cpp" / "Broken.cpp").write_text("int broken() {\n    return undefined_symbol_xyz;\n}\n")
     await ed.call("set_project_settings", values={"scripting.script_dirs": ["cpp"]})
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
+    raw = await ed.call_raw("build_project", {"mode": "desktop", "output_dir": str(out), "build_jobs": JOBS,
+                                              "timeout_seconds": 30})
+    r = raw.value
+    ed.check(raw.is_error == (r["status"] == "failed"), "a failed build is a tool error")
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], 3600, poll=10.0)
     ed.check_eq(job["status"], "failed", f"{job}")
+    print("[test] broken build:", job["message"])
     errors = job["result"]["errors"]
     ed.check(errors, f"no parsed errors: {job}")
     first = errors[0]

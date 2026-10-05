@@ -348,6 +348,8 @@ std::string projectFileFor(const fs::path& projectPath, const std::string& file)
         fs::path suffix;
         for (size_t i = start; i < parts.size(); i++) suffix /= parts[i];
         if (suffix.is_absolute() || suffix.has_root_name()) continue;
+        // the build cache (.jasperengine/export/...) holds copies: the source is elsewhere
+        if (*suffix.begin() == ".jasperengine") continue;
         if (parts.size() - start >= 1 && fs::is_regular_file(projectPath / suffix, ec)) {
             if (parts.size() - start == 1 && start != parts.size() - 1) continue;
             return suffix.generic_string();
