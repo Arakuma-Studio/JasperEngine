@@ -9,7 +9,6 @@ namespace jasperengine::editor::mcp {
 
     // One per tools/*.cpp. McpServer calls them in this order; a later module replaces a
     // tool of an earlier one by registering the same name (or removeTool + a better one).
-    void registerLegacyTools(McpRegistry& registry);
     void registerCoreTools(McpRegistry& registry);
     void registerProjectTools(McpRegistry& registry);
     void registerSceneTools(McpRegistry& registry);

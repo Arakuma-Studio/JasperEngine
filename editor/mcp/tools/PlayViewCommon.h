@@ -85,12 +85,26 @@ namespace jasperengine::editor::mcp::w3 {
     // Parses the shared screenshot arguments of a tool ({screenshot: bool|"game"|"scene", max_width})
     bool parseScreenshotOption(const Json& args, CaptureRequest& request, bool& wanted, std::string& error);
 
+    // Tool schemas of those arguments (and of max_width elsewhere)
+    inline Json screenshotArgSchema() {
+        return Json{
+            {"description", "Also return an image (true: game)."},
+            {"oneOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
+        };
+    }
+    inline Json maxWidthArgSchema(int maximum, int defaultWidth) {
+        return Json{{"type", "integer"}, {"description", "0 = full size."},
+                    {"minimum", 0}, {"maximum", maximum}, {"default", defaultWidth}};
+    }
+
     // ------------------------------------------------------------ play (PlayTools.cpp)
 
     // {state, scene, ...} of the play session (or "stopped")
     Json playStateJson(McpContext& ctx);
     // The scene the Game view shows: the playing scene, else the selected one (behind a prefab stage)
     SceneProject* gameViewScene(Project* project);
+    // The scene play start runs by default: the start scene if open, else gameViewScene
+    SceneProject* defaultPlayScene(Project* project);
 
     // A scene of the running game: null ref → the played (main) scene; otherwise a scene id,
     // name or path, mapped to its Play copy when the game runs it as a child scene (or a Play

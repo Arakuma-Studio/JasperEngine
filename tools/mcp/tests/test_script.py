@@ -70,6 +70,44 @@ async def test_create_lua_script_and_properties(ed: Editor):
     await ed.call("create_script", kind="lua", name="Templated", expect_error=True)  # exists
 
 
+SPAWNER = """local Spawner = {
+    properties = {
+        { name = "brick", displayName = "Brick", type = "Prefab" },
+        { name = "target", displayName = "Target", type = "entity" },
+    }
+}
+
+return Spawner
+"""
+
+
+async def test_prefab_and_entity_script_properties(ed: Editor):
+    """Prefab properties take a .prefab path (stored by GUID); entity refs read back resolved."""
+    ed.require_tools("create_script", "set_script_properties", "create_prefab", "set_properties")
+    eid = await make_entity(ed, "Spawner")
+    target = await make_entity(ed, "Target")
+    brick = await make_entity(ed, "BrickSrc")
+    made = await ed.call("create_prefab", entity=brick, path="prefabs/ScriptBrick.prefab")
+    guid = made["prefabs"][0]["guid"]
+    await ed.call("create_script", kind="lua", name="Spawner", content=SPAWNER, entity=eid)
+    out = await ed.call("set_script_properties", entity=eid, values={"brick": "prefabs/ScriptBrick.prefab", "target": target})
+    p = prop(out["script"], "brick")
+    ed.check(isinstance(p["value"], dict) and p["value"].get("guid") == guid, f"prefab stored by guid: {p!r}")
+    t = prop(out["script"], "target")
+    ed.check(t["value"].get("id") == target and not t["value"].get("missing"), f"entity ref resolved: {t!r}")
+    # the same through set_properties; bad paths are refused instead of storing nothing
+    await ed.call("set_properties", entity=eid, values={"script": {"scripts[0].brick": None}})
+    got = await ed.call("list_scripts", entity=eid)
+    ed.check(not prop(got["scripts"][0], "brick")["value"].get("guid"), f"cleared: {got!r}")
+    await ed.call("set_properties", entity=eid, values={"script": {"scripts[0].brick": "prefabs/ScriptBrick.prefab"}})
+    got = await ed.call("list_scripts", entity=eid)
+    ed.check_eq(prop(got["scripts"][0], "brick")["value"].get("guid"), guid)
+    await ed.check_error("set_script_properties", entity=eid, values={"brick": "prefabs/Nope.prefab"}, contains="list_prefabs")
+    await ed.check_error("set_properties", entity=eid, values={"script": {"scripts[0].brick": "assets/sprites/rock.png"}},
+                         contains="prefab")
+    await ed.call("delete_entities", entities=[eid, target, brick])
+
+
 async def test_check_script(ed: Editor):
     ed.require_tools("check_script")
     bad = "local T = {}\nfunction T:init()\n  if x then\nend\nreturn T\n"

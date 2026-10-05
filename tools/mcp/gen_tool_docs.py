@@ -6,8 +6,8 @@
 Starts the editor through the harness (a new empty project by default, so no fixture is
 needed; --project/--fixture to use a project copy instead), lists every tool and writes them
 grouped by module with each tool's description and a parameter table. A tool's module is
-taken from its `_meta` ("jasper/module" or "module") when the server sets it, else guessed
-from its name.
+taken from its `_meta` ("jasper/module" or "module") when the server sets it, else from the
+editor/mcp/tools/*.cpp file that registers it.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -23,27 +24,46 @@ sys.path.insert(0, str(HERE))
 
 from harness import REPO, Editor  # noqa: E402
 
-# (module, words in the tool name) in match order; the first hit wins.
-GROUPS: list[tuple[str, tuple[str, ...]]] = [
-    ("Core", ("batch", "get_job", "cancel_job", "list_jobs", "undo", "redo", "editor_status")),
-    ("Prefabs", ("prefab",)),
-    ("Play mode and input", ("play", "input", "runtime", "eval", "simulate", "key", "mouse", "touch")),
-    ("Views and screenshots", ("screenshot", "capture", "view", "scene_camera", "frame")),
-    ("Console", ("console", "output_log", "log")),
-    ("Scripts", ("script", "source", "lua", "cpp", "compile", "project_build_file")),
-    ("Docs", ("docs", "engine_api", "engine_source", "guide")),
-    ("Build and export", ("export", "build", "player", "generate_shaders")),
-    ("World: terrain, tilemaps, sprites, animation, particles, physics, UI, audio",
-     ("terrain", "tilemap", "sprite", "animation", "keyframe", "particle", "joint", "collider",
-      "rigidbody", "audio", "sound", "ui_", "widget", "tween")),
-    ("Assets, materials and shaders", ("asset", "resource", "import", "folder", "material", "shader",
-                                       "texture", "file", "download", "curated", "model")),
-    ("Components and properties", ("component", "property", "properties")),
-    ("GameObjects and selection", ("entity", "entities", "gameobject", "hierarchy", "select",
-                                   "clipboard", "copy", "paste", "duplicate", "reparent", "main_camera")),
-    ("Scenes", ("scene",)),
-    ("Project", ("project",)),
+# Section per registering source file (editor/mcp/tools/<File>.cpp), in this order
+MODULES: list[tuple[str, str]] = [
+    ("CoreTools", "Core"),
+    ("ProjectTools", "Project"),
+    ("SceneTools", "Scenes"),
+    ("EntityTools", "GameObjects and selection"),
+    ("ComponentTools", "Components and properties"),
+    ("PrefabTools", "Prefabs"),
+    ("PlayTools", "Play mode and input"),
+    ("ViewTools", "Views and screenshots"),
+    ("ConsoleTools", "Console"),
+    ("ScriptTools", "Scripts"),
+    ("AssetTools", "Assets, materials and shaders"),
+    ("DocsTools", "Docs"),
+    ("BuildTools", "Build and export"),
+    ("WorldTools", "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models"),
 ]
+GROUPS = [title for _, title in MODULES]
+
+# `tool.name = "x";` (also `tool.name = undo ? "undo" : "redo";`) and WorldTools' `add("x", ...)`
+_NAME_LINE = re.compile(r'tool\.name\s*=([^;]*);')
+_ADD_CALL = re.compile(r'\badd\(\s*"([a-z0-9_]+)"\s*,')
+
+
+def source_modules() -> dict[str, str]:
+    """Tool name -> section, from the tool registrations in editor/mcp/tools/*.cpp."""
+    out: dict[str, str] = {}
+    tools_dir = REPO / "editor" / "mcp" / "tools"
+    for stem, title in MODULES:
+        path = tools_dir / f"{stem}.cpp"
+        if not path.exists():
+            continue
+        text = path.read_text(errors="replace")
+        names = [n for line in _NAME_LINE.findall(text) for n in re.findall(r'"([a-z0-9_]+)"', line)]
+        for name in names + _ADD_CALL.findall(text):
+            out.setdefault(name, title)
+    return out
+
+
+SOURCE_MODULES: dict[str, str] = {}
 
 
 def module_of(tool) -> str:
@@ -51,18 +71,14 @@ def module_of(tool) -> str:
     for key in ("jasper/module", "module"):
         if isinstance(meta, dict) and meta.get(key):
             return str(meta[key])
-    name = tool.name
-    for group, words in GROUPS:
-        if any(w in name for w in words):
-            return group
-    return "Other"
+    return SOURCE_MODULES.get(tool.name, "Other")
 
 
 def type_of(schema: dict) -> str:
     if not isinstance(schema, dict):
         return ""
     if "enum" in schema:
-        return " \\| ".join(f"`{json.dumps(v)}`" for v in schema["enum"])
+        return " | ".join(f"`{json.dumps(v)}`" for v in schema["enum"])
     if "const" in schema:
         return f"`{json.dumps(schema['const'])}`"
     for key in ("anyOf", "oneOf"):
@@ -128,7 +144,7 @@ def render(tools, server_info, version) -> str:
     groups: dict[str, list] = {}
     for t in sorted(tools, key=lambda t: t.name):
         groups.setdefault(module_of(t), []).append(t)
-    order = [g for g, _ in GROUPS] + ["Other"]
+    order = GROUPS + ["Other"]
     names = sorted(groups, key=lambda g: order.index(g) if g in order else len(order))
     server = f"{server_info.name} {server_info.version}" if server_info else "unknown server"
     lines = [
@@ -139,6 +155,13 @@ def render(tools, server_info, version) -> str:
         "",
         f"{len(tools)} tools. See [README.md](README.md) for setup and the addressing rules "
         "(scene, entity, component, property, asset references).",
+        "",
+        "Conventions shared by every tool (explained once in the server instructions, not repeated "
+        "per tool): `scene` is a scene id, name or project-relative .scene path, omitted = the selected "
+        "scene (a Prefab Mode stage id works too); `entity` is a GameObject id, a path from the scene "
+        "root (`Player/Gun`, `Enemy#2`) or a unique name; `entities` (array) applies a tool to several "
+        "GameObjects; asset paths are project-relative. Booleans without a listed default are false. Unknown arguments "
+        "are rejected with the list of valid ones. Every scene edit is one undo step.",
         "",
     ]
     for g in names:
@@ -160,6 +183,7 @@ async def main() -> int:
     ap.add_argument("--url", help="read tools/list from a running editor over HTTP")
     ap.add_argument("--fake", action="store_true", help="use tools/mcp/fake_server.py (harness self-test)")
     args = ap.parse_args()
+    SOURCE_MODULES.update(source_modules())
 
     if args.url:
         ed = Editor(url=args.url)

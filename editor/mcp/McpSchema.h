@@ -37,18 +37,24 @@ namespace jasperengine::editor::mcp::schema {
     Json vec2(const std::string& description);
     Json vec3(const std::string& description);
     Json vec4(const std::string& description);
-    // [x,y,z,w], or {"euler":[x,y,z]} in degrees
-    Json quat(const std::string& description);
+    // [x,y,z,w], or {"euler":[x,y,z]} in degrees (empty description: a default one)
+    Json quat(const std::string& description = {});
     // [r,g,b] or [r,g,b,a], 0-1
-    Json color(const std::string& description);
+    Json color(const std::string& description = {});
 
-    // Scene reference: numeric id, scene name or project-relative .scene path. Omit for the selected scene.
+    // The reference conventions (scene id/name/path, entity id/path/"Name#N", {"id"|"name"|"path"}
+    // objects) are explained once in the server instructions (Addressing), so these default
+    // descriptions stay short: tool definitions are paid for in every agent session.
+    // Empty description = none (the instructions' Addressing section covers it).
+    // Scene reference: id, name, .scene path or {"id"|"name"|"path"}; omitted = the selected scene.
     Json sceneRef(const std::string& description = {});
-    // GameObject reference: numeric id or a '/'-joined name path from the scene root ("Player/Gun", "Enemy#2")
+    // GameObject reference: id, path ("Player/Gun", "Enemy#2"), unique bare name or {"id"|"name"|"path"}
     Json entityRef(const std::string& description = {});
+    // An array of GameObject references
+    Json entities(const std::string& description = {});
     // Component type name as Catalog::getComponentType accepts (transform, mesh, rigidbody2d...)
     Json componentName(const std::string& description = {});
-    // Project-relative asset path
+    // Project-relative asset path (the description should say which kind of asset)
     Json assetPath(const std::string& description);
 
     // Adds "default" to a property schema (documentation; handlers apply the default)

@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace jasperengine::editor::mcp::legacy {
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -381,4 +381,4 @@ Json EngineApiContext::search(const std::string& query,
     };
 }
 
-} // namespace jasperengine::editor::mcp::legacy
+} // namespace jasperengine::editor::mcp

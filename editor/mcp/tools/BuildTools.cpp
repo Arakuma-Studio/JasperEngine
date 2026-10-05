@@ -1347,20 +1347,16 @@ void runBuildTool(const CallPtr& call) {
 void registerBuildTools(McpRegistry& registry) {
     using namespace schema;
 
-    registry.removeTool("export_project");
-
     {
         ToolDef tool;
         tool.name = "get_build_info";
         tool.title = "Get Build Info";
         tool.description =
-            "Build Settings state: what this computer can build (desktop: cmake + C++ compiler found, missing tools listed; "
-            "web: Emscripten SDK found), the graphics APIs per mode, the remembered output directory per mode, the "
-            "compiler kit and job count, the scenes in the build and start scene, the shader count (include_shaders: "
-            "true lists each shader's key and name for build_project shaders.add / exclude), the running build job and "
-            "the last build's result and executable. Call before build_project.";
+            "Build Settings state: toolchains found (cmake/compiler, emsdk; missing ones listed), graphics "
+            "APIs and last output dir per mode, jobs, scenes in build, shader count (include_shaders lists "
+            "keys for build_project shaders), running job, last result. Call before build_project.";
         tool.inputSchema = object({
-            {"include_shaders", withDefault(boolean("List every shader variant (key, name, from_scenes, excluded)."), false)}
+            {"include_shaders", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1368,41 +1364,37 @@ void registerBuildTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     }
 
+    const Json jobTimeout = withDefault(number("", 0, 3600), 120);
+    const Json stringItem = Json{{"type", "string"}};
+
     {
         ToolDef tool;
         tool.name = "build_project";
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. mode desktop (default) compiles a runnable player for this computer "
-            "(cmake + C++ compiler; the engine is compiled from source, so a first build takes many minutes, later ones are "
-            "incremental); web builds a WebAssembly player (needs emsdk); source exports the standalone C++/CMake project "
-            "for any platform (platform or backends pick the shader graphics APIs). Every scene is saved first; refused "
-            "during Play. Returns when done or after timeout_seconds with {job_id, status: running}: poll get_job, stop "
-            "with cancel_job. The result has output_dir, artifacts, executable (desktop), errors [{file, line, column, "
-            "message, project_file}] parsed from the compiler/CMake output, warnings, and log_file with the whole log. "
-            "The exporter reads the project from its own thread: don't edit scenes or start Play while a build job runs "
-            "(project tools refuse to). Verify a desktop player with run_build. Example: {\"mode\": \"desktop\", \"output_dir\": \"/home/me/builds/game\", "
-            "\"build_jobs\": 4}.";
+            "File > Build Settings > Build, as a job. desktop: player for this computer (the first build "
+            "compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: standalone C++/CMake "
+            "project. Saves all scenes first. Past timeout_seconds returns {job_id} (poll get_job). Result: "
+            "output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit "
+            "scenes or play meanwhile.";
         tool.inputSchema = object({
-            {"mode", withDefault(stringEnum("What to build.", {"desktop", "web", "source"}), "desktop")},
-            {"output_dir", string("Absolute output directory outside the project. Default: the one used last for "
-                                  "this mode (get_build_info), else <project>/.jasperengine/builds/<mode>.")},
-            {"overwrite", withDefault(boolean("source mode: export into a non-empty output_dir (same-name files are replaced)."), false)},
-            {"start_scene", sceneRef("Start scene (saved scene id, name or path); also becomes the project's start scene. Default: the project's.")},
-            {"graphics_api", string("desktop: opengl or vulkan on Linux (opengl, vulkan, d3d11 on Windows; metal-macos, opengl on macOS); remembered. web: opengles.")},
-            {"platform", stringEnum("source mode: target platform whose graphics APIs the shaders are compiled for.",
-                                    {"windows", "macos", "linux", "android", "ios", "web"})},
-            {"backends", array(Json{{"type", "string"}}, "source mode: explicit graphics APIs (opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, or all); remembered.")},
-            {"build_type", withDefault(stringEnum("desktop/web CMake build type.", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
-            {"build_jobs", integer("desktop: parallel compile jobs (0 = automatic). Default: the project's (preferences.build_jobs).")},
+            {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
+            {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
+            {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
+            {"start_scene", sceneRef("Also becomes the project's start scene. Default: project's.")},
+            {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
+            {"platform", stringEnum("source: shader target platform.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
+            {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
+            {"build_jobs", integer("desktop: 0 = auto. Default: preferences.build_jobs.")},
             {"shaders", object({
-                {"add", array(Json{{"type", "string"}}, "Shader keys to include (get_build_info include_shaders).")},
-                {"exclude", array(Json{{"type", "string"}}, "Shader keys to leave out.")},
-                {"reset", boolean("Clear the manual additions/exclusions first.")}
+                {"add", array(stringItem, "Shader keys (get_build_info include_shaders).")},
+                {"exclude", array(stringItem, "")},
+                {"reset", boolean("Clear manual add/exclude first.")}
             })},
-            {"wait", withDefault(boolean("Wait for the build (up to timeout_seconds)."), true)},
-            {"timeout_seconds", withDefault(number("How long to wait before returning the running job.", 0, 3600), 120)}
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_seconds", jobTimeout}
         });
         tool.annotations.openWorld = true;
         tool.allowedWhilePlaying = false;
@@ -1416,16 +1408,15 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Generate Shaders";
         tool.description =
-            "Compile shader variants into output_dir as a job (what a build embeds), without building a player: by default "
-            "the shaders the project's scenes need (with the build's manual additions/exclusions), or the given shader "
-            "keys. format header (C++ headers), binary (.sdat) or json. Rarely needed: build_project compiles shaders itself.";
+            "Compile shader variants into output_dir as a job, without a player (build_project does this itself). "
+            "Default: the shaders the project's scenes need. format header = C++ headers, binary = .sdat.";
         tool.inputSchema = object({
-            {"output_dir", string("Absolute output directory.")},
-            {"backends", array(Json{{"type", "string"}}, "Graphics APIs (opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all). Default all.")},
-            {"format", withDefault(stringEnum("Output format.", {"header", "binary", "json"}), "header")},
-            {"shaders", array(Json{{"type", "string"}}, "Shader keys (get_build_info include_shaders). Default: the project's.")},
-            {"wait", withDefault(boolean("Wait for it (up to timeout_seconds)."), true)},
-            {"timeout_seconds", withDefault(number("How long to wait before returning the running job.", 0, 3600), 120)}
+            {"output_dir", string("Absolute.")},
+            {"backends", array(stringItem, "Graphics APIs. Default: all.")},
+            {"format", withDefault(stringEnum("", {"header", "binary", "json"}), "header")},
+            {"shaders", array(stringItem, "Shader keys.")},
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_seconds", jobTimeout}
         }, {"output_dir"});
         tool.annotations.openWorld = true;
         tool.handler = generateShadersTool;
@@ -1437,20 +1428,16 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Launch a built Desktop player (default: the last one build_project made) as a child process on the editor's "
-            "display, let it run for `seconds`, take a screenshot of its window after screenshot_after_seconds (Linux/X11; "
-            "returned as an image), then stop it. Returns its stdout/stderr log (last log_lines lines, the whole log in "
-            "log_file), exit code or signal if it exited by itself (exited_early), crashed (exited with an error/signal or "
-            "logged fatal lines: errors, Lua errors, missing shaders, assertions, segfaults), and fatal_lines. Use it to "
-            "check that a shipped game starts and shows what it should. Not available on Windows yet.";
+            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), then stop it. Returns the "
+            "log tail (full: log_file), exit code/signal, exited_early, crashed, fatal_lines.";
         tool.inputSchema = object({
-            {"path", string("Absolute player executable, or a build output directory. Default: the last Desktop build.")},
-            {"seconds", withDefault(number("How long to let it run before stopping it.", 0.5, 300), 5)},
-            {"screenshot", withDefault(boolean("Capture its window."), true)},
-            {"screenshot_after_seconds", number("When to capture (default min(3, 0.8 * seconds)).")},
-            {"max_width", withDefault(integer("Scale the screenshot down to this width.", 64, 4096), 1280)},
-            {"args", array(Json{{"type", "string"}}, "Command-line arguments for the player.")},
-            {"log_lines", withDefault(integer("How many of the last log lines to return.", 0, 2000), 80)}
+            {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
+            {"seconds", withDefault(number("", 0.5, 300), 5)},
+            {"screenshot", withDefault(boolean(""), true)},
+            {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
+            {"max_width", withDefault(integer("", 64, 4096), 1280)},
+            {"args", array(stringItem, "Player arguments.")},
+            {"log_lines", withDefault(integer("", 0, 2000), 80)}
         });
         tool.annotations.openWorld = true;
         tool.handler = runBuildTool;

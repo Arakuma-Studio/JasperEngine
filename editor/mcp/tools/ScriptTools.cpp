@@ -660,6 +660,11 @@ Json scriptEntryJson(Project* project, SceneProject* sceneProject, Entity entity
     if (entry.type == ScriptType::CPP) item["header_path"] = entryHeader(project, entry);
     if (withProperties) {
         Json props = Json::array();
+        McpValues::ReadContext ctx;
+        ctx.project = project;
+        ctx.scene = sceneProject;
+        ctx.entity = entity;
+        ctx.component = ComponentType::ScriptComponent;
         for (const ScriptProperty& prop : entry.properties) {
             const std::string key = "scripts[" + std::to_string(index) + "]." + prop.name;
             PropertyData data = Catalog::getProperty(sceneProject->scene, entity, ComponentType::ScriptComponent, key);
@@ -667,7 +672,7 @@ Json scriptEntryJson(Project* project, SceneProject* sceneProject, Entity entity
             if (prop.displayName != prop.name && !prop.displayName.empty()) p["display_name"] = prop.displayName;
             if (data.ref) {
                 try {
-                    p["value"] = McpValues::toJson(project, key, data);
+                    p["value"] = McpValues::readProperty(ctx, key, data);
                 } catch (...) {
                 }
             }
@@ -1629,38 +1634,27 @@ void codeEditorTool(const CallPtr& call) {
 void registerScriptTools(McpRegistry& registry) {
     using namespace schema;
 
-    // Superseded legacy tools. set_project_script_dirs / set_project_cxx_standard /
-    // update_project_build_file are project settings (W5).
-    registry.removeTool("remove_script_entry");
-    registry.removeTool("update_script_file");
-    registry.removeTool("create_source_file");
-
-    const Json scriptSelector = any("Which script of the GameObject: its index (0-based), class name, or file path. "
-                                    "Optional when the GameObject has one script.");
+    const Json scriptSelector = any("Script index, class name or file; optional with one script.");
 
     {
         ToolDef tool;
         tool.name = "create_script";
         tool.title = "Create Script";
         tool.description =
-            "Create a script from the editor's templates (what Add Component > New Script makes) and optionally attach "
-            "it to a GameObject. kind: lua (a Lua module table in the project's Lua directory), cpp_script (a "
-            "jasperengine::ScriptBase subclass: general logic), cpp_subclass (a subclass of the GameObject's own class, "
-            "e.g. Mesh or Sprite, to call its methods on this; needs entity). Pass content (Lua) or header_content + "
-            "source_content (C++) to replace the template; otherwise read the template and edit it. The file write is one "
-            "undo step of the project history (undo scope project), attaching another in the scene's history. Returns "
-            "the files, the attached script with its properties, and Lua syntax problems. C++ is not compiled here: "
-            "run compile_scripts. Example: {\"kind\":\"lua\",\"name\":\"Player\",\"entity\":\"Player\"}.";
+            "Create a script from the editor template, optionally attached to entity. kind lua: module table "
+            "in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the GameObject's class "
+            "(e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) replace the "
+            "template. Returns {path, header_path, script, problems}. Compile C++ with compile_scripts.";
         tool.inputSchema = object({
-            {"kind", stringEnum("Script kind.", {"lua", "cpp_script", "cpp_subclass"})},
-            {"name", string("Class / module name; also the file name (Player -> Player.lua, or Player.h + Player.cpp).")},
-            {"directory", assetPath("Project-relative directory. Default: the Lua directory for lua, \"scripts\" for C++.")},
-            {"content", string("Lua: full file content instead of the template.")},
-            {"header_content", string("C++: full header content instead of the template.")},
-            {"source_content", string("C++: full .cpp content instead of the template.")},
+            {"kind", stringEnum("", {"lua", "cpp_script", "cpp_subclass"})},
+            {"name", string("Class/module name = file name.")},
+            {"directory", assetPath("Default: Lua dir, or \"scripts\" for C++.")},
+            {"content", string("")},
+            {"header_content", string("")},
+            {"source_content", string("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("GameObject to attach the new script to (required for cpp_subclass).")},
-            {"overwrite", withDefault(boolean("Replace existing files with the same name."), false)}
+            {"entity", entityRef("Attach to (needed for cpp_subclass).")},
+            {"overwrite", withDefault(boolean(""), false)}
         }, {"kind", "name"});
         tool.allowedWhilePlaying = false;
         tool.handler = createScriptTool;
@@ -1672,18 +1666,16 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "attach_script";
         tool.title = "Attach Script";
         tool.description =
-            "Attach an existing script file to a GameObject (adds the Script component if needed), like dragging it onto "
-            "the Inspector. path: a .lua file (inside the Lua directory) or a C++ script's .h or .cpp (the other one must "
-            "sit next to it; the class is read from the header unless class_name is given). One undo step. Returns the "
-            "script with its properties (names, types, values) to set with set_script_properties. Fails if the GameObject "
-            "already has that file.";
+            "Attach a script file to a GameObject (adds the Script component if needed). path: a .lua in the Lua dir, or "
+            "a C++ script's .h or .cpp (pair side by side). Fails if already attached. Returns {entity, script (with "
+            "properties), problems}.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"path", assetPath("Project-relative .lua, .h or .cpp path.")},
-            {"class_name", string("C++ only: the script class, when the header declares several classes.")},
-            {"index", integer("Insert at this position (default: last). Scripts run in order.")},
-            {"enabled", withDefault(boolean("Start enabled."), true)}
+            {"path", assetPath(".lua, .h or .cpp.")},
+            {"class_name", string("C++: the class, if several in the header.")},
+            {"index", integer("Position (default: last); run order.")},
+            {"enabled", withDefault(boolean(""), true)}
         }, {"entity", "path"});
         tool.allowedWhilePlaying = false;
         tool.handler = attachScriptTool;
@@ -1695,8 +1687,7 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "detach_script";
         tool.title = "Detach Script";
         tool.description =
-            "Remove one script from a GameObject's Script component (the files stay; delete them with delete_asset). "
-            "One undo step. Returns the remaining scripts.";
+            "Remove one script from a GameObject (files are kept). Returns {entity, scripts} (remaining).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1713,18 +1704,17 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "update_script_entry";
         tool.title = "Update Script Entry";
         tool.description =
-            "Change one script attachment of a GameObject in one undo step: enabled (Inspector checkbox), move_to "
-            "(reorder: scripts run in order), path (repoint to another file of the same language, e.g. after a rename; "
-            "property values with the same name are kept), class_name (C++ class renamed in its header). Returns all "
-            "scripts of the GameObject.";
+            "Change one attached script: enabled, move_to (reorder = run order), path (repoint to another file of the "
+            "same language, e.g. after a rename; same-name property values kept), class_name (C++ class renamed). "
+            "Returns {entity, scripts}.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"script", scriptSelector},
-            {"enabled", boolean("Enable or disable the script.")},
-            {"move_to", integer("New 0-based position.")},
-            {"path", assetPath("New .lua / .h / .cpp file.")},
-            {"class_name", string("New C++ class name.")}
+            {"enabled", boolean("")},
+            {"move_to", integer("New 0-based index.")},
+            {"path", assetPath("")},
+            {"class_name", string("")}
         }, {"entity"});
         tool.allowedWhilePlaying = false;
         tool.handler = updateScriptEntryTool;
@@ -1736,12 +1726,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "set_script_properties";
         tool.title = "Set Script Properties";
         tool.description =
-            "Set Inspector values of a script's exposed properties (Lua `properties` table entries, C++ DPROPERTY fields) "
-            "on one GameObject, all in one undo step. values maps property name to value: numbers, booleans, strings, "
-            "[x,y(,z(,w))] vectors and colors, a GameObject reference (id or path) for entity / wrapper-class properties, "
-            "a .prefab path for prefab properties; \"enabled\" toggles the script. Same as the property paths "
-            "scripts[i].<name> of set_component_property. Unknown names fail listing the script's properties; after "
-            "adding a property to the file call sync_files first. Example: {\"entity\":\"Player\",\"values\":{\"speed\":300}}.";
+            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
+            "set_properties scripts[i].<name>). Prefab properties take a .prefab path; GameObject properties "
+            "an entity ref, or {\"scene\": <scene>, \"id\": <id>} for one in another scene; \"enabled\" "
+            "toggles the script. After adding a property to the file, call sync_files first.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1758,14 +1746,13 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "list_scripts";
         tool.title = "List Scripts";
         tool.description =
-            "With entity: the GameObject's scripts in order (type, class, files, enabled) with every property's name, "
-            "type, current value and property path. Without entity: every GameObject of the scene that has scripts. "
-            "include_files adds every .lua/.h/.cpp file of the project (and whether a loaded scene uses it), the Lua "
-            "directory and the C++ script directories.";
+            "With entity: its scripts in order (class, files, enabled, properties: name, type, value, path). Without: "
+            "the scene's scripted GameObjects. include_files adds the project's script files, the Lua dir and C++ "
+            "script dirs.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Omit to list the scene's scripted GameObjects.")},
-            {"include_files", withDefault(boolean("Also list the project's script files."), false)}
+            {"entity", entityRef("")},
+            {"include_files", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1778,14 +1765,12 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "check_script";
         tool.title = "Check Script";
         tool.description =
-            "Check a script without playing. Lua: syntax (compiled, not run) with the error line, then the properties the "
-            "Inspector will show. C++ header: the script class, its kind and its DPROPERTY fields (compile with "
-            "compile_scripts to check the code itself). Pass path, or code + language. A syntax error is reported in the "
-            "result (ok: false), not as a tool error.";
+            "Check a script without playing: Lua syntax (not run; ok false + error line) and its properties; C++ header: "
+            "class, kind, DPROPERTY fields (code: compile_scripts). Pass path, or code + language.";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative script file.")},
-            {"code", string("Script source to check instead of a file.")},
-            {"language", stringEnum("With code (or to override the extension).", {"lua", "cpp_header", "cpp_source"})}
+            {"path", assetPath("")},
+            {"code", string("Source instead of a file.")},
+            {"language", stringEnum("Default: from the extension.", {"lua", "cpp_header", "cpp_source"})}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1798,18 +1783,13 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "sync_files";
         tool.title = "Sync Files";
         tool.description =
-            "Make the editor pick up files you changed on disk with your own file tools (scripts, shaders, materials, "
-            "images...), right now instead of on its 1-second poll. Reloads open code editor buffers without unsaved "
-            "edits (buffers with unsaved edits are reported as conflicts), re-parses the properties of every attached "
-            "script that changed (new Lua `properties` entries / DPROPERTY fields appear in the Inspector), checks Lua "
-            "syntax, refreshes materials linked to changed .material files, invalidates changed shader forks, reloads "
-            "changed textures, refreshes the asset database and the Project window. Returns what changed since the last "
-            "sync (added / modified / removed), the script property changes and problems (path, line, message). Call it "
-            "after every batch of external edits. Editing .scene/.prefab/project.yaml on disk is not supported while the "
-            "project is open.";
+            "Call after editing files on disk with your own tools: the editor picks them up now (not on its 1 "
+            "s poll): clean code editor buffers, script properties, Lua syntax, materials, shaders, textures, "
+            "assets. Returns {changed: {added, modified, removed}, script_properties, problems: [{path, line, "
+            "message}]}. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
-            {"paths", array(string("Project-relative path."), "Files you changed (optional: a full sync scans the project).")},
-            {"full", withDefault(boolean("Scan the whole project and re-check every attached script."), true)}
+            {"paths", array(string(""), "Changed files (optional).")},
+            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
         });
         tool.annotations.idempotent = true;
         tool.handler = syncFilesTool;
@@ -1822,15 +1802,12 @@ void registerScriptTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ScriptCompile;  // busy policy (McpServer::busyRefusal)
         tool.title = "Compile C++ Scripts";
         tool.description =
-            "Build the project's C++ scripts plugin now, without entering Play (the same CMake build Play runs, so the "
-            "next Play is incremental). Compiles the enabled C++ scripts attached in the scenes plus the script "
-            "directories. Returns success, errors and warnings as {file (project-relative), line, column, message} and "
-            "the log tail. A build with errors is a normal result (success: false), not a tool error. Takes seconds to "
-            "minutes: with wait (default) it returns when done or after timeout_seconds with a job id to poll with "
-            "get_job (result in job.result). Don't start Play while it runs. Lua is not compiled (check_script).";
+            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental). Returns {success, "
+            "errors, warnings: [{file, line, column, message}], log tail}; compile errors are not a tool error. Past "
+            "timeout_seconds: a job id. Don't Play while it runs.";
         tool.inputSchema = object({
-            {"wait", withDefault(boolean("Wait for the build to finish."), true)},
-            {"timeout_seconds", withDefault(number("Seconds to wait before returning the job id.", 1, 3600), 300)}
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_seconds", withDefault(number("", 1, 3600), 300)}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = compileScriptsTool;
@@ -1842,17 +1819,16 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "code_editor";
         tool.title = "Code Editor";
         tool.description =
-            "The editor's built-in code editor, for the human watching: action open (show a file, cursor at line/column), "
-            "status (open files and which have unsaved edits: an unsaved buffer means the human is editing it, so don't "
-            "overwrite that file), save (write a buffer to disk), reload (discard the buffer's edits, load from disk), "
-            "close. Returns the open buffers.";
+            "The editor's code editor (for the human): open at line/column, status, save, reload (drop buffer edits), "
+            "close. An unsaved buffer means the human is editing it: don't overwrite that file. Returns the buffers.";
         tool.inputSchema = object({
-            {"action", withDefault(stringEnum("What to do.", {"status", "open", "save", "reload", "close"}), "status")},
-            {"path", assetPath("Project-relative file (all actions but status).")},
-            {"line", integer("open: 1-based line to show.")},
-            {"column", integer("open: 1-based column.")},
+            {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close"}), "status")},
+            {"path", assetPath("All actions but status.")},
+            {"line", integer("open: 1-based.")},
+            {"column", integer("open: 1-based.")},
             {"discard_unsaved", withDefault(boolean("close: drop unsaved edits."), false)}
         });
+        tool.annotations.destructive = true;
         tool.handler = codeEditorTool;
         registry.addTool(std::move(tool));
     }

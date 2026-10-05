@@ -142,6 +142,8 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
+        // AGENTS.md at the project root: (re)writes the JasperEngine section, keeps the rest
+        static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
         Generator();
         ~Generator();
         // Export rebuilds the engine, so it does not need the editor's ABI.

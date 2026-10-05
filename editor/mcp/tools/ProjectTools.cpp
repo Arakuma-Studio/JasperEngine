@@ -1931,22 +1931,13 @@ void editProjectBuildFileTool(const CallPtr& call) {
 void registerProjectTools(McpRegistry& registry) {
     using namespace schema;
 
-    // Superseded legacy tools
-    registry.removeTool("set_project_script_dirs");
-    registry.removeTool("set_project_cxx_standard");
-    registry.removeTool("update_project_build_file");
-    registry.removeTool("set_start_scene");
-    registry.removeTool("add_project_scene");
-
     {
         ToolDef tool;
         tool.name = "get_project_summary";
         tool.title = "Get Project Summary";
         tool.description =
-            "The open project: name, absolute path, temporary (in the system temp directory, like an unsaved File > New Project) or not, unsaved changes, the Scenes in Build "
-            "in build order (index 0 = start scene) and untitled scenes (not in any build until saved), start scene id, "
-            "assets_dir / lua_dir (roots of asset and Lua references), C++ script_dirs and cxx_standard, standalone "
-            "prefabs, physics on/off, the engine version and the host platform. For every Project Settings value use "
+            "Open project overview: name, path, temporary, unsaved, Scenes in Build (0 = start) and untitled "
+            "scenes, assets_dir/lua_dir, script_dirs, cxx_standard, prefabs, physics, versions. All settings: "
             "get_project_settings.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
@@ -1955,10 +1946,11 @@ void registerProjectTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     }
 
+    // Shared by create_project / open_project
     const Json unsavedSchema = withDefault(stringEnum(
-        "What to do with the open project's unsaved changes (scenes, Prefab Mode, code editor): cancel = fail and list "
-        "them; save = save them first (untitled scenes go to the project root as <name>.scene); discard = drop them.",
+        "The open project's unsaved changes (cancel: fail listing them).",
         {"cancel", "save", "discard"}), "cancel");
+    const Json loadTimeout = withDefault(number("", 5, 600), 180);
 
     {
         ToolDef tool;
@@ -1966,17 +1958,15 @@ void registerProjectTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ProjectSwitch;  // busy policy (McpServer::busyRefusal)
         tool.title = "Create Project";
         tool.description =
-            "File > New Project, without dialogs: creates a project in `path` (absolute; created when missing, must not "
-            "already hold a project.yaml) with one untitled 3D scene, opens it and waits until it has loaded (other tool "
-            "calls wait meanwhile). Returns the new project's summary. The untitled scene is in no build until saved: "
-            "save_project saves it (as <name>.scene), then edit_build_scenes / build_project. Example: "
-            "{\"path\": \"/home/me/games/MyGame\", \"name\": \"My Game\"}.";
+            "File > New Project: creates a project in `path` (no project.yaml there yet) with one untitled 3D scene, "
+            "opens it and waits for load. Returns the project summary. Save the scene (save_project) before building.";
         tool.inputSchema = object({
-            {"path", string("Absolute directory for the new project.")},
-            {"name", string("Project name. Default: the directory name.")},
+            {"path", string("Absolute directory.")},
+            {"name", string("Default: directory name.")},
             {"unsaved", unsavedSchema},
-            {"timeout_seconds", withDefault(number("How long to wait for the project to load.", 5, 600), 180)}
+            {"timeout_seconds", loadTimeout}
         }, {"path"});
+        tool.annotations.destructive = true;
         tool.annotations.openWorld = true;
         tool.allowedWhilePlaying = false;
         tool.handler = [](CallPtr call) { switchProjectTool(call, true); };
@@ -1988,15 +1978,13 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "open_project";
         tool.activity = ToolActivity::ProjectSwitch;  // busy policy (McpServer::busyRefusal)
         tool.title = "Open Project";
-        tool.description =
-            "File > Open Project, without dialogs: opens the project in `path` (its directory or project.yaml, absolute) "
-            "and waits until it has loaded. The open project's unsaved changes follow `unsaved` (default cancel: the call "
-            "fails and lists them). Returns the opened project's summary.";
+        tool.description = "File > Open Project: opens `path` and waits for load. Returns the project summary.";
         tool.inputSchema = object({
-            {"path", string("Absolute project directory or project.yaml path.")},
+            {"path", string("Absolute project dir or project.yaml.")},
             {"unsaved", unsavedSchema},
-            {"timeout_seconds", withDefault(number("How long to wait for the project to load.", 5, 600), 180)}
+            {"timeout_seconds", loadTimeout}
         }, {"path"});
+        tool.annotations.destructive = true;
         tool.annotations.openWorld = true;
         tool.allowedWhilePlaying = false;
         tool.handler = [](CallPtr call) { switchProjectTool(call, false); };
@@ -2008,15 +1996,12 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "save_project";
         tool.title = "Save Project";
         tool.description =
-            "File > Save All: saves every scene with unsaved changes (untitled ones become <untitled_scene_dir>/<name>.scene), "
-            "Prefab Mode changes, the code editor's open scripts and project.yaml, in place. A temporary project (one in the "
-            "system temp directory, like File > New Project makes) can take `path`, a new or empty absolute directory to "
-            "move it to (Save Project As). `name` renames the project. "
-            "Returns what was saved and the project summary.";
+            "File > Save All: modified scenes (untitled ones to <untitled_scene_dir>/<name>.scene), Prefab Mode, open "
+            "scripts, project.yaml. Returns what was saved and the summary.";
         tool.inputSchema = object({
-            {"path", string("Temporary projects only: absolute new/empty directory to move the project to (Save As).")},
-            {"name", string("Rename the project (Product Name) while saving.")},
-            {"untitled_scene_dir", withDefault(string("Project-relative folder where untitled scenes are saved."), "")}
+            {"path", string("Temporary project: Save As to this empty absolute dir.")},
+            {"name", string("Rename the project.")},
+            {"untitled_scene_dir", withDefault(string(""), "")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = saveProjectTool;
@@ -2028,20 +2013,14 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "get_project_settings";
         tool.title = "Get Project Settings";
         tool.description =
-            "Project Settings (Player, Graphics, Quality, Physics, Physics 2D, Scripting, Tags and Layers, Editor, and the "
-            "per-platform overrides) plus editor preferences relevant to automation, as flat dotted keys: "
-            "player.product_name, player.window_width, graphics.canvas_width, graphics.scaling_mode, quality.vsync, "
-            "physics2d.enabled, physics.layer_collision_matrix, scripting.cxx_standard, scripting.script_dirs, "
-            "tags_and_layers.tags, tags_and_layers.layers, preferences.clear_on_play, preferences.error_pause, "
-            "preferences.build_jobs, android.orientation... Without arguments returns every key except the platform "
-            "overrides (web/linux/windows/macos/ios/android); `category` picks one (or \"all\"), `keys` picks keys or "
-            "categories; describe: true adds each key's type, allowed values and meaning. Change them with "
-            "set_project_settings.";
+            "Project Settings and editor preferences as flat dotted keys (player.product_name, "
+            "physics.layer_collision_matrix, tags_and_layers.layers, preferences.build_jobs...). No args: all "
+            "but platform overrides. describe adds each key's type, allowed values and meaning.";
         tool.inputSchema = object({
-            {"category", string("One category: player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, scripting, editor, tags_and_layers, preferences, or all.")},
-            {"keys", array(Json{{"type", "string"}}, "Setting keys or category names to read.")},
-            {"describe", withDefault(boolean("Add type, allowed values and description per key."), false)}
+            {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
+                                "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
+            {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
+            {"describe", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2054,18 +2033,14 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "set_project_settings";
         tool.title = "Set Project Settings";
         tool.description =
-            "Change Project Settings / editor preferences: values is {key: value} with the keys and value shapes of "
-            "get_project_settings (describe: true shows types and allowed values). All values are validated first; one bad "
-            "value changes nothing. Project settings are saved to project.yaml at once (not undoable, like the Project "
-            "Settings dialog's OK); preferences.* are machine/editor settings. Lists (tags, script_dirs, abis, permissions, "
-            "layer_collision_matrix) are replaced whole; tags_and_layers.layers merges by index. Example: "
-            "{\"values\": {\"player.product_name\": \"Tappy\", \"player.window_width\": 800, \"player.window_height\": 600, "
-            "\"graphics.scaling_mode\": \"letterbox\", \"physics.layer_collision_matrix\": [[\"Player\", \"Water\"]], "
-            "\"scripting.cxx_standard\": 20}}. Close the Project Settings dialog first if a human has it open (its OK "
-            "would write its own copy back).";
+            "Set get_project_settings keys. All values validated first (one bad value changes nothing); saved to "
+            "project.yaml at once, NOT undoable. Lists are replaced whole; tags_and_layers.layers merges by index. "
+            "Example: {\"values\": {\"player.window_width\": 800, "
+            "\"physics.layer_collision_matrix\": [[\"Player\", \"Water\"]]}}.";
         tool.inputSchema = object({
-            {"values", anyObject("{\"setting.key\": value, ...}")}
+            {"values", anyObject("{key: value}")}
         }, {"values"});
+        tool.annotations.destructive = true;
         tool.annotations.idempotent = true;
         tool.allowedWhilePlaying = false;
         tool.handler = setProjectSettingsTool;
@@ -2077,16 +2052,13 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "edit_build_scenes";
         tool.title = "Edit Scenes in Build";
         tool.description =
-            "Scenes in Build (Build Settings / Edit Scenes In Build). The build holds every saved scene of the project, "
-            "start scene first (index 0), then the others in project order; untitled scenes are left out until saved. "
-            "Actions: list; add {scene: project-relative .scene path of a file not in the project yet (or an existing "
-            "scene), optional index}; remove {scene} (takes it off the project list, the file stays; refused with unsaved "
-            "changes or for the last scene); move {scene, index} (index 0 makes it the start scene); set_start {scene}. "
-            "scene = id, name or .scene path. Returns the build list [{index, id, name, path, start, opened, modified}].";
+            "Edit Scenes in Build (index 0 = start scene). add: also a .scene path not in the project yet. "
+            "remove: off the list, file kept (refused if unsaved or the last scene). Not undoable. Returns "
+            "{scenes_in_build: [{index, id, name, path, start}], untitled_scenes}.";
         tool.inputSchema = object({
-            {"action", withDefault(stringEnum("What to do.", {"list", "add", "remove", "move", "set_start"}), "list")},
-            {"scene", sceneRef("Scene id, name or project-relative .scene path.")},
-            {"index", integer("Build index for move (and optionally add); 0 = start scene.")}
+            {"action", withDefault(stringEnum("", {"list", "add", "remove", "move", "set_start"}), "list")},
+            {"scene", sceneRef("Required unless list.")},
+            {"index", integer("move (or add): build index.")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = editBuildScenesTool;
@@ -2098,15 +2070,13 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "edit_project_build_file";
         tool.title = "Edit ProjectBuild.cmake";
         tool.description =
-            "Read or write ProjectBuild.cmake at the project root: the CMake hook for extra include directories, "
-            "libraries and compile definitions of C++ scripts, used by Play's script build and by Desktop/Web player "
-            "builds (the generated CMakeLists.txt is rewritten on every build, so it is never the place for custom "
-            "settings). Omit content to read the file; content replaces the whole file (\"\" deletes it). Attach settings "
-            "to ${JASPERENGINE_TARGET} (never a literal target name) and use ${JASPERENGINE_SCRIPTS_DIR} as the root of "
-            "script paths. Verify with a Play (C++ scripts) or build_project and read its errors.";
+            "Read (omit content) or replace ProjectBuild.cmake: the CMake hook for C++ scripts' include dirs, libraries "
+            "and definitions (Play and player builds). content \"\" deletes it. Use ${JASPERENGINE_TARGET} and "
+            "${JASPERENGINE_SCRIPTS_DIR}. Not undoable.";
         tool.inputSchema = object({
-            {"content", string("Complete new contents. Omit to read the current file.")}
+            {"content", string("Whole new file.")}
         });
+        tool.annotations.destructive = true;
         tool.handler = editProjectBuildFileTool;
         registry.addTool(std::move(tool));
     }

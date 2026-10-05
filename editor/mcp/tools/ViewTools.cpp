@@ -1122,28 +1122,25 @@ void configureGameViewTool(const CallPtr& call) {
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
+    const Json viewScene = sceneRef("Default: playing, else selected.");
+    const Json sceneShot = withDefault(boolean("Also return a Scene view image."), false);
+    const Json maxWidth = w3::maxWidthArgSchema(8192, 768);
+
     {
         ToolDef tool;
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as a PNG image (MCP image content) so you can SEE the result. view \"game\" (default): "
-            "the Game view - the running game while playing (paused too), or when stopped the selected scene "
-            "through its game camera (the Game tab is brought to the front, since it only renders while shown). "
-            "view \"scene\": a Scene view with editor gizmos/grid (its tab is brought to the front; use "
-            "set_scene_camera / frame_entity to aim it). view \"editor\": the whole editor window. The image is "
-            "scaled down to max_width (default 1024; 0 = full size) to save tokens. The result also says where "
-            "the game canvas lies in the image (canvas_rect_in_image) so you can map image points to "
-            "send_input coordinates, and warns when the image is one flat colour (nothing rendered). save_path "
-            "also writes the PNG (project-relative, or an absolute path). Waits for loading assets; fails with "
-            "the reason when nothing can render (no camera, view closed, play still starting).";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
+            "camera. scene: the Scene view with gizmos (aim with set_scene_camera / frame_entity). editor: the "
+            "whole window. Returns canvas_rect_in_image (image -> send_input coords); warns on a flat image.";
         tool.inputSchema = object({
-            {"view", withDefault(stringEnum("Which view.", {"game", "scene", "editor"}), "game")},
-            {"scene", sceneRef("Scene view: which scene's tab (default: the playing scene, else the selected one). Game view while stopped: preview this scene (it becomes the selected scene).")},
-            {"max_width", withDefault(integer("Scale the image down to this width (aspect kept). 0 = full size.", 0, 8192), 1024)},
-            {"save_path", string("Also save the PNG here: project-relative (e.g. \"screenshots/level1.png\") or absolute.")},
-            {"focus", withDefault(boolean("Bring the view's tab to the front when it must be shown to render."), true)},
-            {"timeout_seconds", withDefault(number("How long to wait for the view to render.", 1, 600), 30)}
+            {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
+            {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
+            {"max_width", w3::maxWidthArgSchema(8192, 1024)},
+            {"save_path", string("Also write the PNG (project-relative or absolute).")},
+            {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
+            {"timeout_seconds", withDefault(number("", 1, 600), 30)}
         });
         tool.annotations.readOnly = true;
         tool.handler = screenshotTool;
@@ -1155,25 +1152,20 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "set_scene_camera";
         tool.title = "Set Scene View Camera";
         tool.description =
-            "Aim the editor's Scene view camera (not a game camera: nothing in the scene changes, no undo). "
-            "3D scenes: position and target [x,y,z], orbit {yaw, pitch} in degrees around the target, distance "
-            "from the target. 2D/UI scenes: center [x,y] in world units and zoom (world units per screen pixel; "
-            "smaller = closer). display toggles Scene view overlays (show_grid_2d, show_grid_3d, show_origin, "
-            "show_all_bodies, hide_light_icons, ...). Without arguments it just returns the camera. Returns the "
-            "camera {position, target, distance|zoom}; screenshot: true adds a Scene view image. Example 3D: "
-            "{\"target\": [0,1,0], \"orbit\": {\"yaw\": 45}, \"distance\": 12, \"screenshot\": true}. "
-            "To frame GameObjects use frame_entity.";
+            "Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, target, orbit (rotate "
+            "by yaw/pitch degrees around the target), distance; 2D/UI: center, zoom. No arguments: just reads. "
+            "Returns {position, target, distance|zoom}.";
         tool.inputSchema = object({
-            {"scene", sceneRef("Scene whose Scene view to aim (default: the playing scene, else the selected one).")},
-            {"position", vec3("3D: camera position.")},
-            {"target", vec3("3D: point the camera looks at.")},
-            {"orbit", object({{"yaw", number("Degrees around the vertical axis.")}, {"pitch", number("Degrees up/down.")}})},
-            {"distance", number("3D: distance from the target.", 0.2, 2000)},
-            {"center", vec2("2D/UI: world point at the view's centre.")},
-            {"zoom", number("2D/UI: world units per screen pixel (1 = 1:1; 2 = see twice as much).", 0.01, 1000)},
-            {"display", anyObject("Overlay toggles: show_grid_2d, show_grid_3d, show_origin, show_all_bodies, show_all_joints, show_all_bones, hide_camera_view, hide_light_icons, hide_sound_icons, hide_container_guides, hide_selection_outline, disable_fog (booleans); grid_spacing_2d, grid_spacing_3d (numbers).")},
-            {"screenshot", withDefault(boolean("Return a Scene view screenshot after moving."), false)},
-            {"max_width", withDefault(integer("Screenshot width.", 0, 8192), 768)}
+            {"scene", viewScene},
+            {"position", vec3("")},
+            {"target", vec3("Look-at point.")},
+            {"orbit", object({{"yaw", number("")}, {"pitch", number("")}})},
+            {"distance", number("", 0.2, 2000)},
+            {"center", vec2("World point at the view centre.")},
+            {"zoom", number("World units per pixel.", 0.01, 1000)},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false}.")},
+            {"screenshot", sceneShot},
+            {"max_width", maxWidth}
         });
         tool.handler = setSceneCameraTool;
         registry.addTool(std::move(tool));
@@ -1185,16 +1177,14 @@ void registerViewTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Frame GameObjects";
         tool.description =
-            "Frame GameObjects in the Scene view like pressing F: the editor camera moves to show them whole "
-            "(3D: around them; 2D: centred and zoomed to fit). entity / entities are ids or paths; while playing, "
-            "GameObjects the game spawned work too. Omit both to frame the current selection. screenshot: true "
-            "adds the Scene view image. Doesn't change the scene or the selection.";
+            "Frame GameObjects in the Scene view like pressing F (runtime-spawned too); none given: the selection. "
+            "Changes neither scene nor selection.";
         tool.inputSchema = object({
-            {"scene", sceneRef("Scene whose Scene view to use (default: the playing scene, else the selected one).")},
-            {"entity", entityRef("GameObject to frame.")},
-            {"entities", array(entityRef(), "Several GameObjects to frame together.")},
-            {"screenshot", withDefault(boolean("Return a Scene view screenshot after framing."), false)},
-            {"max_width", withDefault(integer("Screenshot width.", 0, 8192), 768)}
+            {"scene", viewScene},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"screenshot", sceneShot},
+            {"max_width", maxWidth}
         });
         tool.annotations.idempotent = true;
         tool.handler = frameEntityTool;
@@ -1207,12 +1197,11 @@ void registerViewTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
         tool.description =
-            "Open (if closed) and bring an editor panel to the front: scene (a scene's tab; scene argument), "
-            "game, console, hierarchy, inspector, project, animation, terrain, mcp. Rarely needed: screenshot "
-            "already shows the view it captures. Use it to show a human watching the editor what you are doing.";
+            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
+            "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("Panel.", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
-            {"scene", sceneRef("For window scene: which scene's tab (default: the playing or selected scene).")}
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
+            {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
@@ -1224,18 +1213,16 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read or change the Game view toolbar settings: aspect (free = the view's shape, project = the "
-            "project's canvas size, 16:9, 16:10, 4:3, 9:16 portrait), scale (1-5 zoom into the image), "
-            "maximize_on_play, show_stats, simulate_touch (play as a touch device: mouse = one finger; not while "
-            "playing). The game renders at the Game view's size (render_size); its canvas size is a project "
-            "setting. Without arguments returns the current settings. Editor preferences, not undoable.";
+            "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). "
+            "aspect project = the canvas size (a project setting); the game renders at render_size.";
         tool.inputSchema = object({
-            {"aspect", stringEnum("Aspect of the game area.", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
-            {"scale", number("Zoom into the game image.", 1, 5)},
-            {"maximize_on_play", boolean("Fill the editor with the Game view while playing.")},
-            {"show_stats", boolean("Show the rendering statistics overlay.")},
-            {"simulate_touch", boolean("Play as a touch device (the mouse is one finger).")}
+            {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
+            {"scale", number("Zoom.", 1, 5)},
+            {"maximize_on_play", boolean("")},
+            {"show_stats", boolean("")},
+            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
         });
+        tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;
         registry.addTool(std::move(tool));
     }

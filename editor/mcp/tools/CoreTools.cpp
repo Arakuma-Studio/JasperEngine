@@ -389,36 +389,27 @@ void registerCoreTools(McpRegistry& registry) {
         registry.addResource(std::move(guide));
     }
 
-    // undo / redo replace the legacy undo_editor / redo_editor
-    registry.removeTool("undo_editor");
-    registry.removeTool("redo_editor");
-
     {
         ToolDef tool;
         tool.name = "batch";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Batch";
         tool.description =
-            "Run several tool calls in one round-trip, in order, on the editor main thread. Each item is "
-            "{\"tool\": name, \"arguments\": {...}}. Returns every call's text and structured result "
-            "(results[i].ok / text / structured, plus succeeded / failed counts; the batch result itself is "
-            "not an error when calls inside it fail, so check failed). stop_on_error (default true) stops at the first failing call. "
-            "undo_group (default false) collapses the scene edits the batch made into one Ctrl+Z step per "
-            "scene (and project file operations into one project step); calls that undo/redo inside the batch "
-            "or start/stop Play mode prevent grouping. batch can't be nested.";
+            "Run tool calls in order in one round-trip. Returns {results: [{ok, text, structured}], succeeded, failed}; "
+            "check failed (the batch itself doesn't fail). undo_group: one undo step per scene; undo/redo or Play "
+            "start/stop inside prevent it. Not nestable.";
         tool.inputSchema = object({
             {"calls", Json{
                 {"type", "array"},
                 {"minItems", 1},
                 {"maxItems", MAX_BATCH_CALLS},
-                {"description", "Tool calls to run in order."},
                 {"items", object({
-                    {"tool", string("Tool name, as in tools/list.")},
-                    {"arguments", anyObject("The tool's arguments.")}
+                    {"tool", string("")},
+                    {"arguments", anyObject("")}
                 }, {"tool"})}
             }},
-            {"stop_on_error", withDefault(boolean("Stop at the first call that fails."), true)},
-            {"undo_group", withDefault(boolean("Make the batch's edits one undo step per scene."), false)}
+            {"stop_on_error", withDefault(boolean(""), true)},
+            {"undo_group", withDefault(boolean(""), false)}
         }, {"calls"});
         tool.handler = batchTool;
         registry.addTool(std::move(tool));
@@ -429,13 +420,11 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = "get_job";
         tool.title = "Get Job";
         tool.description =
-            "Status of a long operation started by another tool (export/build, C++ compile, play startup): "
-            "status running / succeeded / failed / cancelled, progress 0-1 (null if unknown), message, the "
-            "last log lines and, once finished, its result. Without job_id, lists the running jobs and the "
-            "recent finished ones. Poll every few seconds while status is running.";
+            "Status of a long operation (build, compile, play startup): {status, progress 0-1|null, message, log tail, "
+            "result when done}. Without job_id: running and recent jobs.";
         tool.inputSchema = object({
-            {"job_id", string("Job id returned by the tool that started it (\"job-3\"). Omit to list jobs.")},
-            {"log_lines", withDefault(integer("How many of the last log lines to return.", 0, 200), 40)}
+            {"job_id", string("Omit to list jobs.")},
+            {"log_lines", withDefault(integer("", 0, 200), 40)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -449,9 +438,9 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Cancel Job";
         tool.description =
-            "Ask a running job to stop. Cancellation may take a moment: poll get_job until its status is "
-            "cancelled (or it finished first).";
-        tool.inputSchema = object({{"job_id", string("Job id.")}}, {"job_id"});
+            "Ask a running job to stop; poll get_job until it is cancelled (or it finished first).";
+        tool.inputSchema = object({{"job_id", string("")}}, {"job_id"});
+        tool.annotations.idempotent = true;
         tool.handler = cancelJobTool;
         registry.addTool(std::move(tool));
     }
@@ -461,16 +450,13 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = undo ? "undo" : "redo";
         tool.title = undo ? "Undo" : "Redo";
         tool.description = undo
-            ? "Undo editor commands, like Ctrl+Z. scope \"scene\" (default) undoes GameObject/component/scene "
-              "edits of one scene (each edit tool call is one step; a batch with undo_group is one step); "
-              "scope \"project\" undoes asset file operations (create/rename/delete files and folders). "
-              "Returns how many steps were undone and whether more can be undone or redone."
-            : "Redo editor commands undone with undo, like Ctrl+Y. Same scopes as undo. Any new edit clears "
-              "the redo history.";
+            ? "Undo like Ctrl+Z. scope scene: one scene's edits (a step per edit call; a batch with undo_group is "
+              "one); project: asset file operations. Returns steps undone and whether more undo/redo is possible."
+            : "Redo what undo undid, like Ctrl+Y; same scopes. Any new edit clears the redo history.";
         tool.inputSchema = object({
-            {"scope", withDefault(stringEnum("Which history.", {"scene", "project"}), "scene")},
-            {"scene", sceneRef("Scene for scope scene: id, name or .scene path. Omit for the selected scene.")},
-            {"steps", withDefault(integer("How many steps.", 1, 100), 1)}
+            {"scope", withDefault(stringEnum("", {"scene", "project"}), "scene")},
+            {"scene", sceneRef()},
+            {"steps", withDefault(integer("", 1, 100), 1)}
         });
         tool.handler = [undo](CallPtr call) { undoRedo(call, undo); };
         registry.addTool(std::move(tool));
@@ -481,10 +467,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = "editor_status";
         tool.title = "Editor Status";
         tool.description =
-            "Overview of the editor: the open project (name, path, temporary or saved), every open scene "
-            "(id, name, .scene path, type, selected, start scene, modified, play state, prefab stage), whether "
-            "anything is playing, unsaved changes, running jobs, a dialog waiting for an answer, the editor "
-            "version and the MCP sessions. Call it first, and whenever a tool reports something unexpected.";
+            "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, "
+            "prefab stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -498,13 +482,10 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
-            "Answer the dialog the editor is showing, like clicking its button: alerts take ok, yes/no or "
-            "yes/no/cancel (the message names what yes and no mean, e.g. yes = Save, no = Discard Changes); "
-            "save dialogs take cancel. Edit tools are refused while such a dialog is open, and editor_status "
-            "lists it under dialog. Informational alerts raised by a tool are dismissed automatically and "
-            "their text is added to that tool's result.";
+            "Click a button of the open editor dialog (see editor_status; edit tools are refused meanwhile). The "
+            "message says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.";
         tool.inputSchema = object({
-            {"choice", stringEnum("The button to press.", {"ok", "yes", "no", "cancel"})}
+            {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
         }, {"choice"});
         tool.handler = respondDialogTool;
         registry.addTool(std::move(tool));

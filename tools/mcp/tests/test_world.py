@@ -9,11 +9,13 @@ every edit is checked and undone. Runs on a scratch copy of the TappyPlane fixtu
 from harness import Editor, ToolError, find_key
 
 WORLD_TOOLS = (
-    "sculpt_terrain", "sample_terrain", "edit_colliders", "set_joint", "edit_tilemap", "read_tilemap",
+    "sculpt_terrain", "sample_terrain", "edit_colliders", "set_joint", "edit_tilemap", "get_tilemap",
     "set_sprite_frames", "set_sprite_animation", "edit_animation", "get_animation", "preview_animation",
     "create_ui", "set_rect_layout", "create_particles", "get_model_info", "set_model", "set_shape_points",
+    "set_terrain_maps",
 )
 SUPERSEDED = ("add_rigidbody_collider", "add_rigidbody2d_collider", "add_tilemap_tile", "remove_tilemap_tile",
+              "create_terrain_heightmap", "create_terrain_blendmap", "set_terrain_textures", "add_terrain_collision",
               "duplicate_tilemap_tile", "add_animation_action", "remove_animation_action",
               "set_keyframe_times", "set_keyframe_easing")
 
@@ -61,7 +63,7 @@ async def new_scene(ed: Editor, kind: str, name: str):
 
 
 def _component_names(value) -> set:
-    """Component names in a get_entity / inspect_entity result, lower case, without 'component'."""
+    """Component names in a get_entity result, lower case, without 'component'."""
     names = set()
 
     def norm(s):
@@ -88,21 +90,12 @@ def _component_names(value) -> set:
 
 
 async def components(ed: Editor, scene, entity) -> set:
-    if ed.has_tool("get_entity"):
-        try:
-            return _component_names(await ed.call("get_entity", scene=scene, entity=entity))
-        except ToolError:
-            pass
-    return _component_names(await ed.call("inspect_entity", scene_id=scene, entity_id=entity))
+    return _component_names(await ed.call("get_entity", scene=scene, entity=entity))
 
 
 async def exists(ed: Editor, scene, entity) -> bool:
     try:
-        if ed.has_tool("get_entity"):
-            await ed.call("get_entity", scene=scene, entity=entity)
-        else:
-            r = await ed.call_raw("inspect_entity", {"scene_id": scene, "entity_id": entity})
-            return not r.is_error
+        await ed.call("get_entity", scene=scene, entity=entity)
         return True
     except ToolError:
         return False
@@ -122,7 +115,7 @@ async def test_world_tools_listed(ed: Editor):
 
 
 async def test_tilemap_from_ascii(ed: Editor):
-    ed.require_tools("edit_tilemap", "read_tilemap")
+    ed.require_tools("edit_tilemap", "get_tilemap")
     sid = await new_scene(ed, "2d", "Platformer")
     made = await ed.call("edit_tilemap", scene=sid, create={"name": "Level", "position": [0, 0, 0]},
                          texture="assets/sprites/plane-sheet.png",
@@ -139,8 +132,8 @@ async def test_tilemap_from_ascii(ed: Editor):
     ed.check_eq(lines, ["....==....", ".@......@.", "##########"], "ASCII view of the painted level")
     ed.check_eq(made["grid"]["rows"], [0, 2], "bottom line is row 0")
 
-    # read_tilemap sees the same grid; legend characters map back to the rect names
-    read = await ed.call("read_tilemap", scene=sid, entity=level["id"], include_tiles=True, limit=3)
+    # get_tilemap sees the same grid; legend characters map back to the rect names
+    read = await ed.call("get_tilemap", scene=sid, entity=level["id"], include_tiles=True, limit=3)
     legend = read["grid"]["legend"]
     ed.check_eq(sorted(legend.values()), ["brick", "coin", "grass"])
     ed.check_eq(len(read["grid"]["lines"]), 3)
@@ -154,9 +147,9 @@ async def test_tilemap_from_ascii(ed: Editor):
     ed.check_eq(edited["tiles"], 10 + 2 + 3)
     ed.check_eq(edited["erased"], 2)
     await undo(ed, sid)
-    back = await ed.call("read_tilemap", scene=sid, entity=level["id"])
+    back = await ed.call("get_tilemap", scene=sid, entity=level["id"])
     ed.check_eq(back["tiles"], 14, "undo restores the painted tiles")
-    ed.check_eq(back["grid"]["lines"], ["....bb....", ".c......c.", "gggggggggg"], "read_tilemap names cells by their rects")
+    ed.check_eq(back["grid"]["lines"], ["....bb....", ".c......c.", "gggggggggg"], "get_tilemap names cells by their rects")
 
     # bad legend fails without changing anything
     err = await ed.call("edit_tilemap", scene=sid, entity=level["id"], ops=[{"op": "paint", "grid": "#X#", "legend": {"#": "grass"}}],
@@ -165,14 +158,14 @@ async def test_tilemap_from_ascii(ed: Editor):
     err = await ed.call("edit_tilemap", scene=sid, entity=level["id"], ops=[{"op": "fill", "tile": "lava", "from": [0, 0], "to": [1, 1]}],
                         expect_error=True)
     ed.check_in("grass", err, "unknown rect error lists the rects")
-    still = await ed.call("read_tilemap", scene=sid, entity=level["id"])
+    still = await ed.call("get_tilemap", scene=sid, entity=level["id"])
     ed.check_eq(still["tiles"], 14, "failed edits change nothing")
 
     # undoing the creating call removes the tilemap; redo brings it back
     await undo(ed, sid)
     ed.check(not await exists(ed, sid, level["id"]), "undo of the creating call removes the Tilemap")
     await redo(ed, sid)
-    again = await ed.call("read_tilemap", scene=sid, entity=level["id"])
+    again = await ed.call("get_tilemap", scene=sid, entity=level["id"])
     ed.check_eq(again["tiles"], 14, "redo restores the whole level")
 
 
@@ -366,6 +359,38 @@ async def test_terrain_sculpt(ed: Editor):
     ed.check(len(info["info"]["blend_maps"]) >= 1, f"painting made a blend map: {info['info']}")
     err = await ed.call("sculpt_terrain", scene=sid, entity=terrain, strokes=[{"mode": "dig", "points": [[0, 0]]}], expect_error=True)
     ed.check_in("raise", err)
+
+
+async def test_terrain_maps(ed: Editor):
+    ed.require_tools("set_terrain_maps", "sample_terrain", "create_entity")
+    sid = await new_scene(ed, "3d", "World")
+    made = await ed.call("create_entity", name="Maps", type="terrain")
+    terrain = find_key(made, "entity_id", "id")
+    # a generated height map, a constant blend map and two layer textures: one undo step
+    out = await ed.call("set_terrain_maps", scene=sid, entity=terrain,
+                        heightmap={"generate": "fractal_noise", "resolution": 64, "seed": 7, "amplitude": 0.3},
+                        blendmap={"color": [0, 1, 0], "resolution": 32},
+                        layers=[{"index": 0, "color": "assets/sprites/rock.png"},
+                                {"index": 1, "color": "assets/sprites/rock-down.png", "pbr": True}])
+    hpath, bpath = out["heightmap"]["path"], out["blendmap"]["path"]
+    ed.check((ed.project / hpath).exists() and (ed.project / bpath).exists(), f"maps written: {out!r}")
+    ed.check_eq(out["heightmap"]["seed"], 7)
+    ed.check_eq(out["info"]["height_map"], hpath)
+    ed.check_eq(out["info"]["surface_layers"], 2)
+    grid = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=5)
+    ed.check(grid["grid"]["max"] > grid["grid"]["min"], f"noise has relief: {grid['grid']}")
+    await undo(ed, sid)
+    info = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=0)
+    ed.check(info["info"]["surface_layers"] == 0 and not info["info"]["blend_maps"], f"undo clears it: {info['info']}")
+    # an existing image as the height map; errors name the bad field
+    flat = await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap=hpath)
+    ed.check_eq(flat["info"]["height_map"], hpath)
+    err = await ed.call("set_terrain_maps", scene=sid, entity=terrain, layers=[{"index": 0, "normal": "nope.png"}],
+                        expect_error=True)
+    ed.check_in("normal", err)
+    err = await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "mountains"}, expect_error=True)
+    ed.check_in("fractal_noise", err)
+    await ed.call("delete_entities", scene=sid, entity=terrain)
 
 
 async def test_keyframe_animation(ed: Editor):

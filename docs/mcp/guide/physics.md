@@ -9,8 +9,8 @@ reasoning.
 
 - A Collider (Collider 2D) is an entry of the body component's `colliders` list (a Jolt or
   Box2D shape), not a separate component. Add the body and its collider to the **same**
-  GameObject in one step with the collider tools (legacy names `add_rigidbody_collider`,
-  `add_rigidbody2d_collider`). Never create a separate "Rigidbody" GameObject unless asked.
+  GameObject in one step with `edit_colliders` (`body_type` + `add`; a terrain gets a
+  `heightfield` collider). Never create a separate "Rigidbody" GameObject unless asked.
 - A body without at least one collider does not collide.
 - Body type: **dynamic** for player characters and physical actors, **static** for floors,
   terrain and level geometry, **kinematic** for bodies moved by script that push others.

@@ -21,7 +21,7 @@ shaders, prefabs, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
-GameObject = entity (Entity id; script class GameObject). Create Empty = type object.
+GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
@@ -35,14 +35,17 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
   scene. While playing, runtime-state tools resolve to the playing scene.
 - entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
-  Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"). Ambiguous names fail and
-  list the matching paths. Results return both id and path; prefer ids within a session.
+  Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
+  scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
+  and list the matching paths. Results return both id and path; prefer ids within a session.
+  `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
-  entity references by entity ref.
+  entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
+  another scene (cross-scene references); Prefab script properties by .prefab path.
 - assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
 
 ## The loop
@@ -116,7 +119,8 @@ return Player
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api before using a name you have not seen there.
+  value". Check jasper://docs/lua-api (an index: read only the sections you need) or
+  search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
@@ -160,8 +164,8 @@ R"JE(
   scene loaded as a child scene of the game scene.
 
 ## Physics
-- Add a body and its collider to the SAME GameObject in one step (add_rigidbody_collider /
-  add_rigidbody2d_collider). A Rigidbody without a Collider does not collide. Dynamic for
+- Add a body and its collider to the SAME GameObject in one step (edit_colliders with
+  body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
   actors, static for floors and level geometry, kinematic for scripted movers.
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
   or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the

@@ -143,7 +143,7 @@ async def test_materials(ed: Editor):
 
 
 async def test_shader_fork_and_errors(ed: Editor):
-    ed.require_tools("fork_shader", "write_file", "check_shader", "inspect_shader_uniforms", "set_shader_uniform")
+    ed.require_tools("fork_shader", "write_file", "check_shader", "get_shader_uniforms", "set_shader_uniform")
     eid = await make_entity(ed, "Glow")
     r = await ed.call("fork_shader", entity=eid, directory="shaders")
     frag = r["frag_path"]
@@ -161,6 +161,29 @@ async def test_shader_fork_and_errors(ed: Editor):
     await ed.call("undo", scope="project")
     ok = await ed.call("check_shader", shader=r["custom_shader"], timeout=300)
     ed.check_eq(ok["failed"], 0, "undo restores a compiling shader")
+
+    uni = await ed.call("get_shader_uniforms", entity=eid)
+    ed.check_eq(uni["custom_shader"], r["custom_shader"])
+    ed.check("members" in uni and "values" in uni, f"uniform listing: {uni!r}")
+    set_ = await ed.call("set_shader_uniform", entity=eid, name="amount", value=[0.5, 0.25])
+    ed.check_eq(set_["name"], "amount")
+    uni = await ed.call("get_shader_uniforms", entity=eid)
+    ed.check_eq(uni["values"].get("amount"), [0.5, 0.25, 0, 0])
+    await ed.call("undo")
+    uni = await ed.call("get_shader_uniforms", entity=eid)
+    ed.check("amount" not in uni["values"], "undo removes the uniform value")
+    await ed.check_error("set_shader_uniform", entity=eid, name="time", value=1, contains="engine")
+    await ed.check_error("fork_shader", entity=eid, contains="already uses")
+
+    tex = await make_entity(ed, "Pixel", "box")
+    prop = "submeshes[0].material.baseColorTexture"
+    await ed.call("set_properties", entity=tex, values={"mesh": {prop: "assets/sprites/rock.png"}})
+    ts = await ed.call("set_texture_settings", entity=tex, component="mesh", property=prop,
+                       mag_filter="nearest", wrap_u="clamp_to_edge")
+    ed.check_eq(ts["property"], prop)
+    await ed.check_error("set_texture_settings", entity=tex, component="mesh", property="nope", contains="texture")
+    await ed.check_error("set_texture_settings", entity=tex, component="mesh", property=prop,
+                         mag_filter="linear_mipmap_linear", contains="nearest or linear")
 
     pp = await ed.call("fork_shader", target="post_process", name="W4Post")
     ed.check_eq(pp["new_pass"], True, "post-process pass added")

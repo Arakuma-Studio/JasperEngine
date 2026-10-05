@@ -70,7 +70,7 @@ uniform u_fs_customParams {
 
 - Members are filled BY NAME from the component's `shaderUniforms` (or the pass uniforms):
   set them with `set_shader_uniform` (undoable, no shader rebuild); list the declared members
-  with `inspect_shader_uniforms`. Scripts: `mesh:setShaderUniform("amplitude", 0.3)`,
+  with `get_shader_uniforms`. Scripts: `mesh:setShaderUniform("amplitude", 0.3)`,
   `scene:setPostProcessUniform(0, "amount", 0.5)`.
 - The engine writes `time` (seconds since startup) and `resolution` (xy = render target size,
   zw = 1/size) every frame: declare them to animate, never set them.

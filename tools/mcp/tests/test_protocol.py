@@ -11,14 +11,14 @@ from harness import Editor, ProtocolError, RawEditor, ToolError, entity_id_of, f
 
 PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
-# Tools that list a scene's GameObjects: W1's name first, then the legacy one.
-LIST_TOOLS = ("find_entities", "get_scene_tree", "list_entities", "get_hierarchy", "list_scene_entities")
-UNDO_TOOLS = ("undo", "undo_editor")
-REDO_TOOLS = ("redo", "redo_editor")
+# The tool that lists a scene's GameObjects
+LIST_TOOLS = ("find_entities",)
+UNDO_TOOLS = ("undo",)
+REDO_TOOLS = ("redo",)
 
 
 async def scene_entities(ed: Editor) -> list[dict]:
-    return find_entities(await ed.call(ed.first_tool(*LIST_TOOLS)))
+    return find_entities(await ed.call(ed.first_tool(*LIST_TOOLS), limit=100000))
 
 
 async def has_entity(ed: Editor, entity_id) -> bool:
@@ -26,9 +26,9 @@ async def has_entity(ed: Editor, entity_id) -> bool:
 
 
 async def create_box(ed: Editor, name: str):
-    """create_entity with the legacy argument shape; returns the new GameObject id."""
+    """create_entity; returns the new GameObject id."""
     ed.require_tools("create_entity")
-    made = await ed.call("create_entity", name=name, type="box", position={"x": 1, "y": 2, "z": 3})
+    made = await ed.call("create_entity", name=name, type="box", position=[1, 2, 3])
     eid = find_key(made, "entity_id", "id")
     ed.check(eid is not None, f"create_entity returned no id: {made!r}")
     return eid
