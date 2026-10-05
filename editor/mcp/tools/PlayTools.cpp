@@ -1300,6 +1300,11 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
                 }
             }
         }
+        if (playing && playing->playState == ScenePlayState::CANCELLING) {
+            call->fail("Play mode is still stopping; call get_play_state until it is stopped, then start again.",
+                       w3::playStateJson(ctx));
+            return;
+        }
         call->fail("\"" + (playing ? playing->name : std::string("?")) + "\" is " +
                    (playing ? McpRefs::playStateName(playing->playState) : std::string("playing")) +
                    "; stop it first (play {action: \"stop\"}) or use action restart.", w3::playStateJson(ctx));
