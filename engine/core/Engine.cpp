@@ -86,6 +86,13 @@ double Engine::maxDeltatime = 0.25;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
 
+double Engine::timeScale = 1.0;
+double Engine::fixedDeltatime = 0.0;
+double Engine::gameTime = 0.0;
+uint64_t Engine::gameFrames = 0;
+std::atomic<bool> Engine::simulationHeld = false;
+bool Engine::clampNextDelta = false;
+
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
 std::atomic<bool> Engine::asyncLoading = false;
@@ -624,6 +631,49 @@ double Engine::getSystemTime(){
     return stm_sec(stm_now());
 }
 
+void Engine::setTimeScale(float scale){
+    if (std::isnan(scale) || std::isinf(scale)){
+        Log::warn("Engine::setTimeScale: non-finite value ignored");
+        return;
+    }
+    timeScale = (scale < 0.0f) ? 0.0 : (scale > 100.0f) ? 100.0 : (double)scale;
+}
+
+float Engine::getTimeScale(){
+    return (float)timeScale;
+}
+
+void Engine::setFixedDeltatime(double seconds){
+    if (std::isnan(seconds) || std::isinf(seconds) || seconds < 0.0){
+        Log::warn("Engine::setFixedDeltatime: negative or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    fixedDeltatime = seconds;
+}
+
+double Engine::getFixedDeltatime(){
+    return fixedDeltatime;
+}
+
+double Engine::getGameTime(){
+    return gameTime;
+}
+
+uint64_t Engine::getGameFrames(){
+    return gameFrames;
+}
+
+void Engine::setSimulationHeld(bool held){
+    if (simulationHeld && !held){
+        clampNextDelta = true;
+    }
+    simulationHeld = held;
+}
+
+bool Engine::isSimulationHeld(){
+    return simulationHeld;
+}
+
 void Engine::setAsyncLoading(bool enable){
     #ifndef NO_THREAD_SUPPORT
         asyncLoading = enable;
@@ -1088,7 +1138,17 @@ void Engine::systemDraw(){
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively
     // skips the lost time instead of teleporting objects on a stalled frame.
-    deltatime = (rawDelta > maxDeltatime) ? maxDeltatime : rawDelta;
+    double frameTime = (rawDelta > maxDeltatime) ? maxDeltatime : rawDelta;
+    // the first frame after a hold measured the hold
+    if (clampNextDelta && !simulationHeld){
+        clampNextDelta = false;
+        if (updateTime > 0.0 && frameTime > updateTime) frameTime = updateTime;
+    }
+    // a fixed frame delta replaces the measured one; the time scale applies to both
+    if (fixedDeltatime > 0.0){
+        frameTime = fixedDeltatime;
+    }
+    deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
 
     drawSemaphore.acquire();
 
@@ -1107,8 +1167,8 @@ void Engine::systemDraw(){
     // before the update, which bakes the PIP_RTT pipelines from the target in use
     beginCompositeFramebuffer();
 
-    // avoid increment updateTimeCount after resume
-    if (!paused) {
+    // avoid increment updateTimeCount after resume; a held simulation only draws
+    if (!paused && !simulationHeld) {
         // a duplicated scene advances its systems more than once per frame
         static bool warnedDuplicatedScene = false;
         if (!warnedDuplicatedScene) {
@@ -1124,6 +1184,8 @@ void Engine::systemDraw(){
         }
 
         double frameDelta = deltatime;
+        gameTime += frameDelta;
+        gameFrames++;
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().

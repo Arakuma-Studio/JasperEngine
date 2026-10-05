@@ -2485,7 +2485,8 @@ void editor::App::engineRender(){
         bool gaugeAnimating = false;
         if (benchmarkEnabled) active = true;
         // A running play session must advance and redraw its simulation every frame.
-        if (sp.playState == ScenePlayState::PLAYING) active = true;
+        // (unless a held simulation, which only draws on demand like a paused one)
+        if (sp.playState == ScenePlayState::PLAYING && !Engine::isSimulationHeld()) active = true;
         // A drag preview redraws until the settle frames cover its restore.
         if (draggingResourceFile) active = true;
         if (isSelected && sp.scene && sp.sceneRender) {
