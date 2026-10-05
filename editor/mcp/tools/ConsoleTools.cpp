@@ -257,32 +257,24 @@ void clearConsoleTool(const CallPtr& call) {
 void registerConsoleTools(McpRegistry& registry) {
     using namespace schema;
 
-    // read_console replaces the legacy text dump
-    registry.removeTool("read_output_log");
-
     {
         ToolDef tool;
         tool.name = "read_console";
         tool.title = "Read Console";
         tool.description =
-            "Read the editor Console: compiler/build output, warnings, errors, Lua print() and Log.* output, "
-            "and runtime script crashes ('Script crash in scene ...', 'Lua Error: ...'). Each entry is "
-            "{id, type (info|success|warning|error|build), message, time (unix seconds)}; returns entries "
-            "oldest first and next_cursor. Poll pattern: remember next_cursor and pass it as since next time to "
-            "get only what was logged after (since: 0 reads everything kept). Without since you get the newest "
-            "`limit` entries. Filters: types, only_problems (warnings, errors and build output), contains "
-            "(case-insensitive substring), regex. The per-variant 'Shader ... generated successfully' build lines "
-            "are skipped unless include_shader_builds is true. Example: {\"since\": 1234, \"only_problems\": true}. "
-            "play, wait and send_input already return the console lines logged while they ran.";
+            "Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes). Returns "
+            "{entries: [{id, type, message, time}] oldest first, next_cursor, more}; pass next_cursor as since "
+            "to get only newer entries (omitted: the newest `limit`). play, wait and send_input already return "
+            "their console lines.";
         tool.inputSchema = object({
-            {"since", integer("Cursor: return entries logged after it (the next_cursor of an earlier read). 0 = everything kept. Omit for the newest entries.")},
-            {"limit", withDefault(integer("Maximum entries to return; with since, the oldest first and `more` tells there are more.", 1, 1000), 100)},
-            {"types", array(stringEnum("Log type.", {"info", "success", "warning", "error", "build"}), "Only these types.")},
-            {"only_problems", withDefault(boolean("Only warnings, errors and build output."), false)},
-            {"contains", string("Only messages containing this text (case-insensitive).")},
-            {"regex", string("Only messages matching this ECMAScript regex (case-insensitive).")},
-            {"include_shader_builds", withDefault(boolean("Include the noisy 'Shader ... generated successfully' lines."), false)},
-            {"max_message_chars", withDefault(integer("Longer messages are cut (build output keeps its end).", 100, 100000), 4000)}
+            {"since", integer("A previous next_cursor.")},
+            {"limit", withDefault(integer("", 1, 1000), 100)},
+            {"types", array(stringEnum("", {"info", "success", "warning", "error", "build"}), "")},
+            {"only_problems", withDefault(boolean("Warnings, errors, build output."), false)},
+            {"contains", string("Substring, case-insensitive.")},
+            {"regex", string("ECMAScript, case-insensitive.")},
+            {"include_shader_builds", withDefault(boolean("Per-variant shader build lines."), false)},
+            {"max_message_chars", withDefault(integer("Cut longer ones (build output keeps its end).", 100, 100000), 4000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -295,8 +287,7 @@ void registerConsoleTools(McpRegistry& registry) {
         tool.name = "clear_console";
         tool.title = "Clear Console";
         tool.description =
-            "Clear the editor Console (like its Clear button). Ids keep counting, so cursors from read_console "
-            "stay valid; returns next_cursor. Useful before a test run so later reads only show that run.";
+            "Clear the editor Console. Ids keep counting, so read_console cursors stay valid; returns next_cursor.";
         tool.inputSchema = object({});
         tool.annotations.idempotent = true;
         tool.handler = clearConsoleTool;

@@ -85,8 +85,8 @@ def count_entities(data):
 
 
 CORE_TOOLS = {"batch", "get_job", "cancel_job", "undo", "redo", "editor_status", "respond_dialog"}
-LEGACY_SAMPLE = {"get_project_summary", "create_entity", "list_scene_entities", "set_component_property",
-                 "export_project", "save_scene", "inspect_entity"}
+TOOL_SAMPLE = {"get_project_summary", "create_entity", "find_entities", "set_properties",
+               "build_project", "save_scene", "get_entity"}
 
 
 async def exercise(session, label):
@@ -94,8 +94,8 @@ async def exercise(session, label):
     tools = (await session.list_tools()).tools
     names = {t.name for t in tools}
     check(CORE_TOOLS <= names, f"[{label}] core tools listed")
-    check(LEGACY_SAMPLE <= names, f"[{label}] legacy tools listed ({len(tools)} tools)")
-    check(not ({"undo_editor", "redo_editor", "search_curated_assets", "download_curated_asset"} & names),
+    check(TOOL_SAMPLE <= names, f"[{label}] module tools listed ({len(tools)} tools)")
+    check(not ({"undo_editor", "redo_editor", "list_scene_entities", "inspect_entity", "export_project"} & names),
           f"[{label}] dropped legacy tools are gone")
     bad = []
     for tool in tools:
@@ -117,11 +117,11 @@ async def exercise(session, label):
     check(not is_error(summary) and structured(summary).get("scenes"), f"[{label}] get_project_summary")
 
     async def entity_count():
-        r = await session.call_tool("list_scene_entities", {"scene_id": scene_id})
+        r = await session.call_tool("find_entities", {"scene": scene_id, "limit": 100000})
         return count_entities(structured(r))
 
     before = await entity_count()
-    created = await session.call_tool("create_entity", {"scene_id": scene_id, "type": "empty", "name": "McpSmoke"})
+    created = await session.call_tool("create_entity", {"scene": scene_id, "type": "empty", "name": "McpSmoke"})
     check(not is_error(created), f"[{label}] create_entity: {text_of(created)[:100]}")
     after = await entity_count()
     check(before is not None and after == before + 1, f"[{label}] entity added ({before} -> {after})")
@@ -135,8 +135,8 @@ async def exercise(session, label):
     batch = await session.call_tool("batch", {
         "undo_group": True,
         "calls": [
-            {"tool": "create_entity", "arguments": {"scene_id": scene_id, "type": "empty", "name": "BatchA"}},
-            {"tool": "create_entity", "arguments": {"scene_id": scene_id, "type": "box", "name": "BatchB"}},
+            {"tool": "create_entity", "arguments": {"scene": scene_id, "type": "empty", "name": "BatchA"}},
+            {"tool": "create_entity", "arguments": {"scene": scene_id, "type": "cube", "name": "BatchB"}},
             {"tool": "editor_status", "arguments": {}},
         ]})
     bdata = structured(batch)
@@ -147,7 +147,7 @@ async def exercise(session, label):
     check(await entity_count() == before, f"[{label}] one undo reverted the whole batch")
 
     failing = await session.call_tool("batch", {"calls": [
-        {"tool": "inspect_entity", "arguments": {"scene_id": scene_id, "entity_id": 999999}},
+        {"tool": "get_entity", "arguments": {"scene": scene_id, "entity": 999999}},
         {"tool": "editor_status", "arguments": {}}]})
     check(structured(failing).get("stopped_early") is True, f"[{label}] batch stop_on_error")
 

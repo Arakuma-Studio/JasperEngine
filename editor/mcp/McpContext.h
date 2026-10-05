@@ -25,10 +25,6 @@ namespace jasperengine::editor::mcp {
     class McpServer;
     class McpJobs;
 
-    namespace legacy {
-        class EditorActionExecutor;
-    }
-
     // What tool handlers reach the editor through. Main thread only (except server()/jobs()).
     class McpContext {
     public:
@@ -54,13 +50,9 @@ namespace jasperengine::editor::mcp {
         // A scene is playing, paused, loading or stopping
         bool isPlaying() const;
 
-        // The former in-editor agent's action executor (tools/LegacyTools.cpp)
-        legacy::EditorActionExecutor& legacyExecutor();
-
     private:
         App& appRef;
         McpServer& serverRef;
-        std::unique_ptr<legacy::EditorActionExecutor> legacy;
     };
 
 }

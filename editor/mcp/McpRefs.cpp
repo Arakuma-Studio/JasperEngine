@@ -346,6 +346,15 @@ bool McpRefs::resolveEntityArgs(SceneProject* scene, const Json& args, std::vect
     return false;
 }
 
+std::string McpRefs::notOpenError(Project* project, const SceneProject& scene) {
+    const std::string path = scene.filepath.empty() || !project
+        ? std::string()
+        : project->normalizeToProjectRelative(scene.filepath).generic_string();
+    const std::string ref = path.empty() ? std::to_string(scene.id) : "\"" + path + "\"";
+    return "Scene " + std::to_string(scene.id) + " \"" + scene.name + "\" is not open (its contents are not loaded). Open it "
+           "first: open_scene {\"scene\": " + ref + ", \"close_previous\": false} (then select_scene to switch back).";
+}
+
 Json McpRefs::sceneJson(Project* project, const SceneProject& scene) {
     Json out = {
         {"id", scene.id},

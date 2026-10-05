@@ -5,6 +5,14 @@
 
 namespace jasperengine::editor::mcp::schema {
 
+namespace {
+// An empty description is left out (tool definitions are paid for in every agent session)
+Json described(Json schema, const std::string& description) {
+    if (!description.empty()) schema["description"] = description;
+    return schema;
+}
+}
+
 Json object(Props properties, std::initializer_list<const char*> required, bool additionalProperties) {
     Json props = Json::object();
     for (const auto& item : properties) props[item.first] = item.second;
@@ -24,54 +32,53 @@ Json object(const Json& properties, const std::vector<std::string>& required, bo
 }
 
 Json anyObject(const std::string& description) {
-    return {{"type", "object"}, {"description", description}, {"additionalProperties", true}};
+    return described({{"type", "object"}, {"additionalProperties", true}}, description);
 }
 
 Json string(const std::string& description) {
-    return {{"type", "string"}, {"description", description}};
+    return described({{"type", "string"}}, description);
 }
 
 Json stringEnum(const std::string& description, const std::vector<std::string>& values) {
-    return {{"type", "string"}, {"description", description}, {"enum", values}};
+    return described({{"type", "string"}, {"enum", values}}, description);
 }
 
 Json integer(const std::string& description) {
-    return {{"type", "integer"}, {"description", description}};
+    return described({{"type", "integer"}}, description);
 }
 
 Json integer(const std::string& description, long long minimum, long long maximum) {
-    return {{"type", "integer"}, {"description", description}, {"minimum", minimum}, {"maximum", maximum}};
+    return described({{"type", "integer"}, {"minimum", minimum}, {"maximum", maximum}}, description);
 }
 
 Json number(const std::string& description) {
-    return {{"type", "number"}, {"description", description}};
+    return described({{"type", "number"}}, description);
 }
 
 Json number(const std::string& description, double minimum, double maximum) {
-    return {{"type", "number"}, {"description", description}, {"minimum", minimum}, {"maximum", maximum}};
+    return described({{"type", "number"}, {"minimum", minimum}, {"maximum", maximum}}, description);
 }
 
 Json boolean(const std::string& description) {
-    return {{"type", "boolean"}, {"description", description}};
+    return described({{"type", "boolean"}}, description);
 }
 
 Json array(const Json& items, const std::string& description) {
-    return {{"type", "array"}, {"items", items}, {"description", description}};
+    return described({{"type", "array"}, {"items", items}}, description);
 }
 
 Json any(const std::string& description) {
-    return {{"description", description}};
+    return described(Json::object(), description);
 }
 
 namespace {
 Json fixedVector(int size, const std::string& description) {
-    return {
+    return described({
         {"type", "array"},
         {"items", {{"type", "number"}}},
         {"minItems", size},
-        {"maxItems", size},
-        {"description", description}
-    };
+        {"maxItems", size}
+    }, description);
 }
 }
 
@@ -81,10 +88,10 @@ Json vec4(const std::string& description) { return fixedVector(4, description); 
 
 Json quat(const std::string& description) {
     return {
-        {"description", description + " Quaternion [x,y,z,w], or {\"euler\":[x,y,z]} in degrees."},
+        {"description", description.empty() ? "Rotation: [x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description},
         {"anyOf", Json::array({
-            fixedVector(4, "Quaternion [x,y,z,w]"),
-            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "Euler angles in degrees")}}}, {"required", {"euler"}}}
+            fixedVector(4, ""),
+            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}}}
         })}
     };
 }
@@ -95,43 +102,37 @@ Json color(const std::string& description) {
         {"items", {{"type", "number"}}},
         {"minItems", 3},
         {"maxItems", 4},
-        {"description", description + " Color [r,g,b] or [r,g,b,a], components 0-1."}
+        {"description", description.empty() ? "[r,g,b(,a)] 0-1." : description}
     };
 }
 
+// Refs advertise [integer, string]; McpRefs also accepts the {"id"|"name"|"path"} objects results
+// return. The default descriptions are empty: the server instructions explain the conventions.
 Json sceneRef(const std::string& description) {
-    return {
-        {"type", {"integer", "string"}},
-        {"description", description.empty()
-            ? "Scene: numeric id, scene name, or project-relative .scene path. Omit for the selected scene."
-            : description}
-    };
+    return described({{"type", {"integer", "string"}}}, description);
 }
 
 Json entityRef(const std::string& description) {
-    return {
-        {"type", {"integer", "string"}},
-        {"description", description.empty()
-            ? "GameObject: numeric id, or a '/'-joined name path from the scene root (\"Player/Gun\"); "
-              "\"Name#N\" picks the Nth earlier sibling with the same name (\"Enemy#2\")."
-            : description}
-    };
+    return described({{"type", {"integer", "string"}}}, description);
+}
+
+Json entities(const std::string& description) {
+    return described({{"type", "array"}, {"items", {{"type", {"integer", "string"}}}}}, description);
 }
 
 Json componentName(const std::string& description) {
-    return {
-        {"type", "string"},
-        {"description", description.empty()
-            ? "Component type name, e.g. transform, mesh, sprite, camera, light, rigidbody, rigidbody2d, script, text, ui."
-            : description}
-    };
+    return {{"type", "string"}, {"description", description.empty() ? "Component name." : description}};
 }
 
 Json assetPath(const std::string& description) {
-    return {{"type", "string"}, {"description", description + " Project-relative path (no '..', not absolute)."}};
+    return described({{"type", "string"}}, description);
 }
 
 Json withDefault(Json propertySchema, Json defaultValue) {
+    // false is what an omitted boolean means anyway
+    if (defaultValue.is_boolean() && !defaultValue.get<bool>() && propertySchema.value("type", "") == "boolean") {
+        return propertySchema;
+    }
     propertySchema["default"] = std::move(defaultValue);
     return propertySchema;
 }

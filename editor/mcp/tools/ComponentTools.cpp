@@ -14,19 +14,23 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "Stream.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
+#include "command/type/MeshChangeCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "component/MeshComponent.h"
 #include "registry/TagManager.h"
+#include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
 #include "util/Prefab.h"
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <set>
@@ -48,33 +52,15 @@ SceneProject* sceneArg(const CallPtr& call) {
         return nullptr;
     }
     if (!scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return nullptr;
     }
     return scene;
 }
 
-Json sceneRefSchema() {
-    return {
-        {"type", {"integer", "string", "object"}},
-        {"description", "Scene: numeric id, scene name, or project-relative .scene path. Omit for the selected scene."}
-    };
-}
-
-Json entityRefSchema(const std::string& description) {
-    return {{"type", {"integer", "string", "object"}}, {"description", description}};
-}
-
-Json entitiesSchema(const std::string& description) {
-    return {{"type", "array"}, {"items", {{"type", {"integer", "string", "object"}}}}, {"description", description}};
-}
-
 Json componentsArgSchema(const std::string& description) {
     return {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", description}};
 }
-
-const char* ENTITY_REF_HELP =
-    "GameObject: id, path from the scene root (\"Player/Gun\", \"Enemy#2\"), a unique bare name, or {\"name\"}/{\"path\"}/{\"id\"}.";
 
 bool wildcardMatch(const std::string& pattern, const std::string& text) {
     size_t p = 0, t = 0, star = std::string::npos, mark = 0;
@@ -693,91 +679,90 @@ void pasteComponentTool(const CallPtr& call) {
              Json{{"scene_id", sceneId}, {"component", McpRefs::componentName(clip->type)}});
 }
 
-// ------------------------------------------------------------------ get_component / set_property
+// ------------------------------------------------------------------ set_mesh_geometry
 
-void getComponentTool(const CallPtr& call) {
+Json vec3Json(const Vector3& v) {
+    return Json::array({v.x, v.y, v.z});
+}
+
+void setMeshGeometryTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
-    if (args.value("runtime", false)) scene = McpRefs::runtimeScene(project, scene);
     std::string error;
     const Entity entity = McpRefs::resolveEntity(scene, args.contains("entity") ? args["entity"] : Json(), error);
     if (entity == NULL_ENTITY) {
         call->fail(error);
         return;
     }
-    ComponentType type;
-    if (!McpRefs::resolveComponent(args.contains("component") ? args["component"] : Json(), type, error)) {
-        call->fail(error);
+    const std::string shape = args.value("shape", "");
+    static const std::vector<std::string> shapes = {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"};
+    if (std::find(shapes.begin(), shapes.end(), shape) == shapes.end()) {
+        call->fail("shape must be one of plane, box, sphere, cylinder, capsule, torus, wall.");
         return;
     }
-    if (!McpRefs::hasComponent(scene, entity, type)) {
-        call->fail("\"" + scene->scene->getEntityName(entity) + "\" has no " + McpRefs::componentName(type) + " component.");
+    Scene* sc = scene->scene;
+    if (!sc->findComponent<MeshComponent>(entity)) {
+        call->fail("The GameObject has no mesh component.");
         return;
     }
-    McpValues::ReadContext ctx;
-    ctx.project = project;
-    ctx.scene = scene;
-    ctx.entity = entity;
-    ctx.component = type;
-    unsigned int usedSubmeshes = 0;
-    if (MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity)) usedSubmeshes = mesh->numSubmeshes;
-    Json props = Json::object();
-    for (const auto& [name, property] : Catalog::findEntityProperties(scene->scene, entity, type)) {
-        if (!property.ref && property.type != PropertyType::Custom) continue;
-        if (type == ComponentType::MeshComponent && name.compare(0, 10, "submeshes[") == 0 &&
-            std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes) {
-            continue;
-        }
-        props[name] = {{"type", McpValues::propertyTypeName(property.type)}, {"value", McpValues::readProperty(ctx, name, property)}};
-    }
-    call->ok(McpRefs::componentName(type) + " of " + McpRefs::entityPath(scene, entity) + ": " +
-             std::to_string(props.size()) + " properties.",
-             Json{{"entity", McpRefs::entityJson(scene, entity)}, {"component", McpRefs::componentName(type)}, {"properties", props}});
-}
-
-void setPropertyTool(const CallPtr& call) {
-    const Json& args = call->args();
-    Project* project = call->ctx().project();
-    SceneProject* scene = sceneArg(call);
-    if (!scene) return;
-    std::vector<Entity> entities;
-    std::string error;
-    if (!McpRefs::resolveEntityArgs(scene, args, entities, error)) {
-        call->fail(error);
+    // Geometry rebuilt from a source on load would throw the primitive away
+    const Signature signature = sc->getSignature(entity);
+    if (Stream::isModelBackedMesh(entity, sc, signature)) {
+        call->fail("The mesh comes from a model file (rebuilt from it on load); use set_model instead.");
         return;
     }
-    if (!args.contains("value")) {
-        call->fail("Pass value (see set_properties for the shapes).");
+    if (Stream::isGeneratedMesh(sc, signature)) {
+        call->fail("The mesh is generated by its sprite, tilemap, mesh polygon or terrain component.");
         return;
     }
-    Json change = {{"component", args.value("component", std::string())}, {"property", args.value("property", std::string())},
-                   {"value", args["value"]}};
-    std::vector<McpValues::Change> changes;
-    if (!McpValues::parseChanges(Json::array({change}), changes, error)) {
-        call->fail(error);
+    std::shared_ptr<MeshSystem> meshSystem = sc->getSystem<MeshSystem>();
+    if (!meshSystem) {
+        call->fail("The scene has no mesh system.");
         return;
     }
-    auto* multi = new MultiPropertyCmd();
-    if (!McpValues::appendChangeCommands(project, scene, entities, changes, *multi, error)) {
-        delete multi;
-        call->fail(error);
-        return;
+    auto size = [&](const char* key, float fallback) {
+        const float v = args.contains(key) && args[key].is_number() ? args[key].get<float>() : fallback;
+        return std::isfinite(v) ? std::clamp(v, 0.01f, 10000.0f) : fallback;
+    };
+    auto count = [&](const char* key, unsigned int fallback, unsigned int minimum) {
+        const long long v = args.contains(key) && args[key].is_number_integer() ? args[key].get<long long>() : fallback;
+        return static_cast<unsigned int>(std::clamp<long long>(v, minimum, 512));
+    };
+    MeshComponent mesh = sc->getComponent<MeshComponent>(entity);
+    const float radius = size("radius", 1.0f);
+    if (shape == "plane") {
+        meshSystem->createPlane(mesh, size("width", 10.0f), size("depth", 10.0f), count("tiles", 1, 1));
+    } else if (shape == "wall") {
+        meshSystem->createWall(mesh, size("width", 10.0f), size("height", 10.0f), count("tiles", 1, 1));
+    } else if (shape == "box") {
+        meshSystem->createBox(mesh, size("width", 1.0f), size("height", 1.0f), size("depth", 1.0f), count("tiles", 1, 1));
+    } else if (shape == "sphere") {
+        meshSystem->createSphere(mesh, radius, count("slices", 36, 3), count("stacks", 18, 3));
+    } else if (shape == "cylinder") {
+        meshSystem->createCylinder(mesh, radius, size("top_radius", radius), size("height", 2.0f), count("slices", 36, 3),
+                                   count("stacks", 18, 1));
+    } else if (shape == "capsule") {
+        meshSystem->createCapsule(mesh, radius, size("top_radius", radius), size("height", 2.0f), count("slices", 36, 3),
+                                  count("stacks", 18, 1));
+    } else {
+        meshSystem->createTorus(mesh, radius, size("ring_radius", 0.5f), count("sides", 36, 3), count("rings", 16, 3));
     }
     const uint32_t sceneId = scene->id;
-    if (!runSceneCommand(sceneId, multi, error)) {
+    if (!runSceneCommand(sceneId, new MeshChangeCmd(project, sceneId, entity, mesh), error, "Could not change the mesh.")) {
         call->fail(error);
         return;
     }
     SceneProject* current = project->getScene(sceneId);
-    Json values = readBack(project, current, entities[0], changes);
-    const Json value = values[McpRefs::componentName(changes[0].component)][changes[0].property];
-    call->ok(McpRefs::componentName(changes[0].component) + "." + changes[0].property + " = " + value.dump() + ".",
-             Json{{"scene_id", sceneId}, {"entity", McpRefs::entityJson(current, entities[0])}, {"value", value}});
+    Json data = {{"entity", McpRefs::entityJson(current, entity)}, {"shape", shape}};
+    if (MeshComponent* now = current && current->scene ? current->scene->findComponent<MeshComponent>(entity) : nullptr) {
+        data["local_size"] = vec3Json(now->aabb.getSize());
+        data["local_center"] = vec3Json(now->aabb.getCenter());
+    }
+    call->ok("Set the mesh of " + data["entity"].value("path", std::string()) + " to a " + shape + ".", data);
 }
 
-// ------------------------------------------------------------------ list_component_types
 
 void listComponentTypesTool(const CallPtr& call) {
     const Json& args = call->args();
@@ -827,30 +812,24 @@ void listComponentTypesTool(const CallPtr& call) {
 } // namespace
 
 void registerComponentTools(McpRegistry& registry) {
-    for (const char* legacy : {"inspect_entity", "inspect_component", "list_component_types", "add_component",
-                               "remove_component", "set_component_property", "set_component_properties",
-                               "set_entity_transform"}) {
-        registry.removeTool(legacy);
-    }
 
     {
         ToolDef tool;
         tool.name = "get_entity";
         tool.title = "Get Entity";
         tool.description =
-            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world "
-            "transform, prefab (instance, overrides)} and its components with every property. detail: summary "
-            "(component names), values (default: {component: {property: value}}), full (each property's type, value, "
-            "default, enum options, prefab overridden flag), yaml (raw scene-file encoding per component). Filter "
-            "with components ([\"sprite\"]) and properties (globs: [\"submeshes[0].*\", \"position\"]); large custom "
-            "values are elided unless named. Values come in the shapes set_properties accepts.";
+            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, "
+            "world transform, prefab} and its components. detail: summary (names), values ({component: "
+            "{property: value}}), full (+ type, default, enum options, prefab-overridden flag), yaml "
+            "(scene-file encoding). Filter with components and properties (globs, e.g. \"submeshes[0].*\"); "
+            "big custom values are elided unless named.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"detail", withDefault(stringEnum("How much to return.", {"summary", "values", "full", "yaml"}), "values")},
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"detail", withDefault(stringEnum("", {"summary", "values", "full", "yaml"}), "values")},
             {"components", componentsArgSchema("Only these components.")},
-            {"properties", array(string("Property name or glob."), "Only these properties (exact names also read custom encoding keys).")},
-            {"runtime", withDefault(boolean("While playing: read the running copy of the scene."), false)}
+            {"properties", array(string(""), "Only these properties (names or globs).")},
+            {"runtime", withDefault(boolean("While playing: read the running scene."), false)}
         }, {"entity"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -862,23 +841,19 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_properties";
         tool.title = "Set Properties";
         tool.description =
-            "Sets any number of component properties on one or more GameObjects in ONE undo step (prefab overrides "
-            "recorded). changes: [{component, property, value}] or values: {component: {property: value}}. Value "
-            "shapes: bool; numbers; vectors [x,y,z] (or {x,y,z}); colors [r,g,b,a], [r,g,b] (keeps alpha) or "
-            "\"#RRGGBB[AA]\"; rotations {\"euler\":[x,y,z]} degrees or [x,y,z,w]; enums/eases by name (\"dynamic\", "
-            "\"quad_in_out\"); textures/fonts/models by project-relative path (texture {\"camera\": <entity>} = render "
-            "texture); materials as an object of fields or a \".material\" path to link; GameObject references as an "
-            "entity ref or null; custom values (collider lists, frames, tiles, script lists...) as their JSON encoding "
-            "(read it with get_entity). Lists: {component, property, insert: value, index?} / {component, property, "
-            "remove: index}. Indexed names work: \"submeshes[0].material.baseColorFactor\", \"colliders[1].radius\", "
-            "\"scripts[0].speed\". Example: {\"entity\": \"Player\", \"values\": {\"transform\": {\"position\": [0,2,0]}, "
-            "\"sprite\": {\"color\": \"#ff0000\"}, \"rigidbody2d\": {\"type\": \"dynamic\"}}}";
+            "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
+            "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
+            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path "
+            "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path "
+            "(links it); GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties "
+            "a .prefab path; custom values (colliders, frames, scripts...) as get_entity returns them. Lists: "
+            "{component, property, insert: value, index?} / {component, property, remove: index}. Paths may "
+            "index (\"submeshes[0].material.baseColorFactor\", \"scripts[0].speed\").";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects (same changes on each).")},
-            {"changes", array(anyObject("{component, property, value} | {component, property, insert, index?} | {component, property, remove}"),
-                              "Edits, applied in order (custom-encoded ones of a component first).")},
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"changes", array(anyObject("{component, property, value|insert|remove, index?}"), "Edits, in order.")},
             {"values", anyObject("{component: {property: value}}")}
         });
         tool.handler = setPropertiesTool;
@@ -886,59 +861,20 @@ void registerComponentTools(McpRegistry& registry) {
     }
     {
         ToolDef tool;
-        tool.name = "get_component";
-        tool.title = "Get Component";
-        tool.description =
-            "One component of a GameObject: {properties: {name: {type, value}}} (every property, nothing elided). "
-            "get_entity reads several components at once.";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"component", string("Component name.")},
-            {"runtime", withDefault(boolean("While playing: read the running copy of the scene."), false)}
-        }, {"entity", "component"});
-        tool.annotations.readOnly = true;
-        tool.annotations.idempotent = true;
-        tool.handler = getComponentTool;
-        registry.addTool(std::move(tool));
-    }
-    {
-        ToolDef tool;
-        tool.name = "set_property";
-        tool.title = "Set Property";
-        tool.description =
-            "Sets one component property (undoable); set_properties sets many in one step. Value shapes as in "
-            "set_properties. Returns the value read back. Example: {\"entity\": \"Player\", \"component\": "
-            "\"transform\", \"property\": \"position\", \"value\": [0,1,0]}";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"component", string("Component name.")},
-            {"property", string("Property name, e.g. position, color, submeshes[0].material.baseColorFactor.")},
-            {"value", any("The new value.")}
-        }, {"component", "property", "value"});
-        tool.handler = setPropertyTool;
-        registry.addTool(std::move(tool));
-    }
-    {
-        ToolDef tool;
         tool.name = "set_transform";
         tool.title = "Set Transform";
         tool.description =
-            "Moves/rotates/scales GameObjects (one undo step). space: local (default, relative to the parent) or world. "
-            "relative=true adds position, applies rotation on top of the current one and multiplies scale. rotation: "
-            "{\"euler\":[x,y,z]} degrees or [x,y,z,w]; scale: [x,y,z] or one number. Returns the new local values. "
-            "Example: {\"entity\": \"Player\", \"position\": [0,1,0], \"rotation\": {\"euler\": [0,90,0]}, \"space\": \"world\"}";
+            "Move/rotate/scale GameObjects. relative=true adds position, applies rotation on top and multiplies scale. "
+            "Returns the new local values.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"position", {{"description", "[x,y,z]"}}},
-            {"rotation", {{"description", "{\"euler\":[x,y,z]} degrees or [x,y,z,w]"}}},
-            {"scale", {{"description", "[x,y,z] or a number"}}},
-            {"space", withDefault(stringEnum("Coordinate space.", {"local", "world"}), "local")},
-            {"relative", withDefault(boolean("Offset the current transform instead of replacing it."), false)}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"position", vec3("")},
+            {"rotation", quat()},
+            {"scale", {{"type", {"array", "number"}}, {"items", {{"type", "number"}}}, {"description", "[x,y,z] or uniform number."}}},
+            {"space", withDefault(stringEnum("local = relative to the parent.", {"local", "world"}), "local")},
+            {"relative", withDefault(boolean(""), false)}
         });
         tool.handler = setTransformTool;
         registry.addTool(std::move(tool));
@@ -948,16 +884,14 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "add_component";
         tool.title = "Add Component";
         tool.description =
-            "Adds components (Add Component) to one or more GameObjects, optionally with initial values, in ONE undo "
-            "step. GameObjects that have one already are skipped (reported). Example: {\"entity\": \"Player\", "
-            "\"component\": [\"rigidbody2d\", \"script\"], \"values\": {\"rigidbody2d\": {\"type\": \"dynamic\"}}}. "
-            "list_component_types lists the names.";
+            "Add components to GameObjects, optionally with initial values (shapes as in set_properties); ones that "
+            "already have it are skipped. Names: list_component_types. Colliders: use edit_colliders.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
             {"component", componentsArgSchema("Component name(s).")},
-            {"values", anyObject("{component: {property: value}} applied after adding.")}
+            {"values", anyObject("{component: {property: value}}")}
         }, {"component"});
         tool.handler = addComponentTool;
         registry.addTool(std::move(tool));
@@ -966,11 +900,11 @@ void registerComponentTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "remove_component";
         tool.title = "Remove Component";
-        tool.description = "Removes components from one or more GameObjects (one undo step).";
+        tool.description = "Remove components from GameObjects.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
             {"component", componentsArgSchema("Component name(s).")}
         }, {"component"});
         tool.annotations.destructive = true;
@@ -981,14 +915,12 @@ void registerComponentTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "reset_component";
         tool.title = "Reset Component";
-        tool.description =
-            "Inspector > Reset: puts a component's values back to their defaults on one or more GameObjects (the "
-            "GameObject's structure stays; a script component resets its scripts' fields). One undo step.";
+        tool.description = "Inspector > Reset: a component's values back to defaults (a script component resets its scripts' fields).";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"component", string("Component name.")}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"component", componentName()}
         }, {"component"});
         tool.handler = resetComponentTool;
         registry.addTool(std::move(tool));
@@ -997,11 +929,11 @@ void registerComponentTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "copy_component";
         tool.title = "Copy Component";
-        tool.description = "Inspector > Copy Component: copies one component's values to the clipboard (for paste_component).";
+        tool.description = "Inspector > Copy Component: one component's values to the clipboard, for paste_component.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"component", string("Component name.")}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"component", componentName()}
         }, {"entity", "component"});
         tool.handler = copyComponentTool;
         registry.addTool(std::move(tool));
@@ -1011,13 +943,13 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "paste_component";
         tool.title = "Paste Component";
         tool.description =
-            "Pastes the component copied with copy_component onto GameObjects: its values over their component of "
-            "that type (Paste Component Values), or as_new=true adds it (Paste Component As New). One undo step.";
+            "Paste the copied component onto GameObjects: over their component of that type (Paste Component Values), "
+            "or as_new adds it (Paste Component As New).";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"as_new", withDefault(boolean("Add as a new component."), false)}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"as_new", withDefault(boolean(""), false)}
         });
         tool.handler = pasteComponentTool;
         registry.addTool(std::move(tool));
@@ -1027,12 +959,42 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "list_component_types";
         tool.title = "List Component Types";
         tool.description =
-            "Component type names (for component arguments) with their Unity display names and whether Add Component "
-            "can add them. With component: that type's properties with type, default and enum options.";
-        tool.inputSchema = object({{"component", string("A component name to describe.")}});
+            "Component names (with Unity display names, addable flag). With component: its properties with type, "
+            "default and enum options.";
+        tool.inputSchema = object({{"component", componentName("Describe this one.")}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = listComponentTypesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_mesh_geometry";
+        tool.title = "Set Mesh Geometry";
+        tool.description =
+            "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
+            "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
+            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
+            "Omitted values take defaults, not current ones. Not for model, sprite, tilemap, polygon or "
+            "terrain meshes. Returns {entity, local_size, local_center}.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"shape", stringEnum("", {"plane", "box", "sphere", "cylinder", "capsule", "torus", "wall"})},
+            {"width", number("")},
+            {"height", number("")},
+            {"depth", number("")},
+            {"radius", number("Base radius for cylinder/capsule.")},
+            {"top_radius", number("Default: radius.")},
+            {"ring_radius", number("")},
+            {"tiles", integer("")},
+            {"slices", integer("")},
+            {"stacks", integer("")},
+            {"sides", integer("")},
+            {"rings", integer("")}
+        }, {"entity", "shape"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = setMeshGeometryTool;
         registry.addTool(std::move(tool));
     }
 }

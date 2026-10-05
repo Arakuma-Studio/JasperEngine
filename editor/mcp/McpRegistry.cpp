@@ -3,6 +3,8 @@
 
 #include "McpRegistry.h"
 
+#include "McpCall.h"
+
 #include <algorithm>
 
 using namespace jasperengine::editor::mcp;
@@ -10,6 +12,24 @@ using namespace jasperengine::editor::mcp;
 void McpRegistry::addTool(ToolDef def) {
     if (def.inputSchema.is_null()) {
         def.inputSchema = Json{{"type", "object"}, {"properties", Json::object()}};
+    }
+    // additionalProperties: false is enforced here (a misspelled argument fails, listing the
+    // valid ones) instead of being sent in tools/list (see toolToJson)
+    const Json& props = def.inputSchema.contains("properties") ? def.inputSchema["properties"] : Json();
+    if (def.handler && props.is_object() && def.inputSchema.value("additionalProperties", true) == false) {
+        std::vector<std::string> known;
+        for (auto it = props.begin(); it != props.end(); ++it) known.push_back(it.key());
+        def.handler = [inner = def.handler, known, name = def.name](CallPtr call) {
+            for (auto it = call->args().begin(); it != call->args().end(); ++it) {
+                if (std::find(known.begin(), known.end(), it.key()) != known.end()) continue;
+                std::string valid;
+                for (const std::string& key : known) valid += (valid.empty() ? "" : ", ") + key;
+                call->fail("Unknown argument \"" + it.key() + "\" for " + name + ". Arguments: " +
+                           (valid.empty() ? "none" : valid) + ".");
+                return;
+            }
+            inner(call);
+        };
     }
     for (ToolDef& existing : toolList) {
         if (existing.name == def.name) {
@@ -118,6 +138,8 @@ Json McpRegistry::toolToJson(const ToolDef& def) {
         {"description", def.description},
         {"inputSchema", def.inputSchema}
     };
+    // Enforced by addTool's wrapper; tool definitions are paid for in every agent session
+    if (tool["inputSchema"].value("additionalProperties", true) == false) tool["inputSchema"].erase("additionalProperties");
     if (!def.title.empty()) tool["title"] = def.title;
     if (!def.outputSchema.is_null()) tool["outputSchema"] = def.outputSchema;
     Json annotations = {

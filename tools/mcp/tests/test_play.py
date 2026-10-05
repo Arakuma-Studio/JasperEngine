@@ -493,3 +493,6 @@ async def test_scene_camera_3d(ed: Editor):
     await ed.check_error("set_scene_camera", {"scene": "Cam3D", "zoom": 2}, contains="2D")
     shot = await ed.call_raw("set_scene_camera", {"scene": "Cam3D", "screenshot": True})
     ed.check(not shot.is_error and shot.images, shot.text)
+    # play's default is the start scene, not the selected Cam3D
+    st = await ed.call("get_play_state")
+    ed.check_eq(st.get("play_would_start", {}).get("name"), "Main Scene", f"default play scene: {st!r}")
