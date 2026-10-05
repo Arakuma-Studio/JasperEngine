@@ -103,14 +103,16 @@ void ProjectSaveDialog::show() {
                 m_onSave(projectName, m_projectPath);
             }
             m_isOpen = false;
+            m_cancelRequested = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
             (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
+            m_cancelRequested = false;
             if (m_onCancel) {
                 m_onCancel();
             }
@@ -124,6 +126,7 @@ void ProjectSaveDialog::show() {
         // update our state and make sure to call the cancel callback
         if (m_isOpen) {
             m_isOpen = false;
+            m_cancelRequested = false;
             if (m_onCancel) {
                 m_onCancel();
             }

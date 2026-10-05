@@ -216,11 +216,6 @@ endif()
 
 find_package(Threads REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-# The AI HTTP client uses the native WinHTTP backend on Windows (no external
-# dependency) and libcurl everywhere else (see editor/ai/HttpClient.cpp).
-if(NOT WIN32)
-    find_package(CURL REQUIRED)
-endif()
 
 set(BACKEND_SOURCES)
 set(BACKEND_LIBS)
@@ -505,19 +500,39 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Workspace.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
-    ${EDITOR_DIR}/ai/AiPathUtils.cpp
-    ${EDITOR_DIR}/ai/AiProvider.cpp
-    ${EDITOR_DIR}/ai/AiService.cpp
-    ${EDITOR_DIR}/ai/AiEngineApiContext.cpp
-    ${EDITOR_DIR}/ai/AiTerrainCapability.cpp
-    ${EDITOR_DIR}/ai/AiTypes.cpp
-    ${EDITOR_DIR}/ai/ConversationStore.cpp
-    ${EDITOR_DIR}/ai/EditorActionExecutor.cpp
-    ${EDITOR_DIR}/ai/EditorActionRegistry.cpp
-    ${EDITOR_DIR}/ai/HttpClient.cpp
-    ${EDITOR_DIR}/ai/ModelCatalog.cpp
-    ${EDITOR_DIR}/ai/RateLimitRetry.cpp
-    ${EDITOR_DIR}/ai/SecretStore.cpp
+    ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
+    ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpContext.cpp
+    ${EDITOR_DIR}/mcp/McpInstructions.cpp
+    ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpRefs.cpp
+    ${EDITOR_DIR}/mcp/McpRegistry.cpp
+    ${EDITOR_DIR}/mcp/McpSchema.cpp
+    ${EDITOR_DIR}/mcp/McpServer.cpp
+    ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
+    ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
+    ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpLaunch.cpp
+    ${EDITOR_DIR}/mcp/legacy/EditorActionExecutor.cpp
+    ${EDITOR_DIR}/mcp/legacy/EditorActionRegistry.cpp
+    ${EDITOR_DIR}/mcp/legacy/EngineApiContext.cpp
+    ${EDITOR_DIR}/mcp/legacy/PathUtils.cpp
+    ${EDITOR_DIR}/mcp/legacy/TerrainCapability.cpp
+    ${EDITOR_DIR}/mcp/tools/LegacyTools.cpp
+    ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
+    ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ComponentTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PrefabTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -560,7 +575,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
-    ${EDITOR_DIR}/window/AiChatWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
@@ -574,7 +588,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
-    ${EDITOR_DIR}/window/dialog/AiSettingsWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp
@@ -678,10 +691,9 @@ function(configure_jasperengine_editor_target target_name)
     )
 
     if(WIN32)
-        # dbghelp resolves the crash-report backtrace.
-        target_link_libraries(${target_name} PRIVATE winhttp shell32 dbghelp)
+        # dbghelp resolves the crash-report backtrace; ws2_32 is the MCP HTTP server's Winsock.
+        target_link_libraries(${target_name} PRIVATE shell32 dbghelp ws2_32)
     else()
-        target_link_libraries(${target_name} PRIVATE CURL::libcurl)
         # -rdynamic names the editor's own frames in the crash backtrace, at about 10 MB of
         # symbol table. A Release build stays lean and is resolved with addr2line instead.
         if(NOT CMAKE_BUILD_TYPE STREQUAL "Release")

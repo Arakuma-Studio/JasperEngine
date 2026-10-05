@@ -64,7 +64,7 @@ jobs:
             libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
             libgl1-mesa-dev libvulkan-dev \
             libwayland-dev wayland-protocols extra-cmake-modules \
-            libdbus-1-dev libcurl4-openssl-dev
+            libdbus-1-dev
           # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
           wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
             | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg

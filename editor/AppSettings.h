@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include "ai/AiTypes.h"
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
@@ -18,7 +17,7 @@ struct PanelVisibilitySettings {
     bool console = true;
     bool animation = true;
     bool terrain = false;
-    bool aiChat = true;
+    bool mcp = false;
     bool game = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
@@ -28,7 +27,7 @@ struct PanelVisibilitySettings {
             && console == other.console
             && animation == other.animation
             && terrain == other.terrain
-            && aiChat == other.aiChat
+            && mcp == other.mcp
             && game == other.game;
     }
 
@@ -112,8 +111,10 @@ private:
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
 
-    // AI assistant settings (API keys are intentionally not stored here)
-    static ai::Settings aiSettings;
+    // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
+    static bool mcpHttpEnabled;
+    static int mcpHttpPort;
+    static std::string mcpHttpToken;
 
     // Private methods
     static void ensureConfigDirectory();
@@ -203,9 +204,12 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
-    // AI assistant settings
-    static ai::Settings getAiSettings();
-    static void setAiSettings(const ai::Settings& settings);
+    // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
+    // clients send "Authorization: Bearer <token>".
+    static bool getMcpHttpEnabled();
+    static int getMcpHttpPort();
+    static std::string getMcpHttpToken();
+    static void setMcpHttp(bool enabled, int port);
 
     // Load and save settings
     static bool loadSettings();

@@ -3,6 +3,7 @@
 
 #include "Backend.h"
 #include "cli/CommandLine.h"
+#include "mcp/McpLaunch.h"
 #include "util/ShellEnv.h"
 
 #include <cstring>
@@ -29,6 +30,25 @@ int main(int argc, char* argv[]) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);
         }
         return editor::Backend::init(argc, argv);
+    }
+    // The GUI editor as an MCP server on stdio (see editor/mcp/McpLaunch.h)
+    if (argc >= 2 && std::strcmp(argv[1], "mcp") == 0) {
+        const int status = editor::mcp::prepareMcpCommand(argc - 1, argv + 1, argv[0]);
+        if (status >= 0) {
+            return status;
+        }
+        char* editorArgv[] = {argv[0], nullptr};
+        const int result = editor::Backend::init(1, editorArgv);
+        editor::mcp::finishMcpCommand();
+        return result;
+    }
+    // The normal editor with the MCP HTTP server on a port
+    if (argc >= 2 && std::strncmp(argv[1], "--mcp-port", 10) == 0) {
+        if (!editor::mcp::parseMcpPortFlag(argc, argv)) {
+            return 2;
+        }
+        char* editorArgv[] = {argv[0], nullptr};
+        return editor::Backend::init(1, editorArgv);
     }
     if (argc >= 2) {
         return editor::CommandLine::runHelpCommand(argc - 1, argv + 1, argv[0]);

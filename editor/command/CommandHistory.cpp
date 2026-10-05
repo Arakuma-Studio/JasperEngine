@@ -6,6 +6,41 @@
 
 using namespace jasperengine;
 
+namespace {
+
+// Commands already applied, undone and redone as one step
+class CommandGroup : public jasperengine::editor::Command {
+private:
+    std::vector<jasperengine::editor::Command*> commands;
+
+public:
+    explicit CommandGroup(std::vector<jasperengine::editor::Command*> commands): commands(std::move(commands)) {
+        setNoMerge();
+    }
+
+    ~CommandGroup() override {
+        for (jasperengine::editor::Command* cmd : commands) delete cmd;
+    }
+
+    bool execute() override {
+        for (jasperengine::editor::Command* cmd : commands) cmd->execute();
+        return true;
+    }
+
+    void undo() override {
+        for (auto it = commands.rbegin(); it != commands.rend(); ++it) (*it)->undo();
+    }
+
+    bool affectsStructure() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            if (cmd->affectsStructure()) return true;
+        }
+        return false;
+    }
+};
+
+}
+
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
@@ -101,6 +136,28 @@ void editor::CommandHistory::clear(){
     index = 0;
     playFloor = 0;
     inPlaySession = false;
+}
+
+size_t editor::CommandHistory::mark(){
+    if (index > undoFloor()){
+        list[index-1]->setNoMerge();
+    }
+    return index;
+}
+
+bool editor::CommandHistory::groupSince(size_t mark){
+    // Undone past the mark, a redo tail in the way, or a play floor moved: leave it alone
+    if (mark < undoFloor() || mark > index || index != list.size()){
+        return false;
+    }
+    if (index - mark < 2){
+        return true;
+    }
+    std::vector<Command*> commands(list.begin() + mark, list.end());
+    list.erase(list.begin() + mark, list.end());
+    list.push_back(new CommandGroup(std::move(commands)));
+    index = list.size();
+    return true;
 }
 
 void editor::CommandHistory::beginPlaySession(){
