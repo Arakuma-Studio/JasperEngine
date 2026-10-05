@@ -2919,18 +2919,16 @@ void registerPlayTools(McpRegistry& registry) {
             "running; returns the state + console problems, or isError with compile/script errors; past "
             "timeout_seconds (or wait:false) a job_id (poll get_job). stop: restores the edit-time state and "
             "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.\n"
-            "Game clock (any action; set = only that; kept for later sessions until changed): time_scale, "
-            "fixed_fps, auto_pause: the game is frozen between calls and runs only inside wait / send_input / "
-            "step, like a debugger, e.g. {action:\"start\", auto_pause:true, fixed_fps:60}.";
+            "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen "
+            "between calls, runs only inside wait / send_input / step.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
             {"frames", withDefault(integer("step only.", 1, 600), 1)},
-            {"time_scale", withDefault(number("Game speed (Engine.timeScale): 0.5 half, 0 frozen.", 0, 100), 1)},
-            {"fixed_fps", withDefault(integer("Each frame advances exactly 1/fixed_fps s (deterministic, "
-                                              "load-independent); 0 = real time.", 0, 1000), 0)},
+            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
@@ -2959,19 +2957,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "wait";
         tool.title = "Wait / Run Game";
         tool.description =
-            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (game frames; steps a paused game) "
-            "or until the Lua `until` is truthy (checked between frames), then return the reason, elapsed "
-            "time/frames/game_seconds, console entries logged meanwhile and the play state. input: send_input "
-            "events played from the first frame; the wait ends at its condition (input left over is skipped and "
-            "its presses released) or, alone, when the input is done. isError if play ended (crash included), "
-            "input failed or `until` errored/timed out.";
+            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
+            "the Lua `until` is truthy (checked between frames); returns reason, elapsed time/frames/game_seconds, "
+            "console lines, play state. input: send_input events from the first frame; the wait ends at its "
+            "condition (leftover input skipped, its presses released) or when the input is done. isError if play "
+            "ended, input failed or `until` errored/timed out.";
         tool.inputSchema = object({
             {"seconds", number("", 0, 600)},
-            {"game_seconds", number("Game time (scaled).", 0, 3600)},
+            {"game_seconds", number("", 0, 3600)},
             {"frames", integer("", 0, 1000000)},
             {"until", string("Lua condition (eval_lua helpers).")},
-            {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}, {"description", "send_input events."}}},
-            {"space", withDefault(stringEnum("input: as send_input.", {"canvas", "normalized", "view"}), "canvas")},
+            {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
             {"timeout_seconds", number("Default: 30 (until) or run time + 30.", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
             {"console_limit", withDefault(integer("", 0, 1000), 50)},
@@ -3080,8 +3077,8 @@ void registerPlayTools(McpRegistry& registry) {
             "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
             "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
             "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
-            "up/release_all/stop. Returns frames, console lines, play state. With auto_pause the game runs only "
-            "during the events + frames_after, then freezes; wait {input, until} sends input while waiting.";
+            "up/release_all/stop. Returns frames, console lines, play state. auto_pause: runs only for the "
+            "events + frames_after.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},

@@ -1872,20 +1872,19 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Run Build";
         tool.description =
             "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), then stop it. Returns the "
-            "log tail (full: log_file), errors (Log errors, Lua errors e.g. a failed init()), exit code/signal, "
-            "exited_early, crashed, fatal_lines. input (Linux): send_input-style events played into the player "
-            "window from input_delay_seconds: key, text, mouse (x,y in window pixels, or space normalized 0..1), "
-            "wait {ms|frames (1/60 s)|seconds}, release_all, and screenshot (an image at that point). "
-            "screenshots_at: more images, seconds since launch. Default seconds covers the input and screenshots.";
+            "log tail (full: log_file), errors (incl. Lua errors), exit code/signal, crashed, fatal_lines. "
+            "input (Linux): send_input events into the player window: key, text, mouse (window pixels or space "
+            "normalized), wait {ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: "
+            "seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
-            {"seconds", number("Default 5, or input/screenshots end + 1.5.", 0.5, 300)},
+            {"seconds", number("Default: 5, or past the input.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
-            {"input_delay_seconds", withDefault(number("After launch (and the window).", 0, 120), 1)},
+            {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
-            {"gap_ms", withDefault(number("Between events.", 0, 10000), 50)},
-            {"screenshots_at", array(number(""), "Seconds since launch.")},
-            {"screenshot", boolean("Default true without screenshots_at/screenshot events.")},
+            {"gap_ms", withDefault(number("", 0, 10000), 50)},
+            {"screenshots_at", array(number(""), "")},
+            {"screenshot", boolean("Default: true unless other screenshots.")},
             {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
