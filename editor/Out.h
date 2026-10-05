@@ -4,12 +4,23 @@
 #pragma once
 
 #include "window/ConsoleWindow.h"
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <string>
 #include <memory>
+#include <vector>
 
 namespace jasperengine::editor {
+    // One message as Out logged it (see Out::getLogsSince)
+    struct LogEntry {
+        uint64_t id = 0;            // increasing from 1, never reused (not the Console window's ids)
+        LogType type = LogType::Info;
+        std::string message;
+        double timeSeconds = 0.0;   // wall clock, seconds since the Unix epoch
+    };
+
     class Out {
     private:
         static ConsoleWindow* consoleWindow;
@@ -43,6 +54,27 @@ namespace jasperengine::editor {
         // Error/Warning/Build entries. Empty if no output window is attached. Call on
         // the main thread. Used by the AI to read build/runtime errors from the log.
         static std::string getRecentLog(size_t maxEntries, bool onlyProblems);
+
+        // Structured reads of everything logged through Out (and so Log::*, Lua print and
+        // script errors), from any thread, with or without a Console window (CLI, headless).
+        // Out keeps the newest MAX_LOG_ENTRIES messages itself, captured when they are
+        // logged, before a worker thread's message hops to the main thread.
+        static constexpr size_t MAX_LOG_ENTRIES = 20000;
+        // The messages with id > afterId, oldest first; with max > 0 only the first max of
+        // them (page on with the last id returned). onlyProblems keeps Warning, Error and
+        // Build entries. A caller polls with the last id it saw (a cursor); 0 reads from
+        // the oldest kept.
+        static std::vector<LogEntry> getLogsSince(uint64_t afterId, size_t max = 0, bool onlyProblems = false);
+        // The newest max messages (0: all kept), oldest first
+        static std::vector<LogEntry> getRecentLogs(size_t max, bool onlyProblems = false);
+        // The newest message's id, 0 before any. Take it before an action to read only what
+        // the action logs.
+        static uint64_t lastLogId();
+        // Empties the kept messages and the Console window (its Clear button). Ids keep
+        // counting, so cursors stay valid.
+        static void clearConsole();
+        // "info", "success", "warning", "error", "build"
+        static const char* logTypeName(LogType type);
 
         // Basic logging methods
         static void info(const std::string& message);

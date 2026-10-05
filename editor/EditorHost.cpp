@@ -29,6 +29,12 @@ void EditorHost::clearSceneWindowState(uint32_t) {
 void EditorHost::prepareForProjectSwitch() {
 }
 
+void EditorHost::requestProjectChange(std::function<void()> change) {
+    if (change) {
+        change();
+    }
+}
+
 void EditorHost::resetLastActivatedScene() {
 }
 
