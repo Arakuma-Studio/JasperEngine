@@ -45,7 +45,7 @@ std::string shorten(const std::string& text, size_t max) {
 
 const char* playingRefusal() {
     return "This tool is not available while a scene is playing. Stop Play mode first "
-           "(control_play_mode with action \"stop\"), then retry.";
+           "(play with action \"stop\"), then retry.";
 }
 
 } // namespace

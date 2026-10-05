@@ -942,6 +942,11 @@ namespace jasperengine::editor{
     public:
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
+        // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated
+        // CMakeLists.txt), as Play does before it builds, without playing: the C++ script lists
+        // of the loaded scenes are collected again first. Returns the scripts the build compiles.
+        // Main thread, not while playing (MCP compile_scripts).
+        std::vector<SceneScriptSource> prepareScriptBuild();
 
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;

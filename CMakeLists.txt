@@ -340,6 +340,26 @@ configure_file(
     @ONLY
 )
 
+# MCP agent reference docs (docs/mcp/guide/*.md, docs/unity-glossary.md) embedded in the editor
+# and served as jasper://docs/<name> (editor/mcp/tools/DocsTools.cpp)
+file(GLOB MCP_GUIDE_DOCS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/docs/mcp/guide/*.md")
+list(APPEND MCP_GUIDE_DOCS "${CMAKE_CURRENT_SOURCE_DIR}/docs/unity-glossary.md")
+set(mcp_docs_header "// Generated from docs/mcp/guide by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(mcp_docs_entries "")
+foreach(mcp_doc IN LISTS MCP_GUIDE_DOCS)
+    get_filename_component(mcp_doc_name "${mcp_doc}" NAME_WE)
+    string(MAKE_C_IDENTIFIER "${mcp_doc_name}" mcp_doc_id)
+    file(READ "${mcp_doc}" mcp_doc_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," mcp_doc_bytes "${mcp_doc_hex}")
+    string(APPEND mcp_docs_header "static const unsigned char mcp_doc_${mcp_doc_id}[] = {${mcp_doc_bytes}0x00};\n")
+    string(APPEND mcp_docs_entries "    { \"${mcp_doc_name}\", mcp_doc_${mcp_doc_id}, sizeof(mcp_doc_${mcp_doc_id}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${mcp_doc}")
+endforeach()
+string(APPEND mcp_docs_header "\nstruct McpEmbeddedDoc { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND mcp_docs_header "static const McpEmbeddedDoc mcp_embedded_docs[] = {\n${mcp_docs_entries}};\n")
+file(WRITE "${GENERATED_DIR}/mcp_docs.h.in" "${mcp_docs_header}")
+configure_file("${GENERATED_DIR}/mcp_docs.h.in" "${GENERATED_DIR}/mcp_docs.h" COPYONLY)
+
 # Generate engine API suggestions header from Lua bindings and C++ headers
 set(BINDING_DIR "${CMAKE_SOURCE_DIR}/engine/core/script/binding")
 set(ENGINE_CORE_DIR "${CMAKE_SOURCE_DIR}/engine/core")

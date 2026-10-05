@@ -5449,6 +5449,18 @@ void editor::Project::configureGenerator() {
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D});
 }
 
+std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
+    for (SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) continue;
+        updateSceneCppScripts(&sceneProject);
+        writeSceneSource(&sceneProject);
+    }
+    writeMissingSceneSources();
+    configureGenerator();
+    generatedSourcesDirty.store(false);
+    return collectAllSceneCppScripts();
+}
+
 void editor::Project::updateGeneratedSources() {
     if (!generatedSourcesDirty.load() || isAnyScenePlaying()) {
         return;

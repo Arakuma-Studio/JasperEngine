@@ -892,16 +892,19 @@ namespace {
         }
 
         constexpr const char* shapePrefix = "colliders[";
-        if (propertyName.compare(0, 7, shapePrefix) != 0) {
+        if (propertyName.compare(0, 10, shapePrefix) != 0) {
             return PropertyData();
         }
 
-        size_t pos = 7;
+        size_t pos = 10;
         size_t colliderIndex = 0;
         if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
+        if (colliderIndex >= MAX_COLLIDERS_2D) {
+            return PropertyData();
+        }
         Collider2D& shape = comp->colliders[colliderIndex];
         Collider2D& defaultShape = defaultRigidbody2D.colliders[0];
 
@@ -1006,16 +1009,19 @@ namespace {
         }
 
         constexpr const char* shapePrefix = "colliders[";
-        if (propertyName.compare(0, 7, shapePrefix) != 0) {
+        if (propertyName.compare(0, 10, shapePrefix) != 0) {
             return PropertyData();
         }
 
-        size_t pos = 7;
+        size_t pos = 10;
         size_t colliderIndex = 0;
         if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
+        if (colliderIndex >= MAX_COLLIDERS_3D) {
+            return PropertyData();
+        }
         Collider3D& shape = comp->colliders[colliderIndex];
         Collider3D& defaultShape = defaultRigidbody.colliders[0];
 
