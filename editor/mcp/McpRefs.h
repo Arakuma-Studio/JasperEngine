@@ -50,6 +50,8 @@ namespace jasperengine::editor::mcp {
         // {id, name, path (project-relative .scene, "" if never saved), type, opened, modified, play_state}
         static Json sceneJson(Project* project, const SceneProject& scene);
         static std::string sceneTypeName(SceneType type);
+        // "Scene 3 \"Level\" is not open: open_scene {\"scene\": \"scenes/Level.scene\"} first ..."
+        static std::string notOpenError(Project* project, const SceneProject& scene);
         // "3D" / "2D" / "UI" (any case, also "3d_scene"...) → SceneType
         static bool parseSceneType(const std::string& name, SceneType& out);
         static std::string playStateName(ScenePlayState state);

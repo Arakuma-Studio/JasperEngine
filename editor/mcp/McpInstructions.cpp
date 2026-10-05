@@ -44,7 +44,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
-  entity references by entity ref.
+  entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
+  another scene (cross-scene references); Prefab script properties by .prefab path.
 - assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
 
 ## The loop
@@ -118,7 +119,8 @@ return Player
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api before using a name you have not seen there.
+  value". Check jasper://docs/lua-api (an index: read only the sections you need) or
+  search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).

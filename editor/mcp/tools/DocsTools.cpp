@@ -13,6 +13,7 @@
 #include "mcp/McpServer.h"
 #include "mcp/EngineApiContext.h"
 
+#include "Generator.h"
 #include "Project.h"
 #include "util/FileUtils.h"
 
@@ -31,11 +32,96 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// A part of a big document, served as its own resource jasper://docs/<doc>/<slug>
+struct DocSection {
+    std::string slug;
+    std::string title;   // the heading without '#'
+    std::string text;
+};
+
 struct Doc {
     std::string name;
     std::string text;
     std::string title;   // first "# " heading
+    std::string intro;   // text before the first "## " (big documents)
+    std::vector<DocSection> sections;   // empty: the document is served whole
 };
+
+// Documents above this size are served as an index + sections, so an agent reads only what
+// it needs; "## " sections above SECTION_SPLIT are split again at "### "
+constexpr size_t DOC_SPLIT = 16 * 1024;
+constexpr size_t SECTION_SPLIT = 6 * 1024;
+
+std::string slugOf(const std::string& heading) {
+    std::string slug;
+    for (char c : heading) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (std::isalnum(u)) slug.push_back(static_cast<char>(std::tolower(u)));
+        else if (!slug.empty() && slug.back() != '-') slug.push_back('-');
+        if (slug.size() >= 40) break;
+    }
+    while (!slug.empty() && slug.back() == '-') slug.pop_back();
+    return slug.empty() ? "section" : slug;
+}
+
+std::string headingText(const std::string& line) {
+    size_t i = 0;
+    while (i < line.size() && line[i] == '#') i++;
+    while (i < line.size() && line[i] == ' ') i++;
+    return line.substr(i);
+}
+
+// Splits text at lines starting with `marker` ("## " / "### "): {heading, chunk} pairs, the
+// chunk before the first heading has an empty heading
+std::vector<std::pair<std::string, std::string>> splitAt(const std::string& text, const std::string& marker) {
+    std::vector<std::pair<std::string, std::string>> out{{"", ""}};
+    std::istringstream in(text);
+    std::string line;
+    bool fence = false;
+    while (std::getline(in, line)) {
+        if (line.rfind("```", 0) == 0) fence = !fence;
+        if (!fence && line.rfind(marker, 0) == 0) out.push_back({headingText(line), ""});
+        out.back().second += line + "\n";
+    }
+    return out;
+}
+
+void splitDoc(Doc& doc) {
+    if (doc.text.size() <= DOC_SPLIT) return;
+    std::set<std::string> used;
+    auto add = [&](const std::string& title, const std::string& text) {
+        std::string slug = slugOf(title);
+        for (int n = 2; used.count(slug); n++) slug = slugOf(title) + "-" + std::to_string(n);
+        used.insert(slug);
+        doc.sections.push_back({slug, title, text});
+    };
+    const auto parts = splitAt(doc.text, "## ");
+    doc.intro = parts[0].second;
+    for (size_t i = 1; i < parts.size(); i++) {
+        const auto& [title, text] = parts[i];
+        if (text.size() <= SECTION_SPLIT) {
+            add(title, text);
+            continue;
+        }
+        const auto sub = splitAt(text, "### ");
+        // the section's own lead-in goes with its first subsection
+        for (size_t j = 1; j < sub.size(); j++) add(sub[j].first, (j == 1 ? sub[0].second : std::string()) + sub[j].second);
+        if (sub.size() == 1) add(title, text);
+    }
+}
+
+// What jasper://docs/<name> serves: the whole text, or for a split document its intro and the
+// section index
+std::string docMain(const Doc& doc) {
+    if (doc.sections.empty()) return doc.text;
+    std::string text = doc.intro;
+    text += "\n## Sections\n\nThis reference is split: read only the sections you need (resources/read).\n\n";
+    for (const DocSection& section : doc.sections) {
+        text += "- `jasper://docs/" + doc.name + "/" + section.slug + "`: " + section.title + " (" +
+                std::to_string((section.text.size() + 1023) / 1024) + " KB)\n";
+    }
+    return text;
+}
 
 const std::vector<Doc>& docs() {
     static const std::vector<Doc> list = []() {
@@ -55,6 +141,7 @@ const std::vector<Doc>& docs() {
                 }
             }
             if (doc.title.empty()) doc.title = name;
+            splitDoc(doc);
             out.push_back(std::move(doc));
         }
         std::sort(out.begin(), out.end(), [](const Doc& a, const Doc& b) { return a.name < b.name; });
@@ -66,7 +153,10 @@ const std::vector<Doc>& docs() {
 std::string docsIndex() {
     std::string text = "# JasperEngine agent reference\n\nRead with resources/read:\n\n";
     text += "- `jasper://guide`: the agent guide (same as the initialize instructions)\n";
-    for (const Doc& doc : docs()) text += "- `jasper://docs/" + doc.name + "`: " + doc.title + "\n";
+    for (const Doc& doc : docs()) {
+        text += "- `jasper://docs/" + doc.name + "`: " + doc.title +
+                (doc.sections.empty() ? "" : " (an index of " + std::to_string(doc.sections.size()) + " sections)") + "\n";
+    }
     text += "- `jasper://project/AGENTS.md`: the open project's AGENTS.md (layout, build, generated files)\n";
     text += "- `jasper://project/{path}`: any text file of the open project (scripts, materials, shaders...)\n";
     text += "\nTools: `search_engine_api` (API symbols + these docs), `search_engine_source` / `read_engine_source` "
@@ -94,8 +184,21 @@ Json searchDocs(const std::string& query, size_t maxResults) {
         Json data;
     };
     std::vector<Hit> scored;
+    struct Piece {
+        std::string uri;
+        const std::string* text;
+    };
+    std::vector<Piece> pieces;
     for (const Doc& doc : docs()) {
-        std::istringstream in(doc.text);
+        if (doc.sections.empty()) {
+            pieces.push_back({"jasper://docs/" + doc.name, &doc.text});
+            continue;
+        }
+        pieces.push_back({"jasper://docs/" + doc.name, &doc.intro});
+        for (const DocSection& section : doc.sections) pieces.push_back({"jasper://docs/" + doc.name + "/" + section.slug, &section.text});
+    }
+    for (const Piece& piece : pieces) {
+        std::istringstream in(*piece.text);
         std::string line, heading;
         int number = 0;
         while (std::getline(in, line)) {
@@ -116,7 +219,7 @@ Json searchDocs(const std::string& query, size_t maxResults) {
             if (!all || score == 0) continue;
             std::string text = line;
             if (text.size() > 300) text = text.substr(0, 300) + " ...";
-            scored.push_back({score, Json{{"doc", "jasper://docs/" + doc.name}, {"section", heading}, {"line", number}, {"text", text}}});
+            scored.push_back({score, Json{{"doc", piece.uri}, {"section", heading}, {"line", number}, {"text", text}}});
         }
     }
     std::stable_sort(scored.begin(), scored.end(), [](const Hit& a, const Hit& b) { return a.score > b.score; });
@@ -321,16 +424,35 @@ void registerDocsTools(McpRegistry& registry) {
         def.uri = "jasper://docs/" + doc.name;
         def.name = doc.name;
         def.title = doc.title;
-        def.description = "Reference: " + doc.title + ".";
+        def.description = "Reference: " + doc.title + (doc.sections.empty() ? "." : " (index of its sections).");
         def.mimeType = "text/markdown";
         const std::string name = doc.name;
         def.read = [name](const std::string& uri) {
             for (const Doc& d : docs()) {
-                if (d.name == name) return textResource(uri, "text/markdown", d.text);
+                if (d.name == name) return textResource(uri, "text/markdown", docMain(d));
             }
             return notFound("No document " + name + ".");
         };
         registry.addResource(std::move(def));
+        for (const DocSection& section : doc.sections) {
+            ResourceDef part;
+            part.uri = "jasper://docs/" + doc.name + "/" + section.slug;
+            part.name = doc.name + "/" + section.slug;
+            part.title = doc.title + ": " + section.title;
+            part.description = "Section of jasper://docs/" + doc.name + ".";
+            part.mimeType = "text/markdown";
+            const std::string slug = section.slug;
+            part.read = [name, slug](const std::string& uri) {
+                for (const Doc& d : docs()) {
+                    if (d.name != name) continue;
+                    for (const DocSection& sec : d.sections) {
+                        if (sec.slug == slug) return textResource(uri, "text/markdown", sec.text);
+                    }
+                }
+                return notFound("No section " + slug + " in " + name + ".");
+            };
+            registry.addResource(std::move(part));
+        }
     }
     {
         // Any other jasper://docs/<name> gets a helpful error listing the documents
@@ -357,14 +479,17 @@ void registerDocsTools(McpRegistry& registry) {
         agents.name = "project-agents";
         agents.title = "Project AGENTS.md";
         agents.description = "The open project's AGENTS.md: project layout, generated files, C++ build rules, plus any "
-                             "project-specific instructions its authors added.";
+                             "project-specific instructions its authors added (written on first read if missing).";
         agents.mimeType = "text/markdown";
         agents.read = [](const std::string& uri) {
             Project* project = McpServer::get().context().project();
             std::string text;
-            if (!project || !w4::readFile(project->getProjectPath() / "AGENTS.md", text)) {
-                return notFound("The project has no AGENTS.md yet (the editor writes it when the project is saved or built).");
-            }
+            if (!project) return notFound("No project is open.");
+            const fs::path file = project->getProjectPath() / "AGENTS.md";
+            std::error_code ec;
+            // the editor writes it on play/build; a new project gets it on first read
+            if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
+            if (!w4::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };
         registry.addResource(std::move(agents));

@@ -55,7 +55,7 @@ SceneProject* sceneArg(const CallPtr& call, bool requireLoaded = true) {
         return nullptr;
     }
     if (requireLoaded && !scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return nullptr;
     }
     return scene;

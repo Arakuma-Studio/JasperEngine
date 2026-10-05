@@ -465,9 +465,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = "editor_status";
         tool.title = "Editor Status";
         tool.description =
-            "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab "
-            "stage), unsaved changes, running jobs, pending dialog, MCP sessions. Call it first and when something "
-            "is unexpected.";
+            "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, "
+            "prefab stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

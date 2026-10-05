@@ -1425,9 +1425,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Launch a Desktop player for `seconds`, screenshot its window (Linux/X11, returned as image), then stop it. "
-            "Returns the log tail (full log in log_file), exit code/signal, exited_early, crashed, fatal_lines. Not on "
-            "Windows yet.";
+            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), then stop it. Returns the "
+            "log tail (full: log_file), exit code/signal, exited_early, crashed, fatal_lines.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", withDefault(number("", 0.5, 300), 5)},

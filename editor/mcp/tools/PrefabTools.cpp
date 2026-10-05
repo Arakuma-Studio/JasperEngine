@@ -176,7 +176,7 @@ SceneProject* sceneArg(const CallPtr& call, Project* project) {
         return nullptr;
     }
     if (!scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not loaded; open it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return nullptr;
     }
     return scene;

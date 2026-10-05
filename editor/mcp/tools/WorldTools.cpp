@@ -4081,7 +4081,7 @@ void registerWorldTools(McpRegistry& registry) {
         "(4-16, loop), in pixels before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), "
         "tapered_capsule, convex_hull/mesh, heightfield (terrains). New shapes fit what the GameObject draws "
         "unless fit: false. Other fields: density, friction, restitution, sensor, *_events, category_bits, "
-        "mask_bits, center, rotation. Returns {colliders, body_type, body_added}.",
+        "mask_bits, center, rotation. Returns the colliders.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4128,8 +4128,7 @@ void registerWorldTools(McpRegistry& registry) {
         "legend, at, blank}: grid = multi-line string or lines, TOP line = highest row, bottom line at row "
         "at[1]; legend maps a char to a rect name/index (null erases); '.' and ' ' are empty (blank: "
         "skip|erase). fill {tile, from, to} (inclusive), erase {from, to}, set {cells: [[col, row, tile]]}, "
-        "clear. Returns rects, counts, grid lines. Example op: {\"op\": \"paint\", \"legend\": {\"#\": "
-        "\"tile_0\"}, \"grid\": \"..##\\n####\"}.",
+        "clear. Returns rects, counts, grid lines.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

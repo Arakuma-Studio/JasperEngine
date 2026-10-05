@@ -1939,9 +1939,9 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "get_project_summary";
         tool.title = "Get Project Summary";
         tool.description =
-            "Open project overview: name, path, temporary, unsaved, Scenes in Build (index 0 = start) and untitled "
-            "scenes, start scene, assets_dir/lua_dir, script_dirs, cxx_standard, prefabs, physics, engine version, host "
-            "platform. All settings: get_project_settings.";
+            "Open project overview: name, path, temporary, unsaved, Scenes in Build (0 = start) and untitled "
+            "scenes, assets_dir/lua_dir, script_dirs, cxx_standard, prefabs, physics, versions. All settings: "
+            "get_project_settings.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

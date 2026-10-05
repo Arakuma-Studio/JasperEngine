@@ -297,7 +297,7 @@ bool resolveTarget(const CallPtr& call, Target& target, bool entityRequired) {
         return false;
     }
     if (!target.scene->scene) {
-        call->fail("Scene \"" + target.scene->name + "\" is not loaded; open it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *target.scene));
         return false;
     }
     if (args.contains("entity") && !args["entity"].is_null()) {

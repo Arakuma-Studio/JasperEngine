@@ -103,6 +103,8 @@ namespace jasperengine::editor::mcp::w3 {
     Json playStateJson(McpContext& ctx);
     // The scene the Game view shows: the playing scene, else the selected one (behind a prefab stage)
     SceneProject* gameViewScene(Project* project);
+    // The scene play start runs by default: the start scene if open, else gameViewScene
+    SceneProject* defaultPlayScene(Project* project);
 
     // A scene of the running game: null ref → the played (main) scene; otherwise a scene id,
     // name or path, mapped to its Play copy when the game runs it as a child scene (or a Play

@@ -660,6 +660,11 @@ Json scriptEntryJson(Project* project, SceneProject* sceneProject, Entity entity
     if (entry.type == ScriptType::CPP) item["header_path"] = entryHeader(project, entry);
     if (withProperties) {
         Json props = Json::array();
+        McpValues::ReadContext ctx;
+        ctx.project = project;
+        ctx.scene = sceneProject;
+        ctx.entity = entity;
+        ctx.component = ComponentType::ScriptComponent;
         for (const ScriptProperty& prop : entry.properties) {
             const std::string key = "scripts[" + std::to_string(index) + "]." + prop.name;
             PropertyData data = Catalog::getProperty(sceneProject->scene, entity, ComponentType::ScriptComponent, key);
@@ -667,7 +672,7 @@ Json scriptEntryJson(Project* project, SceneProject* sceneProject, Entity entity
             if (prop.displayName != prop.name && !prop.displayName.empty()) p["display_name"] = prop.displayName;
             if (data.ref) {
                 try {
-                    p["value"] = McpValues::toJson(project, key, data);
+                    p["value"] = McpValues::readProperty(ctx, key, data);
                 } catch (...) {
                 }
             }
@@ -1721,9 +1726,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "set_script_properties";
         tool.title = "Set Script Properties";
         tool.description =
-            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject, like set_properties "
-            "paths scripts[i].<name>. Prefab properties take a .prefab path; \"enabled\" toggles the script. After "
-            "adding a property to the file, call sync_files first.";
+            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
+            "set_properties scripts[i].<name>). Prefab properties take a .prefab path; GameObject properties "
+            "an entity ref, or {\"scene\": <scene>, \"id\": <id>} for one in another scene; \"enabled\" "
+            "toggles the script. After adding a property to the file, call sync_files first.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

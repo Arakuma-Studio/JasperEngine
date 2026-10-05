@@ -52,7 +52,7 @@ SceneProject* sceneArg(const CallPtr& call) {
         return nullptr;
     }
     if (!scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return nullptr;
     }
     return scene;
@@ -845,10 +845,10 @@ void registerComponentTools(McpRegistry& registry) {
             "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
             "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path "
             "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path "
-            "(links it); GameObject refs or null; custom values (colliders, frames, scripts...) as get_entity "
-            "returns them. Lists: {component, property, insert: value, index?} / {component, property, remove: "
-            "index}. Paths may index (\"submeshes[0].material.baseColorFactor\"). Example: {\"entity\": "
-            "\"Player\", \"values\": {\"transform\": {\"position\": [0,2,0]}}}";
+            "(links it); GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties "
+            "a .prefab path; custom values (colliders, frames, scripts...) as get_entity returns them. Lists: "
+            "{component, property, insert: value, index?} / {component, property, remove: index}. Paths may "
+            "index (\"submeshes[0].material.baseColorFactor\", \"scripts[0].speed\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

@@ -531,6 +531,13 @@ SceneProject* gameViewScene(Project* project) {
     return project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()));
 }
 
+// What play start runs without a scene: the project's start scene when it is open (not a
+// selected child/HUD scene), else the selected scene
+SceneProject* defaultPlayScene(Project* project) {
+    SceneProject* start = project ? project->getScene(project->getStartSceneId()) : nullptr;
+    return start && start->scene && start->opened ? start : gameViewScene(project);
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -545,7 +552,7 @@ Json playStateJson(McpContext& ctx) {
         if (SceneProject* sp = project->getScene(playId)) out["scene"] = McpRefs::sceneJson(project, *sp);
         out["running_scenes"] = runningScenesJson(project);
         if (s.current.active) out["session"] = sessionJson(s.current);
-    } else if (SceneProject* sp = gameViewScene(project)) {
+    } else if (SceneProject* sp = defaultPlayScene(project)) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
@@ -1266,8 +1273,10 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
             return;
         }
         if (project->isPrefabStage(sp->id)) sp = project->getScene(project->getSceneBehindPrefabStage(sp->id));
-    } else {
+    } else if (project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) {
         sp = w3::gameViewScene(project);
+    } else {
+        sp = w3::defaultPlayScene(project);
     }
     if (!sp) {
         call->fail("No scene to play: open or create a scene first.");
@@ -1897,11 +1906,19 @@ void getRuntimeEntityTool(const CallPtr& call) {
     for (ComponentType type : Catalog::findComponents(sp->scene, entity)) {
         if (!only.empty() && !only.count(type)) continue;
         Json props = Json::object();
+        McpValues::ReadContext ctx;
+        ctx.project = project;
+        ctx.scene = sp;
+        ctx.entity = entity;
+        ctx.component = type;
         if (type != ComponentType::ScriptComponent || !onlyProps.empty() || !only.empty()) {
             for (const auto& [name, property] : Catalog::findEntityProperties(sp->scene, entity, type)) {
                 if (!onlyProps.empty() && !onlyProps.count(name)) continue;
                 try {
-                    props[name] = McpValues::toJson(project, name, property);
+                    // context reads give enum names and resolvable entity refs; custom values stay
+                    // out of this listing (they can be large)
+                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, name, property)
+                                                                         : McpValues::readProperty(ctx, name, property);
                 } catch (const std::exception&) {
                     props[name] = "<unreadable>";
                 }
@@ -2001,8 +2018,13 @@ void setRuntimePropertyTool(const CallPtr& call) {
     sp->needUpdateRender = true;
 
     Json after = Json::object();
+    McpValues::ReadContext readCtx;
+    readCtx.project = project;
+    readCtx.scene = sp;
+    readCtx.entity = entity;
+    readCtx.component = component;
     for (const auto& [name, property] : Catalog::findEntityProperties(sp->scene, entity, component)) {
-        if (values.contains(name)) after[name] = McpValues::toJson(project, name, property);
+        if (values.contains(name)) after[name] = McpValues::readProperty(readCtx, name, property);
     }
     Json data = McpRefs::entityJson(sp, entity);
     data["component"] = componentNameOf(component);
@@ -2590,7 +2612,7 @@ void registerPlayTools(McpRegistry& registry) {
             "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step"})},
-            {"scene", sceneRef()},
+            {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
             {"frames", withDefault(integer("step only.", 1, 600), 1)},
@@ -2606,9 +2628,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_play_state";
         tool.title = "Get Play State";
         tool.description =
-            "Play mode state, the played and running scenes (child scenes run as copies with own ids), the current "
-            "session (time, frames, errors, crash), how the last one ended, input held by send_input, and "
-            "console_cursor for read_console.";
+            "Play state: played and running scenes (child scenes run as copies with own ids), the session "
+            "(time, frames, errors, crash), how the last one ended, held input, console_cursor; stopped: "
+            "play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

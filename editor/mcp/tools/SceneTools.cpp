@@ -243,7 +243,7 @@ void selectSceneTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->opened || !scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open it with open_scene.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     project->setSelectedSceneId(scene->id);
@@ -815,7 +815,7 @@ void getSceneSettingsTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->scene) {
-        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     std::vector<const SceneSetting*> wanted;
@@ -856,7 +856,7 @@ void setSceneSettingsTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->scene) {
-        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
@@ -905,8 +905,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "list_scenes";
         tool.title = "List Scenes";
         tool.description =
-            "Project scenes and open Prefab Mode stages: {scenes: [{id, name, path (\"\" = unsaved), type, opened, "
-            "modified, selected, start_scene, entity_count, main_camera, child_scenes...}], selected_scene_id}.";
+            "Project scenes and open Prefab Mode stages: {scenes: [{id, name, path (\"\" = unsaved), type, "
+            "opened, modified, selected, start_scene, entity_count, main_camera, child_scenes}], "
+            "selected_scene_id}.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
