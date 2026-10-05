@@ -149,6 +149,10 @@ namespace jasperengine::editor::mcp {
         static Json toJson(const Quaternion& value);
         static Vector3 eulerDegrees(const Quaternion& value);
 
+        // Recomputes every Transform's world matrix and values now (the transform system only runs
+        // between frames, so a GameObject made or moved this frame reads stale world values)
+        static void refreshTransforms(SceneProject* scene);
+
         static Json entityToJson(SceneProject* scene, Entity entity);
         static bool entityFromJson(SceneProject* scene, const Json& value, Entity& out, std::string& error);
         static Json entityReferenceToJson(Project* project, SceneProject* scene, const EntityReference& value);

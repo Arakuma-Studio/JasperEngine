@@ -99,7 +99,7 @@ async def test_tool_list(ed: Editor):
             "get_scene_tree", "find_entities", "create_entity", "delete_entities", "duplicate_entities", "rename_entity",
             "move_entity", "set_entity_state", "get_selection", "select_entities", "copy_entities", "paste_entities",
             "get_entity", "set_properties", "set_transform", "add_component", "remove_component", "reset_component",
-            "copy_component", "paste_component", "list_component_types"}
+            "copy_component", "paste_component", "list_component_types", "get_component", "set_property"}
     missing = mine - names
     ed.check(not missing, f"missing tools: {sorted(missing)}")
     replaced = {"list_scene_entities", "inspect_entity", "inspect_scene", "inspect_component", "set_entity_transform",
@@ -324,12 +324,17 @@ async def test_create_every_kind(ed: Editor):
         made.append(out["entity_id"])
     ed.check_in("label", [c.lower() for c in [n for n in await tree_names(ed)]])
     await ed.check_error("create_entity", type="definitely_not", contains="cube")
-    await ed.call("delete_entities", entities=made)
-    for e in made[:3]:
-        ed.check(not await exists(ed, e), "deleted")
+    # multi delete, one undo restores them all (a few: undoing the delete of a camera together
+    # with other GameObjects corrupts the scene's Transform order, an editor bug outside MCP)
+    some = made[:4]
+    rest = made[4:]
+    await ed.call("delete_entities", entities=some)
+    ed.check(not any([await exists(ed, e) for e in some]), "deleted")
     await undo(ed)
-    ed.check(all([await exists(ed, e) for e in made[:3]]), "one undo restores all deleted")
+    ed.check(all([await exists(ed, e) for e in some]), "one undo restores all deleted")
     await redo(ed)
+    ed.check(not any([await exists(ed, e) for e in some]), "redo deletes again")
+    await ed.call("delete_entities", entities=rest)
 
 
 async def test_create_with_values_one_undo(ed: Editor):
@@ -778,6 +783,21 @@ async def test_components(ed: Editor):
     await ed.call("delete_entities", entities=[a, b, c])
 
 
+async def test_get_component_set_property(ed: Editor):
+    await lab(ed)
+    e = await create(ed, "point_light", name="OneProp")
+    before = await value(ed, e, "light", "intensity")
+    out = await ed.call("set_property", entity=e, component="light", property="intensity", value=4)
+    check_close(ed, out["value"], 4)
+    got = await ed.call("get_component", entity=e, component="light")
+    ed.check_eq(got["properties"]["type"], {"type": "enum", "value": "point"})
+    check_close(ed, got["properties"]["intensity"]["value"], 4)
+    await undo(ed)
+    check_close(ed, await value(ed, e, "light", "intensity"), before, "undo")
+    await ed.check_error("get_component", entity=e, component="camera", contains="no camera")
+    await ed.call("delete_entities", entity=e)
+
+
 async def test_list_component_types(ed: Editor):
     out = await ed.call("list_component_types")
     names = {c["name"]: c for c in out["components"]}
@@ -789,6 +809,59 @@ async def test_list_component_types(ed: Editor):
     # Unity display names and aliases resolve
     await ed.call("list_component_types", component="Sprite Renderer")
     await ed.call("list_component_types", component="audio_source")
+
+
+async def test_model_and_material_link(ed: Editor):
+    await lab(ed)
+    models = ed.project / "assets" / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    (models / "tri.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    out = await ed.call("create_entity", type="model", name="Tri", model="assets/models/tri.obj", position=[0, 0, -2])
+    tri = out["entity_id"]
+    ed.check_eq(await value(ed, tri, "model", "filename"), "assets/models/tri.obj", "model file loaded")
+    ed.check(await value(ed, tri, "mesh", "numSubmeshes") >= 1, "model geometry")
+    await undo(ed)
+    ed.check(not await exists(ed, tri), "model create undone in one step")
+    await ed.check_error("create_entity", type="model", model="assets/models/none.obj", contains="does not exist")
+
+    mats = ed.project / "assets" / "materials"
+    mats.mkdir(parents=True, exist_ok=True)
+    (mats / "red.material").write_text("baseColorFactor: [1, 0, 0, 1]\nroughnessFactor: 0.5\n")
+    cube = await create(ed, "cube", name="Linked")
+    await set_props(ed, cube, {"mesh": {"submeshes[0].material": "assets/materials/red.material"}})
+    mat = await value(ed, cube, "mesh", "submeshes[0].material")
+    ed.check_eq(mat.get("file"), "assets/materials/red.material", f"linked: {mat}")
+    check_close(ed, mat["baseColorFactor"], [1, 0, 0, 1])
+    # the read value written back keeps the link
+    await set_props(ed, cube, {"mesh": {"submeshes[0].material": mat}})
+    ed.check_eq((await value(ed, cube, "mesh", "submeshes[0].material")).get("file"), "assets/materials/red.material")
+    # an inline edit unlinks; undo links it again
+    await set_props(ed, cube, {"mesh": {"submeshes[0].material": {"roughnessFactor": 0.9}}})
+    mat2 = await value(ed, cube, "mesh", "submeshes[0].material")
+    ed.check("file" not in mat2 and close(mat2["roughnessFactor"], 0.9), f"inline edit unlinks: {mat2}")
+    await undo(ed)
+    ed.check_eq((await value(ed, cube, "mesh", "submeshes[0].material")).get("file"), "assets/materials/red.material", "undo relinks")
+    await set_props(ed, cube, {"mesh": {"submeshes[0].material": None}})
+    ed.check("file" not in await value(ed, cube, "mesh", "submeshes[0].material"), "null unlinks")
+    await ed.check_error("set_properties", entity=cube, values={"mesh": {"submeshes[0].material": None}}, contains="not linked")
+    await ed.call("delete_entities", entity=cube)
+
+
+async def test_prefab_restructure_block(ed: Editor):
+    ed.require_tools("create_prefab")
+    await lab(ed)
+    root = await create(ed, "cube", name="PrefabRoot")
+    kid = await create(ed, "empty", name="PrefabKid", parent=root)
+    other = await create(ed, "empty", name="Elsewhere")
+    await ed.call("create_prefab", entity=root, path="prefabs/W1Block.prefab")
+    got = await ed.call("get_entity", entity="PrefabRoot/PrefabKid", detail="summary")
+    ed.check_eq(got["prefab"]["path"], "prefabs/W1Block.prefab")
+    ed.check_eq(got["prefab"]["instance_root"]["id"], root)
+    await ed.check_error("move_entity", entity="PrefabRoot/PrefabKid", parent=other, contains="Open the Prefab")
+    # the instance root itself moves freely
+    await ed.call("move_entity", entity=root, parent=other)
+    await undo(ed)
+    await ed.call("delete_entities", entities=[root, other])
 
 
 # -- empty project ------------------------------------------------------------------------

@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -2075,9 +2076,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
 
 // ==================================================================== commands
 
-void McpStepsCmd::refresh() {
-    if (!transformProject) return;
-    SceneProject* scene = transformProject->getScene(transformSceneId);
+void McpValues::refreshTransforms(SceneProject* scene) {
     if (!scene || !scene->scene) return;
     std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
     auto transforms = scene->scene->getComponentArray<Transform>();
@@ -2086,6 +2085,11 @@ void McpStepsCmd::refresh() {
     for (size_t i = 0; i < transforms->size(); i++) {
         render->updateTransform(transforms->getComponentFromIndex(i), transforms->getEntity(i));
     }
+}
+
+void McpStepsCmd::refresh() {
+    if (!transformProject) return;
+    McpValues::refreshTransforms(transformProject->getScene(transformSceneId));
 }
 
 bool McpStepsCmd::execute() {
@@ -2103,6 +2107,7 @@ bool McpStepsCmd::execute() {
         return true;
     }
     error->clear();
+    refresh();
     for (Step& step : steps) {
         std::string why;
         Command* cmd = step(why);

@@ -140,6 +140,7 @@ void getEntityTool(const CallPtr& call) {
         return;
     }
     Scene* registry = scene->scene;
+    if (scene->playState == ScenePlayState::STOPPED) McpValues::refreshTransforms(scene);
     const std::string detail = args.value("detail", std::string("values"));
     if (detail != "summary" && detail != "values" && detail != "full" && detail != "yaml") {
         call->fail("detail must be summary, values, full or yaml.");
@@ -416,6 +417,7 @@ void setTransformTool(const CallPtr& call) {
     }
     Scene* registry = scene->scene;
     const uint32_t sceneId = scene->id;
+    if (space == "world" && scene->playState == ScenePlayState::STOPPED) McpValues::refreshTransforms(scene);
     auto* multi = new MultiPropertyCmd();
     for (Entity entity : entities) {
         Transform* transform = registry->findComponent<Transform>(entity);
@@ -691,6 +693,90 @@ void pasteComponentTool(const CallPtr& call) {
              Json{{"scene_id", sceneId}, {"component", McpRefs::componentName(clip->type)}});
 }
 
+// ------------------------------------------------------------------ get_component / set_property
+
+void getComponentTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (args.value("runtime", false)) scene = McpRefs::runtimeScene(project, scene);
+    std::string error;
+    const Entity entity = McpRefs::resolveEntity(scene, args.contains("entity") ? args["entity"] : Json(), error);
+    if (entity == NULL_ENTITY) {
+        call->fail(error);
+        return;
+    }
+    ComponentType type;
+    if (!McpRefs::resolveComponent(args.contains("component") ? args["component"] : Json(), type, error)) {
+        call->fail(error);
+        return;
+    }
+    if (!McpRefs::hasComponent(scene, entity, type)) {
+        call->fail("\"" + scene->scene->getEntityName(entity) + "\" has no " + McpRefs::componentName(type) + " component.");
+        return;
+    }
+    McpValues::ReadContext ctx;
+    ctx.project = project;
+    ctx.scene = scene;
+    ctx.entity = entity;
+    ctx.component = type;
+    unsigned int usedSubmeshes = 0;
+    if (MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity)) usedSubmeshes = mesh->numSubmeshes;
+    Json props = Json::object();
+    for (const auto& [name, property] : Catalog::findEntityProperties(scene->scene, entity, type)) {
+        if (!property.ref && property.type != PropertyType::Custom) continue;
+        if (type == ComponentType::MeshComponent && name.compare(0, 10, "submeshes[") == 0 &&
+            std::strtoul(name.c_str() + 10, nullptr, 10) >= usedSubmeshes) {
+            continue;
+        }
+        props[name] = {{"type", McpValues::propertyTypeName(property.type)}, {"value", McpValues::readProperty(ctx, name, property)}};
+    }
+    call->ok(McpRefs::componentName(type) + " of " + McpRefs::entityPath(scene, entity) + ": " +
+             std::to_string(props.size()) + " properties.",
+             Json{{"entity", McpRefs::entityJson(scene, entity)}, {"component", McpRefs::componentName(type)}, {"properties", props}});
+}
+
+void setPropertyTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    std::vector<Entity> entities;
+    std::string error;
+    if (!McpRefs::resolveEntityArgs(scene, args, entities, error)) {
+        call->fail(error);
+        return;
+    }
+    if (!args.contains("value")) {
+        call->fail("Pass value (see set_properties for the shapes).");
+        return;
+    }
+    Json change = {{"component", args.value("component", std::string())}, {"property", args.value("property", std::string())},
+                   {"value", args["value"]}};
+    std::vector<McpValues::Change> changes;
+    if (!McpValues::parseChanges(Json::array({change}), changes, error)) {
+        call->fail(error);
+        return;
+    }
+    auto* multi = new MultiPropertyCmd();
+    if (!McpValues::appendChangeCommands(project, scene, entities, changes, *multi, error)) {
+        delete multi;
+        call->fail(error);
+        return;
+    }
+    const uint32_t sceneId = scene->id;
+    if (!runSceneCommand(sceneId, multi, error)) {
+        call->fail(error);
+        return;
+    }
+    SceneProject* current = project->getScene(sceneId);
+    Json values = readBack(project, current, entities[0], changes);
+    const Json value = values[McpRefs::componentName(changes[0].component)][changes[0].property];
+    call->ok(McpRefs::componentName(changes[0].component) + "." + changes[0].property + " = " + value.dump() + ".",
+             Json{{"scene_id", sceneId}, {"entity", McpRefs::entityJson(current, entities[0])}, {"value", value}});
+}
+
 // ------------------------------------------------------------------ list_component_types
 
 void listComponentTypesTool(const CallPtr& call) {
@@ -796,6 +882,43 @@ void registerComponentTools(McpRegistry& registry) {
             {"values", anyObject("{component: {property: value}}")}
         });
         tool.handler = setPropertiesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_component";
+        tool.title = "Get Component";
+        tool.description =
+            "One component of a GameObject: {properties: {name: {type, value}}} (every property, nothing elided). "
+            "get_entity reads several components at once.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"entity", entityRefSchema(ENTITY_REF_HELP)},
+            {"component", string("Component name.")},
+            {"runtime", withDefault(boolean("While playing: read the running copy of the scene."), false)}
+        }, {"entity", "component"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getComponentTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_property";
+        tool.title = "Set Property";
+        tool.description =
+            "Sets one component property (undoable); set_properties sets many in one step. Value shapes as in "
+            "set_properties. Returns the value read back. Example: {\"entity\": \"Player\", \"component\": "
+            "\"transform\", \"property\": \"position\", \"value\": [0,1,0]}";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"entity", entityRefSchema(ENTITY_REF_HELP)},
+            {"entities", entitiesSchema("Several GameObjects.")},
+            {"component", string("Component name.")},
+            {"property", string("Property name, e.g. position, color, submeshes[0].material.baseColorFactor.")},
+            {"value", any("The new value.")}
+        }, {"component", "property", "value"});
+        tool.handler = setPropertyTool;
         registry.addTool(std::move(tool));
     }
     {

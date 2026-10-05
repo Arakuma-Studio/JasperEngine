@@ -763,6 +763,7 @@ void moveEntityTool(const CallPtr& call) {
     struct Move { Entity source; Entity target; InsertionType type; };
     std::vector<Move> moves;
     const Hierarchy hierarchy = buildHierarchy(scene);
+    if (scene->playState == ScenePlayState::STOPPED) McpValues::refreshTransforms(scene);
     if (args.contains("before") || args.contains("after")) {
         const bool before = args.contains("before");
         Entity anchor = McpRefs::resolveEntity(scene, args[before ? "before" : "after"], error);
