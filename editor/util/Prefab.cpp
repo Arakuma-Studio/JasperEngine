@@ -376,20 +376,6 @@ Entity Prefab::addStripped(const std::vector<Entity>& source) {
     return id;
 }
 
-Entity Prefab::getAddedObjectNestedRoot(Entity registryEntity) const {
-    if (!registry || registryEntity == NULL_ENTITY || !registry->isEntityCreated(registryEntity) || isInstanceRoot(registryEntity)) {
-        return NULL_ENTITY;
-    }
-    Entity current = getRegistryParent(registryEntity);
-    for (size_t depth = 0; current != NULL_ENTITY && depth <= registryEntities.size(); depth++) {
-        if (isInstanceRoot(current)) {
-            return current;
-        }
-        current = getRegistryParent(current);
-    }
-    return NULL_ENTITY;
-}
-
 std::vector<Entity> Prefab::getAddedObjectTops(Entity nestedRoot) const {
     std::vector<Entity> tops;
     if (!registry || !isInstanceRoot(nestedRoot)) {
@@ -532,37 +518,6 @@ const Prefab::Instance* Prefab::getInstanceById(uint32_t sceneId, uint32_t insta
 		}
 	}
 	return nullptr;
-}
-
-void Prefab::setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
-	Instance* instance = getInstance(sceneId, entity);
-	if (instance) {
-		instance->overrides[entity].addWholeComponent(componentType);
-	}
-}
-
-void Prefab::clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) {
-	Instance* instance = getInstance(sceneId, entity);
-	if (instance) {
-		auto entityIt = instance->overrides.find(entity);
-		if (entityIt != instance->overrides.end()) {
-			entityIt->second.properties.erase(componentType);
-			if (entityIt->second.empty()) {
-				instance->overrides.erase(entityIt);
-			}
-		}
-	}
-}
-
-bool Prefab::hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const {
-	const Instance* instance = getInstance(sceneId, entity);
-	if (instance) {
-		auto entityIt = instance->overrides.find(entity);
-		if (entityIt != instance->overrides.end()) {
-			return entityIt->second.hasComponent(componentType);
-		}
-	}
-	return false;
 }
 
 Entity Prefab::getRegistryParent(Entity registryEntity) const {

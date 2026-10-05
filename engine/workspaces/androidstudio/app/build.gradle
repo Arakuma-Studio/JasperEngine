@@ -14,7 +14,6 @@ android {
         targetSdkVersion 36
         versionCode 1
         versionName "1.0"
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         multiDexEnabled true // avoid error 'Cannot fit requested classes in a single dex file'
         externalNativeBuild {
             cmake {
@@ -50,7 +49,6 @@ android {
 
     buildFeatures {
         prefab true
-        buildConfig true
     }
 
     sourceSets {

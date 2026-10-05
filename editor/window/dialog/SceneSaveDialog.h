@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// SceneSaveDialog.h
 #pragma once
 
 #include <string>
@@ -16,7 +15,7 @@ namespace fs = std::filesystem;
 
 class SceneSaveDialog {
 private:
-    void displayDirectoryTree(const fs::path& rootPath, const fs::path& currentPath);
+    void displayDirectoryTree(const fs::path& currentPath);
 
     bool m_isOpen = false;
     fs::path m_projectPath;

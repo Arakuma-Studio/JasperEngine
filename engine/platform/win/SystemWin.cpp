@@ -25,10 +25,6 @@ int SystemWin::getScreenHeight() {
     return WindowWin::getClientHeight();
 }
 
-int SystemWin::getSampleCount() {
-    return 1;
-}
-
 #if defined(SOKOL_VULKAN)
 sg_environment SystemWin::getSokolEnvironment() {
     return VulkanContext::environment();

@@ -32,6 +32,24 @@
 using namespace jasperengine;
 
 namespace {
+    // Win32 filesystem operations need the extended prefix beyond MAX_PATH.
+    fs::path copyPath(const fs::path& path) {
+#ifdef _WIN32
+        const fs::path absolutePath = fs::absolute(path);
+        const fs::path::string_type nativePath = absolutePath.native();
+
+        if (nativePath.rfind(L"\\\\?\\", 0) == 0) {
+            return absolutePath;
+        }
+        if (nativePath.rfind(L"\\\\", 0) == 0) {
+            return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
+        }
+        return fs::path(L"\\\\?\\" + nativePath);
+#else
+        return path;
+#endif
+    }
+
     constexpr float BUILD_PROGRESS_START = 0.6f;
     constexpr float BUILD_PROGRESS_END = 0.95f;
     constexpr float MSBUILD_COMPILE_END = 0.9f;
@@ -1893,51 +1911,11 @@ bool editor::Exporter::copyCppScripts() {
 }
 
 void editor::Exporter::copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec) {
-#ifdef _WIN32
-    auto getWindowsLongPath = [](const fs::path& path) {
-        const fs::path absolutePath = fs::absolute(path);
-        const fs::path::string_type nativePath = absolutePath.native();
-
-        if (nativePath.rfind(L"\\\\?\\", 0) == 0) {
-            return absolutePath;
-        }
-        if (nativePath.rfind(L"\\\\", 0) == 0) {
-            return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
-        }
-        return fs::path(L"\\\\?\\" + nativePath);
-    };
-
-    // Prefix absolute paths so Win32 APIs used by std::filesystem can traverse
-    // directory trees beyond the legacy MAX_PATH limit.
-    fs::copy(getWindowsLongPath(src),
-             getWindowsLongPath(dst),
-             fs::copy_options::recursive | fs::copy_options::overwrite_existing,
-             ec);
-#else
-    fs::copy(src, dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-#endif
+    fs::copy(copyPath(src), copyPath(dst),
+             fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
 }
 
-void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec, bool pruneStale) {
-#ifdef _WIN32
-    // Prefix absolute paths so Win32 APIs used by std::filesystem can traverse
-    // directory trees beyond the legacy MAX_PATH limit (see copyTree).
-    auto adjustPath = [](const fs::path& path) {
-        const fs::path absolutePath = fs::absolute(path);
-        const fs::path::string_type nativePath = absolutePath.native();
-
-        if (nativePath.rfind(L"\\\\?\\", 0) == 0) {
-            return absolutePath;
-        }
-        if (nativePath.rfind(L"\\\\", 0) == 0) {
-            return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
-        }
-        return fs::path(L"\\\\?\\" + nativePath);
-    };
-#else
-    auto adjustPath = [](const fs::path& path) { return path; };
-#endif
-
+void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec) {
     auto filesEqual = [](const fs::path& a, const fs::path& b) -> bool {
         std::ifstream fa(a, std::ios::binary);
         std::ifstream fb(b, std::ios::binary);
@@ -1958,8 +1936,8 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
     // Unlike copyTree, unchanged destination files are left untouched so they
     // keep their mtime and incremental builds over the tree skip recompiling.
     ec.clear();
-    const fs::path srcAdj = adjustPath(src);
-    const fs::path dstAdj = adjustPath(dst);
+    const fs::path srcAdj = copyPath(src);
+    const fs::path dstAdj = copyPath(dst);
     try {
         fs::create_directories(dstAdj);
         for (const auto& entry : fs::recursive_directory_iterator(srcAdj)) {
@@ -1979,17 +1957,15 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
         // Mirror semantics for the build cache: drop destination entries the
         // source no longer has, or files removed/renamed in an SDK update
         // would keep being compiled by the exported build's recursive globs.
-        if (pruneStale) {
-            std::vector<fs::path> stale;
-            for (const auto& entry : fs::recursive_directory_iterator(dstAdj)) {
-                if (!fs::exists(srcAdj / fs::relative(entry.path(), dstAdj))) {
-                    stale.push_back(entry.path());
-                }
+        std::vector<fs::path> stale;
+        for (const auto& entry : fs::recursive_directory_iterator(dstAdj)) {
+            if (!fs::exists(srcAdj / fs::relative(entry.path(), dstAdj))) {
+                stale.push_back(entry.path());
             }
-            for (const fs::path& path : stale) {
-                // No-op for children of an already-removed directory.
-                fs::remove_all(path);
-            }
+        }
+        for (const fs::path& path : stale) {
+            // No-op for children of an already-removed directory.
+            fs::remove_all(path);
         }
     } catch (const fs::filesystem_error& e) {
         ec = e.code();
@@ -2022,7 +1998,7 @@ bool editor::Exporter::copyEngine() {
         return false;
     }
 
-    auto copyDir = [&](const std::string& name, bool pruneStale) -> bool {
+    auto copyDir = [&](const std::string& name) -> bool {
         fs::path src = sdkRoot / name;
         fs::path dst = config.targetDir / name;
 
@@ -2032,7 +2008,7 @@ bool editor::Exporter::copyEngine() {
         }
         // Content-compare copy: unchanged files keep their mtime so the
         // Desktop/Web build cache stays incremental across exports.
-        copyTreeIfChanged(src, dst, ec, pruneStale);
+        copyTreeIfChanged(src, dst, ec);
         if (ec) {
             setError("Failed to copy " + name + " directory: " + ec.message());
             return false;
@@ -2040,13 +2016,13 @@ bool editor::Exporter::copyEngine() {
         return true;
     };
 
-    if (!copyDir("core", true)) return false;
-    if (!copyDir("libs", true)) return false;
-    if (!copyDir("platform", true)) return false;
-    if (!copyDir("renders", true)) return false;
+    if (!copyDir("core")) return false;
+    if (!copyDir("libs")) return false;
+    if (!copyDir("platform")) return false;
+    if (!copyDir("renders")) return false;
     // the GLSL the build embeds for its runtime shader compiler
-    if (!copyDir("shaderlib", true)) return false;
-    if (!copyDir("workspaces", true)) return false;
+    if (!copyDir("shaderlib")) return false;
+    if (!copyDir("workspaces")) return false;
     if (config.mode == ExportMode::SourceCode) {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
         if (ec) {

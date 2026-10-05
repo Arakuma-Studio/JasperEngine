@@ -128,10 +128,6 @@ sg_wrap SokolTexture::getWrap(TextureWrap textureWrap){
     return _SG_WRAP_DEFAULT;
 }
 
-void SokolTexture::cleanupMipmapTexture(void* data){
-    free(data);
-}
-
 // https://github.com/floooh/sokol/issues/102
 // mip-level data layout: all slices (cube faces) of a level in one contiguous block
 sg_image SokolTexture::generateMipmaps(const sg_image_desc* desc_){
@@ -248,7 +244,7 @@ sg_image SokolTexture::generateMipmaps(const sg_image_desc* desc_){
     }else{
         img = sg_make_image(desc);
     }
-    SystemRender::scheduleCleanup(cleanupMipmapTexture, big_target);
+    SystemRender::scheduleCleanup(std::free, big_target);
 
     return img;
 }
@@ -316,7 +312,7 @@ bool SokolTexture::createTexture(
     // must come after image creation: in the synchronous path scheduleCleanup
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
-        SystemRender::scheduleCleanup(cleanupMipmapTexture, combined);
+        SystemRender::scheduleCleanup(std::free, combined);
     }
     if (Engine::isAsyncThread()){
         sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);

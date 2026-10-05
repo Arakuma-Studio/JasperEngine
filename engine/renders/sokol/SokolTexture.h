@@ -26,7 +26,6 @@ namespace jasperengine{
 
         static const void* getVulkanView(sg_view view);
         static const void* getVulkanImage(sg_image image);
-        static void cleanupMipmapTexture(void* data);
 
     public:
         SokolTexture();

@@ -32,9 +32,6 @@ namespace jasperengine::editor {
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
                                  std::set<ShaderKey>& keys);
-
-        // Forgets the model files read so far (their content is cached by modification time)
-        static void clearModelCache();
     };
 
 }

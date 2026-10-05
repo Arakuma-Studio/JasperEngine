@@ -16,8 +16,6 @@ namespace jasperengine {
         int getScreenWidth() override;
         int getScreenHeight() override;
 
-        int getSampleCount() override;
-
 #if defined(SOKOL_METAL) || defined(SOKOL_VULKAN)
         // The GL backend renders into the default framebuffer, which the base
         // class already describes. Metal and Vulkan have to hand sokol the device

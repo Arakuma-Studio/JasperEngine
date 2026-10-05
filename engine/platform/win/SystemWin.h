@@ -22,8 +22,6 @@ namespace jasperengine {
         int getScreenWidth() override;
         int getScreenHeight() override;
 
-        int getSampleCount() override;
-
 #if defined(SOKOL_VULKAN) || defined(SOKOL_D3D11)
         // The GL backend renders into the default framebuffer, which the base
         // class already describes. Vulkan and D3D11 have to hand sokol the

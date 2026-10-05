@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// ProjectSaveDialog.h
 #pragma once
 
 #include <string>

@@ -8,7 +8,7 @@
 #include "Data.h"
 #include "ResourcePack.h"
 #include "System.h"
-#include <stack>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -70,7 +70,7 @@ std::string FileData::getBaseDir(const std::string& filepath){
 
 std::string FileData::simplifyPath(const std::string& path) {
 
-    std::stack<std::string> st;
+    std::vector<std::string> parts;
 
     std::string dir;
 
@@ -91,37 +91,28 @@ std::string FileData::simplifyPath(const std::string& path) {
         }
 
         if (dir.compare("..") == 0) {
-            if (!st.empty())
-                st.pop();
+            if (!parts.empty())
+                parts.pop_back();
         }
         else if (dir.compare(".") == 0)
             continue;
         else if (dir.length() != 0)
-            st.push(dir);
+            parts.push_back(dir);
     }
 
-    std::stack<std::string> st1;
-    while (!st.empty()) {
-        st1.push(st.top());
-        st.pop();
-    }
-
-    while (!st1.empty()) {
-        std::string temp = st1.top();
-        if (st1.size() != 1)
-            res.append(temp + System::instance().getDirSeparator());
-        else
-            res.append(temp);
-
-        st1.pop();
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0)
+            res += System::instance().getDirSeparator();
+        res += parts[i];
     }
 
     return res;
 }
 
 std::string FileData::getFilePathExtension(const std::string &filepath) {
-    if (filepath.find_last_of(".") != std::string::npos)
-        return filepath.substr(filepath.find_last_of(".") + 1);
+    const size_t dot = filepath.find_last_of(".");
+    if (dot != std::string::npos)
+        return filepath.substr(dot + 1);
     return "";
 }
 

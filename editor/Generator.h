@@ -125,11 +125,10 @@ namespace jasperengine::editor {
         static const CMakeKit* chooseDefaultKit(const std::vector<CMakeKit>& kits);
 
         bool configureCMake(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);
-        bool buildProject(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs);
+        bool buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs);
         // Resolve a "Default" (all-empty) selection in place to the best
         // ABI-compatible kit. No-op off Windows; false if none is compatible.
         bool resolveDefaultKit(std::string& cCompiler, std::string& cxxCompiler, std::string& generator);
-        bool runCommand(const std::string& command, const fs::path& workingDir);
         bool clearStaleCMakeCache(const fs::path& projectPath, const fs::path& buildPath);
         // Remove CMake's cached configuration so the next configure starts clean.
         // Returns false (with a logged error) if the cache could not be removed,
@@ -173,7 +172,7 @@ namespace jasperengine::editor {
         void clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const;
         void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers());
-        void build(const fs::path projectPath, const fs::path projectInternalPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
+        void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         bool isBuildInProgress() const;
         void waitForBuildToComplete();
         bool didLastBuildSucceed() const;

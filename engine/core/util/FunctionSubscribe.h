@@ -126,29 +126,14 @@ namespace jasperengine {
         std::vector<std::string> tags;
         bool enabled = true;
 
-        // Helper to remove subscriber by index
         void removeAt(size_t index) {
             functions.erase(functions.begin() + index);
             tags.erase(tags.begin() + index);
         }
 
-        bool addImpl(const std::string& tag, std::function<Ret(Args...)> function){
-            remove(tag);
-
-            functions.push_back(function);
-            tags.push_back(tag);
-
-            return true;
-        }
-
         template<typename T, size_t... Idx>
         std::function<Ret(Args...)> bindImpl(T *obj, Ret(T::*funcPtr)(Args...), std::index_sequence<Idx...>){
-            return std::bind(funcPtr, obj, getPlaceholder<Idx>()...);
-        }
-
-        template<size_t N>
-        MyPlaceholder<N + 1> getPlaceholder(){
-            return {};
+            return std::bind(funcPtr, obj, MyPlaceholder<Idx + 1>{}...);
         }
 
     public:
@@ -191,31 +176,34 @@ namespace jasperengine {
 
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
-            return addImpl(tag, function);
+            return add(tag, function);
         }
 
         bool add(const std::string& tag, std::function<Ret(Args...)> function) {
-            return addImpl(tag, function);
+            remove(tag);
+            functions.push_back(function);
+            tags.push_back(tag);
+            return true;
         }
 
         template<Ret(*funcPtr)(Args...)>
         bool add(const std::string& tag){
-            return addImpl(tag, std::function<Ret(Args...)>(funcPtr));
+            return add(tag, std::function<Ret(Args...)>(funcPtr));
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
         bool add(const std::string& tag, std::shared_ptr<T> obj){
-            return addImpl(tag, bindImpl(obj.get(), funcPtr, std::index_sequence_for<Args...>{}));
+            return add(tag, bindImpl(obj.get(), funcPtr, std::index_sequence_for<Args...>{}));
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
         bool add(const std::string& tag, T* obj){
-            return addImpl(tag, bindImpl(obj, funcPtr, std::index_sequence_for<Args...>{}));
+            return add(tag, bindImpl(obj, funcPtr, std::index_sequence_for<Args...>{}));
         }
 
         template<typename T>
         bool add(const std::string& tag, std::shared_ptr<T> t){
-            return addImpl(tag, *t.get());
+            return add(tag, std::function<Ret(Args...)>(*t.get()));
         }
 
         bool remove(const std::string& tag){
@@ -226,7 +214,6 @@ namespace jasperengine {
 
             auto index{ std::distance(tags.begin(), it) };
             tags.erase(it);
-
             functions.erase(functions.begin() + index);
 
             return true;

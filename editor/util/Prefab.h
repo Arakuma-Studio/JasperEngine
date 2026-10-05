@@ -218,13 +218,6 @@ public:
     Instance* getInstanceByRoot(uint32_t sceneId, Entity root);
     const Instance* getInstanceById(uint32_t sceneId, uint32_t instanceId) const;
 
-    // Whole-component overrides ("*": every property of the component), on the owning
-    // instance's bookkeeping, without undo (Project::recordPrefabEdit is the edit path)
-    void setComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
-    void clearComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType);
-    // Any property of the component is overridden
-    bool hasComponentOverride(uint32_t sceneId, Entity entity, ComponentType componentType) const;
-
     // Removed GameObjects: whether the registry entity is left out of the instance, being
     // removed itself or below a removed one. One hash lookup per registry ancestor.
     bool isRegistryEntityAbsent(const Instance& instance, Entity registryEntity) const;
@@ -246,14 +239,10 @@ public:
     // ---- Stripped objects and added GameObjects of nested instances (PREFABS.md 17) ----
 
     // A new id of this prefab (a GameObject or a stripped object): above every id it had
-    bool isStripped(Entity id) const { return stripped.count(id) != 0; }
     Entity allocateId();
     // The stripped id for a way down into the nested instances, made when missing
     Entity findStripped(const std::vector<Entity>& source) const;
     Entity addStripped(const std::vector<Entity>& source);
-    // The nested root a GameObject this prefab added to a nested instance is below (the
-    // first nested root among its registry ancestors), NULL_ENTITY for any other one
-    Entity getAddedObjectNestedRoot(Entity registryEntity) const;
     // The registry children of a nested root: the tops of the GameObjects this prefab adds
     // to that nested instance, in registry order
     std::vector<Entity> getAddedObjectTops(Entity nestedRoot) const;

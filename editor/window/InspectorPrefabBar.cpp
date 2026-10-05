@@ -150,8 +150,7 @@ bool editor::InspectorWindow::isPrefabPropertyOverridden(SceneProject* sceneProj
     return false;
 }
 
-void editor::InspectorWindow::drawPrefabOverrideBar(float y0, float y1, bool added){
-    (void)added;
+void editor::InspectorWindow::drawPrefabOverrideBar(float y0, float y1){
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImVec2 windowPos = ImGui::GetWindowPos();
     const ImVec2 windowSize = ImGui::GetWindowSize();
@@ -573,7 +572,7 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
     }
 }
 
-void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, const PrefabOverrideEntry& entry, Entity root, bool locked){
+void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, const PrefabOverrideEntry& entry, bool locked){
     Scene* scene = sceneProject->scene;
     const uint32_t sceneId = sceneProject->id;
 
@@ -770,7 +769,6 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
             break;
     }
     ImGui::EndTable();
-    (void)root;
 }
 
 void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProject, Entity root, bool readOnly){
@@ -855,7 +853,7 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
     ImGui::SameLine();
     ImGui::BeginChild("##prefab_overrides_comparison", ImVec2(size.x * 0.58f - ImGui::GetStyle().ItemSpacing.x, size.y), ImGuiChildFlags_Borders);
     if (selected) {
-        drawPrefabComparison(sceneProject, *selected, root, locked);
+        drawPrefabComparison(sceneProject, *selected, locked);
     } else {
         ImGui::TextDisabled("Select an override to compare it with the Prefab");
     }

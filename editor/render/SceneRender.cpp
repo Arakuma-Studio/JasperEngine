@@ -26,6 +26,13 @@ extern unsigned int bulb_icon_png_len;
 
 using namespace jasperengine;
 
+void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
+    if (lines.find(entity) == lines.end()){
+        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
+        lines[entity] = overlay(new LineRenderer(scene));
+    }
+}
+
 editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
@@ -2438,10 +2445,6 @@ bool editor::SceneRender::isUseGlobalTransform() const{
 
 void editor::SceneRender::setUseGlobalTransform(bool useGlobalTransform){
     this->useGlobalTransform = useGlobalTransform;
-}
-
-void editor::SceneRender::changeUseGlobalTransform(){
-    this->useGlobalTransform = !this->useGlobalTransform;
 }
 
 void editor::SceneRender::enableCursorPointer(){

@@ -20,52 +20,48 @@ GameObject::GameObject(Scene* scene, Entity entity): EntityHandle(scene, entity)
 GameObject::~GameObject(){
 }
 
-static GameObject handleOf(Scene* scene, Entity entity){
-    return GameObject(scene, entity);
-}
-
 GameObject GameObject::instantiate(const PrefabAsset& prefab){
     Scene* scene = ObjectManager::getActiveScene();
-    return handleOf(scene, ObjectManager::instantiate(prefab, scene));
+    return GameObject(scene, ObjectManager::instantiate(prefab, scene));
 }
 
 GameObject GameObject::instantiate(const PrefabAsset& prefab, Scene* scene){
     scene = scene ? scene : ObjectManager::getActiveScene();
-    return handleOf(scene, ObjectManager::instantiate(prefab, scene));
+    return GameObject(scene, ObjectManager::instantiate(prefab, scene));
 }
 
 GameObject GameObject::instantiate(const PrefabAsset& prefab, const EntityHandle& parent, bool instantiateInWorldSpace){
-    return handleOf(parent.getScene(), ObjectManager::instantiate(prefab, parent.getScene(), parent.getEntity(), instantiateInWorldSpace));
+    return GameObject(parent.getScene(), ObjectManager::instantiate(prefab, parent.getScene(), parent.getEntity(), instantiateInWorldSpace));
 }
 
 GameObject GameObject::instantiate(const PrefabAsset& prefab, const Vector3& position, const Quaternion& rotation){
     Scene* scene = ObjectManager::getActiveScene();
-    return handleOf(scene, ObjectManager::instantiate(prefab, scene, position, rotation));
+    return GameObject(scene, ObjectManager::instantiate(prefab, scene, position, rotation));
 }
 
 GameObject GameObject::instantiate(const PrefabAsset& prefab, const Vector3& position, const Quaternion& rotation, const EntityHandle& parent){
-    return handleOf(parent.getScene(), ObjectManager::instantiate(prefab, parent.getScene(), position, rotation, parent.getEntity()));
+    return GameObject(parent.getScene(), ObjectManager::instantiate(prefab, parent.getScene(), position, rotation, parent.getEntity()));
 }
 
 GameObject GameObject::instantiate(const PrefabAsset& prefab, Scene* scene, const Vector3& position, const Quaternion& rotation){
     scene = scene ? scene : ObjectManager::getActiveScene();
-    return handleOf(scene, ObjectManager::instantiate(prefab, scene, position, rotation));
+    return GameObject(scene, ObjectManager::instantiate(prefab, scene, position, rotation));
 }
 
 GameObject GameObject::instantiate(const EntityHandle& original){
-    return handleOf(original.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity()));
+    return GameObject(original.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity()));
 }
 
 GameObject GameObject::instantiate(const EntityHandle& original, const EntityHandle& parent, bool instantiateInWorldSpace){
-    return handleOf(parent.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), parent.getScene(), parent.getEntity(), instantiateInWorldSpace));
+    return GameObject(parent.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), parent.getScene(), parent.getEntity(), instantiateInWorldSpace));
 }
 
 GameObject GameObject::instantiate(const EntityHandle& original, const Vector3& position, const Quaternion& rotation){
-    return handleOf(original.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), original.getScene(), position, rotation));
+    return GameObject(original.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), original.getScene(), position, rotation));
 }
 
 GameObject GameObject::instantiate(const EntityHandle& original, const Vector3& position, const Quaternion& rotation, const EntityHandle& parent){
-    return handleOf(parent.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), parent.getScene(), position, rotation, parent.getEntity()));
+    return GameObject(parent.getScene(), ObjectManager::instantiate(original.getScene(), original.getEntity(), parent.getScene(), position, rotation, parent.getEntity()));
 }
 
 void GameObject::destroy(const EntityHandle& object, float delay){

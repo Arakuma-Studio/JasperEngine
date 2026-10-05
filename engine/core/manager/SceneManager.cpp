@@ -624,27 +624,24 @@ bool SceneManager::addChildScene(const std::string& name) {
 }
 
 bool SceneManager::removeChildScene(uint32_t id) {
-    for (const auto& entry : entries) {
-        if (entry.id != id) {
+    SceneEntry* entry = findEntry(id);
+    if (!entry) {
+        Log::error("SceneManager: scene id %u not found", id);
+        return false;
+    }
+
+    bool removedScene = false;
+    for (auto it = entry->sceneIds.rbegin(); it != entry->sceneIds.rend(); ++it) {
+        Scene* scene = getScenePtr(*it);
+        if (!scene || scene == Engine::getMainScene() || !Engine::isSceneRunning(scene)) {
             continue;
         }
 
-        bool removedScene = false;
-        for (auto it = entry.sceneIds.rbegin(); it != entry.sceneIds.rend(); ++it) {
-            Scene* scene = getScenePtr(*it);
-            if (!scene || scene == Engine::getMainScene() || !Engine::isSceneRunning(scene)) {
-                continue;
-            }
-
-            Engine::removeScene(scene);
-            removedScene = true;
-        }
-
-        return removedScene;
+        Engine::removeScene(scene);
+        removedScene = true;
     }
 
-    Log::error("SceneManager: scene id %u not found", id);
-    return false;
+    return removedScene;
 }
 
 bool SceneManager::removeChildScene(const std::string& name) {
@@ -665,10 +662,8 @@ uint32_t SceneManager::getSceneId(const std::string& name) {
 }
 
 std::string SceneManager::getSceneName(uint32_t id) {
-    for (int i = 0; i < (int)entries.size(); ++i) {
-        if (entries[i].id == id) return entries[i].name;
-    }
-    return "";
+    const SceneEntry* entry = findEntry(id);
+    return entry ? entry->name : "";
 }
 
 std::vector<std::string> SceneManager::getSceneNames() {

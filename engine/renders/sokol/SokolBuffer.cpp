@@ -22,11 +22,9 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
 
     createdUsage = usage;
 
+    vbuf_desc.size = (size_t)size;
     if (usage == BufferUsage::IMMUTABLE){
-        vbuf_desc.size = (size_t)size;
         vbuf_desc.data = {data, (size_t)size};
-    }else{
-        vbuf_desc.size = (size_t)size;
     }
 
     // TODO: Multi-purpose buffer objects
@@ -65,10 +63,7 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
     }
 
 
-    if (buffer.id != SG_INVALID_ID)
-        return true;
-
-    return false;
+    return buffer.id != SG_INVALID_ID;
 }
 
 // called by draw

@@ -111,9 +111,9 @@ namespace jasperengine::editor{
         // Helpers
         void drawToolbar(float width, AnimationComponent& anim, Scene* scene, SceneProject* sceneProject);
         void drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd);
-        bool drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd,
+        bool drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart,
                 AnimationComponent& anim, SceneProject* sceneProject, bool allowSelection);
-        bool drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd);
+        bool drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart);
 
         float snapTime(float time) const;
         float timeToX(float time, float timeStart, ImVec2 canvasPos) const;
@@ -141,7 +141,7 @@ namespace jasperengine::editor{
         // active, otherwise selectedEntity.
         Entity timelineClip(Scene* scene) const;
 
-        void startPreview(Scene* scene, SceneProject* sceneProject);
+        void startPreview(Scene* scene);
         void stopPreview(Scene* scene, SceneProject* sceneProject, bool applyBindPose = false);
 
         // Snapshot + reset one animation's action tree so it can be previewed (and later

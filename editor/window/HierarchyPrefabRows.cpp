@@ -53,7 +53,7 @@ namespace {
 
 }
 
-void editor::HierarchyWindow::markPrefabRows(SceneProject* sceneProject, TreeNode& root) {
+void editor::HierarchyWindow::markPrefabRows(TreeNode& root) {
     std::unordered_map<uint32_t, SceneInstanceSets> sets;
     auto setsFor = [&](uint32_t sceneId) -> const SceneInstanceSets& {
         auto it = sets.find(sceneId);
@@ -112,7 +112,6 @@ void editor::HierarchyWindow::markPrefabRows(SceneProject* sceneProject, TreeNod
             visit(child, kind);
         }
     };
-    (void)sceneProject;
     visit(root, 0);
 }
 

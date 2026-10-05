@@ -274,11 +274,15 @@ void parseGeminiUsage(const Json& root, ProviderResponse& result) {
 
 // --- Provider adapters ----------------------------------------------------
 
-class OpenAIProvider : public Provider {
+class ChatCompletionsProvider : public Provider {
+    const char* url;
+
 public:
+    explicit ChatCompletionsProvider(const char* url) : url(url) {}
+
     HttpRequest buildRequest(const ProviderRequest& request) const override {
         HttpRequest http;
-        http.url = "https://api.openai.com/v1/chat/completions";
+        http.url = url;
         http.headers = {
             "Content-Type: application/json",
             "Authorization: Bearer " + request.apiKey
@@ -307,24 +311,6 @@ public:
             http.headers.push_back("HTTP-Referer: https://jaspergameengine.com");
             http.headers.push_back("X-Title: JasperEngine Editor");
         }
-        http.body = buildChatCompletionsPayload(request).dump();
-        return http;
-    }
-
-    ProviderResponse parseResponse(const std::string& body) const override {
-        return parseChatCompletionsBody(body);
-    }
-};
-
-class DeepSeekProvider : public Provider {
-public:
-    HttpRequest buildRequest(const ProviderRequest& request) const override {
-        HttpRequest http;
-        http.url = "https://api.deepseek.com/chat/completions";
-        http.headers = {
-            "Content-Type: application/json",
-            "Authorization: Bearer " + request.apiKey
-        };
         http.body = buildChatCompletionsPayload(request).dump();
         return http;
     }
@@ -376,10 +362,10 @@ std::unique_ptr<Provider> createProvider(ProviderId provider) {
     switch (provider) {
         case ProviderId::Anthropic: return std::make_unique<AnthropicProvider>();
         case ProviderId::Gemini: return std::make_unique<GeminiProvider>();
-        case ProviderId::DeepSeek: return std::make_unique<DeepSeekProvider>();
+        case ProviderId::DeepSeek: return std::make_unique<ChatCompletionsProvider>("https://api.deepseek.com/chat/completions");
         case ProviderId::OpenAICompatible: return std::make_unique<OpenAICompatibleProvider>();
         case ProviderId::OpenAI:
-        default: return std::make_unique<OpenAIProvider>();
+        default: return std::make_unique<ChatCompletionsProvider>("https://api.openai.com/v1/chat/completions");
     }
 }
 

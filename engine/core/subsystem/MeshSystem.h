@@ -104,7 +104,6 @@ namespace jasperengine{
         static bool isValidGLTFIndex(int index, const std::vector<T>& values) {
             return index >= 0 && static_cast<size_t>(index) < values.size();
         }
-        static void applyDefaultGLTFMaterial(Material& material);
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
@@ -130,7 +129,7 @@ namespace jasperengine{
         // Terrain
         size_t getTerrainGridArraySize(int rootGridSize, int levels);
         void getTerrainHeightRangeArea(TerrainComponent& terrain, float x, float z, float w, float h, float& minHeight, float& maxHeight);
-        void createPlaneNodeSubmesh(unsigned int submeshIndex, TerrainComponent& terrain, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments);
+        void createPlaneNodeSubmesh(unsigned int submeshIndex, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments);
         void resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent& mesh);
         bool createTerrain(TerrainComponent& terrain, MeshComponent& mesh);
         void createTerrainNode(TerrainComponent& terrain, float x, float y, float size, int lodDepth);

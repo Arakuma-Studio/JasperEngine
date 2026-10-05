@@ -35,10 +35,6 @@ int SystemMac::getScreenHeight() {
     return WindowMac::getDrawableHeight();
 }
 
-int SystemMac::getSampleCount() {
-    return 1;
-}
-
 #if defined(SOKOL_METAL)
 sg_environment SystemMac::getSokolEnvironment() {
     MTKView* view = (__bridge MTKView*)WindowMac::contentView();

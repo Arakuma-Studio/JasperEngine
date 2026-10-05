@@ -197,7 +197,7 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> replaceCandidates;
 
         // Added GameObjects, rows below Missing Prefabs, variants and ">" buttons, after a rebuild
-        void markPrefabRows(SceneProject* sceneProject, TreeNode& root);
+        void markPrefabRows(TreeNode& root);
         // The "+" badge on an added GameObject's icon, right after its row was drawn
         void drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
         // The ">" button at the right end of an instance root's row

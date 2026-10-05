@@ -1667,7 +1667,6 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
         if (allowEntityDragDrop){
             ImGuiDragDropFlags flags = 0;
-            //ImGuiDragDropFlags flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
 
             if (!node.isScene && (insertBefore || insertAfter)){
                 flags |= ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
@@ -2731,7 +2730,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     } while (splicedNew);
 
     markPrefabScripts(root);
-    markPrefabRows(sceneProject, root);
+    markPrefabRows(root);
 }
 
 void editor::HierarchyWindow::show(){

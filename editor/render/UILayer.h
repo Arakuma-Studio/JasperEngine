@@ -71,9 +71,6 @@ namespace jasperengine::editor{
         void showSpeedGauge(float factor, float minFactor, float maxFactor);
         void hideSpeedGauge();
 
-        Framebuffer* getFramebuffer();
-        TextureRender& getTexture();
-        Camera* getCamera();
         Scene* getScene();
     };
 

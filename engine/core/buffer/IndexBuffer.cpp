@@ -63,5 +63,5 @@ void IndexBuffer::clear(){
     Buffer::clear();
 
     vectorBuffer.clear();
-    data = vectorBuffer.empty() ? nullptr : &vectorBuffer[0];
+    data = nullptr;
 }

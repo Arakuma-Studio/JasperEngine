@@ -1062,7 +1062,7 @@ void editor::AnimationWindow::seekPreview(Scene* scene, SceneProject* sceneProje
     }
 
     if (!isPreviewing) {
-        startPreview(scene, sceneProject);
+        startPreview(scene);
     }
 
     // Scrubbing exits any active transition: reset blend/fade state and preview only the
@@ -1163,7 +1163,7 @@ void editor::AnimationWindow::addAnimationToPreview(Scene* scene, Entity animEnt
     }
 }
 
-void editor::AnimationWindow::startPreview(Scene* scene, SceneProject* sceneProject) {
+void editor::AnimationWindow::startPreview(Scene* scene) {
     if (isPreviewing || !canPreviewEntity(selectedEntity, scene)) {
         return;
     }
@@ -1193,7 +1193,7 @@ void editor::AnimationWindow::triggerTransitionPreview(Scene* scene, SceneProjec
     }
 
     if (!isPreviewing) {
-        startPreview(scene, sceneProject);
+        startPreview(scene);
     }
     if (!isPreviewing) {
         return; // current clip could not be previewed
@@ -1441,7 +1441,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
             isPlaying = true;
             if (sceneIsStopped && !isPreviewing) {
                 currentTime = 0;
-                startPreview(scene, sceneProject);
+                startPreview(scene);
             } else if (sceneIsStopped && isPreviewing) {
                 ActionComponent& action = sceneProject->scene->getComponent<ActionComponent>(selectedEntity);
                 if (action.state == ActionState::Stopped) {
@@ -1857,7 +1857,7 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
     }
 }
 
-bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd,
+bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart,
                                          AnimationComponent& anim, SceneProject* sceneProject, bool allowSelection) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     Scene* scene = sceneProject->scene;
@@ -2588,7 +2588,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     return mouseOverFrame;
 }
 
-bool editor::AnimationWindow::drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
+bool editor::AnimationWindow::drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const TimelineMetrics metrics = timelineMetrics();
     float labelWidth = metrics.labelWidth;
@@ -3004,9 +3004,9 @@ void editor::AnimationWindow::show() {
                             IM_COL32(30, 30, 30, 255));
 
     drawTimeRuler(canvasPos, canvasSize, timeStart, timeEnd);
-    bool mouseOverFrame = drawTracks(canvasPos, canvasSize, timeStart, timeEnd, *displayAnim, sceneProject,
+    bool mouseOverFrame = drawTracks(canvasPos, canvasSize, timeStart, *displayAnim, sceneProject,
                                      displayEntity == selectedEntity);
-    bool scrubbed = drawPlayhead(canvasPos, canvasSize, timeStart, timeEnd);
+    bool scrubbed = drawPlayhead(canvasPos, canvasSize, timeStart);
 
     ImVec2 mousePos = ImGui::GetIO().MousePos;
     bool mouseInCanvas = mousePos.x >= canvasPos.x && mousePos.x <= canvasPos.x + canvasSize.x &&
@@ -3091,7 +3091,7 @@ void editor::AnimationWindow::externalPlay(Entity entity, uint32_t sceneId) {
 
     if (sceneIsStopped && !isPreviewing) {
         currentTime = 0;
-        startPreview(scene, sceneProject);
+        startPreview(scene);
     } else if (sceneIsStopped && isPreviewing) {
         ActionComponent& action = sceneProject->scene->getComponent<ActionComponent>(selectedEntity);
         if (action.state == ActionState::Stopped) {

@@ -19,8 +19,6 @@ import sys
 
 import yaml
 
-# MeshComponent::morphWeights is uninitialized memory when a file does not hold it
-IGNORED_FIELDS = {("mesh", "morphWeights")}
 # --ignore-derived: what the engine computes when it runs (a dump of a project saved by the
 # GUI against one that never ran)
 DERIVED_FIELDS = {("mesh", k) for k in ("aabb", "verticesAABB", "worldAABB", "submeshes", "transparent")} | \
@@ -121,7 +119,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     ignore_prefab = "--ignore-prefab-info" in sys.argv
     ids = "--ids" in sys.argv
-    ignored = IGNORED_FIELDS | (DERIVED_FIELDS if "--ignore-derived" in sys.argv else set())
+    ignored = DERIVED_FIELDS if "--ignore-derived" in sys.argv else set()
     if len(args) != 2:
         sys.exit(__doc__)
     a, b = load(args[0]), load(args[1])

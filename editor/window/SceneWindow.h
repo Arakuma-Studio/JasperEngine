@@ -76,7 +76,7 @@ namespace jasperengine::editor {
         void updatePrefabDrag(SceneProject* sceneProject, const std::vector<std::string>& paths, float x, float y, bool delivery);
         void cancelPrefabDrag();
         Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ);
-        bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth, int canvasHeight);
+        bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);

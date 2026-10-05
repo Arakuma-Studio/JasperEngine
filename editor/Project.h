@@ -417,17 +417,6 @@ namespace jasperengine::editor{
         size_t totalMissing() const;
     };
 
-    struct SharedMoveRecoveryEntry {
-        Entity oldParent;
-        size_t oldIndex;
-        size_t hasTransform;
-        // An instance where the move changed whether the GameObject is there: it went below a
-        // GameObject the instance removed (taken out, put back by the undo), or came out from
-        // below one (brought in, taken out again by the undo)
-        PrefabBranchRecovery left;
-        Entity entered = NULL_ENTITY;
-    };
-
     struct TerrainEditorSettings {
         int brushMode = 0;           // TerrainBrushMode::Raise
         int brushShape = 0;          // TerrainBrushShape::Circle
@@ -557,8 +546,6 @@ namespace jasperengine::editor{
         bool fullscreen = true;
         bool keepScreenOn = false;
     };
-
-    using SharedMoveRecovery = std::map<std::string, SharedMoveRecoveryEntry>;
 
     struct ComponentRecoveryEntry {
         Entity entity;
@@ -723,7 +710,6 @@ namespace jasperengine::editor{
         };
 
         std::filesystem::path projectPath;
-        bool resourcesFocused;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
         std::chrono::steady_clock::time_point lastMaterialRefreshTime;
         static constexpr double materialRefreshIntervalSec = 0.2;
@@ -1449,7 +1435,7 @@ namespace jasperengine::editor{
         // Commands keep the overrides from before the edit for their undo
         // (getPrefabEditOverrides / setPrefabEditOverrides, command/PrefabEditUndo.h).
 
-        // Prefab Mode (agent D): true when `entity` is a GameObject of a prefab asset being
+        // True when `entity` is a GameObject of a prefab asset being
         // edited in Prefab Mode, whose edits are asset edits, not instance overrides
         bool isEditingPrefabAsset(uint32_t sceneId, Entity entity) const;
         // Property edits ({} or "*": the whole component)
@@ -1486,9 +1472,6 @@ namespace jasperengine::editor{
         // Stop's restore of a scene played in place: its snapshot (entities, components,
         // prefab bookkeeping) back, what Play created destroyed; false without a snapshot
         bool restorePlaySnapshot(SceneProject* sceneProject);
-
-        SharedMoveRecovery moveEntityFromPrefab(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself = true);
-        bool undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
 
         void cleanupPrefabsForScene(uint32_t sceneId);
 

@@ -24,12 +24,6 @@ namespace jasperengine::editor {
         Project* project;
         uint32_t sceneId;
         Entity animEntity;
-        EntityCreationType creationType;
-        std::string name;
-        float localTime;
-        int channel; // 0 = position, 1 = rotation, 2 = scale
-        Vector3 vectorValue;
-        Quaternion quatValue;
 
         std::unique_ptr<CreateEntityCmd> createCmd;
         Entity trackEntity = NULL_ENTITY;

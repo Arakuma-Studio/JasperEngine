@@ -6397,7 +6397,6 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     if (camera.useTarget){
         camera.direction = (transform.position - camera.target).normalize();
         camera.right = (camera.up.crossProduct(camera.direction)).normalize();
-        //camera.up = camera.direction.crossProduct(camera.right); // no need to align, keep "up" always same
 
         if (transform.parent != NULL_ENTITY){
             camera.worldTarget = transform.modelMatrix * (camera.target - transform.position);
@@ -7172,13 +7171,10 @@ float RenderSystem::lerp(float a, float b, float fraction) {
 }
 
 Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition){
-    // Calculate extended frustum bounds
-    Matrix4 extendedSceneCameraInv = sceneCameraInv;
-
     // Extend the frustum backwards to include more geometry
     float extension = shadowMaxDistance * 0.5f;
 
-    Matrix4 t = viewMatrix * extendedSceneCameraInv;
+    Matrix4 t = viewMatrix * sceneCameraInv;
     // Add additional points behind the camera
     Vector3 backwardOffset = -lightDirection * extension;
     // runs per camera and frame: a fixed array, no allocation
@@ -10414,8 +10410,7 @@ void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& came
 
 // The instances of a batch as seen from camera, when they depend on it: billboards face
 // it and the distance fade keeps those in range of it (updateInstancedMesh's rules).
-void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source){
-    (void)cameraTransform;
+void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Vector3& fadeEyeLocal, ViewInstanceSource& source){
     source.instances.clear();
     source.bounds.clear();
 
@@ -10543,7 +10538,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         unsigned int count;
         source.own = instmesh.instancedBillboard || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
         if (source.own){
-            buildInstanceList(instmesh, *mesh, *transform, camera, cameraTransform, source.fadeEyeLocal, source);
+            buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
             bounds = source.bounds.data();
             count = (unsigned int)source.instances.size();
@@ -10586,8 +10581,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
 
 // Each mirror's reflection as the view camera sees it (updateMirrors' reflection for
 // the view camera), rendered into the view's own framebuffer for the mirror surface.
-void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera, Transform& cameraTransform){
-    (void)cameraTransform;
+void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
     auto mirrors = scene->getComponentArray<MirrorComponent>();
     if (mirrors->size() == 0){
         view.mirrors.clear();
@@ -10799,7 +10793,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         buildViewInstances(view, camera, cameraTransform);
         selectPassTerrain(view.objects, camera, cameraTransform);
         renderCameraShadows(viewShadows);
-        renderViewMirrors(view, camera, cameraTransform);
+        renderViewMirrors(view, camera);
     }
 
     if (!view.target->isCreated()){

@@ -36,13 +36,6 @@ static T sanitizeFiniteNumber(T value) {
     return std::isfinite(value) ? value : static_cast<T>(0);
 }
 
-static float sanitizePositiveFiniteNumber(float value, float fallback = 1.0f) {
-    if (std::isfinite(value) && value > 0.0f) {
-        return value;
-    }
-    return std::isfinite(fallback) && fallback > 0.0f ? fallback : 1.0f;
-}
-
 // Matrix4's 16-float constructor takes the entries row by row, matrix[column][row]
 static std::string formatMatrix4(const Matrix4& matrix) {
     std::ostringstream oss;
@@ -489,8 +482,8 @@ std::string editor::Factory::formatFloat(float value) {
     return oss.str();
 }
 
-std::string editor::Factory::formatPositiveFloat(float value, float fallback) {
-    return formatFloat(sanitizePositiveFiniteNumber(value, fallback));
+std::string editor::Factory::formatPositiveFloat(float value) {
+    return formatFloat(std::isfinite(value) && value > 0.0f ? value : 1.0f);
 }
 
 std::string editor::Factory::formatDouble(double value) {
@@ -903,7 +896,6 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     if (!mesh.shaderUniforms.empty())
         code << ind << "mesh.shaderUniforms = " << formatShaderUniforms(mesh.shaderUniforms) << ";\n";
     code << ind << "mesh.vertexCount = " << formatUInt(mesh.vertexCount) << ";\n";
-    //code << ind << "mesh.submeshes.resize(" << formatUInt(mesh.numSubmeshes) << ");\n";
     // Kept for a model too: its load reads the count to find the edited submeshes.
     code << ind << "mesh.numSubmeshes = " << formatUInt(mesh.numSubmeshes) << ";\n";
     for (unsigned int s = 0; s < mesh.numSubmeshes; s++){

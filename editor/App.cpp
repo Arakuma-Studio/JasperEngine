@@ -1643,8 +1643,6 @@ void editor::App::setup() {
 
     io.ConfigDragClickToInputText = true;
 
-    //io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
-
     Theme::apply();
 
     // Fonts follow each viewport's monitor DPI. Style paddings are global, so

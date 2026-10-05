@@ -105,22 +105,6 @@ namespace jasperengine::editor{
             return !relative.empty() && *relative.begin() != "..";
         }
 
-        // The paths quoted by every '#include "..."' in a GLSL source, in order.
-        inline static std::vector<std::string> getShaderIncludeKeys(const std::string& source) {
-            return ShaderVariantCompiler::getIncludeKeys(source);
-        }
-
-        // Directory an #include key resolves against before the project root and the
-        // engine library, so a fork directory mirrors the engine shaderlib layout.
-        // Derived from the entry point, never stored: moving a fork cannot break it.
-        inline static std::filesystem::path getCustomShaderIncludeRoot(const std::string& customShader) {
-            CustomShaderPaths paths = resolveCustomShaderPaths(customShader);
-            if (paths.vert.empty())
-                return {};
-
-            return std::filesystem::path(paths.vert).parent_path();
-        }
-
         // Builds a customShader value from two project-relative entry-point paths (with
         // extensions). Collapses to the shared-base shorthand when they are <base>.vert and
         // <base>.frag of the same base; otherwise stores the explicit "vert|frag" form.

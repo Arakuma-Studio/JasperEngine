@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Generator.cpp
 #include "Generator.h"
 #include "Factory.h"
 #include "App.h"
@@ -367,7 +366,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     cmakeCommand += "-DJASPERENGINE_LIB_DIR=\"" + toCMakePath(exePath.string()) + "\"";
 
     Out::info("Configuring CMake project with command: %s", cmakeCommand.c_str());
-    bool result = runCommand(CommandRunner::msvcEnvPrefix(generator) + cmakeCommand, projectPath);
+    bool result = commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + cmakeCommand, projectPath);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -398,17 +397,13 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
     ));
 }
 
-bool editor::Generator::buildProject(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
+bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
     std::string buildCommand = cmakeExecutable() + " --build \"" + buildPath.string() + "\" --config " + configType;
     buildCommand += " --parallel " + std::to_string(parallelJobs);
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
     // MSVC environment as configure (see CommandRunner::msvcEnvPrefix).
-    return runCommand(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
-}
-
-bool editor::Generator::runCommand(const std::string& command, const fs::path& workingDir) {
-    return commandRunner.run(command, workingDir);
+    return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
 }
 
 // Relative to ${PROJECT_ROOT} so the generated CMakeLists.txt reads the same on every
@@ -2155,7 +2150,7 @@ std::string editor::Generator::checkBuildTools(bool requireEditorCompatibility, 
     return missing;
 }
 
-void editor::Generator::build(const fs::path projectPath, const fs::path projectInternalPath, const fs::path buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
+void editor::Generator::build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
     cancelBuild();
     waitForBuildToComplete();
 
@@ -2205,7 +2200,7 @@ void editor::Generator::build(const fs::path projectPath, const fs::path project
                 return;
             }
 
-            if (!buildProject(projectPath, buildPath, configType, gen, effectiveParallelJobs)) {
+            if (!buildProject(buildPath, configType, gen, effectiveParallelJobs)) {
                 if (commandRunner.isCancelRequested()) {
                     Out::warning("Build cancelled.");
                 } else {

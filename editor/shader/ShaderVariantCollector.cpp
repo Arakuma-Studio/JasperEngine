@@ -565,7 +565,3 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW2D, 0));
     }
 }
-
-void editor::ShaderVariantCollector::clearModelCache(){
-    modelProbes().clear();
-}

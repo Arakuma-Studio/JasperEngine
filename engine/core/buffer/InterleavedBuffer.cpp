@@ -60,7 +60,7 @@ void InterleavedBuffer::clear(){
 
     vertexSize = 0;
     vectorBuffer.clear();
-    data = vectorBuffer.empty() ? nullptr : &vectorBuffer[0];
+    data = nullptr;
 }
 
 void InterleavedBuffer::addAttribute(AttributeType attribute, int elements){
@@ -70,9 +70,7 @@ void InterleavedBuffer::addAttribute(AttributeType attribute, int elements){
 void InterleavedBuffer::addAttribute(AttributeType attribute, int elements, bool perInstance){
     if (vectorBuffer.size() == 0) {
         Attribute attData;
-        attData.setCount(0);
         attData.setElements(elements);
-        attData.setDataType(AttributeDataType::FLOAT);
         attData.setOffset(vertexSize);
         attData.setPerInstance(perInstance);
 

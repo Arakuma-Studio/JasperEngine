@@ -125,7 +125,7 @@ void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
     }
     io.InputQueueCharacters.resize(0);
 
-    auto forwardKeyPress = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
+    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
         if (ImGui::IsKeyPressed(imguiKey, false)){
             if (charInput != 0){
                 Engine::systemCharInput(charInput);
@@ -139,18 +139,11 @@ void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
             Engine::systemKeyDown(engineKey, true, mods);
             pressedKeys.insert(engineKey);
         }
-    };
 
-    auto forwardKeyRelease = [&](ImGuiKey imguiKey, int engineKey){
         if (ImGui::IsKeyReleased(imguiKey)){
             Engine::systemKeyUp(engineKey, false, mods);
             pressedKeys.erase(engineKey);
         }
-    };
-
-    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
-        forwardKeyPress(imguiKey, engineKey, charInput, allowRepeat);
-        forwardKeyRelease(imguiKey, engineKey);
     };
 
     auto forwardKeyRange = [&](ImGuiKey imguiFirst, int engineFirst, int count){

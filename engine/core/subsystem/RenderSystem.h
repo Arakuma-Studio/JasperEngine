@@ -1088,8 +1088,8 @@ namespace jasperengine{
 		void buildPassObjects(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
 		void selectPassTerrain(PassObjects& objects, CameraComponent& camera, Transform& cameraTransform);
 		void buildViewInstances(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
-		void buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector3& fadeEyeLocal, ViewInstanceSource& source);
-		void renderViewMirrors(RenderView& view, CameraComponent& camera, Transform& cameraTransform);
+		void buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Vector3& fadeEyeLocal, ViewInstanceSource& source);
+		void renderViewMirrors(RenderView& view, CameraComponent& camera);
 		void forgetEntityInViews(Entity entity, ComponentId componentId);
 #endif
 

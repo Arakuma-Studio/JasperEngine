@@ -170,7 +170,7 @@ namespace jasperengine::editor {
         std::string buildScriptDirIncludes() const;
 
         static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec, bool pruneStale = false);
+        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
         Exporter();

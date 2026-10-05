@@ -47,7 +47,6 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
     };
 
     // Unity's Unpack on a Missing Prefab instance: the root becomes a plain GameObject (its
@@ -74,7 +73,6 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        bool mergeWith(Command* otherCommand) override;
     };
 
 }

@@ -99,16 +99,8 @@ Framebuffer* editor::ViewportGizmo::getFramebuffer(){
     return camera->getFramebuffer();
 }
 
-TextureRender& editor::ViewportGizmo::getTexture(){
-    return getFramebuffer()->getRender().getColorTexture();
-}
-
 Scene* editor::ViewportGizmo::getScene(){
     return scene;
-}
-
-GameObject* editor::ViewportGizmo::getGameObject(){
-    return mainObject;
 }
 
 editor::ViewportGizmoAxis editor::ViewportGizmo::hitTest(float normalizedX, float normalizedY) const {
