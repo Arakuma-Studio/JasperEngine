@@ -70,6 +70,9 @@
 #include "component/ColorTweenComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/UIComponent.h"
+#include "component/CameraComponent.h"
+#include "subsystem/UISystem.h"
+#include "Engine.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "window/AnimationWindow.h"
@@ -1266,6 +1269,7 @@ void editCollidersTool(const CallPtr& call) {
     size_t oldCount = 0;
     size_t newCount = 0;
     Json colliders = Json::array();
+    Json bodyMaterial = Json::object();  // 3D friction / restitution given on shapes
     if (is2D) {
         std::vector<Collider2D> shapes;
         if (Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(target.entity)) {
@@ -1299,6 +1303,25 @@ void editCollidersTool(const CallPtr& call) {
             return;
         }
         newCount = shapes.size();
+        // 3D friction / restitution are per body (Jolt): a shape's value goes to the Rigidbody
+        for (const char* list : {"update", "add"}) {
+            if (!has(args, list) || !args[list].is_array()) continue;
+            for (const Json& spec : args[list]) {
+                for (const char* field : {"friction", "restitution"}) {
+                    if (!has(spec, field)) continue;
+                    if (!spec[field].is_number()) {
+                        call->fail(std::string(list) + ": " + field + " must be a number.");
+                        return;
+                    }
+                    const float v = spec[field].get<float>();
+                    if (v < 0.0f || (std::string(field) == "restitution" && v > 1.0f)) {
+                        call->fail(std::string(list) + ": friction must be >= 0, restitution 0-1.");
+                        return;
+                    }
+                    bodyMaterial[field] = v;
+                }
+            }
+        }
         for (size_t i = 0; i < std::max(oldCount, newCount); i++) {
             addProp<Collider3D>(*multi, target, target.entity, bodyType, "colliders[" + std::to_string(i) + "]",
                                 i < newCount ? shapes[i] : Collider3D());
@@ -1310,9 +1333,16 @@ void editCollidersTool(const CallPtr& call) {
     }
 
     Json data = {{"entity", entityJson(target, target.entity)}, {"dimension", dimension}, {"colliders", colliders}};
+    auto bodyJson = [scene, &target]() {
+        const RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
+        return Json{{"friction", body.friction}, {"restitution", body.restitution}};
+    };
     if (!editing) {
         if (is2D) data["body_type"] = nameOf(bodyTypes(), scene->getComponent<Rigidbody2DComponent>(target.entity).type);
-        else data["body_type"] = nameOf(bodyTypes(), scene->getComponent<RigidbodyComponent>(target.entity).type);
+        else {
+            data["body_type"] = nameOf(bodyTypes(), scene->getComponent<RigidbodyComponent>(target.entity).type);
+            data["body"] = bodyJson();
+        }
         call->ok("\"" + scene->getEntityName(target.entity) + "\" has " + std::to_string(colliders.size()) + " collider(s).", data);
         return;
     }
@@ -1322,7 +1352,18 @@ void editCollidersTool(const CallPtr& call) {
         call->fail("The editor rejected the collider edit.");
         return;
     }
-    // Other body properties ({"gravityFactor": 0.5, ...}) after the body exists
+    if (!bodyMaterial.empty()) {
+        MultiPropertyCmd* material = new MultiPropertyCmd();
+        for (auto it = bodyMaterial.begin(); it != bodyMaterial.end(); ++it) {
+            addProp<float>(*material, target, target.entity, bodyType, it.key(), it.value().get<float>());
+        }
+        if (!step.add(material)) {
+            step.rollback();
+            call->fail("The editor rejected the body friction/restitution.");
+            return;
+        }
+    }
+    // Other body properties ({"gravityFactor": 0.5, ...}) after the body exists (they win)
     if (has(args, "body")) {
         MultiPropertyCmd* bodyProps = new MultiPropertyCmd();
         if (!addCatalogProperties(target.project, target.scene, target.entity, bodyType, args["body"], *bodyProps, error) ||
@@ -1347,8 +1388,10 @@ void editCollidersTool(const CallPtr& call) {
     data["body_type"] = is2D ? nameOf(bodyTypes(), scene->getComponent<Rigidbody2DComponent>(target.entity).type)
                              : nameOf(bodyTypes(), scene->getComponent<RigidbodyComponent>(target.entity).type);
     data["body_added"] = !hasBody;
+    if (!is2D) data["body"] = bodyJson();
     call->ok("\"" + scene->getEntityName(target.entity) + "\" now has " + std::to_string(newCount) + " collider(s)" +
-             (hasBody ? "" : std::string(" on a new ") + (is2D ? "Rigidbody 2D" : "Rigidbody")) + " (one undo step).", data);
+             (hasBody ? "" : std::string(" on a new ") + (is2D ? "Rigidbody 2D" : "Rigidbody")) + " (one undo step)." +
+             (bodyMaterial.empty() ? "" : " Note: 3D friction/restitution are per body: set on the Rigidbody (all its colliders)."), data);
 }
 
 const std::vector<std::pair<const char*, Joint2DType>>& joint2DTypes() {
@@ -2996,6 +3039,47 @@ const std::vector<std::pair<const char*, AnchorPreset>>& anchorPresets() {
     return table;
 }
 
+// UI layout is computed top-down (y down from the parent's top-left) whatever the camera, so a
+// scene whose camera is not a UI camera (2D: bottom-up orthographic) shows it vertically mirrored
+// (texts and images are still drawn upright). The tools speak top-down and map the values for such
+// scenes, both ways. Layout groups still stack bottom-up there: no mapping fixes that.
+bool uiMirrored(const Target& target) {
+    Scene* scene = target.engineScene();
+    // the camera the scene renders through (as Project::getSceneCamera, which is private)
+    Entity camera = target.scene->mainCamera;
+    if (camera == NULL_ENTITY || !scene->isEntityCreated(camera)) camera = target.scene->defaultCamera;
+    if (camera == NULL_ENTITY) camera = scene->getCamera();
+    CameraComponent* cc = camera != NULL_ENTITY ? scene->findComponent<CameraComponent>(camera) : nullptr;
+    return cc && cc->type != CameraType::CAMERA_UI;
+}
+
+AnchorPreset mirrorPreset(AnchorPreset preset) {
+    switch (preset) {
+        case AnchorPreset::TOP_LEFT: return AnchorPreset::BOTTOM_LEFT;
+        case AnchorPreset::BOTTOM_LEFT: return AnchorPreset::TOP_LEFT;
+        case AnchorPreset::TOP_RIGHT: return AnchorPreset::BOTTOM_RIGHT;
+        case AnchorPreset::BOTTOM_RIGHT: return AnchorPreset::TOP_RIGHT;
+        case AnchorPreset::CENTER_TOP: return AnchorPreset::CENTER_BOTTOM;
+        case AnchorPreset::CENTER_BOTTOM: return AnchorPreset::CENTER_TOP;
+        case AnchorPreset::TOP_WIDE: return AnchorPreset::BOTTOM_WIDE;
+        case AnchorPreset::BOTTOM_WIDE: return AnchorPreset::TOP_WIDE;
+        default: return preset;
+    }
+}
+
+// Height of the space an element's absolute position is in: its RectTransform parent, else the canvas
+float layoutParentHeight(Scene* scene, Entity entity) {
+    Transform* tf = scene->findComponent<Transform>(entity);
+    for (Entity parent = tf ? tf->parent : NULL_ENTITY; parent != NULL_ENTITY;) {
+        if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(parent)) return static_cast<float>(rect->height);
+        Transform* ptf = scene->findComponent<Transform>(parent);
+        parent = ptf ? ptf->parent : NULL_ENTITY;
+    }
+    UISystem* ui = scene->getSystem<UISystem>().get();
+    const int height = ui ? ui->getAnchorReferenceHeight() : 0;
+    return static_cast<float>(height != 0 ? height : Engine::getCanvasHeight());
+}
+
 // RectTransform layout: absolute (position + size), an anchor preset (+ size, offset), or
 // stretch with margins. Writes ordered so the UI system keeps the values (usingAnchors last).
 bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity, const Json& layout, std::string& error) {
@@ -3009,6 +3093,7 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         error = "layout must be an object {anchor, size, position, pivot, margins}.";
         return false;
     }
+    const bool mirrored = uiMirrored(target);
     const ComponentType rt = ComponentType::RectTransformComponent;
     Vector2 size, position(0.0f, 0.0f), pivot;
     if (!readVec2(layout, "size", size, error) || !readVec2(layout, "position", position, error) || !readVec2(layout, "pivot", pivot, error)) return false;
@@ -3016,6 +3101,7 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         error = "size must be [width, height] >= 0.";
         return false;
     }
+    if (mirrored) pivot.y = 1.0f - pivot.y;
     if (has(layout, "pivot")) addProp<Vector2>(multi, target, entity, rt, "pivot", pivot);
 
     const bool margins = has(layout, "margins");
@@ -3028,15 +3114,28 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         addProp<bool>(multi, target, entity, ComponentType::TextComponent, "fixedHeight", true);
     }
     if (anchorName.empty()) {
-        // Absolute: Transform position is the top-left in the parent's layout space (y down)
+        // Absolute: Transform position is the top-left in the parent's layout space (y down);
+        // mirrored, the bottom-left from the parent's bottom (y up)
         if (has(layout, "size")) {
             addProp<unsigned int>(multi, target, entity, rt, "width", static_cast<unsigned int>(std::lround(size.x)));
             addProp<unsigned int>(multi, target, entity, rt, "height", static_cast<unsigned int>(std::lround(size.y)));
         }
-        if (has(layout, "position")) {
-            Transform* tf = scene->findComponent<Transform>(entity);
-            const float z = tf ? tf->position.z : 0.0f;
-            addProp<Vector3>(multi, target, entity, ComponentType::Transform, "position", Vector3(position.x, position.y, z));
+        Transform* tf = scene->findComponent<Transform>(entity);
+        if (tf && (has(layout, "position") || (mirrored && has(layout, "size")))) {
+            Vector3 pos = tf->position;
+            if (mirrored) {
+                // keep the top edge when only the size changes
+                const float parentHeight = layoutParentHeight(scene, entity);
+                const float oldHeight = static_cast<float>(rect->height);
+                const float newHeight = has(layout, "size") ? static_cast<float>(std::lround(size.y)) : oldHeight;
+                const float top = has(layout, "position") ? position.y : parentHeight - pos.y - oldHeight;
+                if (has(layout, "position")) pos.x = position.x;
+                pos.y = parentHeight - top - newHeight;
+            } else {
+                pos.x = position.x;
+                pos.y = position.y;
+            }
+            addProp<Vector3>(multi, target, entity, ComponentType::Transform, "position", pos);
         }
         if (rect->usingAnchors && (has(layout, "size") || has(layout, "position"))) {
             addProp<bool>(multi, target, entity, rt, "usingAnchors", false);
@@ -3045,6 +3144,7 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
     }
     AnchorPreset preset;
     if (!pickName(anchorPresets(), anchorName, preset, "anchor", error)) return false;
+    if (mirrored) position.y = -position.y;
     if (margins) {
         if (preset != AnchorPreset::FULL_LAYOUT) {
             error = "margins go with anchor stretch (the element fills its parent minus the margins).";
@@ -3058,6 +3158,7 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
             error = "margins is a number or [left, top, right, bottom].";
             return false;
         }
+        if (mirrored) std::swap(m.y, m.w);
         addProp<AnchorPreset>(multi, target, entity, rt, "anchorPreset", AnchorPreset::NONE);
         addProp<float>(multi, target, entity, rt, "anchorPointLeft", 0.0f);
         addProp<float>(multi, target, entity, rt, "anchorPointTop", 0.0f);
@@ -3071,6 +3172,7 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         addProp<bool>(multi, target, entity, rt, "usingAnchors", true);
         return true;
     }
+    if (mirrored) preset = mirrorPreset(preset);
     if (has(layout, "size")) {
         addProp<unsigned int>(multi, target, entity, rt, "width", static_cast<unsigned int>(std::lround(size.x)));
         addProp<unsigned int>(multi, target, entity, rt, "height", static_cast<unsigned int>(std::lround(size.y)));
@@ -3081,17 +3183,32 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
     return true;
 }
 
-Json rectLayoutJson(Scene* scene, Entity entity) {
+// The layout as top-down values (create_ui's semantics), whatever the scene's camera
+Json rectLayoutJson(const Target& target, Entity entity) {
+    Scene* scene = target.engineScene();
     RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity);
     if (!rect) return nullptr;
-    Json out = {{"size", {rect->width, rect->height}}, {"pivot", McpValues::toJson(rect->pivot)}, {"using_anchors", rect->usingAnchors}};
+    const bool mirrored = uiMirrored(target);
+    Vector2 pivot = rect->pivot;
+    if (mirrored) pivot.y = 1.0f - pivot.y;
+    Json out = {{"size", {rect->width, rect->height}}, {"pivot", McpValues::toJson(pivot)}, {"using_anchors", rect->usingAnchors}};
     if (rect->usingAnchors) {
-        out["anchor"] = nameOf(anchorPresets(), rect->anchorPreset);
-        out["anchor_points"] = {rect->anchorPointLeft, rect->anchorPointTop, rect->anchorPointRight, rect->anchorPointBottom};
-        out["anchor_offsets"] = {rect->anchorOffsetLeft, rect->anchorOffsetTop, rect->anchorOffsetRight, rect->anchorOffsetBottom};
-        out["position_offset"] = McpValues::toJson(rect->positionOffset);
+        Vector2 offset = rect->positionOffset;
+        if (mirrored) {
+            offset.y = -offset.y;
+            out["anchor"] = nameOf(anchorPresets(), mirrorPreset(rect->anchorPreset));
+            out["anchor_points"] = {rect->anchorPointLeft, 1.0f - rect->anchorPointBottom, rect->anchorPointRight, 1.0f - rect->anchorPointTop};
+            out["anchor_offsets"] = {rect->anchorOffsetLeft, -rect->anchorOffsetBottom, rect->anchorOffsetRight, -rect->anchorOffsetTop};
+        } else {
+            out["anchor"] = nameOf(anchorPresets(), rect->anchorPreset);
+            out["anchor_points"] = {rect->anchorPointLeft, rect->anchorPointTop, rect->anchorPointRight, rect->anchorPointBottom};
+            out["anchor_offsets"] = {rect->anchorOffsetLeft, rect->anchorOffsetTop, rect->anchorOffsetRight, rect->anchorOffsetBottom};
+        }
+        out["position_offset"] = McpValues::toJson(offset);
     } else if (Transform* tf = scene->findComponent<Transform>(entity)) {
-        out["position"] = McpValues::toJson(Vector2(tf->position.x, tf->position.y));
+        float y = tf->position.y;
+        if (mirrored) y = layoutParentHeight(scene, entity) - y - static_cast<float>(rect->height);
+        out["position"] = McpValues::toJson(Vector2(tf->position.x, y));
     }
     return out;
 }
@@ -3100,6 +3217,7 @@ struct UiBuild {
     Target target;
     UndoStep* step = nullptr;
     int count = 0;
+    bool layoutGroup = false;
 };
 
 const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
@@ -3138,6 +3256,7 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
     const Entity entity = create->getEntity();
+    if (type == EntityCreationType::LAYOUT_GROUP) build.layoutGroup = true;
     if (type == EntityCreationType::GAMEOBJECT &&
         !build.step->add(new AddComponentCmd(target.project, target.sceneId(), entity, ComponentType::RectTransformComponent))) {
         error = where + ": could not add the RectTransform.";
@@ -3310,10 +3429,18 @@ void createUiTool(const CallPtr& call) {
     }
     step.commit();
     std::string text = "Created " + std::to_string(build.count) + " UI element(s) under \"" + tree["name"].get<std::string>() + "\" (one undo step).";
+    Json data = {{"root", tree}, {"count", build.count}};
     if (target.scene->sceneType != SceneType::SCENE_UI) {
         text += " Note: UI pointer events (button presses) reach a scene whose camera is a UI camera; a HUD usually lives in a UI scene (child scene).";
     }
-    call->ok(text, Json{{"root", tree}, {"count", build.count}});
+    Scene* scene = target.engineScene();
+    if (uiMirrored(target) && (build.layoutGroup || (parent != NULL_ENTITY && scene->findComponent<LayoutGroupComponent>(parent)))) {
+        const std::string warning = "This scene's camera is not a UI camera: layout groups stack their children bottom-up here "
+                                    "(anchors and positions are mapped, stacking is not). Build menus/HUDs in a UI scene (child scene).";
+        text += " Warning: " + warning;
+        data["warnings"] = Json::array({warning});
+    }
+    call->ok(text, data);
 }
 
 void setRectLayoutTool(const CallPtr& call) {
@@ -3352,7 +3479,7 @@ void setRectLayoutTool(const CallPtr& call) {
         Json list = Json::array();
         for (Entity entity : entities) {
             Json item = entityJson(target, entity);
-            item["layout"] = rectLayoutJson(target.engineScene(), entity);
+            item["layout"] = rectLayoutJson(target, entity);
             list.push_back(item);
         }
         call->ok("Laid out " + std::to_string(entities.size()) + " UI element(s) (one undo step).", Json{{"items", list}});
@@ -4080,7 +4207,7 @@ void registerWorldTools(McpRegistry& registry) {
         "center), circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain "
         "(4-16, loop), in pixels before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), "
         "tapered_capsule, convex_hull/mesh, heightfield (terrains). New shapes fit what the GameObject draws "
-        "unless fit: false. Other fields: density, friction, restitution, sensor, *_events, category_bits, "
+        "unless fit: false. Other fields: density, friction, restitution (3D: per body), sensor, *_events, category_bits, "
         "mask_bits, center, rotation. Returns the colliders.",
         object({
             {"scene", sceneRef()},
@@ -4287,8 +4414,8 @@ void registerWorldTools(McpRegistry& registry) {
         "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: "
         "pixels, y DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins "
         "to the parent (screen for roots) and position becomes an offset; stretch + margins [l,t,r,b] fills "
-        "it. Colors are linear. Pointer input needs a UI camera (a UI scene, usually a child scene). Returns "
-        "the tree with ids and paths.",
+        "it. Colors are linear. Put HUDs/menus in a UI scene (child scene): pointer input needs its UI camera "
+        "and layout groups stack bottom-up elsewhere. Returns the tree with ids and paths.",
         object({
             {"scene", sceneRef()},
             {"parent", entityRef("Parent (default: scene root).")},
