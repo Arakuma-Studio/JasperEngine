@@ -5,6 +5,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
+#include "Out.h"
 #include "Backend.h"
 #include "Theme.h"
 #include <cstdarg>
@@ -434,7 +435,8 @@ void ConsoleWindow::showToolbar() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Theme::dpi(2.0f), style.ItemSpacing.y));
 
     if (toolbarButton("Clear", false, "Clear all messages")) {
-        clear();
+        // and what Out keeps for structured reads (the MCP console tools)
+        Out::clearConsole();
     }
     toolbarSeparator();
     if (toolbarButton("Collapse", collapse, "Merge identical messages into one row with a count")) {
@@ -646,7 +648,7 @@ void ConsoleWindow::showList(float height) {
         }
         ImGui::Separator();
         if (ImGui::MenuItem(ICON_FA_TRASH " Clear", nullptr, false, !logs.empty())) {
-            clear();
+            Out::clearConsole();
         }
         ImGui::EndPopup();
     }

@@ -319,6 +319,9 @@ namespace jasperengine::editor{
         bool hasUnderlay() const { return underlayScene != nullptr; }
 
         TextureRender& getTexture();
+        // What the Scene view shows (the scene, its layers and the editor overlays), as last
+        // drawn; for screenshots read it with GraphicUtils::encodeFramebufferPng
+        Framebuffer* getFramebuffer() { return &framebuffer; }
         Camera* getCamera();
         // ray through (x, y) of the Scene view (engine pixels) from the editor camera
         Ray screenToRay(float x, float y);

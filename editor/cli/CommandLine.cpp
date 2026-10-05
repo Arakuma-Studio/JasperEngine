@@ -38,6 +38,7 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
+#include "util/EntityPath.h"
 #include "imgui.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -607,27 +608,9 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 // prefabs) after the dump.
 namespace {
 
-std::string dumpPath(Scene* scene, Entity entity, std::map<Entity, std::string>& cache, int depth = 0) {
-    auto it = cache.find(entity);
-    if (it != cache.end()) return it->second;
-    std::string parentPath;
-    Entity parent = NULL_ENTITY;
-    if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
-    if (parent != NULL_ENTITY && depth < 256) parentPath = dumpPath(scene, parent, cache, depth + 1) + "/";
-    // index among the earlier siblings of the same name, in Transform order
-    std::string name = scene->getEntityName(entity);
-    int index = 0;
-    if (scene->findComponent<Transform>(entity)) {
-        auto transforms = scene->getComponentArray<Transform>();
-        size_t own = transforms->getIndex(entity);
-        for (size_t i = 0; i < own; i++) {
-            Entity other = transforms->getEntity(i);
-            if (transforms->getComponentFromIndex(i).parent == parent && scene->getEntityName(other) == name) index++;
-        }
-    }
-    std::string path = parentPath + name + (index ? "#" + std::to_string(index) : "");
-    cache[entity] = path;
-    return path;
+// The dump's paths are EntityPath's (the MCP server addresses GameObjects the same way)
+std::string dumpPath(Scene* scene, Entity entity, EntityPath::Cache& cache) {
+    return EntityPath::of(scene, entity, &cache);
 }
 
 }
@@ -725,12 +708,10 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
     for (SceneProject* candidate : candidates) {
         SceneProject& sceneProject = *candidate;
         if (!sceneProject.scene || (!inStage && !sceneName.empty() && sceneProject.name != sceneName)) continue;
-        std::map<Entity, std::string> paths;
-        for (Entity entity : sceneProject.entities) {
-            if (sceneProject.scene->isEntityCreated(entity) && dumpPath(sceneProject.scene, entity, paths) == path) {
-                sceneOut = &sceneProject;
-                return entity;
-            }
+        const Entity entity = EntityPath::find(sceneProject, path);
+        if (entity != NULL_ENTITY) {
+            sceneOut = &sceneProject;
+            return entity;
         }
     }
     std::cerr << "scene-dump: no GameObject at " << path << "\n";

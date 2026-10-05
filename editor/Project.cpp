@@ -3154,7 +3154,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             // holds nothing usable does. Everything below assumes both exist.
             if (!targetScene->sceneRender) {
                 Out::error("Scene file has no usable scene data: %s", fullPath.string().c_str());
-                editor::getEditorHost().registerAlert("Error", "Failed to open scene file!");
+                alertUser("Error", "Failed to open scene file!");
                 discardHalfLoadedScene(targetScene, appendedScene);
                 return false;
             }
@@ -3256,11 +3256,11 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
     } catch (const YAML::Exception& e) {
         discardHalfLoadedScene(targetScene, appendedScene);
         Out::error("Failed to open scene: %s", e.what());
-        editor::getEditorHost().registerAlert("Error", "Failed to open scene file!");
+        alertUser("Error", "Failed to open scene file!");
     } catch (const std::exception& e) {
         discardHalfLoadedScene(targetScene, appendedScene);
         Out::error("Failed to open scene: %s", e.what());
-        editor::getEditorHost().registerAlert("Error", "Failed to open scene file!");
+        alertUser("Error", "Failed to open scene file!");
     }
 
     return false;
@@ -3503,6 +3503,391 @@ uint32_t editor::Project::findSceneByPath(const std::filesystem::path& filepath)
     }
 
     return NULL_PROJECT_SCENE;
+}
+
+//=== Non-interactive scene and project APIs ===
+
+namespace {
+
+// Counts a non-interactive API in: Project::alertUser() only logs until it returns
+struct NonInteractiveScope {
+    int& depth;
+    explicit NonInteractiveScope(int& depth) : depth(depth) { ++this->depth; }
+    ~NonInteractiveScope() { --depth; }
+};
+
+// Logged as a warning: the caller (an agent, a script) gets the message back, and the
+// Console's errors stay the project's own
+bool failWith(std::string* error, const std::string& message) {
+    editor::Out::warning(message);
+    if (error) *error = message;
+    return false;
+}
+
+// A failure of a callee that only logs: the errors it logged since the cursor
+// (Out::lastLogId) are the message, else the fallback (logged)
+bool failWithLogged(std::string* error, uint64_t logId, const std::string& fallback) {
+    std::string text;
+    for (const editor::LogEntry& entry : editor::Out::getLogsSince(logId, 0, true)) {
+        if (entry.type != editor::LogType::Error) continue;
+        if (!text.empty()) text += "\n";
+        text += entry.message;
+    }
+    if (text.empty()) {
+        return failWith(error, fallback);
+    }
+    if (error) *error = text;
+    return false;
+}
+
+}
+
+void editor::Project::alertUser(const std::string& title, const std::string& message) {
+    if (nonInteractiveDepth > 0) {
+        return;  // the caller reports it; the message was logged already
+    }
+    editor::getEditorHost().registerAlert(title, message);
+}
+
+fs::path editor::Project::resolveScenePath(const fs::path& path, bool withExtension, std::string& error) const {
+    if (path.empty()) {
+        error = "No scene path given";
+        return {};
+    }
+    fs::path fullPath = path.is_relative() ? getProjectPath() / path : path;
+    fullPath = fullPath.lexically_normal();
+    if (withExtension && fullPath.extension() != ".scene") {
+        fullPath += ".scene";
+    }
+    std::error_code ec;
+    const fs::path relPath = fs::relative(fullPath, getProjectPath(), ec);
+    if (ec || relPath.empty() || *relPath.begin() == ".." || relPath == ".") {
+        error = "Scene path must be inside the project folder: " + path.generic_string();
+        return {};
+    }
+    return fullPath;
+}
+
+bool editor::Project::settleUnsavedScene(uint32_t sceneId, UnsavedChoice unsaved, std::string& error) {
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !hasSceneUnsavedChanges(sceneId)) {
+        return true;
+    }
+    switch (unsaved) {
+        case UnsavedChoice::Save:
+            return saveSceneNow(sceneId, {}, &error);
+        case UnsavedChoice::Discard:
+            return true;
+        default:
+            error = "Scene '" + sceneProject->name + "' has unsaved changes: save or discard them first";
+            return false;
+    }
+}
+
+uint32_t editor::Project::createSceneNow(const std::string& name, SceneType type, const fs::path& saveAs,
+                                        bool closePrevious, UnsavedChoice unsaved, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    std::string message;
+    if (isAnyScenePlaying()) {
+        failWith(error, "Cannot create a scene while a scene is playing");
+        return NULL_PROJECT_SCENE;
+    }
+
+    fs::path savePath;
+    if (!saveAs.empty()) {
+        savePath = resolveScenePath(saveAs, true, message);
+        if (savePath.empty()) {
+            failWith(error, message);
+            return NULL_PROJECT_SCENE;
+        }
+        if (findSceneByPath(savePath) != NULL_PROJECT_SCENE) {
+            failWith(error, "Another scene of the project is saved at " + normalizeToProjectRelative(savePath).generic_string());
+            return NULL_PROJECT_SCENE;
+        }
+    }
+
+    uint32_t previousSceneId = NULL_PROJECT_SCENE;
+    if (closePrevious) {
+        previousSceneId = getSceneBehindPrefabStage(getSelectedSceneId());
+        if (!getScene(previousSceneId) || isPlayRuntimeScene(previousSceneId)) {
+            previousSceneId = NULL_PROJECT_SCENE;
+        }
+        if (previousSceneId != NULL_PROJECT_SCENE && !settleUnsavedScene(previousSceneId, unsaved, message)) {
+            failWith(error, message);
+            return NULL_PROJECT_SCENE;
+        }
+    }
+
+    std::string sceneName = name;
+    if (sceneName.empty()) {
+        sceneName = savePath.empty() ? std::string("New Scene") : savePath.stem().string();
+    }
+
+    // closes previousSceneId (discarding what settleUnsavedScene left unsaved)
+    const uint32_t sceneId = createNewSceneInternal(sceneName, type, previousSceneId);
+    if (sceneId == NULL_PROJECT_SCENE || !getScene(sceneId)) {
+        failWith(error, "Scene '" + sceneName + "' could not be created");
+        return NULL_PROJECT_SCENE;
+    }
+    if (previousSceneId != NULL_PROJECT_SCENE && previousSceneId != sceneId) {
+        if (SceneProject* previous = getScene(previousSceneId)) {
+            previous->isModified = false;  // reloads from its file when opened again
+        }
+    }
+    saveWorkspaceFile();
+
+    if (!savePath.empty()) {
+        saveSceneNow(sceneId, savePath, error);
+    }
+    return sceneId;
+}
+
+uint32_t editor::Project::openSceneNow(const fs::path& path, bool closePrevious, UnsavedChoice unsaved, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    std::string message;
+    if (isAnyScenePlaying()) {
+        failWith(error, "Cannot open a scene while a scene is playing");
+        return NULL_PROJECT_SCENE;
+    }
+
+    const fs::path fullPath = resolveScenePath(path, false, message);
+    if (fullPath.empty()) {
+        failWith(error, message);
+        return NULL_PROJECT_SCENE;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(fullPath, ec)) {
+        failWith(error, "Scene file not found: " + normalizeToProjectRelative(fullPath).generic_string());
+        return NULL_PROJECT_SCENE;
+    }
+
+    uint32_t previousSceneId = NULL_PROJECT_SCENE;
+    if (closePrevious) {
+        previousSceneId = getSceneBehindPrefabStage(getSelectedSceneId());
+        if (!getScene(previousSceneId) || isPlayRuntimeScene(previousSceneId)) {
+            previousSceneId = NULL_PROJECT_SCENE;
+        }
+    }
+
+    uint32_t sceneId = findSceneByPath(fullPath);
+    if (previousSceneId == sceneId) {
+        previousSceneId = NULL_PROJECT_SCENE;
+    }
+    if (previousSceneId != NULL_PROJECT_SCENE && !settleUnsavedScene(previousSceneId, unsaved, message)) {
+        failWith(error, message);
+        return NULL_PROJECT_SCENE;
+    }
+
+    SceneProject* listed = getScene(sceneId);
+    if (listed && listed->opened && listed->scene) {
+        setSelectedSceneId(sceneId);
+    } else {
+        const uint64_t logId = Out::lastLogId();
+        bool loaded = false;
+        if (listed) {
+            // a closed scene of the project: shown inline as a child, it reloads fully
+            if (listed->expandedInline) {
+                unloadChildSceneInline(sceneId);
+            }
+            loaded = loadScene(fullPath, true, false, true);
+            if (loaded) saveWorkspaceFile();
+        } else {
+            loaded = loadScene(fullPath, true, true, true);
+            if (loaded) saveProjectFile();
+        }
+        sceneId = findSceneByPath(fullPath);
+        if (!loaded || sceneId == NULL_PROJECT_SCENE) {
+            failWithLogged(error, logId, "Failed to open scene " + normalizeToProjectRelative(fullPath).generic_string());
+            return NULL_PROJECT_SCENE;
+        }
+        setSelectedSceneId(sceneId);
+    }
+
+    if (previousSceneId != NULL_PROJECT_SCENE && previousSceneId != sceneId) {
+        // what it had unsaved was settled above (saved, or Discard)
+        closeScene(previousSceneId, true);
+        if (SceneProject* previous = getScene(previousSceneId)) {
+            previous->isModified = false;  // reloads from its file when opened again
+        }
+        saveWorkspaceFile();
+    }
+    return sceneId;
+}
+
+bool editor::Project::closeSceneNow(uint32_t sceneId, UnsavedChoice unsaved, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    std::string message;
+    if (isAnyScenePlaying()) {
+        return failWith(error, "Cannot close a scene while a scene is playing");
+    }
+    if (isPrefabStage(sceneId) || isPlayRuntimeScene(sceneId)) {
+        return failWith(error, "Scene " + std::to_string(sceneId) + " is not a project scene (a prefab stage closes with Prefab Mode)");
+    }
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject) {
+        return failWith(error, "No scene with id " + std::to_string(sceneId));
+    }
+    if (!sceneProject->opened) {
+        return true;
+    }
+
+    uint32_t replacement = NULL_PROJECT_SCENE;
+    for (const SceneProject& other : scenes) {
+        if (other.opened && other.id != sceneId) {
+            replacement = other.id;
+            break;
+        }
+    }
+    if (replacement == NULL_PROJECT_SCENE) {
+        return failWith(error, "Cannot close the last open scene: open or create another one first");
+    }
+    if (!settleUnsavedScene(sceneId, unsaved, message)) {
+        return failWith(error, message);
+    }
+
+    if (getSceneBehindPrefabStage(getSelectedSceneId()) == sceneId || getSelectedSceneId() == sceneId) {
+        setSelectedSceneId(replacement);
+    }
+    const bool untitled = sceneProject->filepath.empty();
+    closeScene(sceneId, true);
+    if (SceneProject* closed = getScene(sceneId)) {
+        closed->isModified = false;  // reloads from its file when opened again
+    }
+    if (untitled) {
+        saveProjectFile();
+    } else {
+        saveWorkspaceFile();
+    }
+    return true;
+}
+
+bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntitled, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    std::string message;
+    if (isPrefabStage(sceneId)) {
+        const uint64_t logId = Out::lastLogId();
+        if (!savePrefabStage(sceneId)) {
+            return failWithLogged(error, logId, "The prefab of the stage could not be saved");
+        }
+        return true;
+    }
+    if (isPlayRuntimeScene(sceneId)) {
+        return failWith(error, "A Play copy is not saved: Stop puts the scene back");
+    }
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject) {
+        return failWith(error, "No scene with id " + std::to_string(sceneId));
+    }
+    if (sceneProject->playState != ScenePlayState::STOPPED) {
+        return failWith(error, "Cannot save scene '" + sceneProject->name + "' while it is playing or busy");
+    }
+    if (!sceneProject->scene) {
+        return true;  // closed: nothing in memory to write
+    }
+
+    fs::path target;
+    if (!sceneProject->filepath.empty()) {
+        target = getProjectPath() / sceneProject->filepath;
+        if (!pathIfUntitled.empty()) {
+            const fs::path requested = resolveScenePath(pathIfUntitled, true, message);
+            if (requested.empty()) {
+                return failWith(error, message);
+            }
+            if (requested.lexically_normal() != target.lexically_normal()) {
+                return failWith(error, "Scene '" + sceneProject->name + "' is saved at " + sceneProject->filepath.generic_string() +
+                                       " already (there is no Save As)");
+            }
+        }
+    } else {
+        if (pathIfUntitled.empty()) {
+            return failWith(error, "Scene '" + sceneProject->name + "' was never saved: give the path to save it at");
+        }
+        target = resolveScenePath(pathIfUntitled, true, message);
+        if (target.empty()) {
+            return failWith(error, message);
+        }
+        const uint32_t owner = findSceneByPath(target);
+        if (owner != NULL_PROJECT_SCENE && owner != sceneId) {
+            return failWith(error, "Another scene of the project is saved at " + normalizeToProjectRelative(target).generic_string());
+        }
+        std::error_code ec;
+        fs::create_directories(target.parent_path(), ec);
+        if (ec) {
+            return failWith(error, "Could not create " + target.parent_path().generic_string() + ": " + ec.message());
+        }
+    }
+
+    const uint64_t logId = Out::lastLogId();
+    if (!saveSceneToPath(sceneId, target)) {
+        return failWithLogged(error, logId, "Failed to save scene " + target.generic_string());
+    }
+
+    // what Save does next: the child scenes with changes of their own
+    std::vector<uint32_t> involvedIds;
+    collectInvolvedScenes(sceneId, involvedIds);
+    for (uint32_t childId : involvedIds) {
+        if (childId == sceneId || !hasLocalUnsavedChanges(childId)) continue;
+        if (!saveSceneNow(childId, {}, &message)) {
+            return failWith(error, "Scene saved, but its child scene failed: " + message);
+        }
+    }
+    return true;
+}
+
+bool editor::Project::createProjectAt(const fs::path& dir, const std::string& name, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    if (isAnyScenePlaying()) {
+        return failWith(error, "Cannot create a project while a scene is playing");
+    }
+    if (dir.empty()) {
+        return failWith(error, "No project directory given");
+    }
+    std::error_code ec;
+    const fs::path projectDir = fs::absolute(dir, ec).lexically_normal();
+    if (ec) {
+        return failWith(error, "Invalid project directory " + dir.string() + ": " + ec.message());
+    }
+    if (fs::exists(projectDir / "project.yaml", ec)) {
+        return failWith(error, "A project exists in " + projectDir.string() + " already: open it instead");
+    }
+    if (fs::exists(projectDir, ec) && !fs::is_directory(projectDir, ec)) {
+        return failWith(error, projectDir.string() + " is a file, not a directory");
+    }
+
+    std::string projectName = name;
+    if (projectName.empty()) {
+        projectName = projectDir.filename().string();
+    }
+
+    const uint64_t logId = Out::lastLogId();
+    if (!createProjectInDirectory(projectDir, projectName, false) || getProjectPath() != projectDir) {
+        return failWithLogged(error, logId, "Failed to create the project in " + projectDir.string());
+    }
+    return true;
+}
+
+bool editor::Project::openProjectNow(const fs::path& path, std::string* error) {
+    NonInteractiveScope scope(nonInteractiveDepth);
+    if (isAnyScenePlaying()) {
+        return failWith(error, "Cannot open a project while a scene is playing");
+    }
+    std::error_code ec;
+    fs::path projectDir = fs::absolute(path, ec).lexically_normal();
+    if (ec || path.empty()) {
+        return failWith(error, "Invalid project path " + path.string());
+    }
+    if (projectDir.filename() == "project.yaml") {
+        projectDir = projectDir.parent_path();
+    }
+    if (!fs::exists(projectDir / "project.yaml", ec)) {
+        return failWith(error, "No project.yaml in " + projectDir.string());
+    }
+
+    const uint64_t logId = Out::lastLogId();
+    if (!loadProject(projectDir)) {
+        return failWithLogged(error, logId, "Failed to open the project in " + projectDir.string());
+    }
+    return true;
 }
 
 void editor::Project::markParentScenesNeedUpdate(uint32_t childSceneId) {
@@ -4310,6 +4695,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 }
 
 bool editor::Project::createTempProject(std::string projectName, bool deleteIfExists) {
+    return createProjectInDirectory(std::filesystem::temp_directory_path() / projectName, projectName, deleteIfExists);
+}
+
+// A temporary project (createTempProject, until Save Project moves it) or one at its
+// final place (createProjectAt): the same files either way
+bool editor::Project::createProjectInDirectory(const std::filesystem::path& path, const std::string& projectName, bool deleteIfExists) {
     if (isAnyScenePlaying()) {
         Out::warning("Cannot create a new project while a scene is running or stopping.");
         return false;
@@ -4326,10 +4717,11 @@ bool editor::Project::createTempProject(std::string projectName, bool deleteIfEx
 
         resetConfigs();
 
-        // Clear the last project path in settings when creating a new temp project
+        // Clear the last project path in settings when creating a new temp project (a
+        // project elsewhere becomes it when saved below)
         AppSettings::setLastProjectPath(std::filesystem::path());
 
-        projectPath = std::filesystem::temp_directory_path() / projectName;
+        projectPath = path;
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -4343,7 +4735,7 @@ bool editor::Project::createTempProject(std::string projectName, bool deleteIfEx
 
         if (!std::filesystem::exists(projectFile)) {
             if (!std::filesystem::exists(projectPath)) {
-                std::filesystem::create_directory(projectPath);
+                std::filesystem::create_directories(projectPath);
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
 
@@ -4376,7 +4768,7 @@ bool editor::Project::createTempProject(std::string projectName, bool deleteIfEx
         editor::getEditorHost().updateResourcesPath();
 
     } catch (const std::exception& e) {
-        printf("Error: %s\n", e.what());
+        Out::error("Failed to create project: %s", e.what());
         // prepareForProjectSwitch() suspends background resource work.
         // Always release that suspension even when project creation fails.
         editor::getEditorHost().updateResourcesPath();
@@ -4580,7 +4972,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
             std::filesystem::create_directory(path);
         } catch (const std::exception& e) {
             Out::error("Failed to create project directory: %s", e.what());
-            editor::getEditorHost().registerAlert("Error", "Failed to create project directory!");
+            alertUser("Error", "Failed to create project directory!");
             return false;
         }
     }
@@ -4623,7 +5015,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
         } catch (const std::exception& e) {
             Out::error("Failed to move project files: %s", e.what());
-            editor::getEditorHost().registerAlert("Error", "Failed to move project files to the new location!");
+            alertUser("Error", "Failed to move project files to the new location!");
             return false;
         }
     }
@@ -4741,12 +5133,12 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
 
     } catch (const YAML::Exception& e) {
         Out::error("Failed to load project YAML: \"%s\"", e.what());
-        editor::getEditorHost().registerAlert("Error", "Failed to load project file!");
+        alertUser("Error", "Failed to load project file!");
         editor::getEditorHost().updateResourcesPath();
         return false;
     } catch (const std::exception& e) {
         Out::error("Failed to load project: \"%s\"", e.what());
-        editor::getEditorHost().registerAlert("Error", "Failed to load project!");
+        alertUser("Error", "Failed to load project!");
         editor::getEditorHost().updateResourcesPath();
         return false;
     }
