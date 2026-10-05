@@ -1,8 +1,10 @@
 # Agent reference docs
 
 Longer references behind the agent guide (`editor/mcp/McpInstructions.cpp`, sent as
-`initialize.instructions` and served as `jasper://guide`). The Docs workstream serves each
-file as a resource; the guide refers to them by these URIs:
+`initialize.instructions` and served as `jasper://guide`). They are embedded in the editor at
+build time (`CMakeLists.txt` generates `mcp_docs.h`; `editor/mcp/tools/DocsTools.cpp` serves
+them), so a new file here becomes `jasper://docs/<file name>` after a rebuild. This README is
+not served; `jasper://docs` lists the served documents. The guide refers to them by these URIs:
 
 | File | Resource | Contents |
 |---|---|---|
