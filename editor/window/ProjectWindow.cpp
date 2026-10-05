@@ -544,7 +544,7 @@ std::string editor::ProjectWindow::prefabThumbnailStamp(const fs::path& prefabPa
         const auto fileTime = fs::last_write_time(full, fileEc);
         const uintmax_t fileSize = fileEc ? 0 : fs::file_size(full, fileEc);
         stamp += file.generic_string() + "|" + (fileEc ? std::string("missing") :
-            std::to_string(fileSize) + "|" + std::to_string(fileTime.time_since_epoch().count())) + "\n";
+            std::to_string(fileSize) + "|" + std::to_string(static_cast<int64_t>(fileTime.time_since_epoch().count()))) + "\n";
     }
     return stamp;
 }
