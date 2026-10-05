@@ -1453,7 +1453,7 @@ void ActionSystem::morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTra
     if (weight <= 0.0f || !trackIndexValid(keyframe, morpthtracks))
         return;
 
-    std::vector<float> previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
+    const std::vector<float>& previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
 
     if ((keyframe.index == 0) || (morpthtracks.values[keyframe.index].size() == morpthtracks.values[keyframe.index-1].size())) {
         bool cubic = hasCubicSplineTangents(keyframe, morpthtracks.values, morpthtracks.inTangents, morpthtracks.outTangents) &&

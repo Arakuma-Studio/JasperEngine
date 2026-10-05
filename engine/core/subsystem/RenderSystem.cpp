@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "InstanceSort.h"
 #include "object/Camera.h"
 #include "math/Quaternion.h"
 #include "Scene.h"
@@ -7138,20 +7139,8 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
 void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform){
     Vector3 camDir = (camTransform.worldPosition - camera.worldTarget).normalize();
 
-    auto comparePoints = [&transform, &camDir](const InstanceRenderData& a, const InstanceRenderData& b) -> bool {
-        Vector3 positionA = Vector3(a.instanceMatrix[3][0], a.instanceMatrix[3][1], a.instanceMatrix[3][2]);
-        Vector3 positionB = Vector3(b.instanceMatrix[3][0], b.instanceMatrix[3][1], b.instanceMatrix[3][2]);
-
-        return (transform.modelMatrix * positionA).dotProduct(camDir) < (transform.modelMatrix * positionB).dotProduct(camDir);
-    };
-
     // the bounds follow the sort so the instance views keep matching
-    std::vector<unsigned int> order(instmesh.renderInstances.size());
-    for (unsigned int i = 0; i < order.size(); i++)
-        order[i] = i;
-    std::sort(order.begin(), order.end(), [&](unsigned int a, unsigned int b){
-        return comparePoints(instmesh.renderInstances[a], instmesh.renderInstances[b]);
-    });
+    const auto order = detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir);
     std::vector<InstanceRenderData> sortedInstances(order.size());
     std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
     for (unsigned int i = 0; i < order.size(); i++){
