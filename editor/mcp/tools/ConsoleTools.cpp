@@ -285,6 +285,7 @@ void registerConsoleTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "clear_console";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Clear Console";
         tool.description =
             "Clear the editor Console. Ids keep counting, so read_console cursors stay valid; returns next_cursor.";

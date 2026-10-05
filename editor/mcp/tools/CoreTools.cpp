@@ -392,6 +392,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "batch";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Batch";
         tool.description =
             "Run tool calls in order in one round-trip. Returns {results: [{ok, text, structured}], succeeded, failed}; "
@@ -434,6 +435,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "cancel_job";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Cancel Job";
         tool.description =
             "Ask a running job to stop; poll get_job until it is cancelled (or it finished first).";
@@ -477,6 +479,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "respond_dialog";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
             "Click a button of the open editor dialog (see editor_status; edit tools are refused meanwhile). The "

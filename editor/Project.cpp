@@ -7468,6 +7468,14 @@ void editor::Project::start(uint32_t sceneId) {
         }
     }
 
+    // An MCP agent's export or C++ script build would race Play's own script build
+    const std::string busyReason = editor::getEditorHost().backgroundWorkConflict("play");
+    if (!busyReason.empty()) {
+        Out::warning("Cannot start Play: %s", busyReason.c_str());
+        editor::getEditorHost().registerAlert("Cannot Play", busyReason);
+        return;
+    }
+
     jasperengine::FunctionSubscribeGlobal::getCrashHandler() = 
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context

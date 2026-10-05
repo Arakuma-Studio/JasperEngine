@@ -14388,6 +14388,11 @@ void editor::InspectorWindow::show(){
         if (usedPreviewIds.find(it->first) == usedPreviewIds.end()) {
             if (!Engine::isSceneRunning(it->second.getScene())){
                 it = materialRenders.erase(it);
+            } else {
+                // Its one-shot render is still queued (a frame that drew nothing, e.g. a
+                // minimized window): drop it on a later frame. Without advancing here the
+                // loop never ended and froze the editor.
+                ++it;
             }
         } else {
             ++it;
@@ -14399,6 +14404,11 @@ void editor::InspectorWindow::show(){
         if (usedPreviewIds.find(it->first) == usedPreviewIds.end()) {
             if (!Engine::isSceneRunning(it->second.getScene())){
                 it = directionRenders.erase(it);
+            } else {
+                // Its one-shot render is still queued (a frame that drew nothing, e.g. a
+                // minimized window): drop it on a later frame. Without advancing here the
+                // loop never ended and froze the editor.
+                ++it;
             }
         } else {
             ++it;

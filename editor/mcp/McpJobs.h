@@ -26,16 +26,27 @@ namespace jasperengine::editor::mcp {
 
     const char* jobStatusName(JobStatus status);
 
+    // What a running job holds exclusively. McpServer refuses the tool calls (and the editor
+    // the human actions) that would race it; see ToolActivity in McpRegistry.h.
+    enum class JobBusy {
+        None,           // nothing (play startup, previews...)
+        Export,         // export / build player / generate shaders: reads the project from a worker thread
+        ScriptCompile   // C++ script build in the project's internal build directory
+    };
+
+    const char* jobBusyName(JobBusy busy);
+
     // A long operation (export/build players, C++ compile, play startup) an agent can poll
     // with get_job and stop with cancel_job. Every method is thread-safe: workers report
     // progress and finish the job from their own thread.
     class McpJob {
     public:
-        McpJob(std::string id, std::string kind, std::string title);
+        McpJob(std::string id, std::string kind, std::string title, JobBusy busy = JobBusy::None);
 
         const std::string& id() const { return jobId; }
         const std::string& kind() const { return jobKind; }
         const std::string& title() const { return jobTitle; }
+        JobBusy busy() const { return jobBusy; }
 
         JobStatus status() const;
         bool finished() const { return status() != JobStatus::Running; }
@@ -67,6 +78,7 @@ namespace jasperengine::editor::mcp {
         std::string jobId;
         std::string jobKind;
         std::string jobTitle;
+        JobBusy jobBusy = JobBusy::None;
         JobStatus jobStatus = JobStatus::Running;
         double jobProgress = -1.0;
         std::string jobMessage;
@@ -82,8 +94,11 @@ namespace jasperengine::editor::mcp {
 
     class McpJobs {
     public:
-        JobPtr create(const std::string& kind, const std::string& title);
+        // busy: what the job holds exclusively while it runs (McpServer's busy policy)
+        JobPtr create(const std::string& kind, const std::string& title, JobBusy busy = JobBusy::None);
         JobPtr find(const std::string& id) const;
+        // The oldest running job holding `busy`, or null
+        JobPtr runningBusy(JobBusy busy) const;
         // Running jobs first, then the most recent finished ones (finished jobs are pruned
         // past 50).
         std::vector<JobPtr> list() const;

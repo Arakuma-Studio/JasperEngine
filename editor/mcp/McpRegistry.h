@@ -24,6 +24,20 @@ namespace jasperengine::editor::mcp {
         bool openWorld = false;
     };
 
+    // What a tool does, for the server's busy policy (McpServer::busyRefusal): a running job
+    // that holds part of the editor exclusively (an export reading the project from its own
+    // thread, a C++ script build) refuses the activities that would race it.
+    enum class ToolActivity {
+        Auto,           // Read when annotations.readOnly, else Edit
+        Read,           // reads only: always allowed
+        Control,        // jobs, dialogs, views, clipboard: always allowed (checks its own actions)
+        Edit,           // changes the project: refused while an export runs
+        PlayStart,      // refused while an export or a C++ script build runs
+        Build,          // export / build player / shaders: refused while another export or a script build runs
+        ScriptCompile,  // C++ script build: refused while an export runs
+        ProjectSwitch   // open / create a project: refused while any exclusive job runs
+    };
+
     struct ToolDef {
         std::string name;          // snake_case verb_noun, e.g. "create_entity"
         std::string title;         // human label
@@ -32,6 +46,7 @@ namespace jasperengine::editor::mcp {
         Json outputSchema;         // optional (null = none)
         ToolAnnotations annotations;
         bool allowedWhilePlaying = true;       // the server refuses the call during play if false
+        ToolActivity activity = ToolActivity::Auto;  // busy policy (see ToolActivity)
         std::function<void(CallPtr)> handler;  // runs on the MAIN thread
     };
 

@@ -1174,6 +1174,7 @@ void registerViewTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "frame_entity";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Frame GameObjects";
         tool.description =
             "Frame GameObjects in the Scene view like pressing F (runtime-spawned too); none given: the selection. "
@@ -1193,6 +1194,7 @@ void registerViewTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "focus_window";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
         tool.description =
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "

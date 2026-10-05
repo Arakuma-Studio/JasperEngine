@@ -20,6 +20,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
 
 #include "App.h"
@@ -115,15 +116,11 @@ Json untitledScenesJson(Project* project) {
     return list;
 }
 
-// A build job reads the project from its own thread: project edits wait for it
+// A build job reads the project from its own thread: project edits wait for it.
+// The server's busy policy already refuses edits (and project switches) then; this
+// re-checks for handlers that run later (deferred), through the same policy.
 bool refuseDuringBuild(const CallPtr& call) {
-    for (const JobPtr& job : call->ctx().jobs().list()) {
-        if (!job->finished() && (job->kind() == "build" || job->kind() == "shaders")) {
-            call->fail("Build job " + job->id() + " is running and reads the project: wait for it (get_job) or cancel_job it first.");
-            return true;
-        }
-    }
-    return false;
+    return call->server().refuseIfBusy(call, ToolActivity::Edit);
 }
 
 // ------------------------------------------------------------------ summary
@@ -1958,6 +1955,7 @@ void registerProjectTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "create_project";
+        tool.activity = ToolActivity::ProjectSwitch;  // busy policy (McpServer::busyRefusal)
         tool.title = "Create Project";
         tool.description =
             "File > New Project: creates a project in `path` (no project.yaml there yet) with one untitled 3D scene, "
@@ -1978,6 +1976,7 @@ void registerProjectTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "open_project";
+        tool.activity = ToolActivity::ProjectSwitch;  // busy policy (McpServer::busyRefusal)
         tool.title = "Open Project";
         tool.description = "File > Open Project: opens `path` and waits for load. Returns the project summary.";
         tool.inputSchema = object({

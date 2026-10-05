@@ -347,7 +347,7 @@ std::string projectFileFor(const fs::path& projectPath, const std::string& file)
     for (size_t start = 0; start < parts.size(); start++) {
         fs::path suffix;
         for (size_t i = start; i < parts.size(); i++) suffix /= parts[i];
-        if (suffix.is_absolute() || suffix.has_root_name()) continue;
+        if (suffix.is_absolute() || suffix.has_root_name() || suffix.has_root_directory()) continue;
         // the build cache (.jasperengine/export/...) holds copies: the source is elsewhere
         if (*suffix.begin() == ".jasperengine") continue;
         if (parts.size() - start >= 1 && fs::is_regular_file(projectPath / suffix, ec)) {
@@ -850,7 +850,8 @@ void buildProjectTool(const CallPtr& call) {
     // ---- start
     const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player" : "Build Web player";
     auto run = std::make_shared<BuildRun>();
-    run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"));
+    run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
+                                 JobBusy::Export);
     run->mode = mode;
     run->config = config;
     run->projectPath = project->getProjectPath();
@@ -1369,6 +1370,7 @@ void registerBuildTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "build_project";
+        tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
             "File > Build Settings > Build, as a job. desktop: player for this computer (the first build "
@@ -1403,6 +1405,7 @@ void registerBuildTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "generate_shaders";
+        tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Generate Shaders";
         tool.description =
             "Compile shader variants into output_dir as a job, without a player (build_project does this itself). "

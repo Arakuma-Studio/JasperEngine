@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -22,6 +23,14 @@ namespace jasperengine::editor{
         size_t entityIndex = 0;
         bool hasTransform = false;
         Entity parent = NULL_ENTITY;
+
+        // The tracked GameObjects with a Transform, in Transform order, as they were just before
+        // this delete ran (shared by the GameObjects deleted together), and this one's place
+        // there. Undo puts it back after the nearest one before it that exists again: a raw
+        // Transform index is no position to go back to, as the array also holds the editor's
+        // gizmo entities (a camera's or a light's icon and lines), made and dropped per frame
+        std::shared_ptr<const std::vector<Entity>> transformOrder;
+        size_t transformOrderPos = 0;
 
         YAML::Node data;
 
@@ -80,6 +89,7 @@ namespace jasperengine::editor{
         bool appendEntityData(Entity entity);
         std::vector<size_t> prepareDeleteSet();
         void snapshotEntities();
+        void recordTransformOrder();
 
         DeleteEntityCmd(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
             bool allowLockedRoots, const std::vector<Entity>& preservedEntities);

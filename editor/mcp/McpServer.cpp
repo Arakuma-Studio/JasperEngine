@@ -14,7 +14,9 @@
 #include "Out.h"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstdio>
 
 using namespace jasperengine::editor;
@@ -119,6 +121,8 @@ void McpServer::stop() {
         item.call->requestCancel();
         item.call->fail("The editor is shutting down.");
     }
+    // Let the answers already given reach the stdio client before the process exits
+    if (stdioTransport) stdioTransport->flush(2000);
 }
 
 void McpServer::setHttpEnabled(bool enabled, int port) {
@@ -264,6 +268,118 @@ Json McpServer::makeResult(const Json& id, Json result) {
     return Json{{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}};
 }
 
+// ---------------------------------------------------------------- transport helpers
+
+namespace {
+
+// Length of the valid UTF-8 sequence at text[i], or 0 if it is invalid (overlong forms,
+// surrogates and code points past U+10FFFF are invalid, as nlohmann::json's parser says)
+size_t utf8SequenceLength(const std::string& text, size_t i) {
+    const auto byte = [&](size_t k) { return static_cast<unsigned char>(text[k]); };
+    const unsigned char c = byte(i);
+    if (c < 0x80) return 1;
+    size_t length = 0;
+    unsigned char low = 0x80, high = 0xBF;
+    if (c >= 0xC2 && c <= 0xDF) length = 2;
+    else if (c == 0xE0) { length = 3; low = 0xA0; }
+    else if (c >= 0xE1 && c <= 0xEC) length = 3;
+    else if (c == 0xED) { length = 3; high = 0x9F; }
+    else if (c >= 0xEE && c <= 0xEF) length = 3;
+    else if (c == 0xF0) { length = 4; low = 0x90; }
+    else if (c >= 0xF1 && c <= 0xF3) length = 4;
+    else if (c == 0xF4) { length = 4; high = 0x8F; }
+    else return 0;
+    if (i + length > text.size()) return 0;
+    if (byte(i + 1) < low || byte(i + 1) > high) return 0;
+    for (size_t k = 2; k < length; k++) {
+        if (byte(i + k) < 0x80 || byte(i + k) > 0xBF) return 0;
+    }
+    return length;
+}
+
+constexpr size_t MAX_RESULT_TEXT_BYTES = 256 * 1024;
+constexpr size_t MAX_RESULT_STRUCTURED_BYTES = 1024 * 1024;
+
+} // namespace
+
+bool McpServer::traceEnabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("JASPER_MCP_TRACE");
+        return value && *value && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+void McpServer::trace(const char* stage, const std::string& detail) {
+    if (!traceEnabled()) return;
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::fprintf(stderr, "[mcp-trace %lld] %s %s\n", static_cast<long long>(ms % 100000000), stage, detail.c_str());
+}
+
+std::string McpServer::sanitizeUtf8(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        const size_t length = utf8SequenceLength(text, i);
+        if (length == 0) {
+            out += "\xEF\xBF\xBD";
+            i++;
+        } else {
+            out.append(text, i, length);
+            i += length;
+        }
+    }
+    return out;
+}
+
+void McpServer::truncateUtf8(std::string& text, size_t maxBytes) {
+    if (text.size() <= maxBytes) return;
+    size_t cut = maxBytes;
+    // back up over continuation bytes to the start of the sequence that straddles the cut
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) cut--;
+    text.resize(cut);
+}
+
+Json McpServer::parseMessage(const std::string& text) {
+    Json message = Json::parse(text, nullptr, false);
+    if (!message.is_discarded()) return message;
+    // Most often a client that sent Latin-1 or cut a string mid-character: keep the request
+    const std::string repaired = sanitizeUtf8(text);
+    if (repaired != text) message = Json::parse(repaired, nullptr, false);
+    return message;
+}
+
+bool McpServer::capResultSize(Json& result) {
+    bool changed = false;
+    if (result.contains("content") && result["content"].is_array()) {
+        for (Json& item : result["content"]) {
+            if (!item.is_object() || item.value("type", "") != "text" || !item.contains("text") || !item["text"].is_string()) continue;
+            std::string& text = item["text"].get_ref<std::string&>();
+            if (text.size() <= MAX_RESULT_TEXT_BYTES) continue;
+            const size_t original = text.size();
+            truncateUtf8(text, MAX_RESULT_TEXT_BYTES);
+            text += "\n[... truncated by the MCP server: " + std::to_string(text.size()) + " of " + std::to_string(original) +
+                    " bytes shown. Ask for less (the tool's limit / detail / offset / path arguments).]";
+            changed = true;
+        }
+    }
+    if (result.contains("structuredContent")) {
+        const size_t size = result["structuredContent"].dump(-1, ' ', false, Json::error_handler_t::replace).size();
+        if (size > MAX_RESULT_STRUCTURED_BYTES) {
+            result["structuredContent"] = Json{
+                {"truncated", true},
+                {"original_bytes", size},
+                {"note", "structuredContent was too large to send (over " + std::to_string(MAX_RESULT_STRUCTURED_BYTES / 1024) +
+                         " KB) and was dropped; the text content has the summary. Ask for less (limit / detail / offset arguments)."}
+            };
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 void McpServer::handleMessage(const SessionPtr& session, const Json& message, const ReplyPtr& reply) {
     if (!message.is_object()) {
         if (reply) reply->respond(makeError(nullptr, -32600, "Invalid Request: expected a JSON-RPC object (batches are not supported)."));
@@ -281,6 +397,7 @@ void McpServer::handleMessage(const SessionPtr& session, const Json& message, co
         const std::string method = message["method"].get<std::string>();
         const Json params = message.value("params", Json::object());
         if (method == "notifications/initialized") {
+            std::lock_guard<std::mutex> lock(sessionMutex);
             session->initialized = true;
         } else if (method == "notifications/cancelled") {
             if (params.is_object() && params.contains("requestId")) {
@@ -313,10 +430,19 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         for (const char* supported : SUPPORTED_PROTOCOL_VERSIONS) {
             if (requested == supported) version = supported;
         }
-        session->protocolVersion = version;
+        std::string clientName;
+        std::string clientVersion;
         if (params.contains("clientInfo") && params["clientInfo"].is_object()) {
-            session->clientName = params["clientInfo"].value("name", "");
-            session->clientVersion = params["clientInfo"].value("version", "");
+            const Json& info = params["clientInfo"];
+            if (info.contains("name") && info["name"].is_string()) clientName = info["name"].get<std::string>();
+            if (info.contains("version") && info["version"].is_string()) clientVersion = info["version"].get<std::string>();
+        }
+        {
+            // status() copies sessions on the main thread
+            std::lock_guard<std::mutex> lock(sessionMutex);
+            session->protocolVersion = version;
+            session->clientName = clientName;
+            session->clientVersion = clientVersion;
         }
         Json result = {
             {"protocolVersion", version},
@@ -334,8 +460,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
             {"instructions", mcpServerInstructions()}
         };
         std::fprintf(stderr, "[mcp] %s session initialized by %s %s (protocol %s)\n",
-                     session->transport.c_str(), session->clientName.c_str(),
-                     session->clientVersion.c_str(), version.c_str());
+                     session->transport.c_str(), clientName.c_str(), clientVersion.c_str(), version.c_str());
         reply->respond(makeResult(id, result));
         return;
     }
@@ -482,7 +607,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     }
 
     if (method == "logging/setLevel") {
-        session->logLevel = params.value("level", "info");
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        session->logLevel = params.contains("level") && params["level"].is_string() ? params["level"].get<std::string>() : "info";
         reply->respond(makeResult(id, Json::object()));
         return;
     }
@@ -513,7 +639,11 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         return;
     }
 
-    const std::string client = session->clientName.empty() ? session->transport : session->clientName;
+    std::string client;
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        client = session->clientName.empty() ? session->transport : session->clientName;
+    }
     const uint64_t seq = beginActivity(client, name, args);
     const std::string key = inflightKey(session->id, id);
 
@@ -524,9 +654,12 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 inflight.erase(key);
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
+            trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
             // A cancelled request gets no response (MCP cancellation)
             if (!done.cancelled()) {
-                reply->respond(makeResult(id, result.toJson()));
+                Json out = result.toJson();
+                capResultSize(out);
+                reply->respond(makeResult(id, std::move(out)));
             } else {
                 reply->cancelled();
             }
@@ -550,7 +683,9 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         inflight[key] = call;
     }
 
-    runOnMainThread([this, call, name]() {
+    trace("queued", name + " " + key);
+    runOnMainThread([this, call, name, key]() {
+        trace("run", name + " " + key);
         const ToolDef* def = reg.findTool(name);
         if (!def) {
             call->fail("Unknown tool: " + name);
@@ -580,6 +715,86 @@ std::string McpServer::blockingDialogMessage() const {
     return text + ".";
 }
 
+ToolActivity McpServer::effectiveActivity(const ToolDef& def) {
+    if (def.activity != ToolActivity::Auto) return def.activity;
+    return def.annotations.readOnly ? ToolActivity::Read : ToolActivity::Edit;
+}
+
+std::string McpServer::busyRefusal(ToolActivity activity, Json* info, bool forAgent) const {
+    // Which exclusive holders conflict with the activity
+    bool vsExport = false;
+    bool vsCompile = false;
+    const char* what = "This";
+    switch (activity) {
+        case ToolActivity::Auto:
+        case ToolActivity::Read:
+        case ToolActivity::Control:
+            return {};
+        case ToolActivity::Edit:
+            vsExport = true;
+            what = "Editing the project";
+            break;
+        case ToolActivity::ScriptCompile:
+            vsExport = true;
+            what = "Compiling C++ scripts";
+            break;
+        case ToolActivity::PlayStart:
+            vsExport = vsCompile = true;
+            what = "Starting Play mode";
+            break;
+        case ToolActivity::Build:
+            vsExport = vsCompile = true;
+            what = "Starting a build";
+            break;
+        case ToolActivity::ProjectSwitch:
+            vsExport = vsCompile = true;
+            what = "Switching projects";
+            break;
+    }
+
+    auto describe = [&](const JobPtr& job, const char* holds) {
+        if (info) {
+            *info = Json{{"job_id", job->id()}, {"kind", job->kind()}, {"title", job->title()},
+                         {"holds", jobBusyName(job->busy())}};
+        }
+        std::string text = std::string(what) + " is refused while job " + job->id() + " (" + job->title() +
+                           ") runs: it " + holds + ".";
+        if (forAgent) {
+            text += " Wait for it: poll get_job with job_id \"" + job->id() +
+                    "\" until its status is no longer running (or stop it with cancel_job), then retry.";
+        } else {
+            text += " Wait for the agent's job to finish (or cancel it from the MCP window), then try again.";
+        }
+        return text;
+    };
+
+    if (vsExport) {
+        if (JobPtr job = jobList.runningBusy(JobBusy::Export)) {
+            return describe(job, "reads the project from a worker thread and an edit now would race it");
+        }
+        if (appPtr && appPtr->isExportRunning()) {
+            if (info) *info = Json{{"job_id", nullptr}, {"kind", "editor_export"}, {"title", "Build Settings export"}, {"holds", "export"}};
+            return std::string(what) + " is refused while the export started in the editor's Build Settings window runs "
+                   "(it reads the project from a worker thread)." +
+                   (forAgent ? " Retry once a human has finished it (exports usually take a minute or more)." : "");
+        }
+    }
+    if (vsCompile) {
+        if (JobPtr job = jobList.runningBusy(JobBusy::ScriptCompile)) {
+            return describe(job, "builds the C++ scripts in the project's build directory, which Play and builds use too");
+        }
+    }
+    return {};
+}
+
+bool McpServer::refuseIfBusy(const CallPtr& call, ToolActivity activity) {
+    Json info;
+    const std::string refusal = busyRefusal(activity, &info);
+    if (refusal.empty()) return false;
+    call->fail(refusal, Json{{"busy", info}});
+    return true;
+}
+
 void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     App& app = *appPtr;
     if (call->cancelled()) {
@@ -590,6 +805,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         call->fail(playingRefusal());
         return;
     }
+    if (refuseIfBusy(call, effectiveActivity(def))) return;
 
     // An info alert left from earlier only needs OK; anything else needs an answer first
     std::string notes;
@@ -656,7 +872,7 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
     call->setProgressSink([weakParent, tool](double progressDone, double total, const std::string& message) {
         if (CallPtr p = weakParent.lock()) p->progress(progressDone, total, tool + ": " + message);
     });
-    if (parent->cancelled()) call->requestCancel();
+    call->setParent(parent);
     execute(call, *def);
 }
 
