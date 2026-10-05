@@ -1103,7 +1103,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"name", string("Default: the type's Unity name.")},
             {"parent", entityRef("Default: scene root.")},
             {"position", vec3("")},
-            {"rotation", any("")},
+            {"rotation", quat()},
             {"scale", vec3("")},
             {"model", assetPath("type model: .gltf/.glb/.obj.")},
             {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
