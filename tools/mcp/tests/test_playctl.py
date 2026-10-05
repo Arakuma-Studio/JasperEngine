@@ -43,6 +43,7 @@ def make_script(path: Path, body: str) -> Path:
 async def test_auto_pause_freezes_between_calls(ed: Editor):
     started = await ed.call("play", action="start", auto_pause=True, fixed_fps=60)
     ed.check_eq(started["state"], "playing", f"start: {started}")
+    print(f"[test] play start: {started.get('startup_seconds')} s, clock {started['time']}")
     t = started["time"]
     ed.check(t["auto_pause"] and t["fixed_fps"] == 60, f"clock settings: {t}")
 
@@ -223,8 +224,13 @@ async def test_run_build_input_reaches_window(ed: Editor):
 
 
 async def test_desktop_player_driven(ed: Editor):
-    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
-        skip("set JASPER_SLOW_BUILD=1 to build TappyPlane as a Desktop player and drive it (compiles the engine)")
+    prebuilt = os.environ.get("JASPER_PLAYER", "")   # a TappyPlane player built earlier: skips the build
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0") and not prebuilt:
+        skip("set JASPER_SLOW_BUILD=1 to build TappyPlane as a Desktop player and drive it (compiles the engine), "
+             "or JASPER_PLAYER=<its executable>")
+    if prebuilt:
+        await drive_player(ed, {"path": prebuilt})
+        return
     out = ed.scratch.root / "export-desktop"
     t0 = time.monotonic()
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
@@ -236,8 +242,12 @@ async def test_desktop_player_driven(ed: Editor):
         job = await ed.call("get_job", job_id=r["job_id"], log_lines=5)
     print(f"[test] desktop build: {job['status']} in {time.monotonic() - t0:.0f}s")
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    await drive_player(ed, {})
 
+
+async def drive_player(ed: Editor, args: dict):
     raw = await ed.call_raw("run_build", {
+        **args,
         "input_delay_seconds": 3,
         "input": [
             {"type": "screenshot"},
@@ -264,3 +274,5 @@ async def test_desktop_player_driven(ed: Editor):
         shot.write_bytes(data)
         print(f"[test] player screenshot {i}: {shot}")
     ed.check(raw.images[0][0] != raw.images[1][0], "the input changed the picture")
+    for shot in r["screenshots"]:
+        ed.check("player window" in shot.get("note", ""), f"not the player window: {shot}")
