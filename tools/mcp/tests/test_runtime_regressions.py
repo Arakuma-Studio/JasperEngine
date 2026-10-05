@@ -133,12 +133,18 @@ async def game_shot(ed: Editor) -> bytes:
 async def test_child_ui_scene_not_flipped_on_first_play(ed: Editor):
     """The fixture's Main Scene stacks the HUD Scene, which is not open in the editor: its
     runtime copy comes from disk. The first and second plays must draw the same picture."""
+    # Fixed steps with auto-pause make both plays reach the same frame whatever the host
+    # load, so only a real difference (an upside-down HUD) can fail the comparison.
     shots = []
-    for _ in range(2):
-        await ed.call("play", action="start", scene="Main Scene", wait=True)
-        await ed.call("wait", seconds=1)
-        shots.append(await game_shot(ed))
-        await ed.call("play", action="stop")
+    try:
+        for _ in range(2):
+            await ed.call("play", action="start", scene="Main Scene", wait=True,
+                          auto_pause=True, fixed_fps=60)
+            await ed.call("wait", frames=60)
+            shots.append(await game_shot(ed))
+            await ed.call("play", action="stop")
+    finally:
+        await ed.call("play", action="set", auto_pause=False, fixed_fps=0)
     diff = image_difference(shots[0], shots[1])
     if diff > 1.5:
         (ed.scratch.root / "first-play.png").write_bytes(shots[0])
