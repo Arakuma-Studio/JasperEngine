@@ -1522,6 +1522,71 @@ void editor::CodeEditor::openFile(const std::string& filepath, bool dockToCentra
     updateAllProjectSymbols();
 }
 
+void editor::CodeEditor::openFileAt(const std::string& filepath, int line, int column) {
+    openFile(filepath);
+    auto it = editors.find(toRelativePath(filepath));
+    if (it == editors.end() || !it->second.editor) return;
+    if (line > 0) {
+        it->second.editor->SetCursorPosition(line - 1, column > 0 ? column - 1 : 0);
+        it->second.editor->RequestScrollToCursor();
+    }
+    it->second.pendingWindowFocus = true;
+}
+
+std::vector<editor::CodeEditor::BufferState> editor::CodeEditor::getBufferStates() const {
+    std::vector<BufferState> states;
+    for (const auto& [key, instance] : editors) {
+        BufferState state;
+        state.path = key;
+        state.modified = instance.editor && instance.editor->GetUndoIndex() != instance.savedUndoIndex;
+        if (instance.editor) {
+            int line = 0, col = 0;
+            instance.editor->GetCursorPosition(line, col);
+            state.cursorLine = line + 1;
+        }
+        states.push_back(state);
+    }
+    std::sort(states.begin(), states.end(), [](const BufferState& a, const BufferState& b) { return a.path < b.path; });
+    return states;
+}
+
+void editor::CodeEditor::syncWithDisk(std::vector<std::string>& reloaded, std::vector<std::string>& conflicts) {
+    for (auto& [key, instance] : editors) {
+        if (!instance.editor) continue;
+        instance.isModified = instance.editor->GetUndoIndex() != instance.savedUndoIndex;
+        const fs::file_time_type before = instance.lastWriteTime;
+        const size_t queued = changedFilesQueue.size();
+        checkFileChanges(instance);
+        instance.lastCheckTime = ImGui::GetTime();
+        if (changedFilesQueue.size() != queued ||
+            std::any_of(changedFilesQueue.begin(), changedFilesQueue.end(),
+                        [&](const PendingFileChange& change) { return change.filepath == instance.filepath; })) {
+            conflicts.push_back(key);
+        } else if (instance.lastWriteTime != before) {
+            reloaded.push_back(key);
+        }
+    }
+}
+
+bool editor::CodeEditor::saveFile(const std::string& filepath) {
+    auto it = editors.find(toRelativePath(filepath));
+    if (it == editors.end()) return false;
+    return save(it->second);
+}
+
+bool editor::CodeEditor::reloadFile(const std::string& filepath) {
+    auto it = editors.find(toRelativePath(filepath));
+    if (it == editors.end()) return false;
+    const fs::path key = it->second.filepath;
+    auto changeIt = std::remove_if(changedFilesQueue.begin(), changedFilesQueue.end(),
+        [&](const PendingFileChange& change) { return change.filepath == key; });
+    changedFilesQueue.erase(changeIt, changedFilesQueue.end());
+    if (!loadFileContent(it->second)) return false;
+    updateScriptProperties(it->second);
+    invalidateShadersForFile(it->second);
+    return true;
+}
+
 void editor::CodeEditor::closeFile(const std::string& filepath) {
     std::string key = toRelativePath(filepath);
     if (auto it = editors.find(key); it != editors.end()) {

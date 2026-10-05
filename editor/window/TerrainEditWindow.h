@@ -77,6 +77,34 @@ namespace jasperengine::editor{
         std::vector<unsigned char> pixels;
     };
 
+    // A brush stroke run without the mouse (MCP tools): the settings the stroke uses. The
+    // window's own brush settings are left as they were.
+    struct TerrainScriptedBrush{
+        TerrainBrushMode mode = TerrainBrushMode::Raise;
+        TerrainBrushShape shape = TerrainBrushShape::Circle;
+        TerrainBrushFalloff falloff = TerrainBrushFalloff::Smooth;
+        float size = 4.0f;              // radius, world units
+        float strength = 0.3f;
+        float rotation = 0.0f;          // degrees
+        float flattenHeight = -1.0f;    // normalized 0-1; < 0 picks the height under the first point
+        int terraceSteps = 8;
+        float noiseSize = 4.0f;
+        int textureLayer = 0;           // PaintLayer: surface layer index
+        int foliageLayer = 0;           // PaintDensity / EraseDensity
+        bool normalizeBlend = true;
+        std::string maskPath;           // grayscale brush mask (Stamp's relief)
+        float secondsPerPoint = 0.05f;  // painting time each point is held for
+        int mapResolution = 0;          // map created when missing; 0 = the editor setting
+        // PlaceObject
+        std::string placeAssetPath;
+        bool placeInstanced = true;
+        float placeSpacing = 2.0f;
+        float placeMinScale = 1.0f;
+        float placeMaxScale = 1.0f;
+        float placeRotationJitter = 1.0f;
+        float placeAlignToNormal = 0.0f;
+    };
+
     struct ActiveStroke{
         bool active = false;
         uint32_t sceneId = NULL_PROJECT_SCENE;
@@ -192,6 +220,8 @@ namespace jasperengine::editor{
         uint64_t editTextureCounter = 1;
 
         ActiveStroke stroke;
+        // >= 0 while a scripted stroke runs: the painting time of each applyBrush call
+        float scriptedStampSeconds = -1.0f;
 
         void showTooltip(const char* text, ImGuiHoveredFlags flags = 0);
         bool iconButton(const char* icon, const char* id, const char* tooltip, bool selected, const ImVec2& size);
@@ -297,6 +327,13 @@ namespace jasperengine::editor{
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);
+
+        // One stroke through terrain-local points (y ignored) with `brush`, the same brush code
+        // a mouse drag runs, as undoable commands (a missing map is created first). Returns
+        // false with `error` when the target or the settings can't stroke. `placed` counts
+        // objects placed or erased by the placement brushes.
+        bool scriptedStroke(uint32_t sceneId, Entity entity, const TerrainScriptedBrush& brush,
+                            const std::vector<Vector3>& localPoints, std::string& error, int* placed = nullptr);
     };
 
 }
