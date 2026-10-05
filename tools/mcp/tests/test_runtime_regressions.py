@@ -229,12 +229,12 @@ async def test_rigidbody3d_friction_restitution_properties(ed: Editor):
     body = await ed.call("edit_colliders", scene=sid, entity=rubber, body_type="dynamic", add=[{"shape": "box"}],
                          body={"friction": 0.9, "restitution": 0.6})
     ed.check_eq(body["dimension"], "3d")
-    got = await ed.call("get_component", scene=sid, entity=rubber, component="rigidbody")
-    props = got["properties"]
-    ed.check("friction" in props and abs(float(props["friction"]["value"]) - 0.9) < 1e-4, f"friction in the catalog: {props}")
-    ed.check("restitution" in props and abs(float(props["restitution"]["value"]) - 0.6) < 1e-4, f"restitution: {props}")
+    got = await ed.call("get_entity", scene=sid, entity=rubber, components=["rigidbody"], properties=["friction", "restitution"])
+    props = got["components"]["rigidbody"]
+    ed.check("friction" in props and abs(float(props["friction"]) - 0.9) < 1e-4, f"friction in the catalog: {props}")
+    ed.check("restitution" in props and abs(float(props["restitution"]) - 0.6) < 1e-4, f"restitution: {props}")
 
-    await ed.call("set_property", scene=sid, entity=rubber, component="rigidbody", property="friction", value=0.75)
+    await ed.call("set_properties", scene=sid, entity=rubber, values={"rigidbody": {"friction": 0.75}})
     await ed.call("create_script", kind="lua", name="FrictionProbe", content=FRICTION_SCRIPT, entity=rubber)
     started, lines = await play_and_collect(ed, sid, "FRICTION-INIT")
     hits = [line for line in lines if "FRICTION-INIT" in line]
