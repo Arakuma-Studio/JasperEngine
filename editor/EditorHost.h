@@ -25,6 +25,11 @@ namespace jasperengine::editor {
         virtual void addNewSceneToDock(uint32_t sceneId);
         virtual void clearSceneWindowState(uint32_t sceneId);
         virtual void prepareForProjectSwitch();
+        // Runs a project switch (Project::openProjectNow, createProjectAt, loadProject) where
+        // the editor can tear its windows down: between frames, with the loading screen.
+        // The default runs it at once. The App ignores a request made while another is
+        // pending or a project is loading.
+        virtual void requestProjectChange(std::function<void()> change);
         virtual void resetLastActivatedScene();
         virtual bool shouldSyncEngineApi() const;
         virtual void updateResourcesPath();
