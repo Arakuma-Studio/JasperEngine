@@ -145,5 +145,19 @@ disabled entry) are skipped.
   `CMAKE_CXX_STANDARD` yourself.
 - Code that must build with a physics backend disabled in the export guards on
   `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.
-- Verify: play, then read the Console. A compile error is a build failure with compiler
-  messages; a runtime failure is a "Script crash in scene ..." entry.
+- Verify: `compile_scripts` builds the scripts without playing and returns the compiler
+  errors as `file:line:column: message` (project-relative): fix, compile again, then play and
+  read the Console for runtime failures ("Script crash in scene ..." entries). Play builds too
+  (incrementally after a compile_scripts), and a compile error then shows in the Console.
+
+## Tools
+
+- `create_script` (kind `cpp_script` = ScriptBase subclass, `cpp_subclass` = subclass of the
+  GameObject's class, needs `entity`) writes the editor's template (or your `header_content` /
+  `source_content`) and can attach it. `attach_script` attaches an existing `.h`/`.cpp` pair,
+  `update_script_entry` repoints / reorders / enables, `detach_script` removes it.
+- `set_script_properties` sets DPROPERTY values on a GameObject (`{"speed": 300}`);
+  `list_scripts` shows them. A new DPROPERTY appears after the header is saved and
+  `sync_files` (or `write_file`) re-parses it.
+- Edit sources with your own file tools and call `sync_files`, or use `write_file` (undoable,
+  reloads open editor buffers). Then `compile_scripts`.

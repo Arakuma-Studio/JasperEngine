@@ -111,6 +111,14 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
                                       const fs::path& sourcePath,
                                       const std::string& classOrModuleName,
                                       CreationKind kind) {
+    writeTemplateFiles(m_scene, m_entity, headerPath, sourcePath, classOrModuleName, kind);
+}
+
+void ScriptCreateDialog::writeTemplateFiles(Scene* scene, Entity entity,
+                                            const fs::path& headerPath,
+                                            const fs::path& sourcePath,
+                                            const std::string& classOrModuleName,
+                                            CreationKind kind) {
     bool isCppSubclass = kind == CreationKind::CPP_SUBCLASS;
     bool isCppScriptBase = kind == CreationKind::CPP_SCRIPT_CLASS;
     bool isLua = kind == CreationKind::LUA;
@@ -119,7 +127,7 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
         fs::create_directories(headerPath.parent_path());
 
         if (isCppSubclass) {
-            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(m_scene, m_entity);
+            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(scene, entity);
             std::string parentClass = parentInfo.name;
             bool hasTransform = parentInfo.derivesObject;
             bool isMesh = parentInfo.derivesMesh;

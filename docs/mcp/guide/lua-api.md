@@ -48,6 +48,13 @@ end
 return Player
 ```
 
+Tools: `create_script` (kind `lua`, optional `content`, `entity` to attach) writes the file in
+the Lua directory; `check_script` checks syntax (without running) and lists the properties the
+Inspector will show; `set_script_properties` sets them on a GameObject. After editing a script
+with your own file tools call `sync_files`: it reloads the code editor, re-parses `properties`
+(new entries appear in the Inspector) and reports syntax errors with line numbers. Runtime
+errors only appear when playing: read the Console.
+
 ### 1.1 Lifecycle
 
 | Step | What happens |

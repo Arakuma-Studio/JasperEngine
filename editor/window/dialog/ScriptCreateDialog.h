@@ -17,13 +17,23 @@ namespace editor {
 namespace fs = std::filesystem;
 
 class ScriptCreateDialog {
-private:
+public:
     enum class CreationKind {
         CPP_SUBCLASS,
         CPP_SCRIPT_CLASS,
         LUA,
     };
 
+    // The editor's script templates (what this dialog creates), written without the dialog
+    // (also used by the MCP create_script tool). CPP_SUBCLASS derives from the class of
+    // `entity` in `scene`; the other kinds ignore them. Lua writes only sourcePath.
+    static void writeTemplateFiles(Scene* scene, Entity entity,
+                                   const fs::path& headerPath,
+                                   const fs::path& sourcePath,
+                                   const std::string& classOrModuleName,
+                                   CreationKind kind);
+
+private:
     bool m_isOpen = false;
     fs::path m_projectPath;
     fs::path m_luaPath;
