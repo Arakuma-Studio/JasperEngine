@@ -86,11 +86,7 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
             }
         }
 
-        if (shutdownRequested.load()) {
-            throw std::runtime_error("Shutdown requested");
-        }
-
-        std::string soundName = getSoundDisplayName(filename);
+        std::string soundName = std::filesystem::path(filename).filename().string();
         uint64_t buildId = std::hash<std::string>{}(id);
 
         ResourceProgress::startBuild(buildId, ResourceType::Sound, soundName);
@@ -193,11 +189,6 @@ std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id,
     }
 
     return sound;
-}
-
-std::string SoundPool::getSoundDisplayName(const std::string& path){
-    std::filesystem::path filePath(path);
-    return filePath.filename().string();
 }
 
 void SoundPool::requestShutdown(){

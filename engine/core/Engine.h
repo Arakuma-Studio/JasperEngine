@@ -157,7 +157,6 @@
 namespace jasperengine {
 
     class JASPERENGINE_API Scene;
-    //class Rect;
 
     enum class Scaling{
         FITWIDTH,
@@ -303,9 +302,6 @@ namespace jasperengine {
             AsyncThreadScope& operator=(const AsyncThreadScope&) = delete;
         };
 
-        //Engine();
-        //virtual ~Engine();
-        
         //-----JasperEngine config-----
         static void setScene(Scene* scene);
         static Scene* getScene();

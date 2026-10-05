@@ -37,9 +37,6 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND SOKOL_LINK_LIBRARIES
         GL dl m pthread X11 Xi Xcursor
-
-        # For sokol_audio.h
-        #asound
     )
 
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
@@ -53,8 +50,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             )
         endif()
     endif()
-
-    find_package(Threads REQUIRED)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -95,9 +90,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
             list(APPEND SOKOL_LINK_LIBRARIES "-framework Metal -framework MetalKit")
         endif()
     endif()
-
-    # For sokol_audio.h
-    #"-framework AudioToolbox"
 endif()
 
 find_package(Threads REQUIRED)

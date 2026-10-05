@@ -1453,8 +1453,6 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
     endTable();
 
     if (isSvg){
-        //ImGui::SeparatorText("SVG");
-
         beginTable(cpType, getLabelSize("Alpha Border"), "texsettings_svg_" + id);
 
         // "SVG Scale" | drag field; commit only on release so each distinct scale rasterizes
@@ -1541,7 +1539,6 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                                 if (componentType == ComponentType::UIComponent){
                                     sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                                 }
-                                //printf("needUpdateTexture %s\n", name.c_str());
                             }
                         }
                     }
@@ -1599,7 +1596,6 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                     if (componentType == ComponentType::UIComponent){
                         sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                     }
-                    //printf("needUpdateTexture %s\n", id.c_str());
                 }
             }
 
@@ -2826,7 +2822,6 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
     }
     ImGui::TableNextColumn();
-    //ImGui::Dummy(ImVec2(0, 10));
     drawPrefabPropertyLabel(label);
     ImGui::SameLine();
 
@@ -3015,7 +3010,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PopStyleColor();
 
         ImGui::EndGroup();
-        //ImGui::SetItemTooltip("%s (X, Y, Z)", prop.label.c_str());
 
     }else if (type == RowPropertyType::Vector3 || type == RowPropertyType::Direction){
         Vector3* value = nullptr;
@@ -3207,7 +3201,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PopStyleColor();
 
         ImGui::EndGroup();
-        //ImGui::SetItemTooltip("%s (X, Y, Z)", prop.label.c_str());
 
     }else if (type == RowPropertyType::Vector4){
         Vector4* value = nullptr;
@@ -3387,7 +3380,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PopStyleColor();
 
         ImGui::EndGroup();
-        //ImGui::SetItemTooltip("%s (X, Y, Z)", prop.label.c_str());
 
     }else if (type == RowPropertyType::Quat){
         RotationOrder order = RotationOrder::ZYX;
@@ -3536,7 +3528,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             ImGui::PopStyleColor();
 
         ImGui::EndGroup();
-        //ImGui::SetItemTooltip("%s in degrees (X, Y, Z)", prop.label.c_str());
 
     }else if (type == RowPropertyType::String || type == RowPropertyType::MultilineString){
         std::string* value = nullptr;
@@ -3631,7 +3622,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
         if (!settings.help.empty()){
             ImGui::SameLine(); helpMarker(settings.help);
@@ -3704,7 +3694,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
         if (!settings.help.empty()){
             ImGui::SameLine(); helpMarker(settings.help);
@@ -3882,7 +3871,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
     }else if (type == RowPropertyType::Int){
         int* value = nullptr;
@@ -3929,7 +3917,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
     }else if (type == RowPropertyType::Color3L){
         Vector3* value = nullptr;
@@ -3972,7 +3959,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
     }else if (type == RowPropertyType::Color4L){
         Vector4* value = nullptr;
@@ -4015,7 +4001,6 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
-        //ImGui::SetItemTooltip("%s", prop.label.c_str());
 
     }else if ((type == RowPropertyType::IntSlider || type == RowPropertyType::UIntSlider) && settings.sliderValues){
         int* value = nullptr;
@@ -5789,7 +5774,7 @@ void editor::InspectorWindow::drawComponentShaderRow(ComponentType cpType, Shade
             });
     };
 
-    drawShaderRowContents(shaderType, currentShader, setShader, onFork, idSuffix);
+    drawShaderRowContents(currentShader, setShader, onFork, idSuffix);
 }
 
 editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity){
@@ -5956,7 +5941,7 @@ void editor::InspectorWindow::drawSceneShaderRow(SceneProject* sceneProject, Sha
     ImGui::Text("%s", label);
     ImGui::TableSetColumnIndex(1);
 
-    drawShaderRowContents(shaderType, currentShader, setShader, onFork, scenePropertyName);
+    drawShaderRowContents(currentShader, setShader, onFork, scenePropertyName);
 }
 
 editor::InspectorWindow::PostProcessShader editor::InspectorWindow::resolvePostProcessShader(const PostProcessPass& pass){
@@ -6127,7 +6112,7 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
                     });
             };
 
-            drawShaderRowContents(ShaderType::POSTPROCESS, passes[i].shader, setShader, onFork, "post_process_" + std::to_string(i));
+            drawShaderRowContents(passes[i].shader, setShader, onFork, "post_process_" + std::to_string(i));
 
             drawPostProcessUniforms(sceneId, passes, i, resolved);
 
@@ -6145,7 +6130,7 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
     }
 }
 
-void editor::InspectorWindow::drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
+void editor::InspectorWindow::drawShaderRowContents(const std::string& currentShader,
                                                const std::function<void(const std::string&)>& setShader,
                                                const std::function<void()>& onFork,
                                                const std::string& idSuffix){
@@ -7796,8 +7781,6 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Float, cpType, "near", "Near", sceneProject, entities, defaultSettings);
     propertyRow(RowPropertyType::Float, cpType, "far", "Far", sceneProject, entities, defaultSettings);
 
-    //propertyRow(RowPropertyType::Bool, cpType, "renderToTexture", "Render To Texture", sceneProject, entities, defaultSettings);
-    //propertyRow(RowPropertyType::Bool, cpType, "transparentSort", "Transparent Sort", sceneProject, entities, defaultSettings);
     propertyRow(RowPropertyType::Bool, cpType, "depthTest", "Depth Test", sceneProject, entities, defaultSettings);
     propertyRow(RowPropertyType::Bool, cpType, "autoResize", "Auto Resize", sceneProject, entities, defaultSettings);
 
@@ -9362,7 +9345,6 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
 
-            //ImGui::SameLine();
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 
             if (ImGui::Button((ICON_FA_PEN_TO_SQUARE "##edit_name_" + std::to_string(scriptIdx)).c_str())) {
@@ -11011,7 +10993,6 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".type", "Type", sceneProject, entities, settingsShapeType);
 
         RowSettings settingsFloat;
-        //settingsFloat.stepSize = 0.1f;
         settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
         if (shape.type == Collider2DType::POLYGON){
@@ -12317,7 +12298,6 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Enum, cpType, "state", "State", sceneProject, entities, settingsState);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities);
     propertyRow(RowPropertyType::LocalEntity, cpType, "target", "Target", sceneProject, entities);
-    //propertyRow(RowPropertyType::Bool, cpType, "ownedTarget", "Owned target", sceneProject, entities);
     endTable();
 
     if (entities.size() != 1 || !actionComp) {
@@ -13924,7 +13904,6 @@ void editor::InspectorWindow::show(){
     if (entities.size() > 0){
 
         // to change component view order, need change ComponentType
-        std::filesystem::path prefabPath;
         std::string names;
         bool isFirstEntity = true;
         for (Entity& entity : entities){
@@ -13934,11 +13913,8 @@ void editor::InspectorWindow::show(){
                 std::sort(newComponents.begin(), newComponents.end());
             }
 
-            std::filesystem::path newPrefabPath = project->findPrefabPathFor(sceneProject->id, entity);
-
             if (isFirstEntity) {
                 components = newComponents;
-                prefabPath = newPrefabPath;
                 isFirstEntity = false;
             } else {
                 std::vector<ComponentType> intersection;
@@ -13950,10 +13926,6 @@ void editor::InspectorWindow::show(){
                     std::back_inserter(intersection));
 
                 components = std::move(intersection);
-
-                if (prefabPath != newPrefabPath) {
-                    prefabPath.clear(); // Different prefabs, so no prefab
-                }
 
                 names += ", ";
             }
@@ -13982,7 +13954,6 @@ void editor::InspectorWindow::show(){
                 break;
             }
         }
-        (void)prefabPath;
 
         for (ComponentType& cpType : components){
 

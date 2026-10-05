@@ -61,10 +61,9 @@ namespace jasperengine::editor::settingsui {
     }
 
     // Search field over the category list. Keeps `selected` on a visible category
-    // while a search is active. Returns true when the selection changed.
-    inline bool categoryList(const char* id, const Category* categories, int count, int& selected,
+    // while a search is active.
+    inline void categoryList(const char* id, const Category* categories, int count, int& selected,
                              char* search, size_t searchSize, ImVec2 size) {
-        bool changed = false;
         ImGui::BeginGroup();
         ImGui::PushID(id);
 
@@ -75,7 +74,6 @@ namespace jasperengine::editor::settingsui {
         if (!selectedVisible) {
             for (int i = 0; i < count; i++) {
                 if (categoryMatches(categories[i], search)) {
-                    changed = changed || selected != i;
                     selected = i;
                     break;
                 }
@@ -98,7 +96,6 @@ namespace jasperengine::editor::settingsui {
                     std::snprintf(label, sizeof(label), "%s", categories[i].name);
                 }
                 if (ImGui::Selectable(label, selected == i)) {
-                    changed = changed || selected != i;
                     selected = i;
                 }
                 ImGui::PopID();
@@ -111,7 +108,6 @@ namespace jasperengine::editor::settingsui {
 
         ImGui::PopID();
         ImGui::EndGroup();
-        return changed;
     }
 
 }

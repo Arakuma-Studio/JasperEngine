@@ -116,9 +116,7 @@ namespace {
 }
 
 struct MeshSystem::AsyncModelLoadResult {
-    bool obj = false;
     bool success = false;
-    std::string filename;
     std::string warn;
     std::string err;
     std::shared_ptr<tinygltf::Model> gltfModel;
@@ -167,10 +165,6 @@ MeshSystem::~MeshSystem(){
 
 void MeshSystem::setImageDecodeMaxDimension(int dimension){
     g_imageDecodeMaxDimension = dimension;
-}
-
-void MeshSystem::applyDefaultGLTFMaterial(Material& material) {
-    material = Material();
 }
 
 void MeshSystem::applyDefaultObjMaterial(Submesh& submesh) {
@@ -826,9 +820,8 @@ std::vector<float> MeshSystem::getCylinderSideNormals(float baseRadius, float to
     float yAngle = atan2(baseRadius - topRadius, height);
     float x0 = cos(yAngle);     // nx
     float y0 = sin(yAngle);     // ny
-    float z0 = 0;               // nz
 
-    // rotate (x0,y0,z0) per sector angle
+    // rotate (x0,y0,0) per sector angle
     std::vector<float> normals;
     for(int i = 0; i <= slices; ++i)
     {
@@ -949,9 +942,7 @@ std::string MeshSystem::getAsyncModelLoadScenePrefix(const Scene* scene){
 }
 
 std::string MeshSystem::getAsyncModelLoadKey(const Scene* scene, const std::string& filename){
-    std::ostringstream key;
-    key << getAsyncModelLoadScenePrefix(scene) << getModelFilenameKey(filename);
-    return key.str();
+    return getAsyncModelLoadScenePrefix(scene) + getModelFilenameKey(filename);
 }
 
 std::string MeshSystem::getAsyncModelLoadKey(const std::string& filename) const{
@@ -1028,10 +1019,7 @@ void MeshSystem::cancelAllAsyncModelLoads(){
 
 bool MeshSystem::isAsyncModelLoadPending(Entity entity, const std::string& filename) const{
     (void)entity;
-    const std::string key = getAsyncModelLoadKey(filename);
-    std::lock_guard<std::mutex> lock(getAsyncModelMutex());
-    auto& pendingModelLoads = getPendingModelLoads();
-    return pendingModelLoads.find(key) != pendingModelLoads.end();
+    return isAsyncModelLoadPending(scene, filename);
 }
 
 void MeshSystem::cancelAsyncModelLoad(Entity entity, const std::string& filename){
@@ -1184,8 +1172,6 @@ std::shared_ptr<std::array<TextureData,6>> MeshSystem::buildGLTFTextureFaces(tin
 
 std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId){
     auto result = std::make_shared<AsyncModelLoadResult>();
-    result->obj = obj;
-    result->filename = filename;
 
     try {
         ResourceProgress::updateProgress(buildId, 0.1f);
@@ -1329,11 +1315,8 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
         }
     }
 
-    if (!result->success){
-        if (!obj && result->err.empty()){
-            Log::verbose("Failed to load glTF: %s", filename.c_str());
-        }
-        return result;
+    if (!result->success && !obj && result->err.empty()){
+        Log::verbose("Failed to load glTF: %s", filename.c_str());
     }
 
     return result;
@@ -2579,7 +2562,7 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     mesh.needUpdateAABB = true;
 }
 
-void MeshSystem::createPlaneNodeSubmesh(unsigned int submeshIndex, TerrainComponent& terrain, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments){
+void MeshSystem::createPlaneNodeSubmesh(unsigned int submeshIndex, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments){
     float width_half = (float)width / 2;
     float height_half = (float)height / 2;
 
@@ -3007,9 +2990,9 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
 
     mesh.numSubmeshes = 2;
     // fullRes submesh
-    createPlaneNodeSubmesh(0, terrain, mesh, 1, 1, terrain.resolution, terrain.resolution);
+    createPlaneNodeSubmesh(0, mesh, 1, 1, terrain.resolution, terrain.resolution);
     // halfRes submesh (internal LOD)
-    createPlaneNodeSubmesh(1, terrain, mesh, 1, 1, terrain.resolution/2, terrain.resolution/2);
+    createPlaneNodeSubmesh(1, mesh, 1, 1, terrain.resolution/2, terrain.resolution/2);
     mesh.submeshes[1].generated = true;
 
     updateTerrainAutoRanges(terrain);
@@ -4127,7 +4110,6 @@ void MeshSystem::createCapsule(MeshComponent& mesh, float baseRadius, float topR
     Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
     Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
 
-    float stackHeight = height / stacks;
     float stackAngle = 2 * M_PI / slices;
 
     // Top Hemisphere
@@ -4706,7 +4688,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.submeshes[i].normAdjustWeight = 1.0f;
             mesh.submeshes[i].hasSkinningNormalization = false;
             mesh.submeshes[i].primitiveType = PrimitiveType::TRIANGLES;
-            applyDefaultGLTFMaterial(mesh.submeshes[i].material);
+            mesh.submeshes[i].material = Material();
 
             mesh.submeshes[i].overrideFields = 0; // the slot may carry an edit from a past load
 

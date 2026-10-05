@@ -29,7 +29,6 @@ namespace jasperengine{
 
     private:
 
-        std::string eventId;
         Entity lastUIFromPointer;
         Entity lastUIFromPointerHover;
         Entity lastUIFromClick;
@@ -110,7 +109,6 @@ namespace jasperengine{
         void applyScrollbarPointerPosition(Entity entity, float x, float y);
 
         bool isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout);
-        bool isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout, Vector2 center);
 
         static Rect transformRectToWorldAxisAligned(const Rect& rect, const Matrix4& matrix);
         Entity findNearestLayoutParent(Entity startParent) const;

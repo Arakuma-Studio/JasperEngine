@@ -103,11 +103,7 @@ bool AudioSystem::loadSound(AudioSourceComponent& audio){
         return false;
     }
 
-    if (!init()) {
-        return false;
-    }
-
-    return true;
+    return init();
 }
 
 void AudioSystem::preloadSoundAssets(){
@@ -167,12 +163,7 @@ void AudioSystem::destroySound(AudioSourceComponent& audio){
 }
 
 bool AudioSystem::seekSound(AudioSourceComponent& audio, double time){
-    SoLoud::result res = getSoloud().seek(audio.handle, time);
-
-    if (res != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR)
-        return false;
-
-    return true;
+    return getSoloud().seek(audio.handle, time) == SoLoud::SOLOUD_ERRORS::SO_NO_ERROR;
 }
 
 void AudioSystem::setPaused(bool paused) {

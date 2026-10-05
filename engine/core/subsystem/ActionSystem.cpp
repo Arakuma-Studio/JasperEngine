@@ -639,51 +639,36 @@ void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
     }
 }
 
-void ActionSystem::positionTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform){
+void ActionSystem::positionTweenUpdate(TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform){
     Vector3 position = (posaction.endPosition - posaction.startPosition) * tween.value;
     transform.position = posaction.startPosition + position;
     transform.needUpdate = true;
 }
 
-void ActionSystem::rotationTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform){
+void ActionSystem::rotationTweenUpdate(TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform){
     transform.rotation = Quaternion::slerp(tween.value, rotaction.startRotation, rotaction.endRotation, rotaction.shortestPath);
     transform.needUpdate = true;
 }
 
-void ActionSystem::scaleTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, ScaleTweenComponent& scaletween, Transform& transform){
+void ActionSystem::scaleTweenUpdate(TweenComponent& tween, ScaleTweenComponent& scaletween, Transform& transform){
     Vector3 scale = (scaletween.endScale - scaletween.startScale) * tween.value;
     transform.scale = scaletween.startScale + scale;
     transform.needUpdate = true;
 }
 
-void ActionSystem::colorTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, MeshComponent& mesh){
+void ActionSystem::colorTweenUpdate(TweenComponent& tween, ColorTweenComponent& colortween, Vector4& targetColor){
     Vector3 color = (colortween.endColor - colortween.startColor) * tween.value;
     if (colortween.useSRGB){
-        mesh.submeshes[0].material.baseColorFactor = Color::sRGBToLinear(colortween.startColor + color);
+        targetColor = Color::sRGBToLinear(colortween.startColor + color);
     }else{
-        mesh.submeshes[0].material.baseColorFactor = colortween.startColor + color;
+        targetColor = colortween.startColor + color;
     }
 }
 
-void ActionSystem::colorTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, UIComponent& ui){
-    Vector3 color = (colortween.endColor - colortween.startColor) * tween.value;
-    if (colortween.useSRGB){
-        ui.color = Color::sRGBToLinear(colortween.startColor + color);
-    }else{
-        ui.color = colortween.startColor + color;
-    }
-}
-
-void ActionSystem::alphaTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, MeshComponent& mesh){
+void ActionSystem::alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& alphatween, Vector4& targetColor){
     float alpha = (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
 
-    mesh.submeshes[0].material.baseColorFactor.w = alphatween.startAlpha + alpha;
-}
-
-void ActionSystem::alphaTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, UIComponent& ui){
-    float alpha = (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
-
-    ui.color.w = alphatween.startAlpha + alpha;
+    targetColor.w = alphatween.startAlpha + alpha;
 }
 
 int ActionSystem::findUnusedParticle(ParticleSystemComponent& particles){
@@ -1453,7 +1438,7 @@ void ActionSystem::morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTra
     if (weight <= 0.0f || !trackIndexValid(keyframe, morpthtracks))
         return;
 
-    std::vector<float> previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
+    const std::vector<float>& previousMorph = morpthtracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
 
     if ((keyframe.index == 0) || (morpthtracks.values[keyframe.index].size() == morpthtracks.values[keyframe.index-1].size())) {
         bool cubic = hasCubicSplineTangents(keyframe, morpthtracks.values, morpthtracks.inTangents, morpthtracks.outTangents) &&
@@ -1783,19 +1768,19 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
             if (signature.test(scene->getComponentId<PositionTweenComponent>())){
                 PositionTweenComponent& posaction = scene->getComponent<PositionTweenComponent>(entity);
 
-                positionTweenUpdate(dt, action, tween, posaction, transform);
+                positionTweenUpdate(tween, posaction, transform);
             }
 
             if (signature.test(scene->getComponentId<RotationTweenComponent>())){
                 RotationTweenComponent& rotaction = scene->getComponent<RotationTweenComponent>(entity);
 
-                rotationTweenUpdate(dt, action, tween, rotaction, transform);
+                rotationTweenUpdate(tween, rotaction, transform);
             }
 
             if (signature.test(scene->getComponentId<ScaleTweenComponent>())){
                 ScaleTweenComponent& scaletween = scene->getComponent<ScaleTweenComponent>(entity);
 
-                scaleTweenUpdate(dt, action, tween, scaletween, transform);
+                scaleTweenUpdate(tween, scaletween, transform);
             }
         }
 
@@ -1806,12 +1791,12 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
             if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
-                colorTweenMeshUpdate(dt, action, tween, colortween, mesh);
+                colorTweenUpdate(tween, colortween, mesh.submeshes[0].material.baseColorFactor);
             }
             if (targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
-                colorTweenUIUpdate(dt, action, tween, colortween, ui);
+                colorTweenUpdate(tween, colortween, ui.color);
             }
         }
 
@@ -1822,12 +1807,12 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
             if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
-                alphaTweenMeshUpdate(dt, action, tween, alphatween, mesh);
+                alphaTweenUpdate(tween, alphatween, mesh.submeshes[0].material.baseColorFactor);
             }
             if (targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
-                alphaTweenUIUpdate(dt, action, tween, alphatween, ui);
+                alphaTweenUpdate(tween, alphatween, ui.color);
             }
         }
 

@@ -15,8 +15,7 @@ namespace jasperengine {
     class JASPERENGINE_API ShaderDataSerializer {
     public:
         // Simple on-disk cache format for ShaderData.
-        // - Stores stage GLSL/HLSL/MSL source and reflection data.
-        // - Does NOT serialize stage bytecode (kept empty).
+        // Stores stage source, SPIR-V bytecode, and reflection data.
         //
         // Returns true on success. On failure, returns false and optionally fills err.
         static bool writeToFile(const std::string& filepath, uint64_t shaderKey, const ShaderData& shaderData, std::string* err = nullptr);

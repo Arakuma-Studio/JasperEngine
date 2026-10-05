@@ -146,25 +146,17 @@ Rect& Rect::fitOnRect(Rect rect){
 }
 
 bool Rect::contains(Vector2 point){
-    if (point.x >= x &&
-        point.x <= (x + width) &&
-        point.y >= y &&
-        point.y <= (y + height)) {
-        return true;
-    }
-    return false;
+    return point.x >= x &&
+           point.x <= x + width &&
+           point.y >= y &&
+           point.y <= y + height;
 }
 
 bool Rect::isNormalized() const{
-    if ((x >= 0 && x <= 1) && (y >= 0 && y <= 1) && (width >= 0 && width <= 1) && (height >= 0 && height <= 1)){
-        return true;
-    }
-    return false;
+    return (x >= 0 && x <= 1) && (y >= 0 && y <= 1) &&
+           (width >= 0 && width <= 1) && (height >= 0 && height <= 1);
 }
 
 bool Rect::isZero() const{
-    if ((x == 0) && (y == 0) && (width == 0) && (height == 0)) {
-        return true;
-    }
-    return false;
+    return x == 0 && y == 0 && width == 0 && height == 0;
 }

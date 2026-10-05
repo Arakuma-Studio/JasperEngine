@@ -61,9 +61,6 @@ namespace jasperengine::editor{
 
         void setGizmoVisible(bool visible);
 
-        Framebuffer* getFramebuffer();
-        TextureRender& getTexture();
-        Camera* getCamera();
         Scene* getScene();
 
         GameObject* getGizmoObject() const;

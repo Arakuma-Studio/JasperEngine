@@ -2626,7 +2626,6 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
 
     YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
-    //runtime->sceneRender = createSceneRender(runtime->sceneType, runtime->scene);
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
     pauseEngineScene(runtime->scene, true);
@@ -4240,8 +4239,6 @@ void editor::Project::resetConfigs() {
     editor::getEditorHost().updateWindowTitle(name);
 
     resetEngineConfigs(false);
-
-    //createNewScene("New Scene");
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScripts() const {
@@ -7124,7 +7121,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             }
 
             fs::path buildPath = getProjectInternalPath() / "build";
-            generator.build(getProjectPath(), getProjectInternalPath(), buildPath, playKit.cCompiler, playKit.cxxCompiler, playKit.generator, buildSettings.buildJobs);
+            generator.build(getProjectPath(), buildPath, playKit.cCompiler, playKit.cxxCompiler, playKit.generator, buildSettings.buildJobs);
             generator.waitForBuildToComplete();
 
             if (isCancelled()) { markStartupDone(); return; }

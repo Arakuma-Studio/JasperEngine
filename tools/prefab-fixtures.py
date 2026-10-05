@@ -14,13 +14,10 @@ reference into a prefab instance and one to a scene GameObject whose id a prefab
 would take. Load it with an editor before and after a change and compare the
 `scene-dump` outputs (tools/prefab-dump-compare.py).
 """
-import copy
 import os
 import sys
 
 import yaml
-
-IDENTITY = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
 
 
 def transform(x=0.0, y=0.0, sx=1.0, sy=1.0):
@@ -259,6 +256,17 @@ def action_components(target=0):
     return {"action": {"ownedTarget": False, "speed": 1, "state": "Stopped", "target": target}}
 
 
+def watcher_components(x=0.0, y=0.0):
+    return {
+        "transform": transform(x, y),
+        "script": {"scripts": [{
+            "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
+            "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
+                            "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
+        }]},
+    }
+
+
 def nested(out):
     """A scene of plain GameObjects four levels deep (Forest > Tree > Branch > Leaf) and the
     scene-dump ops that make prefabs of them bottom-up through the editor: each level is made
@@ -284,43 +292,30 @@ def nested(out):
     project.pop("standalonePrefabs", None)
     write_yaml(os.path.join(out, "project.yaml"), project)
 
-    def sprite(texture, w, h, x=0.0, y=0.0, color=(1, 1, 1, 1), sx=1.0, sy=1.0):
-        return sprite_components(texture, w, h, x=x, y=y, color=color, sx=sx, sy=sy)
-
     # A script with an entity property: it logs what it points at when the game starts
     os.makedirs(os.path.join(out, "scripts"), exist_ok=True)
     with open(os.path.join(out, "scripts", "Watcher.lua"), "w") as f:
         f.write(WATCHER_LUA)
 
-    def watcher(x=0.0, y=0.0):
-        return {
-            "transform": transform(x, y),
-            "script": {"scripts": [{
-                "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
-                "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
-                                "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
-            }]},
-        }
-
-    leaf = entity(1009, "Leaf", sprite("sprites/plane-sheet.png", 88, 73, x=0, y=180, color=(0.4, 1, 0.4, 1)), [
-        entity(1010, "Petal", sprite("sprites/rock.png", 30, 60, x=60, y=0, color=(1, 0.6, 0.8, 1))),
-        entity(1011, "Bud", dict(sprite("sprites/rock.png", 20, 40, x=-60, y=0, color=(1, 1, 0.4, 1)), **action_components())),
-        entity(1013, "Thorn", sprite("sprites/rock-down.png", 20, 30, x=0, y=-40)),
+    leaf = entity(1009, "Leaf", sprite_components("sprites/plane-sheet.png", 88, 73, x=0, y=180, color=(0.4, 1, 0.4, 1)), [
+        entity(1010, "Petal", sprite_components("sprites/rock.png", 30, 60, x=60, y=0, color=(1, 0.6, 0.8, 1))),
+        entity(1011, "Bud", dict(sprite_components("sprites/rock.png", 20, 40, x=-60, y=0, color=(1, 1, 0.4, 1)), **action_components())),
+        entity(1013, "Thorn", sprite_components("sprites/rock-down.png", 20, 30, x=0, y=-40)),
         entity(1012, "LeafCam", camera_components(0, 0)),
     ])
-    branch = entity(1006, "Branch", sprite("sprites/rock-down.png", 60, 140, x=120, y=150, color=(0.7, 0.5, 0.3, 1)), [
-        entity(1007, "Twig", sprite("sprites/rock.png", 30, 80, x=60, y=40)),
-        entity(1008, "Screen", sprite("sprites/ground.png", 120, 40, x=-80, y=40)),
-        entity(1014, "Eye", watcher(-30, 20)),
+    branch = entity(1006, "Branch", sprite_components("sprites/rock-down.png", 60, 140, x=120, y=150, color=(0.7, 0.5, 0.3, 1)), [
+        entity(1007, "Twig", sprite_components("sprites/rock.png", 30, 80, x=60, y=40)),
+        entity(1008, "Screen", sprite_components("sprites/ground.png", 120, 40, x=-80, y=40)),
+        entity(1014, "Eye", watcher_components(-30, 20)),
         leaf,
     ])
-    tree = entity(1003, "Tree", sprite("sprites/rock.png", 120, 260, x=0, y=60), [
-        entity(1004, "Trunk", sprite("sprites/ground.png", 80, 40, x=0, y=-20, color=(0.5, 0.35, 0.2, 1))),
+    tree = entity(1003, "Tree", sprite_components("sprites/rock.png", 120, 260, x=0, y=60), [
+        entity(1004, "Trunk", sprite_components("sprites/ground.png", 80, 40, x=0, y=-20, color=(0.5, 0.35, 0.2, 1))),
         entity(1005, "Rope", {"transform": transform(-60, 100)}),
-        entity(1015, "Lens", watcher(40, 20)),
+        entity(1015, "Lens", watcher_components(40, 20)),
         branch,
     ])
-    forest = entity(1001, "Forest", sprite("sprites/ground.png", 400, 60, x=250, y=60), [
+    forest = entity(1001, "Forest", sprite_components("sprites/ground.png", 400, 60, x=250, y=60), [
         entity(1002, "Wind", dict({"transform": transform(0, 0)}, **action_components())),
         tree,
     ])
@@ -328,10 +323,10 @@ def nested(out):
         forest,
         entity(1020, "Pointer", action_components()),
         entity(1021, "Cross", action_components()),
-        entity(1022, "Field", sprite("sprites/ground.png", 300, 30, x=900, y=30)),
+        entity(1022, "Field", sprite_components("sprites/ground.png", 300, 30, x=900, y=30)),
         # scene scripts pointing into instances (deep members, GameObjects prefabs add)
-        entity(1023, "Spy", watcher(0, 0)),
-        entity(1024, "Spy2", watcher(0, 0)),
+        entity(1023, "Spy", watcher_components(0, 0)),
+        entity(1024, "Spy2", watcher_components(0, 0)),
     ]
 
     scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
@@ -486,16 +481,6 @@ def variant(out):
     with open(os.path.join(out, "scripts", "Watcher.lua"), "w") as f:
         f.write(WATCHER_LUA)
 
-    def watcher(x=0.0, y=0.0):
-        return {
-            "transform": transform(x, y),
-            "script": {"scripts": [{
-                "type": "lua", "path": "Watcher.lua", "className": "Watcher", "enabled": True,
-                "properties": [{"name": "target", "displayName": "Target", "type": "EntityReference",
-                                "ptrTypeName": "Sprite", "value": 0, "defaultValue": 0}],
-            }]},
-        }
-
     ship = entity(1001, "Ship", sprite_components("sprites/plane-sheet.png", 88, 73, x=300, y=300), [
         entity(1002, "Hull", sprite_components("sprites/rock.png", 60, 120, x=0, y=-60, color=(1, 1, 1, 1))),
         entity(1003, "Wing", sprite_components("sprites/ground.png", 160, 30, x=0, y=20), [
@@ -506,13 +491,13 @@ def variant(out):
         entity(1007, "Engine", sprite_components("sprites/rock-down.png", 40, 60, x=-60, y=0, color=(0.6, 0.6, 1, 1)), [
             entity(1008, "Flame", sprite_components("sprites/rock.png", 20, 30, x=0, y=-40, color=(1, 0.5, 0, 1))),
         ]),
-        entity(1009, "Eye", watcher(0, 40)),
+        entity(1009, "Eye", watcher_components(0, 40)),
     ])
     entities = [
         ship,
         entity(1020, "Field", sprite_components("sprites/ground.png", 300, 30, x=900, y=30)),
         entity(1021, "Pointer", action_components()),
-        entity(1022, "Spy", watcher(0, 0)),
+        entity(1022, "Spy", watcher_components(0, 0)),
     ]
     scene = yaml.safe_load(open(os.path.join(fixture, "Main Scene.scene")))
     scene["name"] = "Variant Scene"
@@ -611,9 +596,7 @@ def variant_export(out):
         entity(1901, "Gem", sprite_components("sprites/rock-down.png", 30, 60, x=40, y=40, color=(1, 1, 0.4, 1))),
         entity(1902, "Tag", sprite_components("sprites/ground.png", 80, 20, x=0, y=-20)),
     ])
-    for node in [badge]:
-        for comps in (node["components"],):
-            comps["transform"]["position"][2] = 5
+    badge["components"]["transform"]["position"][2] = 5
     scene["entities"].append(badge)
     scene["entities"].append(entity(1910, "Spawner", {
         "transform": transform(0, 0),

@@ -23,10 +23,6 @@ int SystemLinux::getScreenHeight() {
     return WindowLinux::getHeight();
 }
 
-int SystemLinux::getSampleCount() {
-    return 1;
-}
-
 #if defined(SOKOL_VULKAN)
 sg_environment SystemLinux::getSokolEnvironment() {
     return VulkanContext::environment();

@@ -112,6 +112,8 @@ namespace jasperengine::editor{
         size_t cacheEntityCount = SIZE_MAX;
         size_t cacheChildSignature = SIZE_MAX;
         double cacheBuildTime = -1.0;
+        std::string cachedSearch;
+        bool cachedMatchCase = false;
 
         Entity openParent;
         uint32_t selectionAnchorSceneId = NULL_PROJECT_SCENE;
@@ -195,7 +197,7 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> replaceCandidates;
 
         // Added GameObjects, rows below Missing Prefabs, variants and ">" buttons, after a rebuild
-        void markPrefabRows(SceneProject* sceneProject, TreeNode& root);
+        void markPrefabRows(TreeNode& root);
         // The "+" badge on an added GameObject's icon, right after its row was drawn
         void drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
         // The ">" button at the right end of an instance root's row
@@ -231,6 +233,7 @@ namespace jasperengine::editor{
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
         void markMatchingNodes(TreeNode& node, const std::string& searchLower);
+        void updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt);
 
     public:
         static constexpr const char* WINDOW_NAME = "Hierarchy";

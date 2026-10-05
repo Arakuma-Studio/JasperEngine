@@ -137,13 +137,6 @@ void TextureSlicerToolDialog::generatePreview() {
     m_previewDirty = false;
 }
 
-TextureSlicerToolDialog::SliceResult TextureSlicerToolDialog::buildResult() {
-    SliceResult result;
-    result.rects = m_previewRects;
-    result.submeshId = m_selectedSubmesh;
-    return result;
-}
-
 void TextureSlicerToolDialog::show() {
     if (!m_isOpen) return;
 
@@ -417,7 +410,7 @@ void TextureSlicerToolDialog::show() {
     ImGui::BeginDisabled(m_previewRects.empty());
     if (ImGui::Button("Slice", ImVec2(120, 0))) {
         if (m_onApply) {
-            m_onApply(buildResult());
+            m_onApply({m_previewRects, m_selectedSubmesh});
         }
         m_isOpen = false;
         ImGui::CloseCurrentPopup();

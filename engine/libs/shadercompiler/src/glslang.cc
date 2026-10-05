@@ -15,10 +15,6 @@
 
 #include "SPIRV/GlslangToSpv.h"
 #include "SPIRV/SpvTools.h"
-#if ENABLE_OPT
-#include "spirv-tools/libspirv.h"
-#include "spirv-tools/optimizer.hpp"
-#endif
 
 using namespace shadercompiler;
 
@@ -194,108 +190,6 @@ static void add_defines(glslang::TShader* shader, const args_t& args, std::strin
     shader->addProcesses(processes);
 }
 
-#if ENABLE_OPT
-//
-// Start modified part of SpvTools.cpp/SpirvToolsTransform to work with WEBGL1 and HLSL shaders
-// Check this if changed glslang version
-//
-
-// Callback passed to spvtools::Optimizer::SetMessageConsumer
-static void OptimizerMesssageConsumer(spv_message_level_t level, const char *source,
-        const spv_position_t &position, const char *message)
-{
-    auto &out = std::cerr;
-    switch (level)
-    {
-    case SPV_MSG_FATAL:
-    case SPV_MSG_INTERNAL_ERROR:
-    case SPV_MSG_ERROR:
-        out << "error: ";
-        break;
-    case SPV_MSG_WARNING:
-        out << "warning: ";
-        break;
-    case SPV_MSG_INFO:
-    case SPV_MSG_DEBUG:
-        out << "info: ";
-        break;
-    default:
-        break;
-    }
-    if (source)
-    {
-        out << source << ":";
-    }
-    out << position.line << ":" << position.column << ":" << position.index << ":";
-    if (message)
-    {
-        out << " " << message;
-    }
-    out << std::endl;
-}
-
-// Apply the SPIRV-Tools optimizer to generated SPIR-V.  HLSL SPIR-V is legalized in the process.
-static void spirv_optimize(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
-                         spv::SpvBuildLogger* logger, const glslang::SpvOptions* options)
-{
-    spv_target_env target_env = glslang::MapToSpirvToolsEnv(intermediate.getSpv(), logger);
-
-    spvtools::Optimizer optimizer(target_env);
-    optimizer.SetMessageConsumer(OptimizerMesssageConsumer);
-
-    // If debug (specifically source line info) is being generated, propagate
-    // line information into all SPIR-V instructions. This avoids loss of
-    // information when instructions are deleted or moved. Later, remove
-    // redundant information to minimize final SPRIR-V size.
-    if (options->stripDebugInfo) {
-        optimizer.RegisterPass(spvtools::CreateStripDebugInfoPass());
-    }
-    optimizer.RegisterPass(spvtools::CreateWrapOpKillPass());
-    optimizer.RegisterPass(spvtools::CreateDeadBranchElimPass());
-    optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
-    optimizer.RegisterPass(spvtools::CreateScalarReplacementPass());
-    optimizer.RegisterPass(spvtools::CreateLocalAccessChainConvertPass());
-    optimizer.RegisterPass(spvtools::CreateLocalSingleBlockLoadStoreElimPass());
-    optimizer.RegisterPass(spvtools::CreateLocalSingleStoreElimPass());
-    optimizer.RegisterPass(spvtools::CreateSimplificationPass());
-    optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
-    optimizer.RegisterPass(spvtools::CreateVectorDCEPass());
-    optimizer.RegisterPass(spvtools::CreateDeadInsertElimPass());
-    optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
-    optimizer.RegisterPass(spvtools::CreateDeadBranchElimPass());
-    optimizer.RegisterPass(spvtools::CreateIfConversionPass());
-    optimizer.RegisterPass(spvtools::CreateSimplificationPass());
-    optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
-    optimizer.RegisterPass(spvtools::CreateVectorDCEPass());
-    optimizer.RegisterPass(spvtools::CreateDeadInsertElimPass());
-    optimizer.RegisterPass(spvtools::CreateInterpolateFixupPass());
-    if (options->optimizeSize) {
-        optimizer.RegisterPass(spvtools::CreateRedundancyEliminationPass());
-        optimizer.RegisterPass(spvtools::CreateEliminateDeadInputComponentsSafePass());
-    }
-    optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
-    optimizer.RegisterPass(spvtools::CreateCFGCleanupPass());
-
-    spvtools::OptimizerOptions spvOptOptions;
-    if (options->optimizerAllowExpandedIDBound)
-        spvOptOptions.set_max_id_bound(0x3FFFFFFF);
-    optimizer.SetTargetEnv(glslang::MapToSpirvToolsEnv(intermediate.getSpv(), logger));
-    spvOptOptions.set_run_validator(false); // The validator may run as a separate step later on
-    optimizer.Run(spirv.data(), spirv.size(), &spirv, spvOptOptions);
-
-    if (options->optimizerAllowExpandedIDBound) {
-        if (spirv.size() > 3 && spirv[3] > kDefaultMaxIdBound) {
-            spvtools::Optimizer optimizer2(target_env);
-            optimizer2.SetMessageConsumer(OptimizerMesssageConsumer);
-            optimizer2.RegisterPass(spvtools::CreateCompactIdsPass());
-            optimizer2.Run(spirv.data(), spirv.size(), &spirv, spvOptOptions);
-        }
-    }
-}
-//
-// End modified part of SpvTools.cpp/SpirvToolsTransform
-//
-#endif
 
 //
 // Check this if changed in glslang/ResourceLimits/ResourceLimits.cpp
@@ -536,18 +430,12 @@ bool shadercompiler::compile_to_spirv(std::vector<spirv_t>& spirvvec, const std:
         glslang::SpvOptions spv_opts;
         spv_opts.validate = true;
         spv_opts.optimizeSize = true;
-        // Disable this glslang internal optimizer that is broken with WEBGL1 and HLSL shaders
+        // The build omits SPIRV-Tools, so glslang must not invoke its optimizer.
         spv_opts.disableOptimizer = true;
         spv::SpvBuildLogger logger;
         const glslang::TIntermediate* im = program->getIntermediate(get_stage(inputs[i].stage_type));
         if (im){
             glslang::GlslangToSpv(*im, spirvvec[i].bytecode, &logger, &spv_opts);
-            // It is the same of glslang optimizer with some parts removed
-            #if ENABLE_OPT
-            if (args.optimization){
-                spirv_optimize(*im, spirvvec[i].bytecode, &logger, &spv_opts);
-            }
-            #endif
             if (!logger.getAllMessages().empty())
                 puts(logger.getAllMessages().c_str());
         }

@@ -26,7 +26,6 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/PrefabOverridesCmd.h"
-#include "command/type/DeleteEntityCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -188,11 +187,6 @@ static bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat
     return false;
 }
 
-// The spec format the game's ShaderPool/ShaderVariantCollection take as well
-static bool parseShaderSpec(const std::string& value, ShaderKey& out, std::string& error) {
-    return ShaderPool::parseShaderSpec(value, out, &error);
-}
-
 static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {
     const std::vector<ShaderBackend>& all = ShaderPool::getShaderBackends();
     backends.insert(all.begin(), all.end());
@@ -326,7 +320,7 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
-            if (!parseShaderSpec(value, key, error)) {
+            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
                 return false;
             }
             options.shaderKeys.insert(key);
@@ -378,7 +372,7 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
-            if (!parseShaderSpec(value, key, error)) {
+            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
                 return false;
             }
             options.shaderKeys.insert(key);

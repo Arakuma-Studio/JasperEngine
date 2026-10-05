@@ -176,7 +176,7 @@ namespace jasperengine::editor{
         bool forceDockTabs = false;
 
         // captureTabOrder() mirrors the live tab order into project.tabs every
-        // frame; these debounce persisting that to project.yaml until the user
+        // frame; these debounce persisting that to workspace.yaml until the user
         // stops dragging (a reorder triggers no save on its own otherwise).
         bool tabsOrderDirty = false;
         double tabsOrderChangeTime = 0.0;

@@ -37,10 +37,6 @@ namespace {
         FastEnumerateFn enumerate;
     };
 
-    void* nullPropertyPtr() {
-        return nullptr;
-    }
-
     template<typename Component>
     Component& getDefaultComponent() {
         static Component component{};
@@ -64,11 +60,7 @@ namespace {
 
     template<typename Component, typename Member, Member Component::*MemberPtr>
     constexpr FastPropertyDescriptor makeFastPropertyNoDefault(const char* name, PropertyType type, uint64_t updateFlags) {
-        return {name, type, updateFlags, &nullPropertyPtr, &getMemberRef<Component, Member, MemberPtr>};
-    }
-
-    constexpr FastPropertyDescriptor makeCustomProperty(const char* name, PropertyType type, uint64_t updateFlags, FastDefGetter getDef, FastRefGetter getRef) {
-        return {name, type, updateFlags, getDef, getRef};
+        return {name, type, updateFlags, nullptr, &getMemberRef<Component, Member, MemberPtr>};
     }
 
     template<typename Component, size_t N>
@@ -421,8 +413,8 @@ namespace {
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
-        makeCustomProperty("shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, &nullPropertyPtr, &getLightShadowNearRef),
-        makeCustomProperty("shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, &nullPropertyPtr, &getLightShadowFarRef),
+        {"shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowNearRef},
+        {"shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowFarRef},
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
     };
 

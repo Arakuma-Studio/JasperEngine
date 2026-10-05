@@ -14,7 +14,6 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/SHA1.h"
-#include "util/Util.h"
 
 #include <cstring>
 #include <cstdint>

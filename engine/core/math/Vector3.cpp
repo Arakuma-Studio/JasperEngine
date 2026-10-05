@@ -166,15 +166,7 @@ float Vector3::squaredDistance(const Vector3& rhs) const{
 }
 
 Vector3& Vector3::normalize(){
-    float length = (float)sqrt( x * x + y * y + z * z );
-
-    if (length > 0.0){
-        float invLength = 1.0f / length;
-        x *= invLength;
-        y *= invLength;
-        z *= invLength;
-    }
-    
+    normalizeL();
     return *this;
 }
 

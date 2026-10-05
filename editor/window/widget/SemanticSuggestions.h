@@ -34,7 +34,6 @@ namespace jasperengine::editor {
         std::string label;           // Display text
         std::string insertText;      // Text to insert
         std::string detail;          // Additional info (e.g., type signature)
-        std::string documentation;   // Full documentation
         std::string parentType;      // The class/type this belongs to (if any)
         std::string typeInfo;        // Declared type (for variables/fields)
         std::string namespaceName;   // Namespace a top-level symbol is reached through ("jasperengine::")

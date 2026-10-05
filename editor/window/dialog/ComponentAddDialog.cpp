@@ -49,12 +49,8 @@ namespace {
 
 }
 
+// Component names come from Catalog::getComponentDisplayName.
 ComponentAddDialog::ComponentAddDialog() {
-    initializeCategories();
-}
-
-// Unity's Add Component menu groups; names come from Catalog::getComponentDisplayName
-void ComponentAddDialog::initializeCategories() {
     m_categories = {
         {"Mesh", ICON_FA_SHAPES, {
             {ComponentType::MeshComponent, "Draws a mesh with its materials"},

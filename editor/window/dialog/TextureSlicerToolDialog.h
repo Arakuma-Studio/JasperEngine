@@ -74,7 +74,6 @@ private:
     std::function<void()> m_onCancel;
 
     void generatePreview();
-    SliceResult buildResult();
 
 public:
     void open(const Texture& previewTexture,

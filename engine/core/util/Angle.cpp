@@ -3,9 +3,10 @@
 
 #include "Angle.h"
 
-#include "Engine.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
+
+#include "Engine.h"
 
 using namespace jasperengine;
 

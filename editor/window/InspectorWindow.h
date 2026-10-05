@@ -295,7 +295,7 @@ namespace jasperengine::editor{
         std::vector<std::string> prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const;
         bool isPrefabPropertyOverridden(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, const std::string& property) const;
         // Unity's blue bar at the Inspector's left margin, from y0 to y1
-        void drawPrefabOverrideBar(float y0, float y1, bool added = false);
+        void drawPrefabOverrideBar(float y0, float y1);
         // The Apply / Revert entries for a property, a component or GameObject state, into the
         // menu being drawn; stateBits for state (type ignored), property empty for a whole component
         void drawPrefabApplyRevertItems(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type,
@@ -308,7 +308,7 @@ namespace jasperengine::editor{
         // Unity's "(Removed)" component entries after the components
         void drawRemovedPrefabComponents(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly);
         // The Overrides dropdown's comparison of one item (Prefab Source | Override)
-        void drawPrefabComparison(SceneProject* sceneProject, const PrefabOverrideEntry& entry, Entity root, bool locked);
+        void drawPrefabComparison(SceneProject* sceneProject, const PrefabOverrideEntry& entry, bool locked);
         std::string formatPrefabValue(EntityRegistry* registry, const PropertyData& prop);
         void drawTagCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
         void drawLayerCombo(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, float width);
@@ -401,7 +401,7 @@ namespace jasperengine::editor{
         // table value cell. setShader issues the undoable command; onFork opens the modal
         // that selects the destination and exact shader name before files are written.
         // idSuffix uniquifies ImGui IDs and the edit-files popup within the window.
-        void drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
+        void drawShaderRowContents(const std::string& currentShader,
                                    const std::function<void(const std::string&)>& setShader,
                                    const std::function<void()>& onFork,
                                    const std::string& idSuffix);

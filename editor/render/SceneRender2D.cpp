@@ -95,72 +95,6 @@ editor::SceneRender2D::~SceneRender2D(){
     delete tileLines;
 }
 
-bool editor::SceneRender2D::instanciateBodyLines(Entity entity){
-    if (bodyLines.find(entity) == bodyLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        bodyLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender2D::instanciateJointLines(Entity entity){
-    if (jointLines.find(entity) == jointLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender2D::instanciateLight2DLines(Entity entity){
-    if (light2DLines.find(entity) == light2DLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        light2DLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender2D::instanciateShadowCaster2DLines(Entity entity){
-    if (shadowCaster2DLines.find(entity) == shadowCaster2DLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        shadowCaster2DLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender2D::instanciateLinePointLines(Entity entity){
-    if (linePointLines.find(entity) == linePointLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender2D::instanciatePolygonPointLines(Entity entity){
-    if (polygonPointLines.find(entity) == polygonPointLines.end()){
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
 // square marker for an editable point (occluder polygon points, line endpoints)
 void editor::SceneRender2D::addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color){
     linesObj->addLine(worldPoint + Vector3(-halfSize, -halfSize, 0.0f), worldPoint + Vector3(halfSize, -halfSize, 0.0f), color);
@@ -983,7 +917,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentBodies.insert(entity);
-            instanciateBodyLines(entity);
+            ensureOverlayLines(bodyLines, entity);
             bool highlighted = isDescendantSelected(entity);
             bool isVisible = displaySettings.showAllBodies || highlighted;
 
@@ -995,7 +929,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentLights2D.insert(entity);
-            instanciateLight2DLines(entity);
+            ensureOverlayLines(light2DLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateLight2DLines(entity, transform, light2d, highlighted, highlighted);
@@ -1022,7 +956,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentOccluders2D.insert(entity);
-            instanciateShadowCaster2DLines(entity);
+            ensureOverlayLines(shadowCaster2DLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateShadowCaster2DLines(entity, transform, shadowcaster2d, highlighted, highlighted);
@@ -1033,7 +967,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentLinePoints.insert(entity);
-            instanciateLinePointLines(entity);
+            ensureOverlayLines(linePointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateLinePointLines(entity, transform, linesComp, highlighted);
@@ -1044,7 +978,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentPolygonPoints.insert(entity);
-            instanciatePolygonPointLines(entity);
+            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, false, highlighted);
@@ -1053,7 +987,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentPolygonPoints.insert(entity);
-            instanciatePolygonPointLines(entity);
+            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, true, highlighted);
@@ -1074,7 +1008,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             Joint2DComponent& joint = scene->getComponent<Joint2DComponent>(entity);
 
             currentJoints.insert(entity);
-            instanciateJointLines(entity);
+            ensureOverlayLines(jointLines, entity);
 
             bool isSelectedJoint = selectedEntities.find(entity) != selectedEntities.end();
             bool isBodyASelected = joint.bodyA != NULL_ENTITY && isDescendantSelected(joint.bodyA);
@@ -1306,22 +1240,6 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             ++itSound;
         }
     }
-}
-
-void editor::SceneRender2D::mouseHoverEvent(float x, float y){
-    SceneRender::mouseHoverEvent(x, y);
-}
-
-void editor::SceneRender2D::mouseClickEvent(float x, float y, std::vector<Entity> selEntities){
-    SceneRender::mouseClickEvent(x, y, selEntities);
-}
-
-void editor::SceneRender2D::mouseReleaseEvent(float x, float y){
-    SceneRender::mouseReleaseEvent(x, y);
-}
-
-void editor::SceneRender2D::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
-    SceneRender::mouseDragEvent(x, y, origX, origY, project, sceneId, selEntities, disableSelection, invertRotationSnap, preserveAspectRatio);
 }
 
 void editor::SceneRender2D::zoomAtPosition(float width, float height, Vector2 pos, float zoomFactor){

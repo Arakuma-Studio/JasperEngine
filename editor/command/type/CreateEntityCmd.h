@@ -85,7 +85,6 @@ namespace jasperengine::editor{
         std::vector<ChildEntityData> childEntities;
         Entity parent;
         EntityCreationType type;
-        std::vector<Entity> lastSelected;
         bool addToPrefab;
         bool quiet = false;
         bool wasModified;

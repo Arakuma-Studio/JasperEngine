@@ -35,8 +35,6 @@ add_library(
     src/audiosource/wav/dr_impl.cpp
     src/audiosource/wav/soloud_wav.cpp
 
-    #src/backend/opensles/soloud_opensles.cpp
-    #src/backend/sdl_static/soloud_sdl_static.cpp
     src/backend/miniaudio/soloud_miniaudio.cpp
 
     src/filter/soloud_bassboostfilter.cpp
@@ -54,7 +52,6 @@ add_library(
 )
 
 if(APPLE)
-    #set_source_files_properties(src/backend/miniaudio/soloud_miniaudio.cpp PROPERTIES LANGUAGE OBJCXX)
     set_source_files_properties(src/backend/miniaudio/soloud_miniaudio.cpp PROPERTIES XCODE_EXPLICIT_FILE_TYPE "sourcecode.cpp.objcpp")
     
     find_library(AV_FOUNDATION_LIBRARY AVFoundation)

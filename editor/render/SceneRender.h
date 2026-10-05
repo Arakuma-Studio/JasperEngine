@@ -206,6 +206,7 @@ namespace jasperengine::editor{
         void setupLight2DIcon(Light2DObjects& lo);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
+        void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
@@ -343,7 +344,6 @@ namespace jasperengine::editor{
 
         bool isUseGlobalTransform() const;
         void setUseGlobalTransform(bool useGlobalTransform);
-        void changeUseGlobalTransform();
 
         void enableCursorPointer();
         void enableCursorHand();

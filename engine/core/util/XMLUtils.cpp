@@ -9,8 +9,6 @@
 using namespace jasperengine;
 
 tinyxml2::XMLElement* XMLUtils::getNodeForKey(const char* XMLFilePath, const char* rootName, const char* key, tinyxml2::XMLElement** rootNode, tinyxml2::XMLDocument* doc){
-    tinyxml2::XMLElement* curNode = NULL;
-
     *rootNode = NULL;
 
     File file;
@@ -34,23 +32,13 @@ tinyxml2::XMLElement* XMLUtils::getNodeForKey(const char* XMLFilePath, const cha
 
         tinyxml2::XMLElement *rootElement = doc->NewElement(rootName);
         if (!rootElement)
-            return curNode;
+            return nullptr;
 
         doc->LinkEndChild(rootElement);
         *rootNode = rootElement;
     }
 
-    curNode = (*rootNode)->FirstChildElement();
-    while (curNode) {
-        const char* nodeName = curNode->Value();
-        if (!strcmp(nodeName, key)){
-            return curNode;
-        }
-
-        curNode = curNode->NextSiblingElement();
-    }
-
-    return curNode;
+    return (*rootNode)->FirstChildElement(key);
 }
 
 std::string XMLUtils::getValueForKey(const char* XMLFilePath, const char* rootName, const char *key){

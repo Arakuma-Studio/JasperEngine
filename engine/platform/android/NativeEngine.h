@@ -81,8 +81,6 @@ private:
 
     struct NativeEngineSavedState mState;
 
-    GameTextInputState mGameTextInputState;
-
     bool initDisplay();
     bool initSurface();
     bool initContext();
@@ -95,7 +93,7 @@ private:
 
     int getGamepadSlot(int32_t deviceId);
     void handleGamepadMotion(GameActivityMotionEvent* motionEvent);
-    bool handleEglError(EGLint error);
+    void handleEglError(EGLint error);
 
     bool prepareToRender();
 

@@ -1847,7 +1847,7 @@ void editor::SceneWindow::snapCameraToDirection(Camera* camera, const Vector3& d
     camera->setTarget(target.x, target.y, target.z);
 }
 
-bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth, int canvasHeight) {
+bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth) {
     if (sceneProject->sceneType != SceneType::SCENE_3D) return false;
 
     SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
@@ -2356,7 +2356,7 @@ void editor::SceneWindow::show() {
                         float canvasX = io.MousePos.x - windowPos.x;
                         float canvasY = io.MousePos.y - windowPos.y;
                         toEngineCanvas(sceneProject.id, canvasX, canvasY);
-                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id), getHeight(sceneProject.id));
+                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id));
                     }
                 }
 

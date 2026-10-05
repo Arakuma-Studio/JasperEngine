@@ -17,11 +17,6 @@
 
 namespace jasperengine{
 
-    struct UniformStageSlot{
-        sg_shader_stage stage;
-        int slot;
-    };
-
     struct BufferInfo{
         uint32_t id;
         size_t offset;

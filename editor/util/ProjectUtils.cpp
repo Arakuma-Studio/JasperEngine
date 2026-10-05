@@ -166,7 +166,7 @@ std::map<std::string, std::string> collectBuiltInShaderIncludes(const std::strin
     std::unordered_set<std::string> visited;
 
     std::function<void(const std::string&)> visitSource = [&](const std::string& source) {
-        for (const std::string& key : editor::Util::getShaderIncludeKeys(source)) {
+        for (const std::string& key : ShaderVariantCompiler::getIncludeKeys(source)) {
             if (!visited.insert(key).second)
                 continue;
 

@@ -247,8 +247,7 @@ Everything else on the root is asset data, overridable like on any GameObject.
   prefab root's name (made unique); the import gives it the prefab root's components, at the
   prefab root's position (Unity); dropped on a parent it keeps that local placement. Dropped
   on a GameObject of an instance it is a GameObject added to that instance (Unity); in
-  Prefab Mode (`isEditingPrefabAsset`) or with `setAddToParentPrefab(true)` it is nested in
-  that instance's prefab.
+  Prefab Mode (`isEditingPrefabAsset`) it is nested in that instance's prefab.
 - **Editing the root**: like any GameObject of the instance (section 12): an edit records
   an override, but for the default overrides above, which stay the instance's own.
 - **Upgrade of old instances**: an instance written before (no `prefabInstance` block) has
@@ -448,8 +447,6 @@ unsaved changes is re-read and refreshed (`applyAssetChanges`).
 Apply to the prefab of a nested instance root (`isNestedRootApplyTarget`, the first apply
 target of such a root) writes onto that prefab's root GameObject (its default overrides
 left out) and refreshes it. Every apply primitive refuses in Play mode.
-`Prefab::setComponentOverride` / `clearComponentOverride` / `hasComponentOverride` stay as
-bookkeeping helpers (whole component, no undo).
 
 ## 11. Export and Play
 
@@ -501,7 +498,7 @@ scenes never see an instance edit. There is no "edit shared" path any more
   Hierarchy refuses the whole drop and shows Unity's "Cannot restructure Prefab instance"
   dialog with **Open Prefab** (Prefab Mode in context of the instance holding it,
   `openPrefabFromHierarchy`), the AI actions return the message. Nothing reaches the asset
-  (`moveEntityFromPrefab` is no instance path any more). Free: an instance root and an added
+  in that case. Free: an instance root and an added
   GameObject (moved below an instance's GameObject it is an added GameObject of it, its
   sibling place saved with it; moved out it is a plain GameObject again), and a Prefab
   Mode stage's own GameObjects (`isEditingPrefabAsset`: an asset edit). Deleting a member

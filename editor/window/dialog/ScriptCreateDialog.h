@@ -54,10 +54,6 @@ private:
     std::string sanitizeClassName(const std::string& in) const;
     std::string inferClassName(const fs::path& headerPath, const std::string& fallback) const;
 
-    fs::path makeHeaderPath(const std::string& className) const;
-    fs::path makeSourcePath(const std::string& className) const;
-    fs::path makeLuaPath(const std::string& moduleName) const;
-
     void writeFiles(const fs::path& headerPath,
                     const fs::path& sourcePath,
                     const std::string& classOrModuleName,

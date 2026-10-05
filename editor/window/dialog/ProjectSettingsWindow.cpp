@@ -644,16 +644,6 @@ static void drawProjectFilePathSetting(
     endSettingsRow(tooltip);
 }
 
-static void showDisabledItemTooltip(const std::string& text) {
-    if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) return;
-
-    ImGui::BeginTooltip();
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 25.0f);
-    ImGui::TextUnformatted(text.c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-}
-
 static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) {
     if (canvasWidth <= 0 || canvasHeight <= 0) return;
 

@@ -233,36 +233,15 @@ ActionFrame& Animation::getActionFrame(unsigned int index){
 }
 
 void Animation::setActionFrameStartTime(unsigned int index, float startTime){
-    AnimationComponent& animation = getComponent<AnimationComponent>();
-
-    try{
-        animation.actions.at(index).startTime = startTime;
-    }catch (const std::out_of_range& e){
-        Log::error("Retrieving non-existent action: %s", e.what());
-        throw;
-	}
+    getActionFrame(index).startTime = startTime;
 }
 
 void Animation::setActionFrameDuration(unsigned int index, float duration){
-    AnimationComponent& animation = getComponent<AnimationComponent>();
-
-    try{
-        animation.actions.at(index).duration = duration;
-    }catch (const std::out_of_range& e){
-        Log::error("Retrieving non-existent action: %s", e.what());
-        throw;
-	}
+    getActionFrame(index).duration = duration;
 }
 
 void Animation::setActionFrameEntity(unsigned int index, Entity action){
-    AnimationComponent& animation = getComponent<AnimationComponent>();
-
-    try{
-        animation.actions.at(index).action = action;
-    }catch (const std::out_of_range& e){
-        Log::error("Retrieving non-existent action: %s", e.what());
-        throw;
-	}
+    getActionFrame(index).action = action;
 }
 
 void Animation::clearActionFrames(){

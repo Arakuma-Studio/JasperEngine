@@ -104,7 +104,6 @@ check(F + '/Tree/Branch/Twig/Knot' not in fresh and F + '/Tree/Branch/Leaf/Nest'
       'added GameObject removed by the level above, added below a nested nested root')
 
 print('== save and reload')
-shutil.copytree(P, os.path.join(WORK, 'save1'))
 editor(P, os.path.join(WORK, 'reload1.yaml'), save=True, name='reload1')
 shutil.copytree(P, os.path.join(WORK, 'save2'))
 editor(P, os.path.join(WORK, 'reload2.yaml'), save=True, name='reload2')

@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// SceneSaveDialog.cpp
 #include "SceneSaveDialog.h"
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
@@ -37,9 +36,8 @@ void SceneSaveDialog::open(const fs::path& projectPath, const fs::path& initialD
     m_onSave = onSave;
     m_onCancel = onCancel;
 
-    // Set default filename
     strncpy(m_fileNameBuffer, defaultName.c_str(), sizeof(m_fileNameBuffer) - 1);
-    m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0'; // Ensure null termination
+    m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0';
 }
 
 void SceneSaveDialog::show() {
@@ -47,14 +45,11 @@ void SceneSaveDialog::show() {
         return;
     }
 
-    // Setup modal popup
     ImGui::OpenPopup("Save Scene##SaveSceneModal");
 
-    // Center the popup
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
-    // Setup window flags for modal dialog
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
@@ -62,7 +57,6 @@ void SceneSaveDialog::show() {
     bool popupOpen = ImGui::BeginPopupModal("Save Scene##SaveSceneModal", nullptr, flags);
 
     if (popupOpen) {
-        // Directory browser tree with icons
         if (ImGui::BeginChild("DirectoryBrowser", ImVec2(300, 200), true)) {
             static ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable;
 
@@ -70,35 +64,27 @@ void SceneSaveDialog::show() {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
 
-                // Show project root with special icon
-                bool rootOpen = true; // Always keep root open
-                ImGui::SetNextItemOpen(rootOpen, ImGuiCond_Always);
+                ImGui::SetNextItemOpen(true, ImGuiCond_Always);
 
-                // Project root is always highlighted if selected
                 bool isRootSelected = (m_selectedPath == m_projectPath.string());
 
-                // Use empty label for the tree node itself
                 if (ImGui::TreeNodeEx("##root", 
                                     ImGuiTreeNodeFlags_OpenOnArrow | 
                                     ImGuiTreeNodeFlags_SpanFullWidth | 
                                     (isRootSelected ? ImGuiTreeNodeFlags_Selected : 0))) {
 
-                    // Display icon separately - always use open folder for root since it's always open
                     ImGui::SameLine(0, 0);
                     ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "%s", ICON_FA_FOLDER_OPEN);
 
-                    // Display text
                     ImGui::SameLine();
                     ImGui::TextUnformatted("Project");
 
-                    // If clicked, select the project root directory
                     if (ImGui::IsItemClicked() || 
                         (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
                         m_selectedPath = m_projectPath.string();
                     }
 
-                    // Recursively display directory tree
-                    displayDirectoryTree(m_projectPath, m_projectPath);
+                    displayDirectoryTree(m_projectPath);
 
                     ImGui::TreePop();
                 }
@@ -108,28 +94,23 @@ void SceneSaveDialog::show() {
         }
         ImGui::EndChild();
 
-        // File name input
         ImGui::TextUnformatted("Scene Name");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##fileName", m_fileNameBuffer, sizeof(m_fileNameBuffer));
 
-        // Show current selected directory path
         const fs::path saveDir = fs::relative(m_selectedPath, m_projectPath);
         const std::string saveIn = (saveDir.empty() || saveDir == ".") ? "Project" : "Project/" + saveDir.generic_string();
         ImGui::TextWrapped("Save in: %s", saveIn.c_str());
 
-        // Get filename as string for validation and processing
         std::string fileName = m_fileNameBuffer;
 
         // Check if the filename has the correct extension
         if (!fileName.empty() && fileName.find(".scene") == std::string::npos) {
             fileName += ".scene";
-            // Update the buffer with the extension
             strncpy(m_fileNameBuffer, fileName.c_str(), sizeof(m_fileNameBuffer) - 1);
-            m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0'; // Ensure null termination
+            m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0';
         }
 
-        // Validation
         bool canSave = !fileName.empty();
         fs::path fullPath = fs::path(m_selectedPath) / fileName;
         bool fileExists = fs::exists(fullPath);
@@ -144,7 +125,6 @@ void SceneSaveDialog::show() {
         float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
-        // Buttons
         ImGui::BeginDisabled(!canSave);
         if (ImGui::Button("Save", ImVec2(120, 0))) {
             if (m_onSave) {
@@ -189,18 +169,16 @@ void SceneSaveDialog::show() {
     }
 }
 
-void SceneSaveDialog::displayDirectoryTree(const fs::path& rootPath, const fs::path& currentPath) {
+void SceneSaveDialog::displayDirectoryTree(const fs::path& currentPath) {
     try {
         std::vector<fs::path> subDirs;
 
-        // Collect directories first to sort them
         for (const auto& entry : fs::directory_iterator(currentPath)) {
             if (entry.is_directory()) {
                 subDirs.push_back(entry.path());
             }
         }
 
-        // Sort directories by name
         std::sort(subDirs.begin(), subDirs.end());
 
         for (const auto& dirPath : subDirs) {
@@ -209,14 +187,10 @@ void SceneSaveDialog::displayDirectoryTree(const fs::path& rootPath, const fs::p
                 continue;
             }
 
-            // We'll set the icon based on whether the node is open
-            // First, push ID to ensure uniqueness for TreeNodeEx
             ImGui::PushID(dirPath.string().c_str());
 
-            // Set tree node flags
             ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
 
-            // Highlight the selected directory
             bool isSelected = (m_selectedPath == dirPath.string());
             if (isSelected) {
                 nodeFlags |= ImGuiTreeNodeFlags_Selected;
@@ -235,28 +209,18 @@ void SceneSaveDialog::displayDirectoryTree(const fs::path& rootPath, const fs::p
                 // Ignore directory access errors
             }
 
-            // If directory has no subdirectories, make it a leaf node
             if (!hasSubDirs) {
                 nodeFlags |= ImGuiTreeNodeFlags_Leaf;
             }
 
-            // Get directory name relative to project path for display
             std::string displayName = dirPath.filename().string();
 
-            // Create node label with empty name - we'll draw icon and text separately
             bool nodeOpen = ImGui::TreeNodeEx("##dir", nodeFlags);
 
-            // Draw icon, changing based on open state
             ImGui::SameLine(0, 0); // Position right after the tree connector
-            if (nodeOpen) {
-                // Opened folder icon
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "%s", ICON_FA_FOLDER_OPEN);
-            } else {
-                // Closed folder icon
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "%s", ICON_FA_FOLDER);
-            }
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "%s",
+                               nodeOpen ? ICON_FA_FOLDER_OPEN : ICON_FA_FOLDER);
 
-            // Display the folder name next to the icon
             ImGui::SameLine();
             ImGui::Text("%s", displayName.c_str());
 
@@ -266,10 +230,9 @@ void SceneSaveDialog::displayDirectoryTree(const fs::path& rootPath, const fs::p
                 m_selectedPath = dirPath.string();
             }
 
-            // If node is open, recursively display subdirectories
             if (nodeOpen) {
                 if (hasSubDirs) {
-                    displayDirectoryTree(rootPath, dirPath);
+                    displayDirectoryTree(dirPath);
                 }
                 ImGui::TreePop();
             }

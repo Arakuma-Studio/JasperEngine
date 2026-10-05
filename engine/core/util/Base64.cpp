@@ -7,7 +7,25 @@
 
 #include "Base64.h"
 
+#include <array>
+#include <cctype>
+
 using namespace jasperengine;
+
+namespace {
+    // Match string::find's conversion to unsigned char for non-alphabet bytes.
+    // The existing is_base64 check still controls where decoding stops (including
+    // its locale-dependent behavior); this table only replaces alphabet searches.
+    constexpr std::array<unsigned char, 256> makeDecodeTable() {
+        std::array<unsigned char, 256> table{};
+        for (auto& value : table) value = 255;
+        constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (unsigned char i = 0; i < 64; ++i)
+            table[static_cast<unsigned char>(alphabet[i])] = i;
+        return table;
+    }
+    constexpr auto decodeTable = makeDecodeTable();
+}
 
 const std::string Base64::base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -71,7 +89,7 @@ std::vector<unsigned char> Base64::decode(std::string const& encoded_string){
         char_array_4[i++] = encoded_string[in_]; in_++;
         if (i ==4) {
             for (i = 0; i <4; i++)
-                char_array_4[i] = base64_chars.find(char_array_4[i]);
+                char_array_4[i] = decodeTable[char_array_4[i]];
 
             char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
             char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
@@ -88,7 +106,7 @@ std::vector<unsigned char> Base64::decode(std::string const& encoded_string){
             char_array_4[j] = 0;
 
         for (j = 0; j <4; j++)
-            char_array_4[j] = base64_chars.find(char_array_4[j]);
+            char_array_4[j] = decodeTable[char_array_4[j]];
 
         char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
         char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);

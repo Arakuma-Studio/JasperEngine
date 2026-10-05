@@ -88,7 +88,7 @@ OverallBuildProgress ResourceProgress::getOverallProgress() {
     OverallBuildProgress overall;
 
     if (activeBuilds.empty()) {
-        return overall; // All defaults to false/0
+        return overall;
     }
 
     overall.hasActiveBuilds = true;
@@ -103,14 +103,11 @@ OverallBuildProgress ResourceProgress::getOverallProgress() {
 
     // Get information about the most recent build
     auto recentIt = activeBuilds.find(mostRecentBuildId);
-    if (recentIt != activeBuilds.end()) {
-        overall.currentBuildName = recentIt->second.name;
-        overall.currentBuildType = recentIt->second.type;
-    } else {
-        // Fallback if most recent isn't found
-        overall.currentBuildName = activeBuilds.begin()->second.name;
-        overall.currentBuildType = activeBuilds.begin()->second.type;
+    if (recentIt == activeBuilds.end()) {
+        recentIt = activeBuilds.begin();
     }
+    overall.currentBuildName = recentIt->second.name;
+    overall.currentBuildType = recentIt->second.type;
 
     return overall;
 }
@@ -125,11 +122,10 @@ ResourceBuildInfo ResourceProgress::getCurrentBuild() {
     }
 
     auto it = activeBuilds.find(mostRecentBuildId);
-    if (it != activeBuilds.end()) {
-        return it->second;
+    if (it == activeBuilds.end()) {
+        it = activeBuilds.begin();
     }
-
-    return activeBuilds.begin()->second;
+    return it->second;
 }
 
 int ResourceProgress::getActiveBuildCount() {
@@ -152,7 +148,7 @@ std::vector<ResourceBuildInfo> ResourceProgress::getAllActiveBuilds() {
     // Sort by start time, most recent first.
     std::sort(builds.begin(), builds.end(), 
         [](const ResourceBuildInfo& a, const ResourceBuildInfo& b) {
-            return a.startTime > b.startTime; // Most recent first
+            return a.startTime > b.startTime;
         });
 
     return builds;

@@ -58,7 +58,6 @@ namespace jasperengine::editor {
         ScenesWindow m_scenesWindow;
 
         // UI state
-        char m_targetDirBuffer[512] = "";
         fs::path m_targetDir;
         bool m_targetDirFromDefault = false;
         bool m_projectSettingsDirty = false;
@@ -118,8 +117,6 @@ namespace jasperengine::editor {
         const char* localExportMode() const;
         void refreshShaderSelection();
         void includeShader(ShaderKey key);
-        void populateShaderList();
-        void populateShaderListFromKeys(const std::vector<ShaderKey>& shaderKeys);
         void populateBackendList();
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);

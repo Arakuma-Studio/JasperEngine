@@ -64,7 +64,3 @@ bool editor::PrefabOverrideCmd::execute(){
 void editor::PrefabOverrideCmd::undo(){
     project->restorePrefabUndoState(before);
 }
-
-bool editor::PrefabOverrideCmd::mergeWith(Command* otherCommand){
-    return false;
-}
