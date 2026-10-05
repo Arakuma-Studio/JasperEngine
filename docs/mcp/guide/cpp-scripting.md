@@ -1,0 +1,149 @@
+# C++ scripting
+
+How to write C++ gameplay scripts for a JasperEngine project. Served as
+`jasper://docs/cpp-scripting`. The runtime API of a project is the header snapshot in
+`<project>/.jasperengine/engine-api/` (copied from the editor at open/build): it is the only
+source of truth for class and method names. Never carry over names from Unity C#, Unreal or
+Godot.
+
+## Two kinds of script
+
+| Kind | Base class | Use it for |
+|---|---|---|
+| Script class | `jasperengine::ScriptBase` | general logic: game controllers, spawners, input |
+| GameObject subclass | the GameObject's own class: `Mesh`, `Primitive`, `Sprite`, `Model`, `Camera`, `GameObject`, ... | calling that class's methods on `this` (`setColor`, `setPosition`, `getPosition`) |
+
+`ScriptBase` has only `getScene()`, `getEntity()` and `isActiveAndEnabled()`; it does NOT
+have mesh or transform methods. Wrap other GameObjects explicitly
+(`GameObject(scene, entity)`, `Sprite(scene, entity)`).
+
+No reflection or declaration macro is needed (no `GENERATED_BODY`, `GDCLASS`, `Q_OBJECT`,
+`D_OBJECT`): inherit the base class and declare a `(jasperengine::Scene*, jasperengine::Entity)`
+constructor. Prefer editing the skeleton the script creation tool generated.
+
+## Skeleton (ScriptBase)
+
+```cpp
+// Spinner.h
+#pragma once
+
+#include "ScriptBase.h"
+#include "Engine.h"
+#include "ScriptProperty.h"
+
+class Spinner : public jasperengine::ScriptBase {
+public:
+    DPROPERTY("Speed")
+    float speed = 90.0f;
+
+    DPROPERTY("Target")                       // a GameObject reference set in the Inspector
+    jasperengine::GameObject* target = nullptr;
+
+    DPROPERTY("Bullet")                       // a Prefab dragged from the Project window
+    jasperengine::PrefabAsset bullet;
+
+    Spinner(jasperengine::Scene* scene, jasperengine::Entity entity);
+    virtual ~Spinner();
+
+    void onUpdate();
+};
+```
+
+```cpp
+// Spinner.cpp
+#include "Spinner.h"
+#include "GameObject.h"
+#include "Input.h"
+#include "Log.h"
+
+using namespace jasperengine;
+
+Spinner::Spinner(Scene* scene, Entity entity): ScriptBase(scene, entity) {
+    REGISTER_ENGINE_EVENT(onUpdate);
+}
+
+Spinner::~Spinner() {
+    UNREGISTER_ENGINE_EVENT(onUpdate);
+}
+
+void Spinner::onUpdate() {
+    float dt = Engine::getDeltatime();
+    if (target) {
+        Vector3 p = target->getPosition();
+        target->setPosition(p + Vector3(speed * dt, 0, 0));
+    }
+    if (Input::isKeyPressed(D_KEY_SPACE) && bullet.isValid()) {
+        GameObject go = GameObject::instantiate(bullet, Vector3(0, 5, 0), Quaternion());
+        Log::print("spawned %s", go.getName().c_str());
+    }
+}
+```
+
+A GameObject subclass looks the same with `public jasperengine::Primitive` (or `Mesh`,
+`Sprite`...) as base, `#include "Primitive.h"`, and `Primitive(scene, entity)` in the
+initializer list; it can then call `setColor(...)`, `getPosition()`, `setPosition(...)` directly.
+
+## Properties: DPROPERTY
+
+`DPROPERTY("Display Name")` before a public member exposes it in the Inspector. Supported
+member types: `bool`, `int`, `float`, `std::string`, `Vector2`, `Vector3`, `Vector4`,
+`PrefabAsset`, and pointers to engine wrapper classes or other script classes
+(`GameObject*`, `Mesh*`, `Sprite*`, `MyOtherScript*`) for GameObject references. Colors:
+`DPROPERTY("Tint", Color4) Vector4 tint = Vector4(1,1,1,1);` (or `Color3` with a `Vector3`).
+
+## Events
+
+| Macro (in the constructor) | Pair in the destructor | Calls |
+|---|---|---|
+| `REGISTER_ENGINE_EVENT(onUpdate)` | `UNREGISTER_ENGINE_EVENT(onUpdate)` | every frame |
+| `REGISTER_ENGINE_EVENT(onFixedUpdate)` | `UNREGISTER_ENGINE_EVENT(onFixedUpdate)` | every physics step |
+| `REGISTER_BUTTON_EVENT(onPress, method)` | `UNREGISTER_BUTTON_EVENT(onPress, method)` | Button events |
+| `REGISTER_UI_EVENT(event, method)`, `REGISTER_SCROLLBAR_EVENT`, `REGISTER_PANEL_EVENT` | `UNREGISTER_...` | UI component events |
+| `REGISTER_COMPONENT_EVENT(Component, event, method)` | `UNREGISTER_COMPONENT_EVENT(...)` | any component's event |
+
+The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
+`onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
+disabled entry) are skipped.
+
+## Rules that bite
+
+- Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,
+  `"Input.h"`, `"Log.h"`, `"GameObject.h"`, `"Mesh.h"`, `"component/ScriptComponent.h"`.
+  Never `#include <core/...>`.
+- Logging: `Log::print("pos %f %f", p.x, p.y)`, `Log::warn`, `Log::error` (printf format).
+  Never `printf`, `std::cout` or `Engine::log` (it does not exist).
+- Key codes are `D_KEY_*` macros (`D_KEY_SPACE`, `D_KEY_LEFT`); Lua uses `Input.KEY_*`.
+- Angles are in DEGREES by default (`Engine::setUseDegrees(false)` switches):
+  `Quaternion(angle, axis)` takes the angle first; `Quaternion::fromEulerAngles`,
+  `Camera::rotateView` all go through `Angle::defaultToRad`. `std::sin/cos` want radians:
+  convert with `Angle::defaultToRad`, `Angle::degToDefault`, `Angle::radToDefault`.
+- Physics: continuous forces in `onFixedUpdate`, not multiplied by deltatime; teleport with
+  `Rigidbody::setPosition/setRotation` or `Rigidbody2D::setPosition/setAngle`, never by
+  writing the GameObject's transform from `onFixedUpdate`. See `jasper://docs/physics`.
+- `Rigidbody::setMass` only writes the live Jolt body and is lost on reload: author density.
+
+## Where sources go and how they build
+
+- Script files (`.h`/`.cpp`) can live anywhere in the project outside `.jasperengine/`. The
+  editor discovers the classes attached to GameObjects and compiles them into the project
+  library (editor Play) or the game (export).
+- **Script directories** (Project Settings > Directories, `scriptDirs` in project.yaml) are
+  compiled whole and are include roots: `<root>/Player/Thing.h` is included as
+  `"Player/Thing.h"`. Shared helper classes belong there. A `.cpp` neither under a root nor
+  included by an attached script is not compiled at all. Discovery skips hidden directories
+  and directories named `build`.
+- The editor runs a C++ build only when an enabled C++ script is attached to some GameObject:
+  in a Lua-only project helper sources are first compiled by an export.
+- **Never edit the generated `CMakeLists.txt`** (regenerated every build). Custom settings go
+  in `ProjectBuild.cmake` at the project root, attached to `${JASPERENGINE_TARGET}` with paths
+  from `${JASPERENGINE_SCRIPTS_DIR}`:
+  ```cmake
+  target_include_directories(${JASPERENGINE_TARGET} PRIVATE ${JASPERENGINE_SCRIPTS_DIR}/Source/Public)
+  target_link_libraries(${JASPERENGINE_TARGET} PRIVATE mylib)
+  ```
+- The C++ standard is a project setting (`cxxStandard`: 17, 20 or 23); do not set
+  `CMAKE_CXX_STANDARD` yourself.
+- Code that must build with a physics backend disabled in the export guards on
+  `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.
+- Verify: play, then read the Console. A compile error is a build failure with compiler
+  messages; a runtime failure is a "Script crash in scene ..." entry.

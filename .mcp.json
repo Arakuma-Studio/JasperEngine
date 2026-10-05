@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "jasper": {
+      "type": "stdio",
+      "command": "${JASPER_EDITOR:-build/linux/editor-install/bin/jasperengine-editor}",
+      "args": ["mcp", "--project", "${JASPER_PROJECT:-/path/to/your/test/project}", "--headless"]
+    }
+  }
+}
