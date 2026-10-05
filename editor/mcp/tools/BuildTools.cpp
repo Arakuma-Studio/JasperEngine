@@ -1319,6 +1319,8 @@ struct PlayerRun {
     int maxWidth = 1280;
     std::vector<unsigned long> windowsBefore;
     unsigned long window = 0;        // the player's window once found
+    double windowFoundAt = -1.0;     // seconds since launch
+    double lastWindowSearch = -1.0;
     std::vector<PlayerShot> shots;   // timed screenshots (sorted)
     fs::path exe;
     fs::path logPath;
@@ -1372,7 +1374,8 @@ void runPlayerInput(PlayerRun& run, double elapsed) {
     if (run.actions.empty() || run.nextAction >= run.actions.size() || !run.inputError.empty() || run.exited) return;
     if (run.inputStartedAt < 0.0) {
         if (elapsed < run.inputDelay) return;
-        if (!run.window) run.window = findPlayerWindow(run.pid, run.windowsBefore);
+        // raised on top of the editor when found: give it a moment to draw there
+        if (run.window && elapsed < run.windowFoundAt + 0.5) return;
         if (!run.window) {
             if (elapsed > run.inputDelay + 10.0) run.inputError = "the player opened no window to send the input to";
             return;
@@ -1738,11 +1741,18 @@ void runBuildTool(const CallPtr& call) {
         }
         const double elapsed = secondsSince(run->started);
         if (!run->exited && !run->terminating) {
+            // look for the player's window (and raise it) as soon as it opens
+            if (!run->window && (!run->shots.empty() || !run->actions.empty()) && elapsed - run->lastWindowSearch >= 0.2) {
+                run->lastWindowSearch = elapsed;
+                run->window = findPlayerWindow(run->pid, run->windowsBefore);
+                if (run->window) run->windowFoundAt = elapsed;
+            }
             runPlayerInput(*run, elapsed);
             for (PlayerShot& shot : run->shots) {
                 if (shot.done || elapsed < shot.at) continue;
+                // a window raised a moment ago may not have drawn on top yet
+                if (run->window && elapsed < run->windowFoundAt + 0.3) break;
                 shot.done = true;
-                if (!run->window) run->window = findPlayerWindow(run->pid, run->windowsBefore);
                 shot.capture = captureWindow(run->window, run->maxWidth);
                 shot.at = elapsed;
                 break;   // one per frame
