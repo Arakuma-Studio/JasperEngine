@@ -90,7 +90,10 @@ struct SessionRecord {
     Clock::time_point playingSince;
     bool reachedPlaying = false;
     bool stopRequested = false;     // stopped through the play tool
-    uint64_t framesPlaying = 0;
+    uint64_t framesPlaying = 0;     // game frames (Engine::getGameFrames since the session began)
+    uint64_t engineFramesBase = 0;
+    double engineTimeBase = 0.0;
+    double gameTime = 0.0;          // scaled seconds the game advanced
     size_t errors = 0;
     size_t warnings = 0;
     std::string crash;              // "Script crash in scene ..." message
@@ -124,7 +127,17 @@ struct PlayStartWait {
     bool cancelling = false;
 };
 
+// Game clock settings of the MCP (play time_scale / fixed_fps / auto_pause); they stay for
+// later sessions until changed
+struct TimeControl {
+    double timeScale = 1.0;
+    int fixedFps = 0;               // 0: real time
+    bool autoPause = false;
+    int advancers = 0;              // calls letting an auto-paused game run (wait, send_input, step)
+};
+
 struct PlayToolsState {
+    TimeControl time;
     SessionRecord current;
     SessionRecord last;
     uint64_t serialCounter = 0;
@@ -196,7 +209,8 @@ Json sessionJson(const SessionRecord& record) {
         {"errors", record.errors},
         {"warnings", record.warnings},
         {"crashed", !record.crash.empty()},
-        {"frames", record.framesPlaying}
+        {"frames", record.framesPlaying},
+        {"game_time", round3(record.gameTime)}
     };
     if (!record.crash.empty()) out["crash"] = record.crash;
     if (record.active) {
@@ -209,6 +223,67 @@ Json sessionJson(const SessionRecord& record) {
 }
 
 void finishStartWaits(McpContext& ctx);
+
+// ================================================================== game clock
+
+// The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
+void applyTimeSettings() {
+    const TimeControl& t = state().time;
+    Engine::setTimeScale(static_cast<float>(t.timeScale));
+    Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
+}
+
+// auto_pause: the simulation is held unless a call is advancing it; the game always gets its
+// first frame (so it has drawn once) before the first hold
+void applyHold(McpContext& ctx) {
+    PlayToolsState& s = state();
+    Project* project = ctx.project();
+    const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
+    SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
+    const bool running = sp && isRunningState(sp->playState) && s.current.active;
+    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.framesPlaying >= 1;
+    if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
+}
+
+// A call lets the game run (auto_pause) from now until its Advance is released
+struct Advance {
+    McpContext* ctx = nullptr;
+    bool active = false;
+    void acquire(McpContext& c) {
+        if (active) return;
+        ctx = &c;
+        active = true;
+        state().time.advancers++;
+        applyHold(c);
+    }
+    void release() {
+        if (!active) return;
+        active = false;
+        state().time.advancers = std::max(0, state().time.advancers - 1);
+        applyHold(*ctx);
+    }
+    // a dropped call (cancelled): the monitor re-applies the hold on its next frame
+    ~Advance() {
+        if (active) state().time.advancers = std::max(0, state().time.advancers - 1);
+    }
+};
+
+Json timeJson(bool withSession) {
+    const PlayToolsState& s = state();
+    // while it plays, the Engine's (a script may change Engine.timeScale)
+    Json out = {
+        {"time_scale", withSession ? round3(Engine::getTimeScale()) : s.time.timeScale},
+        {"fixed_fps", s.time.fixedFps > 0 ? Json(s.time.fixedFps) : Json(nullptr)},
+        {"auto_pause", s.time.autoPause}
+    };
+    if (withSession) {
+        out["held"] = Engine::isSimulationHeld();
+        out["game_time"] = round3(s.current.gameTime);
+        out["frames"] = s.current.framesPlaying;
+    }
+    if (withSession && std::abs(Engine::getTimeScale() - s.time.timeScale) > 1e-3) out["time_scale_set_by_mcp"] = s.time.timeScale;
+    return out;
+}
 
 // Called every frame by the monitor and at the start of every play tool call
 void observeSession(McpContext& ctx) {
@@ -231,8 +306,11 @@ void observeSession(McpContext& ctx) {
         record.startLogId = s.pendingStartLogId ? s.pendingStartLogId : Out::lastLogId();
         record.scanCursor = record.startLogId;
         record.startTime = Clock::now();
+        record.engineFramesBase = Engine::getGameFrames();
+        record.engineTimeBase = Engine::getGameTime();
         s.pendingStartLogId = 0;
         s.current = record;
+        applyTimeSettings();
     }
 
     if (s.current.active) {
@@ -242,7 +320,10 @@ void observeSession(McpContext& ctx) {
             if (!s.current.reachedPlaying) s.current.playingSince = Clock::now();
             s.current.reachedPlaying = true;
         }
-        if (sp && sp->playState == ScenePlayState::PLAYING) s.current.framesPlaying++;
+        if (playId != NULL_PROJECT_SCENE) {
+            s.current.framesPlaying = Engine::getGameFrames() - std::min(Engine::getGameFrames(), s.current.engineFramesBase);
+            s.current.gameTime = std::max(0.0, Engine::getGameTime() - s.current.engineTimeBase);
+        }
         if (playId == NULL_PROJECT_SCENE) {
             SessionRecord& r = s.current;
             r.active = false;
@@ -258,6 +339,7 @@ void observeSession(McpContext& ctx) {
         }
     }
 
+    applyHold(ctx);
     finishStartWaits(ctx);
 }
 
@@ -556,6 +638,7 @@ Json playStateJson(McpContext& ctx) {
     } else if (SceneProject* sp = defaultPlayScene(project)) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
+    out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     return out;
@@ -1118,7 +1201,9 @@ void finishStartWaits(McpContext& ctx) {
             s.current.stopRequested = true;
             if (playId == wait.sceneId && sp && sp->playState != ScenePlayState::CANCELLING) project->stop(wait.sceneId);
         }
-        if (playId == wait.sceneId && sp && isRunningState(sp->playState)) {
+        // auto_pause: once its first frame ran and it is held
+        const bool settled = !s.time.autoPause || Engine::isSimulationHeld() || seconds > 30.0;
+        if (playId == wait.sceneId && sp && isRunningState(sp->playState) && settled) {
             Json data = startResultJson(ctx, wait.startLogId, seconds);
             wait.job->succeed("Playing \"" + sp->name + "\".", data);
             continue;
@@ -1419,6 +1504,50 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
     });
 }
 
+// play's time_scale / fixed_fps / auto_pause (any action); false + error for bad values
+bool applyTimeArgs(McpContext& ctx, const Json& args, std::string& error) {
+    TimeControl next = state().time;
+    if (args.contains("time_scale") && !args["time_scale"].is_null()) {
+        if (!args["time_scale"].is_number() || args["time_scale"].get<double>() < 0.0 || args["time_scale"].get<double>() > 100.0) {
+            error = "time_scale must be a number from 0 to 100 (1 = real time, 0.5 = half speed, 0 = frozen).";
+            return false;
+        }
+        next.timeScale = args["time_scale"].get<double>();
+    }
+    if (args.contains("fixed_fps") && !args["fixed_fps"].is_null()) {
+        const Json& v = args["fixed_fps"];
+        if (v.is_boolean()) next.fixedFps = v.get<bool>() ? 60 : 0;
+        else if (v.is_number_integer() && v.get<int>() >= 0 && v.get<int>() <= 1000) next.fixedFps = v.get<int>();
+        else {
+            error = "fixed_fps must be an integer from 0 (real time) to 1000; 60 = every frame advances exactly 1/60 s.";
+            return false;
+        }
+    }
+    if (args.contains("auto_pause") && !args["auto_pause"].is_null()) {
+        if (!args["auto_pause"].is_boolean()) {
+            error = "auto_pause must be true or false.";
+            return false;
+        }
+        next.autoPause = args["auto_pause"].get<bool>();
+    }
+    const bool clockChanged = next.timeScale != state().time.timeScale || next.fixedFps != state().time.fixedFps ||
+                              args.contains("time_scale") || args.contains("fixed_fps");
+    next.advancers = state().time.advancers;
+    state().time = next;
+    if (clockChanged && ctx.project() && ctx.project()->getPlaySessionSceneId() != NULL_PROJECT_SCENE) applyTimeSettings();
+    applyHold(ctx);
+    return true;
+}
+
+std::string timeSummary() {
+    const TimeControl& t = state().time;
+    std::string text = "Clock: ";
+    text += t.fixedFps > 0 ? "fixed 1/" + std::to_string(t.fixedFps) + " s per frame" : std::string("real time");
+    if (t.timeScale != 1.0) text += ", time_scale " + std::to_string(t.timeScale).substr(0, 5);
+    if (t.autoPause) text += ", auto_pause (the game only runs inside wait / send_input / step)";
+    return text + ".";
+}
+
 void playTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1430,6 +1559,20 @@ void playTool(const CallPtr& call) {
     observeSession(ctx);
     const std::string action = lowerCopy(args.value("action", ""));
     const Json sceneRef = args.contains("scene") ? args["scene"] : Json();
+    {
+        std::string error;
+        if (!applyTimeArgs(ctx, args, error)) {
+            call->fail(error);
+            return;
+        }
+    }
+    if (action == "set") {
+        Json data = w3::playStateJson(ctx);
+        call->ok(timeSummary() + (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE
+                                      ? " Applies when play starts (and to later sessions until changed)."
+                                      : " Applied to the running game."), data);
+        return;
+    }
 
     if (action == "start") {
         playStart(call, sceneRef);
@@ -1451,7 +1594,7 @@ void playTool(const CallPtr& call) {
     const uint32_t playId = project->getPlaySessionSceneId();
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     if (action != "pause" && action != "resume" && action != "step") {
-        call->fail("action must be start, stop, restart, pause, resume or step.");
+        call->fail("action must be start, stop, restart, pause, resume, step or set.");
         return;
     }
     if (!sp || !isRunningState(sp->playState)) {
@@ -1476,36 +1619,60 @@ void playTool(const CallPtr& call) {
 
     // step: n frames, each a single update of the paused game
     const int frames = std::clamp(args.value("frames", 1), 1, 600);
+    auto done = std::make_shared<int>(0);
+    auto finish = [call, done, cursor](const std::string& note) {
+        McpContext& cx = call->ctx();
+        observeSession(cx);
+        Json data = w3::playStateJson(cx);
+        w3::ConsoleQuery query;
+        query.since = cursor;
+        query.limit = 50;
+        w3::ConsoleResult console = w3::queryConsole(query);
+        data["stepped_frames"] = *done;
+        data["console"] = console.entries;
+        data["next_cursor"] = console.nextCursor;
+        std::string text = "Stepped " + std::to_string(*done) + " frame(s)" + note + ".";
+        if (!console.entries.empty()) text += " Console:\n" + w3::formatConsoleText(console.entries, 3000);
+        // stepping that ends play (crash) is an error
+        replyWithOptionalScreenshot(call, cx.project()->getPlaySessionSceneId() == NULL_PROJECT_SCENE
+            ? ToolResult::error(text + "\nPlay ended: " + sessionSummaryText(state().last), data)
+            : ToolResult::success(text, data));
+    };
+
+    // auto_pause: the game stays "playing" and runs exactly `frames` frames
+    if (state().time.autoPause && sp->playState == ScenePlayState::PLAYING) {
+        auto advance = std::make_shared<Advance>();
+        const uint64_t base = Engine::getGameFrames();
+        advance->acquire(ctx);
+        call->waitUntil([call, playId, base, frames, done]() {
+            McpContext& cx = call->ctx();
+            observeSession(cx);
+            *done = static_cast<int>(Engine::getGameFrames() - base);
+            return cx.project()->getPlaySessionSceneId() != playId || *done >= frames;
+        }, 60000 + frames * 1000, [advance, finish, playId, call](bool timedOut) {
+            advance->release();
+            if (call->ctx().project()->getPlaySessionSceneId() != playId) finish(", then play ended");
+            else finish(timedOut ? " (timed out: the game is not rendering?); held" : "; held (auto_pause)");
+        });
+        return;
+    }
+
     if (sp->playState == ScenePlayState::PLAYING) project->pause(playId);
     auto remaining = std::make_shared<int>(frames);
-    auto done = std::make_shared<int>(0);
+    auto advance = std::make_shared<Advance>();
+    advance->acquire(ctx);   // a held simulation would not step
     auto stepOnce = std::make_shared<std::function<void()>>();
-    *stepOnce = [call, playId, remaining, done, stepOnce, cursor]() {
+    *stepOnce = [call, playId, remaining, done, stepOnce, finish, advance]() {
         McpContext& c = call->ctx();
         Project* p = c.project();
         SceneProject* scene = p->getScene(playId);
-        auto finish = [call, done, cursor](const std::string& note) {
-            McpContext& cx = call->ctx();
-            Json data = w3::playStateJson(cx);
-            w3::ConsoleQuery query;
-            query.since = cursor;
-            query.limit = 50;
-            w3::ConsoleResult console = w3::queryConsole(query);
-            data["stepped_frames"] = *done;
-            data["console"] = console.entries;
-            data["next_cursor"] = console.nextCursor;
-            std::string text = "Stepped " + std::to_string(*done) + " frame(s)" + note + ".";
-            if (!console.entries.empty()) text += " Console:\n" + w3::formatConsoleText(console.entries, 3000);
-            // stepping that ends play (crash) is an error
-            replyWithOptionalScreenshot(call, cx.project()->getPlaySessionSceneId() == NULL_PROJECT_SCENE
-                ? ToolResult::error(text + "\nPlay ended: " + sessionSummaryText(state().last), data)
-                : ToolResult::success(text, data));
-        };
         if (!scene || p->getPlaySessionSceneId() != playId || !isRunningState(scene->playState) || call->cancelled()) {
+            advance->release();
             finish(", then play ended");
             return;
         }
         if (*remaining <= 0) {
+            advance->release();
             finish("; paused");
             return;
         }
@@ -1544,179 +1711,6 @@ void getPlayStateTool(const CallPtr& call) {
         text += " Last session: " + sessionSummaryText(s.last);
     }
     call->ok(text, data);
-}
-
-// ================================================================== tool: wait
-
-void waitTool(const CallPtr& call) {
-    const Json& args = call->args();
-    McpContext& ctx = call->ctx();
-    Project* project = ctx.project();
-    if (!project) {
-        call->fail("No project is open.");
-        return;
-    }
-    observeSession(ctx);
-    const double seconds = std::clamp(args.value("seconds", 0.0), 0.0, 600.0);
-    const int frames = std::clamp(args.value("frames", 0), 0, 1000000);
-    const std::string until = args.value("until", "");
-    if (seconds <= 0.0 && frames <= 0 && until.empty()) {
-        call->fail("Pass seconds, frames or until (a Lua condition), e.g. {\"seconds\": 2} or "
-                   "{\"until\": \"script('GameController').state == 'playing'\", \"timeout_seconds\": 10}.");
-        return;
-    }
-    double timeout = args.value("timeout_seconds", until.empty() ? 0.0 : 30.0);
-    if (timeout <= 0.0) timeout = std::max(seconds + 30.0, frames / 10.0 + 30.0);
-    timeout = std::clamp(timeout, 0.5, 3600.0);
-    const int pollEvery = std::clamp(args.value("poll_frames", 1), 1, 600);
-
-    const uint32_t playId = project->getPlaySessionSceneId();
-    SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
-    const bool playing = sp && isRunningState(sp->playState);
-    if (!until.empty() && !playing) {
-        call->fail("until needs the game running (play start first).", w3::playStateJson(ctx));
-        return;
-    }
-    if (!until.empty()) {
-        // syntax check up front
-        lua_State* L = LuaBinding::getLuaState();
-        const std::string expr = "return " + until;
-        if (L) {
-            const int top = lua_gettop(L);
-            if (luaL_loadbufferx(L, expr.c_str(), expr.size(), "=until", "t") != LUA_OK) {
-                lua_settop(L, top);
-                if (luaL_loadbufferx(L, until.c_str(), until.size(), "=until", "t") != LUA_OK) {
-                    const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
-                    lua_settop(L, top);
-                    call->fail("until is not valid Lua: " + error);
-                    return;
-                }
-            }
-            lua_settop(L, top);
-        }
-    }
-
-    const bool pausedSteps = sp && sp->playState == ScenePlayState::PAUSED && frames > 0;
-    if (playing) ensureMonitor(ctx);
-
-    struct WaitState {
-        uint64_t cursor = 0;
-        uint64_t serial = 0;
-        Clock::time_point start;
-        int frames = 0;
-        int polls = 0;
-        std::string reason;
-        Json conditionValue;
-        std::string conditionError;
-        bool stepping = false;
-    };
-    auto ws = std::make_shared<WaitState>();
-    ws->cursor = Out::lastLogId();
-    ws->serial = state().current.serial;
-    ws->start = Clock::now();
-    ws->stepping = pausedSteps;
-    if (pausedSteps) project->step(playId);
-
-    call->waitUntil([call, ws, seconds, frames, until, playId, pollEvery, playing]() {
-        McpContext& c = call->ctx();
-        observeSession(c);
-        Project* p = c.project();
-        ws->frames++;
-        if (playing && (p->getPlaySessionSceneId() != playId || state().current.serial != ws->serial)) {
-            ws->reason = "play_ended";
-            return true;
-        }
-        if (ws->stepping) {
-            // a paused game advances one frame per step
-            if (p->isStepPending(playId)) {
-                ws->frames--;
-                return false;
-            }
-            if (ws->frames >= frames) {
-                ws->reason = "frames";
-                return true;
-            }
-            p->step(playId);
-            return false;
-        }
-        if (frames > 0 && ws->frames >= frames) {
-            ws->reason = "frames";
-            return true;
-        }
-        if (seconds > 0.0 && secondsSince(ws->start) >= seconds) {
-            ws->reason = "seconds";
-            return true;
-        }
-        if (!until.empty() && (++ws->polls % pollEvery) == 0) {
-            SceneProject* scene = p->getScene(playId);
-            if (scene && scene->playState == ScenePlayState::PLAYING) {
-                LuaEvalResult r = runLua(p, scene, until, 2.0, 3, 50);
-                if (!r.ok) {
-                    ws->reason = "condition_error";
-                    ws->conditionError = r.error;
-                    return true;
-                }
-                ws->conditionValue = r.values.empty() ? Json(nullptr) : r.values[0];
-                if (luaTruthy(ws->conditionValue)) {
-                    ws->reason = "condition";
-                    return true;
-                }
-            }
-        }
-        return false;
-    }, static_cast<int>(timeout * 1000.0), [call, ws, until](bool timedOut) {
-        McpContext& c = call->ctx();
-        observeSession(c);
-        if (timedOut && ws->reason.empty()) ws->reason = "timeout";
-        const Json& a = call->args();
-        w3::ConsoleQuery query;
-        query.since = ws->cursor;
-        query.limit = static_cast<size_t>(std::clamp(a.value("console_limit", 50), 0, 1000));
-        query.onlyProblems = a.value("only_problems", false);
-        w3::ConsoleResult console = query.limit > 0 ? w3::queryConsole(query) : w3::ConsoleResult();
-        if (query.limit == 0) console.nextCursor = Out::lastLogId();
-
-        Json data = w3::playStateJson(c);
-        data["reason"] = ws->reason;
-        data["elapsed_seconds"] = round3(secondsSince(ws->start));
-        data["frames"] = ws->frames;
-        data["console"] = console.entries;
-        data["console_more"] = console.more;
-        data["next_cursor"] = console.nextCursor;
-        if (!until.empty()) data["condition_value"] = ws->conditionValue;
-
-        std::string text;
-        bool isError = false;
-        if (ws->reason == "play_ended") {
-            const SessionRecord& last = state().last;
-            text = "Play ended while waiting: " + sessionSummaryText(last);
-            isError = true;
-            if (!last.crash.empty()) data["crash"] = last.crash;
-        } else if (ws->reason == "condition") {
-            text = "Condition became true after " + std::to_string(ws->frames) + " frame(s) (" +
-                   std::to_string(data["elapsed_seconds"].get<double>()).substr(0, 5) + " s): " + ws->conditionValue.dump() + ".";
-        } else if (ws->reason == "condition_error") {
-            text = "The until condition failed: " + ws->conditionError;
-            data["condition_error"] = ws->conditionError;
-            isError = true;
-        } else if (ws->reason == "timeout") {
-            text = until.empty() ? "Timed out." : "Timed out after " + std::to_string(data["elapsed_seconds"].get<double>()).substr(0, 5) +
-                   " s; the condition is still " + ws->conditionValue.dump() + ".";
-            isError = !until.empty();
-        } else {
-            text = "Waited " + std::to_string(data["elapsed_seconds"].get<double>()).substr(0, 5) + " s / " +
-                   std::to_string(ws->frames) + " frame(s).";
-        }
-        if (data.value("state", "") == "stopped" && ws->reason != "play_ended") text += " (Not playing: the editor just waited.)";
-        if (data.value("state", "") == "paused" && ws->reason == "seconds") text += " (Paused: the game did not advance.)";
-        if (!console.entries.empty()) {
-            text += "\nConsole (" + std::to_string(console.errors) + " error(s)):\n" + w3::formatConsoleText(console.entries, 5000);
-        } else {
-            text += " No new console output.";
-        }
-        ToolResult result = isError ? ToolResult::error(text, data) : ToolResult::success(text, data);
-        replyWithOptionalScreenshot(call, std::move(result));
-    });
 }
 
 // ================================================================== tool: eval_lua
@@ -2079,6 +2073,8 @@ struct InputStep {
     std::string label;
 };
 
+// A sequence of input steps, advanced one frame at a time by the call running it
+// (send_input, or wait with input)
 struct InputRun {
     CallPtr call;
     std::vector<InputStep> steps;
@@ -2088,6 +2084,12 @@ struct InputRun {
     int frames = 0;
     Clock::time_point start;
     std::string error;
+    int pendingFrames = 0;          // frames to let pass before the next step
+    bool msPending = false;
+    Clock::time_point msDeadline;
+    bool finished = false;
+    HeldInput heldBefore;           // what was held before the run (cutInputShort)
+    std::shared_ptr<Advance> advance = std::make_shared<Advance>();
 };
 
 // Coordinates (canvas / normalized / view) → view pixels; error when outside the game canvas
@@ -2497,7 +2499,124 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
     return false;
 }
 
+// Runs the steps due now: once when the run starts (newFrame false), then once per frame.
+// True when every step ran or one failed (error).
+bool advanceInput(InputRun& run, bool newFrame) {
+    if (run.finished) return true;
+    if (run.pendingFrames > 0 || run.msPending) {
+        if (!newFrame) return false;
+        run.frames++;
+        if (run.pendingFrames > 0) run.pendingFrames--;
+        if (run.pendingFrames > 0 || (run.msPending && Clock::now() < run.msDeadline)) return false;
+        run.msPending = false;
+    }
+    while (run.next < run.steps.size()) {
+        InputStep& step = run.steps[run.next];
+        const std::string error = step.run();
+        run.next++;
+        if (!error.empty()) {
+            run.error = error;
+            run.finished = true;
+            return true;
+        }
+        if (step.msAfter > 0) {
+            run.pendingFrames = std::max(step.framesAfter, 1);
+            run.msPending = true;
+            run.msDeadline = Clock::now() + std::chrono::milliseconds(step.msAfter);
+            return false;
+        }
+        if (step.framesAfter > 0) {
+            run.pendingFrames = step.framesAfter;
+            return false;
+        }
+    }
+    run.finished = true;
+    return true;
+}
+
+// The input can keep running this frame; otherwise sets run.error when the game paused
+bool inputPlayable(McpContext& ctx, InputRun& run) {
+    Project* project = ctx.project();
+    SceneProject* sp = project->getScene(run.playId);
+    if (project->getPlaySessionSceneId() != run.playId || !sp || run.call->cancelled()) return false;
+    if (sp->playState != ScenePlayState::PLAYING) {
+        if (run.error.empty() && sp->playState == ScenePlayState::PAUSED) run.error = "the game was paused";
+        return false;
+    }
+    return true;
+}
+
+// A wait ended before its input: drop the remaining steps and release what they pressed
+// (what was held before the run stays held)
+bool cutInputShort(InputRun& run) {
+    if (run.finished) return false;
+    run.finished = true;
+    if (run.next >= run.steps.size()) return false;   // only the trailing gap was left
+    HeldInput& held = state().held;
+    const HeldInput& before = run.heldBefore;
+    std::vector<int> keys, buttons, touches;
+    for (int key : held.keys) if (!before.keys.count(key)) keys.push_back(key);
+    for (int key : keys) {
+        Engine::systemKeyUp(key, false, 0);
+        held.keys.erase(key);
+    }
+    const Vector2 pos = clampToView(held.mousePos);
+    for (int button : held.mouseButtons) if (!before.mouseButtons.count(button)) buttons.push_back(button);
+    for (int button : buttons) {
+        Engine::systemMouseUp(button, pos.x, pos.y, 0);
+        held.mouseButtons.erase(button);
+    }
+    for (const auto& [pointer, point] : held.touches) if (!before.touches.count(pointer)) touches.push_back(pointer);
+    for (int pointer : touches) {
+        const Vector2 p = clampToView(held.touches[pointer]);
+        Engine::systemTouchEnd(pointer, p.x, p.y);
+        held.touches.erase(pointer);
+    }
+    for (auto& [pad, padButtons] : held.gamepadButtons) {
+        std::vector<int> up;
+        auto it = before.gamepadButtons.find(pad);
+        for (int b : padButtons) if (it == before.gamepadButtons.end() || !it->second.count(b)) up.push_back(b);
+        for (int b : up) {
+            Engine::systemGamepadButtonUp(pad, b);
+            padButtons.erase(b);
+        }
+    }
+    return true;
+}
+
+// events (+ space, gap_frames) of a call → a run; false after failing the call
+std::shared_ptr<InputRun> buildInputRun(const CallPtr& call, const Json& events, const std::string& argName) {
+    McpContext& ctx = call->ctx();
+    const Json& args = call->args();
+    if (!events.is_array() || events.empty()) {
+        call->fail(argName + " must be a non-empty array, e.g. [{\"type\":\"key\",\"key\":\"space\"}, "
+                   "{\"type\":\"mouse\",\"action\":\"click\",\"x\":640,\"y\":360}].");
+        return nullptr;
+    }
+    if (events.size() > 500) {
+        call->fail("At most 500 events per call.");
+        return nullptr;
+    }
+    const std::string space = lowerCopy(args.value("space", "canvas"));
+    const int gap = std::clamp(args.value("gap_frames", 1), 0, 1000);
+    auto run = std::make_shared<InputRun>();
+    run->call = call;
+    run->playId = ctx.project()->getPlaySessionSceneId();
+    run->cursor = Out::lastLogId();
+    run->start = Clock::now();
+    run->heldBefore = state().held;
+    for (size_t i = 0; i < events.size(); i++) {
+        std::string error;
+        if (!buildEventSteps(ctx, events[i], space, gap, run->steps, error)) {
+            call->fail(argName + "[" + std::to_string(i) + "]: " + error + ".");
+            return nullptr;
+        }
+    }
+    return run;
+}
+
 void finishInputRun(const std::shared_ptr<InputRun>& run) {
+    run->advance->release();
     const CallPtr& call = run->call;
     McpContext& ctx = call->ctx();
     observeSession(ctx);
@@ -2524,61 +2643,11 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
         isError = true;
     } else {
         text = "Sent " + std::to_string(run->steps.size()) + " input step(s) over " + std::to_string(run->frames) + " frame(s).";
+        if (Engine::isSimulationHeld()) text += " Held again (auto_pause).";
     }
     if (!state().held.empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
     if (!console.entries.empty()) text += "\nConsole:\n" + w3::formatConsoleText(console.entries, 4000);
     replyWithOptionalScreenshot(call, isError ? ToolResult::error(text, data) : ToolResult::success(text, data));
-}
-
-void runInputSteps(const std::shared_ptr<InputRun>& run) {
-    const CallPtr& call = run->call;
-    McpContext& ctx = call->ctx();
-    while (true) {
-        observeSession(ctx);
-        Project* project = ctx.project();
-        SceneProject* sp = project->getScene(run->playId);
-        if (project->getPlaySessionSceneId() != run->playId || !sp || sp->playState != ScenePlayState::PLAYING ||
-            call->cancelled()) {
-            if (run->error.empty() && sp && sp->playState == ScenePlayState::PAUSED) run->error = "the game was paused";
-            finishInputRun(run);
-            return;
-        }
-        if (run->next >= run->steps.size()) {
-            const int after = std::clamp(call->args().value("frames_after", 1), 0, 100000);
-            if (after > 0) {
-                const int start = run->frames;
-                run->frames += after;
-                (void)start;
-                call->afterFrames(after, [run]() { finishInputRun(run); });
-            } else {
-                finishInputRun(run);
-            }
-            return;
-        }
-        InputStep& step = run->steps[run->next];
-        const std::string error = step.run();
-        run->next++;
-        if (!error.empty()) {
-            run->error = error;
-            finishInputRun(run);
-            return;
-        }
-        if (step.msAfter > 0) {
-            const auto until = Clock::now() + std::chrono::milliseconds(step.msAfter);
-            const int framesFloor = std::max(step.framesAfter, 1);
-            auto count = std::make_shared<int>(0);
-            call->waitUntil([until, count, framesFloor, run]() {
-                run->frames++;
-                return ++*count >= framesFloor && Clock::now() >= until;
-            }, step.msAfter + 600000, [run](bool) { runInputSteps(run); });
-            return;
-        }
-        if (step.framesAfter > 0) {
-            run->frames += step.framesAfter;
-            call->afterFrames(step.framesAfter - 1, [run]() { runInputSteps(run); });
-            return;
-        }
-    }
 }
 
 void sendInputTool(const CallPtr& call) {
@@ -2598,33 +2667,273 @@ void sendInputTool(const CallPtr& call) {
                    w3::playStateJson(ctx));
         return;
     }
-    if (!args.contains("events") || !args["events"].is_array() || args["events"].empty()) {
-        call->fail("events must be a non-empty array, e.g. [{\"type\":\"key\",\"key\":\"space\"}, "
-                   "{\"type\":\"mouse\",\"action\":\"click\",\"x\":640,\"y\":360}].");
-        return;
-    }
-    if (args["events"].size() > 500) {
-        call->fail("At most 500 events per call.");
-        return;
-    }
-    const std::string space = lowerCopy(args.value("space", "canvas"));
-    const int gap = std::clamp(args.value("gap_frames", 1), 0, 1000);
+    std::shared_ptr<InputRun> run = buildInputRun(call, args.contains("events") ? args["events"] : Json(), "events");
+    if (!run) return;
+    ensureMonitor(ctx);
+    run->advance->acquire(ctx);
 
-    auto run = std::make_shared<InputRun>();
-    run->call = call;
-    run->playId = playId;
-    run->cursor = Out::lastLogId();
-    run->start = Clock::now();
-    for (size_t i = 0; i < args["events"].size(); i++) {
-        std::string error;
-        if (!buildEventSteps(ctx, args["events"][i], space, gap, run->steps, error)) {
-            call->fail("events[" + std::to_string(i) + "]: " + error + ".");
-            return;
+    const int after = std::clamp(args.value("frames_after", 1), 0, 100000);
+    auto afterLeft = std::make_shared<int>(after);
+    advanceInput(*run, false);
+    if (run->finished && (!run->error.empty() || after == 0)) {
+        finishInputRun(run);
+        return;
+    }
+    int budgetMs = 60000 + after * 1000;
+    for (const InputStep& step : run->steps) budgetMs += step.msAfter + step.framesAfter * 1000;
+    call->waitUntil([call, run, afterLeft]() {
+        McpContext& c = call->ctx();
+        observeSession(c);
+        if (!inputPlayable(c, *run)) return true;
+        if (!run->finished) {
+            if (!advanceInput(*run, true) || !run->error.empty()) return !run->error.empty();
+            return *afterLeft == 0;
+        }
+        // frames_after
+        if (*afterLeft > 0) {
+            (*afterLeft)--;
+            run->frames++;
+        }
+        return *afterLeft == 0;
+    }, std::min(budgetMs, 3600000), [run](bool timedOut) {
+        if (timedOut && run->error.empty()) run->error = "timed out (is the game rendering?)";
+        finishInputRun(run);
+    });
+}
+
+// ================================================================== tool: wait
+
+void waitTool(const CallPtr& call) {
+    const Json& args = call->args();
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    if (!project) {
+        call->fail("No project is open.");
+        return;
+    }
+    observeSession(ctx);
+    const double seconds = std::clamp(args.value("seconds", 0.0), 0.0, 600.0);
+    const double gameSeconds = std::clamp(args.value("game_seconds", 0.0), 0.0, 3600.0);
+    const int frames = std::clamp(args.value("frames", 0), 0, 1000000);
+    const std::string until = args.value("until", "");
+    const bool hasInput = args.contains("input") && !args["input"].is_null();
+    if (seconds <= 0.0 && gameSeconds <= 0.0 && frames <= 0 && until.empty() && !hasInput) {
+        call->fail("Pass seconds, game_seconds, frames or until (a Lua condition), e.g. {\"frames\": 60} or "
+                   "{\"until\": \"script('GameController').state == 'playing'\", \"timeout_seconds\": 10}; input "
+                   "events run during the wait.");
+        return;
+    }
+    const double scale = std::max(0.05, static_cast<double>(Engine::getTimeScale()));
+    double timeout = args.value("timeout_seconds", until.empty() ? 0.0 : 30.0);
+    if (timeout <= 0.0) {
+        timeout = std::max({seconds + 30.0, frames / 10.0 + 30.0, gameSeconds / scale * 10.0 + 30.0});
+    }
+    timeout = std::clamp(timeout, 0.5, 3600.0);
+    const int pollEvery = std::clamp(args.value("poll_frames", 1), 1, 600);
+
+    const uint32_t playId = project->getPlaySessionSceneId();
+    SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
+    const bool playing = sp && isRunningState(sp->playState);
+    if ((!until.empty() || gameSeconds > 0.0 || hasInput) && !playing) {
+        call->fail(std::string(!until.empty() ? "until" : gameSeconds > 0.0 ? "game_seconds" : "input") +
+                   " needs the game running (play start first).", w3::playStateJson(ctx));
+        return;
+    }
+    if (hasInput && sp->playState != ScenePlayState::PLAYING) {
+        call->fail("The game is paused; input only reaches a playing game (play resume).", w3::playStateJson(ctx));
+        return;
+    }
+    if (!until.empty()) {
+        // syntax check up front
+        lua_State* L = LuaBinding::getLuaState();
+        const std::string expr = "return " + until;
+        if (L) {
+            const int top = lua_gettop(L);
+            if (luaL_loadbufferx(L, expr.c_str(), expr.size(), "=until", "t") != LUA_OK) {
+                lua_settop(L, top);
+                if (luaL_loadbufferx(L, until.c_str(), until.size(), "=until", "t") != LUA_OK) {
+                    const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+                    lua_settop(L, top);
+                    call->fail("until is not valid Lua: " + error);
+                    return;
+                }
+            }
+            lua_settop(L, top);
         }
     }
-    ensureMonitor(ctx);
-    call->detach();
-    runInputSteps(run);
+    std::shared_ptr<InputRun> input;
+    if (hasInput) {
+        input = buildInputRun(call, args["input"], "input");
+        if (!input) return;
+    }
+
+    const bool pausedSteps = sp && sp->playState == ScenePlayState::PAUSED && frames > 0;
+    if (playing) ensureMonitor(ctx);
+
+    struct WaitState {
+        uint64_t cursor = 0;
+        uint64_t serial = 0;
+        Clock::time_point start;
+        uint64_t engineFrames = 0;
+        double engineTime = 0.0;
+        int ticks = 0;
+        int frames = 0;
+        int polls = 0;
+        std::string reason;
+        Json conditionValue;
+        std::string conditionError;
+        bool stepping = false;
+        bool inputCut = false;
+        Advance advance;
+    };
+    auto ws = std::make_shared<WaitState>();
+    ws->cursor = Out::lastLogId();
+    ws->serial = state().current.serial;
+    ws->start = Clock::now();
+    ws->engineFrames = Engine::getGameFrames();
+    ws->engineTime = Engine::getGameTime();
+    ws->stepping = pausedSteps;
+    if (playing) ws->advance.acquire(ctx);
+    if (pausedSteps) project->step(playId);
+    if (input) advanceInput(*input, false);
+
+    call->waitUntil([call, ws, seconds, gameSeconds, frames, until, playId, pollEvery, playing, input]() {
+        McpContext& c = call->ctx();
+        observeSession(c);
+        Project* p = c.project();
+        ws->ticks++;
+        if (playing && (p->getPlaySessionSceneId() != playId || state().current.serial != ws->serial)) {
+            ws->reason = "play_ended";
+            return true;
+        }
+        if (ws->stepping) {
+            // a paused game advances one frame per step
+            if (p->isStepPending(playId)) return false;
+            ws->frames++;
+            if (ws->frames >= frames) {
+                ws->reason = "frames";
+                return true;
+            }
+            p->step(playId);
+            return false;
+        }
+        // game frames while it plays; editor frames otherwise
+        ws->frames = playing ? static_cast<int>(Engine::getGameFrames() - ws->engineFrames) : ws->ticks;
+        if (frames > 0 && ws->frames >= frames) {
+            ws->reason = "frames";
+            return true;
+        }
+        if (seconds > 0.0 && secondsSince(ws->start) >= seconds) {
+            ws->reason = "seconds";
+            return true;
+        }
+        if (gameSeconds > 0.0 && Engine::getGameTime() - ws->engineTime >= gameSeconds - 1e-9) {
+            ws->reason = "game_seconds";
+            return true;
+        }
+        if (!until.empty() && (++ws->polls % pollEvery) == 0) {
+            SceneProject* scene = p->getScene(playId);
+            if (scene && scene->playState == ScenePlayState::PLAYING) {
+                LuaEvalResult r = runLua(p, scene, until, 2.0, 3, 50);
+                if (!r.ok) {
+                    ws->reason = "condition_error";
+                    ws->conditionError = r.error;
+                    return true;
+                }
+                ws->conditionValue = r.values.empty() ? Json(nullptr) : r.values[0];
+                if (luaTruthy(ws->conditionValue)) {
+                    ws->reason = "condition";
+                    return true;
+                }
+            }
+        }
+        // the input's events for the next frame, once this one ran its checks
+        if (input && !input->finished) {
+            if (!inputPlayable(c, *input)) {
+                ws->reason = "input_error";
+                if (input->error.empty()) input->error = "the game stopped playing";
+                return true;
+            }
+            advanceInput(*input, true);
+            if (!input->error.empty()) {
+                ws->reason = "input_error";
+                return true;
+            }
+        }
+        if (input && input->finished && frames <= 0 && seconds <= 0.0 && gameSeconds <= 0.0 && until.empty()) {
+            ws->reason = "input_done";
+            return true;
+        }
+        return false;
+    }, static_cast<int>(timeout * 1000.0), [call, ws, until, input](bool timedOut) {
+        // hold again first: nothing may run between the condition and the reply
+        ws->advance.release();
+        if (input) ws->inputCut = cutInputShort(*input);
+        McpContext& c = call->ctx();
+        observeSession(c);
+        if (timedOut && ws->reason.empty()) ws->reason = "timeout";
+        const Json& a = call->args();
+        w3::ConsoleQuery query;
+        query.since = ws->cursor;
+        query.limit = static_cast<size_t>(std::clamp(a.value("console_limit", 50), 0, 1000));
+        query.onlyProblems = a.value("only_problems", false);
+        w3::ConsoleResult console = query.limit > 0 ? w3::queryConsole(query) : w3::ConsoleResult();
+        if (query.limit == 0) console.nextCursor = Out::lastLogId();
+
+        Json data = w3::playStateJson(c);
+        const double gameAdvanced = Engine::getGameTime() - ws->engineTime;
+        data["reason"] = ws->reason;
+        data["elapsed_seconds"] = round3(secondsSince(ws->start));
+        data["frames"] = ws->frames;
+        data["game_seconds"] = round3(std::max(0.0, gameAdvanced));
+        data["console"] = console.entries;
+        data["console_more"] = console.more;
+        data["next_cursor"] = console.nextCursor;
+        if (!until.empty()) data["condition_value"] = ws->conditionValue;
+        if (input) {
+            data["input"] = {{"steps_done", input->next}, {"steps_total", input->steps.size()}, {"cut_short", ws->inputCut}};
+            if (!input->error.empty()) data["input"]["error"] = input->error;
+            data["held_input"] = heldInputJson();
+        }
+
+        const std::string elapsed = std::to_string(data["elapsed_seconds"].get<double>()).substr(0, 5) + " s, " +
+                                    std::to_string(ws->frames) + " frame(s), game time +" +
+                                    std::to_string(data["game_seconds"].get<double>()).substr(0, 5) + " s";
+        std::string text;
+        bool isError = false;
+        if (ws->reason == "play_ended") {
+            const SessionRecord& last = state().last;
+            text = "Play ended while waiting: " + sessionSummaryText(last);
+            isError = true;
+            if (!last.crash.empty()) data["crash"] = last.crash;
+        } else if (ws->reason == "condition") {
+            text = "Condition became true (" + elapsed + "): " + ws->conditionValue.dump() + ".";
+        } else if (ws->reason == "condition_error") {
+            text = "The until condition failed: " + ws->conditionError;
+            data["condition_error"] = ws->conditionError;
+            isError = true;
+        } else if (ws->reason == "input_error") {
+            text = "Input stopped at step " + std::to_string(input ? input->next : 0) + ": " + (input ? input->error : std::string());
+            isError = true;
+        } else if (ws->reason == "timeout") {
+            text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
+                   ws->conditionValue.dump() + ".";
+            isError = !until.empty();
+        } else {
+            text = "Waited " + elapsed + ".";
+        }
+        if (ws->inputCut) text += " The wait ended before its input: the rest was skipped and its presses released.";
+        if (Engine::isSimulationHeld() && !isError) text += " Held (auto_pause).";
+        if (data.value("state", "") == "stopped" && ws->reason != "play_ended") text += " (Not playing: the editor just waited.)";
+        if (data.value("state", "") == "paused" && ws->reason == "seconds") text += " (Paused: the game did not advance.)";
+        if (!console.entries.empty()) {
+            text += "\nConsole (" + std::to_string(console.errors) + " error(s)):\n" + w3::formatConsoleText(console.entries, 5000);
+        } else {
+            text += " No new console output.";
+        }
+        ToolResult result = isError ? ToolResult::error(text, data) : ToolResult::success(text, data);
+        replyWithOptionalScreenshot(call, std::move(result));
+    });
 }
 
 } // namespace
@@ -2647,13 +2956,18 @@ void registerPlayTools(McpRegistry& registry) {
             "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
             "timeout_seconds (or wait:false) a job_id (poll get_job). stop: restores the edit-time state and "
-            "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.";
+            "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.\n"
+            "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen "
+            "between calls, runs only inside wait / send_input / step.";
         tool.inputSchema = object({
-            {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step"})},
+            {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
             {"frames", withDefault(integer("step only.", 1, 600), 1)},
+            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
+            {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
         }, {"action"});
@@ -2667,8 +2981,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session "
-            "(time, frames, errors, crash), how the last one ended, held input, console_cursor; stopped: "
-            "play_would_start.";
+            "(time, frames, game_time, errors, crash), how the last one ended, held input, console_cursor, "
+            "time {time_scale, fixed_fps, auto_pause, held, game_time, frames}; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2681,13 +2995,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "wait";
         tool.title = "Wait / Run Game";
         tool.description =
-            "Let the game run `seconds` (wall clock), `frames` (steps a paused game) or until the Lua `until` is "
-            "truthy, then return the reason, elapsed time/frames, console entries logged meanwhile and the play "
-            "state. isError if play ended (crash error included) or `until` errored/timed out.";
+            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
+            "the Lua `until` is truthy (checked between frames); returns reason, elapsed time/frames/game_seconds, "
+            "console lines, play state. input: send_input events from the first frame; the wait ends at its "
+            "condition (leftover input skipped, its presses released) or when the input is done. isError if play "
+            "ended, input failed or `until` errored/timed out.";
         tool.inputSchema = object({
             {"seconds", number("", 0, 600)},
+            {"game_seconds", number("", 0, 3600)},
             {"frames", integer("", 0, 1000000)},
             {"until", string("Lua condition (eval_lua helpers).")},
+            {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
             {"timeout_seconds", number("Default: 30 (until) or run time + 30.", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
             {"console_limit", withDefault(integer("", 0, 1000), 50)},
@@ -2796,7 +3115,8 @@ void registerPlayTools(McpRegistry& registry) {
             "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
             "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
             "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
-            "up/release_all/stop. Returns frames, console lines, play state.";
+            "up/release_all/stop. Returns frames, console lines, play state. auto_pause: runs only for the "
+            "events + frames_after.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},

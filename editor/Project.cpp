@@ -4148,6 +4148,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
+    // a game (or the MCP server) may have changed the game clock
+    Engine::setTimeScale(1.0f);
+    Engine::setFixedDeltatime(0.0);
+    Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
 

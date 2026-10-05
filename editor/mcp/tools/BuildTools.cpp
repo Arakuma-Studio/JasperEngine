@@ -36,7 +36,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <map>
@@ -73,9 +76,40 @@ struct ScreenCapture {
 
 // Top-level windows of the display (stacking order), empty without X11
 std::vector<unsigned long> listTopLevelWindows();
-// The topmost viewable top-level window not in `before`, read from the screen; with none,
-// the whole screen. maxWidth scales the image down.
-ScreenCapture captureNewWindow(const std::vector<unsigned long>& before, int maxWidth);
+// The player's window: the viewable one whose _NET_WM_PID is pid, else the topmost new one
+// (not in `before`); 0 when there is none (yet)
+unsigned long findPlayerWindow(long pid, const std::vector<unsigned long>& before);
+// The window read from the screen (window 0: the whole screen). maxWidth scales the image down.
+ScreenCapture captureWindow(unsigned long window, int maxWidth);
+
+// ------------------------------------------------------------------ player input (X11, at the end)
+
+// One timed input action of run_build's input script
+struct PlayerAction {
+    enum Kind { KeyDown, KeyUp, ButtonDown, ButtonUp, Move, ReleaseAll, Screenshot };
+    Kind kind = Move;
+    double at = 0.0;               // seconds after the input starts
+    unsigned long keysym = 0;
+    int button = 1;                // X buttons: 1 left, 2 middle, 3 right, 4-7 scroll
+    double x = 0.0, y = 0.0;       // window pixels, or 0..1 when normalized
+    bool normalized = false;
+};
+
+// Why input can't reach a player here ("" = it can)
+std::string playerInputUnsupported();
+// X keysym of a key name (space, a, 0, left, enter, f1, shift, kp_0...), 0 if unknown
+unsigned long playerKeysym(const std::string& name);
+// X keysym of a character, with shift when it needs it; 0 if it has none
+unsigned long playerCharKeysym(uint32_t codepoint, bool& shift);
+// A connection sending input (XTest, else XSendEvent) to one window; null if none
+struct PlayerInputSender;
+PlayerInputSender* openPlayerInput(std::string& method, std::string& error);
+// "" when sent
+std::string sendPlayerAction(PlayerInputSender* sender, unsigned long window, const PlayerAction& action);
+// Releases what is still held and closes the connection
+void closePlayerInput(PlayerInputSender* sender, unsigned long window);
+// {x, y, width, height} of the window on the screen
+bool playerWindowRect(unsigned long window, int& x, int& y, int& width, int& height);
 
 // ------------------------------------------------------------------ helpers
 
@@ -1028,14 +1062,246 @@ void getBuildInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ run_build
 
-// Lines of a log that mean the program failed (tools/smoke-test.sh fatal_lines)
+// Lines of a log that mean the program crashed or can't work (tools/smoke-test.sh fatal_lines)
 bool isFatalLine(const std::string& line) {
-    static const std::regex fatal(R"(\((ERROR|PANIC)\)|\[ERROR\]|Lua Error|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing)");
-    if (line.find("Failed to initialize audio output") != std::string::npos) return false;
+    static const std::regex fatal(R"(\(PANIC\)|[Mm]issing (precompiled )?shader|[Aa]ssertion|Aborted|Segmentation fault|terminate called|core dumped|AddressSanitizer|stack smashing)");
     return std::regex_search(line, fatal);
 }
 
+// Error lines of the player's log: Log::error ("(ERROR): ..."), Lua errors (a failed init(), a
+// script that did not load)
+bool isErrorLine(const std::string& line) {
+    static const std::regex error(R"(\((ERROR|PANIC)\)|\[ERROR\]|Lua Error|Lua \w+\(\) failed|Failed to (load|execute) Lua|Script crash)");
+    if (line.find("Failed to initialize audio output") != std::string::npos) return false;
+    return std::regex_search(line, error);
+}
+
+bool isWarningLine(const std::string& line) {
+    return line.rfind("(WARN)", 0) == 0;
+}
+
+// run_build's input script → timed actions (the send_input vocabulary; frames are 1/60 s)
+bool parsePlayerInput(const Json& events, const std::string& defaultSpace, double gap, std::vector<PlayerAction>& out,
+                      double& end, std::string& error) {
+    double t = 0.0;
+    auto lower = [](std::string text) { return lowerText(std::move(text)); };
+    auto seconds = [](const Json& e, const char* msKey, const char* framesKey, const char* secondsKey, double fallback) {
+        if (e.contains(secondsKey) && e[secondsKey].is_number()) return std::max(0.0, e[secondsKey].get<double>());
+        if (e.contains(msKey) && e[msKey].is_number()) return std::max(0.0, e[msKey].get<double>() / 1000.0);
+        if (e.contains(framesKey) && e[framesKey].is_number()) return std::max(0.0, e[framesKey].get<double>() / 60.0);
+        return fallback;
+    };
+    auto readPoint = [](const Json& e, const char* xKey, const char* yKey, const char* arrayKey, double& x, double& y) {
+        if (e.contains(arrayKey) && e[arrayKey].is_array() && e[arrayKey].size() >= 2 && e[arrayKey][0].is_number() &&
+            e[arrayKey][1].is_number()) {
+            x = e[arrayKey][0].get<double>();
+            y = e[arrayKey][1].get<double>();
+            return true;
+        }
+        if (e.contains(xKey) && e.contains(yKey) && e[xKey].is_number() && e[yKey].is_number()) {
+            x = e[xKey].get<double>();
+            y = e[yKey].get<double>();
+            return true;
+        }
+        return false;
+    };
+    auto add = [&](PlayerAction::Kind kind, double at) -> PlayerAction& {
+        PlayerAction action;
+        action.kind = kind;
+        action.at = at;
+        out.push_back(action);
+        return out.back();
+    };
+    static const std::map<std::string, std::string> modKeys = {
+        {"shift", "shift"}, {"ctrl", "ctrl"}, {"control", "ctrl"}, {"alt", "alt"}, {"super", "super"}, {"cmd", "super"}, {"meta", "super"}};
+
+    for (size_t i = 0; i < events.size(); i++) {
+        const Json& e = events[i];
+        const std::string where = "input[" + std::to_string(i) + "]: ";
+        if (!e.is_object()) {
+            error = where + "each event must be an object with a type";
+            return false;
+        }
+        const std::string type = lower(e.value("type", ""));
+        const std::string space = lower(e.value("space", defaultSpace));
+        if (space != "window" && space != "normalized") {
+            error = where + "space must be window (player window pixels from the top-left) or normalized (0..1)";
+            return false;
+        }
+        const double hold = seconds(e, "hold_ms", "hold_frames", "hold_seconds", 0.1);
+        std::vector<unsigned long> mods;
+        if (e.contains("mods") && e["mods"].is_array()) {
+            for (const Json& m : e["mods"]) {
+                auto it = modKeys.find(m.is_string() ? lower(m.get<std::string>()) : std::string());
+                if (it == modKeys.end()) {
+                    error = where + "mods are shift, ctrl, alt, super";
+                    return false;
+                }
+                mods.push_back(playerKeysym(it->second));
+            }
+        }
+        if (type == "wait") {
+            const double w = seconds(e, "ms", "frames", "seconds", -1.0);
+            if (w < 0.0) {
+                error = where + "wait needs ms, frames (1/60 s) or seconds";
+                return false;
+            }
+            t += w;
+            continue;
+        }
+        if (type == "screenshot") {
+            add(PlayerAction::Screenshot, t);
+            t += gap;
+            continue;
+        }
+        if (type == "release_all") {
+            add(PlayerAction::ReleaseAll, t);
+            t += gap;
+            continue;
+        }
+        if (type == "key") {
+            const Json key = e.contains("key") ? e["key"] : Json();
+            const unsigned long sym = key.is_string() ? playerKeysym(lower(key.get<std::string>())) : 0;
+            if (!sym) {
+                error = where + "unknown key " + key.dump() + " (names like space, enter, escape, a-z, 0-9, left, right, "
+                        "up, down, shift, ctrl, alt, tab, backspace, f1-f12, kp_0-kp_9)";
+                return false;
+            }
+            const std::string action = lower(e.value("action", "press"));
+            if (action != "press" && action != "tap" && action != "down" && action != "up") {
+                error = where + "key action must be press, down or up";
+                return false;
+            }
+            if (action != "up") {
+                for (unsigned long m : mods) add(PlayerAction::KeyDown, t).keysym = m;
+                add(PlayerAction::KeyDown, t).keysym = sym;
+            }
+            if (action == "press" || action == "tap") t += hold;
+            if (action != "down") {
+                add(PlayerAction::KeyUp, t).keysym = sym;
+                for (unsigned long m : mods) add(PlayerAction::KeyUp, t).keysym = m;
+            }
+            t += gap;
+            continue;
+        }
+        if (type == "text") {
+            const std::string text = e.value("text", "");
+            if (text.empty()) {
+                error = where + "text event needs text";
+                return false;
+            }
+            const unsigned long shiftSym = playerKeysym("shift");
+            for (size_t k = 0; k < text.size();) {
+                const unsigned char c = static_cast<unsigned char>(text[k]);
+                uint32_t cp = c;
+                size_t len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+                if (len > 1) cp = c & (0xFF >> (len + 1));
+                for (size_t j = 1; j < len && k + j < text.size(); j++) cp = (cp << 6) | (static_cast<unsigned char>(text[k + j]) & 0x3F);
+                k += len;
+                bool shift = false;
+                const unsigned long sym = playerCharKeysym(cp, shift);
+                if (!sym) {
+                    error = where + "can't type character U+" + std::to_string(cp);
+                    return false;
+                }
+                if (shift) add(PlayerAction::KeyDown, t).keysym = shiftSym;
+                add(PlayerAction::KeyDown, t).keysym = sym;
+                t += 0.03;
+                add(PlayerAction::KeyUp, t).keysym = sym;
+                if (shift) add(PlayerAction::KeyUp, t).keysym = shiftSym;
+                t += 0.03;
+            }
+            t += gap;
+            continue;
+        }
+        if (type == "mouse") {
+            const std::string action = lower(e.value("action", "click"));
+            const std::string buttonName = e.contains("button") && e["button"].is_string() ? lower(e["button"].get<std::string>()) : "left";
+            const int button = buttonName == "left" ? 1 : buttonName == "middle" ? 2 : buttonName == "right" ? 3 : 0;
+            if (!button) {
+                error = where + "button must be left, right or middle";
+                return false;
+            }
+            double x = 0, y = 0;
+            const bool hasPoint = readPoint(e, "x", "y", "position", x, y);
+            if (!hasPoint && action != "scroll" && action != "up" && action != "down") {
+                error = where + "mouse " + action + " needs x and y (or position [x,y])";
+                return false;
+            }
+            const bool normalized = space == "normalized";
+            auto moveTo = [&](double px, double py, double at) {
+                PlayerAction& m = add(PlayerAction::Move, at);
+                m.x = px;
+                m.y = py;
+                m.normalized = normalized;
+            };
+            if (hasPoint) moveTo(x, y, t);
+            if (action == "move") {
+            } else if (action == "down") {
+                add(PlayerAction::ButtonDown, t).button = button;
+            } else if (action == "up") {
+                add(PlayerAction::ButtonUp, t).button = button;
+            } else if (action == "click" || action == "double_click") {
+                const int clicks = action == "double_click" ? 2 : 1;
+                for (int c = 0; c < clicks; c++) {
+                    add(PlayerAction::ButtonDown, t).button = button;
+                    t += clicks == 2 ? std::min(hold, 0.08) : hold;
+                    add(PlayerAction::ButtonUp, t).button = button;
+                    if (c + 1 < clicks) t += 0.08;
+                }
+            } else if (action == "drag") {
+                double tx = 0, ty = 0;
+                if (!readPoint(e, "to_x", "to_y", "to", tx, ty)) {
+                    error = where + "mouse drag needs to: [x,y]";
+                    return false;
+                }
+                const int steps = std::clamp(e.value("steps", 10), 1, 1000);
+                add(PlayerAction::ButtonDown, t).button = button;
+                for (int k = 1; k <= steps; k++) {
+                    t += 1.0 / 60.0;
+                    moveTo(x + (tx - x) * k / steps, y + (ty - y) * k / steps, t);
+                }
+                t += 1.0 / 60.0;
+                add(PlayerAction::ButtonUp, t).button = button;
+            } else if (action == "scroll") {
+                const double dy = e.value("dy", e.value("amount", 1.0));
+                const double dx = e.value("dx", 0.0);
+                auto clicks = [&](double amount, int positive, int negative) {
+                    for (int k = 0; k < static_cast<int>(std::round(std::abs(amount))); k++) {
+                        const int b = amount > 0 ? positive : negative;
+                        add(PlayerAction::ButtonDown, t).button = b;
+                        add(PlayerAction::ButtonUp, t).button = b;
+                        t += 0.02;
+                    }
+                };
+                clicks(dy, 4, 5);
+                clicks(dx, 7, 6);
+            } else {
+                error = where + "mouse action must be click, double_click, down, up, move, drag or scroll";
+                return false;
+            }
+            t += gap;
+            continue;
+        }
+        if (type == "touch" || type == "gamepad") {
+            error = where + type + " input can't be sent to a built player (keys, text and mouse only)";
+            return false;
+        }
+        error = where + "type must be key, text, mouse, wait, screenshot or release_all";
+        return false;
+    }
+    end = t;
+    return true;
+}
+
 #ifndef _WIN32
+
+struct PlayerShot {
+    double at = 0.0;                 // seconds since launch
+    bool done = false;
+    std::string label;               // "screenshots_at", "input"
+    ScreenCapture capture;
+};
 
 struct PlayerRun {
     pid_t pid = -1;
@@ -1050,13 +1316,24 @@ struct PlayerRun {
     std::chrono::steady_clock::time_point terminateAt;
     std::chrono::steady_clock::time_point exitedAt;
     double seconds = 5.0;
-    double screenshotAfter = -1.0;   // < 0: none
-    bool screenshotDone = false;
+    bool secondsGiven = false;       // else the run lasts until the input is done (+1.5 s)
+    double inputEnd = 0.0;           // length of the input script
     int maxWidth = 1280;
     std::vector<unsigned long> windowsBefore;
-    ScreenCapture capture;
+    unsigned long window = 0;        // the player's window once found
+    double windowFoundAt = -1.0;     // seconds since launch
+    double lastWindowSearch = -1.0;
+    std::vector<PlayerShot> shots;   // timed screenshots (sorted)
     fs::path exe;
     fs::path logPath;
+    // input script
+    std::vector<PlayerAction> actions;
+    size_t nextAction = 0;
+    double inputDelay = 1.0;
+    double inputStartedAt = -1.0;    // seconds since launch
+    PlayerInputSender* sender = nullptr;
+    std::string inputMethod;
+    std::string inputError;
 };
 
 constexpr size_t MAX_PLAYER_OUTPUT = 4 * 1024 * 1024;
@@ -1087,7 +1364,56 @@ double secondsSince(std::chrono::steady_clock::time_point t) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count();
 }
 
+void closeRunInput(PlayerRun& run) {
+    if (run.sender) {
+        closePlayerInput(run.sender, run.window);
+        run.sender = nullptr;
+    }
+}
+
+// Due input actions: one time slot per editor frame, so a press always spans a frame
+void runPlayerInput(PlayerRun& run, double elapsed) {
+    if (run.actions.empty() || run.nextAction >= run.actions.size() || !run.inputError.empty() || run.exited) return;
+    if (run.inputStartedAt < 0.0) {
+        if (elapsed < run.inputDelay) return;
+        // raised on top of the editor when found: give it a moment to draw there
+        if (run.window && elapsed < run.windowFoundAt + 0.5) return;
+        if (!run.window) {
+            if (elapsed > run.inputDelay + 10.0) run.inputError = "the player opened no window to send the input to";
+            return;
+        }
+        std::string error;
+        run.sender = openPlayerInput(run.inputMethod, error);
+        if (!run.sender) {
+            run.inputError = error;
+            return;
+        }
+        run.inputStartedAt = elapsed;
+    }
+    const double t = elapsed - run.inputStartedAt;
+    if (run.actions[run.nextAction].at > t) return;
+    const double slot = run.actions[run.nextAction].at;
+    while (run.nextAction < run.actions.size() && run.actions[run.nextAction].at <= slot) {
+        const PlayerAction& action = run.actions[run.nextAction++];
+        if (action.kind == PlayerAction::Screenshot) {
+            PlayerShot shot;
+            shot.at = elapsed;
+            shot.done = true;
+            shot.label = "input";
+            shot.capture = captureWindow(run.window, run.maxWidth);
+            run.shots.push_back(std::move(shot));
+            continue;
+        }
+        const std::string error = sendPlayerAction(run.sender, run.window, action);
+        if (!error.empty()) {
+            run.inputError = "input action " + std::to_string(run.nextAction) + ": " + error;
+            return;
+        }
+    }
+}
+
 void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run) {
+    closeRunInput(*run);
     readPlayerOutput(*run);
     if (run->fd >= 0) {
         ::close(run->fd);
@@ -1105,8 +1431,16 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         }
     }
     Json fatal = Json::array();
+    Json errors = Json::array();
+    size_t errorCount = 0, warningCount = 0;
     for (const std::string& line : lines) {
         if (isFatalLine(line) && fatal.size() < 30) fatal.push_back(line);
+        if (isErrorLine(line)) {
+            errorCount++;
+            if (errors.size() < 30) errors.push_back(line.size() > 2000 ? line.substr(0, 2000) + "..." : line);
+        } else if (isWarningLine(line)) {
+            warningCount++;
+        }
     }
 
     if (!run->logPath.empty()) {
@@ -1127,6 +1461,9 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         {"ran_seconds", ran},
         {"log_lines", lines.size()},
         {"log", tail},
+        {"errors", errors},
+        {"error_count", errorCount},
+        {"warning_count", warningCount},
         {"fatal_lines", fatal},
         {"log_file", run->logPath.generic_string()}
     };
@@ -1135,7 +1472,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     if (run->killedByUs) {
         data["stopped_by_run_build"] = true;
         data["exit_code"] = nullptr;
-        how = "ran for " + std::to_string(static_cast<int>(run->seconds)) + " s and was stopped";
+        how = "ran for " + std::to_string(static_cast<int>(ran + 0.5)) + " s and was stopped";
     } else if (WIFEXITED(run->status)) {
         data["exit_code"] = WEXITSTATUS(run->status);
         data["exited_early"] = true;
@@ -1152,16 +1489,58 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
 
     ToolResult result;
     std::string text = run->exe.filename().string() + " " + how + ". " + std::to_string(lines.size()) + " log line(s)";
-    if (!fatal.empty()) text += ", " + std::to_string(fatal.size()) + " fatal: " + fatal[0].get<std::string>();
+    if (errorCount) text += ", " + std::to_string(errorCount) + " ERROR(S): " + errors[0].get<std::string>();
+    if (!fatal.empty()) text += ", fatal: " + fatal[0].get<std::string>();
     text += ".";
-    if (run->capture.ok) {
-        result.images.push_back({Base64::encode(run->capture.png.data(), run->capture.png.size()), "image/png"});
-        data["screenshot"] = {{"width", run->capture.width}, {"height", run->capture.height}, {"note", run->capture.note}};
-        text += " Screenshot: " + run->capture.note + ".";
-    } else if (run->screenshotAfter >= 0.0) {
-        data["screenshot"] = nullptr;
-        data["screenshot_error"] = run->capture.note.empty() ? "no screenshot taken (the player exited first)" : run->capture.note;
-        text += " No screenshot: " + data["screenshot_error"].get<std::string>() + ".";
+
+    if (!run->actions.empty()) {
+        Json input = {
+            {"actions_done", run->nextAction},
+            {"actions_total", run->actions.size()},
+            {"method", run->inputMethod.empty() ? Json(nullptr) : Json(run->inputMethod)}
+        };
+        if (run->inputStartedAt >= 0.0) input["started_at_seconds"] = std::round(run->inputStartedAt * 1000.0) / 1000.0;
+        if (!run->inputError.empty()) input["error"] = run->inputError;
+        int wx = 0, wy = 0, ww = 0, wh = 0;
+        if (run->window && !run->exited && playerWindowRect(run->window, wx, wy, ww, wh)) {
+            input["window"] = {{"width", ww}, {"height", wh}};
+        }
+        data["input"] = input;
+        if (!run->inputError.empty()) text += " Input failed: " + run->inputError + ".";
+        else if (run->nextAction < run->actions.size()) text += " Input: " + std::to_string(run->nextAction) + "/" +
+                                                                std::to_string(run->actions.size()) + " action(s) sent before the run ended.";
+        else text += " Input: all " + std::to_string(run->actions.size()) + " action(s) sent (" + run->inputMethod + ").";
+    }
+
+    std::stable_sort(run->shots.begin(), run->shots.end(), [](const PlayerShot& a, const PlayerShot& b) { return a.at < b.at; });
+    Json shots = Json::array();
+    for (const PlayerShot& shot : run->shots) {
+        Json item = {{"at_seconds", std::round(shot.at * 100.0) / 100.0}, {"from", shot.label}};
+        if (shot.capture.ok) {
+            item["image"] = static_cast<int>(result.images.size());
+            item["width"] = shot.capture.width;
+            item["height"] = shot.capture.height;
+            item["note"] = shot.capture.note;
+            result.images.push_back({Base64::encode(shot.capture.png.data(), shot.capture.png.size()), "image/png"});
+        } else {
+            item["error"] = !shot.done ? "not taken: the player exited first" : shot.capture.note;
+        }
+        shots.push_back(item);
+    }
+    if (shots.size() == 1 && run->shots[0].label == "screenshot") {
+        // the single screenshot of the plain call
+        const PlayerShot& shot = run->shots[0];
+        if (shot.capture.ok) {
+            data["screenshot"] = {{"width", shot.capture.width}, {"height", shot.capture.height}, {"note", shot.capture.note}};
+            text += " Screenshot: " + shot.capture.note + ".";
+        } else {
+            data["screenshot"] = nullptr;
+            data["screenshot_error"] = shots[0]["error"];
+            text += " No screenshot: " + shots[0]["error"].get<std::string>() + ".";
+        }
+    } else if (!shots.empty()) {
+        data["screenshots"] = shots;
+        text += " " + std::to_string(result.images.size()) + " screenshot(s), in time order (structured screenshots[]).";
     }
     if (!tail.empty()) {
         text += "\nLast log lines:";
@@ -1170,7 +1549,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     }
     result.text = text;
     result.structured = data;
-    result.isError = false;   // a crash is a finding about the game, not a tool failure
+    result.isError = false;   // a crash or a script error is a finding about the game, not a tool failure
     call->reply(std::move(result));
 }
 
@@ -1220,14 +1599,71 @@ void runBuildTool(const CallPtr& call) {
 
     auto run = std::make_shared<PlayerRun>();
     run->exe = exe;
-    run->seconds = std::max(0.5, std::min(300.0, args.value("seconds", 5.0)));
-    const bool wantScreenshot = args.value("screenshot", true);
-    if (wantScreenshot) {
-        double after = args.value("screenshot_after_seconds", std::min(3.0, run->seconds * 0.8));
-        run->screenshotAfter = std::max(0.1, std::min(after, run->seconds));
-        run->windowsBefore = listTopLevelWindows();
-    }
     run->maxWidth = std::max(64, std::min(4096, args.value("max_width", 1280)));
+
+    // input script
+    double inputEnd = 0.0;
+    if (args.contains("input") && !args["input"].is_null()) {
+        const std::string why = playerInputUnsupported();
+        if (!why.empty()) {
+            call->fail("input is not supported here: " + why + ". Run without input (log + screenshots only).");
+            return;
+        }
+        if (!args["input"].is_array() || args["input"].empty() || args["input"].size() > 500) {
+            call->fail("input must be an array of 1-500 events, e.g. [{\"type\":\"key\",\"key\":\"space\"}, "
+                       "{\"type\":\"wait\",\"ms\":500}, {\"type\":\"screenshot\"}].");
+            return;
+        }
+        std::string error;
+        const std::string space = lowerText(args.value("space", "window"));
+        const double gap = std::clamp(args.value("gap_ms", 50.0), 0.0, 10000.0) / 1000.0;
+        if (!parsePlayerInput(args["input"], space, gap, run->actions, inputEnd, error)) {
+            call->fail(error + ".");
+            return;
+        }
+        std::stable_sort(run->actions.begin(), run->actions.end(), [](const PlayerAction& a, const PlayerAction& b) { return a.at < b.at; });
+        run->inputDelay = std::clamp(args.value("input_delay_seconds", 1.0), 0.0, 120.0);
+    }
+
+    // screenshots: screenshots_at (seconds since launch), else the single screenshot
+    double lastShot = 0.0;
+    if (args.contains("screenshots_at") && !args["screenshots_at"].is_null()) {
+        if (!args["screenshots_at"].is_array() || args["screenshots_at"].size() > 20) {
+            call->fail("screenshots_at must be a list of at most 20 times in seconds since launch, e.g. [2, 4.5].");
+            return;
+        }
+        for (const Json& at : args["screenshots_at"]) {
+            if (!at.is_number() || at.get<double>() < 0.0 || at.get<double>() > 300.0) {
+                call->fail("screenshots_at entries are seconds since launch (0-300).");
+                return;
+            }
+            PlayerShot shot;
+            shot.at = std::max(0.1, at.get<double>());
+            shot.label = "screenshots_at";
+            run->shots.push_back(shot);
+            lastShot = std::max(lastShot, shot.at);
+        }
+    }
+    const bool hasInputShots = std::any_of(run->actions.begin(), run->actions.end(),
+                                           [](const PlayerAction& a) { return a.kind == PlayerAction::Screenshot; });
+
+    // how long: seconds, else long enough for the input and the screenshots
+    double defaultSeconds = 5.0;
+    if (!run->actions.empty()) defaultSeconds = std::max(defaultSeconds, run->inputDelay + inputEnd + 1.5);
+    if (lastShot > 0.0) defaultSeconds = std::max(defaultSeconds, lastShot + 0.5);
+    run->seconds = std::max(0.5, std::min(300.0, args.value("seconds", defaultSeconds)));
+    run->secondsGiven = args.contains("seconds") && args["seconds"].is_number();
+    run->inputEnd = inputEnd;
+
+    const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots);
+    if (wantScreenshot && run->shots.empty()) {
+        PlayerShot shot;
+        const double after = args.value("screenshot_after_seconds", std::min(3.0, run->seconds * 0.8));
+        shot.at = std::max(0.1, std::min(after, run->seconds));
+        shot.label = "screenshot";
+        run->shots.push_back(shot);
+    }
+    if (!run->shots.empty() || !run->actions.empty()) run->windowsBefore = listTopLevelWindows();
     {
         const fs::path logs = project->getProjectInternalPath() / "logs";
         fs::create_directories(logs, ec);
@@ -1235,7 +1671,15 @@ void runBuildTool(const CallPtr& call) {
         run->logPath = logs / ("run-" + std::to_string(++counter) + ".log");
     }
 
-    std::vector<std::string> argStrings = {exe.string()};
+    // stdbuf: a player's stdout into a pipe is block-buffered, and lost when it is killed
+    std::vector<std::string> argStrings;
+    for (const char* stdbuf : {"/usr/bin/stdbuf", "/bin/stdbuf"}) {
+        if (::access(stdbuf, X_OK) == 0) {
+            argStrings = {stdbuf, "-oL", "-eL"};
+            break;
+        }
+    }
+    argStrings.push_back(exe.string());
     if (args.contains("args") && args["args"].is_array()) {
         for (const Json& a : args["args"]) {
             if (!a.is_string()) {
@@ -1286,7 +1730,9 @@ void runBuildTool(const CallPtr& call) {
     run->started = std::chrono::steady_clock::now();
     Out::info("MCP run_build: started %s (pid %d)", exe.string().c_str(), static_cast<int>(pid));
 
-    const int timeoutMs = static_cast<int>((run->seconds + 15.0) * 1000.0);
+    // without seconds, a player slow to open its window gets up to 10 s more (runPlayerInput)
+    const double slack = run->secondsGiven || run->actions.empty() ? 0.0 : 10.0 + run->inputDelay;
+    const int timeoutMs = static_cast<int>((run->seconds + slack + 15.0) * 1000.0);
     call->waitUntil([run]() {
         readPlayerOutput(*run);
         if (!run->exited) {
@@ -1296,21 +1742,43 @@ void runBuildTool(const CallPtr& call) {
                 run->exited = true;
                 run->status = status;
                 run->exitedAt = std::chrono::steady_clock::now();
+                closeRunInput(*run);
             }
         }
         const double elapsed = secondsSince(run->started);
-        if (!run->exited && !run->screenshotDone && run->screenshotAfter >= 0.0 && elapsed >= run->screenshotAfter) {
-            run->screenshotDone = true;
-            run->capture = captureNewWindow(run->windowsBefore, run->maxWidth);
+        if (!run->exited && !run->terminating) {
+            // look for the player's window (and raise it) as soon as it opens
+            if (!run->window && (!run->shots.empty() || !run->actions.empty()) && elapsed - run->lastWindowSearch >= 0.2) {
+                run->lastWindowSearch = elapsed;
+                run->window = findPlayerWindow(run->pid, run->windowsBefore);
+                if (run->window) run->windowFoundAt = elapsed;
+            }
+            runPlayerInput(*run, elapsed);
+            for (PlayerShot& shot : run->shots) {
+                if (shot.done || elapsed < shot.at) continue;
+                // a window raised a moment ago may not have drawn on top yet
+                if (run->window && elapsed < run->windowFoundAt + 0.3) break;
+                shot.done = true;
+                shot.capture = captureWindow(run->window, run->maxWidth);
+                shot.at = elapsed;
+                break;   // one per frame
+            }
         }
         if (run->exited) {
             // the rest of the output: wait for EOF briefly (a child of the player may hold the pipe)
             return run->fd < 0 || secondsSince(run->exitedAt) > 1.0;
         }
-        if (!run->terminating && elapsed >= run->seconds) {
+        double limit = run->seconds;
+        if (!run->secondsGiven && !run->actions.empty() && run->inputError.empty()) {
+            // the input started late (the window opened late): it still runs to its end
+            limit = run->inputStartedAt >= 0.0 ? std::max(limit, run->inputStartedAt + run->inputEnd + 1.5)
+                                               : std::max(limit, elapsed + 0.5);
+        }
+        if (!run->terminating && elapsed >= limit) {
             run->terminating = true;
             run->killedByUs = true;
             run->terminateAt = std::chrono::steady_clock::now();
+            closeRunInput(*run);
             ::kill(-run->pid, SIGTERM);
             ::kill(run->pid, SIGTERM);
         } else if (run->terminating && secondsSince(run->terminateAt) > 3.0) {
@@ -1429,11 +1897,19 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Run Build";
         tool.description =
             "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), then stop it. Returns the "
-            "log tail (full: log_file), exit code/signal, exited_early, crashed, fatal_lines.";
+            "log tail (full: log_file), errors (incl. Lua errors), exit code/signal, crashed, fatal_lines. "
+            "input (Linux): send_input events into the player window: key, text, mouse (window pixels or space "
+            "normalized), wait {ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: "
+            "seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
-            {"seconds", withDefault(number("", 0.5, 300), 5)},
-            {"screenshot", withDefault(boolean(""), true)},
+            {"seconds", number("Default: 5, or past the input.", 0.5, 300)},
+            {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
+            {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
+            {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
+            {"gap_ms", withDefault(number("", 0, 10000), 50)},
+            {"screenshots_at", array(number(""), "")},
+            {"screenshot", boolean("Default: true unless other screenshots.")},
             {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
@@ -1451,8 +1927,12 @@ void registerBuildTools(McpRegistry& registry) {
 
 #if defined(__linux__) && defined(JASPERENGINE_HAS_X11_CLIPBOARD)
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
+
+#include <dlfcn.h>
 
 namespace jasperengine::editor::mcp {
 namespace {
@@ -1511,7 +1991,7 @@ int maskBits(unsigned long mask) {
     return bits;
 }
 
-ScreenCapture captureNewWindow(const std::vector<unsigned long>& before, int maxWidth) {
+ScreenCapture captureWindow(unsigned long window, int maxWidth) {
     ScreenCapture capture;
     Display* display = XOpenDisplay(nullptr);
     if (!display) {
@@ -1525,29 +2005,18 @@ ScreenCapture captureNewWindow(const std::vector<unsigned long>& before, int max
             capture.note = "could not read the screen";
             return;
         }
-        // topmost new viewable window
         int x = 0, y = 0, w = rootAttr.width, h = rootAttr.height;
         Window found = 0;
-        Window rootReturn, parentReturn;
-        Window* children = nullptr;
-        unsigned int count = 0;
-        if (XQueryTree(display, root, &rootReturn, &parentReturn, &children, &count)) {
-            for (int i = static_cast<int>(count) - 1; i >= 0 && !found; i--) {
-                const unsigned long id = children[i];
-                if (std::find(before.begin(), before.end(), id) != before.end()) continue;
-                XWindowAttributes attr;
-                if (!XGetWindowAttributes(display, children[i], &attr)) continue;
-                if (attr.map_state != IsViewable || attr.width < 16 || attr.height < 16 || attr.c_class == InputOnly) continue;
-                Window child;
-                int ax = 0, ay = 0;
-                XTranslateCoordinates(display, children[i], root, 0, 0, &ax, &ay, &child);
-                x = ax;
-                y = ay;
-                w = attr.width;
-                h = attr.height;
-                found = children[i];
-            }
-            if (children) XFree(children);
+        XWindowAttributes attr;
+        if (window && XGetWindowAttributes(display, window, &attr) && attr.map_state == IsViewable) {
+            Window child;
+            int ax = 0, ay = 0;
+            XTranslateCoordinates(display, window, root, 0, 0, &ax, &ay, &child);
+            x = ax;
+            y = ay;
+            w = attr.width;
+            h = attr.height;
+            found = window;
         }
         // clip to the screen (XGetImage of the root fails outside it)
         const int x0 = std::max(0, x), y0 = std::max(0, y);
@@ -1611,11 +2080,378 @@ ScreenCapture captureNewWindow(const std::vector<unsigned long>& before, int max
         capture.height = finalH;
         capture.note = found ? "the player window (" + std::to_string(w) + "x" + std::to_string(h) + " at " +
                                    std::to_string(x0) + "," + std::to_string(y0) + ")"
-                             : "the whole screen (no new window was found: the player may not have opened one)";
+                             : "the whole screen (no player window was found: the player may not have opened one)";
     });
     if (xErrors && !capture.ok && capture.note.empty()) capture.note = "X error while capturing";
     XCloseDisplay(display);
     return capture;
+}
+
+// The _NET_WM_PID of a window, -1 if it has none
+long windowPid(Display* display, Window window) {
+    static Atom pidAtom = 0;
+    if (!pidAtom) pidAtom = XInternAtom(display, "_NET_WM_PID", True);
+    if (!pidAtom) return -1;
+    Atom type;
+    int format = 0;
+    unsigned long count = 0, after = 0;
+    unsigned char* data = nullptr;
+    long pid = -1;
+    if (XGetWindowProperty(display, window, pidAtom, 0, 1, False, XA_CARDINAL, &type, &format, &count, &after, &data) == Success) {
+        if (data && count == 1 && format == 32) pid = static_cast<long>(*reinterpret_cast<unsigned long*>(data));
+        if (data) XFree(data);
+    }
+    return pid;
+}
+
+// Depth-first: the first viewable window of pid under parent (a window manager reparents)
+Window findPidWindow(Display* display, Window parent, long pid, int depth) {
+    Window rootReturn, parentReturn;
+    Window* children = nullptr;
+    unsigned int count = 0;
+    Window found = 0;
+    if (!XQueryTree(display, parent, &rootReturn, &parentReturn, &children, &count)) return 0;
+    for (int i = static_cast<int>(count) - 1; i >= 0 && !found; i--) {
+        XWindowAttributes attr;
+        if (!XGetWindowAttributes(display, children[i], &attr) || attr.map_state != IsViewable) continue;
+        if (windowPid(display, children[i]) == pid && attr.width >= 16 && attr.height >= 16) found = children[i];
+        else if (depth < 2) found = findPidWindow(display, children[i], pid, depth + 1);
+    }
+    if (children) XFree(children);
+    return found;
+}
+
+unsigned long findPlayerWindow(long pid, const std::vector<unsigned long>& before) {
+    Display* display = XOpenDisplay(nullptr);
+    if (!display) return 0;
+    Window found = 0;
+    withXErrorsTrapped(display, [&]() {
+        Window root = DefaultRootWindow(display);
+        found = findPidWindow(display, root, pid, 0);
+        if (!found) {
+            // a player that does not set _NET_WM_PID: the topmost new window
+            Window rootReturn, parentReturn;
+            Window* children = nullptr;
+            unsigned int count = 0;
+            if (XQueryTree(display, root, &rootReturn, &parentReturn, &children, &count)) {
+                for (int i = static_cast<int>(count) - 1; i >= 0 && !found; i--) {
+                    if (std::find(before.begin(), before.end(), children[i]) != before.end()) continue;
+                    XWindowAttributes attr;
+                    if (!XGetWindowAttributes(display, children[i], &attr)) continue;
+                    if (attr.map_state != IsViewable || attr.width < 16 || attr.height < 16 || attr.c_class == InputOnly) continue;
+                    found = children[i];
+                }
+                if (children) XFree(children);
+            }
+        }
+        // on top of the editor (same display), so screen reads and the pointer reach it
+        if (found) XRaiseWindow(display, found);
+    });
+    XCloseDisplay(display);
+    return found;
+}
+
+bool playerWindowRect(unsigned long window, int& x, int& y, int& width, int& height) {
+    Display* display = XOpenDisplay(nullptr);
+    if (!display) return false;
+    bool ok = false;
+    withXErrorsTrapped(display, [&]() {
+        XWindowAttributes attr;
+        if (!XGetWindowAttributes(display, window, &attr)) return;
+        Window child;
+        XTranslateCoordinates(display, window, DefaultRootWindow(display), 0, 0, &x, &y, &child);
+        width = attr.width;
+        height = attr.height;
+        ok = true;
+    });
+    XCloseDisplay(display);
+    return ok;
+}
+
+// ------------------------------------------------------------------ input: XTest (libXtst, loaded at run time), else XSendEvent
+
+using FakeKeyFn = int (*)(Display*, unsigned int, int, unsigned long);
+using FakeButtonFn = int (*)(Display*, unsigned int, int, unsigned long);
+using FakeMotionFn = int (*)(Display*, int, int, int, unsigned long);
+
+struct XTestApi {
+    bool tried = false;
+    FakeKeyFn key = nullptr;
+    FakeButtonFn button = nullptr;
+    FakeMotionFn motion = nullptr;
+};
+
+XTestApi& xtest() {
+    static XTestApi api;
+    if (!api.tried) {
+        api.tried = true;
+        void* lib = dlopen("libXtst.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (!lib) lib = dlopen("libXtst.so", RTLD_NOW | RTLD_LOCAL);
+        if (lib) {
+            api.key = reinterpret_cast<FakeKeyFn>(dlsym(lib, "XTestFakeKeyEvent"));
+            api.button = reinterpret_cast<FakeButtonFn>(dlsym(lib, "XTestFakeButtonEvent"));
+            api.motion = reinterpret_cast<FakeMotionFn>(dlsym(lib, "XTestFakeMotionEvent"));
+            if (!api.key || !api.button || !api.motion) api.key = nullptr;
+        }
+    }
+    return api;
+}
+
+struct PlayerInputSender {
+    Display* display = nullptr;
+    bool useXTest = false;
+    bool focused = false;
+    int pointerX = 0, pointerY = 0;          // window pixels
+    std::set<unsigned int> keysDown;          // keycodes
+    std::set<unsigned int> buttonsDown;
+};
+
+std::string playerInputUnsupported() {
+    return std::string();
+}
+
+unsigned long playerKeysym(const std::string& rawName) {
+    std::string name = rawName;
+    if (name.size() == 1) {
+        const char c = name[0];
+        if (c >= 'a' && c <= 'z') return XK_a + (c - 'a');
+        if (c >= '0' && c <= '9') return XK_0 + (c - '0');
+        bool shift = false;
+        return playerCharKeysym(static_cast<unsigned char>(c), shift);
+    }
+    for (char& c : name) if (c == ' ' || c == '-') c = '_';
+    if (name.rfind("key_", 0) == 0) name = name.substr(4);
+    static const std::map<std::string, unsigned long> keys = {
+        {"space", XK_space}, {"spacebar", XK_space}, {"escape", XK_Escape}, {"esc", XK_Escape},
+        {"enter", XK_Return}, {"return", XK_Return}, {"tab", XK_Tab}, {"backspace", XK_BackSpace},
+        {"insert", XK_Insert}, {"delete", XK_Delete}, {"del", XK_Delete},
+        {"left", XK_Left}, {"right", XK_Right}, {"up", XK_Up}, {"down", XK_Down},
+        {"left_arrow", XK_Left}, {"right_arrow", XK_Right}, {"up_arrow", XK_Up}, {"down_arrow", XK_Down},
+        {"arrow_left", XK_Left}, {"arrow_right", XK_Right}, {"arrow_up", XK_Up}, {"arrow_down", XK_Down},
+        {"page_up", XK_Page_Up}, {"pageup", XK_Page_Up}, {"page_down", XK_Page_Down}, {"pagedown", XK_Page_Down},
+        {"home", XK_Home}, {"end", XK_End}, {"caps_lock", XK_Caps_Lock}, {"num_lock", XK_Num_Lock},
+        {"scroll_lock", XK_Scroll_Lock}, {"print_screen", XK_Print}, {"pause", XK_Pause}, {"menu", XK_Menu},
+        {"shift", XK_Shift_L}, {"left_shift", XK_Shift_L}, {"right_shift", XK_Shift_R},
+        {"ctrl", XK_Control_L}, {"control", XK_Control_L}, {"left_ctrl", XK_Control_L}, {"left_control", XK_Control_L},
+        {"right_ctrl", XK_Control_R}, {"right_control", XK_Control_R},
+        {"alt", XK_Alt_L}, {"left_alt", XK_Alt_L}, {"right_alt", XK_Alt_R},
+        {"super", XK_Super_L}, {"left_super", XK_Super_L}, {"right_super", XK_Super_R},
+        {"apostrophe", XK_apostrophe}, {"comma", XK_comma}, {"minus", XK_minus}, {"period", XK_period},
+        {"slash", XK_slash}, {"semicolon", XK_semicolon}, {"equal", XK_equal}, {"equals", XK_equal},
+        {"left_bracket", XK_bracketleft}, {"backslash", XK_backslash}, {"right_bracket", XK_bracketright},
+        {"grave_accent", XK_grave}, {"backquote", XK_grave},
+        {"kp_decimal", XK_KP_Decimal}, {"kp_divide", XK_KP_Divide}, {"kp_multiply", XK_KP_Multiply},
+        {"kp_subtract", XK_KP_Subtract}, {"kp_add", XK_KP_Add}, {"kp_enter", XK_KP_Enter}, {"kp_equal", XK_KP_Equal}
+    };
+    auto it = keys.find(name);
+    if (it != keys.end()) return it->second;
+    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
+        const int n = std::stoi(name.substr(1));
+        if (n >= 1 && n <= 24) return XK_F1 + (n - 1);
+    }
+    if ((name.rfind("kp_", 0) == 0 && name.size() == 4 && std::isdigit(static_cast<unsigned char>(name[3])))) {
+        return XK_KP_0 + (name[3] - '0');
+    }
+    return 0;
+}
+
+unsigned long playerCharKeysym(uint32_t cp, bool& shift) {
+    shift = false;
+    if (cp >= 'a' && cp <= 'z') return XK_a + (cp - 'a');
+    if (cp >= 'A' && cp <= 'Z') {
+        shift = true;
+        return XK_a + (cp - 'A');
+    }
+    if (cp >= '0' && cp <= '9') return XK_0 + (cp - '0');
+    static const std::map<uint32_t, std::pair<unsigned long, bool>> chars = {
+        {' ', {XK_space, false}}, {'\n', {XK_Return, false}}, {'\t', {XK_Tab, false}},
+        {'-', {XK_minus, false}}, {'=', {XK_equal, false}}, {'[', {XK_bracketleft, false}}, {']', {XK_bracketright, false}},
+        {';', {XK_semicolon, false}}, {'\'', {XK_apostrophe, false}}, {',', {XK_comma, false}}, {'.', {XK_period, false}},
+        {'/', {XK_slash, false}}, {'\\', {XK_backslash, false}}, {'`', {XK_grave, false}},
+        {'!', {XK_1, true}}, {'@', {XK_2, true}}, {'#', {XK_3, true}}, {'$', {XK_4, true}}, {'%', {XK_5, true}},
+        {'^', {XK_6, true}}, {'&', {XK_7, true}}, {'*', {XK_8, true}}, {'(', {XK_9, true}}, {')', {XK_0, true}},
+        {'_', {XK_minus, true}}, {'+', {XK_equal, true}}, {'{', {XK_bracketleft, true}}, {'}', {XK_bracketright, true}},
+        {':', {XK_semicolon, true}}, {'"', {XK_apostrophe, true}}, {'<', {XK_comma, true}}, {'>', {XK_period, true}},
+        {'?', {XK_slash, true}}, {'|', {XK_backslash, true}}, {'~', {XK_grave, true}}
+    };
+    auto it = chars.find(cp);
+    if (it == chars.end()) return 0;
+    shift = it->second.second;
+    return it->second.first;
+}
+
+PlayerInputSender* openPlayerInput(std::string& method, std::string& error) {
+    Display* display = XOpenDisplay(nullptr);
+    if (!display) {
+        error = "no X display (DISPLAY unset)";
+        return nullptr;
+    }
+    auto* sender = new PlayerInputSender();
+    sender->display = display;
+    sender->useXTest = xtest().key != nullptr;
+    method = sender->useXTest ? "xtest" : "xsendevent";
+    return sender;
+}
+
+// The window's top-left on the root window
+void windowOrigin(Display* display, Window window, int& x, int& y) {
+    Window child;
+    x = y = 0;
+    XTranslateCoordinates(display, window, DefaultRootWindow(display), 0, 0, &x, &y, &child);
+}
+
+// XSendEvent fallback: a synthetic event to the window (some toolkits ignore those)
+void sendSynthetic(PlayerInputSender* s, Window window, int type, unsigned int detail) {
+    Display* d = s->display;
+    int ox = 0, oy = 0;
+    windowOrigin(d, window, ox, oy);
+    XEvent event;
+    std::memset(&event, 0, sizeof(event));
+    unsigned int state = 0;
+    for (unsigned int b : s->buttonsDown) if (b >= 1 && b <= 5) state |= (Button1Mask << (b - 1));
+    if (type == KeyPress || type == KeyRelease) {
+        XKeyEvent& e = event.xkey;
+        e.type = type;
+        e.display = d;
+        e.window = window;
+        e.root = DefaultRootWindow(d);
+        e.time = CurrentTime;
+        e.x = s->pointerX;
+        e.y = s->pointerY;
+        e.x_root = ox + s->pointerX;
+        e.y_root = oy + s->pointerY;
+        e.keycode = detail;
+        e.state = state;
+        e.same_screen = True;
+        XSendEvent(d, window, True, type == KeyPress ? KeyPressMask : KeyReleaseMask, &event);
+    } else if (type == ButtonPress || type == ButtonRelease) {
+        XButtonEvent& e = event.xbutton;
+        e.type = type;
+        e.display = d;
+        e.window = window;
+        e.root = DefaultRootWindow(d);
+        e.time = CurrentTime;
+        e.x = s->pointerX;
+        e.y = s->pointerY;
+        e.x_root = ox + s->pointerX;
+        e.y_root = oy + s->pointerY;
+        e.button = detail;
+        e.state = state;
+        e.same_screen = True;
+        XSendEvent(d, window, True, type == ButtonPress ? ButtonPressMask : ButtonReleaseMask, &event);
+    } else {
+        XMotionEvent& e = event.xmotion;
+        e.type = MotionNotify;
+        e.display = d;
+        e.window = window;
+        e.root = DefaultRootWindow(d);
+        e.time = CurrentTime;
+        e.x = s->pointerX;
+        e.y = s->pointerY;
+        e.x_root = ox + s->pointerX;
+        e.y_root = oy + s->pointerY;
+        e.state = state;
+        e.same_screen = True;
+        XSendEvent(d, window, True, PointerMotionMask, &event);
+    }
+}
+
+std::string sendPlayerAction(PlayerInputSender* s, unsigned long window, const PlayerAction& action) {
+    if (!s || !window) return "no player window";
+    Display* d = s->display;
+    std::string error;
+    withXErrorsTrapped(d, [&]() {
+        XWindowAttributes attr;
+        if (!XGetWindowAttributes(d, window, &attr)) {
+            error = "the player window is gone";
+            return;
+        }
+        if (!s->focused) {
+            // keys go to the focused window, the pointer to the one under it
+            XRaiseWindow(d, window);
+            XSetInputFocus(d, window, RevertToParent, CurrentTime);
+            s->focused = true;
+        }
+        const XTestApi& api = xtest();
+        switch (action.kind) {
+            case PlayerAction::Move: {
+                int px = static_cast<int>(std::lround(action.normalized ? action.x * attr.width : action.x));
+                int py = static_cast<int>(std::lround(action.normalized ? action.y * attr.height : action.y));
+                if (px < 0 || py < 0 || px >= attr.width || py >= attr.height) {
+                    error = "point (" + std::to_string(px) + ", " + std::to_string(py) + ") is outside the player window (" +
+                            std::to_string(attr.width) + "x" + std::to_string(attr.height) + ")";
+                    return;
+                }
+                s->pointerX = px;
+                s->pointerY = py;
+                if (s->useXTest) {
+                    int ox = 0, oy = 0;
+                    windowOrigin(d, window, ox, oy);
+                    api.motion(d, DefaultScreen(d), ox + px, oy + py, CurrentTime);
+                } else {
+                    sendSynthetic(s, window, MotionNotify, 0);
+                }
+                break;
+            }
+            case PlayerAction::KeyDown:
+            case PlayerAction::KeyUp: {
+                const unsigned int code = XKeysymToKeycode(d, static_cast<KeySym>(action.keysym));
+                if (!code) {
+                    error = "the X keyboard has no key for keysym " + std::to_string(action.keysym);
+                    return;
+                }
+                const bool down = action.kind == PlayerAction::KeyDown;
+                if (s->useXTest) api.key(d, code, down ? True : False, CurrentTime);
+                else sendSynthetic(s, window, down ? KeyPress : KeyRelease, code);
+                if (down) s->keysDown.insert(code);
+                else s->keysDown.erase(code);
+                break;
+            }
+            case PlayerAction::ButtonDown:
+            case PlayerAction::ButtonUp: {
+                const bool down = action.kind == PlayerAction::ButtonDown;
+                if (s->useXTest) api.button(d, static_cast<unsigned int>(action.button), down ? True : False, CurrentTime);
+                else sendSynthetic(s, window, down ? ButtonPress : ButtonRelease, static_cast<unsigned int>(action.button));
+                if (down) s->buttonsDown.insert(static_cast<unsigned int>(action.button));
+                else s->buttonsDown.erase(static_cast<unsigned int>(action.button));
+                break;
+            }
+            case PlayerAction::ReleaseAll: {
+                for (unsigned int code : s->keysDown) {
+                    if (s->useXTest) api.key(d, code, False, CurrentTime);
+                    else sendSynthetic(s, window, KeyRelease, code);
+                }
+                for (unsigned int b : s->buttonsDown) {
+                    if (s->useXTest) api.button(d, b, False, CurrentTime);
+                    else sendSynthetic(s, window, ButtonRelease, b);
+                }
+                s->keysDown.clear();
+                s->buttonsDown.clear();
+                break;
+            }
+            case PlayerAction::Screenshot:
+                break;
+        }
+        XFlush(d);
+    });
+    return error;
+}
+
+void closePlayerInput(PlayerInputSender* s, unsigned long window) {
+    if (!s) return;
+    if (window && (!s->keysDown.empty() || !s->buttonsDown.empty())) {
+        PlayerAction release;
+        release.kind = PlayerAction::ReleaseAll;
+        sendPlayerAction(s, window, release);
+    } else if (s->useXTest) {
+        // XTest keys are global: never leave one down on the display
+        const XTestApi& api = xtest();
+        for (unsigned int code : s->keysDown) api.key(s->display, code, False, CurrentTime);
+        for (unsigned int b : s->buttonsDown) api.button(s->display, b, False, CurrentTime);
+        XFlush(s->display);
+    }
+    XCloseDisplay(s->display);
+    delete s;
 }
 
 }
@@ -1630,11 +2466,45 @@ std::vector<unsigned long> listTopLevelWindows() {
     return {};
 }
 
-ScreenCapture captureNewWindow(const std::vector<unsigned long>&, int) {
+unsigned long findPlayerWindow(long, const std::vector<unsigned long>&) {
+    return 0;
+}
+
+ScreenCapture captureWindow(unsigned long, int) {
     ScreenCapture capture;
     capture.note = "screenshots of a running player need X11 (Linux); only the log is available here";
     return capture;
 }
+
+bool playerWindowRect(unsigned long, int&, int&, int&, int&) {
+    return false;
+}
+
+struct PlayerInputSender {};
+
+std::string playerInputUnsupported() {
+    return "input injection into a built player needs X11 (Linux)";
+}
+
+unsigned long playerKeysym(const std::string&) {
+    return 0;
+}
+
+unsigned long playerCharKeysym(uint32_t, bool& shift) {
+    shift = false;
+    return 0;
+}
+
+PlayerInputSender* openPlayerInput(std::string&, std::string& error) {
+    error = playerInputUnsupported();
+    return nullptr;
+}
+
+std::string sendPlayerAction(PlayerInputSender*, unsigned long, const PlayerAction&) {
+    return playerInputUnsupported();
+}
+
+void closePlayerInput(PlayerInputSender*, unsigned long) {}
 
 }
 }

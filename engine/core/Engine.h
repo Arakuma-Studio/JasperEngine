@@ -255,6 +255,13 @@ namespace jasperengine {
         
         static double updateTime;
 
+        static double timeScale;
+        static double fixedDeltatime;
+        static double gameTime;
+        static uint64_t gameFrames;
+        static std::atomic<bool> simulationHeld;
+        static bool clampNextDelta;
+
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
         static std::atomic<bool> asyncLoading;
@@ -384,6 +391,30 @@ namespace jasperengine {
 
         // Monotonic wall-clock time in seconds, independent of scene pause / update loop.
         static double getSystemTime();
+
+        // Game time scale (Unity's Time.timeScale): multiplies the frame delta given to the
+        // update, the fixed-step accumulator (physics), actions, animations, tweens, particles
+        // and getDeltatime(). 1 (default) = real time, 0.5 = half speed, 0 = frozen (frames
+        // still draw and onUpdate still runs, with a zero delta). Clamped to [0, 100].
+        static void setTimeScale(float scale);
+        static float getTimeScale();
+
+        // Fixed frame delta: when > 0, every frame advances exactly this many seconds of game
+        // time (before timeScale) whatever the wall clock measured, so a run is reproducible
+        // and a slow machine plays in slow motion instead of skipping. 0 (default) = the
+        // measured frame time (capped by maxDeltatime).
+        static void setFixedDeltatime(double seconds);
+        static double getFixedDeltatime();
+
+        // Scaled seconds and frames the update loop has run (since start; not while paused or held)
+        static double getGameTime();
+        static uint64_t getGameFrames();
+
+        // A host (the editor's MCP server) holds the simulation: frames may still draw, but no
+        // update runs and no game time passes. Released, the first frame measures at most one
+        // fixed step, not the time it was held. Default false.
+        static void setSimulationHeld(bool held);
+        static bool isSimulationHeld();
 
         static void setAsyncLoading(bool enable);
         static bool isAsyncLoading();
