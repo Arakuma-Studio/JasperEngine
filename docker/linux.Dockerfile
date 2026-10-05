@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
         libgl1-mesa-dev libvulkan-dev \
         libwayland-dev wayland-protocols extra-cmake-modules \
-        libdbus-1-dev libcurl4-openssl-dev \
+        libdbus-1-dev \
         ccache \
         # Headless runs: virtual X server, Mesa software GL, screenshots.
         xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus xdotool \
