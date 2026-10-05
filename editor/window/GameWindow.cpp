@@ -180,6 +180,24 @@ void editor::GameWindow::resetProjectState() {
     }
 }
 
+const editor::GameViewSettings& editor::GameWindow::getSettings() {
+    loadSettings();
+    return settings;
+}
+
+void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
+    loadSettings();
+    settings = newSettings;
+    settings.aspect = std::clamp(settings.aspect, 0, ASPECT_COUNT - 1);
+    settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+    editPassDirty = true;
+    saveSettings();
+}
+
+int editor::GameWindow::getAspectCount() {
+    return ASPECT_COUNT;
+}
+
 bool editor::GameWindow::computeAspect(float& aspect) const {
     if (settings.aspect == ASPECT_PROJECT) {
         const float w = (float)project->getCanvasWidth();
