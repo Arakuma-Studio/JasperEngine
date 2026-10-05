@@ -1316,6 +1316,8 @@ struct PlayerRun {
     std::chrono::steady_clock::time_point terminateAt;
     std::chrono::steady_clock::time_point exitedAt;
     double seconds = 5.0;
+    bool secondsGiven = false;       // else the run lasts until the input is done (+1.5 s)
+    double inputEnd = 0.0;           // length of the input script
     int maxWidth = 1280;
     std::vector<unsigned long> windowsBefore;
     unsigned long window = 0;        // the player's window once found
@@ -1470,7 +1472,7 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     if (run->killedByUs) {
         data["stopped_by_run_build"] = true;
         data["exit_code"] = nullptr;
-        how = "ran for " + std::to_string(static_cast<int>(run->seconds)) + " s and was stopped";
+        how = "ran for " + std::to_string(static_cast<int>(ran + 0.5)) + " s and was stopped";
     } else if (WIFEXITED(run->status)) {
         data["exit_code"] = WEXITSTATUS(run->status);
         data["exited_early"] = true;
@@ -1650,6 +1652,8 @@ void runBuildTool(const CallPtr& call) {
     if (!run->actions.empty()) defaultSeconds = std::max(defaultSeconds, run->inputDelay + inputEnd + 1.5);
     if (lastShot > 0.0) defaultSeconds = std::max(defaultSeconds, lastShot + 0.5);
     run->seconds = std::max(0.5, std::min(300.0, args.value("seconds", defaultSeconds)));
+    run->secondsGiven = args.contains("seconds") && args["seconds"].is_number();
+    run->inputEnd = inputEnd;
 
     const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots);
     if (wantScreenshot && run->shots.empty()) {
@@ -1726,7 +1730,9 @@ void runBuildTool(const CallPtr& call) {
     run->started = std::chrono::steady_clock::now();
     Out::info("MCP run_build: started %s (pid %d)", exe.string().c_str(), static_cast<int>(pid));
 
-    const int timeoutMs = static_cast<int>((run->seconds + 15.0) * 1000.0);
+    // without seconds, a player slow to open its window gets up to 10 s more (runPlayerInput)
+    const double slack = run->secondsGiven || run->actions.empty() ? 0.0 : 10.0 + run->inputDelay;
+    const int timeoutMs = static_cast<int>((run->seconds + slack + 15.0) * 1000.0);
     call->waitUntil([run]() {
         readPlayerOutput(*run);
         if (!run->exited) {
@@ -1762,7 +1768,13 @@ void runBuildTool(const CallPtr& call) {
             // the rest of the output: wait for EOF briefly (a child of the player may hold the pipe)
             return run->fd < 0 || secondsSince(run->exitedAt) > 1.0;
         }
-        if (!run->terminating && elapsed >= run->seconds) {
+        double limit = run->seconds;
+        if (!run->secondsGiven && !run->actions.empty() && run->inputError.empty()) {
+            // the input started late (the window opened late): it still runs to its end
+            limit = run->inputStartedAt >= 0.0 ? std::max(limit, run->inputStartedAt + run->inputEnd + 1.5)
+                                               : std::max(limit, elapsed + 0.5);
+        }
+        if (!run->terminating && elapsed >= limit) {
             run->terminating = true;
             run->killedByUs = true;
             run->terminateAt = std::chrono::steady_clock::now();
