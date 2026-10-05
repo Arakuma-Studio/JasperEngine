@@ -175,6 +175,18 @@ async def test_cpp_compile(ed: Editor):
             skip("the C++ build can't run in this environment: " + (r.get("errors") or log[-800:]).__str__())
     ed.check_eq(r.get("success"), True, f"clean compile failed: {r!r}")
 
+    # wait: false returns a job to poll
+    started = await ed.call("compile_scripts", wait=False)
+    job = started.get("job_id") or started.get("id")
+    ed.check(job, f"no job id: {started!r}")
+    for _ in range(600):
+        status = await ed.call("get_job", job_id=job)
+        if status["status"] != "running":
+            break
+        time.sleep(1)
+    ed.check_eq(status["status"], "succeeded", f"job: {status!r}")
+    ed.check_eq(status["result"]["success"], True, "job result")
+
     source = (ed.project / "scripts/Spinner.cpp").read_text()
     lines = source.splitlines(keepends=True)
     anchor = next(i for i, l in enumerate(lines) if "counter++" in l)

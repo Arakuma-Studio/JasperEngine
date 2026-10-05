@@ -138,6 +138,9 @@ async def test_materials(ed: Editor):
     info = await ed.call("get_asset_info", path="assets/materials/Red.material")
     ed.check(any(u["entity"]["id"] == eid for u in info["linked_by"]), "relinked")
 
+    thumb = await ed.call_raw("view_asset", {"path": "assets/materials/Red.material"}, timeout=60)
+    ed.check(not thumb.is_error and thumb.images, f"material thumbnail: {thumb.text}")
+
 
 async def test_shader_fork_and_errors(ed: Editor):
     ed.require_tools("fork_shader", "write_file", "check_shader", "inspect_shader_uniforms", "set_shader_uniform")
