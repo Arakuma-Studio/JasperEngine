@@ -36,6 +36,88 @@ void destroyEntityWithoutReconcile(EntityRegistry* registry, Entity entity) {
     }
 }
 
+// The Transform index where a restored branch goes back: right after the nearest GameObject
+// before it in its recorded order that exists again, or rather after that one's ancestor that is
+// the branch's sibling (the whole sibling branch), or right after the parent. NULL_POSITION when
+// there is none to go by, or it is not where the hierarchy says (the branch is left where it is).
+constexpr size_t NULL_POSITION = static_cast<size_t>(-1);
+
+size_t findRestoredTransformPosition(Scene* scene, const editor::DeleteEntityData& entityData,
+        const std::unordered_map<Entity, Entity>& entityRemap) {
+    const Entity source = entityData.entity;
+    const Transform* sourceTransform = scene->findComponent<Transform>(source);
+    if (!sourceTransform || !entityData.transformOrder) {
+        return NULL_POSITION;
+    }
+    const std::vector<Entity>& order = *entityData.transformOrder;
+    if (entityData.transformOrderPos >= order.size()) {
+        return NULL_POSITION;
+    }
+    const Entity parent = sourceTransform->parent;
+    auto transforms = scene->getComponentArray<Transform>();
+
+    auto existing = [&](Entity entity) -> Entity {
+        auto remapped = entityRemap.find(entity);
+        if (remapped != entityRemap.end()) {
+            entity = remapped->second;
+        }
+        if (entity == source || !scene->isEntityCreated(entity) || !scene->findComponent<Transform>(entity) ||
+            scene->isParentOf(source, entity)) {
+            return NULL_ENTITY;
+        }
+        return entity;
+    };
+
+    // The one before, and its ancestor that is a sibling of the branch (or the parent itself)
+    for (size_t pos = entityData.transformOrderPos; pos-- > 0;) {
+        Entity anchor = existing(order[pos]);
+        if (anchor == NULL_ENTITY) {
+            continue;
+        }
+        for (int depth = 0; anchor != NULL_ENTITY && anchor != parent && depth < 1024; depth++) {
+            const Transform* transform = scene->findComponent<Transform>(anchor);
+            if (!transform) {
+                anchor = NULL_ENTITY;
+            } else if (transform->parent == parent) {
+                break;
+            } else {
+                anchor = transform->parent;
+            }
+        }
+        if (anchor == NULL_ENTITY || anchor == source) {
+            return NULL_POSITION; // not under the same parent as recorded
+        }
+        if (anchor == parent) {
+            return transforms->getIndex(parent) + 1;
+        }
+        return scene->findBranchLastIndex(anchor) + 1;
+    }
+
+    // First of its parent: right after it
+    if (parent != NULL_ENTITY) {
+        return transforms->getIndex(parent) + 1;
+    }
+    // First root: before the root of the nearest one after it that exists
+    for (size_t pos = entityData.transformOrderPos + 1; pos < order.size(); pos++) {
+        Entity anchor = existing(order[pos]);
+        if (anchor == NULL_ENTITY) {
+            continue;
+        }
+        for (int depth = 0; depth < 1024; depth++) {
+            const Transform* transform = scene->findComponent<Transform>(anchor);
+            if (!transform || transform->parent == NULL_ENTITY) {
+                break;
+            }
+            anchor = transform->parent;
+        }
+        if (anchor == source || !scene->findComponent<Transform>(anchor)) {
+            return NULL_POSITION;
+        }
+        return transforms->getIndex(anchor);
+    }
+    return NULL_POSITION;
+}
+
 }
 
 editor::DeleteEntityCmd::DeleteEntityCmd(Project* project, uint32_t sceneId, Entity entity, bool allowLockedRoots)
@@ -394,6 +476,41 @@ void editor::DeleteEntityCmd::snapshotEntities(){
     preEncoded.clear();
 }
 
+void editor::DeleteEntityCmd::recordTransformOrder(){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    Scene* scene = sceneProject->scene;
+    // Tracked only: the editor's gizmo entities in the array come and go
+    const std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());
+    auto transforms = scene->getComponentArray<Transform>();
+
+    auto order = std::make_shared<std::vector<Entity>>();
+    order->reserve(tracked.size());
+    std::unordered_map<Entity, size_t> positions;
+    for (size_t i = 0; i < transforms->size(); i++) {
+        Entity entity = transforms->getEntity(i);
+        if (tracked.count(entity)) {
+            positions[entity] = order->size();
+            order->push_back(entity);
+        }
+    }
+
+    std::shared_ptr<const std::vector<Entity>> sharedOrder = std::move(order);
+    for (DeleteEntityData& entityData : entities) {
+        entityData.transformOrder.reset();
+        entityData.transformOrderPos = 0;
+        if (!entityData.hasTransform || !transforms->hasEntity(entityData.entity)) {
+            continue;
+        }
+        // as it is now, not as when the command was made (a redo runs on the restored scene)
+        entityData.entityIndex = transforms->getIndex(entityData.entity);
+        auto position = positions.find(entityData.entity);
+        if (position != positions.end()) {
+            entityData.transformOrder = sharedOrder;
+            entityData.transformOrderPos = position->second;
+        }
+    }
+}
+
 void editor::DeleteEntityCmd::destroyEntity(EntityRegistry* registry, Entity entity, std::vector<Entity>& entities, Project* project, uint32_t sceneId){
     destroyEntityWithoutReconcile(registry, entity);
     ProjectUtils::reconcileTrackedEntities(registry, entities, project, sceneId);
@@ -467,6 +584,7 @@ bool editor::DeleteEntityCmd::execute(){
     trackedBeforeDelete = sceneProject->entities;
     std::vector<size_t> deleteOrder = prepareDeleteSet();
     snapshotEntities();
+    recordTransformOrder();
 
     Scene* scene = sceneProject->scene;
     // Only a deleted camera changes what render-to-texture links resolve to
@@ -608,8 +726,29 @@ void editor::DeleteEntityCmd::undo(){
             entityData.entity = allEntities[0];
 
             if (entityData.hasTransform) {
-                ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities,
-                    entityData.entity, restoredParent, entityData.entityIndex, true, false);
+                // Under its parent (last of its children for now), then back after the GameObject
+                // it followed. Not by its old Transform index: what was before it in the array
+                // may not be there now (a deleted camera's gizmo entities, a GameObject of this
+                // delete put back after it), and that index can be past the end of the array.
+                Scene* scene = sceneProject->scene;
+                auto transforms = scene->getComponentArray<Transform>();
+                if (transforms->hasEntity(entityData.entity)) {
+                    scene->addEntityChild(restoredParent, entityData.entity, true);
+                    size_t position = findRestoredTransformPosition(scene, entityData, entityRemap);
+                    if (position == NULL_POSITION && !entityData.transformOrder) {
+                        // Nothing recorded to go by (it was not tracked): its old index, only
+                        // ever earlier than where it is and never before its parent
+                        const size_t current = transforms->getIndex(entityData.entity);
+                        position = std::min(entityData.entityIndex, current);
+                        const Transform& transform = scene->getComponent<Transform>(entityData.entity);
+                        if (transform.parent != NULL_ENTITY && transforms->hasEntity(transform.parent)) {
+                            position = std::max(position, transforms->getIndex(transform.parent) + 1);
+                        }
+                    }
+                    if (position != NULL_POSITION && position <= transforms->size()) {
+                        scene->moveChildToIndex(entityData.entity, position);
+                    }
+                }
                 // The saved values are local to that parent: the move kept a world placement
                 // that, for a prefab instance root, is still the prefab's (its world matrix is
                 // the prefab root's until the next update), so they are put back

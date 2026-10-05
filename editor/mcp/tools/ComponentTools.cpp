@@ -928,6 +928,7 @@ void registerComponentTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "copy_component";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Copy Component";
         tool.description = "Inspector > Copy Component: one component's values to the clipboard, for paste_component.";
         tool.inputSchema = object({

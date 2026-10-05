@@ -51,6 +51,12 @@ McpCall::McpCall(McpServer& server, std::string tool, Json args, Completion comp
     , startTime(std::chrono::steady_clock::now()) {
 }
 
+bool McpCall::cancelled() const {
+    if (isCancelled.load()) return true;
+    const std::shared_ptr<McpCall> parent = parentCall.lock();
+    return parent && parent->cancelled();
+}
+
 McpContext& McpCall::ctx() {
     return owner.context();
 }

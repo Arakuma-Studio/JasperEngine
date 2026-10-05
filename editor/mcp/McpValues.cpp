@@ -95,10 +95,14 @@ const char* const XYZW[] = {"x", "y", "z", "w"};
 // The shortest decimal that reads back as the same float: 0.1f is 0.1, not 0.10000000149
 double cleanFloat(float value) {
     if (!std::isfinite(value)) return value;
+    // Not std::to_chars(float): Apple's libc++ only has it from macOS 13.3. The first
+    // precision that reads back as the same float is the shortest (%.9g always does).
     char buffer[32];
-    auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-    if (result.ec != std::errc()) return value;
-    return std::strtod(std::string(buffer, result.ptr).c_str(), nullptr);
+    for (int precision = 1; precision <= 9; precision++) {
+        std::snprintf(buffer, sizeof(buffer), "%.*g", precision, static_cast<double>(value));
+        if (std::strtof(buffer, nullptr) == value) break;
+    }
+    return std::strtod(buffer, nullptr);
 }
 const char* const RGBA[] = {"r", "g", "b", "a"};
 

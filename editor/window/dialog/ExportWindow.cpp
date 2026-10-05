@@ -5,6 +5,7 @@
 #include "util/FileDialogs.h"
 #include "AppSettings.h"
 #include "Backend.h"
+#include "EditorHost.h"
 #include "Generator.h"
 #include "pool/ShaderPool.h"
 #include "window/Widgets.h"
@@ -1248,6 +1249,13 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     // so closed scenes still contribute and an exclusion cannot empty the list early
     exportConfig.shaderAdditions = m_shaderAdditions;
     exportConfig.shaderExclusions = m_shaderExclusions;
+
+    // An MCP agent's build job may be exporting or compiling the project right now
+    const std::string conflict = editor::getEditorHost().backgroundWorkConflict("export");
+    if (!conflict.empty()) {
+        editor::getEditorHost().registerAlert("Cannot Export", conflict);
+        return;
+    }
 
     if (!saveCurrentSettingsToProject()) return;
     m_step = Step::Progress;

@@ -3111,6 +3111,7 @@ void editor::App::enqueueMainThreadTask(std::function<void()> task) {
         mainThreadTasks.push(std::move(task));
     }
     // Wake an idle backend loop so cross-thread work runs promptly.
+    std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
@@ -3142,6 +3143,7 @@ bool editor::App::consumeFrameRequest() {
 }
 
 void editor::App::setWakeCallback(std::function<void()> cb) {
+    std::lock_guard<std::mutex> lock(wakeMutex);
     wakeCallback = std::move(cb);
 }
 
@@ -3150,7 +3152,7 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
-    wakeCallback = nullptr;
+    setWakeCallback(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -3207,6 +3209,14 @@ void editor::App::prepareForProjectSwitch() {
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
     dockspaceNeedsRebuild = true;
+}
+
+std::string editor::App::backgroundWorkConflict(const std::string& action) const {
+    mcp::McpServer& server = mcp::McpServer::get();
+    if (!server.isStarted()) return {};
+    // A human action: the export window's own export is not a conflict for itself
+    const mcp::ToolActivity activity = action == "play" ? mcp::ToolActivity::PlayStart : mcp::ToolActivity::Build;
+    return server.busyRefusal(activity, nullptr, false);
 }
 
 void editor::App::requestScenePlayFocus(uint32_t sceneId) {
@@ -3728,7 +3738,16 @@ void editor::App::processMainThreadTasks() {
     while (!tasks.empty()) {
         auto task = std::move(tasks.front());
         tasks.pop();
-        if (task) task();
+        if (!task) continue;
+        // One failing task must not drop the ones queued behind it (an MCP call waiting
+        // for its turn would never be answered) nor take the editor down
+        try {
+            task();
+        } catch (const std::exception& e) {
+            Out::error("A main-thread task failed: %s", e.what());
+        } catch (...) {
+            Out::error("A main-thread task failed with an unknown error.");
+        }
     }
 }
 

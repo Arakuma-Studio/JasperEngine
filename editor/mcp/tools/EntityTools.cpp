@@ -1200,6 +1200,7 @@ void registerEntityTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "select_entities";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Select Entities";
         tool.description =
             "Replaces a scene's selection (what the Inspector shows); add=true adds to it; entities: [] clears it. "
@@ -1217,6 +1218,7 @@ void registerEntityTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "copy_entities";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Copy Entities";
         tool.description =
             "Copies GameObjects with their children to the clipboard (Ctrl+C) for paste_entities (any scene of the "
