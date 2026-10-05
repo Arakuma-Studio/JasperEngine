@@ -849,6 +849,7 @@ namespace jasperengine{
 		int ssrBlurSlotParams;
 		int compositeSlotParams;
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
+		bool mvpFlipped = false;           // the Y flip the MVP matrices were made with
 
 		// Fixed game resolution: when enabled on the Engine main scene (Scene
 		// fixedResolution settings), the main camera renders into

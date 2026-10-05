@@ -63,6 +63,11 @@ Rigidbody2D::Rigidbody2D(const Rigidbody2D& rhs) = default;
 Rigidbody2D& Rigidbody2D::operator=(const Rigidbody2D& rhs) = default;
 
 void Rigidbody2D::checkBody(const Rigidbody2DComponent& body) const{
+    // Scripts start (Lua init(), C++ constructors) before their scene enters the Engine,
+    // which is what loads the physics bodies: make this one now rather than fail
+    if (!b2Body_IsValid(body.body)){
+        scene->getSystem<PhysicsSystem>()->ensureRigidbody2DLoaded(entity);
+    }
     if (!b2Body_IsValid(body.body)){
         Log::error("Rigidbody2D is not loaded");
         throw std::runtime_error("Rigidbody2D is not loaded");

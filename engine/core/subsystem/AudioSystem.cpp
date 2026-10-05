@@ -12,6 +12,7 @@
 using namespace jasperengine;
 
 bool AudioSystem::inited = false;
+bool AudioSystem::outputUnavailable = false;
 
 float AudioSystem::globalVolume = 1.0;
 
@@ -30,9 +31,16 @@ SoLoud::Soloud& AudioSystem::getSoloud(){
 
 bool AudioSystem::init(){
     if (!inited) {
+        // Opened once: without an output device (a headless machine, a server, a CI
+        // runner) every retry would probe all the audio backends again, for each sound
+        if (outputUnavailable) {
+            return false;
+        }
+
         SoLoud::result result = getSoloud().init();
         if (result != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR) {
-            Log::error("Failed to initialize audio output");
+            outputUnavailable = true;
+            Log::warn("No audio output available (%s): sounds are muted", getSoloud().getErrorString(result));
             return false;
         }
 
@@ -43,6 +51,10 @@ bool AudioSystem::init(){
     }
 
     return true;
+}
+
+bool AudioSystem::isOutputAvailable(){
+    return !outputUnavailable;
 }
 
 void AudioSystem::deInit(){
@@ -332,6 +344,11 @@ void AudioSystem::update(double dt){
 
                 if (audio.state != AudioSourceState::Paused || audio.handle == 0) {
                     if (!init()) {
+                        // no output: the sound plays silently, as if it ended at once,
+                        // rather than asking for the device again every frame
+                        audio.handle = 0;
+                        audio.playingTime = 0;
+                        audio.state = AudioSourceState::Stopped;
                         continue;
                     }
 

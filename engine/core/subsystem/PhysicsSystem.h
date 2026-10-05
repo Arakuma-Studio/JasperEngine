@@ -230,12 +230,18 @@ namespace jasperengine{
 
 		bool loadRigidbody2D(Entity entity);
 		void destroyRigidbody2D(Rigidbody2DComponent& body);
+		// Makes the body of a Rigidbody 2D that has none yet, placed at its entity, as
+		// load() does. Scripts start (init(), C++ constructors) before their scene enters
+		// the Engine, so a body they reach then would not exist yet.
+		bool ensureRigidbody2DLoaded(Entity entity);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::PhysicsSystem* getWorld3D();
 		bool loadRigidbody(Entity entity);
 		void destroyRigidbody(RigidbodyComponent& body);
+		// The 3D counterpart of ensureRigidbody2DLoaded()
+		bool ensureRigidbodyLoaded(Entity entity);
 #endif
 
 		// Writes a body pose back into its entity, so the transform sync of the next
