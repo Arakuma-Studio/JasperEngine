@@ -139,6 +139,9 @@ def text_of(result: dict) -> str:
 
 async def test_rapid_sequential_calls(ed: Editor):
     """Hundreds of back-to-back calls of every flavour; each answers promptly."""
+    # Tool calls queue until the project has loaded, which can take a minute on a loaded
+    # host; time only the calls made after that.
+    await ed.call("editor_status")
     start = time.monotonic()
     slowest = 0.0
     for i in range(300):
