@@ -90,8 +90,7 @@ void McpServer::start(App& app) {
 }
 
 void McpServer::registerAllTools() {
-    // Fixed order: legacy first, so the workstream modules replace legacy tools by name
-    registerLegacyTools(reg);
+    // Fixed order (tools/list order)
     registerCoreTools(reg);
     registerProjectTools(reg);
     registerSceneTools(reg);

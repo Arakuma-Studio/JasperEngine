@@ -11,7 +11,6 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
-#include "mcp/legacy/EditorActionExecutor.h"
 
 #include "App.h"
 #include "Catalog.h"
@@ -26,6 +25,7 @@
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
@@ -33,6 +33,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "texture/Material.h"
+#include "texture/TextureData.h"
 #include "util/Base64.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -278,53 +279,73 @@ bool addSceneCommand(uint32_t sceneId, Command* cmd) {
     return CommandHandle::get(sceneId)->addCommand(cmd);
 }
 
-Json legacyToResult(const legacy::ActionResult& action) {
-    Json data = action.data.is_object() ? action.data : Json::object();
-    return data;
-}
+// The scene (open), the GameObject (when given or required) and the component (when given)
+// of a tool's scene / entity / component arguments
+struct Target {
+    SceneProject* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    bool hasComponent = false;
+    ComponentType component = ComponentType::Transform;
+};
 
-void replyLegacy(const CallPtr& call, const legacy::ActionResult& action, Json extra = Json::object()) {
-    Json data = legacyToResult(action);
-    for (auto it = extra.begin(); it != extra.end(); ++it) data[it.key()] = it.value();
-    if (action.success) call->ok(action.message, data);
-    else call->fail(action.message, data);
-}
-
-// scene/entity → the legacy scene_id/entity_id arguments
-bool legacyTarget(const CallPtr& call, Json& legacyArgs, SceneProject*& scene, Entity& entity, bool entityRequired) {
+bool resolveTarget(const CallPtr& call, Target& target, bool entityRequired) {
     const Json& args = call->args();
     std::string error;
-    scene = McpRefs::resolveScene(call->ctx().project(), args.contains("scene") ? args["scene"] : Json(), error);
-    if (!scene) {
+    target.scene = McpRefs::resolveScene(call->ctx().project(), args.contains("scene") ? args["scene"] : Json(), error);
+    if (!target.scene) {
         call->fail(error);
         return false;
     }
-    if (!scene->scene) {
-        call->fail("Scene \"" + scene->name + "\" is not loaded; open it first.");
+    if (!target.scene->scene) {
+        call->fail("Scene \"" + target.scene->name + "\" is not loaded; open it first.");
         return false;
     }
-    legacyArgs["scene_id"] = scene->id;
-    entity = NULL_ENTITY;
     if (args.contains("entity") && !args["entity"].is_null()) {
-        entity = McpRefs::resolveEntity(scene, args["entity"], error);
-        if (entity == NULL_ENTITY) {
+        target.entity = McpRefs::resolveEntity(target.scene, args["entity"], error);
+        if (target.entity == NULL_ENTITY) {
             call->fail(error);
             return false;
         }
-        legacyArgs["entity_id"] = entity;
     } else if (entityRequired) {
         call->fail("entity is required: a GameObject id or path.");
         return false;
     }
     if (args.contains("component") && args["component"].is_string()) {
-        ComponentType type;
-        if (!McpRefs::resolveComponent(args["component"], type, error)) {
+        if (!McpRefs::resolveComponent(args["component"], target.component, error)) {
             call->fail(error);
             return false;
         }
-        legacyArgs["component"] = Catalog::getComponentName(type);
+        target.hasComponent = true;
     }
     return true;
+}
+
+// The shader-capable component of target.entity: the given one, else the first renderable one
+bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& shaderType) {
+    Scene* scene = target.scene->scene;
+    if (target.hasComponent) {
+        if (!shaderTypeForComponent(target.component, shaderType)) {
+            call->fail("The component does not take custom shaders: use mesh, ui, points, linerenderer or skybox.");
+            return false;
+        }
+        if (!McpRefs::hasComponent(target.scene, target.entity, target.component)) {
+            call->fail("The GameObject has no " + McpRefs::componentName(target.component) + " component.");
+            return false;
+        }
+        return true;
+    }
+    for (ComponentType candidate : {ComponentType::MeshComponent, ComponentType::UIComponent, ComponentType::PointsComponent,
+                                    ComponentType::LineRendererComponent, ComponentType::SkyboxComponent}) {
+        if (McpRefs::hasComponent(target.scene, target.entity, candidate)) {
+            target.component = candidate;
+            target.hasComponent = true;
+            shaderTypeForComponent(candidate, shaderType);
+            return true;
+        }
+    }
+    (void)scene;
+    call->fail("The GameObject has no shader-capable component (mesh, ui, points, linerenderer, skybox).");
+    return false;
 }
 
 std::string lowerCase(std::string text) {
@@ -1513,42 +1534,101 @@ void forkShaderTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     const std::string target = args.value("target", args.contains("entity") ? "component" : "");
-    Json legacyArgs = Json::object();
-    SceneProject* sceneProject = nullptr;
-    Entity entity = NULL_ENTITY;
-    if (!legacyTarget(call, legacyArgs, sceneProject, entity, target == "component" || target == "depth")) return;
-    if (args.contains("directory")) legacyArgs["directory"] = args["directory"];
-    if (args.contains("fork_includes")) legacyArgs["fork_includes"] = args["fork_includes"];
+    Target where;
+    if (!resolveTarget(call, where, target == "component" || target == "depth")) return;
+    SceneProject* sceneProject = where.scene;
 
-    auto finish = [call, project](const std::string& base, Json data, const std::string& text) {
+    auto finish = [call](const std::string& base, Json data, const std::string& text) {
         data["vert_path"] = Util::resolveCustomShaderPaths(base).vert;
         data["frag_path"] = Util::resolveCustomShaderPaths(base).frag;
         call->ok(text + " Read the files, change only the shading math, and edit them with write_file (it compiles the fork "
                         "and reports errors) or on disk + sync_files + check_shader.", data);
-        (void)project;
+    };
+    const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
+    if (directory != "." && !Util::isSafeRelativePath(directory)) {
+        call->fail("directory must be project-relative.");
+        return;
+    }
+    const bool forkIncludes = args.value("fork_includes", false);
+    // ForkShaderCmd writes the files in execute(); refresh the Project window and confirm them
+    auto runFork = [&](ForkShaderCmd* fork, std::string& base) {
+        if (!fork->isValid()) {
+            const std::string error = fork->getError();
+            delete fork;
+            call->fail(error.empty() ? "Can't plan the fork." : error);
+            return false;
+        }
+        base = fork->getBase();
+        if (!addSceneCommand(sceneProject->id, fork)) {
+            call->fail("The fork failed (files not written).");
+            return false;
+        }
+        if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+        std::error_code ec;
+        if (!fs::exists(project->getProjectPath() / (base + ".vert"), ec) || !fs::exists(project->getProjectPath() / (base + ".frag"), ec)) {
+            call->fail("The fork did not write its source files.");
+            return false;
+        }
+        return true;
     };
 
-    if (target == "component" || target == "depth" || target == "scene_default") {
-        if (target == "depth") legacyArgs["shader_type"] = "depth";
-        if (target == "scene_default") {
-            const std::string type = args.value("shader_type", "");
-            if (type.empty()) {
-                call->fail("target scene_default needs shader_type: mesh, ui, sky, points or lines.");
-                return;
-            }
-            legacyArgs["shader_type"] = type;
-            legacyArgs.erase("entity_id");
-        }
-        legacy::ActionResult action = call->ctx().legacyExecutor().execute("fork_shader", legacyArgs);
-        if (!action.success) {
-            call->fail(action.message, legacyToResult(action));
+    if (target == "scene_default") {
+        static const std::map<std::string, ShaderType> types = {
+            {"mesh", ShaderType::MESH}, {"ui", ShaderType::UI}, {"sky", ShaderType::SKYBOX},
+            {"points", ShaderType::POINTS}, {"lines", ShaderType::LINES}};
+        static const std::map<ShaderType, std::string> properties = {
+            {ShaderType::MESH, "default_mesh_shader"}, {ShaderType::UI, "default_ui_shader"},
+            {ShaderType::SKYBOX, "default_sky_shader"}, {ShaderType::POINTS, "default_points_shader"},
+            {ShaderType::LINES, "default_lines_shader"}};
+        const std::string typeName = lowerCase(args.value("shader_type", ""));
+        auto type = types.find(typeName);
+        if (type == types.end()) {
+            call->fail("target scene_default needs shader_type: mesh, ui, sky, points or lines.");
             return;
         }
-        Json data = legacyToResult(action);
-        const std::string base = data.value("custom_shader", std::string());
-        finish(base, data, "Forked the shader to " + base + " (.vert/.frag) and pointed " +
-                               (target == "scene_default" ? data.value("scene_property", std::string("the scene default")) : data.value("property", std::string("customShader"))) +
-                               " at it (one undo step).");
+        const std::string property = properties.at(type->second);
+        const std::string current = Catalog::getSceneProperty<std::string>(sceneProject->scene, property);
+        if (!current.empty()) {
+            call->fail("The scene already has a default " + typeName + " shader (" + current + "): edit that fork, or clear " +
+                       property + " (set_scene_settings) before forking again.");
+            return;
+        }
+        const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, type->second,
+                                                                    args.value("name", sceneProject->name + " " + typeName));
+        std::string base;
+        if (!runFork(new ForkShaderCmd(project, sceneProject, type->second, property, directory, name, forkIncludes), base)) return;
+        finish(base, Json{{"custom_shader", base}, {"scene_property", property}},
+               "Forked the scene default " + typeName + " shader to " + base + " (.vert/.frag) and set " + property + ".");
+        return;
+    }
+    if (target == "component" || target == "depth") {
+        ShaderType shaderType;
+        if (!resolveShaderComponent(call, where, shaderType)) return;
+        std::string property = "customShader";
+        if (target == "depth") {
+            if (where.component != ComponentType::MeshComponent) {
+                call->fail("Only a mesh component has a depth shader.");
+                return;
+            }
+            shaderType = ShaderType::DEPTH;
+            property = "customDepthShader";
+        }
+        if (std::string* current = Catalog::getPropertyRef<std::string>(sceneProject->scene, where.entity, where.component, property)) {
+            if (!current->empty()) {
+                call->fail("The component already uses " + *current + " (" + property + "): edit that fork, or set " + property +
+                           " to \"\" before forking again.");
+                return;
+            }
+        }
+        std::string desired = args.value("name", sceneProject->scene->getEntityName(where.entity) +
+                                                     (shaderType == ShaderType::DEPTH ? "_depth" : ""));
+        const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, shaderType, desired);
+        std::string base;
+        if (!runFork(new ForkShaderCmd(project, sceneProject->id, where.entity, where.component, shaderType, directory, name,
+                                       forkIncludes), base)) return;
+        finish(base, Json{{"custom_shader", base}, {"property", property}, {"entity", McpRefs::entityJson(sceneProject, where.entity)},
+                          {"component", McpRefs::componentName(where.component)}},
+               "Forked the shader to " + base + " (.vert/.frag) and pointed " + property + " at it.");
         return;
     }
     if (target == "post_process") {
@@ -1567,11 +1647,6 @@ void forkShaderTool(const CallPtr& call) {
             passes.push_back(PostProcessPass());
             index = static_cast<long long>(passes.size()) - 1;
         }
-        const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
-        if (!Util::isSafeRelativePath(directory) && directory != ".") {
-            call->fail("directory must be project-relative.");
-            return;
-        }
         const std::string desired = args.value("name", sceneProject->name + " Post " + std::to_string(index + 1));
         const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, ShaderType::POSTPROCESS, desired);
         const uint32_t sceneId = sceneProject->id;
@@ -1579,19 +1654,8 @@ void forkShaderTool(const CallPtr& call) {
             passes[static_cast<size_t>(index)].shader = base;
             return std::make_unique<ScenePropertyCmd<std::vector<PostProcessPass>>>(project, sceneId, "post_process", passes);
         };
-        auto* fork = new ForkShaderCmd(project, ShaderType::POSTPROCESS, makePropertyCmd, directory, name, args.value("fork_includes", false));
-        if (!fork->isValid()) {
-            const std::string error = fork->getError();
-            delete fork;
-            call->fail(error.empty() ? "Can't plan the fork." : error);
-            return;
-        }
-        const std::string base = fork->getBase();
-        if (!addSceneCommand(sceneId, fork)) {
-            call->fail("The fork failed (files not written).");
-            return;
-        }
-        if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+        std::string base;
+        if (!runFork(new ForkShaderCmd(project, ShaderType::POSTPROCESS, makePropertyCmd, directory, name, forkIncludes), base)) return;
         finish(base, Json{{"custom_shader", base}, {"pass_index", index}, {"new_pass", append}},
                "Forked the post-process shader to " + base + " for pass " + std::to_string(index) + (append ? " (new pass)" : "") +
                    ". Its parameters are a u_fs_postParams block, set with set_shader_uniform (pass_index).");
@@ -1601,51 +1665,223 @@ void forkShaderTool(const CallPtr& call) {
                "scene_default (shader_type for the whole scene) or post_process (a scene post-process pass).");
 }
 
-void inspectShaderUniformsTool(const CallPtr& call) {
-    Json legacyArgs = Json::object();
-    SceneProject* sceneProject = nullptr;
-    Entity entity = NULL_ENTITY;
+const char* uniformTypeName(ShaderUniformType type) {
+    switch (type) {
+        case ShaderUniformType::FLOAT:  return "float";
+        case ShaderUniformType::FLOAT2: return "vec2";
+        case ShaderUniformType::FLOAT3: return "vec3";
+        case ShaderUniformType::FLOAT4: return "vec4";
+        case ShaderUniformType::INT:    return "int";
+        case ShaderUniformType::INT2:   return "ivec2";
+        case ShaderUniformType::INT3:   return "ivec3";
+        case ShaderUniformType::INT4:   return "ivec4";
+        default: return "other";
+    }
+}
+
+Json vec4Array(const Vector4& v) {
+    return Json::array({v.x, v.y, v.z, v.w});
+}
+
+Json uniformValuesJson(const ShaderUniformValues& values) {
+    Json json = Json::object();
+    for (const auto& uniform : values) json[uniform.first] = vec4Array(uniform.second);
+    return json;
+}
+
+// One entry per declared member; engine-written ones (time, resolution) flagged
+void appendUniformMembers(Json& members, const CustomUniformBlock& block, const ShaderUniformValues& values) {
+    for (const ShaderUniform& uniform : block.members) {
+        if (std::any_of(members.begin(), members.end(), [&](const Json& m) { return m.value("name", "") == uniform.name; })) continue;
+        const bool reserved = ShaderUniforms::isReserved(uniform.name);
+        const bool editable = ShaderUniforms::isEditable(uniform) && !reserved;
+        Json member = {{"name", uniform.name}, {"type", uniformTypeName(uniform.type)}, {"engine_written", reserved}, {"editable", editable}};
+        if (uniform.arrayCount > 1) member["array_count"] = uniform.arrayCount;
+        if (editable) {
+            member["value"] = vec4Array(ShaderUniforms::get(values, uniform.name));
+            member["has_value"] = ShaderUniforms::has(values, uniform.name);
+        }
+        members.push_back(member);
+    }
+}
+
+void componentUniformMembers(Json& members, Json& warnings, Scene* scene, Entity entity, ComponentType component,
+                             const ShaderUniformValues& values) {
+    std::vector<const CustomUniformBlock*> blocks = Catalog::getShaderUniformBlocks(scene, entity, component);
+    for (const CustomUniformBlock* block : blocks) appendUniformMembers(members, *block, values);
+    warnings = Catalog::getShaderUniformWarnings(blocks);
+}
+
+// Reflected from the shader pool: a pass still building (or failed) lists none
+void passUniformMembers(Json& members, Json& warnings, const PostProcessPass& pass, bool& buildFailed) {
+    const uint16_t customId = ShaderPool::registerCustomShader(pass.shader);
+    buildFailed = customId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::POSTPROCESS, 0, customId);
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::POSTPROCESS, 0, customId);
+    warnings = Json::array();
+    if (!buildFailed && shader && shader->isCreated()) {
+        CustomUniformBlock block;
+        block.resolve(shader->shaderData, "u_fs_postParams");
+        appendUniformMembers(members, block, pass.uniforms);
+        warnings = Catalog::getShaderUniformWarnings({&block});
+    }
+}
+
+// The value is stored either way; the note says when the shader cannot use it
+std::string uniformSetNote(const Json& members, const std::string& name, bool& declared) {
+    declared = false;
+    for (const Json& member : members) {
+        if (member.value("name", "") != name) continue;
+        declared = true;
+        if (!member.value("editable", false)) {
+            return " Note: '" + name + "' is a matrix or array member, which takes no value and stays zero; declare one "
+                   "scalar or vector member per value instead.";
+        }
+        return "";
+    }
+    return " Note: the loaded shader declares no member '" + name + "' (it may still be building, or the name differs); "
+           "the value is kept and applies once declared.";
+}
+
+bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passes, int& index) {
+    const Json& value = call->args()["pass_index"];
+    index = value.is_number_integer() ? value.get<int>() : -1;
+    if (index < 0 || index >= static_cast<int>(passes.size())) {
+        call->fail("pass_index must be 0.." + std::to_string(static_cast<int>(passes.size()) - 1) + " (the scene has " +
+                   std::to_string(passes.size()) + " post-process pass(es)).");
+        return false;
+    }
+    return true;
+}
+
+void getShaderUniformsTool(const CallPtr& call) {
     const Json& args = call->args();
     const bool pass = args.contains("pass_index");
-    if (!legacyTarget(call, legacyArgs, sceneProject, entity, !pass)) return;
+    Target where;
+    if (!resolveTarget(call, where, !pass)) return;
+    Scene* scene = where.scene->scene;
+    Json members = Json::array();
+    Json warnings;
     if (pass) {
-        legacyArgs.erase("entity_id");
-        legacyArgs["pass_index"] = args["pass_index"];
+        const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
+        int index;
+        if (!passIndexArg(call, passes, index)) return;
+        const PostProcessPass& p = passes[index];
+        bool buildFailed = false;
+        passUniformMembers(members, warnings, p, buildFailed);
+        call->ok("Post-process pass " + std::to_string(index) + " (" + p.shader + "): " + std::to_string(members.size()) + " member(s).",
+                 Json{{"pass_index", index}, {"shader", p.shader}, {"enabled", p.enabled}, {"build_failed", buildFailed},
+                      {"members", members}, {"warnings", warnings}, {"values", uniformValuesJson(p.uniforms)}});
+        return;
     }
-    replyLegacy(call, call->ctx().legacyExecutor().execute("inspect_shader_uniforms", legacyArgs));
+    ShaderType shaderType;
+    if (!resolveShaderComponent(call, where, shaderType)) return;
+    ShaderUniformValues* values = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, "shaderUniforms");
+    std::string* custom = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customShader");
+    if (!values || !custom) {
+        call->fail("The component has no shader uniforms.");
+        return;
+    }
+    componentUniformMembers(members, warnings, scene, where.entity, where.component, *values);
+    Json data = {{"entity", McpRefs::entityJson(where.scene, where.entity)},
+                 {"component", McpRefs::componentName(where.component)},
+                 {"custom_shader", *custom},
+                 {"effective_shader", custom->empty() ? scene->getDefaultCustomShader(shaderType) : *custom},
+                 {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
+                 {"members", members},
+                 {"warnings", warnings},
+                 {"values", uniformValuesJson(*values)}};
+    // a mesh's depth fork declares blocks of its own, listed in the same members
+    if (std::string* depth = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customDepthShader")) {
+        data["custom_depth_shader"] = *depth;
+        data["depth_build_failed"] = Catalog::isCustomDepthShaderBuildFailed(scene, where.entity);
+    }
+    call->ok(std::to_string(members.size()) + " uniform member(s) on " + McpRefs::entityPath(where.scene, where.entity) + ".", data);
 }
 
 void setShaderUniformTool(const CallPtr& call) {
-    Json legacyArgs = Json::object();
-    SceneProject* sceneProject = nullptr;
-    Entity entity = NULL_ENTITY;
     const Json& args = call->args();
     const bool pass = args.contains("pass_index");
-    if (!legacyTarget(call, legacyArgs, sceneProject, entity, !pass)) return;
-    if (pass) {
-        legacyArgs.erase("entity_id");
-        legacyArgs["pass_index"] = args["pass_index"];
+    Target where;
+    if (!resolveTarget(call, where, !pass)) return;
+    const std::string name = args.value("name", "");
+    if (name.empty()) {
+        call->fail("name is required: the uniform block member.");
+        return;
     }
-    legacyArgs["name"] = args.value("name", "");
-    if (args.value("remove", false)) {
-        legacyArgs["remove"] = true;
-    } else if (args.contains("value")) {
-        const Json& value = args["value"];
-        if (value.is_number()) legacyArgs["number_value"] = value;
-        else if (value.is_array() && value.size() >= 2 && value.size() <= 4) {
-            const char* keys[] = {"x", "y", "z", "w"};
-            Json v = Json::object();
-            for (size_t i = 0; i < value.size(); i++) v[keys[i]] = value[i];
-            legacyArgs[value.size() == 2 ? "vector2_value" : value.size() == 3 ? "vector3_value" : "vector4_value"] = v;
+    if (ShaderUniforms::isReserved(name)) {
+        call->fail("'" + name + "' is written by the engine every frame; rename the shader member to drive it yourself.");
+        return;
+    }
+    const bool remove = args.value("remove", false);
+    Vector4 value(0, 0, 0, 0);
+    if (!remove) {
+        const Json& v = args.contains("value") ? args["value"] : Json();
+        if (v.is_number()) {
+            value.x = v.get<float>();
+        } else if (v.is_array() && v.size() >= 2 && v.size() <= 4 &&
+                   std::all_of(v.begin(), v.end(), [](const Json& c) { return c.is_number(); })) {
+            float* out[] = {&value.x, &value.y, &value.z, &value.w};
+            for (size_t i = 0; i < v.size(); i++) *out[i] = v[i].get<float>();
         } else {
-            call->fail("value must be a number or [x,y], [x,y,z], [x,y,z,w].");
+            call->fail("value must be a number or [x,y], [x,y,z], [x,y,z,w]; or pass remove: true.");
+            return;
+        }
+    }
+    Project* project = call->ctx().project();
+    Scene* scene = where.scene->scene;
+    const uint32_t sceneId = where.scene->id;
+    Json declaredMembers = Json::array();
+    Json warnings;
+    bool declared = false;
+    if (pass) {
+        std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
+        int index;
+        if (!passIndexArg(call, passes, index)) return;
+        if (remove) {
+            if (!passes[index].removeUniform(name)) {
+                call->fail("Pass " + std::to_string(index) + " has no value '" + name + "'.");
+                return;
+            }
+        } else {
+            passes[index].setUniform(name, value);
+        }
+        if (!addSceneCommand(sceneId, new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", passes))) {
+            call->fail("Could not change the pass.");
+            return;
+        }
+        bool buildFailed = false;
+        passUniformMembers(declaredMembers, warnings, passes[index], buildFailed);
+        const std::string note = remove ? "" : uniformSetNote(declaredMembers, name, declared);
+        call->ok((remove ? "Removed " : "Set ") + name + " on post-process pass " + std::to_string(index) + "." + note,
+                 Json{{"pass_index", index}, {"name", name}, {"declared", declared}});
+        return;
+    }
+    ShaderType shaderType;
+    if (!resolveShaderComponent(call, where, shaderType)) return;
+    ShaderUniformValues* current = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, "shaderUniforms");
+    if (!current) {
+        call->fail("The component has no shader uniforms.");
+        return;
+    }
+    ShaderUniformValues values = *current;
+    if (remove) {
+        if (!ShaderUniforms::remove(values, name)) {
+            call->fail("The component has no value '" + name + "'.");
             return;
         }
     } else {
-        call->fail("Pass value (number or vector) or remove: true.");
+        ShaderUniforms::set(values, name, value);
+    }
+    if (!addSceneCommand(sceneId, new PropertyCmd<ShaderUniformValues>(project, sceneId, where.entity, where.component,
+                                                                       "shaderUniforms", values))) {
+        call->fail("Could not change the uniform.");
         return;
     }
-    replyLegacy(call, call->ctx().legacyExecutor().execute("set_shader_uniform", legacyArgs));
+    componentUniformMembers(declaredMembers, warnings, scene, where.entity, where.component, values);
+    const std::string note = remove ? "" : uniformSetNote(declaredMembers, name, declared);
+    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) + "." + note,
+             Json{{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
+                  {"name", name}, {"declared", declared}});
 }
 
 void checkShaderTool(const CallPtr& call) {
@@ -1710,20 +1946,82 @@ void checkShaderTool(const CallPtr& call) {
 }
 
 void setTextureSettingsTool(const CallPtr& call) {
-    Json legacyArgs = Json::object();
-    SceneProject* sceneProject = nullptr;
-    Entity entity = NULL_ENTITY;
-    if (!legacyTarget(call, legacyArgs, sceneProject, entity, true)) return;
     const Json& args = call->args();
-    if (!legacyArgs.contains("component")) {
+    Target where;
+    if (!resolveTarget(call, where, true)) return;
+    if (!where.hasComponent) {
         call->fail("component is required (e.g. sprite, mesh, image).");
         return;
     }
-    for (const char* key : {"property", "min_filter", "mag_filter", "wrap_u", "wrap_v", "svg_scale"}) {
-        if (args.contains(key)) legacyArgs[key] = args[key];
+    Scene* scene = where.scene->scene;
+    const std::string propertyName = args.value("property", "");
+    auto properties = Catalog::findEntityProperties(scene, where.entity, where.component);
+    auto it = properties.find(propertyName);
+    if (it == properties.end() || !it->second.ref || it->second.type != PropertyType::Texture) {
+        std::string names;
+        for (const auto& entry : properties) {
+            if (entry.second.type == PropertyType::Texture && entry.second.ref) names += (names.empty() ? "" : ", ") + entry.first;
+        }
+        call->fail("property must be a texture property of " + McpRefs::componentName(where.component) + ": " +
+                   (names.empty() ? "it has none" : names) + ".");
+        return;
     }
-    replyLegacy(call, call->ctx().legacyExecutor().execute("set_texture_settings", legacyArgs),
-                Json{{"entity", McpRefs::entityJson(sceneProject, entity)}});
+    Texture* current = static_cast<Texture*>(it->second.ref);
+    Texture modified = *current;
+    // A value counts only when it round-trips: the Stream converters fall back silently
+    for (const char* field : {"min_filter", "mag_filter"}) {
+        if (!args.contains(field)) continue;
+        const std::string value = args[field].is_string() ? args[field].get<std::string>() : "";
+        const TextureFilter filter = Stream::stringToTextureFilter(value);
+        const bool mag = std::string(field) == "mag_filter";
+        if (Stream::textureFilterToString(filter) != value || (mag && filter != TextureFilter::NEAREST && filter != TextureFilter::LINEAR)) {
+            call->fail(std::string("Invalid ") + field + " \"" + value + "\"" + (mag ? " (nearest or linear)." : "."));
+            return;
+        }
+        if (mag) modified.setMagFilter(filter);
+        else modified.setMinFilter(filter);
+    }
+    for (const char* field : {"wrap_u", "wrap_v"}) {
+        if (!args.contains(field)) continue;
+        const std::string value = args[field].is_string() ? args[field].get<std::string>() : "";
+        const TextureWrap wrap = Stream::stringToTextureWrap(value);
+        if (Stream::textureWrapToString(wrap) != value) {
+            call->fail(std::string("Invalid ") + field + " \"" + value + "\".");
+            return;
+        }
+        if (std::string(field) == "wrap_v") modified.setWrapV(wrap);
+        else modified.setWrapU(wrap);
+    }
+    if (args.contains("svg_scale")) {
+        const float scale = args["svg_scale"].is_number() ? args["svg_scale"].get<float>() : 0.0f;
+        if (!(scale > 0.0f)) {
+            call->fail("svg_scale must be a number > 0.");
+            return;
+        }
+        if (!TextureData::hasSvgExtension(modified.getPath().c_str())) {
+            call->fail("svg_scale only applies to .svg textures.");
+            return;
+        }
+        modified.setSvgScale(scale);
+    }
+    Json data = {{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
+                 {"property", propertyName}};
+    if (modified == *current) {
+        call->ok("The texture settings already match.", data);
+        return;
+    }
+    // Sampler settings are baked into the GPU texture: drop the cached render on execute and undo
+    const Entity entity = where.entity;
+    const ComponentType component = where.component;
+    auto onChanged = [scene, entity, component, propertyName]() {
+        if (Texture* ref = Catalog::getPropertyRef<Texture>(scene, entity, component, propertyName)) ref->invalidateRender();
+    };
+    if (!addSceneCommand(where.scene->id, new PropertyCmd<Texture>(call->ctx().project(), where.scene->id, entity, component,
+                                                                   propertyName, modified, onChanged))) {
+        call->fail("Could not change the texture settings.");
+        return;
+    }
+    call->ok("Set the texture settings of " + McpRefs::componentName(component) + "." + propertyName + ".", data);
 }
 
 // ------------------------------------------------------------------ generate_placeholder_art
@@ -1868,13 +2166,6 @@ void placeholderArtTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    // Superseded legacy tools
-    for (const char* name : {"search_resources", "read_resource_file", "rename_resource", "copy_resource", "delete_resource",
-                             "import_resource_file", "create_material_file", "update_material_file", "unlink_material",
-                             "write_shader_file"}) {
-        registry.removeTool(name);
-    }
-
     const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "script", "scene", "prefab", "material", "shader", "folder", "other"};
 
     {
@@ -1882,19 +2173,17 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_assets";
         tool.title = "List Assets";
         tool.description =
-            "List / search the project's files (what the Project window shows; hidden dirs, .jasperengine and build are "
-            "skipped). Filter by type, by a glob pattern (\"*.png\" on file names; with a '/' on the project-relative path, "
-            "\"assets/**/enemy*.png\"; ** crosses folders) and/or a name substring query. details adds sizes and image "
-            "dimensions. Returns paths (project-relative, usable as asset references), the assets and Lua directories, "
-            "and total/truncated.";
+            "List/search project files as the Project window shows them. pattern globs the file name, or the path when it "
+            "has a '/' (\"assets/**/enemy*.png\"). Returns project-relative paths (usable as asset refs), the assets and "
+            "Lua dirs, total/truncated.";
         tool.inputSchema = object({
-            {"directory", assetPath("Folder to list (default: the project root).")},
-            {"type", stringEnum("Asset type filter.", types)},
-            {"pattern", string("Glob on the file name, or on the project-relative path when it contains '/'.")},
-            {"query", string("Case-insensitive substring of the file name.")},
-            {"recursive", withDefault(boolean("Include subfolders."), true)},
-            {"details", withDefault(boolean("Add size and image width/height."), false)},
-            {"limit", withDefault(integer("Max entries returned.", 1, 2000), 200)}
+            {"directory", assetPath("Default: project root.")},
+            {"type", stringEnum("", types)},
+            {"pattern", string("")},
+            {"query", string("Name substring.")},
+            {"recursive", withDefault(boolean(""), true)},
+            {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
+            {"limit", withDefault(integer("", 1, 2000), 200)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1907,12 +2196,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "Details of one project file: type and size, plus image width/height/channels; model contents (glTF/GLB: meshes, "
-            "materials, animations with durations, nodes, skins, images; OBJ: objects, materials); WAV channels, rate and "
-            "duration; a .material's fields (same names update_material takes) and the submeshes linked to it; a shader's "
-            "includes and the forks using it; a Lua script's syntax status; a scene's project status. Also whether the code "
-            "editor has unsaved edits of it.";
-        tool.inputSchema = object({{"path", assetPath("Project-relative file.")}}, {"path"});
+            "Details of one project file by type: image size/channels; model meshes, materials, animations, nodes; WAV "
+            "format/duration; .material fields and linked submeshes; shader includes and forks using it; Lua syntax "
+            "status; scene status; unsaved code editor edits.";
+        tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getAssetInfoTool;
@@ -1924,12 +2211,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "view_asset";
         tool.title = "View Asset";
         tool.description =
-            "Look at an image asset: returns it as MCP image content (PNG, downscaled to max_size). For models, materials "
-            "and prefabs it returns the Project window thumbnail (rendered on demand, may take a few seconds). SVGs are not "
-            "rasterized here.";
+            "See an image asset as PNG image content; models, materials and prefabs give their Project window thumbnail "
+            "(may take seconds). SVGs are not rasterized.";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative image, model, material or prefab.")},
-            {"max_size", withDefault(integer("Longest side of the returned image in pixels.", 16, 2048), 512)}
+            {"path", assetPath("")},
+            {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1941,14 +2227,11 @@ void registerAssetTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "read_file";
         tool.title = "Read File";
-        tool.description =
-            "Read a text file of the project (scripts, shaders, materials, configs, docs) as it is on disk; the text "
-            "result is the content. Use start_line / max_lines for big files. If you have your own file tools you may use "
-            "them instead.";
+        tool.description = "Read a project text file (as on disk); the result text is the content.";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative text file.")},
-            {"start_line", withDefault(integer("First line (1-based).", 1, 100000000), 1)},
-            {"max_lines", withDefault(integer("Max lines returned.", 1, 20000), 2000)}
+            {"path", assetPath("")},
+            {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
+            {"max_lines", withDefault(integer("", 1, 20000), 2000)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1961,23 +2244,21 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "Create or change a text file through the editor (one undo step, scope project) and validate it: Lua syntax "
-            "is checked, shader forks using a .vert/.frag/.glsl are recompiled and their errors returned (line + message), "
-            "materials must parse. Open code editor buffers reload, attached scripts re-parse their properties, the Project "
-            "window refreshes. Pass content (whole file) or edits: [{old_text, new_text, replace_all?}] applied in order "
-            "(old_text must match exactly once). Refuses project.yaml, .scene/.prefab (use the editor tools) and files "
-            "the human has unsaved edits of in the code editor (unless discard_unsaved_buffer). If you edit files with "
-            "your own tools instead, call sync_files afterwards.";
+            "Create or change a project text file (undo scope project) and validate it: Lua syntax, shader "
+            "forks using it recompiled (errors with lines), materials parsed; editor buffers and script "
+            "properties refresh. content = whole file, or edits [{old_text, new_text}] (old_text must match "
+            "once unless replace_all). Refuses project.yaml, .scene, .prefab and files with unsaved code "
+            "editor edits. Files edited with your own tools need sync_files.";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative file; parent folders are created.")},
-            {"content", string("The whole new file content.")},
+            {"path", assetPath("Parent folders are created.")},
+            {"content", string("")},
             {"edits", array(object({
-                {"old_text", string("Exact text to replace.")},
-                {"new_text", string("Replacement.")},
-                {"replace_all", withDefault(boolean("Replace every occurrence."), false)}
-            }, {"old_text", "new_text"}), "Targeted replacements on the current file.")},
+                {"old_text", string("")},
+                {"new_text", string("")},
+                {"replace_all", withDefault(boolean(""), false)}
+            }, {"old_text", "new_text"}), "")},
             {"check", withDefault(boolean("Compile affected shader forks."), true)},
-            {"discard_unsaved_buffer", withDefault(boolean("Overwrite even if the code editor has unsaved edits of it."), false)}
+            {"discard_unsaved_buffer", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = writeFileTool;
         registry.addTool(std::move(tool));
@@ -1987,8 +2268,9 @@ void registerAssetTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "create_folder";
         tool.title = "Create Folder";
-        tool.description = "Create a folder in the project (one undo step, scope project). The parent must exist.";
-        tool.inputSchema = object({{"path", assetPath("Project-relative path of the new folder, e.g. \"assets/sprites/enemies\".")}}, {"path"});
+        tool.description = "Create a project folder (its parent must exist).";
+        tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
+        tool.annotations.idempotent = true;
         tool.handler = createFolderTool;
         registry.addTool(std::move(tool));
     }
@@ -1998,14 +2280,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "move_asset";
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
-            "Rename or move a file or folder (to = its new project-relative path), updating the references to it in "
-            "scenes, prefabs, materials, scripts entries and shader forks like the Project window does; or copy it "
-            "(copy: true; a copied prefab gets a new GUID). One undo step (scope project). The destination must not exist "
-            "and its folder must.";
+            "Rename/move a file or folder to a new path, updating references in scenes, prefabs, materials, script entries "
+            "and shader forks (as the Project window does); or copy it (a copied prefab gets a new GUID). The destination "
+            "must not exist; its folder must.";
         tool.inputSchema = object({
-            {"path", assetPath("Current project-relative path.")},
-            {"to", assetPath("New project-relative path (folder + name).")},
-            {"copy", withDefault(boolean("Copy instead of moving."), false)}
+            {"path", assetPath("")},
+            {"to", assetPath("New path (folder + name).")},
+            {"copy", withDefault(boolean(""), false)}
         }, {"path", "to"});
         tool.allowedWhilePlaying = false;
         tool.handler = moveAssetTool;
@@ -2017,10 +2298,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "delete_asset";
         tool.title = "Delete Assets";
         tool.description =
-            "Delete files or folders by moving them to the project trash, like the Project window (one undo step, scope "
-            "project, restores them). References to them become missing (prefab instances turn into Missing Prefabs). "
-            "Open scenes can't be deleted.";
-        tool.inputSchema = object({{"paths", array(string("Project-relative path."), "What to delete.")}}, {"paths"});
+            "Move files/folders to the project trash (undo restores them). References become missing (instances turn "
+            "into Missing Prefabs). Open scenes can't be deleted.";
+        tool.inputSchema = object({{"paths", array(string(""), "")}}, {"paths"});
         tool.annotations.destructive = true;
         tool.allowedWhilePlaying = false;
         tool.handler = deleteAssetTool;
@@ -2032,13 +2312,12 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "import_files";
         tool.title = "Import Files";
         tool.description =
-            "Copy files or folders from absolute paths on this machine into a project folder (to_dir, created if missing), "
-            "like dragging them into the Project window. One undo step (scope project). Put assets components reference "
-            "under the assets directory. Downloads are not supported: fetch files yourself first.";
+            "Copy files/folders from absolute paths on this machine into a project folder (created if missing), like "
+            "dropping them on the Project window. Assets go under the assets directory. No downloads.";
         tool.inputSchema = object({
-            {"sources", array(string("Absolute path outside the project."), "Files or folders to import.")},
-            {"to_dir", assetPath("Destination project folder, e.g. \"assets/sprites\".")},
-            {"overwrite", withDefault(boolean("Replace existing files with the same name."), false)}
+            {"sources", array(string(""), "Absolute paths.")},
+            {"to_dir", assetPath("e.g. \"assets/sprites\".")},
+            {"overwrite", withDefault(boolean(""), false)}
         }, {"sources", "to_dir"});
         tool.annotations.openWorld = true;
         tool.handler = importFilesTool;
@@ -2046,28 +2325,24 @@ void registerAssetTools(McpRegistry& registry) {
     }
 
     const Json materialValues = anyObject(
-        "Material fields: baseColorFactor [r,g,b,a] (linear 0..1), metallicFactor, roughnessFactor, alphaCutoff, alphaMode "
-        "(AUTO, OPAQUE, MASK, BLEND), emissiveFactor [r,g,b], foliageTransmission, baseColorTexture / emissiveTexture / "
-        "metallicRoughnessTexture / occlusionTexture / normalTexture (project-relative image path inside the assets "
-        "directory, or null), *TexCoord (0 or 1).");
+        "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
+        "foliageTransmission, *Texture (path|null), *TexCoord.");
 
     {
         ToolDef tool;
         tool.name = "create_material";
         tool.title = "Create Material";
         tool.description =
-            "Create a .material file (a shared material: every submesh linked to it follows its edits). Starts from the "
-            "defaults, or from a mesh submesh's current material (entity + submesh), then applies values. With entity, "
-            "link (default true) links that submesh to the new file. File creation is a project undo step, the link a "
-            "scene undo step. Example: {\"path\":\"assets/materials/Red.material\",\"values\":{\"baseColorFactor\":[1,0,0,1]}}.";
+            "Create a shared .material file (linked submeshes follow its edits), from defaults or from a mesh submesh's "
+            "current material (entity + submesh; then linked unless link=false), plus values.";
         tool.inputSchema = object({
-            {"path", assetPath("New project-relative .material path.")},
+            {"path", assetPath("New .material path.")},
             {"values", materialValues},
             {"scene", sceneRef()},
-            {"entity", entityRef("Mesh GameObject to copy the material from (and link).")},
-            {"submesh", withDefault(integer("Submesh index.", 0, 1024), 0)},
-            {"link", boolean("Link the submesh to the new file (default: true when entity is given).")},
-            {"overwrite", withDefault(boolean("Replace an existing file."), false)}
+            {"entity", entityRef("Mesh to copy from (and link).")},
+            {"submesh", withDefault(integer("", 0, 1024), 0)},
+            {"link", boolean("Default: true with entity.")},
+            {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = createMaterialTool;
         registry.addTool(std::move(tool));
@@ -2078,10 +2353,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "update_material";
         tool.title = "Update Material";
         tool.description =
-            "Change fields of a .material file (only the given ones); every linked submesh updates. One undo step (scope "
-            "project). Read the current fields with get_asset_info. Returns the new fields and the linked submeshes.";
+            "Change the given fields of a .material file; linked submeshes update. Current fields: get_asset_info. "
+            "Returns the fields and linked submeshes.";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative .material file.")},
+            {"path", assetPath("")},
             {"values", materialValues}
         }, {"path", "values"});
         tool.handler = updateMaterialTool;
@@ -2093,14 +2368,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "link_material";
         tool.title = "Link Material";
         tool.description =
-            "Link a mesh submesh to a .material file (the submesh then follows the file), or unlink it (material null: it "
-            "keeps a copy of the values). One undo step in the scene. To change a single submesh's own material values "
-            "without a file, set its submeshes[i].material properties with the component property tools.";
+            "Link a mesh submesh to a .material file, or unlink it (material null; it keeps a copy of the values). A "
+            "submesh's own values: set_properties submeshes[i].material.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Mesh GameObject.")},
-            {"submesh", withDefault(integer("Submesh index.", 0, 1024), 0)},
-            {"material", any("Project-relative .material path, or null to unlink.")}
+            {"entity", entityRef()},
+            {"submesh", withDefault(integer("", 0, 1024), 0)},
+            {"material", {{"type", {"string", "null"}}, {"description", ".material path, or null to unlink."}}}
         }, {"entity"});
         tool.allowedWhilePlaying = false;
         tool.handler = linkMaterialTool;
@@ -2112,23 +2386,21 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "fork_shader";
         tool.title = "Fork Shader";
         tool.description =
-            "Copy a built-in shader into the project (<directory>/<name>.vert + .frag) and point something at it, as one "
-            "undo step: target component (a GameObject's Mesh/UI/Points/Line Renderer/Skybox customShader; component "
-            "optional), depth (a Mesh's depth pass: shadows/SSAO; needed when a mesh fork displaces vertices or discards), "
-            "scene_default (shader_type mesh/ui/sky/points/lines for every component of the scene without its own), "
-            "post_process (a scene post-process pass: pass_index of a pass with the built-in shader, or omit to add a new "
-            "pass). fork_includes also copies the engine .glsl includes it uses into the fork's own folder. Then edit the "
-            "files (write_file checks the compile) and set parameters with set_shader_uniform.";
+            "Copy a built-in shader into the project (<directory>/<name>.vert/.frag) and point a target at it: "
+            "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh "
+            "fork displaces or discards), scene_default (shader_type, for components without their own), "
+            "post_process (pass_index, or omit to add a pass). Edit with write_file; parameters with "
+            "set_shader_uniform. Returns {custom_shader, vert_path, frag_path}.";
         tool.inputSchema = object({
-            {"target", stringEnum("What gets the fork (default component when entity is given).", {"component", "depth", "scene_default", "post_process"})},
+            {"target", stringEnum("Default: component when entity is given.", {"component", "depth", "scene_default", "post_process"})},
             {"scene", sceneRef()},
-            {"entity", entityRef("For component / depth.")},
-            {"component", componentName("Renderable component (default: auto-detect).")},
-            {"shader_type", stringEnum("For scene_default.", {"mesh", "ui", "sky", "points", "lines"})},
-            {"pass_index", integer("For post_process: the pass to fork (omit to add a pass).")},
-            {"directory", withDefault(assetPath("Destination folder."), "shaders")},
-            {"name", string("post_process: fork name (others are named after the GameObject / scene).")},
-            {"fork_includes", withDefault(boolean("Copy the engine includes too."), false)}
+            {"entity", entityRef()},
+            {"component", componentName("Default: auto-detect.")},
+            {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
+            {"pass_index", integer("")},
+            {"directory", withDefault(assetPath(""), "shaders")},
+            {"name", string("Default: from the GameObject / scene.")},
+            {"fork_includes", withDefault(boolean("Also copy the engine .glsl includes."), false)}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = forkShaderTool;
@@ -2137,20 +2409,21 @@ void registerAssetTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
-        tool.name = "inspect_shader_uniforms";
-        tool.title = "Inspect Shader Uniforms";
+        tool.name = "get_shader_uniforms";
+        tool.title = "Get Shader Uniforms";
         tool.description =
-            "The custom parameters of a forked shader: the members of its u_vs_customParams / u_fs_customParams block "
-            "(u_fs_postParams for a post-process pass) with GLSL type, whether the engine writes it (time, resolution) "
-            "and the stored value. Give entity (+ component) or pass_index. Members appear once the fork has compiled.";
+            "A forked shader's custom parameters (members of u_vs/u_fs_customParams, u_fs_postParams for a pass): GLSL "
+            "type, engine-written flag (time, resolution), stored value. entity (+ component) or pass_index. Members "
+            "appear once the fork compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"component", componentName("Renderable component (default: auto-detect).")},
-            {"pass_index", integer("Post-process pass index instead of a GameObject.")}
+            {"component", componentName("Default: auto-detect.")},
+            {"pass_index", integer("Post-process pass instead of entity.")}
         });
         tool.annotations.readOnly = true;
-        tool.handler = inspectShaderUniformsTool;
+        tool.annotations.idempotent = true;
+        tool.handler = getShaderUniformsTool;
         registry.addTool(std::move(tool));
     }
 
@@ -2159,18 +2432,16 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set (or remove) one custom uniform of a forked shader by member name, one undo step: value is a number "
-            "(float/int members) or [x,y], [x,y,z], [x,y,z,w]. Give entity (+ component) or pass_index for a post-process "
-            "pass. time and resolution are engine-written. Names the shader doesn't declare are stored but unused: check "
-            "with inspect_shader_uniforms.";
+            "Set or remove one custom uniform of a forked shader by member name (entity (+ component) or pass_index). "
+            "Undeclared names are stored but unused (the result says so).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"component", componentName("Renderable component (default: auto-detect).")},
-            {"pass_index", integer("Post-process pass index instead of a GameObject.")},
-            {"name", string("Member name, e.g. \"amplitude\".")},
-            {"value", any("Number or [x,y(,z(,w))].")},
-            {"remove", withDefault(boolean("Remove the stored value."), false)}
+            {"component", componentName("Default: auto-detect.")},
+            {"pass_index", integer("Post-process pass instead of entity.")},
+            {"name", string("")},
+            {"value", {{"type", {"number", "array"}}, {"items", {{"type", "number"}}}, {"description", "Number or [x,y(,z(,w))]."}}},
+            {"remove", withDefault(boolean(""), false)}
         }, {"name"});
         tool.handler = setShaderUniformTool;
         registry.addTool(std::move(tool));
@@ -2181,15 +2452,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "check_shader";
         tool.title = "Check Shader";
         tool.description =
-            "Compile shader forks now and return their compile errors (line + message, and the compiler log). shader: a "
-            "customShader value (\"shaders/Water\" or one of its .vert/.frag paths); shader_type when it isn't used by a "
-            "component yet. Without shader: every fork the loaded scenes use. Use after editing shaders on disk (and "
-            "sync_files). A failing fork renders with the built-in shader.";
+            "Compile shader forks now; returns errors (line, message, log). shader: a customShader base (\"shaders/Water\") "
+            "or its .vert/.frag; shader_type if no component uses it yet. Omit shader for every fork in use. A failing "
+            "fork renders with the built-in shader.";
         tool.inputSchema = object({
-            {"shader", string("Fork base path or .vert/.frag path.")},
-            {"shader_type", stringEnum("Shader type to compile as.", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}
+            {"shader", string("")},
+            {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}
         });
         tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
         tool.handler = checkShaderTool;
         registry.addTool(std::move(tool));
     }
@@ -2199,22 +2470,23 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_texture_settings";
         tool.title = "Set Texture Settings";
         tool.description =
-            "Sampler settings of a component's texture property (one undo step): min_filter (nearest, linear, "
-            "nearest_mipmap_nearest, nearest_mipmap_linear, linear_mipmap_nearest, linear_mipmap_linear), mag_filter "
-            "(nearest or linear; nearest for crisp pixel art), wrap_u / wrap_v (repeat, mirrored_repeat, clamp_to_edge, "
-            "clamp_to_border), svg_scale for .svg sources. Only the given fields change. Settings live on the property "
-            "(e.g. sprite texture, submeshes[0].material.baseColorTexture), not on the image file.";
+            "Sampler settings of a component's texture property (they live on the property, e.g. sprite texture or "
+            "submeshes[0].material.baseColorTexture, not on the file). Only given fields change; mag_filter nearest for "
+            "pixel art.";
+        const std::vector<std::string> wraps = {"repeat", "mirrored_repeat", "clamp_to_edge", "clamp_to_border"};
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName()},
-            {"property", string("Texture property path, e.g. \"texture\" or \"submeshes[0].material.baseColorTexture\".")},
-            {"min_filter", string("Minification filter.")},
-            {"mag_filter", stringEnum("Magnification filter.", {"nearest", "linear"})},
-            {"wrap_u", stringEnum("Wrap along U.", {"repeat", "mirrored_repeat", "clamp_to_edge", "clamp_to_border"})},
-            {"wrap_v", stringEnum("Wrap along V.", {"repeat", "mirrored_repeat", "clamp_to_edge", "clamp_to_border"})},
-            {"svg_scale", number("Rasterization scale of .svg sources.")}
+            {"property", string("Texture property path.")},
+            {"min_filter", stringEnum("", {"nearest", "linear", "nearest_mipmap_nearest", "nearest_mipmap_linear",
+                                           "linear_mipmap_nearest", "linear_mipmap_linear"})},
+            {"mag_filter", stringEnum("", {"nearest", "linear"})},
+            {"wrap_u", stringEnum("", wraps)},
+            {"wrap_v", stringEnum("", wraps)},
+            {"svg_scale", number(".svg rasterization scale.")}
         }, {"entity", "component", "property"});
+        tool.annotations.idempotent = true;
         tool.handler = setTextureSettingsTool;
         registry.addTool(std::move(tool));
     }
@@ -2224,26 +2496,23 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "generate_placeholder_art";
         tool.title = "Generate Placeholder Art";
         tool.description =
-            "Draw a placeholder PNG (antialiased) when you have no art: shape rect, rounded_rect (corner_radius), circle, "
-            "ellipse, triangle (pointing up), diamond, gradient (color -> color2, direction), checker (cells, color / "
-            "color2); optional outline (outline_width, outline_color) and background (default transparent). Colors: "
-            "[r,g,b(,a)] 0..1 or \"#RRGGBB(AA)\". Writes it (one undo step) and returns a preview. Put sprites under the "
-            "assets directory. Example: {\"path\":\"assets/sprites/player.png\",\"width\":64,\"height\":64,"
-            "\"shape\":\"circle\",\"color\":\"#3080ff\",\"outline_width\":3}.";
+            "Draw an antialiased placeholder PNG (when there is no art) and return a preview: a shape with fill color, "
+            "optional outline and background (default transparent); gradient goes color -> color2, checker alternates "
+            "them. Colors [r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative .png path.")},
-            {"width", withDefault(integer("Width in pixels.", 1, 2048), 64)},
-            {"height", withDefault(integer("Height in pixels.", 1, 2048), 64)},
-            {"shape", withDefault(stringEnum("Shape.", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
-            {"color", any("Fill color.")},
-            {"color2", any("Second color (gradient end, checker).")},
-            {"outline_width", withDefault(number("Outline width in pixels.", 0, 512), 0)},
-            {"outline_color", any("Outline color (default black).")},
-            {"background", any("Color outside the shape (default transparent).")},
-            {"corner_radius", number("rounded_rect corner radius in pixels.")},
-            {"direction", withDefault(stringEnum("gradient direction.", {"vertical", "horizontal"}), "vertical")},
+            {"path", assetPath(".png path under the assets dir.")},
+            {"width", withDefault(integer("", 1, 2048), 64)},
+            {"height", withDefault(integer("", 1, 2048), 64)},
+            {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
+            {"color", any("")},
+            {"color2", any("")},
+            {"outline_width", withDefault(number("px", 0, 512), 0)},
+            {"outline_color", any("Default black.")},
+            {"background", any("")},
+            {"corner_radius", number("rounded_rect, px.")},
+            {"direction", withDefault(stringEnum("", {"vertical", "horizontal"}), "vertical")},
             {"cells", withDefault(integer("checker cells per side.", 1, 256), 8)},
-            {"overwrite", withDefault(boolean("Replace an existing file."), false)}
+            {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
         registry.addTool(std::move(tool));

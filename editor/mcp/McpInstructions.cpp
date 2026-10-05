@@ -21,7 +21,7 @@ shaders, prefabs, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
-GameObject = entity (Entity id; script class GameObject). Create Empty = type object.
+GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
@@ -35,8 +35,10 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
   scene. While playing, runtime-state tools resolve to the playing scene.
 - entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
-  Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"). Ambiguous names fail and
-  list the matching paths. Results return both id and path; prefer ids within a session.
+  Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
+  scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
+  and list the matching paths. Results return both id and path; prefer ids within a session.
+  `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
@@ -160,8 +162,8 @@ R"JE(
   scene loaded as a child scene of the game scene.
 
 ## Physics
-- Add a body and its collider to the SAME GameObject in one step (add_rigidbody_collider /
-  add_rigidbody2d_collider). A Rigidbody without a Collider does not collide. Dynamic for
+- Add a body and its collider to the SAME GameObject in one step (edit_colliders with
+  body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
   actors, static for floors and level geometry, kinematic for scripted movers.
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
   or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the

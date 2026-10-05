@@ -1,9 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "TerrainCapability.h"
+#include "TerrainMaps.h"
 
-#include "PathUtils.h"
 #include "Project.h"
 #include "pool/TextureDataPool.h"
 #include "texture/TextureData.h"
@@ -22,7 +21,7 @@
 
 namespace fs = std::filesystem;
 
-namespace jasperengine::editor::mcp::legacy {
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -80,7 +79,7 @@ std::string makeTerrainHeightmapPath(Project* project, uint32_t sceneId, Entity 
     fs::create_directories(baseDir, ec);
 
     for (uint32_t i = 0; i < 10000; ++i) {
-        fs::path candidate = baseDir / ("terrain_ai_" + std::to_string(sceneId) + "_" +
+        fs::path candidate = baseDir / ("terrain_" + std::to_string(sceneId) + "_" +
                                         std::to_string(entity) + "_height_" +
                                         std::to_string(seed) + "_" + std::to_string(i) + ".png");
         if (!fs::exists(candidate, ec)) {
@@ -89,7 +88,7 @@ std::string makeTerrainHeightmapPath(Project* project, uint32_t sceneId, Entity 
         }
     }
 
-    fs::path fallback = baseDir / ("terrain_ai_" + std::to_string(sceneId) + "_" +
+    fs::path fallback = baseDir / ("terrain_" + std::to_string(sceneId) + "_" +
                                    std::to_string(entity) + "_height.png");
     fs::path rel = fs::relative(fallback, project->getAssetsPath(), ec);
     return ec ? fallback.generic_string() : rel.generic_string();
@@ -148,13 +147,21 @@ bool setFileBackedHeightTexture(Project* project, Texture& texture, const std::s
     return true;
 }
 
+fs::path uniqueChildPath(const fs::path& directory, const std::string& stem, const std::string& extension) {
+    fs::path candidate = directory / (stem + extension);
+    for (int i = 2; fs::exists(candidate) && i < 10000; ++i) {
+        candidate = directory / (stem + "-" + std::to_string(i) + extension);
+    }
+    return candidate;
+}
+
 unsigned char blendChannel(float value) {
     return static_cast<unsigned char>(std::lround(std::max(0.0f, std::min(1.0f, value)) * 255.0f));
 }
 
 } // namespace
 
-TerrainHeightmapResult TerrainCapability::createHeightmap(Project* project,
+TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
                                                             uint32_t sceneId,
                                                             Entity entity,
                                                             const TerrainHeightmapRequest& request) {
@@ -177,7 +184,7 @@ TerrainHeightmapResult TerrainCapability::createHeightmap(Project* project,
     return result;
 }
 
-TerrainBlendmapResult TerrainCapability::createBlendmap(Project* project,
+TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
                                                           uint32_t sceneId,
                                                           Entity entity,
                                                           const TerrainBlendmapRequest& request) {
@@ -208,9 +215,9 @@ TerrainBlendmapResult TerrainCapability::createBlendmap(Project* project,
         return result;
     }
 
-    result.fullPath = PathUtils::uniqueChildPath(
+    result.fullPath = uniqueChildPath(
         outputDir,
-        "terrain_ai_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
+        "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
         ".png");
     if (!stbi_write_png(result.fullPath.string().c_str(), resolution, resolution, 4, pixels.data(), resolution * 4)) {
         result.error = "Failed to write generated terrain blendmap.";
@@ -223,4 +230,4 @@ TerrainBlendmapResult TerrainCapability::createBlendmap(Project* project,
     return result;
 }
 
-} // namespace jasperengine::editor::mcp::legacy
+} // namespace jasperengine::editor::mcp

@@ -13,6 +13,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "mcp/TerrainMaps.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -25,6 +26,7 @@
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
@@ -71,6 +73,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "window/AnimationWindow.h"
+#include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
 
 #include "stb_image.h"
@@ -83,6 +86,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -605,6 +609,169 @@ void sculptTerrainTool(const CallPtr& call) {
     call->ok("Applied " + std::to_string(results.size()) + " brush stroke(s) to \"" + scene->getEntityName(target.entity) +
              "\" as one undo step.",
              Json{{"terrain", entityJson(target, target.entity)}, {"strokes", results}, {"changed", step.changed()}});
+}
+
+// set_terrain_maps: generated or assigned height/blend maps and surface layer textures, one undo step
+void setTerrainMapsTool(const CallPtr& call) {
+    Target target;
+    if (!resolveTerrain(call, target) || !sceneStopped(call, target)) return;
+    const Json& args = call->args();
+    Project* project = target.project;
+    Scene* scene = target.engineScene();
+    const uint32_t sceneId = target.sceneId();
+    const Entity entity = target.entity;
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    std::string error;
+
+    // A project-relative texture path -> the stored (assets-relative) Texture
+    auto texturePath = [&](const Json& value, const std::string& what, Texture& out) {
+        std::filesystem::path absolute;
+        std::string stored;
+        if (!value.is_string() || !McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, true) ||
+            !McpValues::assetPathFromJson(project, value.get<std::string>(), stored, error)) {
+            if (error.empty()) error = what + " must be a project-relative image path.";
+            else error = what + ": " + error;
+            return false;
+        }
+        out = Texture(stored);
+        return true;
+    };
+    auto changed = [project, sceneId, entity](bool height) {
+        return [project, sceneId, entity, height]() {
+            SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
+            TerrainComponent* t = sp && sp->scene ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
+            if (!t) return;
+            if (height) {
+                t->heightMapLoaded = false;
+                t->heightMap.invalidateRender();
+            }
+            t->needUpdateTerrain = height;
+            t->needUpdateTexture = true;
+        };
+    };
+
+    auto multi = std::make_unique<MultiPropertyCmd>();
+    Json result = Json::object();
+    if (has(args, "heightmap")) {
+        const Json& spec = args["heightmap"];
+        Texture height;
+        if (spec.is_object()) {
+            static const std::vector<std::string> modes = {"flat", "middle", "random_noise", "fractal_noise"};
+            TerrainHeightmapRequest request;
+            request.mode = stringOr(spec, "generate", "middle");
+            if (std::find(modes.begin(), modes.end(), request.mode) == modes.end()) {
+                call->fail("heightmap.generate must be flat, middle, random_noise or fractal_noise.");
+                return;
+            }
+            request.resolution = std::clamp(intOr(spec, "resolution", project->getTerrainEditorSettings().heightMapResolution), 2, 4096);
+            request.baseHeight = request.mode == "middle" ? 0.5f : numberOr(spec, "base_height", request.mode == "flat" ? 0.0f : 0.5f);
+            request.amplitude = numberOr(spec, "amplitude", 0.35f);
+            request.frequency = numberOr(spec, "frequency", 4.0f);
+            request.octaves = intOr(spec, "octaves", 4);
+            request.seed = has(spec, "seed") && spec["seed"].is_number_integer()
+                ? static_cast<uint32_t>(spec["seed"].get<long long>()) : std::random_device{}();
+            TerrainHeightmapResult generated = TerrainMaps::createHeightmap(project, sceneId, entity, request);
+            if (!generated.success) {
+                call->fail(generated.error.empty() ? "Could not write the heightmap." : generated.error);
+                return;
+            }
+            height = generated.texture;
+            result["heightmap"] = {{"path", McpValues::assetPathToJson(project, generated.relativePath)},
+                                   {"resolution", request.resolution}, {"seed", request.seed}};
+        } else if (!texturePath(spec, "heightmap", height)) {
+            call->fail(error);
+            return;
+        } else {
+            result["heightmap"] = {{"path", spec}};
+        }
+        multi->addPropertyCmd<Texture>(project, sceneId, entity, ComponentType::TerrainComponent, "heightMap", height, changed(true));
+    }
+
+    std::vector<Texture> blendMaps = terrain.blendMaps;
+    bool blendChanged = false;
+    if (has(args, "blendmap")) {
+        const Json& spec = args["blendmap"];
+        Texture blend;
+        if (spec.is_object()) {
+            Vector3 color(0, 0, 0);
+            if (has(spec, "color") && !McpValues::parseVector3(spec["color"], color)) {
+                call->fail("blendmap.color must be [r, g, b] (0-1: the weights of layers 0, 1, 2).");
+                return;
+            }
+            TerrainBlendmapRequest request;
+            request.resolution = std::clamp(intOr(spec, "resolution", project->getTerrainEditorSettings().blendMapResolution), 2, 4096);
+            request.red = color.x;
+            request.green = color.y;
+            request.blue = color.z;
+            TerrainBlendmapResult generated = TerrainMaps::createBlendmap(project, sceneId, entity, request);
+            if (!generated.success) {
+                call->fail(generated.error.empty() ? "Could not write the blend map." : generated.error);
+                return;
+            }
+            blend = Texture(generated.relativePath);
+            if (ProjectWindow* window = call->ctx().projectWindow()) window->requestThumbnailGeneration(generated.fullPath, true);
+            result["blendmap"] = {{"path", McpValues::assetPathToJson(project, generated.relativePath)}, {"resolution", request.resolution}};
+        } else if (!texturePath(spec, "blendmap", blend)) {
+            call->fail(error);
+            return;
+        } else {
+            result["blendmap"] = {{"path", spec}};
+        }
+        if (blendMaps.empty()) blendMaps.resize(1);
+        blendMaps[0] = blend;
+        blendChanged = true;
+    }
+
+    std::vector<TerrainSurfaceLayer> layers = terrain.surfaceLayers;
+    bool layersChanged = false;
+    if (has(args, "layers")) {
+        if (!args["layers"].is_array()) {
+            call->fail("layers must be an array of {index, color, normal, ...}.");
+            return;
+        }
+        static const std::vector<std::pair<const char*, Texture TerrainSurfaceLayer::*>> maps = {
+            {"color", &TerrainSurfaceLayer::colorTexture}, {"normal", &TerrainSurfaceLayer::normalTexture},
+            {"roughness", &TerrainSurfaceLayer::roughnessTexture}, {"metallic", &TerrainSurfaceLayer::metallicTexture},
+            {"occlusion", &TerrainSurfaceLayer::occlusionTexture}, {"height", &TerrainSurfaceLayer::heightTexture}};
+        for (const Json& item : args["layers"]) {
+            const int index = intOr(item, "index", -1);
+            if (index < 0 || index >= MAX_TERRAIN_LAYERS) {
+                call->fail("layers[].index must be 0-" + std::to_string(MAX_TERRAIN_LAYERS - 1) + ".");
+                return;
+            }
+            if (layers.size() <= static_cast<size_t>(index)) layers.resize(index + 1);
+            TerrainSurfaceLayer& layer = layers[index];
+            if (has(item, "pbr")) layer.pbr = boolOr(item, "pbr", layer.pbr);
+            for (const auto& map : maps) {
+                if (!has(item, map.first)) continue;
+                if (!texturePath(item[map.first], "layers[" + std::to_string(index) + "]." + map.first, layer.*map.second)) {
+                    call->fail(error);
+                    return;
+                }
+            }
+            layersChanged = true;
+        }
+        result["layers"] = layers.size();
+    }
+    if (blendChanged) {
+        multi->addPropertyCmd<std::vector<Texture>>(project, sceneId, entity, ComponentType::TerrainComponent, "blendMaps",
+                                                    blendMaps, changed(false));
+    }
+    if (layersChanged) {
+        multi->addPropertyCmd<std::vector<TerrainSurfaceLayer>>(project, sceneId, entity, ComponentType::TerrainComponent,
+                                                                "surfaceLayers", layers, changed(false));
+    }
+    if (result.empty()) {
+        call->fail("Pass heightmap, blendmap and/or layers.");
+        return;
+    }
+    if (!runSceneCommand(sceneId, multi.release(), error, "Could not change the terrain maps.")) {
+        call->fail(error);
+        return;
+    }
+    result["terrain"] = entityJson(target, entity);
+    result["info"] = terrainInfo(project, scene, entity);
+    call->ok("Set the terrain maps of " + McpRefs::entityPath(target.scene, entity) + ".", result);
 }
 
 void sampleTerrainTool(const CallPtr& call) {
@@ -1941,7 +2108,7 @@ void editTilemapTool(const CallPtr& call) {
              " erased, one undo step).", data);
 }
 
-void readTilemapTool(const CallPtr& call) {
+void getTilemapTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target)) return;
     const Json& args = call->args();
@@ -3803,466 +3970,424 @@ void setShapePointsTool(const CallPtr& call) {
 void registerWorldTools(McpRegistry& registry) {
     using namespace schema;
 
-    // Superseded by edit_colliders, edit_tilemap and edit_animation
-    for (const char* name : {"add_rigidbody_collider", "add_rigidbody2d_collider", "add_tilemap_tile", "remove_tilemap_tile",
-                             "duplicate_tilemap_tile", "add_animation_action", "remove_animation_action",
-                             "set_keyframe_times", "set_keyframe_easing"}) {
-        registry.removeTool(name);
-    }
-
     auto add = [&registry](const char* name, const char* title, std::string description, Json input,
-                           std::function<void(CallPtr)> handler, bool readOnly, bool whilePlaying) {
+                           std::function<void(CallPtr)> handler, bool readOnly, bool whilePlaying, bool idempotent = false) {
         ToolDef tool;
         tool.name = name;
         tool.title = title;
         tool.description = std::move(description);
         tool.inputSchema = std::move(input);
         tool.annotations.readOnly = readOnly;
-        tool.annotations.idempotent = readOnly;
+        tool.annotations.idempotent = readOnly || idempotent;
         tool.allowedWhilePlaying = whilePlaying;
         tool.handler = std::move(handler);
         registry.addTool(std::move(tool));
     };
     const Json createSpec = object({
-        {"name", string("Name of the new GameObject.")},
-        {"parent", entityRef("Parent GameObject. Omit for the scene root.")},
-        {"position", vec3("Local position.")}
+        {"name", string("")},
+        {"parent", entityRef("Parent (default: scene root).")},
+        {"position", vec3("Local.")}
     });
+    const Json numberItem = Json{{"type", "number"}};
+    const Json arrayItem = Json{{"type", "array"}};
+    const Json integerItem = Json{{"type", "integer"}};
 
     // ---------------------------------------------------------------- terrain
     add("sculpt_terrain", "Sculpt / Paint Terrain",
-        "Run Terrain-window brush strokes without the mouse: the same brush code and undo (TerrainMapPatchCmd) a "
-        "human's drag uses; the whole call is one undo step. Each stroke is {mode, points, size, strength, ...}: the brush "
-        "moves through the points (interpolated like a drag) and holds seconds_per_point at each. Modes: raise, lower, "
-        "smooth, flatten, sharpen, noise, terrace, stamp (needs mask), erode, ramp (from the first point to the last), "
-        "paint_layer (layer = surface layer index; three layers share a blend map), paint_base, paint_density / "
-        "erase_density (layer = foliage layer), place_object / erase_object (asset = model or prefab; one object per point, "
-        "scattered within size). Heights are normalized 0-1 of the terrain's max_height; raise/lower change the centre by "
-        "about strength * 1.5 * seconds_per_point per point, so repeat points or raise seconds_per_point for big hills; "
-        "flatten_height (0-1) sets the target level (omitted: the height under the first point). A missing height/blend/"
-        "density map is created first. Points are world [x, z] by default (space local: terrain-local, origin at the centre, "
-        "extent +-size/2). Returns the heights after each stroke at its first points. Use sample_terrain to inspect. Example: "
-        "{\"strokes\": [{\"mode\": \"raise\", \"points\": [[0,0],[10,0]], \"size\": 8, \"strength\": 1, \"seconds_per_point\": 0.5}]}. "
-        "Generate a whole heightmap with create_terrain_heightmap; set layer textures with set_terrain_textures.",
+        "Terrain-window brush strokes (same code as a mouse drag): the brush moves along each stroke's points, "
+        "holding seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
+        "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
+        "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
+        "Returns heights after each stroke. Whole maps: set_terrain_maps.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Terrain GameObject. Omit when the scene has one terrain (or one is selected).")},
-            {"space", withDefault(stringEnum("Coordinates of the points.", {"world", "local"}), "world")},
-            {"map_resolution", integer("Resolution of a map created for the stroke (default: the editor's Terrain setting).", 2, 4096)},
-            {"strokes", Json{{"type", "array"}, {"minItems", 1}, {"description", "Strokes, applied in order."},
+            {"entity", entityRef("Terrain (default: the only one).")},
+            {"space", withDefault(stringEnum("local: terrain-centred.", {"world", "local"}), "world")},
+            {"map_resolution", integer("New maps.", 2, 4096)},
+            {"strokes", Json{{"type", "array"}, {"minItems", 1},
                 {"items", object({
-                    {"mode", stringEnum("Brush.", {"raise", "lower", "smooth", "flatten", "sharpen", "noise", "terrace", "stamp", "erode", "ramp",
-                                                   "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object"})},
-                    {"points", array(array(Json{{"type", "number"}}, "[x, z] or [x, y, z]"), "The brush path.")},
-                    {"size", withDefault(number("Brush radius in world units (0.1-50).", 0.1, 50), 4)},
-                    {"strength", withDefault(number("0.01-1.", 0.01, 1), 0.5)},
-                    {"shape", withDefault(stringEnum("Brush shape.", {"circle", "square"}), "circle")},
-                    {"falloff", withDefault(stringEnum("Edge falloff.", {"smooth", "linear", "constant"}), "smooth")},
-                    {"rotation", number("Brush rotation, degrees.")},
-                    {"seconds_per_point", withDefault(number("Painting time held at each point (0-10).", 0, 10), 0.05)},
-                    {"flatten_height", number("flatten: target height 0-1 (omit: the height under the first point).", 0, 1)},
-                    {"terrace_steps", integer("terrace: levels (2-64).", 2, 64)},
-                    {"noise_size", number("noise: world units per noise cell.")},
-                    {"layer", integer("paint_layer: surface layer index; paint/erase_density: foliage layer index.", 0, 64)},
-                    {"normalize", withDefault(boolean("paint_layer: lower the other layers as this one rises."), true)},
-                    {"mask", assetPath("Grayscale brush mask texture (the relief for stamp).")},
-                    {"asset", assetPath("place_object: model or prefab to place.")},
-                    {"instanced", boolean("place_object: draw copies as instances of one host (default true).")},
-                    {"spacing", number("place_object: minimum distance between objects.")},
-                    {"min_scale", number("place_object: random scale range.")},
-                    {"max_scale", number("place_object: random scale range.")},
-                    {"rotation_jitter", number("place_object: random yaw, share of a full turn (0-1).", 0, 1)},
-                    {"align_to_normal", number("place_object: 0 upright .. 1 along the surface.", 0, 1)}
+                    {"mode", stringEnum("", {"raise", "lower", "smooth", "flatten", "sharpen", "noise", "terrace", "stamp", "erode", "ramp",
+                                             "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object"})},
+                    {"points", array(array(numberItem, ""), "[x, z] or [x, y, z] points.")},
+                    {"size", withDefault(number("Radius, world units.", 0.1, 50), 4)},
+                    {"strength", withDefault(number("", 0.01, 1), 0.5)},
+                    {"shape", withDefault(stringEnum("", {"circle", "square"}), "circle")},
+                    {"falloff", withDefault(stringEnum("", {"smooth", "linear", "constant"}), "smooth")},
+                    {"rotation", number("Degrees.")},
+                    {"seconds_per_point", withDefault(number("", 0, 10), 0.05)},
+                    {"flatten_height", number("Default: height at first point.", 0, 1)},
+                    {"terrace_steps", integer("", 2, 64)},
+                    {"noise_size", number("World units per cell.")},
+                    {"layer", integer("Surface or foliage layer.", 0, 64)},
+                    {"normalize", withDefault(boolean(""), true)},
+                    {"mask", assetPath("Mask texture.")},
+                    {"asset", assetPath("Model or prefab.")},
+                    {"instanced", withDefault(boolean(""), true)},
+                    {"spacing", number("")},
+                    {"min_scale", number("")},
+                    {"max_scale", number("")},
+                    {"rotation_jitter", number("Turns.", 0, 1)},
+                    {"align_to_normal", number("0 upright, 1 surface.", 0, 1)}
                 }, {"points"})}}}
         }, {"strokes"}),
         sculptTerrainTool, false, false);
 
-    add("sample_terrain", "Sample Terrain",
-        "Read a terrain: its size, max_height, maps and layers, plus heights. points [[x, z], ...] (world by default) return "
-        "each point's world position, height (world y), normalized height (0-1 of max_height) and surface normal. Without "
-        "points (or with grid N, 2-65) returns an N x N grid of world heights over the whole terrain with min / max / mean "
-        "(rows from local -z to +z, columns -x to +x). Read-only.",
+    add("set_terrain_maps", "Set Terrain Maps",
+        "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a whole "
+        "16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image "
+        "path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer "
+        "(pbr: its own normal/roughness/metallic/occlusion). Images under the assets dir. Returns the paths "
+        "and terrain info.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Terrain GameObject. Omit when the scene has one terrain.")},
-            {"points", array(array(Json{{"type", "number"}}, "[x, z]"), "Points to sample.")},
-            {"space", withDefault(stringEnum("Coordinates of the points.", {"world", "local"}), "world")},
-            {"grid", integer("Grid size N for an N x N height overview (default 9 without points, 0 with them).", 0, 65)}
+            {"entity", entityRef("Terrain (default: the only one).")},
+            {"heightmap", {{"type", {"string", "object"}}, {"properties", {
+                {"generate", withDefault(stringEnum("", {"middle", "flat", "random_noise", "fractal_noise"}), "middle")},
+                {"base_height", number("0-1.", 0, 1)},
+                {"amplitude", withDefault(number("0-1.", 0, 1), 0.35)},
+                {"frequency", withDefault(number(""), 4)},
+                {"octaves", withDefault(integer("", 1, 8), 4)},
+                {"seed", integer("")},
+                {"resolution", integer("Default: Terrain setting.", 2, 4096)}}}}},
+            {"blendmap", {{"type", {"string", "object"}}, {"properties", {
+                {"color", vec3("Layer 0,1,2 weights 0-1.")},
+                {"resolution", integer("", 2, 4096)}}}}},
+            {"layers", array(object({
+                {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
+                {"pbr", boolean("")},
+                {"color", string("")}, {"normal", string("")}, {"roughness", string("")},
+                {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")}
+            }, {"index"}), "")}
+        }),
+        setTerrainMapsTool, false, false);
+
+    add("sample_terrain", "Sample Terrain",
+        "Terrain size, max_height, maps, layers and heights. points: each one's position, world height, 0-1 height and "
+        "normal; else an N x N grid of world heights with min/max/mean (rows -z to +z, columns -x to +x).",
+        object({
+            {"scene", sceneRef()},
+            {"entity", entityRef("Terrain (default: the only one).")},
+            {"points", array(array(numberItem, ""), "[x, z] points.")},
+            {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
+            {"grid", integer("Default 9 without points.", 0, 65)}
         }),
         sampleTerrainTool, true, true);
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
-        "Add, update and remove the collider shapes of a GameObject's Rigidbody 2D or Rigidbody (3D) in one undo step, "
-        "creating the body when missing; without edits, lists the colliders. Order: clear, remove (indices before this call), "
-        "update ({index, ...fields}), then add (appended). 2D shapes: box (size [w, h], center), circle (radius, center), "
-        "capsule (radius, point_a, point_b), segment (point_a, point_b), polygon (3-16 points), chain (4-16 points, loop); "
-        "units are the GameObject's local units (pixels in 2D), before its scale. New 2D shapes fit what the GameObject draws "
-        "(sprite with its pivot, mesh, or rect) unless fit: false; explicit size / center / radius win. 2D fields: density, "
-        "friction, restitution (0-1), sensor, contact_events, hit_events, sensor_events, pre_solve_events, category_bits, "
-        "mask_bits, group_index. 3D shapes: box (size [w, h, d]), sphere (radius), capsule / cylinder (radius, half_height), "
-        "tapered_capsule (top_radius, bottom_radius, half_height), convex_hull / mesh (geometry from the mesh, or source), "
-        "heightfield (terrains); center, rotation, density (kg/m3; mass = volume * density); new primitives fit the mesh "
-        "bounds unless fit: false. body_type static | kinematic | dynamic; body {catalogProperty: value} sets other body "
-        "properties (e.g. {\"gravityFactor\": 0} on 3D, {\"sensor\": true}). The body and its colliders belong on the same "
-        "GameObject as the sprite/mesh. Example: {\"entity\": \"Player\", \"body_type\": \"dynamic\", \"add\": [{\"shape\": "
-        "\"capsule\"}]}. Returns the colliders as they are now.",
+        "Add/update/remove the colliders of a Rigidbody 2D / Rigidbody, creating the body if missing (no edits "
+        "= list). Order: clear, remove (old indices), update [{index, ...}], add. 2D shapes: box (size, "
+        "center), circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain "
+        "(4-16, loop), in pixels before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), "
+        "tapered_capsule, convex_hull/mesh, heightfield (terrains). New shapes fit what the GameObject draws "
+        "unless fit: false. Other fields: density, friction, restitution, sensor, *_events, category_bits, "
+        "mask_bits, center, rotation. Returns {colliders, body_type, body_added}.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("The GameObject with (or to get) the body.")},
-            {"dimension", stringEnum("2d (Rigidbody 2D) or 3d (Rigidbody). Default: the existing body, else the scene type.", {"2d", "3d"})},
-            {"body_type", stringEnum("Body type.", {"static", "kinematic", "dynamic"})},
-            {"body", anyObject("Other body properties by Catalog name, e.g. {\"gravityFactor\": 0.5}.")},
-            {"clear", boolean("Remove every collider first.")},
-            {"remove", array(Json{{"type", "integer"}}, "Collider indices to remove.")},
-            {"update", array(anyObject("{index, ...collider fields to change}"), "Changes to existing colliders.")},
-            {"add", array(anyObject("{shape, size, center, radius, point_a, point_b, points, loop, rotation, half_height, density, "
-                                    "friction, restitution, sensor, fit, source, samples_size, category_bits, mask_bits, ...}"),
-                          "New colliders.")}
+            {"entity", entityRef()},
+            {"dimension", stringEnum("Default: body, else scene.", {"2d", "3d"})},
+            {"body_type", stringEnum("", {"static", "kinematic", "dynamic"})},
+            {"body", anyObject("Other body properties.")},
+            {"clear", boolean("")},
+            {"remove", array(integerItem, "")},
+            {"update", array(anyObject("{index, ...fields}"), "")},
+            {"add", array(anyObject("{shape, ...fields}"), "")}
         }, {"entity"}),
         editCollidersTool, false, false);
 
     add("set_joint", "Create / Edit Joint",
-        "Create a joint GameObject connecting two bodies, or edit one (pass joint). 2D types: distance, revolute, prismatic, "
-        "mouse, wheel, weld, motor (anchor_a, anchor_b, axis, target as [x, y], rope). 3D types: fixed, distance, point, "
-        "hinge, cone, prismatic, swing_twist, six_dof, path, gear, rack_and_pinion, pulley (anchor_a, anchor_b, anchor, "
-        "axis, normal as [x, y, z], limits [min, max]); any other joint property by Catalog name in properties (e.g. "
-        "{\"twistMinAngle\": -30}). Giving anchors turns auto_anchors off unless you pass it. Both bodies need a Rigidbody "
-        "(2D or 3D, matching): the joint is built when the scene plays. One undo step. Example: {\"body_a\": \"Door\", "
-        "\"body_b\": \"Frame\", \"type\": \"hinge\", \"anchor\": [0,1,0], \"axis\": [0,1,0]}.",
+        "Create a joint GameObject between two bodies, or edit one (joint). 2D types: distance, revolute, "
+        "prismatic, mouse, wheel, weld, motor. 3D: fixed, distance, point, hinge, cone, prismatic, "
+        "swing_twist, six_dof, path, gear, rack_and_pinion, pulley. Anchors turn auto_anchors off. Both bodies "
+        "need Rigidbodies of that dimension; built on play.",
         object({
             {"scene", sceneRef()},
-            {"joint", entityRef("Existing joint GameObject to edit. Omit to create one.")},
-            {"name", string("Name of a new joint GameObject.")},
-            {"dimension", stringEnum("2d or 3d. Default: from the joint or the bodies, else the scene type.", {"2d", "3d"})},
-            {"type", string("Joint type (see description).")},
-            {"body_a", entityRef("First body.")},
-            {"body_b", entityRef("Second body.")},
-            {"anchor_a", any("Anchor on body A: [x, y] in 2D, [x, y, z] in 3D.")},
-            {"anchor_b", any("Anchor on body B.")},
-            {"anchor", vec3("3D: shared anchor.")},
-            {"axis", any("Axis: [x, y] in 2D, [x, y, z] in 3D.")},
-            {"normal", vec3("3D: normal axis.")},
-            {"target", vec2("2D mouse joint target.")},
-            {"limits", vec2("3D: [limitsMin, limitsMax].")},
-            {"rope", boolean("2D distance joint: rope (only max length).")},
-            {"auto_anchors", boolean("Compute anchors from the bodies' positions.")},
-            {"properties", anyObject("Other joint properties by Catalog name.")}
+            {"joint", entityRef("Joint to edit.")},
+            {"name", string("")},
+            {"dimension", stringEnum("", {"2d", "3d"})},
+            {"type", string("")},
+            {"body_a", entityRef()},
+            {"body_b", entityRef()},
+            {"anchor_a", any("")},
+            {"anchor_b", any("")},
+            {"anchor", vec3("3D.")},
+            {"axis", any("")},
+            {"normal", vec3("3D.")},
+            {"target", vec2("2D mouse.")},
+            {"limits", vec2("3D [min, max].")},
+            {"rope", boolean("2D distance.")},
+            {"auto_anchors", boolean("")},
+            {"properties", anyObject("Other joint properties.")}
         }),
         setJointTool, false, false);
 
     // ---------------------------------------------------------------- tilemap
     add("edit_tilemap", "Edit Tilemap",
-        "Build or edit a Tilemap in one undo step: set its tileset texture, define tile rects (slice the tileset like the "
-        "Texture Slicer, or explicit rects), then paint cells. Cells are (col, row) on a grid of cell_size (default: the "
-        "tiles' / first rect's size) from origin; row 0 is the bottom and rows grow upward (2D y is up); a tile's position "
-        "is its bottom-left corner. ops run in order: paint {grid, legend, at, blank} paints an ASCII block: grid is a "
-        "multi-line string (or array of lines), the TOP line is the highest row, the bottom line is row at[1] (default 0); "
-        "legend maps single characters to a tile rect name or index (null erases); '.' and ' ' are empty (blank: skip "
-        "keeps what is there, erase clears it). fill {tile, from, to} fills an inclusive cell rectangle, erase {from, to} "
-        "clears one, set {cells: [[col, row, tile], ...]}, clear removes every tile. Painting replaces the tile in a cell. "
-        "Pass create {name, parent, position} instead of entity to make the Tilemap. Returns the rects, counts and an ASCII "
-        "view (grid.lines) of the result. Example: {\"create\": {\"name\": \"Level\"}, \"texture\": \"tiles.png\", "
-        "\"tileset\": {\"tile_size\": [16, 16]}, \"cell_size\": [32, 32], \"ops\": [{\"op\": \"paint\", \"legend\": "
-        "{\"#\": \"tile_0\", \"=\": \"tile_1\"}, \"grid\": \"....==....\\n##########\"}]}.",
+        "Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops in order. Cells are "
+        "(col, row) of cell_size (default: first rect's) from origin; row 0 is the bottom. ops: paint {grid, "
+        "legend, at, blank}: grid = multi-line string or lines, TOP line = highest row, bottom line at row "
+        "at[1]; legend maps a char to a rect name/index (null erases); '.' and ' ' are empty (blank: "
+        "skip|erase). fill {tile, from, to} (inclusive), erase {from, to}, set {cells: [[col, row, tile]]}, "
+        "clear. Returns rects, counts, grid lines. Example op: {\"op\": \"paint\", \"legend\": {\"#\": "
+        "\"tile_0\"}, \"grid\": \"..##\\n####\"}.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Tilemap GameObject.")},
+            {"entity", entityRef()},
             {"create", createSpec},
-            {"texture", assetPath("Tileset image (sets the mesh texture of submesh 0).")},
+            {"texture", assetPath("Tileset image.")},
             {"tileset", object({
-                {"tile_size", vec2("Tile size in pixels [w, h].")},
-                {"columns", integer("Columns (instead of tile_size).")},
-                {"rows", integer("Rows (instead of tile_size).")},
-                {"offset", vec2("Pixels skipped at the top-left.")},
-                {"padding", vec2("Pixels between tiles.")},
-                {"count", integer("Use only the first N tiles.")},
-                {"names", array(string("name"), "Names for the tiles, row-major (default tile_0, tile_1...).")},
-                {"prefix", string("Name prefix (default tile_).")},
-                {"sheet_size", vec2("Image size in pixels, when it can't be read from the file.")}
+                {"tile_size", vec2("Pixels.")},
+                {"columns", integer("")},
+                {"rows", integer("")},
+                {"offset", vec2("Pixels.")},
+                {"padding", vec2("Pixels.")},
+                {"count", integer("")},
+                {"names", array(string(""), "Row-major.")},
+                {"prefix", withDefault(string(""), "tile_")},
+                {"sheet_size", vec2("If unreadable.")}
             })},
-            {"rects", array(object({{"name", string("Rect name (replaces a rect with that name).")},
-                                    {"rect", vec4("[x, y, w, h] pixels from the image's top-left.")},
-                                    {"submesh", integer("Texture submesh (default 0).")}}, {"rect"}), "Extra tile rects.")},
-            {"replace_rects", boolean("rects replace every existing rect.")},
-            {"cell_size", vec2("Grid cell size in local units (pixels in 2D).")},
-            {"origin", vec2("Local position of cell (0, 0); >= 0.")},
-            {"ops", array(anyObject("{op: paint|fill|erase|set|clear, ...}"), "Edits, in order.")},
-            {"return_grid", withDefault(boolean("Return the ASCII view."), true)},
-            {"max_cells", integer("Largest grid returned as lines (default 6000).")}
+            {"rects", array(object({{"name", string("Replaces same name.")},
+                                    {"rect", vec4("[x, y, w, h] px, top-left origin.")},
+                                    {"submesh", integer("")}}, {"rect"}), "Extra rects.")},
+            {"replace_rects", boolean("")},
+            {"cell_size", vec2("")},
+            {"origin", vec2(">= 0.")},
+            {"ops", array(anyObject("{op, ...}"), "")},
+            {"return_grid", withDefault(boolean(""), true)},
+            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }),
         editTilemapTool, false, false);
 
-    add("read_tilemap", "Read Tilemap",
-        "A Tilemap as data: texture, tile rects (index, name, pixel rect), tile count and an ASCII view of the grid-aligned "
-        "tiles (grid.lines, top line = highest row; grid.legend maps characters to rect names), the cell size and the "
-        "column / row ranges. Tiles off the grid are counted. include_tiles lists tiles (index, rect, position, size). Read-only.",
+    add("get_tilemap", "Get Tilemap",
+        "A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/row ranges and an ASCII view "
+        "(grid.lines, top = highest row; grid.legend). Off-grid tiles are only counted.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Tilemap GameObject.")},
-            {"cell_size", vec2("Grid cell size (default: the commonest tile size).")},
-            {"origin", vec2("Local position of cell (0, 0).")},
-            {"include_tiles", boolean("List the tiles too.")},
-            {"limit", integer("Most tiles listed (default 200).")},
-            {"max_cells", integer("Largest grid returned as lines (default 6000).")}
+            {"entity", entityRef()},
+            {"cell_size", vec2("")},
+            {"origin", vec2("")},
+            {"include_tiles", boolean("")},
+            {"limit", withDefault(integer(""), 200)},
+            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }, {"entity"}),
-        readTilemapTool, true, true);
+        getTilemapTool, true, true);
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
-        "Give a Sprite its sheet and frames in one undo step, like the Texture Slicer: texture sets the image; slice "
-        "{tile_size: [w, h] | columns + rows, offset, padding, count, names, prefix} cuts it into frames (pixel rects from "
-        "the top-left, row-major), or frames [{name, rect}] lists them. The sprite then shows frame (default 0) and, with "
-        "resize (default true), takes its size; pivot sets the pivot preset (bottom_left default, center for characters). "
-        "Pass create {name, parent, position} instead of entity to make the Sprite. Animate the frames with "
-        "set_sprite_animation; scripts switch frames with Sprite:setFrame(index or name).",
+        "Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or "
+        "frames lists pixel rects (top-left origin). The sprite shows frame (sized to it with resize); pivot "
+        "center suits characters. create instead of entity makes one. Animate: set_sprite_animation; scripts: "
+        "Sprite:setFrame(index or name).",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Sprite GameObject.")},
+            {"entity", entityRef()},
             {"create", createSpec},
-            {"texture", assetPath("Sprite sheet image.")},
+            {"texture", assetPath("Sheet image.")},
             {"slice", object({
-                {"tile_size", vec2("Frame size in pixels.")}, {"columns", integer("Columns.")}, {"rows", integer("Rows.")},
-                {"offset", vec2("Pixels skipped at the top-left.")}, {"padding", vec2("Pixels between frames.")},
-                {"count", integer("Use only the first N frames.")}, {"names", array(string("name"), "Frame names.")},
-                {"prefix", string("Name prefix (default frame_).")}, {"sheet_size", vec2("Image size when unreadable.")}})},
-            {"frames", array(object({{"name", string("Frame name.")}, {"rect", vec4("[x, y, w, h] pixels.")}}, {"rect"}), "Explicit frames.")},
-            {"frame", integer("Frame shown in the editor (default 0).")},
-            {"resize", withDefault(boolean("Size the sprite to the shown frame."), true)},
-            {"size", vec2("Sprite size [w, h] pixels (overrides resize).")},
-            {"pivot", stringEnum("Pivot preset.", {"center", "top_center", "bottom_center", "left_center", "right_center",
-                                                   "top_left", "bottom_left", "top_right", "bottom_right"})}
+                {"tile_size", vec2("Pixels.")}, {"columns", integer("")}, {"rows", integer("")},
+                {"offset", vec2("Pixels.")}, {"padding", vec2("Pixels.")},
+                {"count", integer("")}, {"names", array(string(""), "")},
+                {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("If unreadable.")}})},
+            {"frames", array(object({{"name", string("")}, {"rect", vec4("[x, y, w, h] px.")}}, {"rect"}), "")},
+            {"frame", withDefault(integer(""), 0)},
+            {"resize", withDefault(boolean(""), true)},
+            {"size", vec2("")},
+            {"pivot", stringEnum("", {"center", "top_center", "bottom_center", "left_center", "right_center",
+                                      "top_left", "bottom_left", "top_right", "bottom_right"})}
         }),
         setSpriteFramesTool, false, false);
 
     add("set_sprite_animation", "Set Sprite Animation",
-        "Create (or update, with animation) a Sprite Animation that cycles a sprite's frames: frames lists frame indices or "
-        "names (default all, in order), fps (default 10) or frame_ms (one number, or one per frame) sets timing, loop (default "
-        "true). autoplay (default true for a new one) makes it start when the scene plays; otherwise a script starts it. The "
-        "animation is a child GameObject of the sprite. One undo step. Make several (\"Idle\", \"Run\") and switch them from "
-        "a script.",
+        "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, "
+        "default all); timing by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on "
+        "play. Make several (Idle, Run) and switch them in scripts.",
         object({
             {"scene", sceneRef()},
-            {"sprite", entityRef("The Sprite GameObject (with frames from set_sprite_frames).")},
-            {"animation", entityRef("Existing Sprite Animation to update. Omit to create one.")},
-            {"name", string("Name of a new animation (default \"Sprite Animation\").")},
-            {"frames", array(Json{{"type", {"integer", "string"}}}, "Frame indices or names.")},
-            {"fps", number("Frames per second.")},
-            {"frame_ms", any("Milliseconds per frame: a number, or an array with one per frame.")},
-            {"loop", withDefault(boolean("Loop."), true)},
-            {"autoplay", boolean("Start when the scene plays.")}
+            {"sprite", entityRef("Sprite with frames.")},
+            {"animation", entityRef("To update.")},
+            {"name", string("")},
+            {"frames", array(Json{{"type", {"integer", "string"}}}, "")},
+            {"fps", withDefault(number(""), 10)},
+            {"frame_ms", any("")},
+            {"loop", withDefault(boolean(""), true)},
+            {"autoplay", boolean("")}
         }, {"sprite"}),
         setSpriteAnimationTool, false, false);
 
     // ---------------------------------------------------------------- animation
     add("edit_animation", "Edit Animation",
-        "Author an Animation (the Animation window's timeline) in one undo step. Without animation, creates one for target "
-        "(a child of it). tracks [{channel: position|rotation|scale|morph, keys: [{time, value, ease}], target, start_time, "
-        "mode}] writes keyframe tracks: values are [x, y, z] (position, scale; local), rotations [x, y, z, w] or {\"euler\": "
-        "[x, y, z]} degrees, morph weight arrays; times in seconds from the track's start; ease shapes the curve from that "
-        "key to the next (linear, step, quad_in, cubic_out, sine_in_out, back_out, bounce_out, elastic_out...). An existing "
-        "track for that target and channel is rewritten (mode replace, default) or has the keys merged in by time (mode merge); "
-        "otherwise a track is created. tweens [{type: position|rotation|scale|color|alpha, from, to, duration, ease, loop, "
-        "start_time, target}] add tween actions (from defaults to the current value). add_actions [{action, start_time, "
-        "duration, lane}] adds existing actions (tweens, sprite animations, particles, other animations); set_frames "
-        "[{index, start_time, duration, lane}] retimes actions; remove_actions [index] removes them (and deletes their "
-        "GameObjects unless delete_removed is false). Indices are the ones before this call. loop, duration (-1 = until the "
-        "actions end), speed, autoplay (start when the scene plays). Returns the animation (get_animation's shape). Preview "
-        "it in the editor with preview_animation. Example: {\"target\": \"Coin\", \"name\": \"Spin\", \"loop\": true, "
-        "\"autoplay\": true, \"tracks\": [{\"channel\": \"rotation\", \"keys\": [{\"time\": 0, \"value\": {\"euler\": [0,0,0]}}, "
-        "{\"time\": 1, \"value\": {\"euler\": [0,180,0]}}, {\"time\": 2, \"value\": {\"euler\": [0,360,0]}}]}]}.",
+        "Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: "
+        "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; turns > 180 degrees "
+        "need middle keys) or morph weights; ease to the next key: linear, step, "
+        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; a track for the same target+channel is "
+        "replaced or merged. tweens add tween actions (from: current). add_actions adds existing actions "
+        "(tweens, sprite animations, particles, animations); set_frames / remove_actions use indices from "
+        "before the call. Returns get_animation's shape.",
         object({
             {"scene", sceneRef()},
-            {"animation", entityRef("Existing Animation GameObject.")},
-            {"target", entityRef("GameObject animated (default target of tracks and tweens; required to create).")},
-            {"name", string("Name of a new Animation.")},
+            {"animation", entityRef("Animation to edit.")},
+            {"target", entityRef("Required to create.")},
+            {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("Animated channel.", {"position", "rotation", "scale", "morph"})},
-                {"keys", array(object({{"time", number("Seconds.")}, {"value", any("Key value.")}, {"ease", string("Curve to the next key.")}},
-                                      {"time", "value"}), "Keys.")},
-                {"target", entityRef("GameObject (default: the animation's target).")},
-                {"start_time", number("When the track starts in the animation (seconds).")},
-                {"mode", stringEnum("replace (default) or merge keys into an existing track.", {"replace", "merge"})},
-                {"name", string("Name of a new track GameObject.")}
-            }, {"channel", "keys"}), "Keyframe tracks.")},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph"})},
+                {"keys", array(object({{"time", number("")}, {"value", any("")}, {"ease", string("")}}, {"time", "value"}), "")},
+                {"target", entityRef("Default: target.")},
+                {"start_time", number("")},
+                {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+                {"name", string("")}
+            }, {"channel", "keys"}), "")},
             {"tweens", array(object({
-                {"type", stringEnum("Tween type.", {"position", "rotation", "scale", "color", "alpha"})},
-                {"from", any("Start value (default: current).")}, {"to", any("End value.")},
-                {"duration", number("Seconds (> 0).")}, {"ease", string("Ease name.")}, {"loop", boolean("Loop the tween.")},
-                {"start_time", number("Start in the animation (seconds).")}, {"target", entityRef("GameObject (default: the animation's target).")},
-                {"name", string("Name of the tween GameObject.")}
-            }, {"type", "to"}), "Tweens to add.")},
-            {"add_actions", array(object({{"action", entityRef("Action GameObject.")}, {"start_time", number("Seconds.")},
-                                          {"duration", number("Seconds; 0 = the action's own.")}, {"lane", integer("Timeline lane.")}}, {"action"}),
-                                  "Existing actions to add.")},
-            {"set_frames", array(object({{"index", integer("Action index.")}, {"start_time", number("Seconds.")},
-                                         {"duration", number("Seconds; 0 = auto.")}, {"lane", integer("Timeline lane.")}}, {"index"}),
-                                 "Retime actions.")},
-            {"remove_actions", array(Json{{"type", "integer"}}, "Action indices to remove.")},
-            {"delete_removed", withDefault(boolean("Delete removed actions' GameObjects."), true)},
-            {"loop", boolean("Loop the animation.")},
-            {"duration", number("Animation duration in seconds (-1: until the actions end).")},
-            {"speed", number("Playback speed.")},
-            {"autoplay", boolean("Start when the scene plays.")},
-            {"max_keys", integer("Keys listed per track in the result (default 20).")}
+                {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
+                {"from", any("")}, {"to", any("")},
+                {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
+                {"start_time", number("")}, {"target", entityRef("Default: target.")},
+                {"name", string("")}
+            }, {"type", "to"}), "")},
+            {"add_actions", array(object({{"action", entityRef()}, {"start_time", number("")},
+                                          {"duration", number("0 = own.")}, {"lane", integer("")}}, {"action"}), "")},
+            {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
+                                         {"duration", number("0 = auto.")}, {"lane", integer("")}}, {"index"}), "")},
+            {"remove_actions", array(integerItem, "")},
+            {"delete_removed", withDefault(boolean("Delete removed GameObjects."), true)},
+            {"loop", boolean("")},
+            {"duration", number("-1: until actions end.")},
+            {"speed", number("")},
+            {"autoplay", boolean("")},
+            {"max_keys", withDefault(integer("Per track."), 20)}
         }),
         editAnimationTool, false, false);
 
     add("get_animation", "Get Animation",
-        "An Animation's timeline: loop, duration, length, autoplay, target and its actions (index, kind: position_track / "
-        "rotation_track / ... / position_tween / sprite_animation / particles, action GameObject, target, start_time, "
-        "duration, lane, keys with time / value / ease, or tween from / to / duration / ease). Pass a GameObject that is not "
-        "an Animation to list the animations targeting it or its children (a model's clips too). Read-only.",
+        "An Animation's timeline: loop, duration, autoplay, target and actions (index, kind, GameObject, target, "
+        "start_time, duration, lane, keys or tween values). Given another GameObject, lists the animations targeting it "
+        "or its children (model clips too).",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Animation GameObject, or the GameObject they animate.")},
-            {"max_keys", integer("Keys listed per track (default 50).")}
+            {"entity", entityRef("Animation, or an animated GameObject.")},
+            {"max_keys", withDefault(integer("Per track."), 50)}
         }, {"entity"}),
         getAnimationTool, true, true);
 
     add("preview_animation", "Preview Animation",
-        "Preview an Animation in edit mode through the Animation window, as its play / pause / stop / scrub controls do: play "
-        "starts it (time advances with editor frames), pause holds it, seek {time} poses the scene at that time, stop restores "
-        "everything to the authored state (always stop when done; the preview changes transforms temporarily). Selects the "
-        "animation and its scene. wait_ms lets a playing preview run before replying. Returns the target's current transform.",
+        "Edit-mode preview (Animation window controls): play, pause, seek (time), stop (restores the authored state; "
+        "always stop when done). Selects the animation. wait_ms lets it play first. Returns the target's transform.",
         object({
             {"scene", sceneRef()},
-            {"animation", entityRef("Animation GameObject.")},
-            {"action", withDefault(stringEnum("Control.", {"play", "pause", "stop", "seek"}), "play")},
+            {"animation", entityRef()},
+            {"action", withDefault(stringEnum("", {"play", "pause", "stop", "seek"}), "play")},
             {"time", number("seek: seconds.")},
-            {"wait_ms", integer("Milliseconds to let it play before replying (0-30000).", 0, 30000)}
+            {"wait_ms", integer("", 0, 30000)}
         }, {"animation"}),
         previewAnimationTool, false, false);
 
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
-        "Build a UI widget tree from one nested description, as one undo step. Each node: {type, name, layout, text, "
-        "font_size, font, text_color, color, colors, texture, value, placeholder, direction, multiline, properties, "
-        "children}. Types: panel (window with a title: text), image, text, button (text = label), input_field (text, "
-        "placeholder), progress_bar (value 0-1, direction), scrollbar (direction), layout_group (direction vertical | "
-        "horizontal | vertical_wrap | horizontal_wrap; lays its children out), container (an empty RectTransform), polygon. "
-        "layout: {anchor, size [w, h], position [x, y], pivot [x, y], margins}. UI coordinates are pixels, y DOWN from the "
-        "parent's top-left. Without anchor, position is the top-left in the parent. With anchor (top_left, top_center, "
-        "top_right, center_left, center, center_right, bottom_left, bottom_center, bottom_right, top_wide, bottom_wide, "
-        "left_wide, right_wide, vertical_center_wide, horizontal_center_wide, stretch) the element sticks to that part of "
-        "its parent (the screen for roots) and position is an offset; stretch with margins (a number or [l, t, r, b]) fills "
-        "the parent minus margins. Colors are linear [r, g, b, a] 0-1. properties {component: {catalogProperty: value}} "
-        "sets anything else. Buttons are wired in scripts: RegisterEvent(self, button:getButtonComponent().onPress, "
-        "\"onPress\") (Lua). UI receives pointer input in a scene with a UI camera (a UI scene, usually a child scene "
-        "for the HUD). Example: {\"root\": {\"type\": \"panel\", \"text\": \"Pause\", \"layout\": {\"anchor\": \"center\", "
-        "\"size\": [300, 200]}, \"children\": [{\"type\": \"button\", \"name\": \"Resume\", \"text\": \"Resume\", \"layout\": "
-        "{\"anchor\": \"center\", \"size\": [160, 40]}}]}}. Returns the created tree with ids and paths.",
+        "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
+        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
+        "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
+        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: "
+        "pixels, y DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins "
+        "to the parent (screen for roots) and position becomes an offset; stretch + margins [l,t,r,b] fills "
+        "it. Colors are linear. Pointer input needs a UI camera (a UI scene, usually a child scene). Returns "
+        "the tree with ids and paths.",
         object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Parent of the root (omit for the scene root).")},
-            {"root", anyObject("The root node {type, name, layout, text, children: [...]}.")}
+            {"parent", entityRef("Parent (default: scene root).")},
+            {"root", anyObject("")}
         }, {"root"}),
         createUiTool, false, false);
 
     add("set_rect_layout", "Set UI Layout",
-        "Lay out existing UI elements (RectTransform) in one undo step, with create_ui's layout rules: each item {entity, "
-        "anchor, size, position, pivot, margins}. Anchor presets like Unity's (top_left ... stretch); stretch + margins "
-        "fills the parent minus margins; no anchor = absolute (position is the top-left in the parent, y down). Returns each "
-        "element's resolved layout after the UI system updates.",
+        "Lay out existing UI elements (RectTransform) with create_ui's layout rules. Returns the resolved layouts.",
         object({
             {"scene", sceneRef()},
             {"items", array(object({
-                {"entity", entityRef("UI element.")}, {"anchor", string("Anchor preset.")}, {"size", vec2("[w, h] pixels.")},
-                {"position", vec2("Offset (anchored) or top-left (absolute), pixels, y down.")}, {"pivot", vec2("[0..1, 0..1], (0, 0) top-left.")},
-                {"margins", any("stretch margins: a number or [left, top, right, bottom].")}
-            }, {"entity"}), "Elements to lay out.")}
+                {"entity", entityRef()}, {"anchor", string("")}, {"size", vec2("")},
+                {"position", vec2("")}, {"pivot", vec2("0-1, (0,0) top-left.")},
+                {"margins", any("")}
+            }, {"entity"}), "")}
         }, {"items"}),
-        setRectLayoutTool, false, false);
+        setRectLayoutTool, false, false, true);
 
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
-        "Create a particle effect (a Points GameObject that draws the particles plus a Particle System child) from a preset, "
-        "or reconfigure one (entity). Presets: fire, smoke, sparks, explosion (one burst, no loop), snow, rain, magic, none; "
-        "in 3D they are in meters, in 2D they scale by scale (default 40 px per unit) and lie flat. Overrides: max_particles, "
-        "rate (per second), loop, life [min, max] s, emitter {shape: box|sphere|hemisphere|circle|cone, min, max, radius, "
-        "inner_radius, cone_angle, cone_height}, velocity / acceleration ([x, y, z] or {min, max}), size [min, max], "
-        "size_over_life [from, to], alpha_over_life [from, to], color ([r, g, b] or {min, max}), gradient [[t 0-1, [r, g, "
-        "b]], ...] (over each particle's life, replaces color), bursts [{time, count}], texture (the points' image), "
-        "properties {catalogProperty: value}. autoplay (default true when created) starts it when the scene plays; it does "
-        "not run in edit mode. emitter_entity uses an existing Points or Mesh GameObject to draw the particles. One undo step.",
+        "Create a particle effect (Points GameObject + Particle System child) from a preset, or reconfigure "
+        "one (entity). 3D presets are in meters; 2D ones are scaled by scale (px per unit). emitter {shape: "
+        "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
+        "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
+        "Runs only in play (autoplay). emitter_entity: draw with an existing Points/Mesh.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Existing Particle System to reconfigure.")},
-            {"name", string("Name of the new effect GameObject.")},
-            {"parent", entityRef("Parent of the new effect.")},
-            {"position", vec3("Local position of the new effect.")},
-            {"emitter_entity", entityRef("Draw with this Points / Mesh GameObject instead of a new one.")},
-            {"preset", stringEnum("Starting point.", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
-            {"scale", number("Preset scale (default 1 in 3D, 40 in 2D).")},
-            {"max_particles", integer("Most particles alive.", 1, 100000)},
-            {"rate", integer("Particles per second.", 0, 100000)},
-            {"loop", boolean("Keep emitting.")},
-            {"life", any("Seconds: a number or [min, max].")},
-            {"emitter", anyObject("{shape, min, max, radius, inner_radius, cone_angle, cone_height}")},
-            {"velocity", any("[x, y, z] or {min, max}.")},
-            {"acceleration", any("[x, y, z] or {min, max} (gravity: [0, -9.8, 0]).")},
-            {"size", any("A number or [min, max].")},
-            {"size_over_life", vec2("[from, to] size over each particle's life.")},
-            {"alpha_over_life", vec2("[from, to] alpha over each particle's life.")},
-            {"color", any("[r, g, b] or {min, max}.")},
-            {"gradient", array(Json{{"type", "array"}}, "[[time 0-1, [r, g, b]], ...]")},
-            {"bursts", array(anyObject("{time, count}"), "Bursts: count a number or [min, max].")},
-            {"texture", assetPath("Particle image.")},
-            {"properties", anyObject("Other Particle System properties by Catalog name.")},
-            {"autoplay", boolean("Start when the scene plays.")}
+            {"entity", entityRef("Effect to reconfigure.")},
+            {"name", string("")},
+            {"parent", entityRef("Parent (default: scene root).")},
+            {"position", vec3("Local.")},
+            {"emitter_entity", entityRef()},
+            {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
+            {"scale", number("Default 1 (3D), 40 (2D).")},
+            {"max_particles", integer("", 1, 100000)},
+            {"rate", integer("", 0, 100000)},
+            {"loop", boolean("")},
+            {"life", any("Seconds or [min, max].")},
+            {"emitter", anyObject("")},
+            {"velocity", any("")},
+            {"acceleration", any("")},
+            {"size", any("Or [min, max].")},
+            {"size_over_life", vec2("")},
+            {"alpha_over_life", vec2("")},
+            {"color", any("")},
+            {"gradient", array(arrayItem, "[[t, [r, g, b]], ...]")},
+            {"bursts", array(anyObject(""), "")},
+            {"texture", assetPath("")},
+            {"properties", anyObject("")},
+            {"autoplay", boolean("")}
         }),
         createParticlesTool, false, false);
 
     // ---------------------------------------------------------------- models
     add("get_model_info", "Get Model Info",
-        "What a Model GameObject loaded: file, whether it is still loading, its mesh GameObjects (node index, submesh count), "
-        "bones (name, id), animation clips (GameObjects with tracks count, length, loop; play them from scripts or preview "
-        "with preview_animation), morph target names and the skeleton. Read-only.",
+        "What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (GameObjects: tracks, length, loop), "
+        "morph targets, skeleton.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Model GameObject.")},
-            {"include_bones", withDefault(boolean("List bones."), true)}
+            {"entity", entityRef()},
+            {"include_bones", withDefault(boolean(""), true)}
         }, {"entity"}),
         getModelInfoTool, true, true);
 
     add("set_model", "Load / Clear Model",
-        "Load a model file (.gltf, .glb, .obj inside the assets directory) into a Model GameObject, replacing what it had, or "
-        "clear it (clear: true), like the Inspector's Model field; one undo step. Pass create {name, parent, position} "
-        "instead of entity to make a new Model GameObject. Waits for the load (timeout_seconds) and returns get_model_info's "
-        "summary (meshes, animations).",
+        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it. create instead of entity makes one. "
+        "Waits for the load; returns get_model_info's summary.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Model GameObject.")},
+            {"entity", entityRef()},
             {"create", createSpec},
-            {"path", assetPath("Model file.")},
-            {"merge_static_meshes", boolean("Merge static meshes into one.")},
-            {"clear", boolean("Clear the model instead of loading.")},
-            {"timeout_seconds", integer("Load wait (default 60).", 1, 600)}
+            {"path", assetPath("")},
+            {"merge_static_meshes", boolean("")},
+            {"clear", boolean("")},
+            {"timeout_seconds", withDefault(integer("", 1, 600), 60)}
         }),
         setModelTool, false, false);
 
     // ---------------------------------------------------------------- shape points
     add("set_shape_points", "Set Shape Points",
-        "Set the point list of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer in one undo step: points "
-        "[[x, y(, z)], ...] in local units, or circle {center, radius, segments} / rect [x, y, w, h] to generate them. "
-        "Polygons fill a triangle strip: order outline (default) takes a convex outline in order around the shape and "
-        "converts it; order strip passes the points as they are. Shadow casters take the outline (closed). Line renderers "
-        "draw a polyline through the points (closed joins the ends) or explicit lines [{a, b, color_a, color_b}]. color / "
-        "colors (one per point) are [r, g, b(, a)].",
+        "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), circle or "
+        "rect. Polygon order outline converts a convex outline to the triangle strip; strip uses points as is. Line "
+        "renderers: polyline (closed joins ends) or lines.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("GameObject.")},
-            {"component", stringEnum("Which component (default: the one it has).", {"polygon", "mesh_polygon", "shadow_caster_2d", "line_renderer"})},
-            {"points", array(Json{{"type", "array"}}, "[[x, y(, z)], ...]")},
-            {"circle", object({{"center", vec2("Center.")}, {"radius", number("Radius.")}, {"segments", integer("Segments (3-256).")}})},
-            {"rect", vec4("[x, y, width, height].")},
-            {"order", withDefault(stringEnum("Polygon point order.", {"outline", "strip"}), "outline")},
-            {"closed", boolean("Close the outline / polyline.")},
-            {"lines", array(anyObject("{a, b, color_a, color_b}"), "Line renderer segments.")},
-            {"color", color("Color for every point.")},
-            {"colors", array(Json{{"type", "array"}}, "One color per point.")}
+            {"entity", entityRef()},
+            {"component", stringEnum("", {"polygon", "mesh_polygon", "shadow_caster_2d", "line_renderer"})},
+            {"points", array(arrayItem, "[[x, y(, z)], ...]")},
+            {"circle", object({{"center", vec2("")}, {"radius", number("")}, {"segments", integer("3-256.")}})},
+            {"rect", vec4("[x, y, w, h].")},
+            {"order", withDefault(stringEnum("", {"outline", "strip"}), "outline")},
+            {"closed", boolean("")},
+            {"lines", array(anyObject("{a, b, color_a, color_b}"), "")},
+            {"color", color("")},
+            {"colors", array(arrayItem, "One per point.")}
         }, {"entity"}),
-        setShapePointsTool, false, false);
+        setShapePointsTool, false, false, true);
 }
 
 }

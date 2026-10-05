@@ -533,12 +533,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
-    ${EDITOR_DIR}/mcp/legacy/EditorActionExecutor.cpp
-    ${EDITOR_DIR}/mcp/legacy/EditorActionRegistry.cpp
-    ${EDITOR_DIR}/mcp/legacy/EngineApiContext.cpp
-    ${EDITOR_DIR}/mcp/legacy/PathUtils.cpp
-    ${EDITOR_DIR}/mcp/legacy/TerrainCapability.cpp
-    ${EDITOR_DIR}/mcp/tools/LegacyTools.cpp
+    ${EDITOR_DIR}/mcp/EngineApiContext.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaps.cpp
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp

@@ -4,7 +4,6 @@
 #include "McpContext.h"
 
 #include "McpServer.h"
-#include "legacy/EditorActionExecutor.h"
 
 #include "App.h"
 
@@ -39,11 +38,4 @@ PlayInput* McpContext::playInput() const { return appRef.getPlayInput(); }
 
 bool McpContext::isPlaying() const {
     return appRef.getProject()->isAnyScenePlaying();
-}
-
-legacy::EditorActionExecutor& McpContext::legacyExecutor() {
-    if (!legacy) {
-        legacy = std::make_unique<legacy::EditorActionExecutor>(appRef.getProject(), appRef.getProjectWindow());
-    }
-    return *legacy;
 }

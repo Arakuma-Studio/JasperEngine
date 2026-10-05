@@ -57,7 +57,13 @@ async def test_search_engine_api(ed: Editor):
     ed.check(any("applyForce" in x["detail"] for x in r["results"]), f"applyForce found: {r['results'][:3]!r}")
     ed.check(r["docs"] and r["docs"][0]["doc"].startswith("jasper://docs/"), f"doc hits: {r['docs']!r}")
     src = await ed.call("search_engine_source", query="REGISTER_ENGINE_EVENT", max_results=5)
-    ed.check(src, "engine source search")
+    ed.check(0 < len(src["matches"]) <= 5, f"engine source search: {src!r}")
+    hit = src["matches"][0]
+    got = await ed.call_raw("read_engine_source", {"path": hit["path"], "start_line": hit["line"], "max_lines": 3})
+    ed.check(not got.is_error and "REGISTER_ENGINE_EVENT" in got.text, f"read the hit: {got.text[:300]!r}")
+    ed.check_eq(got.structured["start_line"], hit["line"])
+    await ed.check_error("read_engine_source", path="../etc/passwd.h", contains="relative")
+    await ed.check_error("read_engine_source", path="core/NoSuchFile.h", contains="search_engine_source")
 
 
 async def test_prompts(ed: Editor):

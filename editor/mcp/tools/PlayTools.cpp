@@ -2575,37 +2575,27 @@ void sendInputTool(const CallPtr& call) {
 void registerPlayTools(McpRegistry& registry) {
     using namespace schema;
 
-    registry.removeTool("control_play_mode");
-
-    Json screenshotOption = Json{
-        {"description", "Also return a screenshot when done: true (Game view), \"game\", \"scene\" or \"editor\"."},
-        {"oneOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
-    };
+    const Json screenshotOption = w3::screenshotArgSchema();
+    const Json maxWidth = w3::maxWidthArgSchema(4096, 768);
+    const Json runtimeScene = sceneRef("Default: the played scene.");
 
     {
         ToolDef tool;
         tool.name = "play";
         tool.title = "Play Mode";
         tool.description =
-            "Control Play mode like the toolbar. action start: plays the scene (default: the selected one, as the Play "
-            "button does; saves modified scenes, builds C++ scripts if the project has any, which can take minutes) "
-            "and by default waits until the game runs: on success returns the state and the console problems logged "
-            "since start; if startup fails (C++ compile error, script error) returns isError with the compiler/console "
-            "errors. Past timeout_seconds (or with wait:false) it returns a job_id: poll get_job or get_play_state. "
-            "stop: stops and waits until the scene is restored to its edit-time state (play-time changes are "
-            "discarded, like Unity), and summarizes the session (errors, crash). restart: stop then start. pause / "
-            "resume. step: advance a paused game exactly `frames` frames (pauses first). A Lua/C++ script error "
-            "during play stops play automatically: wait, get_play_state and send_input report it as a crash. "
-            "Input the agent holds (send_input) is released at stop. Example: {\"action\":\"start\", "
-            "\"screenshot\": true}.";
+            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
+            "running; returns the state + console problems, or isError with compile/script errors; past "
+            "timeout_seconds (or wait:false) a job_id (poll get_job). stop: restores the edit-time state and "
+            "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.";
         tool.inputSchema = object({
-            {"action", stringEnum("What to do.", {"start", "stop", "restart", "pause", "resume", "step"})},
-            {"scene", sceneRef("start: the scene to play (default: the selected scene, or the one behind Prefab Mode).")},
-            {"wait", withDefault(boolean("start: wait until the game runs (or fails)."), true)},
-            {"timeout_seconds", withDefault(number("start/stop: how long to wait before returning a job id (C++ builds can take minutes).", 1, 3600), 120)},
-            {"frames", withDefault(integer("step: frames to advance.", 1, 600), 1)},
+            {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step"})},
+            {"scene", sceneRef()},
+            {"wait", withDefault(boolean("start only."), true)},
+            {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
+            {"frames", withDefault(integer("step only.", 1, 600), 1)},
             {"screenshot", screenshotOption},
-            {"max_width", withDefault(integer("Screenshot width.", 0, 4096), 768)}
+            {"max_width", maxWidth}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -2616,11 +2606,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_play_state";
         tool.title = "Get Play State";
         tool.description =
-            "Play mode state: stopped / loading (starting; maybe compiling C++) / playing / paused / cancelling "
-            "(stopping); the playing scene and the running scenes (child scenes run as copies with their own ids); "
-            "the current session (seconds, frames, errors logged, crash) and how the last session ended "
-            "(stopped, crashed with the error, failed_to_start, stopped_outside_mcp = by the editor UI); input still "
-            "held by send_input; console_cursor to pass to read_console.";
+            "Play mode state, the played and running scenes (child scenes run as copies with own ids), the current "
+            "session (time, frames, errors, crash), how the last one ended, input held by send_input, and "
+            "console_cursor for read_console.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2633,24 +2621,19 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "wait";
         tool.title = "Wait / Run Game";
         tool.description =
-            "Let the game run, then report: for `seconds` (wall clock), for `frames` (editor frames = game updates; on a "
-            "paused game this steps it), or `until` a Lua condition is true (evaluated every poll_frames frames in the "
-            "game's Lua state with the eval_lua helpers, e.g. \"script('GameController').state == 'dead'\"; "
-            "timeout_seconds default 30). Returns why it stopped (seconds / frames / condition / timeout / "
-            "play_ended), elapsed time and frames, the console entries logged meanwhile and the play state; "
-            "screenshot adds an image. isError when play ended during the wait (crash: the error is included), the "
-            "condition errored, or an `until` timed out. The core of a test loop: send_input → wait → "
-            "screenshot / eval_lua. Without play running it just waits.";
+            "Let the game run `seconds` (wall clock), `frames` (steps a paused game) or until the Lua `until` is "
+            "truthy, then return the reason, elapsed time/frames, console entries logged meanwhile and the play "
+            "state. isError if play ended (crash error included) or `until` errored/timed out.";
         tool.inputSchema = object({
-            {"seconds", number("Run this many seconds.", 0, 600)},
-            {"frames", integer("Run this many frames.", 0, 1000000)},
-            {"until", string("Lua expression (or chunk returning a value); stop when truthy. Helpers: script(ref [,class]), object(ref [,type]), entity(ref), scene.")},
-            {"timeout_seconds", number("Give up after this long (default 30 for until, else seconds/frames + 30).", 0.5, 3600)},
-            {"poll_frames", withDefault(integer("Evaluate until every N frames.", 1, 600), 1)},
-            {"console_limit", withDefault(integer("Max console entries returned.", 0, 1000), 50)},
-            {"only_problems", withDefault(boolean("Only warnings/errors/build output in the returned console entries."), false)},
+            {"seconds", number("", 0, 600)},
+            {"frames", integer("", 0, 1000000)},
+            {"until", string("Lua condition (eval_lua helpers).")},
+            {"timeout_seconds", number("Default: 30 (until) or run time + 30.", 0.5, 3600)},
+            {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
+            {"console_limit", withDefault(integer("", 0, 1000), 50)},
+            {"only_problems", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
-            {"max_width", withDefault(integer("Screenshot width.", 0, 4096), 768)}
+            {"max_width", maxWidth}
         });
         tool.handler = waitTool;
         registry.addTool(std::move(tool));
@@ -2661,24 +2644,19 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "eval_lua";
         tool.title = "Evaluate Lua";
         tool.description =
-            "Run Lua in the running game's Lua state (the one its scripts use) and get the returned values as JSON "
-            "(tables, Vector2/3/4 as arrays, Quaternion, GameObject/Sprite/... handles as {type, entity, name, path}) "
-            "plus print() output and console lines. An expression works directly (\"Engine.deltatime\"); a chunk "
-            "needs return. Helpers: scene (the played Scene), script(ref [, className]) → the Lua script instance "
-            "(its self table: read/write fields like .score), object(ref [, type]) → an engine handle "
-            "(GameObject default; Sprite, Text, Camera, ...), entity(ref) → id, getScene(name). ref = GameObject id or "
-            "path (runtime-spawned ones included). Globals assigned persist in the Lua state for later calls. Changes "
-            "made while playing are discarded at stop. Errors return the Lua traceback (isError). Example: "
-            "{\"code\": \"local gc = script('GameController'); return {state = gc.state, score = gc.score, y = gc.planeY}\"}. "
-            "Without play it refuses unless allow_edit_mode is true (then it acts on the edit-time scene: NOT undoable).";
+            "Run Lua in the running game; returns the values as JSON (handles as {type, entity, name, path}), "
+            "print() output and console lines. Helpers: scene, script(ref [,class]) -> its self table, "
+            "object(ref [,type]) -> handle (GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals "
+            "persist; changes revert at stop. Not playing: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
-            {"code", string("Lua code: an expression or a chunk ending with return.")},
-            {"scene", sceneRef("Which running scene `scene` and the helpers use (default: the played scene).")},
-            {"allow_edit_mode", withDefault(boolean("Run even when not playing, against the edit-time scene (changes are not undoable)."), false)},
-            {"timeout_seconds", withDefault(number("Abort a runaway script after this long.", 0.1, 60), 5)},
-            {"max_depth", withDefault(integer("Table nesting serialized.", 1, 12), 4)},
-            {"max_items", withDefault(integer("Entries per table serialized.", 1, 5000), 200)}
+            {"code", string("Expression, or chunk with return.")},
+            {"scene", runtimeScene},
+            {"allow_edit_mode", withDefault(boolean(""), false)},
+            {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},
+            {"max_depth", withDefault(integer("Table nesting.", 1, 12), 4)},
+            {"max_items", withDefault(integer("Entries per table.", 1, 5000), 200)}
         }, {"code"});
+        tool.annotations.destructive = true;
         tool.handler = evalLuaTool;
         registry.addTool(std::move(tool));
     }
@@ -2688,18 +2666,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "list_runtime_entities";
         tool.title = "List Runtime GameObjects";
         tool.description =
-            "List the GameObjects of the running game (the played scene by default, or a running child scene), "
-            "including those the game spawned at runtime (created_at_runtime: true), with id, name and path. "
-            "Filters: name_contains, component, created_only. Also lists the running scenes. Only while playing.";
+            "GameObjects of the running game (id, name, path), runtime-spawned ones included (created_at_runtime), "
+            "and the running scenes. Only while playing.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A running scene (default: the played scene).")},
-            {"name_contains", string("Case-insensitive name filter.")},
-            {"component", componentName("Only GameObjects with this component.")},
-            {"created_only", withDefault(boolean("Only GameObjects created at runtime."), false)},
-            {"with_components", withDefault(boolean("Include each GameObject's component names."), false)},
-            {"limit", withDefault(integer("Maximum listed.", 1, 5000), 200)}
+            {"scene", runtimeScene},
+            {"name_contains", string("Case-insensitive.")},
+            {"component", componentName("Has this component.")},
+            {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
+            {"with_components", withDefault(boolean(""), false)},
+            {"limit", withDefault(integer("", 1, 5000), 200)}
         });
         tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
         tool.handler = listRuntimeEntitiesTool;
         registry.addTool(std::move(tool));
     }
@@ -2709,19 +2687,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_runtime_entity";
         tool.title = "Get Runtime GameObject";
         tool.description =
-            "Live values of a GameObject in the running game: every component's properties as they are this frame "
-            "(position, velocity, text, visible, ...; same shapes as the edit-time component tools) and, for Lua "
-            "scripts, the script instance's fields (state). Filter with components / properties. Only while "
-            "playing; runtime-spawned GameObjects work too. Example: {\"entity\": \"Plane\", \"components\": [\"transform\"]}.";
+            "Live values of a GameObject in the running game (runtime-spawned too): component properties this "
+            "frame and Lua script instance fields. Only while playing.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A running scene (default: the played scene).")},
-            {"entity", entityRef("GameObject id or path.")},
-            {"components", array(componentName(), "Only these components.")},
-            {"properties", array(string("Property name."), "Only these property names.")},
-            {"include_script_state", withDefault(boolean("Include Lua script instance fields."), true)},
-            {"max_depth", withDefault(integer("Nesting of script state tables.", 1, 8), 2)}
+            {"scene", runtimeScene},
+            {"entity", entityRef()},
+            {"components", array(string(""), "Filter.")},
+            {"properties", array(string(""), "Filter.")},
+            {"include_script_state", withDefault(boolean(""), true)},
+            {"max_depth", withDefault(integer("Script table nesting.", 1, 8), 2)}
         }, {"entity"});
         tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
         tool.handler = getRuntimeEntityTool;
         registry.addTool(std::move(tool));
     }
@@ -2731,19 +2708,17 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "set_runtime_property";
         tool.title = "Set Runtime Property";
         tool.description =
-            "Change component properties of a GameObject in the running game, live (for testing: teleport the "
-            "player, change a speed, toggle visibility). Values use the same shapes as the edit-time component "
-            "tools. Reverted when play stops (Unity semantics); never saved. Only while playing. Lua script fields "
-            "are set with eval_lua (script('X').speed = 5). Example: {\"entity\": \"Plane\", \"component\": "
-            "\"transform\", \"values\": {\"position\": [300, 400, 3]}}.";
+            "Set component properties of a GameObject in the running game, live: property + value, or values "
+            "{name: value}. Reverted at stop, never saved. Only while playing. Lua script fields: eval_lua.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A running scene (default: the played scene).")},
-            {"entity", entityRef("GameObject id or path.")},
+            {"scene", runtimeScene},
+            {"entity", entityRef()},
             {"component", componentName()},
-            {"property", string("Property name (or use values).")},
-            {"value", any("Value for property.")},
-            {"values", anyObject("Several properties: {name: value}.")}
+            {"property", string("")},
+            {"value", any("")},
+            {"values", anyObject("")}
         }, {"entity", "component"});
+        tool.annotations.idempotent = true;
         tool.handler = setRuntimePropertyTool;
         registry.addTool(std::move(tool));
     }
@@ -2753,30 +2728,22 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game, executed across frames (never blocking), whether or not the Game "
-            "view has focus or the mouse is over it. events run in order; each is an object with type:\n"
-            "- key: {key: \"space\"|\"a\"|\"enter\"|\"left\"|\"f1\"|..., action: press (default: down, hold, up) | down | up, hold_frames (default 2), hold_ms, mods: [\"shift\",\"ctrl\",\"alt\",\"super\"]}\n"
-            "- text: {text: \"hello\"} (character input for text fields)\n"
-            "- mouse: {action: click (default) | double_click | down | up | move | drag | scroll, x, y, to: [x,y] (drag), steps, button: left|right|middle, dx, dy (scroll)}\n"
-            "- touch: {action: tap (default) | start | move | end | cancel | swipe, pointer, x, y, to: [x,y]}\n"
-            "- gamepad: {gamepad: 0, button: a|b|x|y|start|dpad_up|..., action: press|down|up} or {axis: left_x|left_y|right_x|right_y|left_trigger|right_trigger, value: -1..1} (a virtual gamepad connects on first use)\n"
-            "- wait: {frames, ms}; release_all: {} releases everything held.\n"
-            "Coordinates (space): canvas (default) = game canvas pixels, origin top-left, as Input.getMousePosition "
-            "reports (canvas size in get_play_state / screenshot); normalized = 0..1 of the canvas; view = Game view "
-            "framebuffer pixels. Points outside the canvas are rejected. gap_frames (default 1) separates events so "
-            "games that poll Input see every press. Keys/buttons held with down stay held after the call (listed in "
-            "held_input) until up, release_all or play stop. Returns frames used, console lines logged, play state; "
-            "screenshot adds an image. Example: {\"events\": [{\"type\":\"key\",\"key\":\"space\"}, {\"type\":\"wait\",\"frames\":10}, "
-            "{\"type\":\"mouse\",\"x\":640,\"y\":360}], \"screenshot\": true}.";
+            "Inject input into the running game across frames (no focus needed). events run in order, each "
+            "{type, ...}; first action listed = default:\nkey: key (space, a, 0, left, f1, kp_0...), action "
+            "press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text\nmouse: action "
+            "click|double_click|down|up|move|drag|scroll, x, y, button left|right|middle, to [x,y] + steps "
+            "(drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\ngamepad: "
+            "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
+            "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
+            "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
+            "up/release_all/stop. Returns frames, console lines, play state.";
         tool.inputSchema = object({
-            {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500},
-                            {"description", "Input events, in order."},
-                            {"items", anyObject("{type: key|text|mouse|touch|gamepad|wait|release_all, ...}")}}},
-            {"space", withDefault(stringEnum("Coordinate space of x/y.", {"canvas", "normalized", "view"}), "canvas")},
-            {"gap_frames", withDefault(integer("Frames after each event before the next.", 0, 1000), 1)},
-            {"frames_after", withDefault(integer("Frames to let the game run after the last event before replying.", 0, 100000), 1)},
+            {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", anyObject("")}}},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
+            {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
+            {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},
             {"screenshot", screenshotOption},
-            {"max_width", withDefault(integer("Screenshot width.", 0, 4096), 768)}
+            {"max_width", maxWidth}
         }, {"events"});
         tool.handler = sendInputTool;
         registry.addTool(std::move(tool));

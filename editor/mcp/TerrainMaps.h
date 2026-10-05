@@ -14,7 +14,7 @@ namespace jasperengine::editor {
 class Project;
 }
 
-namespace jasperengine::editor::mcp::legacy {
+namespace jasperengine::editor::mcp {
 
 struct TerrainHeightmapRequest {
     int resolution = 512;
@@ -47,7 +47,9 @@ struct TerrainBlendmapResult {
     std::filesystem::path fullPath;
 };
 
-class TerrainCapability {
+// Generated terrain maps (set_terrain_maps): 16-bit heightmaps and constant RGB blend maps
+// written as PNGs into the project's terrain maps directory
+class TerrainMaps {
 public:
     static TerrainHeightmapResult createHeightmap(Project* project,
                                                   uint32_t sceneId,
@@ -60,4 +62,4 @@ public:
                                                 const TerrainBlendmapRequest& request);
 };
 
-} // namespace jasperengine::editor::mcp::legacy
+} // namespace jasperengine::editor::mcp

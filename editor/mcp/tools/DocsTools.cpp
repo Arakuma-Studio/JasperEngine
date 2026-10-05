@@ -11,14 +11,16 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
-#include "mcp/legacy/EngineApiContext.h"
+#include "mcp/EngineApiContext.h"
 
 #include "Project.h"
+#include "util/FileUtils.h"
 
 #include "mcp_docs.h"
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -146,7 +148,7 @@ void searchEngineApiTool(const CallPtr& call) {
         return;
     }
     const int maxResults = std::clamp(args.value("max_results", 16), 1, 50);
-    Json api = legacy::EngineApiContext::search(query, args.value("parent", ""), maxResults);
+    Json api = EngineApiContext::search(query, args.value("parent", ""), maxResults);
     Json results = Json::array();
     std::string text = "API symbols for \"" + query + "\":";
     for (const Json& item : api.value("results", Json::array())) {
@@ -171,6 +173,118 @@ void searchEngineApiTool(const CallPtr& call) {
         }
     }
     call->ok(text, Json{{"results", results}, {"docs", docHits}});
+}
+
+// The engine's own source tree (headers and Lua bindings), as shipped with the editor
+bool isEngineSourceFile(const fs::path& path) {
+    static const std::set<std::string> allowed = {".h", ".hpp", ".inl", ".cpp", ".cc", ".c", ".lua"};
+    return allowed.count(lower(path.extension().string())) > 0;
+}
+
+bool engineRoot(const CallPtr& call, fs::path& root) {
+    root = FileUtils::getEngineDir();
+    std::error_code ec;
+    if (!fs::is_directory(root, ec)) {
+        call->fail("Engine source not found at " + root.generic_string() + ".");
+        return false;
+    }
+    return true;
+}
+
+void searchEngineSourceTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string query = lower(args.value("query", ""));
+    if (query.empty()) {
+        call->fail("query is required, e.g. \"Quaternion(\", \"D_KEY_\", \"applyForce\".");
+        return;
+    }
+    const std::string pathFilter = lower(args.value("path_filter", ""));
+    const int maxResults = std::clamp(args.value("max_results", 40), 1, 200);
+    fs::path root;
+    if (!engineRoot(call, root)) return;
+    // core/ is the scriptable API surface; the third-party libs/ tree would drown the results
+    fs::path searchRoot = root / "core";
+    std::error_code ec;
+    if (!fs::is_directory(searchRoot, ec)) searchRoot = root;
+
+    // Sorted for stable results across platforms
+    std::vector<fs::path> files;
+    for (fs::recursive_directory_iterator it(searchRoot, fs::directory_options::skip_permission_denied, ec), end;
+         it != end && !ec; it.increment(ec)) {
+        if (it->is_directory(ec)) {
+            const std::string dir = it->path().filename().string();
+            if (dir == "libs" || dir == "build" || dir == ".git") it.disable_recursion_pending();
+            continue;
+        }
+        if (isEngineSourceFile(it->path())) files.push_back(it->path());
+    }
+    std::sort(files.begin(), files.end());
+
+    Json matches = Json::array();
+    bool truncated = false;
+    std::string text;
+    for (const fs::path& path : files) {
+        const std::string rel = fs::relative(path, root, ec).generic_string();
+        if (ec || (!pathFilter.empty() && lower(rel).find(pathFilter) == std::string::npos)) continue;
+        std::string content;
+        if (!w4::readFile(path, content) || content.size() > 1024 * 1024) continue;
+        std::istringstream in(content);
+        std::string line;
+        int number = 0;
+        while (std::getline(in, line)) {
+            number++;
+            if (lower(line).find(query) == std::string::npos) continue;
+            if (static_cast<int>(matches.size()) >= maxResults) {
+                truncated = true;
+                break;
+            }
+            const size_t start = line.find_first_not_of(" \t");
+            std::string trimmed = start == std::string::npos ? "" : line.substr(start);
+            if (trimmed.size() > 240) trimmed = trimmed.substr(0, 240) + " ...";
+            matches.push_back({{"path", rel}, {"line", number}, {"text", trimmed}});
+            text += "\n" + rel + ":" + std::to_string(number) + ": " + trimmed;
+        }
+        if (truncated) break;
+    }
+    const std::string header = std::to_string(matches.size()) + " match(es)" + (truncated ? " (truncated)" : "") + ".";
+    call->ok(header + text, Json{{"matches", matches}, {"count", matches.size()}, {"truncated", truncated}});
+}
+
+void readEngineSourceTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string relText = args.value("path", "");
+    const fs::path rel = fs::path(relText).lexically_normal();
+    if (relText.empty() || rel.is_absolute() || rel.empty() || *rel.begin() == "..") {
+        call->fail("path must be relative to the engine source root, e.g. core/math/Quaternion.h.");
+        return;
+    }
+    if (!isEngineSourceFile(rel)) {
+        call->fail("Only engine source files (.h, .hpp, .inl, .cpp, .cc, .c, .lua) can be read.");
+        return;
+    }
+    fs::path root;
+    if (!engineRoot(call, root)) return;
+    std::string content;
+    if (!w4::readFile(root / rel, content)) {
+        call->fail("No engine source file " + rel.generic_string() + "; find files with search_engine_source.");
+        return;
+    }
+    const int start = std::max(1, args.value("start_line", 1));
+    const int maxLines = std::clamp(args.value("max_lines", 2000), 1, 20000);
+    std::istringstream in(content);
+    std::string line, out;
+    int number = 0, emitted = 0;
+    while (std::getline(in, line)) {
+        number++;
+        if (number < start || emitted >= maxLines) continue;
+        out += line + "\n";
+        emitted++;
+    }
+    if (out.size() > 256 * 1024) out = out.substr(0, 256 * 1024) + "\n... (truncated: read a smaller line range)";
+    const std::string header = rel.generic_string() + " lines " + std::to_string(start) + "-" +
+                               std::to_string(start + emitted - 1) + " of " + std::to_string(number) + ":\n";
+    call->reply(ToolResult::success(header + out, Json{{"path", rel.generic_string()}, {"total_lines", number},
+                                                       {"start_line", start}, {"lines", emitted}}));
 }
 
 } // namespace
@@ -284,21 +398,54 @@ void registerDocsTools(McpRegistry& registry) {
         tool.name = "search_engine_api";
         tool.title = "Search Engine API";
         tool.description =
-            "Search the engine's scripting API (generated from the Lua bindings and C++ headers) and the reference docs "
-            "(jasper://docs/...). Use it before writing script code to confirm a class, method, property, enum or macro "
-            "exists. Each result's detail reads Parent<sep>name(params) -> Return: ':' a Lua method (also C++), '.' a "
-            "static function or property (both languages), '::' C++ only (not callable from Lua; note names the Lua "
-            "property to use). Verify exact C++ signatures and overloads with search_engine_source.";
+            "Search the scripting API (Lua bindings, C++ headers) and the jasper://docs reference: confirm a "
+            "class, method, property, enum or macro exists before using it. detail reads "
+            "Parent<sep>name(params) -> Return; sep ':' Lua method (also C++), '.' static/property (both), "
+            "'::' C++ only. Exact C++ signatures: search_engine_source.";
         tool.inputSchema = object({
-            {"query", string("Symbol, class, method or behavior, e.g. \"Sprite setTexture\", \"KEY_SPACE\", \"applyForce\".")},
-            {"parent", string("Only members of this class/enum, e.g. \"Rigidbody2D\".")},
-            {"max_results", withDefault(integer("Max API symbols.", 1, 50), 16)},
+            {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
+            {"parent", string("Only members of this class/enum.")},
+            {"max_results", withDefault(integer("", 1, 50), 16)},
             {"include_docs", withDefault(boolean("Also search the reference docs."), true)},
-            {"max_doc_results", withDefault(integer("Max doc lines.", 0, 40), 8)}
+            {"max_doc_results", withDefault(integer("", 0, 40), 8)}
         }, {"query"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = searchEngineApiTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "search_engine_source";
+        tool.title = "Search Engine Source";
+        tool.description =
+            "Case-insensitive substring search over the engine's real C++ headers/sources and Lua bindings (engine/core): "
+            "ground truth for signatures, overloads, enum values, macros, key codes (D_KEY_* in C++, Input.KEY_* in Lua). "
+            "Returns {matches: [{path, line, text}], truncated}; read context with read_engine_source.";
+        tool.inputSchema = object({
+            {"query", string("e.g. \"Quaternion(\", \"isKeyPressed\".")},
+            {"path_filter", string("Substring of the file path, e.g. \"math/\", \"binding\".")},
+            {"max_results", withDefault(integer("", 1, 200), 40)}
+        }, {"query"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = searchEngineSourceTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "read_engine_source";
+        tool.title = "Read Engine Source";
+        tool.description = "Read an engine source file (path relative to the engine root, e.g. core/math/Quaternion.h, "
+                           "core/script/binding/CoreClassesLua.cpp). Returns the lines as text.";
+        tool.inputSchema = object({
+            {"path", string("Engine-relative path.")},
+            {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
+            {"max_lines", withDefault(integer("", 1, 20000), 2000)}
+        }, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = readEngineSourceTool;
         registry.addTool(std::move(tool));
     }
 
