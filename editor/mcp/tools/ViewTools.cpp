@@ -164,12 +164,34 @@ void whenSceneViewReady(const CallPtr& call, uint32_t sceneId, bool focus, int t
 
 // ------------------------------------------------------------------ capture
 
+// How long a screenshot waits for loading assets before it shoots anyway
+constexpr long long LOAD_WAIT_MS = 6000;
+
 struct CaptureJob {
     CallPtr call;
     w3::CaptureRequest req;
     std::function<void(w3::CaptureResult)> done;
     Clock::time_point deadline;
     bool finished = false;
+    // assets were still loading when the wait for them gave up (some never report loaded)
+    bool stillLoading = false;
+    Clock::time_point loadWaitStart;
+    bool loadWaitStarted = false;
+
+    // True once the scene's content is loaded, or after waiting long enough for it
+    bool contentReady(SceneProject* sp) {
+        if (sceneContentLoaded(sp)) {
+            stillLoading = false;
+            return true;
+        }
+        if (!loadWaitStarted) {
+            loadWaitStarted = true;
+            loadWaitStart = Clock::now();
+        }
+        const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - loadWaitStart).count();
+        stillLoading = true;
+        return waited >= LOAD_WAIT_MS;
+    }
 
     int remainingMs() const {
         const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
@@ -255,6 +277,12 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     if (isFlatPng(png, colour)) {
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
+    }
+    if (job->stillLoading) {
+        info["assets_loading"] = true;
+        result.note += std::string(result.note.empty() ? "" : " ") +
+                       "Some assets were still loading after " + std::to_string(LOAD_WAIT_MS / 1000) +
+                       " s (missing files or a slow load); parts of the scene may be missing.";
     }
 
     if (!job->req.savePath.empty()) {
@@ -432,7 +460,7 @@ void captureGame(const CaptureJobPtr& job) {
     sp->needUpdateRender = true;
     auto frames = std::make_shared<int>(0);
     auto stable = std::make_shared<int>(0);
-    call->waitUntil([call, sceneId, frames, stable]() {
+    call->waitUntil([call, job, sceneId, frames, stable]() {
         McpContext& c = call->ctx();
         GameWindow* g = c.gameWindow();
         SceneProject* s = c.project()->getScene(sceneId);
@@ -440,7 +468,7 @@ void captureGame(const CaptureJobPtr& job) {
         if (++*frames < 2) return false;
         if (*frames % 15 == 0 && !g->isVisible()) g->requestFocus();
         const bool ready = g->isVisible() && g->getWidth() > 0 && g->getHeight() > 0 && !g->isEditPassDirty() &&
-                           sceneContentLoaded(s);
+                           job->contentReady(s);
         *stable = ready ? *stable + 1 : 0;
         return *stable >= 3;
     }, job->remainingMs(), [job, sceneId](bool timedOut) {
@@ -496,7 +524,7 @@ void captureScene(const CaptureJobPtr& job) {
         s->needUpdateRender = true;
         auto frames = std::make_shared<int>(0);
         auto stable = std::make_shared<int>(0);
-        c->waitUntil([c, sceneId, frames, stable]() {
+        c->waitUntil([c, job, sceneId, frames, stable]() {
             McpContext& cx = c->ctx();
             SceneProject* sc = cx.project()->getScene(sceneId);
             if (!sc) return true;
@@ -505,7 +533,7 @@ void captureScene(const CaptureJobPtr& job) {
             // redrawing for a few settle frames, so a few shown frames in a row mean the
             // framebuffer holds a fresh image. (The flag itself is not a signal: editor
             // windows raise it again every frame in places.)
-            const bool ready = sceneViewShown(cx, sc) && sceneContentLoaded(sc);
+            const bool ready = sceneViewShown(cx, sc) && job->contentReady(sc);
             *stable = ready ? *stable + 1 : 0;
             return *stable >= 3;
         }, job->remainingMs(), [job, sceneId](bool timedOut) {

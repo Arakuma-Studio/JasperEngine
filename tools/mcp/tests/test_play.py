@@ -436,9 +436,12 @@ async def test_lua_script_error_file(ed: Editor):
         "end\n"
         "return Crasher\n")
     try:
-        await ed.call(tool, entity_name="Plane", type="lua", class_name="Crasher", path="scripts/Crasher.lua")
-    except ToolError as e:
-        skip(f"attach_script with the legacy arguments failed: {e.message[:200]}")
+        await ed.call(tool, entity="Plane", path="scripts/Crasher.lua")
+    except ToolError:
+        try:  # the legacy tool's arguments
+            await ed.call(tool, entity_name="Plane", type="lua", class_name="Crasher", path="scripts/Crasher.lua")
+        except ToolError as e:
+            skip(f"attach_script failed: {e.message[:200]}")
     started = await ed.call("play", action="start")
     ed.check_eq(started["state"], "playing", "starts")
     r = await ed.call_raw("wait", {"seconds": 10})
@@ -447,8 +450,35 @@ async def test_lua_script_error_file(ed: Editor):
     await ed.call("undo")
 
 
+async def test_cpp_build_failure_reported(ed: Editor):
+    """Slow (builds the project's C++ scripts with the host compiler): JASPER_SLOW_TESTS=1."""
+    import os
+    if not os.environ.get("JASPER_SLOW_TESTS"):
+        skip("set JASPER_SLOW_TESTS=1 to build C++ scripts")
+    if not ed.has_tool("create_script"):
+        skip("no create_script tool")
+    user = ed.project / ".jasperengine" / "user"
+    user.mkdir(parents=True, exist_ok=True)
+    (user / "build.yaml").write_text("build:\n  build_jobs: 2\n")
+    try:
+        await ed.call("create_script", kind="cpp_script", name="Broken", entity="Game", scene="Main Scene")
+    except ToolError as first:
+        try:  # the legacy tool's arguments
+            await ed.call("create_script", entity_name="Game", type="cpp_script_class", class_name="Broken")
+        except ToolError:
+            skip(f"create_script failed: {first.message[:200]}")
+    for cpp in (ed.project / "scripts").glob("Broken*.cpp"):
+        cpp.write_text(cpp.read_text() + "\nthis is not C++;\n")
+    r = await ed.call_raw("play", {"action": "start", "scene": "Main Scene", "timeout_seconds": 900}, timeout=960)
+    ed.check(r.is_error, f"a broken C++ script must fail play start: {r.text[:500]}")
+    ed.check("error:" in r.text and "Broken.cpp" in r.text, f"the compiler error is not reported: {r.text[:1500]}")
+    st = await ed.call("get_play_state")
+    ed.check_eq(st["state"], "stopped", "stopped after the failed build")
+    ed.check_eq(st["last_session"]["ended"], "failed_to_start", f"last session: {st['last_session']}")
+
+
 async def test_scene_camera_3d(ed: Editor):
-    """A 3D scene: position/target, orbit and distance of the Scene view camera."""
+    """A 3D scene: position/target, orbit and distance of the Scene view camera (last: it changes the open scenes)."""
     try:
         await ed.call(ed.first_tool("create_scene"), name="Cam3D", type="3d")
     except ToolError as e:
@@ -463,27 +493,3 @@ async def test_scene_camera_3d(ed: Editor):
     await ed.check_error("set_scene_camera", {"scene": "Cam3D", "zoom": 2}, contains="2D")
     shot = await ed.call_raw("set_scene_camera", {"scene": "Cam3D", "screenshot": True})
     ed.check(not shot.is_error and shot.images, shot.text)
-
-
-async def test_cpp_build_failure_reported(ed: Editor):
-    """Slow (builds the project's C++ scripts with the host compiler): JASPER_SLOW_TESTS=1."""
-    import os
-    if not os.environ.get("JASPER_SLOW_TESTS"):
-        skip("set JASPER_SLOW_TESTS=1 to build C++ scripts")
-    if not ed.has_tool("create_script"):
-        skip("no create_script tool")
-    user = ed.project / ".jasperengine" / "user"
-    user.mkdir(parents=True, exist_ok=True)
-    (user / "build.yaml").write_text("build:\n  build_jobs: 2\n")
-    try:
-        await ed.call("create_script", entity_name="Game", type="cpp_script_class", class_name="Broken")
-    except ToolError as e:
-        skip(f"create_script with the legacy arguments failed: {e.message[:200]}")
-    for cpp in (ed.project / "scripts").glob("Broken*.cpp"):
-        cpp.write_text(cpp.read_text() + "\nthis is not C++;\n")
-    r = await ed.call_raw("play", {"action": "start", "timeout_seconds": 900}, timeout=960)
-    ed.check(r.is_error, f"a broken C++ script must fail play start: {r.text[:500]}")
-    ed.check("error:" in r.text and "Broken.cpp" in r.text, f"the compiler error is not reported: {r.text[:1500]}")
-    st = await ed.call("get_play_state")
-    ed.check_eq(st["state"], "stopped", "stopped after the failed build")
-    ed.check_eq(st["last_session"]["ended"], "failed_to_start", f"last session: {st['last_session']}")
