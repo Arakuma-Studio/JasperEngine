@@ -995,6 +995,12 @@ namespace {
         if (propertyName == "gravityFactor") {
             return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.gravityFactor, (void*)&comp->gravityFactor};
         }
+        if (propertyName == "friction") {
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.friction, (void*)&comp->friction};
+        }
+        if (propertyName == "restitution") {
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.restitution, (void*)&comp->restitution};
+        }
         if (propertyName == "numColliders") {
             return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.numColliders, (void*)&comp->numColliders};
         }
@@ -2497,6 +2503,8 @@ namespace {
         ps["motionQuality"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&def.motionQuality, compRef ? (void*)&comp->motionQuality : nullptr};
         ps["sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.sensor, compRef ? (void*)&comp->sensor : nullptr};
         ps["gravityFactor"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.gravityFactor, compRef ? (void*)&comp->gravityFactor : nullptr};
+        ps["friction"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.friction, compRef ? (void*)&comp->friction : nullptr};
+        ps["restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.restitution, compRef ? (void*)&comp->restitution : nullptr};
         ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
         ps["overrideMassProperties"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.overrideMassProperties, compRef ? (void*)&comp->overrideMassProperties : nullptr};
         ps["solidBoxSize"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&def.solidBoxSize, compRef ? (void*)&comp->solidBoxSize : nullptr};

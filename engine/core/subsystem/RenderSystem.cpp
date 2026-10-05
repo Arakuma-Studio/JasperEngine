@@ -8024,6 +8024,18 @@ void RenderSystem::update(double dt){
     updateSwapchainRedirect();
 
     Entity mainCameraEntity = scene->getCamera();
+
+    // The Y flip of an offscreen target is baked in the MVP matrices (isRenderingFlipped),
+    // which are only made again when the camera or the object moves. A scene loaded with
+    // no target set (the editor adds a play's child scenes before the Game view sets its
+    // framebuffer) would keep a static UI unflipped, so upside down, in the framebuffer.
+    if (CameraComponent* mainCameraComponent = scene->findComponent<CameraComponent>(mainCameraEntity)){
+        const bool flipped = isRenderingFlipped(*mainCameraComponent);
+        if (flipped != mvpFlipped){
+            mvpFlipped = flipped;
+            mainCameraComponent->needUpdate = true;
+        }
+    }
     uint16_t pipelines = getScenePipelines();
 
     hasMultipleCameras = false;
