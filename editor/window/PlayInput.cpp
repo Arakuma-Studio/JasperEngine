@@ -34,6 +34,17 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
     bool forwardMouse = capturedMouse ? focused : hovered;
 
+    // The pointer belongs to an MCP agent until the real mouse does something here
+    if (pointerInjected) {
+        const bool realActivity = mouseDelta.x != 0 || mouseDelta.y != 0 || io.MouseWheel != 0 ||
+            ImGui::IsAnyMouseDown();
+        if (forwardMouse && realActivity) {
+            pointerInjected = false;
+        } else {
+            forwardMouse = false;
+        }
+    }
+
     // A drag that leaves the view keeps being forwarded until its button comes up
     if (mouseSceneId == sceneId) {
         for (int button : pressedMouseButtons) {

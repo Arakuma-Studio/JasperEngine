@@ -88,6 +88,12 @@ namespace jasperengine::editor {
         bool hasKeyboardFocus() const;
 
         void resetProjectState();
+
+        // The toolbar's settings (aspect, scale, Maximize On Play, Stats); applySettings()
+        // sets them as if picked there (MCP configure_game_view)
+        const GameViewSettings& getSettings();
+        void applySettings(const GameViewSettings& newSettings);
+        static int getAspectCount();
     };
 
 }
