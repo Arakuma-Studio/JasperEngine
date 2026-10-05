@@ -1234,6 +1234,28 @@ void editor::HierarchyWindow::markMatchingNodes(TreeNode& node, const std::strin
     }
 }
 
+void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt) {
+    // Names and ordering belong to the cached tree. Reuse their derived search flags
+    // and range-selection order until that tree or the toolbar's search settings change.
+    if (!treeRebuilt && cachedSearch == searchBuffer && cachedMatchCase == matchCase) {
+        return;
+    }
+    cachedSearch = searchBuffer;
+    cachedMatchCase = matchCase;
+
+    const bool hasSearch = !cachedSearch.empty();
+    if (hasSearch) {
+        std::string searchStr = cachedSearch;
+        if (!matchCase) {
+            std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
+        }
+        markMatchingNodes(root, searchStr);
+    }
+
+    visibleEntitySelectionOrder.clear();
+    collectVisibleEntitySelectionOrder(root, hasSearch);
+}
+
 std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& node) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
@@ -1645,7 +1667,6 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
         if (allowEntityDragDrop){
             ImGuiDragDropFlags flags = 0;
-            //ImGuiDragDropFlags flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
 
             if (!node.isScene && (insertBefore || insertAfter)){
                 flags |= ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
@@ -2709,7 +2730,7 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     } while (splicedNew);
 
     markPrefabScripts(root);
-    markPrefabRows(sceneProject, root);
+    markPrefabRows(root);
 }
 
 void editor::HierarchyWindow::show(){
@@ -2805,17 +2826,7 @@ void editor::HierarchyWindow::show(){
     showToolbar();
     ImGui::BeginChild("StructureScrollRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
-    // Apply search filtering if there's a search term
-    if (strlen(searchBuffer) > 0) {
-        std::string searchStr = searchBuffer;
-        if (!matchCase) {
-            std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
-        }
-        markMatchingNodes(root, searchStr);
-    }
-
-    visibleEntitySelectionOrder.clear();
-    collectVisibleEntitySelectionOrder(root, strlen(searchBuffer) > 0);
+    updateSearchAndSelectionOrder(root, rebuildTree);
 
     revealOpenNodes.clear();
     revealTargetNode = nullptr;

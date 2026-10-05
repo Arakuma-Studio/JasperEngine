@@ -694,9 +694,7 @@ Quaternion Quaternion::lookRotation(const Vector3& forward, const Vector3& up){
 }
 
 Quaternion& Quaternion::normalize(void){
-    float len = norm();
-    float factor = 1.0f / sqrt(len);
-    *this = *this * factor;
+    normalizeL();
     return *this;
 }
 

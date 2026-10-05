@@ -379,14 +379,15 @@ void NativeEngine::showSoftInput(std::wstring text){
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> convert;
     std::string strInputBuffer = convert.to_bytes(textInputBuffer);
 
-    mGameTextInputState.text_UTF8 = strInputBuffer.data();
-    mGameTextInputState.text_length = strInputBuffer.length();
-    mGameTextInputState.selection.start = strInputBuffer.length();
-    mGameTextInputState.selection.end = strInputBuffer.length();
-    mGameTextInputState.composingRegion.start = -1;
-    mGameTextInputState.composingRegion.end = -1;
+    GameTextInputState inputState{};
+    inputState.text_UTF8 = strInputBuffer.data();
+    inputState.text_length = strInputBuffer.length();
+    inputState.selection.start = strInputBuffer.length();
+    inputState.selection.end = strInputBuffer.length();
+    inputState.composingRegion.start = -1;
+    inputState.composingRegion.end = -1;
 
-    GameActivity_setTextInputState(mApp->activity, &mGameTextInputState);
+    GameActivity_setTextInputState(mApp->activity, &inputState);
     GameActivity_showSoftInput(mApp->activity, 0);
 }
 
@@ -624,30 +625,29 @@ void NativeEngine::killDisplay() {
     }
 }
 
-bool NativeEngine::handleEglError(EGLint error) {
+void NativeEngine::handleEglError(EGLint error) {
     switch (error) {
         case EGL_SUCCESS:
-            // nothing to do
-            return true;
+            return;
         case EGL_CONTEXT_LOST:
             jasperengine::Log::warn("NativeEngine: egl error: EGL_CONTEXT_LOST. Recreating context.");
             killContext();
-            return true;
+            return;
         case EGL_BAD_CONTEXT:
             jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_CONTEXT. Recreating context.");
             killContext();
-            return true;
+            return;
         case EGL_BAD_DISPLAY:
             jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_DISPLAY. Recreating display.");
             killDisplay();
-            return true;
+            return;
         case EGL_BAD_SURFACE:
             jasperengine::Log::warn("NativeEngine: egl error: EGL_BAD_SURFACE. Recreating display.");
             killSurface();
-            return true;
+            return;
         default:
             jasperengine::Log::warn("NativeEngine: unknown egl error: %d", error);
-            return false;
+            return;
     }
 }
 

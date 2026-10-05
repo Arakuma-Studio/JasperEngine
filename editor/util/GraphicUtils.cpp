@@ -6,10 +6,13 @@
 #include "Out.h"
 #include "System.h"
 #include "stb_image_write.h"
+#include "stb_image_resize2.h"
 #include "util/STBText.h"
 
+#include <algorithm>
 #include <cstring>
 #include <future>
+#include <vector>
 #include <thread>
 #include <utility>
 
@@ -59,9 +62,12 @@ Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity
     return center;
 }
 
-bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY, std::function<void()> onComplete) {
-    uint8_t* pixels = nullptr;
-    bool needDelete = false;
+// The framebuffer's color texture, width * height RGBA8 rows as the backend stores them
+// (pixels from new[], owned by the caller when needDelete). Synchronous GPU readback,
+// on the main thread.
+static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bool& needDelete) {
+    pixels = nullptr;
+    needDelete = false;
 
     unsigned int width = framebuffer->getWidth();
     unsigned int height = framebuffer->getHeight();
@@ -321,6 +327,20 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
         device->Release();
     #endif
 
+    return true;
+}
+
+bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::path path, bool flipY, std::function<void()> onComplete) {
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+
+    unsigned int width = framebuffer->getWidth();
+    unsigned int height = framebuffer->getHeight();
+
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete)) {
+        return false;
+    }
+
     try {
         std::thread([pixels, needDelete, width, height, path, flipY, onComplete]() {
             // Do not use stb's process-global flip flag from concurrent writers.
@@ -351,5 +371,62 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
         }
         return false;
     }
+    return true;
+}
+
+bool editor::GraphicUtils::encodeFramebufferPng(Framebuffer* framebuffer, std::vector<uint8_t>& out, bool flipY, int maxWidth, int* outWidth, int* outHeight) {
+    out.clear();
+    if (!framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 || framebuffer->getHeight() == 0) {
+        return false;
+    }
+
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete) || !pixels) {
+        if (needDelete) delete[] pixels;
+        return false;
+    }
+
+    const int width = static_cast<int>(framebuffer->getWidth());
+    const int height = static_cast<int>(framebuffer->getHeight());
+
+    // RGB, rows top first: alpha is dropped (the views show the color as opaque) and the
+    // rows are flipped when the backend stored them bottom first
+    std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* src = pixels + static_cast<size_t>(flipY ? height - 1 - y : y) * width * 4;
+        uint8_t* dst = rgb.data() + static_cast<size_t>(y) * width * 3;
+        for (int x = 0; x < width; ++x) {
+            dst[x * 3 + 0] = src[x * 4 + 0];
+            dst[x * 3 + 1] = src[x * 4 + 1];
+            dst[x * 3 + 2] = src[x * 4 + 2];
+        }
+    }
+    if (needDelete) delete[] pixels;
+
+    int finalWidth = width;
+    int finalHeight = height;
+    if (maxWidth > 0 && width > maxWidth) {
+        finalWidth = maxWidth;
+        finalHeight = std::max(1, static_cast<int>(static_cast<long long>(height) * maxWidth / width));
+        std::vector<uint8_t> scaled(static_cast<size_t>(finalWidth) * finalHeight * 3);
+        if (!stbir_resize_uint8_srgb(rgb.data(), width, height, 0, scaled.data(), finalWidth, finalHeight, 0, STBIR_RGB)) {
+            return false;
+        }
+        rgb.swap(scaled);
+    }
+
+    auto append = [](void* context, void* data, int size) {
+        auto* bytes = static_cast<std::vector<uint8_t>*>(context);
+        const uint8_t* begin = static_cast<const uint8_t*>(data);
+        bytes->insert(bytes->end(), begin, begin + size);
+    };
+    if (!stbi_write_png_to_func(append, &out, finalWidth, finalHeight, 3, rgb.data(), finalWidth * 3)) {
+        out.clear();
+        return false;
+    }
+
+    if (outWidth) *outWidth = finalWidth;
+    if (outHeight) *outHeight = finalHeight;
     return true;
 }

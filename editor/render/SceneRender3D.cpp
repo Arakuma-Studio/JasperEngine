@@ -410,37 +410,6 @@ bool editor::SceneRender3D::instanciateBodyObject(Entity entity){
     return false;
 }
 
-bool editor::SceneRender3D::instanciateJointObject(Entity entity){
-    if (jointLines.find(entity) == jointLines.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        jointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender3D::instanciateLinePointLines(Entity entity){
-    if (linePointLines.find(entity) == linePointLines.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        linePointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool editor::SceneRender3D::instanciateReflectionProbeLines(Entity entity){
-    if (reflectionProbeLines.find(entity) == reflectionProbeLines.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        reflectionProbeLines[entity] = overlay(new LineRenderer(scene));
-        return true;
-    }
-    return false;
-}
-
 void editor::SceneRender3D::createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible){
     LineRenderer* probeLines = reflectionProbeLines[entity];
     probeLines->clearLines();
@@ -515,17 +484,6 @@ void editor::SceneRender3D::createOrUpdateLinePointLines(Entity entity, const Tr
             handlesObj->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), color);
         }
     }
-}
-
-bool editor::SceneRender3D::instanciatePolygonPointLines(Entity entity){
-    if (polygonPointLines.find(entity) == polygonPointLines.end()) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        polygonPointLines[entity] = overlay(new LineRenderer(scene));
-
-        return true;
-    }
-
-    return false;
 }
 
 // vertex handles for a selected Polygon / MeshPolygon entity, drawn as small
@@ -1991,7 +1949,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentLinePoints.insert(entity);
-            instanciateLinePointLines(entity);
+            ensureOverlayLines(linePointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdateLinePointLines(entity, transform, linesComp, highlighted);
@@ -2002,7 +1960,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentPolygonPoints.insert(entity);
-            instanciatePolygonPointLines(entity);
+            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, false, highlighted);
@@ -2011,7 +1969,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             Transform& transform = scene->getComponent<Transform>(entity);
 
             currentPolygonPoints.insert(entity);
-            instanciatePolygonPointLines(entity);
+            ensureOverlayLines(polygonPointLines, entity);
             bool highlighted = isDescendantSelected(entity);
 
             createOrUpdatePolygonPointLines(entity, transform, polygon.points, true, highlighted);
@@ -2032,7 +1990,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ReflectionProbeComponent& probe = scene->getComponent<ReflectionProbeComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
             currentReflectionProbes.insert(entity);
-            instanciateReflectionProbeLines(entity);
+            ensureOverlayLines(reflectionProbeLines, entity);
             createOrUpdateReflectionProbeLines(entity, transform, probe, selectedEntities.find(entity) != selectedEntities.end());
         }
 
@@ -2040,7 +1998,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             Joint3DComponent& joint = scene->getComponent<Joint3DComponent>(entity);
 
             currentJointObjects.insert(entity);
-            instanciateJointObject(entity);
+            ensureOverlayLines(jointLines, entity);
 
             bool isSelectedJoint = selectedEntities.find(entity) != selectedEntities.end();
             bool isBodyASelected = joint.bodyA != NULL_ENTITY && isDescendantSelected(joint.bodyA);
@@ -2169,22 +2127,6 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ++itProbeLines;
         }
     }
-}
-
-void editor::SceneRender3D::mouseHoverEvent(float x, float y){
-    SceneRender::mouseHoverEvent(x, y);
-}
-
-void editor::SceneRender3D::mouseClickEvent(float x, float y, std::vector<Entity> selEntities){
-    SceneRender::mouseClickEvent(x, y, selEntities);
-}
-
-void editor::SceneRender3D::mouseReleaseEvent(float x, float y){
-    SceneRender::mouseReleaseEvent(x, y);
-}
-
-void editor::SceneRender3D::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
-    SceneRender::mouseDragEvent(x, y, origX, origY, project, sceneId, selEntities, disableSelection, invertRotationSnap, preserveAspectRatio);
 }
 
 editor::ViewportGizmo* editor::SceneRender3D::getViewportGizmo(){

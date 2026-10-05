@@ -216,11 +216,6 @@ endif()
 
 find_package(Threads REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-# The AI HTTP client uses the native WinHTTP backend on Windows (no external
-# dependency) and libcurl everywhere else (see editor/ai/HttpClient.cpp).
-if(NOT WIN32)
-    find_package(CURL REQUIRED)
-endif()
 
 set(BACKEND_SOURCES)
 set(BACKEND_LIBS)
@@ -344,6 +339,26 @@ configure_file(
     "${GENERATED_DIR}/EditorVersion.h"
     @ONLY
 )
+
+# MCP agent reference docs (docs/mcp/guide/*.md, docs/unity-glossary.md) embedded in the editor
+# and served as jasper://docs/<name> (editor/mcp/tools/DocsTools.cpp)
+file(GLOB MCP_GUIDE_DOCS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/docs/mcp/guide/*.md")
+list(APPEND MCP_GUIDE_DOCS "${CMAKE_CURRENT_SOURCE_DIR}/docs/unity-glossary.md")
+set(mcp_docs_header "// Generated from docs/mcp/guide by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(mcp_docs_entries "")
+foreach(mcp_doc IN LISTS MCP_GUIDE_DOCS)
+    get_filename_component(mcp_doc_name "${mcp_doc}" NAME_WE)
+    string(MAKE_C_IDENTIFIER "${mcp_doc_name}" mcp_doc_id)
+    file(READ "${mcp_doc}" mcp_doc_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," mcp_doc_bytes "${mcp_doc_hex}")
+    string(APPEND mcp_docs_header "static const unsigned char mcp_doc_${mcp_doc_id}[] = {${mcp_doc_bytes}0x00};\n")
+    string(APPEND mcp_docs_entries "    { \"${mcp_doc_name}\", mcp_doc_${mcp_doc_id}, sizeof(mcp_doc_${mcp_doc_id}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${mcp_doc}")
+endforeach()
+string(APPEND mcp_docs_header "\nstruct McpEmbeddedDoc { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND mcp_docs_header "static const McpEmbeddedDoc mcp_embedded_docs[] = {\n${mcp_docs_entries}};\n")
+file(WRITE "${GENERATED_DIR}/mcp_docs.h.in" "${mcp_docs_header}")
+configure_file("${GENERATED_DIR}/mcp_docs.h.in" "${GENERATED_DIR}/mcp_docs.h" COPYONLY)
 
 # Generate engine API suggestions header from Lua bindings and C++ headers
 set(BINDING_DIR "${CMAKE_SOURCE_DIR}/engine/core/script/binding")
@@ -505,19 +520,35 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Workspace.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
-    ${EDITOR_DIR}/ai/AiPathUtils.cpp
-    ${EDITOR_DIR}/ai/AiProvider.cpp
-    ${EDITOR_DIR}/ai/AiService.cpp
-    ${EDITOR_DIR}/ai/AiEngineApiContext.cpp
-    ${EDITOR_DIR}/ai/AiTerrainCapability.cpp
-    ${EDITOR_DIR}/ai/AiTypes.cpp
-    ${EDITOR_DIR}/ai/ConversationStore.cpp
-    ${EDITOR_DIR}/ai/EditorActionExecutor.cpp
-    ${EDITOR_DIR}/ai/EditorActionRegistry.cpp
-    ${EDITOR_DIR}/ai/HttpClient.cpp
-    ${EDITOR_DIR}/ai/ModelCatalog.cpp
-    ${EDITOR_DIR}/ai/RateLimitRetry.cpp
-    ${EDITOR_DIR}/ai/SecretStore.cpp
+    ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
+    ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpContext.cpp
+    ${EDITOR_DIR}/mcp/McpInstructions.cpp
+    ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/McpRefs.cpp
+    ${EDITOR_DIR}/mcp/McpRegistry.cpp
+    ${EDITOR_DIR}/mcp/McpSchema.cpp
+    ${EDITOR_DIR}/mcp/McpServer.cpp
+    ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
+    ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
+    ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpLaunch.cpp
+    ${EDITOR_DIR}/mcp/EngineApiContext.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaps.cpp
+    ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
+    ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ComponentTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PrefabTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -526,6 +557,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
+    ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
@@ -559,7 +591,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
-    ${EDITOR_DIR}/window/AiChatWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
@@ -573,7 +604,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
-    ${EDITOR_DIR}/window/dialog/AiSettingsWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp
@@ -677,15 +707,21 @@ function(configure_jasperengine_editor_target target_name)
     )
 
     if(WIN32)
-        # dbghelp resolves the crash-report backtrace.
-        target_link_libraries(${target_name} PRIVATE winhttp shell32 dbghelp)
+        # dbghelp resolves the crash-report backtrace; ws2_32 is the MCP HTTP server's Winsock.
+        target_link_libraries(${target_name} PRIVATE shell32 dbghelp ws2_32)
     else()
-        target_link_libraries(${target_name} PRIVATE CURL::libcurl)
         # -rdynamic names the editor's own frames in the crash backtrace, at about 10 MB of
         # symbol table. A Release build stays lean and is resolved with addr2line instead.
         if(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
             set_target_properties(${target_name} PROPERTIES ENABLE_EXPORTS ON)
         endif()
+    endif()
+    # Large translation units (editor/mcp/tools/WorldTools.cpp, Stream.cpp) pass the COFF
+    # section limit; /utf-8: sources (tool descriptions) are UTF-8 whatever the code page
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /bigobj /utf-8)
+    elseif(MINGW)
+        target_compile_options(${target_name} PRIVATE -Wa,-mbig-obj)
     endif()
 
     if(X11_FOUND)

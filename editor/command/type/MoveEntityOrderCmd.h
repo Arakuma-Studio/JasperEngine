@@ -28,8 +28,6 @@ namespace jasperengine::editor{
         bool hasTransform;
         Entity oldParent;
 
-        SharedMoveRecovery prefabMoveRecovery;
-
         bool wasModified;
 
     public:

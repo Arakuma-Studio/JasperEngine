@@ -100,14 +100,6 @@ SamplerType mapSamplerFilterType(shadercompiler::sampler_type_t type) {
     }
 }
 
-ShaderStorageBufferType mapStorageType(shadercompiler::storage_buffer_type_t type) {
-    using namespace shadercompiler;
-    switch(type) {
-        case storage_buffer_type_t::STRUCT: return ShaderStorageBufferType::STRUCT;
-        default:                            return ShaderStorageBufferType::STRUCT;
-    }
-}
-
 ShaderStageType mapStageType(shadercompiler::stage_type_t type) {
     using namespace shadercompiler;
     switch(type) {
@@ -249,7 +241,7 @@ ShaderData convertToShaderData(
             ssb.slot = sbCount++;
             ssb.sizeBytes = sb.size_bytes;
             ssb.readonly = sb.readonly;
-            ssb.type = mapStorageType(sb.type);
+            ssb.type = ShaderStorageBufferType::STRUCT;
             stage.storagebuffers.push_back(ssb);
         }
 

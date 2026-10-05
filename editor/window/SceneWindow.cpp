@@ -978,12 +978,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // Keep the viewport redrawing while it is hovered or manipulated (hover highlight,
     // camera drag/fly, gizmo drag). draggingMouse tracks a drag so it survives the
     // cursor leaving the window; edits flag the scene through the command system.
+    // A resting pointer changes nothing under it, so hovering alone does not redraw:
+    // a headless editor's pointer rests in this view and kept the loop from idling.
     {
         bool viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
         bool anyMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Middle);
-        if (isMouseInWindow || draggingMouse[sceneProject->id] || (viewportFocused && anyMouseDown)) {
+        bool pointerActive = anyMouseDown ||
+                             io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
+                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+        for (int key = ImGuiKey_NamedKey_BEGIN; !pointerActive && key < ImGuiKey_GamepadStart; key++) {
+            pointerActive = ImGui::IsKeyDown(static_cast<ImGuiKey>(key)) || ImGui::IsKeyReleased(static_cast<ImGuiKey>(key));
+        }
+        if ((isMouseInWindow && pointerActive) || draggingMouse[sceneProject->id] || (viewportFocused && anyMouseDown)) {
             sceneProject->needUpdateRender = true;
         }
     }
@@ -1839,7 +1847,7 @@ void editor::SceneWindow::snapCameraToDirection(Camera* camera, const Vector3& d
     camera->setTarget(target.x, target.y, target.z);
 }
 
-bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth, int canvasHeight) {
+bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth) {
     if (sceneProject->sceneType != SceneType::SCENE_3D) return false;
 
     SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
@@ -2348,7 +2356,7 @@ void editor::SceneWindow::show() {
                         float canvasX = io.MousePos.x - windowPos.x;
                         float canvasY = io.MousePos.y - windowPos.y;
                         toEngineCanvas(sceneProject.id, canvasX, canvasY);
-                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id), getHeight(sceneProject.id));
+                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id));
                     }
                 }
 

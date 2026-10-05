@@ -43,6 +43,15 @@ namespace jasperengine::editor{
 
         void clear();
 
+        // Undo groups (MCP batch): mark() before a run of commands, groupSince(mark) after
+        // collapses them into one undo step. mark() also stops the next command merging
+        // into the one before it. groupSince is a no-op (false) if the history was undone
+        // past the mark, or a play session began or ended in between.
+        size_t mark();
+        bool groupSince(size_t mark);
+        // Current position (what mark() returns, without its side effect)
+        size_t position() const { return index; }
+
         void beginPlaySession();
         // rolledBack: the scene was restored to its pre-play state, so the play-time commands
         // are dropped and the edit redo tail comes back; otherwise the play-time commands stay

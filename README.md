@@ -66,7 +66,7 @@ sudo apt-get install -y --no-install-recommends \
   build-essential cmake git ninja-build pkg-config python3 \
   libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
   libgl1-mesa-dev libwayland-dev wayland-protocols \
-  libdbus-1-dev libcurl4-openssl-dev
+  libdbus-1-dev
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target jasperengine-editor
@@ -110,7 +110,7 @@ jasperengine-editor benchmark --help  # measure scene FPS
 
 ## Repository layout
 
-- `editor/` — desktop editor, AI assistant, project tools, build orchestration, and export flow
+- `editor/` — desktop editor, MCP server for AI agents (`editor/mcp`, see `docs/mcp`), project tools, build orchestration, and export flow
 - `engine/` — ECS runtime, platform layers, rendering, scripting, and project templates
 - `engine/libs/shadercompiler/` — shader compilation and cross-platform translation, shared by the editor and the runtime (which compiles the shader variants a build lacks)
 - `libs/` — bundled third-party dependencies

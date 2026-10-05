@@ -18,7 +18,6 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
-#include "window/AiChatWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -37,13 +36,29 @@
 #include "render/SceneRender.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <thread>
+#include <vector>
+
+namespace jasperengine::editor::mcp {
+    class McpActivityWindow;
+    struct McpLaunchOptions;
+}
 
 namespace jasperengine::editor{
+
+    // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
+    struct EditorDialogInfo {
+        std::string kind;                  // "alert", "save_dialog" or "modal"
+        std::string title;
+        std::string message;
+        std::vector<std::string> choices;  // answers App::answerDialog takes; empty: a human must close it
+    };
 
     enum class AlertType {
         Info,
@@ -88,6 +103,9 @@ namespace jasperengine::editor{
         // backend loop uses to decide when it can idle.
         bool renderedSceneThisFrame = false;
         std::function<void()> wakeCallback;
+        // Guards wakeCallback: worker threads (MCP transports) wake the loop while the main
+        // thread may be clearing it at shutdown
+        mutable std::mutex wakeMutex;
 
         bool redrawRequested = false;
         bool frameRequested = false;
@@ -143,7 +161,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
-        AiChatWindow* aiChatWindow;
+        mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -158,7 +176,7 @@ namespace jasperengine::editor{
         bool forceDockTabs = false;
 
         // captureTabOrder() mirrors the live tab order into project.tabs every
-        // frame; these debounce persisting that to project.yaml until the user
+        // frame; these debounce persisting that to workspace.yaml until the user
         // stops dragging (a reorder triggers no save on its own otherwise).
         bool tabsOrderDirty = false;
         double tabsOrderChangeTime = 0.0;
@@ -172,6 +190,10 @@ namespace jasperengine::editor{
         bool layoutScaleApplied = false;
 
         AlertData alert;
+        // Bumped by every registered alert, so MCP can tell a tool raised one
+        uint64_t alertSerial = 0;
+        // An MCP agent's answer to the alert, pressed by showAlert on the next frame
+        std::string alertPendingChoice;
         ProjectSaveDialog projectSaveDialog;
         SceneSaveDialog sceneSaveDialog;
         ExportWindow exportWindow;
@@ -197,15 +219,13 @@ namespace jasperengine::editor{
             None,
             AnySceneWindow, // Represents any of the scene-related windows (Scene, Properties, Hierarchy)
             Resources,
-            Code,
-            AI
+            Code
         } lastFocusedWindow;
 
         void saveFunc();
         void saveAllFunc(std::function<void(bool)> callback = nullptr);
         void saveAllAndProject(std::function<void()> onSuccess);
         void openProjectFunc();
-        void requestProjectChange(std::function<void()> change);
         bool canEditSelection(bool duplicate);
         void deleteSelection();
         void duplicateSelection();
@@ -246,6 +266,7 @@ namespace jasperengine::editor{
         void renderSceneBesideGame(SceneProject& sceneProject);
 
         void closeWindow();
+        bool loadMcpStartupProject(const mcp::McpLaunchOptions& options);
         void parseBenchmarkArgs(int argc, char** argv);
         bool selectBenchmarkScene();
         void failBenchmark(const std::string& message);
@@ -284,6 +305,8 @@ namespace jasperengine::editor{
         void addImageViewerWindowToDock(fs::path path, bool force = false);
         void clearSceneWindowState(uint32_t sceneId) override;
         void prepareForProjectSwitch() override;
+        // Runs a project switch between frames, with the loading screen (EditorHost)
+        void requestProjectChange(std::function<void()> change) override;
 
         void handleExternalDrop(const std::vector<std::string>& paths);
         void handleExternalDragEnter();
@@ -297,6 +320,7 @@ namespace jasperengine::editor{
         void flushSceneMaterialWrites(uint32_t sceneId) override;
         void saveAllCodeEditors() override;
         void requestScenePlayFocus(uint32_t sceneId) override;
+        std::string backgroundWorkConflict(const std::string& action) const override;
 
         void registerAlert(std::string title, std::string message) override;
         void registerAlert(std::string title, std::string message, std::string note); // note is rendered highlighted below the message
@@ -320,7 +344,7 @@ namespace jasperengine::editor{
         // One frame, without waking the loop: for animation that runs while idle.
         void requestFrame();
         bool consumeFrameRequest();
-        // The AI worker gets its own copy: capturing this static App would dangle.
+        // Wakes the backend loop from another thread (enqueueMainThreadTask calls it)
         void setWakeCallback(std::function<void()> cb);
 
         // Stops background work outliving the main loop; run before backend teardown.
@@ -355,6 +379,10 @@ namespace jasperengine::editor{
         TerrainEditWindow* getTerrainEditWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
+        SceneWindow* getSceneWindow() const;
+        ConsoleWindow* getConsoleWindow() const;
+        PlayInput* getPlayInput() const;
+        MainToolbar* getMainToolbar() const;
         void resetLayout();
 
         // Window settings methods. Sizes are physical pixels, converted between
@@ -365,6 +393,16 @@ namespace jasperengine::editor{
         void saveWindowSettings(int width, int height, bool maximized, float uiScale);
         void initializeSettings();
         void exit();
+
+        // MCP: the dialog a human would have to answer (alert, save dialog, other modal)
+        bool getOpenDialog(EditorDialogInfo& out) const;
+        // MCP: answers it like pressing the button (applied on the next frame)
+        bool answerDialog(const std::string& choice, std::string& error);
+        uint64_t getAlertSerial() const { return alertSerial; }
+        // MCP busy policy: an export started in the Build Settings window is running
+        bool isExportRunning() const { return exportWindow.isExporting(); }
+        // MCP stdio client gone: close without save prompts, reporting unsaved changes on stderr
+        void quitWithoutPrompts(const std::string& reason);
     };
 
 }

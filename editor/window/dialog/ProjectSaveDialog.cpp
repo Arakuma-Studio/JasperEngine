@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// ProjectSaveDialog.cpp
 #include "ProjectSaveDialog.h"
 #include "util/FileDialogs.h"
 #include "Backend.h"
@@ -21,9 +20,8 @@ void ProjectSaveDialog::open(const std::string& defaultName,
     m_onSave = onSave;
     m_onCancel = onCancel;
 
-    // Set default project name
     strncpy(m_projectNameBuffer, defaultName.c_str(), sizeof(m_projectNameBuffer) - 1);
-    m_projectNameBuffer[sizeof(m_projectNameBuffer) - 1] = '\0'; // Ensure null termination
+    m_projectNameBuffer[sizeof(m_projectNameBuffer) - 1] = '\0';
 }
 
 void ProjectSaveDialog::show() {
@@ -31,14 +29,11 @@ void ProjectSaveDialog::show() {
         return;
     }
 
-    // Setup modal popup
     ImGui::OpenPopup("Save Project##SaveProjectModal");
 
-    // Center the popup
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
-    // Setup window flags for modal dialog
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
@@ -48,12 +43,10 @@ void ProjectSaveDialog::show() {
     float popupWidth = 300;
 
     if (popupOpen) {
-        // Project name input
         ImGui::TextUnformatted("Project Name");
         ImGui::SetNextItemWidth(popupWidth);
         ImGui::InputText("##projectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
 
-        // Project path display and button
         ImGui::TextUnformatted("Location");
 
         Vector2 pathDisplaySize = Vector2(popupWidth - ImGui::CalcTextSize("Browse").x - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
@@ -61,7 +54,6 @@ void ProjectSaveDialog::show() {
 
         ImGui::SameLine();
         if (ImGui::Button("Browse")) {
-            // Get home directory as default path
             std::string homeDirPath;
             #ifdef _WIN32
             homeDirPath = std::filesystem::path(getenv("USERPROFILE")).string();
@@ -69,7 +61,6 @@ void ProjectSaveDialog::show() {
             homeDirPath = std::filesystem::path(getenv("HOME")).string();
             #endif
             
-            // Open folder picker dialog
             std::string selectedPath = FileDialogs::openFileDialog(homeDirPath, 0, true);
             
             if (!selectedPath.empty()) {
@@ -77,7 +68,6 @@ void ProjectSaveDialog::show() {
             }
         }
 
-        // Validation
         std::string projectName = m_projectNameBuffer;
         bool canSave = !projectName.empty() && !m_projectPath.empty();
         
@@ -96,21 +86,22 @@ void ProjectSaveDialog::show() {
         float buttonsWidth = 240.0f + ImGui::GetStyle().ItemSpacing.x;
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
-        // Buttons
         ImGui::BeginDisabled(!canSave);
         if (ImGui::Button("Save", ImVec2(120, 0))) {
             if (m_onSave) {
                 m_onSave(projectName, m_projectPath);
             }
             m_isOpen = false;
+            m_cancelRequested = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
             (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
+            m_cancelRequested = false;
             if (m_onCancel) {
                 m_onCancel();
             }
@@ -124,6 +115,7 @@ void ProjectSaveDialog::show() {
         // update our state and make sure to call the cancel callback
         if (m_isOpen) {
             m_isOpen = false;
+            m_cancelRequested = false;
             if (m_onCancel) {
                 m_onCancel();
             }

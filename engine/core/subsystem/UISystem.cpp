@@ -23,7 +23,6 @@ static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
 
-    eventId.clear();
     lastUIFromPointer = NULL_ENTITY;
     lastUIFromPointerHover = NULL_ENTITY;
     lastUIFromClick = NULL_ENTITY;
@@ -508,7 +507,6 @@ void UISystem::createPanelObjects(Entity entity, PanelComponent& panel){
         titleui.color = Vector4(0.0, 0.0, 0.0, 1.0);
         titlelayout.ignoreEvents = true;
         titlelayout.anchorPreset = panel.titleAnchorPreset;
-        //titlelayout.ignoreScissor = true; // to hide header text in small panels
         titlelayout.usingAnchors = true;
     }
 }
@@ -3349,19 +3347,6 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransfo
     }
     return false;
 }
-
-bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout, Vector2 center){
-    Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
-
-    if (point.x >= (transform.worldPosition.x - center.x) &&
-        point.x <= (transform.worldPosition.x - center.x + abs(layout.width * transform.worldScale.x)) &&
-        point.y >= (transform.worldPosition.y - center.y) &&
-        point.y <= (transform.worldPosition.y - center.y + abs(layout.height * transform.worldScale.y))) {
-        return true;
-    }
-    return false;
-}
-
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<UIComponent>() ||

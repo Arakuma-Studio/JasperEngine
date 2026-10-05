@@ -102,23 +102,21 @@ bool editor::AssetDatabase::isGuid(const std::string& text) {
 }
 
 std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
-    std::string text;
-    if (!readText(fullPath, text)) {
+    std::ifstream file(fullPath, std::ios::binary);
+    if (!file) {
         return {};
     }
-    for (size_t begin = 0; begin < text.size();) {
-        size_t end = text.find('\n', begin);
-        if (end == std::string::npos) {
-            end = text.size();
-        }
-        if (isGuidLine(text, begin)) {
-            size_t valueEnd = end;
-            if (valueEnd > begin && text[valueEnd - 1] == '\r') {
-                valueEnd--;
+    // GUIDs normally precede the entity data. Stop reading at that line instead of
+    // loading and copying every prefab in full when the asset database opens.
+    std::string line;
+    while (std::getline(file, line)) {
+        if (isGuidLine(line, 0)) {
+            size_t valueEnd = line.size();
+            if (valueEnd > 0 && line[valueEnd - 1] == '\r') {
+                --valueEnd;
             }
-            return guidValue(text, begin, valueEnd);
+            return guidValue(line, 0, valueEnd);
         }
-        begin = end + 1;
     }
     return {};
 }

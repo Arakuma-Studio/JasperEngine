@@ -24,7 +24,6 @@ namespace jasperengine{
 
         static ShaderBuilderFn shaderBuilderFn;
 
-        static std::string getShaderFile(const std::string& shaderStr, const std::string& extension);
         static std::string getShaderName(const std::string& shaderStr);
 
         static void addMissingShader(const std::string& shaderStr);

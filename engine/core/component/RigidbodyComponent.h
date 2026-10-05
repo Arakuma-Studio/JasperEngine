@@ -105,6 +105,11 @@ namespace jasperengine{
         BodyType type = BodyType::STATIC;
         RigidbodyMotionQuality motionQuality = RigidbodyMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
+        // Surface of the whole body (Jolt keeps them per body, not per collider); the
+        // defaults are Jolt's. A contact combines two frictions by geometric mean and takes
+        // the larger restitution.
+        float friction = 0.2f;
+        float restitution = 0.0f;
         uint8_t allowedDOFs = RigidbodyAllowedDOF_All;
         bool sensor = false;
         bool newBody = true;

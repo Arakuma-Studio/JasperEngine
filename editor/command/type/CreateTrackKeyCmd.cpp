@@ -11,44 +11,25 @@
 
 using namespace jasperengine;
 
-namespace {
-
-void seedCreateProperties(editor::CreateEntityCmd& createCmd, int channel, float localTime,
-                          const Vector3& vectorValue, const Quaternion& quatValue){
-    createCmd.addProperty<std::vector<float>>(
-        editor::ComponentType::KeyframeTracksComponent, "times", std::vector<float>{localTime});
-    if (channel == 0){
-        createCmd.addProperty<std::vector<Vector3>>(
-            editor::ComponentType::TranslateTracksComponent, "values", std::vector<Vector3>{vectorValue});
-    }else if (channel == 1){
-        createCmd.addProperty<std::vector<Quaternion>>(
-            editor::ComponentType::RotateTracksComponent, "values", std::vector<Quaternion>{quatValue});
-    }else{
-        createCmd.addProperty<std::vector<Vector3>>(
-            editor::ComponentType::ScaleTracksComponent, "values", std::vector<Vector3>{vectorValue});
-    }
-}
-
-}
-
 editor::CreateTrackKeyCmd::CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,
                                              EntityCreationType creationType, std::string name, float localTime,
                                              Vector3 value)
-    : project(project), sceneId(sceneId), animEntity(animEntity), creationType(creationType),
-      name(std::move(name)), localTime(localTime), channel(creationType == EntityCreationType::SCALE_TRACKS ? 2 : 0),
-      vectorValue(value), quatValue(){
-    createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, this->name, creationType, target);
-    seedCreateProperties(*createCmd, channel, localTime, vectorValue, quatValue);
+    : project(project), sceneId(sceneId), animEntity(animEntity){
+    createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, creationType, target);
+    createCmd->addProperty<std::vector<float>>(ComponentType::KeyframeTracksComponent, "times", {localTime});
+    const ComponentType component = creationType == EntityCreationType::SCALE_TRACKS
+        ? ComponentType::ScaleTracksComponent : ComponentType::TranslateTracksComponent;
+    createCmd->addProperty<std::vector<Vector3>>(component, "values", {value});
     wasModified = project->getScene(sceneId)->isModified;
 }
 
 editor::CreateTrackKeyCmd::CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,
                                              EntityCreationType creationType, std::string name, float localTime,
                                              Quaternion value)
-    : project(project), sceneId(sceneId), animEntity(animEntity), creationType(creationType),
-      name(std::move(name)), localTime(localTime), channel(1), vectorValue(), quatValue(value){
-    createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, this->name, creationType, target);
-    seedCreateProperties(*createCmd, channel, localTime, vectorValue, quatValue);
+    : project(project), sceneId(sceneId), animEntity(animEntity){
+    createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, creationType, target);
+    createCmd->addProperty<std::vector<float>>(ComponentType::KeyframeTracksComponent, "times", {localTime});
+    createCmd->addProperty<std::vector<Quaternion>>(ComponentType::RotateTracksComponent, "values", {value});
     wasModified = project->getScene(sceneId)->isModified;
 }
 

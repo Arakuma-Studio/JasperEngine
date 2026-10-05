@@ -103,6 +103,12 @@ namespace jasperengine::editor {
         // Opens the Console if needed and brings its tab to the front.
         void requestFocus();
 
+        // Toolbar toggles (MCP preferences)
+        bool isClearOnPlay() const { return clearOnPlay; }
+        void setClearOnPlay(bool enabled) { clearOnPlay = enabled; }
+        bool isErrorPause() const { return errorPause; }
+        void setErrorPause(bool enabled) { errorPause = enabled; }
+
         // Newest message, for the status bar. False when the Console is empty.
         bool getLatestLog(LogType& type, std::string& message) const;
 

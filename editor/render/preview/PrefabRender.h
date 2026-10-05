@@ -39,7 +39,6 @@ namespace jasperengine::editor{
         void frame();
         void clear();
 
-        bool isFlat() const { return flat; }
         Framebuffer* getFramebuffer();
         Scene* getScene();
     };

@@ -481,7 +481,26 @@ void LuaBinding::registerClasses(lua_State *L){
 #endif //DISABLE_LUA_BINDINGS
 }
 
+// Lua's print, through Log::print instead of stdout: the editor's Console shows it (Play
+// and edit time alike), and a game's platform log (logcat, the terminal) gets it
+static int luaPrint(lua_State* L){
+    int n = lua_gettop(L);
+    std::string line;
+    for (int i = 1; i <= n; i++) {
+        size_t len = 0;
+        const char* s = luaL_tolstring(L, i, &len);
+        if (i > 1) line += '\t';
+        line.append(s, len);
+        lua_pop(L, 1);
+    }
+    Log::print("%s", line.c_str());
+    return 0;
+}
+
 void LuaBinding::registerHelpersFunctions(lua_State *L){
+    lua_pushcfunction(L, luaPrint);
+    lua_setglobal(L, "print");
+
     // Event helper table
     lua_newtable(L);
 

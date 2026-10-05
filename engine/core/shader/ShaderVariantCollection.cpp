@@ -104,11 +104,8 @@ bool ShaderVariantCollection::contains(const std::string& spec, const std::strin
 
 void ShaderVariantCollection::clear(){
     variants.clear();
-    std::vector<ShaderKey> keys;
-    for (const auto& entry : held)
-        keys.push_back(entry.first);
-    for (ShaderKey key : keys)
-        releaseVariant(key);
+    while (!held.empty())
+        releaseVariant(held.begin()->first);
 }
 
 size_t ShaderVariantCollection::getVariantCount() const{

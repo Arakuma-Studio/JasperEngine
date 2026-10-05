@@ -53,8 +53,3 @@ void editor::CreatePrefabVariantAssetCmd::undo() {
     project->cleanupPrefabFilePath(fullPath);
     created = false;
 }
-
-bool editor::CreatePrefabVariantAssetCmd::mergeWith(Command* otherCommand) {
-    (void)otherCommand;
-    return false;
-}

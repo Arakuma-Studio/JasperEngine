@@ -156,8 +156,8 @@ namespace jasperengine::editor {
         // Undo/Redo
         void Undo(int steps = 1);
         void Redo(int steps = 1);
-        bool CanUndo() const { return !readOnly && undoIndex > 0; }
-        bool CanRedo() const { return !readOnly && undoIndex < static_cast<int>(undoBuffer.size()); }
+        bool CanUndo() const { return undoIndex > 0; }
+        bool CanRedo() const { return undoIndex < static_cast<int>(undoBuffer.size()); }
         int GetUndoIndex() const { return undoIndex; }
 
         // Clipboard
@@ -175,10 +175,7 @@ namespace jasperengine::editor {
         int ReplaceAll(const std::string& find, const std::string& replace, bool caseSensitive = true);
 
         // Editor settings
-        void SetReadOnly(bool value) { readOnly = value; }
-        bool IsReadOnly() const { return readOnly; }
         void SetTabSize(int size) { tabSize = size; }
-        void SetShowLineNumbers(bool show) { showLineNumbers = show; }
         void SetAutoIndent(bool enable) { autoIndent = enable; }
         void SetHighlightCurrentLine(bool enable) { highlightCurrentLine = enable; }
         void SetMatchBrackets(bool enable) { matchBrackets = enable; }
@@ -228,9 +225,7 @@ namespace jasperengine::editor {
         LanguageDefinition languageDef;
 
         // Editor state
-        bool readOnly;
         int tabSize;
-        bool showLineNumbers;
         bool autoIndent;
         bool highlightCurrentLine;
         bool matchBrackets;
@@ -366,7 +361,6 @@ namespace jasperengine::editor {
         void finalizeUndoRecord();
 
         int getLineIndent(int lineIndex) const;
-        std::string getIndentString(int level) const;
 
         TextPosition screenToText(const ImVec2& screenPos, const ImVec2& origin) const;
         ImVec2 textToScreen(const TextPosition& pos, const ImVec2& origin) const;

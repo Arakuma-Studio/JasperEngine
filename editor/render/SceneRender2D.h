@@ -34,12 +34,6 @@ namespace jasperengine::editor{
         void createLines(unsigned int width, unsigned int height);
         void applyZoomProjection();
         void updateGridLines();
-        bool instanciateBodyLines(Entity entity);
-        bool instanciateJointLines(Entity entity);
-        bool instanciateLight2DLines(Entity entity);
-        bool instanciateShadowCaster2DLines(Entity entity);
-        bool instanciateLinePointLines(Entity entity);
-        bool instanciatePolygonPointLines(Entity entity);
         void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
@@ -63,10 +57,6 @@ namespace jasperengine::editor{
         void updateSelLines(std::vector<OBB> obbs) override;
 
         void update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings = SceneDisplaySettings{}) override;
-        void mouseHoverEvent(float x, float y) override;
-        void mouseClickEvent(float x, float y, std::vector<Entity> selEntities) override;
-        void mouseReleaseEvent(float x, float y) override;
-        void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio) override;
 
         void zoomAtPosition(float width, float height, Vector2 pos, float zoomFactor);
 

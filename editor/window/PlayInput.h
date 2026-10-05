@@ -29,6 +29,10 @@ namespace jasperengine::editor {
         uint32_t mouseSceneId = 0;
         ImVec2 mousePos = ImVec2(0, 0);
 
+        // An MCP agent drives the pointer (send_input): the real mouse is not forwarded
+        // until it moves, scrolls or clicks, so it can't move the game's pointer back
+        bool pointerInjected = false;
+
         void forwardKeyboard(ImGuiIO& io, int mods);
         void releaseKeys(int mods);
         void releaseMouseButtons(int mods);
@@ -47,6 +51,9 @@ namespace jasperengine::editor {
         // Releases what is still held for sceneId (the view lost the game or play stopped).
         void release(uint32_t sceneId);
         void releaseAll();
+
+        void setPointerInjected(bool injected) { pointerInjected = injected; }
+        bool isPointerInjected() const { return pointerInjected; }
     };
 
 }

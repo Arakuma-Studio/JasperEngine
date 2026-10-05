@@ -368,7 +368,6 @@ aa = load(ud + '/apply-after.yaml')
 check(not any((aa.get(p) or {}).get('overrides') for p in ('Field/Ship 3/Hull', 'Field/Ship 3/Wing/Flag', 'Field/Ship 3/Engine/Flame')),
       'and the instance has no override left')
 check(compare(ud + '/apply-before.yaml', ud + '/apply-undone.yaml', '--ids'), 'undo of Apply All: as before')
-rv = load(ud + '/reverted.yaml')
 check(compare(ud + '/reverted.yaml', ud + '/reverted.yaml', '--subtree=Field/Ship 3:Field/Ship 4'),
       'Revert All on a variant instance: it is a plain instance of the variant again')
 pasted = load(ud + '/pasted.yaml')

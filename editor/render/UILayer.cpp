@@ -404,18 +404,6 @@ void editor::UILayer::updateRect(Vector2 position, Vector2 size){
     centralRect->addVertex(size.x, size.y);
 }
 
-Framebuffer* editor::UILayer::getFramebuffer(){
-    return camera->getFramebuffer();
-}
-
-TextureRender& editor::UILayer::getTexture(){
-    return getFramebuffer()->getRender().getColorTexture();
-}
-
-Camera* editor::UILayer::getCamera(){
-    return camera;
-}
-
 Scene* editor::UILayer::getScene(){
     return scene;
 }

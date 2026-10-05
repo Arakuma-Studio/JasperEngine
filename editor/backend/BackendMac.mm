@@ -1040,8 +1040,8 @@ int editor::Backend::init(int argc, char* argv[]) {
 
                 ImGuiIO& io = ImGui::GetIO();
                 bool typing = io.InputQueueCharacters.Size > 0;
-                for (int key = ImGuiKey_Keyboard_BEGIN;
-                     !typing && key < ImGuiKey_Keyboard_END; ++key)
+                for (int key = ImGuiKey_NamedKey_BEGIN;
+                     !typing && key < ImGuiKey_GamepadStart; ++key)
                     typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
                 // Consumed apart from the test below, which short-circuits
                 const bool appRedraw = app.consumeRedrawRequest();

@@ -37,10 +37,6 @@ namespace {
         FastEnumerateFn enumerate;
     };
 
-    void* nullPropertyPtr() {
-        return nullptr;
-    }
-
     template<typename Component>
     Component& getDefaultComponent() {
         static Component component{};
@@ -64,11 +60,7 @@ namespace {
 
     template<typename Component, typename Member, Member Component::*MemberPtr>
     constexpr FastPropertyDescriptor makeFastPropertyNoDefault(const char* name, PropertyType type, uint64_t updateFlags) {
-        return {name, type, updateFlags, &nullPropertyPtr, &getMemberRef<Component, Member, MemberPtr>};
-    }
-
-    constexpr FastPropertyDescriptor makeCustomProperty(const char* name, PropertyType type, uint64_t updateFlags, FastDefGetter getDef, FastRefGetter getRef) {
-        return {name, type, updateFlags, getDef, getRef};
+        return {name, type, updateFlags, nullptr, &getMemberRef<Component, Member, MemberPtr>};
     }
 
     template<typename Component, size_t N>
@@ -421,8 +413,8 @@ namespace {
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
-        makeCustomProperty("shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, &nullPropertyPtr, &getLightShadowNearRef),
-        makeCustomProperty("shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, &nullPropertyPtr, &getLightShadowFarRef),
+        {"shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowNearRef},
+        {"shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowFarRef},
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
     };
 
@@ -892,16 +884,19 @@ namespace {
         }
 
         constexpr const char* shapePrefix = "colliders[";
-        if (propertyName.compare(0, 7, shapePrefix) != 0) {
+        if (propertyName.compare(0, 10, shapePrefix) != 0) {
             return PropertyData();
         }
 
-        size_t pos = 7;
+        size_t pos = 10;
         size_t colliderIndex = 0;
         if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
+        if (colliderIndex >= MAX_COLLIDERS_2D) {
+            return PropertyData();
+        }
         Collider2D& shape = comp->colliders[colliderIndex];
         Collider2D& defaultShape = defaultRigidbody2D.colliders[0];
 
@@ -992,6 +987,12 @@ namespace {
         if (propertyName == "gravityFactor") {
             return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.gravityFactor, (void*)&comp->gravityFactor};
         }
+        if (propertyName == "friction") {
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.friction, (void*)&comp->friction};
+        }
+        if (propertyName == "restitution") {
+            return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.restitution, (void*)&comp->restitution};
+        }
         if (propertyName == "numColliders") {
             return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.numColliders, (void*)&comp->numColliders};
         }
@@ -1006,16 +1007,19 @@ namespace {
         }
 
         constexpr const char* shapePrefix = "colliders[";
-        if (propertyName.compare(0, 7, shapePrefix) != 0) {
+        if (propertyName.compare(0, 10, shapePrefix) != 0) {
             return PropertyData();
         }
 
-        size_t pos = 7;
+        size_t pos = 10;
         size_t colliderIndex = 0;
         if (!parseIndex(propertyName, pos, colliderIndex) || pos >= propertyName.size() || propertyName[pos] != ']') {
             return PropertyData();
         }
 
+        if (colliderIndex >= MAX_COLLIDERS_3D) {
+            return PropertyData();
+        }
         Collider3D& shape = comp->colliders[colliderIndex];
         Collider3D& defaultShape = defaultRigidbody.colliders[0];
 
@@ -2491,6 +2495,8 @@ namespace {
         ps["motionQuality"] = {PropertyType::Enum, UpdateFlags_Rigidbody, (void*)&def.motionQuality, compRef ? (void*)&comp->motionQuality : nullptr};
         ps["sensor"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.sensor, compRef ? (void*)&comp->sensor : nullptr};
         ps["gravityFactor"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.gravityFactor, compRef ? (void*)&comp->gravityFactor : nullptr};
+        ps["friction"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.friction, compRef ? (void*)&comp->friction : nullptr};
+        ps["restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.restitution, compRef ? (void*)&comp->restitution : nullptr};
         ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
         ps["overrideMassProperties"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.overrideMassProperties, compRef ? (void*)&comp->overrideMassProperties : nullptr};
         ps["solidBoxSize"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&def.solidBoxSize, compRef ? (void*)&comp->solidBoxSize : nullptr};

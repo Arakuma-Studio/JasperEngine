@@ -15,6 +15,8 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
+#include "mcp/McpActivityWindow.h"
+#include "mcp/McpServer.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -48,6 +50,7 @@
 #include <iomanip>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 
 #if defined(_WIN32)
   #include <windows.h>
@@ -109,7 +112,7 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
-    aiChatWindow = new AiChatWindow(&project, projectWindow);
+    mcpActivityWindow = new mcp::McpActivityWindow();
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -238,7 +241,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleConsole,
     ToggleAnimation,
     ToggleTerrain,
-    ToggleAiChat,
+    ToggleMcpActivity,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -424,7 +427,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
             canUndo = codeEditor->canUndoLastFocused();
             canRedo = codeEditor->canRedoLastFocused();
-        } else if (lastFocusedWindow != LastFocusedWindow::AI && hasSelectedScene) {
+        } else if (hasSelectedScene) {
             canUndo = CommandHandle::get(selectedSceneId)->canUndo();
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
         }
@@ -558,8 +561,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
-        menuSubmenu("AI", {
-            menuCommand(AppMenuCommand::ToggleAiChat, windowMenuLabel(AiChatWindow::WINDOW_NAME))
+        menuSubmenu("MCP", {
+            menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
         menuSeparator(),
         menuSubmenu("Layouts", {
@@ -596,7 +599,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             std::string projectName = "MyJasperEngineProject";
             auto startFreshProject = [this, projectName]() {
                 requestProjectChange([this, projectName]() {
-                    if (project.createTempProject(projectName, true)) aiChatWindow->startNewChat();
+                    project.createTempProject(projectName, true);
                 });
             };
             if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() ||
@@ -669,7 +672,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
                 codeEditor->undoLastFocused();
-            } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
+            } else if (project.getSelectedScene()) {
                 CommandHandle::get(project.getSelectedSceneId())->undo();
             }
             break;
@@ -679,7 +682,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
                 codeEditor->redoLastFocused();
-            } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
+            } else if (project.getSelectedScene()) {
                 CommandHandle::get(project.getSelectedSceneId())->redo();
             }
             break;
@@ -724,8 +727,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
-        case AppMenuCommand::ToggleAiChat:
-            showEditorWindow(aiChatWindow);
+        case AppMenuCommand::ToggleMcpActivity:
+            showEditorWindow(mcpActivityWindow);
             break;
         case AppMenuCommand::FocusGame:
             gameWindow->requestFocus();
@@ -763,7 +766,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
             terrainEditWindow->setOpen(false);
-            aiChatWindow->setOpen(true);
+            mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
             break;
@@ -1130,6 +1133,23 @@ void editor::App::showFooter(){
 }
 
 void editor::App::showAlert(){
+    if (alert.needShow && !alertPendingChoice.empty()) {
+        // An MCP agent answered the alert (respond_dialog): press that button
+        const std::string choice = std::move(alertPendingChoice);
+        alertPendingChoice.clear();
+        const std::string popupName = alert.title + "##AlertModal";
+        alert.needShow = false;
+        if (ImGui::IsPopupOpen(popupName.c_str()) && ImGui::BeginPopupModal(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        std::function<void()> callback;
+        if (choice == "yes") callback = alert.onYes;
+        else if (choice == "no") callback = alert.onNo;
+        else if (choice == "cancel") callback = alert.onCancel;
+        if (callback) callback();
+        return;
+    }
     if (alert.needShow) {
         ImGui::OpenPopup((alert.title + "##AlertModal").c_str());
 
@@ -1282,12 +1302,12 @@ void editor::App::buildDefaultLayout(){
     const float leftWidth = share(0.18f, viewport.x, 12);
     const float bottomHeight = share(0.30f, viewport.y, 10);
 
-    // Inspector on the right, full height; AI Chat and Terrain behind it.
+    // Inspector on the right, full height; MCP and Terrain behind it.
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
     ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
-    ImGui::DockBuilderDockWindow(AiChatWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
@@ -1316,7 +1336,7 @@ void editor::App::buildDefaultLayout(){
         }
     };
     stampPanelDockOrder(InspectorWindow::WINDOW_NAME, 0);
-    stampPanelDockOrder(AiChatWindow::WINDOW_NAME, 1);
+    stampPanelDockOrder(mcp::McpActivityWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(TerrainEditWindow::WINDOW_NAME, 2);
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
@@ -1643,8 +1663,6 @@ void editor::App::setup() {
 
     io.ConfigDragClickToInputText = true;
 
-    //io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
-
     Theme::apply();
 
     // Fonts follow each viewport's monitor DPI. Style paddings are global, so
@@ -1865,8 +1883,6 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
-        } else if (aiChatWindow->isFocused()) {
-            lastFocusedWindow = LastFocusedWindow::AI;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
@@ -1893,7 +1909,7 @@ void editor::App::show(){
         }
 
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !aiChatWindow->isFocused());
+        mainToolbar->handleShortcuts(!codeEditor->isFocused());
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -1940,7 +1956,7 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused() && !aiChatWindow->isFocused()){
+    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic:
@@ -2032,7 +2048,7 @@ void editor::App::show(){
     animationWindow->show();
     terrainEditWindow->show();
     inspectorWindow->show();
-    aiChatWindow->show();
+    mcpActivityWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2051,6 +2067,9 @@ void editor::App::show(){
     // Closing a panel through its title-bar button changes the same state as the
     // View menu, so mirror the live state after all panels have rendered.
     persistPanelVisibilitySettings();
+
+    // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
+    mcp::McpServer::get().tick();
 }
 
 void editor::App::setLoadingPump(std::function<void(bool)> pump) {
@@ -2218,6 +2237,10 @@ void editor::App::engineInit(int argc, char** argv) {
     });
 
     Engine::setAsyncLoading(true);
+
+    // Before the project loads, so an MCP client's initialize is answered at once;
+    // its tool calls wait in the main-thread queue until the project is ready.
+    mcp::McpServer::get().start(*this);
 }
 
 void editor::App::engineViewLoaded(){
@@ -2260,6 +2283,17 @@ void editor::App::loadStartupProject() {
         return;
     }
 
+    const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
+    if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
+        // `jasperengine-editor mcp --project/--create`: no fallback to the last project
+        if (!loadMcpStartupProject(mcpOptions)) {
+            project.createTempProject("MyJasperEngineProject");
+        }
+        projectLoading = false;
+        requestRedraw();
+        return;
+    }
+
     std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
 
     if (!lastProjectPath.empty() && std::filesystem::exists(lastProjectPath)) {
@@ -2274,6 +2308,118 @@ void editor::App::loadStartupProject() {
 
     projectLoading = false;
     requestRedraw();
+}
+
+bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
+    std::string error;
+    if (!options.project.empty()) {
+        if (project.openProjectNow(options.project, &error)) {
+            Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
+            return true;
+        }
+        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                     options.project.string().c_str(), error.c_str());
+        return false;
+    }
+
+    // --create: File > New Project + Save Project without the dialogs
+    if (project.createProjectAt(options.createDir, options.createName, &error)) {
+        std::fprintf(stderr, "[mcp] created project %s at %s\n", project.getName().c_str(), options.createDir.string().c_str());
+        return true;
+    }
+    std::fprintf(stderr, "[mcp] could not create the project at %s: %s; an empty temporary project is open instead\n",
+                 options.createDir.string().c_str(), error.c_str());
+    return false;
+}
+
+void editor::App::quitWithoutPrompts(const std::string& reason) {
+    // Nothing is saved for the agent: report what is left unsaved instead
+    std::vector<std::string> unsaved;
+    for (const SceneProject& sceneProject : project.getScenes()) {
+        if (sceneProject.isModified) unsaved.push_back("scene \"" + sceneProject.name + "\"");
+        else if (sceneProject.filepath.empty()) unsaved.push_back("scene \"" + sceneProject.name + "\" (never saved)");
+    }
+    if (codeEditor->hasUnsavedChanges()) unsaved.push_back("code editor buffers");
+    if (project.isTempUnsavedProject()) unsaved.push_back("the temporary project itself");
+    if (!unsaved.empty()) {
+        std::string list;
+        for (const std::string& item : unsaved) list += (list.empty() ? "" : ", ") + item;
+        std::fprintf(stderr, "[mcp] %s: closing with UNSAVED changes (not saved): %s\n", reason.c_str(), list.c_str());
+        Out::warning("%s: closing with unsaved changes: %s", reason.c_str(), list.c_str());
+    } else {
+        std::fprintf(stderr, "[mcp] %s: closing the editor\n", reason.c_str());
+    }
+    if (projectLoading) {
+        Backend::closeWindow();
+        return;
+    }
+    closeWindow();
+}
+
+bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
+    out = EditorDialogInfo();
+    if (alert.needShow) {
+        out.kind = "alert";
+        out.title = alert.title;
+        out.message = alert.message;
+        if (!alert.note.empty()) out.message += " (" + alert.note + ")";
+        switch (alert.type) {
+            case AlertType::Info:
+                out.choices = {"ok"};
+                break;
+            case AlertType::Confirm:
+                out.choices = {"yes", "no"};
+                break;
+            case AlertType::ThreeButton:
+                out.choices = {"yes", "no", "cancel"};
+                out.message += " [yes = " + alert.yesLabel + ", no = " + alert.noLabel + ", cancel = Cancel]";
+                break;
+        }
+        return true;
+    }
+    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
+        out.kind = "save_dialog";
+        out.title = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
+        out.message = "asks a human where to save; cancel it and save with an explicit path instead";
+        out.choices = {"cancel"};
+        return true;
+    }
+    if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
+        out.kind = "modal";
+        std::string name = modal->Name ? modal->Name : "";
+        const size_t idPos = name.find("##");
+        if (idPos != std::string::npos) name.resize(idPos);
+        out.title = name;
+        return true;
+    }
+    return false;
+}
+
+bool editor::App::answerDialog(const std::string& choice, std::string& error) {
+    EditorDialogInfo dialog;
+    if (!getOpenDialog(dialog)) {
+        error = "No dialog is open.";
+        return false;
+    }
+    if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
+        if (dialog.choices.empty()) {
+            error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
+        } else {
+            error = "Choice must be one of:";
+            for (const std::string& valid : dialog.choices) error += " " + valid;
+            error += ".";
+        }
+        return false;
+    }
+    if (dialog.kind == "alert") {
+        // Pressed in showAlert on the next frame, through the button's own code path
+        alertPendingChoice = choice;
+    } else if (dialog.kind == "save_dialog") {
+        sceneSaveDialog.requestCancel();
+        projectSaveDialog.requestCancel();
+    }
+    requestRedraw();
+    return true;
 }
 
 void editor::App::requestProjectChange(std::function<void()> change) {
@@ -2337,7 +2483,8 @@ void editor::App::engineRender(){
         bool gaugeAnimating = false;
         if (benchmarkEnabled) active = true;
         // A running play session must advance and redraw its simulation every frame.
-        if (sp.playState == ScenePlayState::PLAYING) active = true;
+        // (unless a held simulation, which only draws on demand like a paused one)
+        if (sp.playState == ScenePlayState::PLAYING && !Engine::isSimulationHeld()) active = true;
         // A drag preview redraws until the settle frames cover its restore.
         if (draggingResourceFile) active = true;
         if (isSelected && sp.scene && sp.sceneRender) {
@@ -2962,6 +3109,7 @@ void editor::App::enqueueMainThreadTask(std::function<void()> task) {
         mainThreadTasks.push(std::move(task));
     }
     // Wake an idle backend loop so cross-thread work runs promptly.
+    std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
@@ -2993,17 +3141,16 @@ bool editor::App::consumeFrameRequest() {
 }
 
 void editor::App::setWakeCallback(std::function<void()> cb) {
-    wakeCallback = cb;
-    // The AI service keeps its own copy, so nothing it holds points back here.
-    if (aiChatWindow) aiChatWindow->setWakeCallback(std::move(cb));
+    std::lock_guard<std::mutex> lock(wakeMutex);
+    wakeCallback = std::move(cb);
 }
 
 void editor::App::shutdownBackgroundWork() {
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
-    // Before glfwTerminate/SDL_Quit, or a late reply posts to a dead window system.
-    if (aiChatWindow) aiChatWindow->shutdown();
-    wakeCallback = nullptr;
+    // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
+    mcp::McpServer::get().stop();
+    setWakeCallback(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -3060,6 +3207,14 @@ void editor::App::prepareForProjectSwitch() {
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
     dockspaceNeedsRebuild = true;
+}
+
+std::string editor::App::backgroundWorkConflict(const std::string& action) const {
+    mcp::McpServer& server = mcp::McpServer::get();
+    if (!server.isStarted()) return {};
+    // A human action: the export window's own export is not a conflict for itself
+    const mcp::ToolActivity activity = action == "play" ? mcp::ToolActivity::PlayStart : mcp::ToolActivity::Build;
+    return server.busyRefusal(activity, nullptr, false);
 }
 
 void editor::App::requestScenePlayFocus(uint32_t sceneId) {
@@ -3169,6 +3324,8 @@ void editor::App::registerAlert(std::string title, std::string message) {
 
 void editor::App::registerAlert(std::string title, std::string message, std::string note) {
     alert.needShow = true;
+    alertSerial++;
+    alertPendingChoice.clear();
     alert.title = title;
     alert.message = message;
     alert.note = note;
@@ -3187,6 +3344,8 @@ void editor::App::registerOutsideAssetsAlert(const std::string& path) {
 
 void editor::App::registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo) {
     alert.needShow = true;
+    alertSerial++;
+    alertPendingChoice.clear();
     alert.title = title;
     alert.message = message;
     alert.note.clear();
@@ -3197,6 +3356,8 @@ void editor::App::registerConfirmAlert(std::string title, std::string message, s
 
 void editor::App::registerThreeButtonAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo, std::function<void()> onCancel) {
     alert.needShow = true;
+    alertSerial++;
+    alertPendingChoice.clear();
     alert.title = title;
     alert.message = message;
     alert.note.clear();
@@ -3406,6 +3567,22 @@ editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
     return hierarchyWindow;
 }
 
+editor::SceneWindow* editor::App::getSceneWindow() const{
+    return sceneWindow;
+}
+
+editor::ConsoleWindow* editor::App::getConsoleWindow() const{
+    return consoleWindow;
+}
+
+editor::PlayInput* editor::App::getPlayInput() const{
+    return playInput;
+}
+
+editor::MainToolbar* editor::App::getMainToolbar() const{
+    return mainToolbar;
+}
+
 editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
 }
@@ -3559,7 +3736,16 @@ void editor::App::processMainThreadTasks() {
     while (!tasks.empty()) {
         auto task = std::move(tasks.front());
         tasks.pop();
-        if (task) task();
+        if (!task) continue;
+        // One failing task must not drop the ones queued behind it (an MCP call waiting
+        // for its turn would never be answered) nor take the editor down
+        try {
+            task();
+        } catch (const std::exception& e) {
+            Out::error("A main-thread task failed: %s", e.what());
+        } catch (...) {
+            Out::error("A main-thread task failed with an unknown error.");
+        }
     }
 }
 
@@ -3586,7 +3772,7 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     terrainEditWindow->setOpen(visibility.terrain);
-    aiChatWindow->setOpen(visibility.aiChat);
+    mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
 }
 
@@ -3598,7 +3784,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
-    visibility.aiChat = aiChatWindow->isOpen();
+    visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
 
     if (visibility != AppSettings::getPanelVisibility()) {

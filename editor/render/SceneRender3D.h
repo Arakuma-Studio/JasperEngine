@@ -77,9 +77,7 @@ namespace jasperengine::editor{
         bool instanciateCameraObject(Entity entity);
         bool instanciateSoundObject(Entity entity);
         bool instanciateBodyObject(Entity entity);
-        bool instanciateJointObject(Entity entity);
         bool instanciateBoneLines(Entity entity);
-        bool instanciateLinePointLines(Entity entity);
         static uint64_t quantizeHullKey(const Vector3& p);
         static void pushUniqueHullPoint(std::vector<Vector3>& points, std::unordered_set<uint64_t>& seen, const Vector3& p);
         static void reduceToExtremes(std::vector<Vector3>& points);
@@ -91,11 +89,9 @@ namespace jasperengine::editor{
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, const RigidbodyComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint3DComponent& joint, bool visible, bool highlighted);
         void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
-        bool instanciatePolygonPointLines(Entity entity);
         void createOrUpdatePolygonPointLines(Entity entity, const Transform& transform, const std::vector<PolygonPoint>& points, bool isMesh, bool visible);
         bool instanciateTrackLines(Entity entity);
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
-        bool instanciateReflectionProbeLines(Entity entity);
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera);
         void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
@@ -120,10 +116,6 @@ namespace jasperengine::editor{
         void setWalkSpeedOffset(float offset);
 
         void update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings = SceneDisplaySettings{}) override;
-        void mouseHoverEvent(float x, float y) override;
-        void mouseClickEvent(float x, float y, std::vector<Entity> selEntities) override;
-        void mouseReleaseEvent(float x, float y) override;
-        void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio) override;
 
         ViewportGizmo* getViewportGizmo();
     };

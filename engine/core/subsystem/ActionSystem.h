@@ -85,14 +85,12 @@ namespace jasperengine{
 		void tweenStop(TweenComponent& tween);
 		void tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween);
 
-		void positionTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform);
-		void rotationTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform);
-		void scaleTweenUpdate(double dt, ActionComponent& action, TweenComponent& tween, ScaleTweenComponent& scaletween, Transform& transform);
+		void positionTweenUpdate(TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform);
+		void rotationTweenUpdate(TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform);
+		void scaleTweenUpdate(TweenComponent& tween, ScaleTweenComponent& scaletween, Transform& transform);
 
-		void colorTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, MeshComponent& mesh);
-		void colorTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, ColorTweenComponent& colortween, UIComponent& ui);
-		void alphaTweenMeshUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, MeshComponent& mesh);
-		void alphaTweenUIUpdate(double dt, ActionComponent& action, TweenComponent& tween, AlphaTweenComponent& alphatween, UIComponent& ui);
+		void colorTweenUpdate(TweenComponent& tween, ColorTweenComponent& colortween, Vector4& targetColor);
+		void alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& alphatween, Vector4& targetColor);
 
 		//Particle helpers functions
 		float getParticleInverseScale(float value);

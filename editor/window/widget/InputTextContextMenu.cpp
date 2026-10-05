@@ -91,7 +91,6 @@ bool InputTextContextMenu::drawForLastItem(char* buffer, size_t bufferSize,
     }
 
     ImGuiID inputId = ImGui::GetItemID();
-    ImGuiInputTextState* state = ImGui::GetInputTextState(inputId);
 
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
         ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
@@ -103,7 +102,7 @@ bool InputTextContextMenu::drawForLastItem(char* buffer, size_t bufferSize,
         return false;
     }
 
-    state = ImGui::GetInputTextState(inputId);
+    ImGuiInputTextState* state = ImGui::GetInputTextState(inputId);
     const int textLen = boundedTextLength(buffer, bufferSize);
     const bool hasText = textLen > 0;
     const bool hasSelection = state && state->HasSelection();

@@ -9,32 +9,16 @@
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
 
+#include <utility>
+
 using namespace jasperengine;
 
-editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToPrefab){
-    this->project = project;
-    this->sceneId = sceneId;
-    this->entityName = entityName;
-    this->entity = NULL_ENTITY;
-    this->parent = NULL_ENTITY;
-    this->type = EntityCreationType::EMPTY;
-    this->addToPrefab = addToPrefab;
-    this->wasModified = project->getScene(sceneId)->isModified;
-    this->wasMainCamera = false;
-    this->updateFlags = 0;
+editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, bool addToPrefab)
+    : CreateEntityCmd(project, sceneId, std::move(entityName), EntityCreationType::EMPTY, NULL_ENTITY, addToPrefab){
 }
 
-editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToPrefab){
-    this->project = project;
-    this->sceneId = sceneId;
-    this->entityName = entityName;
-    this->entity = NULL_ENTITY;
-    this->parent = NULL_ENTITY;
-    this->type = type;
-    this->addToPrefab = addToPrefab;
-    this->wasModified = project->getScene(sceneId)->isModified;
-    this->wasMainCamera = false;
-    this->updateFlags = 0;
+editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, bool addToPrefab)
+    : CreateEntityCmd(project, sceneId, std::move(entityName), type, NULL_ENTITY, addToPrefab){
 }
 
 editor::CreateEntityCmd::CreateEntityCmd(Project* project, uint32_t sceneId, std::string entityName, EntityCreationType type, Entity parent, bool addToPrefab){
@@ -672,7 +656,6 @@ bool editor::CreateEntityCmd::execute(){
     }
 
     if (!quiet){
-        lastSelected = project->getSelectedEntities(sceneId);
         project->setSelectedEntity(sceneId, entity);
     }
 

@@ -17,7 +17,7 @@ EDITOR = os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperen
 WORK = tempfile.mkdtemp(prefix='prefab-instance-edit-')
 
 
-def run(project, ops, name, keep=False):
+def run(project, ops, name):
     work = os.path.join(WORK, 'runs', name)
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
@@ -286,17 +286,8 @@ check(ov(e, 'Tower A/Base/Rock/Rock/Renamed').get('state') == 1, 'reload: name o
 
 print("== nested roots, state/component apply and revert, Apply All / Revert All")
 
-RB = 'Rock B/Rock/Pebble'
-RA = 'Rock A/Rock/Pebble'
-TA = 'Tower A/Base/Rock/Rock/Pebble'
 TAROOT = 'Tower A/Base/Rock'
 CAROOT = 'Castle A/Keep/Tower/Base/Rock'
-
-def tr(e, path, key='position'):
-    return e[path]['components']['transform'][key]
-
-def ov(e, path):
-    return e[path].get('overrides', {})
 
 # nested instance root: Apply to Prefab 'Rock' (its own) / as Override in Prefab 'Tower'
 ops = [
@@ -316,14 +307,14 @@ print(out[out.find('op canApply'):][:200])
 check('targets: prefabs/Rock.prefab prefabs/Tower.prefab' in out, 'nested root: targets its own prefab and the holding one')
 e0 = ents(before)
 e = ents(toRock)
-print('  Rock A root scale', tr(e0, 'Rock A', 'scale'), '->', tr(e, 'Rock A', 'scale'))
+print('  Rock A root scale', pos(e0, 'Rock A', 'scale'), '->', pos(e, 'Rock A', 'scale'))
 check('transform' not in ov(e, TAROOT).get('properties', {}), 'apply nested root to Rock: override cleared')
-check(tr(e, 'Rock A', 'scale') == [3, 3, 1], 'apply nested root to Rock: Rock instances follow')
+check(pos(e, 'Rock A', 'scale') == [3, 3, 1], 'apply nested root to Rock: Rock instances follow')
 e = ents(undone)
-check(tr(e, 'Rock A', 'scale') == tr(e0, 'Rock A', 'scale'), 'undo nested root apply')
+check(pos(e, 'Rock A', 'scale') == pos(e0, 'Rock A', 'scale'), 'undo nested root apply')
 e = ents(toTower)
-check(tr(e, CAROOT, 'scale') == [3, 3, 1], 'apply nested root in Tower: Castle follows')
-check(tr(e, 'Rock A', 'scale') == tr(e0, 'Rock A', 'scale'), 'apply nested root in Tower: Rock instances do not')
+check(pos(e, CAROOT, 'scale') == [3, 3, 1], 'apply nested root in Tower: Castle follows')
+check(pos(e, 'Rock A', 'scale') == pos(e0, 'Rock A', 'scale'), 'apply nested root in Tower: Rock instances do not')
 
 # state, added and removed components: apply and revert
 ops = [
@@ -368,7 +359,7 @@ check('sprite' not in e[RA]['components'] and 'sprite' not in e[TA]['components'
 e = ents(remReverted)
 check('sprite' in e[RB]['components'] and 'sprite' in e[RA]['components'] and 'removed' not in ov(e, RB), 'revert removed component')
 e = ents(compReverted)
-check('overrides' not in e[RB] and tr(e, RB) == [90, 0, 0] and tr(e, RB, 'scale') == [1, 1, 1], 'revert component: every property back')
+check('overrides' not in e[RB] and pos(e, RB) == [90, 0, 0] and pos(e, RB, 'scale') == [1, 1, 1], 'revert component: every property back')
 
 # Apply All / Revert All
 ops = [
@@ -396,10 +387,10 @@ check('Tower A/Base/Rock/Rock/Leaf' in e, 'undo revert all: added GameObject bac
 e = ents(appAll)
 left = {k: v.get('overrides') for k, v in e.items() if k.startswith('Tower A/') and v.get('overrides')}
 print('  left after apply all:', left)
-check(tr(e, CAROOT + '/Rock/Pebble') == [6, 6, 0], 'apply all: Castle (nests Tower) gets the nested override')
-check(tr(e, RA) == [90, 0, 0] and tr(e, RB) == [90, 0, 0], 'apply all: plain Rock instances unaffected (applied as Tower overrides)')
+check(pos(e, CAROOT + '/Rock/Pebble') == [6, 6, 0], 'apply all: Castle (nests Tower) gets the nested override')
+check(pos(e, RA) == [90, 0, 0] and pos(e, RB) == [90, 0, 0], 'apply all: plain Rock instances unaffected (applied as Tower overrides)')
 e = ents(appUndo)
-check(tr(e, CAROOT + '/Rock/Pebble') == [90, 0, 0], 'undo apply all')
+check(pos(e, CAROOT + '/Rock/Pebble') == [90, 0, 0], 'undo apply all')
 
 
 done()

@@ -26,7 +26,6 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/PrefabOverridesCmd.h"
-#include "command/type/DeleteEntityCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -38,6 +37,7 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
+#include "util/EntityPath.h"
 #include "imgui.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -187,11 +187,6 @@ static bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat
     return false;
 }
 
-// The spec format the game's ShaderPool/ShaderVariantCollection take as well
-static bool parseShaderSpec(const std::string& value, ShaderKey& out, std::string& error) {
-    return ShaderPool::parseShaderSpec(value, out, &error);
-}
-
 static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {
     const std::vector<ShaderBackend>& all = ShaderPool::getShaderBackends();
     backends.insert(all.begin(), all.end());
@@ -231,7 +226,9 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " export [options]         Export a project.\n"
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
-        << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n\n"
+        << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
+        << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
+        << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -323,7 +320,7 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
-            if (!parseShaderSpec(value, key, error)) {
+            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
                 return false;
             }
             options.shaderKeys.insert(key);
@@ -375,7 +372,7 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
-            if (!parseShaderSpec(value, key, error)) {
+            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
                 return false;
             }
             options.shaderKeys.insert(key);
@@ -605,27 +602,9 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 // prefabs) after the dump.
 namespace {
 
-std::string dumpPath(Scene* scene, Entity entity, std::map<Entity, std::string>& cache, int depth = 0) {
-    auto it = cache.find(entity);
-    if (it != cache.end()) return it->second;
-    std::string parentPath;
-    Entity parent = NULL_ENTITY;
-    if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
-    if (parent != NULL_ENTITY && depth < 256) parentPath = dumpPath(scene, parent, cache, depth + 1) + "/";
-    // index among the earlier siblings of the same name, in Transform order
-    std::string name = scene->getEntityName(entity);
-    int index = 0;
-    if (scene->findComponent<Transform>(entity)) {
-        auto transforms = scene->getComponentArray<Transform>();
-        size_t own = transforms->getIndex(entity);
-        for (size_t i = 0; i < own; i++) {
-            Entity other = transforms->getEntity(i);
-            if (transforms->getComponentFromIndex(i).parent == parent && scene->getEntityName(other) == name) index++;
-        }
-    }
-    std::string path = parentPath + name + (index ? "#" + std::to_string(index) : "");
-    cache[entity] = path;
-    return path;
+// The dump's paths are EntityPath's (the MCP server addresses GameObjects the same way)
+std::string dumpPath(Scene* scene, Entity entity, EntityPath::Cache& cache) {
+    return EntityPath::of(scene, entity, &cache);
 }
 
 }
@@ -723,12 +702,10 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
     for (SceneProject* candidate : candidates) {
         SceneProject& sceneProject = *candidate;
         if (!sceneProject.scene || (!inStage && !sceneName.empty() && sceneProject.name != sceneName)) continue;
-        std::map<Entity, std::string> paths;
-        for (Entity entity : sceneProject.entities) {
-            if (sceneProject.scene->isEntityCreated(entity) && dumpPath(sceneProject.scene, entity, paths) == path) {
-                sceneOut = &sceneProject;
-                return entity;
-            }
+        const Entity entity = EntityPath::find(sceneProject, path);
+        if (entity != NULL_ENTITY) {
+            sceneOut = &sceneProject;
+            return entity;
         }
     }
     std::cerr << "scene-dump: no GameObject at " << path << "\n";

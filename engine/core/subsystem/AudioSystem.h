@@ -18,6 +18,8 @@ namespace jasperengine{
 
     private:
 		static bool inited;
+		// set when opening the output failed: it is not tried again
+		static bool outputUnavailable;
 
 		static void deInit();
 
@@ -34,6 +36,8 @@ namespace jasperengine{
 
 		static SoLoud::Soloud& getSoloud();
 		static bool init();
+		// false once opening the audio output failed (no device): sounds are muted
+		static bool isOutputAvailable();
 
 		static void stopAll();
 		static void pauseAll();

@@ -41,6 +41,14 @@ namespace jasperengine::editor{
         SCENE_UI
     };
 
+    // What closing a scene with unsaved changes does, the Unsaved Changes dialog's answer
+    // given up front (Project's non-interactive APIs): Cancel fails and closes nothing
+    enum class UnsavedChoice {
+        Cancel,
+        Save,
+        Discard
+    };
+
     enum class ScenePlayState {
         STOPPED,
         SAVING,
@@ -417,17 +425,6 @@ namespace jasperengine::editor{
         size_t totalMissing() const;
     };
 
-    struct SharedMoveRecoveryEntry {
-        Entity oldParent;
-        size_t oldIndex;
-        size_t hasTransform;
-        // An instance where the move changed whether the GameObject is there: it went below a
-        // GameObject the instance removed (taken out, put back by the undo), or came out from
-        // below one (brought in, taken out again by the undo)
-        PrefabBranchRecovery left;
-        Entity entered = NULL_ENTITY;
-    };
-
     struct TerrainEditorSettings {
         int brushMode = 0;           // TerrainBrushMode::Raise
         int brushShape = 0;          // TerrainBrushShape::Circle
@@ -557,8 +554,6 @@ namespace jasperengine::editor{
         bool fullscreen = true;
         bool keepScreenOn = false;
     };
-
-    using SharedMoveRecovery = std::map<std::string, SharedMoveRecoveryEntry>;
 
     struct ComponentRecoveryEntry {
         Entity entity;
@@ -723,7 +718,6 @@ namespace jasperengine::editor{
         };
 
         std::filesystem::path projectPath;
-        bool resourcesFocused;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
         std::chrono::steady_clock::time_point lastMaterialRefreshTime;
         static constexpr double materialRefreshIntervalSec = 0.2;
@@ -903,6 +897,16 @@ namespace jasperengine::editor{
         void collectStartActiveScenes(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds);
 
         uint32_t createNewSceneInternal(std::string sceneName, SceneType type, uint32_t previousSceneId);
+        bool createProjectInDirectory(const std::filesystem::path& path, const std::string& projectName, bool deleteIfExists);
+
+        // Above zero while a non-interactive API runs: alertUser() only logs
+        int nonInteractiveDepth = 0;
+        void alertUser(const std::string& title, const std::string& message);
+        // A scene path given to a non-interactive API: absolute, normalized, inside the
+        // project, ".scene" added when withExtension; empty (and `error` set) when invalid
+        std::filesystem::path resolveScenePath(const std::filesystem::path& path, bool withExtension, std::string& error) const;
+        // A scene about to close with unsaved changes, as `unsaved` says
+        bool settleUnsavedScene(uint32_t sceneId, UnsavedChoice unsaved, std::string& error);
 
         // Restore the view state kept while a file was unreadable, put the scene back
         // at its listed position, and roll back what a failed load built. Reordering
@@ -924,6 +928,11 @@ namespace jasperengine::editor{
     public:
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
+        // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated
+        // CMakeLists.txt), as Play does before it builds, without playing: the C++ script lists
+        // of the loaded scenes are collected again first. Returns the scripts the build compiles.
+        // Main thread, not while playing (MCP compile_scripts).
+        std::vector<SceneScriptSource> prepareScriptBuild();
 
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
@@ -1173,6 +1182,47 @@ namespace jasperengine::editor{
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
         void removeScene(uint32_t sceneId);
+
+        //=== Non-interactive scene and project APIs (MCP server, CLI) ===
+        // They never open a dialog or an alert: what goes wrong is logged through Out and
+        // returned in `error` when given. Main thread, between frames (a main-thread task);
+        // they fail while a scene plays. Paths are project-relative or absolute inside the
+        // project.
+
+        // File > New Scene without the prompts: a scene named after `name` (made unique;
+        // empty: saveAs's file name, else "New Scene"), 3D scenes with a sun and a sky,
+        // selected and docked. saveAs saves it there at once (".scene" added when missing).
+        // closePrevious closes the scene selected before, `unsaved` deciding its changes.
+        // Returns its id, NULL_PROJECT_SCENE when nothing was created; a saveAs that fails
+        // after creating it returns the id of the (untitled) scene with `error` set.
+        uint32_t createSceneNow(const std::string& name, SceneType type, const std::filesystem::path& saveAs = {},
+                                bool closePrevious = false, UnsavedChoice unsaved = UnsavedChoice::Cancel,
+                                std::string* error = nullptr);
+        // Opens a .scene file and selects it, adding it to the project when it is not listed
+        // yet; an open one is only selected. closePrevious closes the scene selected before
+        // (once the new one loaded), `unsaved` deciding its changes. Returns the scene's id,
+        // NULL_PROJECT_SCENE on failure.
+        uint32_t openSceneNow(const std::filesystem::path& path, bool closePrevious = false,
+                              UnsavedChoice unsaved = UnsavedChoice::Cancel, std::string* error = nullptr);
+        // Closes an open scene (its tab; a scene never saved leaves the project). Another
+        // open scene is selected first when it is the selected one; the last open scene
+        // cannot close. Save fails for a scene never saved (saveSceneNow it with a path).
+        bool closeSceneNow(uint32_t sceneId, UnsavedChoice unsaved = UnsavedChoice::Cancel, std::string* error = nullptr);
+        // Saves a scene now (and its modified child scenes, as Save does), synchronously.
+        // pathIfUntitled is where a scene never saved goes (".scene" added when missing,
+        // folders created); a saved scene stays in its own file (a different path is an
+        // error: there is no Save As). A prefab stage's id saves its prefab asset.
+        bool saveSceneNow(uint32_t sceneId, const std::filesystem::path& pathIfUntitled = {}, std::string* error = nullptr);
+        // New Project, then Save Project into dir: the project `name` (empty: dir's name) in
+        // dir (created when missing; one holding a project.yaml is an error), with one
+        // untitled 3D scene, becomes the current project. Does not ask about the current
+        // project's unsaved changes (check hasScenesUnsavedChanges() first). Switching
+        // projects tears the editor's windows down: from a tool call run it through
+        // EditorHost::requestProjectChange, then wait for getProjectPath() to change.
+        bool createProjectAt(const std::filesystem::path& dir, const std::string& name, std::string* error = nullptr);
+        // Opens the project in dir (or the one a project.yaml path names) as Open Project
+        // does, without the prompts; same notes as createProjectAt
+        bool openProjectNow(const std::filesystem::path& path, std::string* error = nullptr);
 
         std::vector<std::filesystem::path> findSceneFiles() const;
         uint32_t findSceneByPath(const std::filesystem::path& filepath) const;
@@ -1449,7 +1499,7 @@ namespace jasperengine::editor{
         // Commands keep the overrides from before the edit for their undo
         // (getPrefabEditOverrides / setPrefabEditOverrides, command/PrefabEditUndo.h).
 
-        // Prefab Mode (agent D): true when `entity` is a GameObject of a prefab asset being
+        // True when `entity` is a GameObject of a prefab asset being
         // edited in Prefab Mode, whose edits are asset edits, not instance overrides
         bool isEditingPrefabAsset(uint32_t sceneId, Entity entity) const;
         // Property edits ({} or "*": the whole component)
@@ -1486,9 +1536,6 @@ namespace jasperengine::editor{
         // Stop's restore of a scene played in place: its snapshot (entities, components,
         // prefab bookkeeping) back, what Play created destroyed; false without a snapshot
         bool restorePlaySnapshot(SceneProject* sceneProject);
-
-        SharedMoveRecovery moveEntityFromPrefab(uint32_t sceneId, Entity entity, Entity target, InsertionType type, bool moveItself = true);
-        bool undoMoveEntityInPrefab(uint32_t sceneId, Entity entity, Entity target, const SharedMoveRecovery& recovery, bool moveItself = true);
 
         void cleanupPrefabsForScene(uint32_t sceneId);
 

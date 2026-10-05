@@ -85,9 +85,6 @@ void editor::ReplacePrefabCmd::undo(){
     sceneProject->isModified = wasModified;
 }
 
-bool editor::ReplacePrefabCmd::mergeWith(editor::Command* otherCommand){
-    return false;
-}
 
 // ---- Unpack of a Missing Prefab ----
 
@@ -155,8 +152,4 @@ void editor::UnpackMissingPrefabCmd::undo(){
     sceneProject->structureVersion++;
     sceneProject->needUpdateRender = true;
     sceneProject->isModified = wasModified;
-}
-
-bool editor::UnpackMissingPrefabCmd::mergeWith(editor::Command* otherCommand){
-    return false;
 }

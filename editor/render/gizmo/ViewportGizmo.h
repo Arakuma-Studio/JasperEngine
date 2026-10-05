@@ -45,9 +45,7 @@ namespace jasperengine::editor{
         ViewportGizmoAxis hitTest(float normalizedX, float normalizedY) const;
 
         Framebuffer* getFramebuffer();
-        TextureRender& getTexture();
         Scene* getScene();
-        GameObject* getGameObject();
     };
 
 }

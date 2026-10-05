@@ -29,6 +29,12 @@ void EditorHost::clearSceneWindowState(uint32_t) {
 void EditorHost::prepareForProjectSwitch() {
 }
 
+void EditorHost::requestProjectChange(std::function<void()> change) {
+    if (change) {
+        change();
+    }
+}
+
 void EditorHost::resetLastActivatedScene() {
 }
 
@@ -52,6 +58,10 @@ void EditorHost::saveAllCodeEditors() {
 }
 
 void EditorHost::requestScenePlayFocus(uint32_t) {
+}
+
+std::string EditorHost::backgroundWorkConflict(const std::string&) const {
+    return {};
 }
 
 void EditorHost::reportLoadingProgress(const std::string&) {

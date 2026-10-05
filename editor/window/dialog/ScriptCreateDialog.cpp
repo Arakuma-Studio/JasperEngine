@@ -71,7 +71,7 @@ void ScriptCreateDialog::open(Scene* scene,
     m_attachError.clear();
     m_onCreate = onCreate;
     m_onCancel = onCancel;
-    std::string base = defaultBaseName.empty() ? "NewScript" : sanitizeClassName(defaultBaseName);
+    std::string base = sanitizeClassName(defaultBaseName);
     strncpy(m_baseNameBuffer, base.c_str(), sizeof(m_baseNameBuffer) - 1);
     m_baseNameBuffer[sizeof(m_baseNameBuffer) - 1] = '\0';
 }
@@ -95,22 +95,18 @@ std::string ScriptCreateDialog::inferClassName(const fs::path& headerPath,
     return fallback;
 }
 
-fs::path ScriptCreateDialog::makeHeaderPath(const std::string& className) const {
-    return fs::path(m_selectedPath) / (className + ".h");
-}
-
-fs::path ScriptCreateDialog::makeSourcePath(const std::string& className) const {
-    return fs::path(m_selectedPath) / (className + ".cpp");
-}
-
-fs::path ScriptCreateDialog::makeLuaPath(const std::string& moduleName) const {
-    return fs::path(m_selectedPath) / (moduleName + ".lua");
-}
-
 void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
                                       const fs::path& sourcePath,
                                       const std::string& classOrModuleName,
                                       CreationKind kind) {
+    writeTemplateFiles(m_scene, m_entity, headerPath, sourcePath, classOrModuleName, kind);
+}
+
+void ScriptCreateDialog::writeTemplateFiles(Scene* scene, Entity entity,
+                                            const fs::path& headerPath,
+                                            const fs::path& sourcePath,
+                                            const std::string& classOrModuleName,
+                                            CreationKind kind) {
     bool isCppSubclass = kind == CreationKind::CPP_SUBCLASS;
     bool isCppScriptBase = kind == CreationKind::CPP_SCRIPT_CLASS;
     bool isLua = kind == CreationKind::LUA;
@@ -119,7 +115,7 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
         fs::create_directories(headerPath.parent_path());
 
         if (isCppSubclass) {
-            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(m_scene, m_entity);
+            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(scene, entity);
             std::string parentClass = parentInfo.name;
             bool hasTransform = parentInfo.derivesObject;
             bool isMesh = parentInfo.derivesMesh;
@@ -427,11 +423,11 @@ void ScriptCreateDialog::show() {
     if (!m_attachExisting) {
         ImGui::Spacing();
         ImGui::TextUnformatted("Template");
-        if (ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS)) {}
+        ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS);
         ImGui::SetItemTooltip("C++ class deriving from the GameObject's engine class, with its methods at hand.");
-        if (ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS)) {}
+        ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS);
         ImGui::SetItemTooltip("Standalone C++ script, like a MonoBehaviour.");
-        if (ImGui::RadioButton("Lua Script", (int*)&m_creationKind, (int)CreationKind::LUA)) {}
+        ImGui::RadioButton("Lua Script", (int*)&m_creationKind, (int)CreationKind::LUA);
     }
 
     bool isLua = m_attachExisting
@@ -572,10 +568,10 @@ void ScriptCreateDialog::show() {
     fs::path headerPath;
     fs::path sourcePath;
     if (isCpp) {
-        headerPath = makeHeaderPath(name);
-        sourcePath = makeSourcePath(name);
+        headerPath = fs::path(m_selectedPath) / (name + ".h");
+        sourcePath = fs::path(m_selectedPath) / (name + ".cpp");
     } else if (isLua) {
-        sourcePath = makeLuaPath(name);
+        sourcePath = fs::path(m_selectedPath) / (name + ".lua");
     }
 
     std::error_code existsEc;

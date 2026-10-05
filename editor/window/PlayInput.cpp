@@ -34,6 +34,17 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
     bool forwardMouse = capturedMouse ? focused : hovered;
 
+    // The pointer belongs to an MCP agent until the real mouse does something here
+    if (pointerInjected) {
+        const bool realActivity = mouseDelta.x != 0 || mouseDelta.y != 0 || io.MouseWheel != 0 ||
+            ImGui::IsAnyMouseDown();
+        if (forwardMouse && realActivity) {
+            pointerInjected = false;
+        } else {
+            forwardMouse = false;
+        }
+    }
+
     // A drag that leaves the view keeps being forwarded until its button comes up
     if (mouseSceneId == sceneId) {
         for (int button : pressedMouseButtons) {
@@ -125,7 +136,7 @@ void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
     }
     io.InputQueueCharacters.resize(0);
 
-    auto forwardKeyPress = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
+    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
         if (ImGui::IsKeyPressed(imguiKey, false)){
             if (charInput != 0){
                 Engine::systemCharInput(charInput);
@@ -139,18 +150,11 @@ void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
             Engine::systemKeyDown(engineKey, true, mods);
             pressedKeys.insert(engineKey);
         }
-    };
 
-    auto forwardKeyRelease = [&](ImGuiKey imguiKey, int engineKey){
         if (ImGui::IsKeyReleased(imguiKey)){
             Engine::systemKeyUp(engineKey, false, mods);
             pressedKeys.erase(engineKey);
         }
-    };
-
-    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
-        forwardKeyPress(imguiKey, engineKey, charInput, allowRepeat);
-        forwardKeyRelease(imguiKey, engineKey);
     };
 
     auto forwardKeyRange = [&](ImGuiKey imguiFirst, int engineFirst, int count){

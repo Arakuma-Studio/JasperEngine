@@ -206,6 +206,7 @@ namespace jasperengine::editor{
         void setupLight2DIcon(Light2DObjects& lo);
 
         float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
+        void ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity);
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
@@ -319,6 +320,9 @@ namespace jasperengine::editor{
         bool hasUnderlay() const { return underlayScene != nullptr; }
 
         TextureRender& getTexture();
+        // What the Scene view shows (the scene, its layers and the editor overlays), as last
+        // drawn; for screenshots read it with GraphicUtils::encodeFramebufferPng
+        Framebuffer* getFramebuffer() { return &framebuffer; }
         Camera* getCamera();
         // ray through (x, y) of the Scene view (engine pixels) from the editor camera
         Ray screenToRay(float x, float y);
@@ -340,7 +344,6 @@ namespace jasperengine::editor{
 
         bool isUseGlobalTransform() const;
         void setUseGlobalTransform(bool useGlobalTransform);
-        void changeUseGlobalTransform();
 
         void enableCursorPointer();
         void enableCursorHand();

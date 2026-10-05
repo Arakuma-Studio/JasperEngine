@@ -233,18 +233,6 @@ void editor::ToolsLayer::setGizmoVisible(bool visible){
     }
 }
 
-Framebuffer* editor::ToolsLayer::getFramebuffer(){
-    return camera->getFramebuffer();
-}
-
-TextureRender& editor::ToolsLayer::getTexture(){
-    return getFramebuffer()->getRender().getColorTexture();
-}
-
-Camera* editor::ToolsLayer::getCamera(){
-    return camera;
-}
-
 Scene* editor::ToolsLayer::getScene(){
     return scene;
 }

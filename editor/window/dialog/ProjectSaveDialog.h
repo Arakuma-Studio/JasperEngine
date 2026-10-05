@@ -1,7 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// ProjectSaveDialog.h
 #pragma once
 
 #include <string>
@@ -22,6 +21,7 @@ namespace editor {
 
         std::function<void(const std::string&, const fs::path&)> m_onSave;
         std::function<void()> m_onCancel;
+        bool m_cancelRequested = false;
 
     public:
         void open(const std::string& defaultName, 
@@ -30,6 +30,8 @@ namespace editor {
         void show();
         bool isOpen() const { return m_isOpen; }
         void close() { m_isOpen = false; }
+        // Presses Cancel on the next frame (MCP answering the dialog for an agent)
+        void requestCancel() { if (m_isOpen) m_cancelRequested = true; }
     };
 
 } // namespace editor

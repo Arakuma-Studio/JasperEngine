@@ -59,6 +59,11 @@ Rigidbody::Rigidbody(const Rigidbody& rhs) = default;
 Rigidbody& Rigidbody::operator=(const Rigidbody& rhs) = default;
 
 void Rigidbody::checkBody(const RigidbodyComponent& body) const{
+    // Scripts start (Lua init(), C++ constructors) before their scene enters the Engine,
+    // which is what loads the physics bodies: make this one now rather than fail
+    if (body.body.IsInvalid()){
+        scene->getSystem<PhysicsSystem>()->ensureRigidbodyLoaded(entity);
+    }
     if (body.body.IsInvalid()){
         Log::error("Rigidbody is not loaded");
         throw std::runtime_error("Rigidbody is not loaded");
@@ -599,11 +604,9 @@ void Rigidbody::setAllowSleeping(bool allowSleeping){
     getJoltBodyWrite().SetAllowSleeping(allowSleeping);
 }
 
+// Kept in the component too, so a body made again (a collider or scale change) keeps them
 float Rigidbody::getFriction() const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    checkBody(body);
-    return getBodyInterface().GetFriction(body.body);
+    return getComponent<RigidbodyComponent>().friction;
 }
 
 void Rigidbody::setFriction(float friction){
@@ -613,22 +616,23 @@ void Rigidbody::setFriction(float friction){
         Log::warn("Friction should be 0 and 1, 0 = no friction");
     }
 
-    checkBody(body);
-    getBodyInterface().SetFriction(body.body, friction);
+    body.friction = friction;
+    if (!body.body.IsInvalid()){
+        getBodyInterface().SetFriction(body.body, friction);
+    }
 }
 
 float Rigidbody::getRestitution() const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    checkBody(body);
-    return getBodyInterface().GetRestitution(body.body);
+    return getComponent<RigidbodyComponent>().restitution;
 }
 
 void Rigidbody::setRestitution(float restitution){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    checkBody(body);
-    getBodyInterface().SetRestitution(body.body, restitution);
+    body.restitution = restitution;
+    if (!body.body.IsInvalid()){
+        getBodyInterface().SetRestitution(body.body, restitution);
+    }
 }
 
 Vector3 Rigidbody::getPosition() const{

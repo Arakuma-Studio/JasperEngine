@@ -5,6 +5,7 @@
 #include "util/FileDialogs.h"
 #include "AppSettings.h"
 #include "Backend.h"
+#include "EditorHost.h"
 #include "Generator.h"
 #include "pool/ShaderPool.h"
 #include "window/Widgets.h"
@@ -67,7 +68,6 @@ void ExportWindow::open(Project* project) {
     m_project = project;
     m_targetDir.clear();
     m_targetDirFromDefault = false;
-    m_targetDirBuffer[0] = '\0';
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
     if (!startScene || startScene->filepath.empty()) {
@@ -103,56 +103,36 @@ void ExportWindow::open(Project* project) {
     selectPlatform(m_platform, m_buildPlayer);
 }
 
-void ExportWindow::populateShaderList() {
-    m_shaderEntries.clear();
+const char* ExportWindow::localExportMode() const {
+    return m_mode == ExportMode::SourceCode ? "sourceCode" : m_mode == ExportMode::Desktop ? "desktop" : "web";
+}
 
-    if (!m_project) return;
-
-    // Collect all shaderKeys from all scenes (pre-populated list). The stored
-    // keys are refreshed on scene save, so union them with a live collection —
-    // otherwise a component added since the last save (e.g. a shadow-casting
-    // Light2D) would be missing here and from the export.
-    std::set<ShaderKey> addedKeys;
-    for (const auto& scene : m_project->getScenes()) {
-        std::set<ShaderKey> sceneKeys = scene.shaderKeys;
-        m_project->collectSceneShaderKeys(&scene, sceneKeys);
-        m_project->collectRequiredShaderKeys(&scene, sceneKeys);
-        for (const auto& key : sceneKeys) {
-            if (addedKeys.count(key)) continue;
-            addedKeys.insert(key);
-
-            ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-            uint32_t props = ShaderPool::getPropertiesFromKey(key);
-            uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-
-            ShaderEntry entry;
-            entry.key = key;
-            entry.type = type;
-            entry.properties = props;
-            entry.displayName = Exporter::getShaderDisplayName(type, props, customId);
-            m_shaderEntries.push_back(entry);
+void ExportWindow::refreshShaderSelection() {
+    // Stored keys are refreshed on scene save; include live components added since then.
+    std::set<ShaderKey> sceneKeys;
+    if (m_project) {
+        for (const auto& scene : m_project->getScenes()) {
+            std::set<ShaderKey> keys = scene.shaderKeys;
+            m_project->collectSceneShaderKeys(&scene, keys);
+            m_project->collectRequiredShaderKeys(&scene, keys);
+            for (ShaderKey key : keys) sceneKeys.insert(ShaderPool::normalizeKey(key));
         }
     }
 
-    // Sort by type then properties
-    std::sort(m_shaderEntries.begin(), m_shaderEntries.end(), [](const ShaderEntry& a, const ShaderEntry& b) {
-        if (a.type != b.type) return (int)a.type < (int)b.type;
-        return a.properties < b.properties;
-    });
-}
+    std::set<ShaderKey> keys = sceneKeys;
+    keys.insert(m_shaderAdditions.begin(), m_shaderAdditions.end());
+    keys.insert(m_shaderExclusions.begin(), m_shaderExclusions.end());
 
-void ExportWindow::populateShaderListFromKeys(const std::vector<ShaderKey>& shaderKeys) {
     m_shaderEntries.clear();
-
-    for (ShaderKey key : shaderKeys) {
+    for (ShaderKey key : keys) {
         ShaderKey normalizedKey = ShaderPool::normalizeKey(key);
-
         ShaderEntry entry;
         entry.key = normalizedKey;
         entry.type = ShaderPool::getShaderTypeFromKey(normalizedKey);
         entry.properties = ShaderPool::getPropertiesFromKey(normalizedKey);
         uint16_t customId = ShaderPool::getCustomIdFromKey(normalizedKey);
         entry.displayName = Exporter::getShaderDisplayName(entry.type, entry.properties, customId);
+        entry.fromScene = sceneKeys.count(normalizedKey) > 0;
         m_shaderEntries.push_back(entry);
     }
 
@@ -160,21 +140,6 @@ void ExportWindow::populateShaderListFromKeys(const std::vector<ShaderKey>& shad
         if (a.type != b.type) return (int)a.type < (int)b.type;
         return a.properties < b.properties;
     });
-}
-
-const char* ExportWindow::localExportMode() const {
-    return m_mode == ExportMode::SourceCode ? "sourceCode" : m_mode == ExportMode::Desktop ? "desktop" : "web";
-}
-
-void ExportWindow::refreshShaderSelection() {
-    populateShaderList();
-    std::set<ShaderKey> sceneKeys;
-    for (const auto& entry : m_shaderEntries) sceneKeys.insert(ShaderPool::normalizeKey(entry.key));
-    std::set<ShaderKey> keys = sceneKeys;
-    keys.insert(m_shaderAdditions.begin(), m_shaderAdditions.end());
-    keys.insert(m_shaderExclusions.begin(), m_shaderExclusions.end());
-    populateShaderListFromKeys(std::vector<ShaderKey>(keys.begin(), keys.end()));
-    for (auto& entry : m_shaderEntries) entry.fromScene = sceneKeys.count(entry.key) > 0;
     m_selectedShaderIndex = -1;
 }
 
@@ -221,7 +186,6 @@ void ExportWindow::loadSettingsFromProject() {
 
     m_targetDir.clear();
     m_targetDirFromDefault = false;
-    m_targetDirBuffer[0] = '\0';
     m_selectedShaderIndex = -1;
     m_sourceBackendsConfigured = false;
     m_selectSourceBackendTab = true;
@@ -292,12 +256,6 @@ void ExportWindow::loadSettingsFromProject() {
     if (m_targetDir.empty()) {
         m_targetDir = AppSettings::getDefaultExportDirectory();
         m_targetDirFromDefault = !m_targetDir.empty();
-    }
-
-    if (!m_targetDir.empty()) {
-        std::string targetDirString = m_targetDir.string();
-        strncpy(m_targetDirBuffer, targetDirString.c_str(), sizeof(m_targetDirBuffer) - 1);
-        m_targetDirBuffer[sizeof(m_targetDirBuffer) - 1] = '\0';
     }
 }
 
@@ -715,8 +673,6 @@ void ExportWindow::drawOutputDirRow(const char* label) {
             if (!selectedPath.empty()) {
                 m_targetDir = selectedPath;
                 m_targetDirFromDefault = false;
-                strncpy(m_targetDirBuffer, selectedPath.c_str(), sizeof(m_targetDirBuffer) - 1);
-                m_targetDirBuffer[sizeof(m_targetDirBuffer) - 1] = '\0';
                 saveCurrentSettingsToProject();
             }
         }
@@ -1248,6 +1204,13 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     // so closed scenes still contribute and an exclusion cannot empty the list early
     exportConfig.shaderAdditions = m_shaderAdditions;
     exportConfig.shaderExclusions = m_shaderExclusions;
+
+    // An MCP agent's build job may be exporting or compiling the project right now
+    const std::string conflict = editor::getEditorHost().backgroundWorkConflict("export");
+    if (!conflict.empty()) {
+        editor::getEditorHost().registerAlert("Cannot Export", conflict);
+        return;
+    }
 
     if (!saveCurrentSettingsToProject()) return;
     m_step = Step::Progress;

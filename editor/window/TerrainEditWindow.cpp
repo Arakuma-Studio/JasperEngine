@@ -1545,7 +1545,9 @@ bool editor::TerrainEditWindow::applyBrush(SceneProject* sceneProject, Entity en
     // so frame rate and mouse event frequency don't change stroke intensity.
     const auto now = std::chrono::steady_clock::now();
     float deltaTime = BRUSH_CLICK_SECONDS;
-    if (stroke.hasLastPoint){
+    if (scriptedStampSeconds >= 0.0f){
+        deltaTime = scriptedStampSeconds;
+    }else if (stroke.hasLastPoint){
         deltaTime = std::chrono::duration<float>(now - stroke.lastStampTime).count();
         deltaTime = std::clamp(deltaTime, 0.0f, BRUSH_MAX_STAMP_SECONDS);
     }
@@ -3766,4 +3768,214 @@ void editor::TerrainEditWindow::adjustBrushSize(float factor){
 
 void editor::TerrainEditWindow::adjustBrushStrength(float factor){
     brushStrength = std::clamp(brushStrength * factor, MIN_BRUSH_STRENGTH, MAX_BRUSH_STRENGTH);
+}
+
+bool editor::TerrainEditWindow::scriptedStroke(uint32_t sceneId, Entity entity, const TerrainScriptedBrush& brush,
+                                               const std::vector<Vector3>& localPoints, std::string& error, int* placed){
+    if (placed){
+        *placed = 0;
+    }
+    if (localPoints.empty()){
+        error = "A stroke needs at least one point.";
+        return false;
+    }
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    if (!sceneProject || !sceneProject->scene){
+        error = "Scene not found.";
+        return false;
+    }
+    if (sceneProject->playState != ScenePlayState::STOPPED){
+        error = "Terrain can't be edited while the scene is playing.";
+        return false;
+    }
+    Scene* scene = sceneProject->scene;
+    if (!scene->isEntityCreated(entity) || !scene->findComponent<TerrainComponent>(entity) || !scene->findComponent<Transform>(entity)){
+        error = "The GameObject has no Terrain component.";
+        return false;
+    }
+
+    // A mouse stroke in progress ends first, so its undo step stays its own
+    endStroke();
+
+    // The window's state, put back afterwards: a scripted stroke does not change the tool settings
+    const uint32_t savedSceneId = selectedSceneId;
+    const Entity savedEntity = selectedEntity;
+    const TerrainBrushMode savedMode = brushMode;
+    const TerrainBrushShape savedShape = brushShape;
+    const TerrainBrushFalloff savedFalloff = brushFalloff;
+    const float savedSize = brushSize, savedStrength = brushStrength, savedRotation = brushRotation;
+    const float savedFlatten = flattenHeight, savedNoise = noiseSize;
+    const int savedTerrace = terraceSteps, savedTextureLayer = selectedTextureLayer, savedFoliageLayer = selectedFoliageLayer;
+    const bool savedNormalize = normalizeBlendPaint, savedPick = flattenPickOnStroke;
+    const std::string savedMask = brushMaskPath;
+    const int savedHeightRes = heightMapResolution, savedBlendRes = blendMapResolution, savedDensityRes = densityMapResolution;
+    const std::string savedAsset = placeAssetPath;
+    const bool savedInstanced = placeInstanced;
+    const float savedSpacing = placeSpacing, savedMinScale = placeMinScale, savedMaxScale = placeMaxScale;
+    const float savedJitter = placeRotationJitter, savedAlign = placeAlignToNormal;
+    const bool savedUseMask = paintUseMask;
+
+    auto restore = [&](){
+        scriptedStampSeconds = -1.0f;
+        selectedSceneId = savedSceneId;
+        selectedEntity = savedEntity;
+        brushMode = savedMode;
+        brushShape = savedShape;
+        brushFalloff = savedFalloff;
+        brushSize = savedSize;
+        brushStrength = savedStrength;
+        brushRotation = savedRotation;
+        flattenHeight = savedFlatten;
+        noiseSize = savedNoise;
+        terraceSteps = savedTerrace;
+        selectedTextureLayer = savedTextureLayer;
+        selectedFoliageLayer = savedFoliageLayer;
+        normalizeBlendPaint = savedNormalize;
+        flattenPickOnStroke = savedPick;
+        setBrushMask(savedMask);
+        heightMapResolution = savedHeightRes;
+        blendMapResolution = savedBlendRes;
+        densityMapResolution = savedDensityRes;
+        placeAssetPath = savedAsset;
+        placeInstanced = savedInstanced;
+        placeSpacing = savedSpacing;
+        placeMinScale = savedMinScale;
+        placeMaxScale = savedMaxScale;
+        placeRotationJitter = savedJitter;
+        placeAlignToNormal = savedAlign;
+        paintUseMask = savedUseMask;
+    };
+
+    selectedSceneId = sceneId;
+    selectedEntity = entity;
+    brushMode = brush.mode;
+    brushShape = brush.shape;
+    brushFalloff = brush.falloff;
+    brushSize = std::clamp(brush.size, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
+    brushStrength = std::clamp(brush.strength, MIN_BRUSH_STRENGTH, MAX_BRUSH_STRENGTH);
+    brushRotation = std::clamp(brush.rotation, 0.0f, 360.0f);
+    flattenPickOnStroke = brush.flattenHeight < 0.0f;
+    flattenHeight = std::clamp(brush.flattenHeight < 0.0f ? 0.5f : brush.flattenHeight, 0.0f, 1.0f);
+    terraceSteps = std::clamp(brush.terraceSteps, MIN_TERRACE_STEPS, MAX_TERRACE_STEPS);
+    noiseSize = std::max(0.1f, brush.noiseSize);
+    selectedTextureLayer = std::clamp(brush.textureLayer, 0, MAX_TERRAIN_LAYERS - 1);
+    selectedFoliageLayer = std::max(0, brush.foliageLayer);
+    normalizeBlendPaint = brush.normalizeBlend;
+    paintUseMask = false;
+    setBrushMask(brush.maskPath);
+    if (brush.mapResolution > 0){
+        heightMapResolution = blendMapResolution = densityMapResolution = std::clamp(brush.mapResolution, 2, 4096);
+    }
+    placeAssetPath = brush.placeAssetPath;
+    placeInstanced = brush.placeInstanced;
+    placeSpacing = std::max(MIN_PLACE_SPACING, brush.placeSpacing);
+    placeMinScale = std::max(0.01f, brush.placeMinScale);
+    placeMaxScale = std::max(placeMinScale, brush.placeMaxScale);
+    placeRotationJitter = std::clamp(brush.placeRotationJitter, 0.0f, 1.0f);
+    placeAlignToNormal = std::clamp(brush.placeAlignToNormal, 0.0f, 1.0f);
+
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
+        restore();
+        error = "The terrain has no size (terrainSize is 0).";
+        return false;
+    }
+
+    if (isPlacementBrush()){
+        if (!isPlacementReady()){
+            restore();
+            error = "place_object needs an asset (a model or prefab path).";
+            return false;
+        }
+        clearStroke();
+        stroke.active = true;
+        stroke.placement = true;
+        stroke.sceneId = sceneId;
+        stroke.entity = entity;
+        stroke.placementStrokeId = ++placementStrokeCounter;
+        stroke.instanced = useInstancedPlacement();
+        stroke.placedPoints = collectPlacedPoints(sceneProject, entity);
+        stroke.effectiveMode = brushMode;
+        int count = 0;
+        for (const Vector3& point : localPoints){
+            const bool done = brushMode == TerrainBrushMode::EraseObject
+                ? applyObjectErase(sceneProject, entity, point)
+                : applyPlacement(sceneProject, entity, point);
+            if (done) count++;
+        }
+        clearStroke();
+        restore();
+        if (placed){
+            *placed = count;
+        }
+        return true;
+    }
+
+    if (brushMode == TerrainBrushMode::Stamp && brushMaskPath.empty()){
+        restore();
+        error = "The stamp brush needs a mask texture (its relief).";
+        return false;
+    }
+
+    const TerrainMapRef ref = getBrushMapRef();
+    if (ref.target == TerrainMapTarget::DensityMap && ref.layer >= static_cast<int>(terrain.foliageLayers.size())){
+        restore();
+        error = "foliage_layer " + std::to_string(ref.layer) + " does not exist: the terrain has " +
+                std::to_string(terrain.foliageLayers.size()) + " foliage layer(s).";
+        return false;
+    }
+
+    // The map the brush writes is created first when missing, as the window's Create button does
+    ensureMapSlot(terrain, ref);
+    Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
+    if (!texture || texture->empty()){
+        const int resolution = mapResolutionFor(ref.target);
+        createMapForTarget(ref, resolution, resolution);
+        texture = TerrainMapUtils::findTexture(scene->getComponent<TerrainComponent>(entity), ref);
+    }
+    if (!texture || texture->empty()){
+        restore();
+        error = "Could not create the terrain map the brush paints.";
+        return false;
+    }
+
+    clearStroke();
+    loadBrushMask();
+    stroke.active = true;
+    stroke.sceneId = sceneId;
+    stroke.entity = entity;
+    stroke.ref = ref;
+    stroke.effectiveMode = brushMode;
+
+    const bool forceBeforePixels = texture->getPath(0).empty() || isOwnedEditableTexturePath(texture->getPath(0), sceneId, entity, ref);
+    stroke.beforeSnapshot = captureSnapshot(project, *texture, forceBeforePixels);
+    if (ref.target == TerrainMapTarget::HeightMap){
+        TerrainComponent& heightTerrain = scene->getComponent<TerrainComponent>(entity);
+        captureStrokeHeightReference(heightTerrain);
+
+        float surfaceHeight = 0.0f;
+        Vector3 normal(0.0f, 1.0f, 0.0f);
+        scene->getSystem<MeshSystem>()->sampleTerrainSurface(heightTerrain, localPoints[0].x, localPoints[0].z, surfaceHeight, normal);
+        stroke.flattenTarget = flattenHeight;
+        if (std::abs(heightTerrain.maxHeight) > std::numeric_limits<float>::epsilon()){
+            stroke.flattenTarget = std::clamp(surfaceHeight / heightTerrain.maxHeight, 0.0f, 1.0f);
+        }
+        stroke.rampStart = localPoints[0];
+        stroke.rampStartHeight = stroke.flattenTarget;
+    }
+
+    // Each point is held for secondsPerPoint, in slices no longer than a mouse event's
+    const float seconds = std::clamp(brush.secondsPerPoint, 0.0f, 10.0f);
+    const int slices = std::max(1, static_cast<int>(std::ceil(seconds / BRUSH_MAX_STAMP_SECONDS)));
+    for (const Vector3& point : localPoints){
+        for (int i = 0; i < slices; i++){
+            scriptedStampSeconds = seconds / static_cast<float>(slices);
+            applyBrush(sceneProject, entity, Vector3(point.x, 0.0f, point.z));
+        }
+    }
+    scriptedStampSeconds = -1.0f;
+
+    endStroke();
+    restore();
+    return true;
 }

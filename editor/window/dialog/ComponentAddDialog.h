@@ -45,7 +45,6 @@ private:
     std::function<bool(ComponentType)> m_canAddComponent;
     std::function<void()> m_onNewScript;
 
-    void initializeCategories();
     void finish(bool cancelled);
 
 public:

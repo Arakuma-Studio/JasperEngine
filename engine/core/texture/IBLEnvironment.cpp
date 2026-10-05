@@ -28,10 +28,6 @@ namespace {
         std::vector<float> faces[6]; // size*size*3
     };
 
-    void cleanupBuffer(void* data){
-        free(data);
-    }
-
     const float* getSRGBToLinearLUT(){
         static float lut[256];
         static bool initialized = false;
@@ -441,7 +437,7 @@ bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6
     // must come after texture creation: in the synchronous path scheduleCleanup
     // frees immediately, and the data is only consumed inside sg_make_image
     for (int level = 0; level < SPECULAR_MIPS; level++){
-        SystemRender::scheduleCleanup(cleanupBuffer, specData[level]);
+        SystemRender::scheduleCleanup(std::free, specData[level]);
     }
 
     if (!irrCreated || !specCreated){

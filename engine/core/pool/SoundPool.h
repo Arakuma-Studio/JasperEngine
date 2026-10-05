@@ -40,7 +40,6 @@ namespace jasperengine{
         static std::atomic<bool> shutdownRequested;
 
         static std::shared_ptr<SoLoud::Wav> loadSoundInternal(const std::string& id, const std::string& filename, bool trackProgress);
-        static std::string getSoundDisplayName(const std::string& path);
 
     public:
         static SoundLoadResult loadFromFile(const std::string& id, const std::string& filename);

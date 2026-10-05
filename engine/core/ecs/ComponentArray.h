@@ -146,10 +146,19 @@ namespace jasperengine {
             // Key: index in the other array; entities without it go last
             const size_t count = componentArray.size();
             const size_t missing = std::numeric_limits<size_t>::max();
+            if (count < 2){
+                return;
+            }
             std::vector<size_t> keys(count);
             for (size_t i = 0; i < count; i++){
                 auto it = otherComponent->entityToIndexMap.find(indexToEntity[i]);
                 keys[i] = it != otherComponent->entityToIndexMap.end() ? it->second : missing;
+            }
+
+            // Usually already ordered (a block appended at the end). Check the
+            // keys directly before allocating and filling the permutation.
+            if (std::is_sorted(keys.begin(), keys.end())){
+                return;
             }
 
             // Create a vector of indices [0, 1, ..., N-1]
@@ -159,11 +168,6 @@ namespace jasperengine {
             auto less = [&keys](size_t a, size_t b) {
                 return keys[a] < keys[b];
             };
-
-            // Most calls find the array in order already (a block appended at the end)
-            if (std::is_sorted(indices.begin(), indices.end(), less)){
-                return;
-            }
 
             // Sort indices based on the key in otherComponent
             std::sort(indices.begin(), indices.end(), less);

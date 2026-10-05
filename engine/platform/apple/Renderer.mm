@@ -32,7 +32,7 @@ static CGSize _screenSize;
 
     std::vector<char*> argv;
     argv.reserve(arguments.size() + 1);
-    for (std::string& arg in arguments)
+    for (std::string& arg : arguments)
         argv.push_back(arg.data());
     argv.push_back(nullptr);
     jasperengine::Engine::systemInit((int)arguments.size(), argv.data(), new JasperEngineApple());
