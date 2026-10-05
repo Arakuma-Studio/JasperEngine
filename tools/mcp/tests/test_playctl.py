@@ -16,7 +16,8 @@ from pathlib import Path
 
 from harness import Editor, skip
 
-TIMEOUT = 900
+# the slow Desktop build compiles the engine (~20-60 min at 3 jobs)
+TIMEOUT = 7800 if os.environ.get("JASPER_SLOW_BUILD", "") not in ("", "0") else 900
 JOBS = 3   # the host is shared: never more
 
 
