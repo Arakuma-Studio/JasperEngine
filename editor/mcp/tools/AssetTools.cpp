@@ -37,6 +37,7 @@
 #include "util/Base64.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 
@@ -899,7 +900,7 @@ void getAssetInfoTool(const CallPtr& call) {
     } else if (kind == "shader") {
         std::string source;
         readFile(file, source);
-        data["includes"] = Util::getShaderIncludeKeys(source);
+        data["includes"] = ShaderVariantCompiler::getIncludeKeys(source);
         Json forks = Json::array();
         for (const ShaderUse& use : shaderForksUsingFiles(project, {rel})) forks.push_back(use.base);
         data["forks"] = forks;

@@ -1477,7 +1477,7 @@ void compileScriptsTool(const CallPtr& call) {
     const auto started = std::chrono::steady_clock::now();
     job->setCancelHandler([generator]() { generator->cancelBuild(); });
     job->setProgress(-1.0, "Configuring and building " + std::to_string(scripts.size()) + " script(s)");
-    generator->build(projectPath, internalPath, internalPath / "build", kit.cCompiler, kit.cxxCompiler, kit.generator, settings.buildJobs);
+    generator->build(projectPath, internalPath / "build", kit.cCompiler, kit.cxxCompiler, kit.generator, settings.buildJobs);
 
     std::thread([job, generator, firstLog, projectPath, scriptList, started]() {
         uint64_t cursor = firstLog;

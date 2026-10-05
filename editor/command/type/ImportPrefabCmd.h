@@ -30,6 +30,7 @@ namespace jasperengine::editor{
         std::vector<Entity> lastSelected;
         bool wasModified;
         bool addedToParentPrefab;
+        bool addToParentPrefab = false;
 
         bool quiet = false;
         bool hasPlacement = false;
@@ -53,6 +54,8 @@ namespace jasperengine::editor{
         // in the same spot
         void setPlacement(const Vector3& position, const Quaternion& rotation, const Vector3& scale);
         void setQuiet(bool quiet);
+        // Nest the instance in the parent's prefab, as Prefab Mode does (MCP instantiate_prefab)
+        void setAddToParentPrefab(bool add);
         // Scene view drop: the root goes to this world position, keeping the prefab root's
         // rotation and scale (keepZ: its z too, a 2D drop), on every execute
         void setDropPosition(const Vector3& position, bool keepZ = false);

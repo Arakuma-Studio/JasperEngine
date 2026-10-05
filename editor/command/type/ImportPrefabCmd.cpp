@@ -127,7 +127,7 @@ bool editor::ImportPrefabCmd::execute(){
     // Prefab Mode nests the imported prefab in the edited asset. Scene and brush
     // placements remain instance edits.
     addedToParentPrefab = false;
-    if (project->isEditingPrefabAsset(sceneId, parent) && parent != NULL_ENTITY && !hasPlacement &&
+    if ((addToParentPrefab || project->isEditingPrefabAsset(sceneId, parent)) && parent != NULL_ENTITY && !hasPlacement &&
             project->isEntityInPrefab(sceneId, parent)) {
         addedToParentPrefab = project->addEntityToPrefab(sceneId, rootEntity, parent, false);
     }
@@ -200,4 +200,8 @@ void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keep
 
 Entity editor::ImportPrefabCmd::getRootEntity() const{
     return rootEntity;
+}
+
+void editor::ImportPrefabCmd::setAddToParentPrefab(bool add){
+    this->addToParentPrefab = add;
 }
