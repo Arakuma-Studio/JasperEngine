@@ -1,7 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// W1: scenes, scene settings
+// W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
+// camera, scene settings
 #include "McpTools.h"
 
 #include "mcp/McpCall.h"
@@ -11,10 +12,1094 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 
+#include "Project.h"
+#include "command/type/AddChildSceneCmd.h"
+#include "command/type/DeleteFileCmd.h"
+#include "command/type/MultiPropertyCmd.h"
+#include "command/type/RemoveChildSceneCmd.h"
+#include "command/type/SceneNameCmd.h"
+#include "command/type/ScenePropertyCmd.h"
+#include "command/type/SetChildSceneStartActiveCmd.h"
+#include "command/type/SetMainCameraCmd.h"
+#include "util/Util.h"
+#include "window/ProjectWindow.h"
+
+#include <algorithm>
+#include <filesystem>
+#include <memory>
+
+namespace fs = std::filesystem;
+
 namespace jasperengine::editor::mcp {
 
+namespace {
+
+using namespace schema;
+
+// ------------------------------------------------------------------ helpers
+
+SceneProject* sceneArg(const CallPtr& call, const char* key = "scene") {
+    std::string error;
+    const Json& args = call->args();
+    SceneProject* scene = McpRefs::resolveScene(call->ctx().project(), args.contains(key) ? args[key] : Json(), error);
+    if (!scene) call->fail(error);
+    return scene;
+}
+
+bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
+    const std::string value = call->args().value("unsaved", std::string("cancel"));
+    if (value == "cancel") out = UnsavedChoice::Cancel;
+    else if (value == "save") out = UnsavedChoice::Save;
+    else if (value == "discard") out = UnsavedChoice::Discard;
+    else {
+        call->fail("unsaved must be cancel (fail when there are unsaved changes), save or discard.");
+        return false;
+    }
+    return true;
+}
+
+Json unsavedSchema() {
+    return withDefault(stringEnum("What to do with unsaved changes of a scene that closes: cancel fails the call, "
+                                  "save saves it first, discard drops them.", {"cancel", "save", "discard"}), "cancel");
+}
+
+Json sceneRefSchema(const std::string& description = {}) {
+    return {
+        {"type", {"integer", "string", "object"}},
+        {"description", description.empty()
+            ? "Scene: numeric id, scene name, or project-relative .scene path. Omit for the selected scene."
+            : description}
+    };
+}
+
+Json entityRefSchema(const std::string& description) {
+    return {{"type", {"integer", "string", "object", "null"}}, {"description", description}};
+}
+
+// A project-relative .scene path for a new file (".scene" added when missing)
+bool scenePathArg(Project* project, const std::string& given, fs::path& relative, std::string& error) {
+    fs::path rel = fs::path(given).lexically_normal();
+    if (rel.extension() != ".scene") rel += ".scene";
+    fs::path absolute;
+    if (!McpRefs::resolveProjectPath(project, rel.generic_string(), absolute, error)) return false;
+    relative = rel;
+    return true;
+}
+
+Json childScenesJson(Project* project, const SceneProject& scene) {
+    Json list = Json::array();
+    for (const ChildSceneRef& child : scene.childScenes) {
+        const SceneProject* childScene = project->getScene(child.id);
+        list.push_back({
+            {"id", child.id},
+            {"name", childScene ? childScene->name : std::string()},
+            {"start_active", child.startActive},
+            {"loaded_inline", childScene ? childScene->expandedInline : false}
+        });
+    }
+    return list;
+}
+
+Json sceneInfo(Project* project, SceneProject& scene) {
+    Json item = McpRefs::sceneJson(project, scene);
+    item["selected"] = scene.id == project->getSelectedSceneId();
+    item["start_scene"] = scene.id == project->getStartSceneId();
+    if (project->isPrefabStage(scene.id)) item["prefab_stage"] = true;
+    if (scene.scene) {
+        item["entity_count"] = scene.entities.size();
+        item["main_camera"] = McpValues::entityToJson(&scene, scene.mainCamera);
+    }
+    if (!scene.childScenes.empty()) item["child_scenes"] = childScenesJson(project, scene);
+    const uint32_t runtime = project->getPlayRuntimeSceneId(scene.id);
+    if (runtime != NULL_PROJECT_SCENE && runtime != scene.id) item["runtime_scene_id"] = runtime;
+    return item;
+}
+
+// ------------------------------------------------------------------ list / create / open / close / select
+
+void listScenesTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    Json scenes = Json::array();
+    std::string text;
+    for (SceneProject* scene : project->getScenesAndPrefabStages()) {
+        Json item = sceneInfo(project, *scene);
+        text += "\n" + std::to_string(scene->id) + " \"" + scene->name + "\" " + McpRefs::sceneTypeName(scene->sceneType) +
+                (scene->filepath.empty() ? " (untitled)" : " " + item["path"].get<std::string>()) +
+                (scene->opened ? " open" : " closed") + (scene->isModified ? " modified" : "") +
+                (item["selected"].get<bool>() ? " selected" : "") + (item["start_scene"].get<bool>() ? " start" : "") +
+                (scene->playState != ScenePlayState::STOPPED ? " " + McpRefs::playStateName(scene->playState) : "");
+        scenes.push_back(item);
+    }
+    Json unresolved = Json::array();
+    for (const auto& entry : project->getUnresolvedScenes()) unresolved.push_back(entry.second.generic_string());
+    Json data = {{"scenes", scenes}, {"selected_scene_id", project->getSelectedSceneId()}};
+    if (!unresolved.empty()) data["unresolved_scene_files"] = unresolved;
+    call->ok(std::to_string(scenes.size()) + " scene(s):" + text, data);
+}
+
+void createSceneTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneType type = SceneType::SCENE_3D;
+    if (args.contains("type") && !McpRefs::parseSceneType(args.value("type", std::string()), type)) {
+        call->fail("type must be 3D, 2D or UI.");
+        return;
+    }
+    UnsavedChoice unsaved;
+    if (!parseUnsaved(call, unsaved)) return;
+    fs::path path;
+    std::string error;
+    if (args.contains("path") && !args["path"].get<std::string>().empty()) {
+        if (!scenePathArg(project, args["path"].get<std::string>(), path, error)) {
+            call->fail(error);
+            return;
+        }
+        if (fs::exists(project->getProjectPath() / path)) {
+            call->fail("\"" + path.generic_string() + "\" exists already; open it with open_scene, or pick another path.");
+            return;
+        }
+    }
+    const uint32_t id = project->createSceneNow(args.value("name", std::string()), type, path,
+                                                args.value("close_previous", false), unsaved, &error);
+    SceneProject* scene = id != NULL_PROJECT_SCENE ? project->getScene(id) : nullptr;
+    if (!scene) {
+        call->fail(error.empty() ? "The scene could not be created." : error);
+        return;
+    }
+    Json data = {{"scene", sceneInfo(project, *scene)}};
+    if (!error.empty()) {
+        data["warning"] = error;
+        call->ok("Created scene " + std::to_string(id) + " \"" + scene->name + "\" but: " + error, data);
+        return;
+    }
+    call->ok("Created scene " + std::to_string(id) + " \"" + scene->name + "\" (" + McpRefs::sceneTypeName(type) + ")" +
+             (scene->filepath.empty() ? ", not saved yet (save_scene with a path)." : " at " + data["scene"]["path"].get<std::string>() + "."),
+             data);
+}
+
+void openSceneTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    UnsavedChoice unsaved;
+    if (!parseUnsaved(call, unsaved)) return;
+    std::string given;
+    if (args.contains("scene")) {
+        if (args["scene"].is_string()) given = args["scene"].get<std::string>();
+        std::string error;
+        if (SceneProject* known = McpRefs::resolveScene(project, args["scene"], error)) {
+            if (known->opened && known->scene) {
+                project->setSelectedSceneId(known->id);
+                call->ok("Scene " + std::to_string(known->id) + " \"" + known->name + "\" is open; selected it.",
+                         Json{{"scene", sceneInfo(project, *known)}});
+                return;
+            }
+            if (known->filepath.empty()) {
+                call->fail("Scene \"" + known->name + "\" has no file.");
+                return;
+            }
+            given = known->filepath.generic_string();
+        } else if (given.empty() || !Util::isSceneFile(given)) {
+            call->fail(error + " To open a file, pass its project-relative .scene path.");
+            return;
+        }
+    }
+    if (given.empty()) {
+        call->fail("Pass scene: a project-relative .scene path, or the id/name of a closed project scene.");
+        return;
+    }
+    fs::path absolute;
+    std::string error;
+    if (!McpRefs::resolveProjectPath(project, given, absolute, error, true)) {
+        call->fail(error);
+        return;
+    }
+    if (!Util::isSceneFile(absolute.string())) {
+        call->fail("\"" + given + "\" is not a .scene file.");
+        return;
+    }
+    const uint32_t id = project->openSceneNow(given, args.value("close_previous", false), unsaved, &error);
+    SceneProject* scene = id != NULL_PROJECT_SCENE ? project->getScene(id) : nullptr;
+    if (!scene) {
+        call->fail(error.empty() ? "The scene could not be opened." : error);
+        return;
+    }
+    call->ok("Opened scene " + std::to_string(id) + " \"" + scene->name + "\" and selected it.",
+             Json{{"scene", sceneInfo(project, *scene)}});
+}
+
+void closeSceneTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    UnsavedChoice unsaved;
+    if (!parseUnsaved(call, unsaved)) return;
+    const uint32_t id = scene->id;
+    const std::string name = scene->name;
+    std::string error;
+    if (!project->closeSceneNow(id, unsaved, &error)) {
+        call->fail(error.empty() ? "The scene could not be closed." : error);
+        return;
+    }
+    call->ok("Closed scene " + std::to_string(id) + " \"" + name + "\".",
+             Json{{"closed_scene_id", id}, {"selected_scene_id", project->getSelectedSceneId()}});
+}
+
+void selectSceneTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->opened || !scene->scene) {
+        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open it with open_scene.");
+        return;
+    }
+    project->setSelectedSceneId(scene->id);
+    call->ok("Selected scene " + std::to_string(scene->id) + " \"" + scene->name + "\".", Json{{"scene", sceneInfo(project, *scene)}});
+}
+
+// ------------------------------------------------------------------ save / rename / delete
+
+void saveSceneTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+
+    if (args.value("all", false)) {
+        Json saved = Json::array();
+        Json skipped = Json::array();
+        Json failed = Json::array();
+        for (SceneProject* scene : project->getScenesAndPrefabStages()) {
+            if (!scene->scene || !project->hasSceneUnsavedChanges(scene->id)) continue;
+            if (scene->filepath.empty() && !project->isPrefabStage(scene->id)) {
+                skipped.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"reason", "never saved: save_scene with a path"}});
+                continue;
+            }
+            if (project->saveSceneNow(scene->id, {}, &error)) {
+                saved.push_back(Json{{"id", scene->id}, {"name", scene->name}});
+            } else {
+                failed.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"error", error}});
+            }
+        }
+        Json data = {{"saved", saved}, {"skipped", skipped}, {"failed", failed}};
+        const std::string text = "Saved " + std::to_string(saved.size()) + " scene(s)" +
+            (skipped.empty() ? std::string() : ", skipped " + std::to_string(skipped.size()) + " untitled") +
+            (failed.empty() ? std::string() : ", " + std::to_string(failed.size()) + " failed") + ".";
+        if (!failed.empty()) call->fail(text, data);
+        else call->ok(text, data);
+        return;
+    }
+
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const uint32_t id = scene->id;
+    const std::string pathArg = args.value("path", std::string());
+    if (!pathArg.empty() && !scene->filepath.empty() && !project->isPrefabStage(id)) {
+        fs::path relative;
+        if (!scenePathArg(project, pathArg, relative, error)) {
+            call->fail(error);
+            return;
+        }
+        const fs::path current = project->normalizeToProjectRelative(scene->filepath).lexically_normal();
+        if (relative != current) {
+            // Save As: the scene now lives in the new file (the old one stays on disk)
+            if (scene->playState != ScenePlayState::STOPPED) {
+                call->fail("Cannot save a scene while it plays.");
+                return;
+            }
+            const uint32_t owner = project->findSceneByPath(relative);
+            if (owner != NULL_PROJECT_SCENE && owner != id) {
+                call->fail("Scene " + std::to_string(owner) + " of the project is saved at " + relative.generic_string() + ".");
+                return;
+            }
+            std::error_code ec;
+            fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
+            if (!project->saveSceneToPath(id, relative)) {
+                call->fail("Failed to save the scene to " + relative.generic_string() + " (see the console).");
+                return;
+            }
+            if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+            SceneProject* saved = project->getScene(id);
+            call->ok("Saved scene " + std::to_string(id) + " as " + relative.generic_string() + ".",
+                     Json{{"scene", sceneInfo(project, *saved)}});
+            return;
+        }
+    }
+    fs::path untitledPath;
+    if (!pathArg.empty() && scene->filepath.empty()) {
+        if (!scenePathArg(project, pathArg, untitledPath, error)) {
+            call->fail(error);
+            return;
+        }
+    }
+    if (!project->saveSceneNow(id, untitledPath, &error)) {
+        call->fail(error.empty() ? "The scene could not be saved." : error);
+        return;
+    }
+    if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+    SceneProject* saved = project->getScene(id);
+    if (!saved) {
+        call->ok("Saved.", Json{{"scene_id", id}});
+        return;
+    }
+    call->ok("Saved scene " + std::to_string(id) + " \"" + saved->name + "\"" +
+             (saved->filepath.empty() ? "." : " to " + project->normalizeToProjectRelative(saved->filepath).generic_string() + "."),
+             Json{{"scene", sceneInfo(project, *saved)}});
+}
+
+void renameSceneTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const std::string name = call->args().value("name", std::string());
+    if (name.empty()) {
+        call->fail("name must not be empty.");
+        return;
+    }
+    for (const SceneProject& other : project->getScenes()) {
+        if (other.id != scene->id && other.name == name) {
+            call->fail("Scene " + std::to_string(other.id) + " is named \"" + name + "\" already: scene names must be unique "
+                       "(they name the generated code).");
+            return;
+        }
+    }
+    const uint32_t id = scene->id;
+    std::string error;
+    if (!runSceneCommand(id, new SceneNameCmd(project, id, name), error)) {
+        call->fail(error);
+        return;
+    }
+    call->ok("Renamed scene " + std::to_string(id) + " to \"" + name + "\" (the file keeps its name; save_scene to keep it).",
+             Json{{"scene", sceneInfo(project, *project->getScene(id))}});
+}
+
+// Removes a saved scene from the project (its file stays), undoable from the project history
+class RemoveProjectSceneCmd : public Command {
+public:
+    RemoveProjectSceneCmd(Project* project, uint32_t sceneId): project(project), sceneId(sceneId) {}
+
+    bool execute() override {
+        if (!project || project->isAnyScenePlaying() || project->getScenes().size() <= 1) return false;
+        uint32_t target = sceneId;
+        SceneProject* sceneProject = project->getScene(target);
+        if (!sceneProject && !scenePath.empty()) {
+            target = project->findSceneByPath(scenePath);
+            sceneProject = project->getScene(target);
+        }
+        if (!sceneProject || sceneProject->filepath.empty() || project->hasSceneUnsavedChanges(sceneProject->id)) return false;
+        sceneId = target;
+        scenePath = sceneProject->filepath.lexically_normal();
+        wasOpened = sceneProject->opened;
+        previousSelected = project->getSelectedSceneId();
+        project->removeScene(sceneId);
+        if (project->getScene(sceneId) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) return false;
+        if (!project->saveProjectFile()) {
+            restore();
+            return false;
+        }
+        removed = true;
+        return true;
+    }
+
+    void undo() override {
+        if (removed) restore();
+    }
+
+private:
+    void restore() {
+        if (scenePath.empty()) return;
+        if (project->findSceneByPath(scenePath) == NULL_PROJECT_SCENE) {
+            project->loadScene(scenePath, wasOpened, true, wasOpened);
+        }
+        const uint32_t restored = project->findSceneByPath(scenePath);
+        if (previousSelected != NULL_PROJECT_SCENE && project->getScene(previousSelected)) {
+            project->setSelectedSceneId(previousSelected);
+        } else if (restored != NULL_PROJECT_SCENE) {
+            project->setSelectedSceneId(restored);
+        }
+        project->saveProjectFile();
+    }
+
+    Project* project;
+    uint32_t sceneId;
+    fs::path scenePath;
+    bool wasOpened = false;
+    bool removed = false;
+    uint32_t previousSelected = NULL_PROJECT_SCENE;
+};
+
+void deleteSceneTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const bool deleteFile = call->args().value("delete_file", false);
+    if (project->isPrefabStage(scene->id)) {
+        call->fail("That is a prefab stage (Prefab Mode), not a project scene.");
+        return;
+    }
+    if (project->getScenes().size() <= 1) {
+        call->fail("Cannot remove the project's last scene.");
+        return;
+    }
+    if (scene->filepath.empty()) {
+        call->fail("Scene \"" + scene->name + "\" was never saved: close it with close_scene (unsaved: discard) instead.");
+        return;
+    }
+    if (project->hasSceneUnsavedChanges(scene->id)) {
+        call->fail("Scene \"" + scene->name + "\" has unsaved changes: save_scene (or close_scene with unsaved: discard) first.");
+        return;
+    }
+    const uint32_t id = scene->id;
+    const std::string name = scene->name;
+    const fs::path relative = project->normalizeToProjectRelative(scene->filepath);
+    const fs::path absolute = project->getProjectPath() / relative;
+    CommandHistory* history = project->getProjectCommandHistory();
+    const size_t mark = history->mark();
+    std::string error;
+    if (!runProjectCommand(project, new RemoveProjectSceneCmd(project, id), error, "The scene could not be removed from the project.")) {
+        call->fail(error);
+        return;
+    }
+    if (deleteFile) {
+        if (!runProjectCommand(project, new DeleteFileCmd(project, {absolute}, project->getProjectPath()), error,
+                               "The scene file could not be deleted.")) {
+            history->undo();
+            call->fail(error);
+            return;
+        }
+        history->groupSince(mark);
+        if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+    }
+    call->ok("Removed scene " + std::to_string(id) + " \"" + name + "\" from the project" +
+             (deleteFile ? " and moved " + relative.generic_string() + " to the project's .trash" : " (file kept)") +
+             ". Undo with undo scope=project.",
+             Json{{"removed_scene_id", id}, {"path", relative.generic_string()}, {"file_deleted", deleteFile},
+                  {"selected_scene_id", project->getSelectedSceneId()}});
+}
+
+// ------------------------------------------------------------------ child scenes / main camera
+
+void setChildSceneTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* parent = sceneArg(call);
+    if (!parent) return;
+    std::string error;
+    SceneProject* child = McpRefs::resolveScene(project, args.contains("child") ? args["child"] : Json(""), error);
+    if (!child) {
+        call->fail("child: " + error);
+        return;
+    }
+    const uint32_t parentId = parent->id;
+    const uint32_t childId = child->id;
+    if (parentId == childId) {
+        call->fail("A scene cannot be its own child scene.");
+        return;
+    }
+    if (project->isPrefabStage(parentId) || project->isPrefabStage(childId)) {
+        call->fail("Prefab stages have no child scenes.");
+        return;
+    }
+    const bool attachedNow = project->hasChildScene(parentId, childId);
+    const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    auto* multi = new MultiPropertyCmd();
+    bool any = false;
+    if (attach && !attachedNow) {
+        multi->addCommand(std::make_unique<AddChildSceneCmd>(project, parentId, childId));
+        any = true;
+        if (args.contains("start_active") && !args["start_active"].get<bool>()) {
+            multi->addCommand(std::make_unique<SetChildSceneStartActiveCmd>(project, parentId, childId, false));
+        }
+    } else if (!attach && attachedNow) {
+        multi->addCommand(std::make_unique<RemoveChildSceneCmd>(project, parentId, childId));
+        any = true;
+    } else if (attach && args.contains("start_active") &&
+               project->isChildSceneStartActive(parentId, childId) != args["start_active"].get<bool>()) {
+        multi->addCommand(std::make_unique<SetChildSceneStartActiveCmd>(project, parentId, childId, args["start_active"].get<bool>()));
+        any = true;
+    }
+    if (any) {
+        if (!runSceneCommand(parentId, multi, error, "The child scene change did not apply (a cycle, or Play mode?).")) {
+            call->fail(error);
+            return;
+        }
+    } else {
+        delete multi;
+    }
+    if (args.contains("loaded_inline") && project->hasChildScene(parentId, childId)) {
+        if (args["loaded_inline"].get<bool>()) {
+            if (!project->loadChildSceneInline(childId)) {
+                call->fail("The child scene could not be loaded inline.");
+                return;
+            }
+        } else {
+            project->unloadChildSceneInline(childId);
+        }
+    }
+    SceneProject* updated = project->getScene(parentId);
+    call->ok(std::string(project->hasChildScene(parentId, childId) ? "Scene " : "Scene ") + std::to_string(childId) +
+             (project->hasChildScene(parentId, childId) ? " is a child scene of " : " is not a child scene of ") +
+             std::to_string(parentId) + ".",
+             Json{{"scene", sceneInfo(project, *updated)}});
+}
+
+void setMainCameraTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail("The scene is not open.");
+        return;
+    }
+    Entity camera = NULL_ENTITY;
+    std::string error;
+    if (!args.contains("entity")) {
+        call->fail("Pass entity (the camera GameObject), or entity: null to use the scene's default camera.");
+        return;
+    }
+    if (!McpValues::entityFromJson(scene, args["entity"], camera, error)) {
+        call->fail(error);
+        return;
+    }
+    if (camera != NULL_ENTITY) {
+        CameraComponent* component = scene->scene->findComponent<CameraComponent>(camera);
+        if (!component) {
+            call->fail("\"" + scene->scene->getEntityName(camera) + "\" has no Camera component.");
+            return;
+        }
+        if (component->renderToTexture) {
+            call->fail("\"" + scene->scene->getEntityName(camera) + "\" renders to a texture: it cannot be the main camera.");
+            return;
+        }
+    }
+    const uint32_t id = scene->id;
+    if (!runSceneCommand(id, new SetMainCameraCmd(project, id, camera), error)) {
+        call->fail(error);
+        return;
+    }
+    SceneProject* updated = project->getScene(id);
+    call->ok(camera == NULL_ENTITY ? "Cleared the main camera." : "Main camera: \"" + updated->scene->getEntityName(camera) + "\".",
+             Json{{"scene_id", id}, {"main_camera", McpValues::entityToJson(updated, updated->mainCamera)}});
+}
+
+// ------------------------------------------------------------------ scene settings
+
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, LightState, Filter, PostProcess };
+
+struct SceneSetting {
+    const char* name;
+    SettingKind kind;
+    const char* help;
+};
+
+const std::vector<SceneSetting>& sceneSettings() {
+    static const std::vector<SceneSetting> settings = {
+        {"background_color", SettingKind::Vector4, "clear color [r,g,b,a] (sRGB)"},
+        {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
+        {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
+        {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
+        {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
+        {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
+        {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
+        {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high"},
+        {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
+        {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
+        {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
+        {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
+        {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
+        {"ssao_enabled", SettingKind::Bool, "screen-space ambient occlusion"},
+        {"ssao_radius", SettingKind::Float, "SSAO radius"},
+        {"ssao_intensity", SettingKind::Float, "SSAO intensity"},
+        {"ssao_bias", SettingKind::Float, "SSAO bias"},
+        {"ssao_debug", SettingKind::Bool, "show the SSAO buffer"},
+        {"ssr_enabled", SettingKind::Bool, "screen-space reflections"},
+        {"ssr_max_distance", SettingKind::Float, "SSR max ray distance"},
+        {"ssr_thickness", SettingKind::Float, "SSR thickness"},
+        {"ssr_intensity", SettingKind::Float, "SSR intensity"},
+        {"ssr_blur", SettingKind::Float, "SSR blur"},
+        {"ssr_max_steps", SettingKind::Int, "SSR ray march steps"},
+        {"ssr_debug_mode", SettingKind::Int, "SSR debug view (0 off)"},
+        {"fixed_resolution_enabled", SettingKind::Bool, "render at a fixed resolution, then scale"},
+        {"fixed_resolution_width", SettingKind::Int, "fixed resolution width (>= 1)"},
+        {"fixed_resolution_height", SettingKind::Int, "fixed resolution height (>= 1)"},
+        {"fixed_resolution_filter", SettingKind::Filter, "fixed resolution upscale filter: nearest, linear"},
+        {"default_mesh_shader", SettingKind::String, "forked shader base path for meshes (\"\" built-in)"},
+        {"default_ui_shader", SettingKind::String, "forked shader base path for UI (\"\" built-in)"},
+        {"default_sky_shader", SettingKind::String, "forked shader base path for the sky (\"\" built-in)"},
+        {"default_points_shader", SettingKind::String, "forked shader base path for points (\"\" built-in)"},
+        {"default_lines_shader", SettingKind::String, "forked shader base path for lines (\"\" built-in)"},
+        {"post_process", SettingKind::PostProcess,
+         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"}
+    };
+    return settings;
+}
+
+const SceneSetting* findSetting(const std::string& name) {
+    for (const SceneSetting& setting : sceneSettings()) {
+        if (name == setting.name) return &setting;
+    }
+    return nullptr;
+}
+
+std::string settingNamesText() {
+    std::string text;
+    for (const SceneSetting& setting : sceneSettings()) {
+        if (!text.empty()) text += ", ";
+        text += setting.name;
+    }
+    return text;
+}
+
+const char* kindName(SettingKind kind) {
+    switch (kind) {
+        case SettingKind::Bool: return "bool";
+        case SettingKind::Int: return "int";
+        case SettingKind::Float: return "float";
+        case SettingKind::Vector2: return "vector2";
+        case SettingKind::Vector3: return "vector3";
+        case SettingKind::Vector4: return "vector4";
+        case SettingKind::String: return "string";
+        case SettingKind::ShadowQuality:
+        case SettingKind::LightState:
+        case SettingKind::Filter: return "enum";
+        case SettingKind::PostProcess: return "post_process";
+    }
+    return "unknown";
+}
+
+const McpValues::EnumOptions* settingOptions(SettingKind kind) {
+    switch (kind) {
+        case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
+        case SettingKind::LightState: return McpValues::enumTable("light_state");
+        case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
+        default: return nullptr;
+    }
+}
+
+Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
+    Json list = Json::array();
+    for (const PostProcessPass& pass : passes) {
+        list.push_back({{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}});
+    }
+    return list;
+}
+
+template<typename T>
+Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults) {
+    return defaults ? Json(Catalog::getScenePropertyDefault<T>(setting.name)) : Json(Catalog::getSceneProperty<T>(scene, setting.name));
+}
+
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false) {
+    switch (setting.kind) {
+        case SettingKind::Bool: return readSetting<bool>(scene, setting, defaults);
+        case SettingKind::Int: return readSetting<int>(scene, setting, defaults);
+        case SettingKind::Float:
+            return McpValues::number(defaults ? Catalog::getScenePropertyDefault<float>(setting.name)
+                                              : Catalog::getSceneProperty<float>(scene, setting.name));
+        case SettingKind::String: return readSetting<std::string>(scene, setting, defaults);
+        case SettingKind::Vector2:
+            return McpValues::toJson(defaults ? Catalog::getScenePropertyDefault<Vector2>(setting.name)
+                                              : Catalog::getSceneProperty<Vector2>(scene, setting.name));
+        case SettingKind::Vector3:
+            return McpValues::toJson(defaults ? Catalog::getScenePropertyDefault<Vector3>(setting.name)
+                                              : Catalog::getSceneProperty<Vector3>(scene, setting.name));
+        case SettingKind::Vector4:
+            return McpValues::toJson(defaults ? Catalog::getScenePropertyDefault<Vector4>(setting.name)
+                                              : Catalog::getSceneProperty<Vector4>(scene, setting.name));
+        case SettingKind::ShadowQuality:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowQuality>(setting.name)
+                                                        : Catalog::getSceneProperty<ShadowQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::LightState:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
+                                                        : Catalog::getSceneProperty<LightState>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::Filter:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
+                                                        : Catalog::getSceneProperty<TextureFilter>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::PostProcess:
+            return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
+                                              : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name));
+    }
+    return nullptr;
+}
+
+bool shaderBaseExists(Project* project, const std::string& base) {
+    if (base.empty()) return true;
+    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+    return fs::exists(project->getProjectPath() / paths.vert) && fs::exists(project->getProjectPath() / paths.frag);
+}
+
+// The ScenePropertyCmd setting `value`, null with `error`
+Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneSetting& setting, const Json& value, std::string& error) {
+    const uint32_t id = scene->id;
+    const std::string name = setting.name;
+    auto expect = [&](const std::string& what) -> Command* {
+        error = name + " must be " + what + ".";
+        return nullptr;
+    };
+    switch (setting.kind) {
+        case SettingKind::Bool:
+            if (!value.is_boolean()) return expect("true or false");
+            return new ScenePropertyCmd<bool>(project, id, name, value.get<bool>());
+        case SettingKind::Int:
+            if (!value.is_number_integer()) return expect("an integer");
+            if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
+            return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
+        case SettingKind::Float:
+            if (!value.is_number()) return expect("a number");
+            return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
+        case SettingKind::String: {
+            if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
+            const std::string base = value.get<std::string>();
+            if (!shaderBaseExists(project, base)) {
+                return expect("the base path of a forked shader whose .vert/.frag exist (fork the shader first), or \"\"");
+            }
+            return new ScenePropertyCmd<std::string>(project, id, name, base);
+        }
+        case SettingKind::Vector2: {
+            Vector2 v = Catalog::getSceneProperty<Vector2>(scene->scene, name);
+            if (!McpValues::parseVector2(value, v)) return expect("[x,y]");
+            return new ScenePropertyCmd<Vector2>(project, id, name, v);
+        }
+        case SettingKind::Vector3: {
+            Vector3 v = Catalog::getSceneProperty<Vector3>(scene->scene, name);
+            if (!McpValues::parseVector3(value, v)) return expect("[x,y,z] (or \"#RRGGBB\")");
+            return new ScenePropertyCmd<Vector3>(project, id, name, v);
+        }
+        case SettingKind::Vector4: {
+            Vector4 v = Catalog::getSceneProperty<Vector4>(scene->scene, name);
+            if (!McpValues::parseVector4(value, v)) return expect("[r,g,b,a] (or [r,g,b], \"#RRGGBB[AA]\")");
+            return new ScenePropertyCmd<Vector4>(project, id, name, v);
+        }
+        case SettingKind::ShadowQuality:
+        case SettingKind::LightState:
+        case SettingKind::Filter: {
+            int parsed = 0;
+            std::string why;
+            if (!McpValues::enumFromJson(value, *settingOptions(setting.kind), parsed, why)) {
+                error = name + ": " + why;
+                return nullptr;
+            }
+            if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
+            if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
+            return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
+        }
+        case SettingKind::PostProcess: {
+            if (!value.is_array()) return expect("an array of {shader, enabled, uniforms}");
+            std::vector<PostProcessPass> passes;
+            for (size_t i = 0; i < value.size(); i++) {
+                const Json& item = value[i];
+                const std::string where = name + "[" + std::to_string(i) + "]";
+                if (!item.is_object()) {
+                    error = where + " must be {shader, enabled, uniforms}.";
+                    return nullptr;
+                }
+                PostProcessPass pass;
+                pass.shader = item.value("shader", std::string());
+                if (!shaderBaseExists(project, pass.shader)) {
+                    error = where + ".shader \"" + pass.shader + "\": no forked shader there (fork the post-process shader first).";
+                    return nullptr;
+                }
+                pass.enabled = item.value("enabled", true);
+                std::string why;
+                if (item.contains("uniforms") && !McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why)) {
+                    error = where + ".uniforms: " + why;
+                    return nullptr;
+                }
+                passes.push_back(pass);
+            }
+            return new ScenePropertyCmd<std::vector<PostProcessPass>>(project, id, name, passes);
+        }
+    }
+    error = "unsupported setting";
+    return nullptr;
+}
+
+void getSceneSettingsTool(const CallPtr& call) {
+    const Json& args = call->args();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        return;
+    }
+    std::vector<const SceneSetting*> wanted;
+    if (args.contains("names") && args["names"].is_array() && !args["names"].empty()) {
+        for (const Json& item : args["names"]) {
+            const SceneSetting* setting = item.is_string() ? findSetting(item.get<std::string>()) : nullptr;
+            if (!setting) {
+                call->fail("Unknown scene setting " + item.dump() + ". Settings: " + settingNamesText() + ".");
+                return;
+            }
+            wanted.push_back(setting);
+        }
+    } else {
+        for (const SceneSetting& setting : sceneSettings()) wanted.push_back(&setting);
+    }
+    const bool detail = args.value("detail", false);
+    Json values = Json::object();
+    Json schemaOut = Json::object();
+    std::string text = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" settings:";
+    for (const SceneSetting* setting : wanted) {
+        Json value = settingValue(scene->scene, *setting);
+        text += "\n" + std::string(setting->name) + " = " + value.dump();
+        values[setting->name] = value;
+        if (detail) {
+            Json entry = {{"type", kindName(setting->kind)}, {"default", settingValue(nullptr, *setting, true)}, {"help", setting->help}};
+            if (const McpValues::EnumOptions* options = settingOptions(setting->kind)) entry["options"] = McpValues::enumNames(*options);
+            schemaOut[setting->name] = entry;
+        }
+    }
+    Json data = {{"scene_id", scene->id}, {"settings", values}};
+    if (detail) data["schema"] = schemaOut;
+    call->ok(text, data);
+}
+
+void setSceneSettingsTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        return;
+    }
+    if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
+        call->fail("settings must be an object {name: value}. Settings: " + settingNamesText() + ".");
+        return;
+    }
+    auto* multi = new MultiPropertyCmd();
+    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+        const SceneSetting* setting = findSetting(it.key());
+        if (!setting) {
+            delete multi;
+            call->fail("Unknown scene setting \"" + it.key() + "\". Settings: " + settingNamesText() +
+                       ". (Fog and the skybox are GameObjects: create_entity type fog / skybox.)");
+            return;
+        }
+        std::string error;
+        Command* cmd = buildSettingCommand(project, scene, *setting, it.value(), error);
+        if (!cmd) {
+            delete multi;
+            call->fail(error);
+            return;
+        }
+        multi->addCommand(std::unique_ptr<Command>(cmd));
+    }
+    const uint32_t id = scene->id;
+    std::string error;
+    if (!runSceneCommand(id, multi, error)) {
+        call->fail(error);
+        return;
+    }
+    SceneProject* updated = project->getScene(id);
+    Json values = Json::object();
+    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+        values[it.key()] = settingValue(updated->scene, *findSetting(it.key()));
+    }
+    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step).",
+             Json{{"scene_id", id}, {"settings", values}});
+}
+
+} // namespace
+
 void registerSceneTools(McpRegistry& registry) {
-    (void)registry;
+    for (const char* legacy : {"create_scene", "add_project_scene", "rename_scene", "save_scene", "save_all_scenes",
+                               "set_scene_property", "open_scene", "select_scene", "delete_scene", "inspect_scene",
+                               "add_child_scene", "remove_child_scene", "set_child_scene_start_active",
+                               "load_child_scene_inline", "set_main_camera"}) {
+        registry.removeTool(legacy);
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "list_scenes";
+        tool.title = "List Scenes";
+        tool.description =
+            "Every scene of the project (and open Prefab Mode stages): id, name, path (project-relative .scene, \"\" "
+            "if never saved), type 3D/2D/UI, opened, modified, selected, start_scene, play_state, entity_count, "
+            "main_camera, child_scenes [{id, name, start_active, loaded_inline}], runtime_scene_id while playing. "
+            "Scene arguments of other tools take the id, the name or the path.";
+        tool.inputSchema = object({});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = listScenesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "create_scene";
+        tool.title = "Create Scene";
+        tool.description =
+            "File > New Scene: creates a scene (3D scenes get a sun and a sky), adds it to the project and selects it. "
+            "With path it is saved there at once (\".scene\" added); without, it stays untitled until save_scene "
+            "with a path. Returns the scene (id...). Example: {\"name\": \"Level1\", \"type\": \"2D\", \"path\": \"scenes/Level1\"}";
+        tool.inputSchema = object({
+            {"name", string("Scene name (made unique; default: the file name or \"New Scene\").")},
+            {"type", withDefault(stringEnum("Scene type.", {"3D", "2D", "UI"}), "3D")},
+            {"path", string("Project-relative .scene path to save it at now (optional).")},
+            {"close_previous", withDefault(boolean("Close the scene selected before."), false)},
+            {"unsaved", unsavedSchema()}
+        });
+        tool.allowedWhilePlaying = false;
+        tool.handler = createSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "open_scene";
+        tool.title = "Open Scene";
+        tool.description =
+            "Opens a .scene file (adding it to the project if it is not listed) and selects it, or selects a scene "
+            "that is open already. scene: a project-relative .scene path, or the id/name of a closed project scene.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema("Project-relative .scene path, or id/name of a project scene.")},
+            {"close_previous", withDefault(boolean("Close the scene selected before (once the new one loaded)."), false)},
+            {"unsaved", unsavedSchema()}
+        }, {"scene"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = openSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "close_scene";
+        tool.title = "Close Scene";
+        tool.description =
+            "Closes an open scene's tab (it stays in the project; a never-saved one leaves it). The last open scene "
+            "cannot close. unsaved decides about unsaved changes (default cancel: fail).";
+        tool.inputSchema = object({{"scene", sceneRefSchema()}, {"unsaved", unsavedSchema()}});
+        tool.allowedWhilePlaying = false;
+        tool.annotations.destructive = true;
+        tool.handler = closeSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "select_scene";
+        tool.title = "Select Scene";
+        tool.description = "Makes an open scene the selected one (its tab): tools without a scene argument act on it.";
+        tool.inputSchema = object({{"scene", sceneRefSchema("The open scene to select.")}}, {"scene"});
+        tool.annotations.idempotent = true;
+        tool.handler = selectSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "save_scene";
+        tool.title = "Save Scene";
+        tool.description =
+            "Saves a scene now (and its modified child scenes). A never-saved scene needs path. path on a saved scene "
+            "is Save As: the scene moves to the new file (the old file stays). all=true saves every modified scene "
+            "instead (untitled ones are reported as skipped). A prefab stage's id saves its prefab.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"path", string("Project-relative .scene path (untitled scene, or Save As).")},
+            {"all", withDefault(boolean("Save every modified scene (Save All)."), false)}
+        });
+        tool.allowedWhilePlaying = false;
+        tool.handler = saveSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "rename_scene";
+        tool.title = "Rename Scene";
+        tool.description =
+            "Renames a scene (its name in the project and the generated code; undoable). The .scene file keeps its "
+            "name. Names must be unique.";
+        tool.inputSchema = object({{"scene", sceneRefSchema()}, {"name", string("New scene name.")}}, {"name"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = renameSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "delete_scene";
+        tool.title = "Delete Scene";
+        tool.description =
+            "Removes a saved scene from the project (undoable with undo scope=project). delete_file=true also moves "
+            "its .scene file to the project's .trash (same undo step). The scene must have no unsaved changes and "
+            "cannot be the last one.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"delete_file", withDefault(boolean("Also delete the .scene file (to .trash)."), false)}
+        }, {"scene"});
+        tool.allowedWhilePlaying = false;
+        tool.annotations.destructive = true;
+        tool.handler = deleteSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_child_scene";
+        tool.title = "Set Child Scene";
+        tool.description =
+            "Child scenes (additive scenes loaded with a parent, Unity's additive loading): attaches or detaches "
+            "`child` to/from `scene` and sets its options in one call. attached (default true), start_active "
+            "(loaded active when the parent starts), loaded_inline (shown inside the parent in the editor, view "
+            "state only). Undoable except loaded_inline. Example: {\"scene\": \"Main\", \"child\": \"HUD\", \"start_active\": true}";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema("Parent scene (default: the selected one).")},
+            {"child", sceneRefSchema("The child scene.")},
+            {"attached", withDefault(boolean("true attaches, false detaches."), true)},
+            {"start_active", boolean("Child starts active with the parent.")},
+            {"loaded_inline", boolean("Show the child inside the parent's Scene view and Hierarchy.")}
+        }, {"child"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = setChildSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_main_camera";
+        tool.title = "Set Main Camera";
+        tool.description =
+            "Sets the scene's main camera (the one the game renders through) to a GameObject with a Camera; "
+            "entity: null clears it (the default camera). Undoable.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"entity", entityRefSchema("Camera GameObject (id, path, {\"name\"}), or null.")}
+        }, {"entity"});
+        tool.handler = setMainCameraTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_scene_settings";
+        tool.title = "Get Scene Settings";
+        tool.description =
+            "The scene's settings (Inspector > Scene): background color, ambient light, shadows, 2D lighting, "
+            "physics gravity, mesh LOD, SSAO, SSR, fixed resolution, default shaders, post-process passes. "
+            "detail=true adds each one's type, default and enum options. Values use set_scene_settings' shapes.";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"names", array(string("Setting name."), "Only these settings (default all).")},
+            {"detail", withDefault(boolean("Add type, default, options and help per setting."), false)}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getSceneSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_scene_settings";
+        tool.title = "Set Scene Settings";
+        tool.description =
+            "Sets scene settings, all in one undo step. settings: {name: value}; names from get_scene_settings. "
+            "Enums by name (shadows_quality: none|low|medium|high; light_state: off|on|auto; "
+            "fixed_resolution_filter: nearest|linear). Colors [r,g,b(,a)] or \"#RRGGBB\". post_process replaces the "
+            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
+            "Example: {\"settings\": {\"background_color\": [0.1,0.1,0.2,1], \"physics_gravity_2d\": [0,-20], \"ssao_enabled\": true}}";
+        tool.inputSchema = object({
+            {"scene", sceneRefSchema()},
+            {"settings", anyObject("{setting name: value}")}
+        }, {"settings"});
+        tool.handler = setSceneSettingsTool;
+        registry.addTool(std::move(tool));
+    }
 }
 
 }
