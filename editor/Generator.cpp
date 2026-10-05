@@ -1246,6 +1246,13 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
         FileUtils::writeIfChanged(settingsFile, settingsContent);
     }
 
+    writeAgentsFile(projectPath, projectInternalPath);
+}
+
+void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath) {
+    const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
+    const fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
+
     fs::path agentsFile = projectPath / "AGENTS.md";
     std::string agentsContent;
     const std::string agentsBegin = "<!-- BEGIN JASPERENGINE GENERATED CONTEXT -->";

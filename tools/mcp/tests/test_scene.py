@@ -99,13 +99,14 @@ async def test_tool_list(ed: Editor):
             "get_scene_tree", "find_entities", "create_entity", "delete_entities", "duplicate_entities", "rename_entity",
             "move_entity", "set_entity_state", "get_selection", "select_entities", "copy_entities", "paste_entities",
             "get_entity", "set_properties", "set_transform", "add_component", "remove_component", "reset_component",
-            "copy_component", "paste_component", "list_component_types", "get_component", "set_property"}
+            "copy_component", "paste_component", "list_component_types", "set_mesh_geometry"}
     missing = mine - names
     ed.check(not missing, f"missing tools: {sorted(missing)}")
     replaced = {"list_scene_entities", "inspect_entity", "inspect_scene", "inspect_component", "set_entity_transform",
                 "delete_entity", "duplicate_entity", "reparent_entity", "move_entity_order", "set_component_property",
                 "set_component_properties", "add_project_scene", "save_all_scenes", "set_scene_property",
-                "add_child_scene", "remove_child_scene", "set_child_scene_start_active", "load_child_scene_inline"}
+                "add_child_scene", "remove_child_scene", "set_child_scene_start_active", "load_child_scene_inline",
+                "get_component", "set_property", "regenerate_mesh_geometry", "import_project_model"}
     ed.check(not (replaced & names), f"legacy tools still listed: {sorted(replaced & names)}")
 
 
@@ -312,10 +313,8 @@ async def test_entity_refs_and_errors(ed: Editor):
 
 async def test_create_every_kind(ed: Editor):
     await lab(ed)
-    desc = ed.tool("create_entity").description
-    import re
-    kinds = re.findall(r"(?:Types: |; )([a-z0-9_]+) \(", desc)
-    ed.check(len(kinds) > 45, f"kinds parsed from the description: {kinds}")
+    kinds = ed.tool("create_entity").input_schema["properties"]["type"]["enum"]
+    ed.check(len(kinds) > 45, f"kinds from the schema enum: {kinds}")
     made = []
     for kind in kinds:
         out = await ed.call("create_entity", type=kind, name="K_" + kind, select=False)
@@ -783,19 +782,38 @@ async def test_components(ed: Editor):
     await ed.call("delete_entities", entities=[a, b, c])
 
 
-async def test_get_component_set_property(ed: Editor):
+async def test_single_property_and_full_detail(ed: Editor):
+    """One change through set_properties.changes; get_entity detail full gives types; misspelled args fail."""
     await lab(ed)
     e = await create(ed, "point_light", name="OneProp")
     before = await value(ed, e, "light", "intensity")
-    out = await ed.call("set_property", entity=e, component="light", property="intensity", value=4)
-    check_close(ed, out["value"], 4)
-    got = await ed.call("get_component", entity=e, component="light")
-    ed.check_eq(got["properties"]["type"], {"type": "enum", "value": "point"})
-    check_close(ed, got["properties"]["intensity"]["value"], 4)
+    out = await ed.call("set_properties", entity=e, changes=[{"component": "light", "property": "intensity", "value": 4}])
+    check_close(ed, out["values"]["light"]["intensity"], 4)
+    got = await ed.call("get_entity", entity=e, components=["light"], detail="full")
+    props = got["components"]["light"]
+    ed.check_eq(props["type"]["value"], "point", f"enum in full detail: {props['type']!r}")
+    check_close(ed, props["intensity"]["value"], 4)
     await undo(ed)
     check_close(ed, await value(ed, e, "light", "intensity"), before, "undo")
-    await ed.check_error("get_component", entity=e, component="camera", contains="no camera")
+    await ed.check_error("get_entity", entity=e, component="light", contains="Unknown argument")
     await ed.call("delete_entities", entity=e)
+
+
+async def test_set_mesh_geometry(ed: Editor):
+    await lab(ed)
+    e = await create(ed, "cube", name="Shape")
+    out = await ed.call("set_mesh_geometry", entity=e, shape="sphere", radius=2)
+    ed.check_eq(out["shape"], "sphere")
+    check_close(ed, out["local_size"], [4, 4, 4], "sphere size")
+    out = await ed.call("set_mesh_geometry", entity=e, shape="box", width=3, height=1, depth=2)
+    check_close(ed, out["local_size"], [3, 1, 2], "box size")
+    await undo(ed)
+    got = await ed.call("get_entity", entity=e, detail="summary")
+    ed.check(got, "entity still there after undo")
+    await ed.check_error("set_mesh_geometry", entity=e, shape="cone", contains="shape must be")
+    s = await create(ed, "sprite", name="NotPrimitive")
+    await ed.check_error("set_mesh_geometry", entity=s, shape="box", contains="generated")
+    await ed.call("delete_entities", entities=[e, s])
 
 
 async def test_list_component_types(ed: Editor):

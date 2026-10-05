@@ -77,23 +77,13 @@ async def make_object(ed: Editor, name: str, kind: str = "box", parent=None, sce
 
 
 async def set_vec3(ed: Editor, entity, component: str, prop: str, value, scene=SCENE):
-    tool = ed.first_tool("set_component_property", "set_property")
-    p = _props(ed, tool)
-    a = await _refs(ed, tool, scene=scene, entity=entity, extra={"component": component, "property": prop})
-    if "value" in p:
-        a["value"] = list(value)
-    else:
-        a["vector3_value"] = {"x": value[0], "y": value[1], "z": value[2]}
-    return await ed.call(tool, a)
+    return await ed.call("set_properties", scene=scene, entity=entity, values={component: {prop: list(value)}})
 
 
 async def get_vec3(ed: Editor, entity, component: str, prop: str, scene=SCENE) -> list:
-    tool = ed.first_tool("inspect_component", "get_component")
-    v = await ed.call(tool, await _refs(ed, tool, scene=scene, entity=entity, extra={"component": component}))
-    props = v.get("properties", {})
-    if isinstance(props, list):
-        props = {item.get("name"): item for item in props}
-    val = props[prop]["value"] if isinstance(props[prop], dict) and "value" in props[prop] else props[prop]
+    v = await ed.call("get_entity", scene=scene, entity=entity, components=[component], properties=[prop])
+    comps = {k.lower(): c for k, c in v["components"].items()}
+    val = comps[component.lower()][prop]
     if isinstance(val, dict):
         val = [val["x"], val["y"], val["z"]]
     return [round(float(x), 4) for x in val]
@@ -226,7 +216,7 @@ async def test_create_prefab(ed: Editor):
     # several roots -> one prefab each, then undo removes them and the instances
     a = await make_object(ed, "TmpA", "box")
     b = await make_object(ed, "TmpB", "sphere")
-    many = await ed.call("create_prefab", scene=SCENE, entities=[a, b], dir="prefabs/tmp")
+    many = await ed.call("create_prefab", scene=SCENE, entities=[a, b], directory="prefabs/tmp")
     paths = sorted(p["path"] for p in many["prefabs"])
     ed.check_eq(paths, ["prefabs/tmp/TmpA.prefab", "prefabs/tmp/TmpB.prefab"], "one prefab per root")
     await undo(ed)

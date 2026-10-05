@@ -55,34 +55,18 @@ SceneProject* sceneArg(const CallPtr& call, bool requireLoaded = true) {
         return nullptr;
     }
     if (requireLoaded && !scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return nullptr;
     }
     return scene;
 }
 
-Json sceneRefSchema() {
-    return {
-        {"type", {"integer", "string", "object"}},
-        {"description", "Scene: numeric id, scene name, or project-relative .scene path. Omit for the selected scene."}
-    };
+// move_entity's parent: null = the scene root
+Json nullableEntityRef(const std::string& description) {
+    Json ref = entityRef(description);
+    ref["type"].push_back("null");
+    return ref;
 }
-
-Json entityRefSchema(const std::string& description) {
-    return {{"type", {"integer", "string", "object"}}, {"description", description}};
-}
-
-Json nullableEntityRefSchema(const std::string& description) {
-    return {{"type", {"integer", "string", "object", "null"}}, {"description", description}};
-}
-
-Json entitiesSchema(const std::string& description) {
-    return {{"type", "array"}, {"items", {{"type", {"integer", "string", "object"}}}}, {"description", description}};
-}
-
-const char* ENTITY_REF_HELP =
-    "GameObject: id, path from the scene root (\"Player/Gun\", \"Enemy#2\" = 3rd sibling named Enemy), a bare name "
-    "(must be unique), or {\"name\": ...} / {\"path\": ...} / {\"id\": ...}.";
 
 bool wildcardMatch(const std::string& pattern, const std::string& text) {
     // case-insensitive * and ?
@@ -480,7 +464,7 @@ void findEntitiesTool(const CallPtr& call) {
         total++;
         if (found.size() < limit) {
             Json item = {{"id", entity}, {"name", registry->getEntityName(entity)}, {"path", path}};
-            if (args.value("components_list", false)) item["components"] = componentsJson(registry, entity);
+            if (args.value("with_components", false)) item["components"] = componentsJson(registry, entity);
             found.push_back(item);
         }
     }
@@ -1055,28 +1039,22 @@ void pasteEntitiesTool(const CallPtr& call) {
 } // namespace
 
 void registerEntityTools(McpRegistry& registry) {
-    for (const char* legacy : {"list_scene_entities", "create_entity", "rename_entity", "delete_entity", "duplicate_entity",
-                               "reparent_entity", "move_entity_order", "select_entities"}) {
-        registry.removeTool(legacy);
-    }
 
     {
         ToolDef tool;
         tool.name = "get_scene_tree";
         tool.title = "Get Scene Tree";
         tool.description =
-            "The Hierarchy of a scene: every GameObject with its id, components (Transform omitted) and flags "
-            "(inactive, main camera, selected), children indented. format=text (default, compact) or json (nested "
-            "{id, name, components, children}). root shows one subtree, depth limits nesting, limit caps the node "
-            "count. During Play, runtime=true shows the running game's copy of a child scene.";
+            "The Hierarchy: each GameObject's id, components (Transform omitted) and flags (inactive, main camera, "
+            "selected), children indented. format json: nested {id, name, components, children}.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"root", entityRefSchema("Only this GameObject's subtree.")},
-            {"depth", integer("Max depth below the start (0: the start nodes only).", 0, 1000)},
-            {"limit", withDefault(integer("Max GameObjects listed.", 1, 100000), 400)},
-            {"format", withDefault(stringEnum("Output format.", {"text", "json"}), "text")},
-            {"components", withDefault(boolean("List component names."), true)},
-            {"runtime", withDefault(boolean("While playing: the running copy of the scene."), false)}
+            {"scene", sceneRef()},
+            {"root", entityRef("Only this subtree.")},
+            {"depth", integer("Max depth (0: start nodes only).", 0, 1000)},
+            {"limit", withDefault(integer("Max nodes.", 1, 100000), 400)},
+            {"format", withDefault(stringEnum("", {"text", "json"}), "text")},
+            {"components", withDefault(boolean(""), true)},
+            {"runtime", withDefault(boolean("While playing: the running copy."), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1088,21 +1066,20 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "find_entities";
         tool.title = "Find Entities";
         tool.description =
-            "Finds GameObjects by name (glob: * and ?, case-insensitive), path glob, component(s) (all required), tag, "
-            "layer, under (descendants of a GameObject) and active (in hierarchy). Returns {count, entities: [{id, "
-            "name, path}]}. Example: {\"name\": \"Enemy*\", \"component\": \"rigidbody2d\"}";
+            "Finds GameObjects matching all given filters (globs: * ?, case-insensitive). Returns {count, entities: "
+            "[{id, name, path}], truncated}.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"name", string("Name glob, e.g. \"Enemy*\".")},
-            {"path", string("Path glob, e.g. \"UI/*/Button*\".")},
-            {"component", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Component name(s) the GameObject must have."}}},
-            {"tag", string("Exact tag.")},
-            {"layer", {{"type", {"integer", "string"}}, {"description", "Layer index 0-31 or name."}}},
-            {"under", entityRefSchema("Only descendants of this GameObject.")},
-            {"active", boolean("Only active (true) or inactive (false) in the hierarchy.")},
-            {"components_list", withDefault(boolean("Add each one's component names."), false)},
-            {"limit", withDefault(integer("Max results.", 1, 100000), 100)},
-            {"runtime", withDefault(boolean("While playing: the running copy of the scene."), false)}
+            {"scene", sceneRef()},
+            {"name", string("Name glob.")},
+            {"path", string("Path glob.")},
+            {"component", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Required component(s)."}}},
+            {"tag", string("")},
+            {"layer", {{"type", {"integer", "string"}}, {"description", "0-31 or name."}}},
+            {"under", entityRef("Only descendants of this.")},
+            {"active", boolean("Active in hierarchy or not.")},
+            {"with_components", withDefault(boolean("Add component names."), false)},
+            {"limit", withDefault(integer("", 1, 100000), 100)},
+            {"runtime", withDefault(boolean("While playing: the running copy."), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1110,32 +1087,29 @@ void registerEntityTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     }
     {
-        std::string types;
-        for (const EntityKind& kind : entityKinds()) types += std::string(types.empty() ? "" : "; ") + kind.name + " (" + kind.help + ")";
+        std::vector<std::string> types;
+        for (const EntityKind& kind : entityKinds()) types.push_back(kind.name);
         ToolDef tool;
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "Creates a GameObject like GameObject > Create menu, with its parent, name, transform, extra components "
-            "and initial property values in ONE undo step. Returns entity_id and entity {id, name, path} (and "
-            "generated children, e.g. a button's label). values: {component: {property: value}} (or changes: "
-            "[{component, property, value}]) as in set_properties. position/rotation/scale are local. "
-            "Example: {\"type\": \"cube\", \"name\": \"Crate\", \"parent\": \"Level\", \"position\": [0,1,0], "
-            "\"components\": [\"rigidbody\"], \"values\": {\"mesh\": {\"submeshes[0].material.baseColorFactor\": \"#ff8800\"}, "
-            "\"rigidbody\": {\"type\": \"dynamic\"}}}. Types: " + types + ".";
+            "GameObject > Create, with parent, name, local transform, extra components and initial values in "
+            "one step. empty = Transform only; bare = no components (root only); model needs model (the way to "
+            "import a project model); *_tween/*_tracks are animation actions. values {component: {property: "
+            "value}} or changes, as in set_properties. Returns {entity_id, entity, components, children}.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"type", withDefault(string("GameObject kind (see the description), e.g. empty, cube, sprite, camera, directional_light, text, button."), "empty")},
-            {"name", string("Name (default: the type's Unity name).")},
-            {"parent", entityRefSchema("Parent GameObject (default: scene root).")},
-            {"position", vec3("Local position.")},
-            {"rotation", {{"description", "Local rotation: {\"euler\":[x,y,z]} degrees, or quaternion [x,y,z,w]."}}},
-            {"scale", vec3("Local scale.")},
-            {"model", string("type model: project-relative .gltf/.glb/.obj to load.")},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components to add."}}},
-            {"values", anyObject("{component: {property: value}} initial values.")},
-            {"changes", array(anyObject("{component, property, value}"), "Initial values as a list.")},
-            {"select", withDefault(boolean("Select the new GameObject (as the editor does)."), true)}
+            {"scene", sceneRef()},
+            {"type", withDefault(stringEnum("", types), "empty")},
+            {"name", string("Default: the type's Unity name.")},
+            {"parent", entityRef("Default: scene root.")},
+            {"position", vec3("")},
+            {"rotation", quat()},
+            {"scale", vec3("")},
+            {"model", assetPath("type model: .gltf/.glb/.obj.")},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
+            {"values", anyObject("")},
+            {"changes", array(anyObject(""), "")},
+            {"select", withDefault(boolean(""), true)}
         });
         tool.handler = createEntityTool;
         registry.addTool(std::move(tool));
@@ -1145,13 +1119,9 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "delete_entities";
         tool.title = "Delete Entities";
         tool.description =
-            "Deletes GameObjects with their children, one undo step. A GameObject of a prefab instance is removed from "
-            "that instance only (an override). Pass entity or entities.";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")}
-        });
+            "Deletes GameObjects with their children; in a prefab instance only from that instance (an override). "
+            "Returns {deleted}.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"entities", entities()}});
         tool.annotations.destructive = true;
         tool.handler = deleteEntitiesTool;
         registry.addTool(std::move(tool));
@@ -1161,13 +1131,9 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "duplicate_entities";
         tool.title = "Duplicate Entities";
         tool.description =
-            "Duplicates GameObjects (Ctrl+D) with their children, next to the originals; one undo step. Returns "
-            "created: [{id, name, path}] (the copies of the given GameObjects, in order).";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")}
-        });
+            "Duplicates GameObjects with their children next to the originals (Ctrl+D) and selects the copies. "
+            "Returns created [{id, name, path}] in order.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"entities", entities()}});
         tool.handler = duplicateEntitiesTool;
         registry.addTool(std::move(tool));
     }
@@ -1175,12 +1141,9 @@ void registerEntityTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "rename_entity";
         tool.title = "Rename Entity";
-        tool.description = "Renames a GameObject (undoable). Returns its new {id, name, path}.";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"name", string("New name.")}
-        }, {"entity", "name"});
+        tool.description = "Renames a GameObject. Returns {entity}.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"name", string("")}}, {"entity", "name"});
+        tool.annotations.idempotent = true;
         tool.handler = renameEntityTool;
         registry.addTool(std::move(tool));
     }
@@ -1189,20 +1152,18 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "move_entity";
         tool.title = "Move Entity";
         tool.description =
-            "Reparents and/or reorders GameObjects in the Hierarchy (drag and drop), one undo step. Exactly one of: "
-            "parent (GameObject, or null = scene root; index = position among its children, default last), before / "
-            "after (a sibling to place next to). Several entities keep their given order. Like a Hierarchy drag the "
-            "world pose is kept (the local transform adapts); keep_world_transform=false keeps the local values. GameObjects inside a prefab instance cannot be rearranged (error says "
-            "which prefab to open). Example: {\"entity\": \"Gun\", \"parent\": \"Player/Hand\"}";
+            "Reparents/reorders GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its "
+            "children, default last), before or after (a sibling). Several keep their order. Keeps the world pose "
+            "unless keep_world_transform=false. Prefab instance children cannot be rearranged.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects (moved together, in this order).")},
-            {"parent", nullableEntityRefSchema("New parent, or null for the scene root.")},
-            {"index", integer("With parent: position among the new siblings (0 first; default last).", 0, 1000000)},
-            {"before", entityRefSchema("Place right before this sibling.")},
-            {"after", entityRefSchema("Place right after this sibling.")},
-            {"keep_world_transform", withDefault(boolean("Keep the world pose (true, the editor's behavior) or the local values (false)."), true)}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"parent", nullableEntityRef("")},
+            {"index", integer("", 0, 1000000)},
+            {"before", entityRef("")},
+            {"after", entityRef("")},
+            {"keep_world_transform", withDefault(boolean(""), true)}
         });
         tool.handler = moveEntityTool;
         registry.addTool(std::move(tool));
@@ -1212,16 +1173,16 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "set_entity_state";
         tool.title = "Set Entity State";
         tool.description =
-            "Sets the Inspector header fields of GameObjects: active (SetActive), tag (a defined tag, \"\" = untagged) "
-            "and layer (0-31 or name). One undo step. Example: {\"entities\": [\"Enemy\", \"Enemy#1\"], \"active\": false}";
+            "Sets GameObjects' active (SetActive), tag (a defined tag; \"\" = untagged) and/or layer (0-31 or name).";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"active", boolean("Active self.")},
-            {"tag", string("Tag name.")},
-            {"layer", {{"type", {"integer", "string"}}, {"description", "Layer index 0-31 or layer name."}}}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"active", boolean("")},
+            {"tag", string("")},
+            {"layer", Json::object({{"type", {"integer", "string"}}})}
         });
+        tool.annotations.idempotent = true;
         tool.handler = setEntityStateTool;
         registry.addTool(std::move(tool));
     }
@@ -1229,8 +1190,8 @@ void registerEntityTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "get_selection";
         tool.title = "Get Selection";
-        tool.description = "The GameObjects selected in a scene (Hierarchy / Scene view selection): [{id, name, path}].";
-        tool.inputSchema = object({{"scene", sceneRefSchema()}});
+        tool.description = "The selected GameObjects of a scene: {entities: [{id, name, path}]}.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getSelectionTool;
@@ -1241,13 +1202,13 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "select_entities";
         tool.title = "Select Entities";
         tool.description =
-            "Sets the selection of a scene (what the Inspector shows): entity or entities replace it, add=true adds "
-            "to it, entities: [] clears it. Returns the selection.";
+            "Replaces a scene's selection (what the Inspector shows); add=true adds to it; entities: [] clears it. "
+            "Returns the selection.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("GameObjects to select ([] clears).")},
-            {"add", withDefault(boolean("Add to the current selection."), false)}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"add", withDefault(boolean(""), false)}
         });
         tool.annotations.idempotent = true;
         tool.handler = selectEntitiesTool;
@@ -1258,14 +1219,15 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "copy_entities";
         tool.title = "Copy Entities";
         tool.description =
-            "Copies GameObjects (with children, prefab links and the actions animating them) to the clipboard, as "
-            "Ctrl+C; cut=true also deletes them (Ctrl+X, one undo step). Then paste_entities, in this or another scene.";
+            "Copies GameObjects with their children to the clipboard (Ctrl+C) for paste_entities (any scene of the "
+            "project); cut=true also deletes them.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema(ENTITY_REF_HELP)},
-            {"entities", entitiesSchema("Several GameObjects.")},
-            {"cut", withDefault(boolean("Cut instead of copy."), false)}
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"cut", withDefault(boolean(""), false)}
         });
+        tool.annotations.destructive = true;  // cut deletes
         tool.handler = copyEntitiesTool;
         registry.addTool(std::move(tool));
     }
@@ -1274,13 +1236,9 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "paste_entities";
         tool.title = "Paste Entities";
         tool.description =
-            "Pastes the GameObjects copied with copy_entities (Ctrl+V): at the scene root (default), as the last "
-            "children of parent, or right after a GameObject. One undo step; returns created roots [{id, name, path}].";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"parent", entityRefSchema("Paste as children of this GameObject.")},
-            {"after", entityRefSchema("Paste right after this GameObject.")}
-        });
+            "Pastes the copy_entities clipboard (Ctrl+V): at the scene root, as last children of parent, or after "
+            "`after`; selects them. Returns created roots.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"parent", entityRef("")}, {"after", entityRef("")}});
         tool.handler = pasteEntitiesTool;
         registry.addTool(std::move(tool));
     }

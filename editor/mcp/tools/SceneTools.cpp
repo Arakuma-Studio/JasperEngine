@@ -59,21 +59,15 @@ bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
 }
 
 Json unsavedSchema() {
-    return withDefault(stringEnum("What to do with unsaved changes of a scene that closes: cancel fails the call, "
-                                  "save saves it first, discard drops them.", {"cancel", "save", "discard"}), "cancel");
+    return withDefault(stringEnum("Unsaved changes of a scene that closes (cancel: fail).", {"cancel", "save", "discard"}),
+                       "cancel");
 }
 
-Json sceneRefSchema(const std::string& description = {}) {
-    return {
-        {"type", {"integer", "string", "object"}},
-        {"description", description.empty()
-            ? "Scene: numeric id, scene name, or project-relative .scene path. Omit for the selected scene."
-            : description}
-    };
-}
-
-Json entityRefSchema(const std::string& description) {
-    return {{"type", {"integer", "string", "object", "null"}}, {"description", description}};
+// set_main_camera's entity: null = the default camera
+Json nullableEntityRef(const std::string& description = {}) {
+    Json ref = entityRef(description);
+    ref["type"].push_back("null");
+    return ref;
 }
 
 // A project-relative .scene path for a new file (".scene" added when missing)
@@ -249,7 +243,7 @@ void selectSceneTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->opened || !scene->scene) {
-        call->fail("Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" is not open: open it with open_scene.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     project->setSelectedSceneId(scene->id);
@@ -821,7 +815,7 @@ void getSceneSettingsTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->scene) {
-        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     std::vector<const SceneSetting*> wanted;
@@ -862,7 +856,7 @@ void setSceneSettingsTool(const CallPtr& call) {
     SceneProject* scene = sceneArg(call);
     if (!scene) return;
     if (!scene->scene) {
-        call->fail("Scene \"" + scene->name + "\" is not open: open_scene it first.");
+        call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
     if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
@@ -905,22 +899,15 @@ void setSceneSettingsTool(const CallPtr& call) {
 } // namespace
 
 void registerSceneTools(McpRegistry& registry) {
-    for (const char* legacy : {"create_scene", "add_project_scene", "rename_scene", "save_scene", "save_all_scenes",
-                               "set_scene_property", "open_scene", "select_scene", "delete_scene", "inspect_scene",
-                               "add_child_scene", "remove_child_scene", "set_child_scene_start_active",
-                               "load_child_scene_inline", "set_main_camera"}) {
-        registry.removeTool(legacy);
-    }
 
     {
         ToolDef tool;
         tool.name = "list_scenes";
         tool.title = "List Scenes";
         tool.description =
-            "Every scene of the project (and open Prefab Mode stages): id, name, path (project-relative .scene, \"\" "
-            "if never saved), type 3D/2D/UI, opened, modified, selected, start_scene, play_state, entity_count, "
-            "main_camera, child_scenes [{id, name, start_active, loaded_inline}], runtime_scene_id while playing. "
-            "Scene arguments of other tools take the id, the name or the path.";
+            "Project scenes and open Prefab Mode stages: {scenes: [{id, name, path (\"\" = unsaved), type, "
+            "opened, modified, selected, start_scene, entity_count, main_camera, child_scenes}], "
+            "selected_scene_id}.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -932,14 +919,13 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "create_scene";
         tool.title = "Create Scene";
         tool.description =
-            "File > New Scene: creates a scene (3D scenes get a sun and a sky), adds it to the project and selects it. "
-            "With path it is saved there at once (\".scene\" added); without, it stays untitled until save_scene "
-            "with a path. Returns the scene (id...). Example: {\"name\": \"Level1\", \"type\": \"2D\", \"path\": \"scenes/Level1\"}";
+            "File > New Scene (3D: with sun and sky); adds it to the project and selects it. With path it is saved "
+            "at once, else untitled until save_scene with path. Returns {scene}.";
         tool.inputSchema = object({
-            {"name", string("Scene name (made unique; default: the file name or \"New Scene\").")},
-            {"type", withDefault(stringEnum("Scene type.", {"3D", "2D", "UI"}), "3D")},
-            {"path", string("Project-relative .scene path to save it at now (optional).")},
-            {"close_previous", withDefault(boolean("Close the scene selected before."), false)},
+            {"name", string("Default: the file name or \"New Scene\".")},
+            {"type", withDefault(stringEnum("", {"3D", "2D", "UI"}), "3D")},
+            {"path", assetPath(".scene path (extension optional).")},
+            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
             {"unsaved", unsavedSchema()}
         });
         tool.allowedWhilePlaying = false;
@@ -951,11 +937,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "open_scene";
         tool.title = "Open Scene";
         tool.description =
-            "Opens a .scene file (adding it to the project if it is not listed) and selects it, or selects a scene "
-            "that is open already. scene: a project-relative .scene path, or the id/name of a closed project scene.";
+            "Opens a .scene file (adding it to the project if unlisted) and selects it; an open scene is just selected.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema("Project-relative .scene path, or id/name of a project scene.")},
-            {"close_previous", withDefault(boolean("Close the scene selected before (once the new one loaded)."), false)},
+            {"scene", sceneRef(".scene path, or id/name of a project scene.")},
+            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
             {"unsaved", unsavedSchema()}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
@@ -968,8 +953,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Close Scene";
         tool.description =
             "Closes an open scene's tab (it stays in the project; a never-saved one leaves it). The last open scene "
-            "cannot close. unsaved decides about unsaved changes (default cancel: fail).";
-        tool.inputSchema = object({{"scene", sceneRefSchema()}, {"unsaved", unsavedSchema()}});
+            "cannot close.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"unsaved", unsavedSchema()}});
         tool.allowedWhilePlaying = false;
         tool.annotations.destructive = true;
         tool.handler = closeSceneTool;
@@ -979,8 +964,8 @@ void registerSceneTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "select_scene";
         tool.title = "Select Scene";
-        tool.description = "Makes an open scene the selected one (its tab): tools without a scene argument act on it.";
-        tool.inputSchema = object({{"scene", sceneRefSchema("The open scene to select.")}}, {"scene"});
+        tool.description = "Selects an open scene (its tab): the default scene of other tools.";
+        tool.inputSchema = object({{"scene", sceneRef("An open scene.")}}, {"scene"});
         tool.annotations.idempotent = true;
         tool.handler = selectSceneTool;
         registry.addTool(std::move(tool));
@@ -990,15 +975,15 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "save_scene";
         tool.title = "Save Scene";
         tool.description =
-            "Saves a scene now (and its modified child scenes). A never-saved scene needs path. path on a saved scene "
-            "is Save As: the scene moves to the new file (the old file stays). all=true saves every modified scene "
-            "instead (untitled ones are reported as skipped). A prefab stage's id saves its prefab.";
+            "Saves a scene and its modified child scenes. Untitled scenes need path; path on a saved scene = Save As. "
+            "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"path", string("Project-relative .scene path (untitled scene, or Save As).")},
-            {"all", withDefault(boolean("Save every modified scene (Save All)."), false)}
+            {"scene", sceneRef()},
+            {"path", assetPath(".scene path.")},
+            {"all", withDefault(boolean(""), false)}
         });
         tool.allowedWhilePlaying = false;
+        tool.annotations.idempotent = true;
         tool.handler = saveSceneTool;
         registry.addTool(std::move(tool));
     }
@@ -1007,10 +992,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "rename_scene";
         tool.title = "Rename Scene";
         tool.description =
-            "Renames a scene (its name in the project and the generated code; undoable). The .scene file keeps its "
-            "name. Names must be unique.";
-        tool.inputSchema = object({{"scene", sceneRefSchema()}, {"name", string("New scene name.")}}, {"name"});
+            "Renames a scene (in the project and generated code; the .scene file keeps its name). Names are unique.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"name", string("")}}, {"name"});
         tool.allowedWhilePlaying = false;
+        tool.annotations.idempotent = true;
         tool.handler = renameSceneTool;
         registry.addTool(std::move(tool));
     }
@@ -1019,12 +1004,11 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "delete_scene";
         tool.title = "Delete Scene";
         tool.description =
-            "Removes a saved scene from the project (undoable with undo scope=project). delete_file=true also moves "
-            "its .scene file to the project's .trash (same undo step). The scene must have no unsaved changes and "
-            "cannot be the last one.";
+            "Removes a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves "
+            "the file to .trash. Not the last scene.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"delete_file", withDefault(boolean("Also delete the .scene file (to .trash)."), false)}
+            {"scene", sceneRef("A saved project scene.")},
+            {"delete_file", withDefault(boolean(""), false)}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
         tool.annotations.destructive = true;
@@ -1036,18 +1020,17 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_child_scene";
         tool.title = "Set Child Scene";
         tool.description =
-            "Child scenes (additive scenes loaded with a parent, Unity's additive loading): attaches or detaches "
-            "`child` to/from `scene` and sets its options in one call. attached (default true), start_active "
-            "(loaded active when the parent starts), loaded_inline (shown inside the parent in the editor, view "
-            "state only). Undoable except loaded_inline. Example: {\"scene\": \"Main\", \"child\": \"HUD\", \"start_active\": true}";
+            "Attaches (attached=false: detaches) `child` as an additive child scene of `scene`. start_active: active "
+            "when the parent starts; loaded_inline: shown inside the parent in the editor (not undoable).";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema("Parent scene (default: the selected one).")},
-            {"child", sceneRefSchema("The child scene.")},
-            {"attached", withDefault(boolean("true attaches, false detaches."), true)},
-            {"start_active", boolean("Child starts active with the parent.")},
-            {"loaded_inline", boolean("Show the child inside the parent's Scene view and Hierarchy.")}
+            {"scene", sceneRef("Parent (default: selected).")},
+            {"child", sceneRef("Child scene.")},
+            {"attached", withDefault(boolean(""), true)},
+            {"start_active", boolean("")},
+            {"loaded_inline", boolean("")}
         }, {"child"});
         tool.allowedWhilePlaying = false;
+        tool.annotations.idempotent = true;
         tool.handler = setChildSceneTool;
         registry.addTool(std::move(tool));
     }
@@ -1056,12 +1039,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_main_camera";
         tool.title = "Set Main Camera";
         tool.description =
-            "Sets the scene's main camera (the one the game renders through) to a GameObject with a Camera; "
-            "entity: null clears it (the default camera). Undoable.";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"entity", entityRefSchema("Camera GameObject (id, path, {\"name\"}), or null.")}
-        }, {"entity"});
+            "Sets the scene's main camera (the game renders through it) to a GameObject with a Camera; entity: null "
+            "= the default camera.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"entity", nullableEntityRef()}}, {"entity"});
+        tool.annotations.idempotent = true;
         tool.handler = setMainCameraTool;
         registry.addTool(std::move(tool));
     }
@@ -1070,13 +1051,12 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "The scene's settings (Inspector > Scene): background color, ambient light, shadows, 2D lighting, "
-            "physics gravity, mesh LOD, SSAO, SSR, fixed resolution, default shaders, post-process passes. "
-            "detail=true adds each one's type, default and enum options. Values use set_scene_settings' shapes.";
+            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
+            "default shaders, post_process). detail=true adds type, default, options, help.";
         tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"names", array(string("Setting name."), "Only these settings (default all).")},
-            {"detail", withDefault(boolean("Add type, default, options and help per setting."), false)}
+            {"scene", sceneRef()},
+            {"names", array(string(""), "Default: all.")},
+            {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1088,15 +1068,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Sets scene settings, all in one undo step. settings: {name: value}; names from get_scene_settings. "
-            "Enums by name (shadows_quality: none|low|medium|high; light_state: off|on|auto; "
-            "fixed_resolution_filter: nearest|linear). Colors [r,g,b(,a)] or \"#RRGGBB\". post_process replaces the "
-            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
-            "Example: {\"settings\": {\"background_color\": [0.1,0.1,0.2,1], \"physics_gravity_2d\": [0,-20], \"ssao_enabled\": true}}";
-        tool.inputSchema = object({
-            {"scene", sceneRefSchema()},
-            {"settings", anyObject("{setting name: value}")}
-        }, {"settings"});
+            "Sets scene settings: {name: value}, names and shapes from get_scene_settings. post_process replaces the "
+            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}].";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
+        tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
         registry.addTool(std::move(tool));
     }

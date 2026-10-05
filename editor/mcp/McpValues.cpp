@@ -20,6 +20,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
@@ -1629,6 +1630,65 @@ Json McpValues::toJson(Project* project, const std::string& propertyName, const 
 
 // ==================================================================== writing
 
+namespace {
+
+// A script property of type Prefab ("scripts[N].name" whose ScriptProperty is a PrefabAsset).
+// Catalog maps it to PropertyType::Custom with a PrefabAsset ref.
+bool isScriptPrefabProperty(Scene* scene, Entity entity, ComponentType component, const std::string& name) {
+    if (component != ComponentType::ScriptComponent || !scene || name.rfind("scripts[", 0) != 0) return false;
+    const size_t close = name.find("].");
+    if (close == std::string::npos) return false;
+    char* end = nullptr;
+    const unsigned long index = std::strtoul(name.c_str() + 8, &end, 10);
+    if (end != name.c_str() + close) return false;
+    const std::string field = name.substr(close + 2);
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts || index >= scripts->scripts.size()) return false;
+    for (const ScriptProperty& prop : scripts->scripts[index].properties) {
+        if (prop.name == field) return prop.type == ScriptPropertyType::Prefab;
+    }
+    return false;
+}
+
+// null / "" = None; "path.prefab" or {"path"} (project-relative) or {"guid"(, "path")}
+bool prefabAssetFromJson(Project* project, const Json& value, PrefabAsset& out, std::string& error) {
+    out = PrefabAsset();
+    if (value.is_null() || (value.is_string() && value.get<std::string>().empty())) return true;
+    std::string path, guid;
+    if (value.is_string()) {
+        path = value.get<std::string>();
+    } else if (value.is_object()) {
+        path = value.contains("path") && value["path"].is_string() ? value["path"].get<std::string>() : "";
+        guid = value.contains("guid") && value["guid"].is_string() ? value["guid"].get<std::string>() : "";
+    } else {
+        error = "a Prefab property takes a project-relative .prefab path, {\"guid\", \"path\"} or null.";
+        return false;
+    }
+    if (guid.empty()) {
+        fs::path absolute;
+        if (path.empty() || !McpRefs::resolveProjectPath(project, path, absolute, error, true) ||
+            !Util::isPrefabFile(absolute.string())) {
+            error = "\"" + path + "\" is not a .prefab of the project" + (error.empty() ? "" : " (" + error + ")") +
+                    "; list them with list_prefabs.";
+            return false;
+        }
+        const fs::path relative = project->normalizeToProjectRelative(absolute);
+        guid = project->getPrefabGuid(relative);
+        if (guid.empty()) {
+            error = "\"" + path + "\" has no prefab GUID (is it a valid .prefab?).";
+            return false;
+        }
+        path = relative.generic_string();
+    } else if (project->resolvePrefabPath(guid, path).empty()) {
+        error = "No prefab has the GUID \"" + guid + "\".";
+        return false;
+    }
+    out = PrefabAsset(guid, path);
+    return true;
+}
+
+} // namespace
+
 Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                          const std::string& propertyName, const PropertyData& property,
                                          const Json& value, std::string& error, std::function<void()> onChanged) {
@@ -1887,6 +1947,16 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             return multi;
         }
         case PropertyType::Custom:
+            if (SceneProject* sp = project->getScene(sceneId);
+                sp && isScriptPrefabProperty(sp->scene, entity, component, propertyName)) {
+                PrefabAsset prefab;
+                std::string why;
+                if (!prefabAssetFromJson(project, value, prefab, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<PrefabAsset>(project, sceneId, entity, component, propertyName, prefab, onChanged);
+            }
             if (propertyName == "shaderUniforms") {
                 ShaderUniformValues uniforms;
                 std::string why;
@@ -2026,7 +2096,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 if (change.component != component) continue;
                 const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property);
                 const bool typedProperty = property.ref && change.op == "set" &&
-                    (property.type != PropertyType::Custom || change.property == "shaderUniforms");
+                    (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
+                     isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
                     Command* cmd = buildPropertyCommand(project, scene->id, entity, component, change.property, property, change.value, why);

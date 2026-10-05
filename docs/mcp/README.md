@@ -204,6 +204,15 @@ Main ideas:
 - `batch` runs many calls in one round trip, as one undo step.
 - Long operations return a job: poll it with `get_job` and stop it with `cancel_job`.
 
+Tool definitions (name, description, input schema) are sent to the agent in every session,
+so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
+under ~90K characters, about 22K tokens). Shared conventions (scene/entity references, value
+shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
+
+```sh
+uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py [--top 20]
+```
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
