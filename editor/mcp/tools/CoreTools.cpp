@@ -91,8 +91,8 @@ void finishBatch(const std::shared_ptr<BatchState>& state) {
                 (item.value("ok", false) ? ": " : ": ERROR: ") + item.value("text", std::string());
     }
 
+    // The batch itself ran: failures are in results[i].ok (and the text)
     ToolResult result = ToolResult::success(text, data);
-    result.isError = state->failed > 0 && state->succeeded == 0;
     result.images = std::move(state->images);
     state->call->reply(std::move(result));
 }
@@ -373,6 +373,22 @@ void respondDialogTool(const CallPtr& call) {
 void registerCoreTools(McpRegistry& registry) {
     using namespace schema;
 
+    // The agent guide as a resource too (DocsTools may replace it with a richer one)
+    {
+        ResourceDef guide;
+        guide.uri = "jasper://guide";
+        guide.name = "guide";
+        guide.title = "JasperEngine agent guide";
+        guide.description = "How to drive the JasperEngine editor through MCP (the initialize instructions).";
+        guide.mimeType = "text/markdown";
+        guide.read = [](const std::string& uri) {
+            ResourceResult result;
+            result.contents.push_back({uri, "text/markdown", mcpServerInstructions(), {}});
+            return result;
+        };
+        registry.addResource(std::move(guide));
+    }
+
     // undo / redo replace the legacy undo_editor / redo_editor
     registry.removeTool("undo_editor");
     registry.removeTool("redo_editor");
@@ -384,7 +400,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.description =
             "Run several tool calls in one round-trip, in order, on the editor main thread. Each item is "
             "{\"tool\": name, \"arguments\": {...}}. Returns every call's text and structured result "
-            "(results[i].ok / text / structured). stop_on_error (default true) stops at the first failing call. "
+            "(results[i].ok / text / structured, plus succeeded / failed counts; the batch result itself is "
+            "not an error when calls inside it fail, so check failed). stop_on_error (default true) stops at the first failing call. "
             "undo_group (default false) collapses the scene edits the batch made into one Ctrl+Z step per "
             "scene (and project file operations into one project step); calls that undo/redo inside the batch "
             "or start/stop Play mode prevent grouping. batch can't be nested.";

@@ -2313,37 +2313,25 @@ void editor::App::loadStartupProject() {
 }
 
 bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
+    std::string error;
     if (!options.project.empty()) {
-        if (project.loadProject(options.project)) {
+        if (project.openProjectNow(options.project, &error)) {
             Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
             return true;
         }
-        std::fprintf(stderr, "[mcp] could not open the project at %s; an empty temporary project is open instead\n",
-                     options.project.string().c_str());
-        Out::error("Could not open the project at \"%s\"", options.project.string().c_str());
+        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                     options.project.string().c_str(), error.c_str());
         return false;
     }
 
-    // --create: the File > New Project flow without its dialogs: a temporary project,
-    // then saved to the requested directory
-    const std::string name = options.createName.empty()
-        ? options.createDir.filename().string()
-        : options.createName;
-    const std::string tempName = "JasperEngineMcp-" + std::to_string(
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007ull));
-    if (!project.createTempProject(tempName, true)) {
-        std::fprintf(stderr, "[mcp] could not create a temporary project\n");
-        return false;
+    // --create: File > New Project + Save Project without the dialogs
+    if (project.createProjectAt(options.createDir, options.createName, &error)) {
+        std::fprintf(stderr, "[mcp] created project %s at %s\n", project.getName().c_str(), options.createDir.string().c_str());
+        return true;
     }
-    project.setName(name.empty() ? "MyJasperEngineProject" : name);
-    if (!project.saveProjectToPath(options.createDir)) {
-        std::fprintf(stderr, "[mcp] could not create the project at %s\n", options.createDir.string().c_str());
-        Out::error("Could not create the project at \"%s\"", options.createDir.string().c_str());
-        return false;
-    }
-    Out::info("Created project \"%s\" at \"%s\"", project.getName().c_str(), options.createDir.string().c_str());
-    std::fprintf(stderr, "[mcp] created project %s at %s\n", project.getName().c_str(), options.createDir.string().c_str());
-    return true;
+    std::fprintf(stderr, "[mcp] could not create the project at %s: %s; an empty temporary project is open instead\n",
+                 options.createDir.string().c_str(), error.c_str());
+    return false;
 }
 
 void editor::App::quitWithoutPrompts(const std::string& reason) {
@@ -2351,6 +2339,7 @@ void editor::App::quitWithoutPrompts(const std::string& reason) {
     std::vector<std::string> unsaved;
     for (const SceneProject& sceneProject : project.getScenes()) {
         if (sceneProject.isModified) unsaved.push_back("scene \"" + sceneProject.name + "\"");
+        else if (sceneProject.filepath.empty()) unsaved.push_back("scene \"" + sceneProject.name + "\" (never saved)");
     }
     if (codeEditor->hasUnsavedChanges()) unsaved.push_back("code editor buffers");
     if (project.isTempUnsavedProject()) unsaved.push_back("the temporary project itself");

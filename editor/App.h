@@ -223,7 +223,6 @@ namespace jasperengine::editor{
         void saveAllFunc(std::function<void(bool)> callback = nullptr);
         void saveAllAndProject(std::function<void()> onSuccess);
         void openProjectFunc();
-        void requestProjectChange(std::function<void()> change);
         bool canEditSelection(bool duplicate);
         void deleteSelection();
         void duplicateSelection();
@@ -303,6 +302,8 @@ namespace jasperengine::editor{
         void addImageViewerWindowToDock(fs::path path, bool force = false);
         void clearSceneWindowState(uint32_t sceneId) override;
         void prepareForProjectSwitch() override;
+        // Runs a project switch between frames, with the loading screen (EditorHost)
+        void requestProjectChange(std::function<void()> change) override;
 
         void handleExternalDrop(const std::vector<std::string>& paths);
         void handleExternalDragEnter();

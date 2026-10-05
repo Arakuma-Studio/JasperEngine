@@ -3,7 +3,7 @@
 
 #include "McpRefs.h"
 
-#include "component/Transform.h"
+#include "util/EntityPath.h"
 
 #include <algorithm>
 #include <cctype>
@@ -27,35 +27,6 @@ std::string lower(std::string value) {
         return static_cast<char>(std::tolower(c));
     });
     return value;
-}
-
-Entity parentOf(Scene* scene, Entity entity) {
-    if (Transform* transform = scene->findComponent<Transform>(entity)) return transform->parent;
-    return NULL_ENTITY;
-}
-
-// Same scheme as CommandLine's scene-dump: index among the earlier siblings of the same
-// name, in Transform order.
-// TODO(W1): switch to editor/util/EntityPath once it lands, so CLI and MCP share it.
-std::string pathOf(Scene* scene, Entity entity, std::map<Entity, std::string>& cache, int depth = 0) {
-    auto it = cache.find(entity);
-    if (it != cache.end()) return it->second;
-    const Entity parent = parentOf(scene, entity);
-    std::string parentPath;
-    if (parent != NULL_ENTITY && depth < 256) parentPath = pathOf(scene, parent, cache, depth + 1) + "/";
-    const std::string name = scene->getEntityName(entity);
-    int index = 0;
-    if (scene->findComponent<Transform>(entity)) {
-        auto transforms = scene->getComponentArray<Transform>();
-        const size_t own = transforms->getIndex(entity);
-        for (size_t i = 0; i < own; i++) {
-            const Entity other = transforms->getEntity(i);
-            if (transforms->getComponentFromIndex(i).parent == parent && scene->getEntityName(other) == name) index++;
-        }
-    }
-    std::string path = parentPath + name + (index ? "#" + std::to_string(index) : "");
-    cache[entity] = path;
-    return path;
 }
 
 bool hasEntity(SceneProject* scene, Entity entity) {
@@ -151,8 +122,7 @@ SceneProject* McpRefs::resolveScene(Project* project, const Json& ref, std::stri
 
 std::string McpRefs::entityPath(SceneProject* scene, Entity entity) {
     if (!scene || !scene->scene) return {};
-    std::map<Entity, std::string> cache;
-    return pathOf(scene->scene, entity, cache);
+    return EntityPath::of(*scene, entity);
 }
 
 Json McpRefs::entityJson(SceneProject* scene, Entity entity) {
@@ -199,30 +169,17 @@ Entity McpRefs::resolveEntity(SceneProject* scene, const Json& ref, std::string&
         return NULL_ENTITY;
     }
 
-    std::map<Entity, std::string> cache;
-    for (Entity entity : scene->entities) {
-        if (!scene->scene->isEntityCreated(entity)) continue;
-        if (pathOf(scene->scene, entity, cache) == path) return entity;
-    }
-
-    // A bare name anywhere in the hierarchy
-    if (path.find('/') == std::string::npos) {
-        std::vector<Entity> matches;
-        for (Entity entity : scene->entities) {
-            if (scene->scene->isEntityCreated(entity) && scene->scene->getEntityName(entity) == path) {
-                matches.push_back(entity);
-            }
+    const std::vector<Entity> matches = EntityPath::resolve(*scene, path);
+    if (matches.size() == 1) return matches[0];
+    if (matches.size() > 1) {
+        EntityPath::Cache cache;
+        error = "\"" + path + "\" matches " + std::to_string(matches.size()) + " GameObjects in " + sceneLabel +
+                "; pass an id or a full path:";
+        for (Entity entity : matches) {
+            error += " " + std::to_string(entity) + " (" + EntityPath::of(*scene, entity, &cache) + ")";
         }
-        if (matches.size() == 1) return matches[0];
-        if (matches.size() > 1) {
-            error = "\"" + path + "\" matches " + std::to_string(matches.size()) + " GameObjects in " + sceneLabel +
-                    "; pass an id or a full path:";
-            for (Entity entity : matches) {
-                error += " " + std::to_string(entity) + " (" + pathOf(scene->scene, entity, cache) + ")";
-            }
-            error += ".";
-            return NULL_ENTITY;
-        }
+        error += ".";
+        return NULL_ENTITY;
     }
 
     error = "No GameObject \"" + text + "\" in " + sceneLabel +

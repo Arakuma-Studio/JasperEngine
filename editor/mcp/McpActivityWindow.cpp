@@ -83,7 +83,9 @@ void McpActivityWindow::drawStatus() {
         ImGui::SameLine();
         ImGui::TextColored(Theme::Colors::SubtleText, "(%s)", client.c_str());
     } else {
-        ImGui::TextColored(Theme::Colors::SubtleText, "stdio: off (launch with `jasperengine-editor mcp` to use it)");
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+        ImGui::TextWrapped("stdio: off (an MCP client launches `jasperengine-editor mcp`)");
+        ImGui::PopStyleColor();
     }
 
     // HTTP
@@ -105,8 +107,7 @@ void McpActivityWindow::drawStatus() {
     }
 
     ImGui::Checkbox("Serve over HTTP", &httpEnabled);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0f);
     ImGui::InputInt("Port", &httpPort, 0, 0);
     if (httpPort < 1) httpPort = 1;
     if (httpPort > 65535) httpPort = 65535;
@@ -138,13 +139,14 @@ void McpActivityWindow::drawActivity() {
 
     const std::vector<McpActivityEntry> entries = server.activity();
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit;
-    if (!ImGui::BeginTable("##McpActivity", 5, flags)) return;
+                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_NoSavedSettings;
+    if (!ImGui::BeginTable("##McpCalls", 5, flags)) return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Time");
-    ImGui::TableSetupColumn("Tool");
-    ImGui::TableSetupColumn("Result");
-    ImGui::TableSetupColumn("ms");
+    const float em = ImGui::GetFontSize();
+    ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, em * 4.2f);
+    ImGui::TableSetupColumn("Tool", ImGuiTableColumnFlags_WidthFixed, em * 9.0f);
+    ImGui::TableSetupColumn("Result", ImGuiTableColumnFlags_WidthFixed, em * 3.6f);
+    ImGui::TableSetupColumn("ms", ImGuiTableColumnFlags_WidthFixed, em * 2.6f);
     ImGui::TableSetupColumn("Arguments / message", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
 
