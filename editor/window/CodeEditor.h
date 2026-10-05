@@ -122,6 +122,23 @@ namespace jasperengine::editor {
         bool isFileModified(const std::string& filepath) const;
         bool handleFileRename(const fs::path& oldPath, const fs::path& newPath);
 
+        // ---- MCP (files edited by external agents) ----
+        struct BufferState {
+            std::string path;       // project-relative key
+            bool modified = false;  // unsaved edits in the buffer
+            int cursorLine = 0;     // 1-based
+        };
+        // Opens (or focuses) a file and puts the cursor at line/column (1-based, 0 = keep)
+        void openFileAt(const std::string& filepath, int line, int column);
+        std::vector<BufferState> getBufferStates() const;
+        // Checks every open buffer against the disk now (instead of on the next 1 s tick):
+        // unmodified buffers reload, modified ones get the "Files Changed" prompt and are
+        // listed in `conflicts`.
+        void syncWithDisk(std::vector<std::string>& reloaded, std::vector<std::string>& conflicts);
+        bool saveFile(const std::string& filepath);
+        // Discards the buffer's unsaved edits and loads the file from disk
+        bool reloadFile(const std::string& filepath);
+
         void show();
     };
 }
