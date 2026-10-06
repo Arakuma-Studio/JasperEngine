@@ -10,6 +10,9 @@ function and property from the engine headers (engine/core), then writes:
     .jasperengine/engine-api/lua/, see Generator::writeEditorTooling)
   - optionally (--out-dir) the same .lua files, for inspection and tests
 
+and the lua-language-server plugin that has assignments to the classes' static fields through
+the global table checked (LUALS_PLUGIN below; also written to --out-dir).
+
 One file per Lua class (`Vector3.lua`, `Sprite.lua`...), one per enum namespace
 (`CameraType.lua`), plus `Globals.lua` (RegisterEngineEvent, RegisterEvent, NULL_ENTITY,
 event objects) and `Script.lua` (the script module contract: ScriptInstance, properties).
@@ -2329,6 +2332,119 @@ FILE_HEADER = ('---@meta _\n'
                '-- LuaBridge bindings by the editor. Do not edit: the editor rewrites this directory.\n')
 
 
+# The lua-language-server plugin written next to the stubs (.luarc.json `runtime.plugin`).
+# LuaLS (3.x, vm/global.lua) compiles an assignment to a field of a global name,
+# `Engine.timeScale = v`, as a set of the global variable `Engine.timeScale` and types it by the
+# assigned value (vm.compileByGlobal), so the `---@field timeScale number` of the class is never
+# compared with `v` and a wrong type passes. A prefix that is not a global name, `(Engine).timeScale`
+# or a local alias, is checked against the field like `obj.field = v`. Before the file is compiled
+# (OnTransformAst) the plugin wraps the prefix of every assignment to a static field the stubs
+# declare in such a parenthesis node, in place: no text changes, positions stay.
+LUALS_PLUGIN_NAME = 'luals-plugin.lua.txt'
+LUALS_PLUGIN = r"""-- JasperEngine: lua-language-server plugin (`runtime.plugin` in the project's .luarc.json),
+-- generated with the Lua API stubs (lua/) by the editor. Do not edit: the editor rewrites it.
+--
+-- lua-language-server reads `Engine.timeScale = v`, an assignment to a field of a global name,
+-- as the definition of a global `Engine.timeScale` typed by `v`, so a wrong type is not reported
+-- there (it is through an object or a local: `local e = Engine; e.timeScale = "x"`). For the
+-- static fields of the engine classes listed below, this plugin makes the server read such an
+-- assignment as `(Engine).timeScale = v`, which it checks against the field's `---@field` type.
+-- Only the syntax tree changes: the text, positions and messages are the server's own. Other
+-- fields (a game's own `Engine.myFlag = true`) and the game's own globals are left alone.
+
+---@type table<string, string> class -> its static fields, space-separated
+local STATIC_FIELDS = {
+@FIELDS@
+}
+
+local fields = {}
+for class, names in pairs(STATIC_FIELDS) do
+    local set = {}
+    for name in names:gmatch('%S+') do
+        set[name] = true
+    end
+    fields[class] = set
+end
+
+local okGuide, guide = pcall(require, 'parser.guide')
+
+local function transform(ast)
+    -- The tree is walked with guide.eachChild, not guide.eachSource(Type): those cache their
+    -- source lists in the tree, and this runs before the server adds the doc comments to it.
+    local found = {}
+    local stack = { ast }
+    while #stack > 0 do
+        local source = stack[#stack]
+        stack[#stack] = nil
+        if source.type == 'setfield' or source.type == 'setindex' then
+            found[#found + 1] = source
+        end
+        guide.eachChild(source, function (child)
+            stack[#stack + 1] = child
+        end)
+    end
+    for _, source in ipairs(found) do
+        local node = source.node
+        -- a global name of the chunk's environment (not a local, not a field)
+        if node and node.type == 'getglobal' and node.next == source
+        and node.node and node.node.tag == '_ENV' then
+            local known = fields[node[1]]
+            local key = guide.getKeyName(source)
+            if known and type(key) == 'string' and known[key] then
+                -- what the parser builds for `(Engine).timeScale = v`
+                local paren = {
+                    type   = 'paren',
+                    start  = node.start,
+                    finish = node.finish,
+                    exp    = node,
+                    parent = source,
+                    next   = source,
+                }
+                node.parent = paren
+                node.next   = nil
+                source.node = paren
+            end
+        end
+    end
+end
+
+function OnTransformAst(uri, ast)
+    if okGuide and type(ast) == 'table' then
+        -- a server whose syntax tree differs: no checks rather than an error
+        pcall(transform, ast)
+    end
+    return nil -- changed in place
+end
+
+-- With several plugins (this one first in runtime.plugin), the server stops at the first one
+-- without the event and keeps the last one's result: pass the other events on.
+function OnSetText(uri, text)
+    return nil
+end
+
+function ResolveRequire(uri, name)
+    return nil
+end
+"""
+
+
+def luals_plugin(static_fields):
+    rows = []
+    for cls, names in sorted(static_fields.items()):
+        line = f'    {cls} = "{" ".join(names)}",'
+        if len(line) > 100:
+            words, cur = [], '       '
+            for n in names:
+                if len(cur) + 1 + len(n) > 100:
+                    words.append(cur)
+                    cur = '       '
+                cur += ' ' + n
+            words.append(cur)
+            line = f'    {cls} = [[\n' + '\n'.join(words) + '\n    ]],'
+        rows.append(line)
+    return LUALS_PLUGIN.replace('@FIELDS@', '\n'.join(rows))
+
+
 def doc_lines(lines, indent=''):
     out = []
     for l in lines:
@@ -2345,6 +2461,7 @@ class Emitter:
     def __init__(self, builder):
         self.bd = builder
         self.files = {}
+        self.static_fields = {}  # class -> its static `---@field` names (the LuaLS plugin's table)
 
     def sig_fun(self, s, self_type=None):
         parts = []
@@ -2402,6 +2519,7 @@ class Emitter:
             notes = []
             if m.kind == 'StaticProperty':
                 notes.append('(static)')
+                self.static_fields.setdefault(c.name, []).append(m.name)
             if not m.writable:
                 notes.append('(read-only)')
             if getattr(m, 'copy', False):
@@ -2647,6 +2765,7 @@ class Emitter:
             self.emit_class(c)
         self.emit_globals()
         self.emit_script()
+        self.plugin = luals_plugin(self.static_fields)
         return self.files
 
 
@@ -2687,7 +2806,7 @@ def c_string_literals(text, max_part=12000):
     return parts
 
 
-def write_header(files, path, entity_handle_classes=()):
+def write_header(files, path, entity_handle_classes=(), plugin=''):
     out = ['// Auto-generated by generate_lua_stubs.py from the Lua bindings. DO NOT EDIT.',
            '#pragma once', '', 'namespace jasperengine::editor::luastubs {', '',
            'struct StubFile {', '    const char* name;', '    const char* const* parts;', '    unsigned int partCount;', '};', '']
@@ -2703,6 +2822,13 @@ def write_header(files, path, entity_handle_classes=()):
     for idx, name in enumerate(names):
         out.append(f'    {{"{name}", file{idx}, sizeof(file{idx}) / sizeof(file{idx}[0])}},')
     out.append('};')
+    out.append('')
+    out.append(f'// The lua-language-server plugin, written to engine-api/{LUALS_PLUGIN_NAME} (runtime.plugin in .luarc.json)')
+    out.append('static const char* const pluginParts[] = {')
+    for p in c_string_literals(plugin):
+        out.append('    ' + '\n    '.join(p) + ',')
+    out.append('};')
+    out.append(f'static const StubFile luaLsPlugin = {{"{LUALS_PLUGIN_NAME}", pluginParts, sizeof(pluginParts) / sizeof(pluginParts[0])}};')
     out.append('')
     out.append('// The EntityHandle classes (GameObject, Sprite...): a script property of one of these types')
     out.append('// (case-insensitive) holds that wrapper of the referenced GameObject')
@@ -2739,8 +2865,9 @@ def generate(binding_dir, core_dir):
             bindings.parse_file(os.path.join(binding_dir, fn))
     builder = Builder(model, bindings)
     builder.build()
-    files = Emitter(builder).emit_all()
-    return files, builder
+    emitter = Emitter(builder)
+    files = emitter.emit_all()
+    return files, builder, emitter.plugin
 
 
 def main():
@@ -2750,16 +2877,16 @@ def main():
     ap.add_argument('output_header')
     ap.add_argument('--out-dir', help='also write the .lua files here (stale .lua files are removed)')
     args = ap.parse_args()
-    files, builder = generate(args.binding_dir, args.core_dir)
+    files, builder, plugin = generate(args.binding_dir, args.core_dir)
     emitter = Emitter(builder)
     wrappers = sorted(c.name for c in builder.b.classes if emitter.derives(c, 'EntityHandle'))
-    write_header(files, args.output_header, wrappers)
+    write_header(files, args.output_header, wrappers, plugin)
     if args.out_dir:
         os.makedirs(args.out_dir, exist_ok=True)
         for fn in os.listdir(args.out_dir):
             if fn.endswith('.lua') and fn not in files:
                 os.remove(os.path.join(args.out_dir, fn))
-        for name, text in files.items():
+        for name, text in list(files.items()) + [(LUALS_PLUGIN_NAME, plugin)]:
             p = os.path.join(args.out_dir, name)
             old = None
             if os.path.exists(p):
