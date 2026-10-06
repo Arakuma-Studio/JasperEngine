@@ -606,11 +606,19 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             }
             const Json errors = result.value("errors", Json::array());
             size_t added = 0;
+            std::set<std::string> seen;
             for (const Json& error : errors) {
                 if (error.value("severity", std::string("error")) != "error") continue;
-                problems.push_back({{"path", path}, {"line", error.value("line", 0)},
-                                    {"message", "Shader " + base + " (" + result.value("type", std::string()) + ") does not compile: " +
-                                                    shortMessage(error.value("message", std::string()), 300)}});
+                const std::string message = shortMessage(error.value("message", std::string()), 300);
+                if (message.find("compilation terminated") != std::string::npos) continue;
+                // glslang names the file (an include, or the stage file) when it can
+                const std::string source = error.value("source", std::string());
+                const bool namesFile = source.find('.') != std::string::npos || source.find('/') != std::string::npos;
+                const std::string where = namesFile ? source : path;
+                const int line = error.value("line", 0);
+                if (!seen.insert(where + ":" + std::to_string(line) + ":" + message).second) continue;
+                problems.push_back({{"path", where}, {"line", line},
+                                    {"message", "Shader " + base + " (" + result.value("type", std::string()) + ") does not compile: " + message}});
                 if (++added >= 10) break;
             }
             if (added == 0) {
