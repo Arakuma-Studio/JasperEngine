@@ -352,3 +352,46 @@ async def test_lua_math_operators(ed: Editor):
 
 def _lua_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# Lua's global print goes through Log::print (the Console), not stdout: any number of values of
+# any type, joined with tabs as standard Lua does
+PRINTER = """local Printer = {}
+
+function Printer:init()
+    print("lua-print-probe", 42, nil, true, Vector3(1, 2, 3))
+end
+
+return Printer
+"""
+
+
+async def test_lua_print_goes_to_console(ed: Editor):
+    sid = await scene3d(ed)
+    holder = await create(ed, "empty", "PrintHolder")
+    await ed.call("create_script", kind="lua", name="Printer", content=PRINTER, entity=holder)
+    await ed.call("save_scene", scene=sid, path="scenes/Regress3D")
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    r = await ed.call_raw("play", {"action": "start", "scene": sid, "timeout_seconds": 120})
+    try:
+        ed.check(not r.is_error, f"play start failed: {r.text[:500]}")
+        found = await ed.call("read_console", since=cursor)
+    finally:
+        await ed.call_raw("play", {"action": "stop"})
+        await ed.call("detach_script", entity=holder, script="Printer", scene=sid)
+    lines = [(e["type"], e["message"]) for e in found["entries"]]
+    want = "lua-print-probe\t42\tnil\ttrue\tVector3(1.000000, 2.000000, 3.000000)"
+    ed.check(any(t == "info" and want in m for t, m in lines), f"print output in the Console: {lines}")
+
+
+# eval_lua's helpers (print, script, object, entity, getScene, scene) were set on its environment
+# after the environment's __newindex = _G: they landed in the game's globals, so the game's print
+# then wrote through a dead eval context (a crash in play after an edit-mode eval_lua)
+async def test_eval_lua_helpers_stay_out_of_globals(ed: Editor):
+    await scene3d(ed)
+    got = await ed.call("eval_lua", code="return type(script), type(object), type(getScene)", allow_edit_mode=True)
+    ed.check_eq(got["values"], ["function", "function", "function"], "helpers inside eval_lua")
+    got = await ed.call("eval_lua", allow_edit_mode=True, code=(
+        "return rawget(_G, 'script') == nil, rawget(_G, 'object') == nil, rawget(_G, 'getScene') == nil, "
+        "rawget(_G, 'entity') == nil, rawget(_G, 'scene') == nil"))
+    ed.check_eq(got["values"], [True, True, True, True, True], "eval_lua helpers leaked into _G")

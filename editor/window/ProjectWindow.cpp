@@ -33,6 +33,7 @@
 #include "Widgets.h"
 #include "Stream.h"
 #include "Factory.h"
+#include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
 #include "util/FileDialogs.h"
@@ -2392,6 +2393,9 @@ void editor::ProjectWindow::handleRename(){
                         if (renamed && newLuaScript && Util::isLuaFile(newName)) {
                             renameNewLuaScript(newPath, newPath.stem().string());
                         }
+                        if (renamed && (Util::isLuaFile(fileBeingRenamed) || Util::isLuaFile(newName))) {
+                            Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {oldPath, newPath});
+                        }
                         codeEditor->handleFileRename(oldPath, newPath);
                         imageViewerWindow->handleFileRename(oldPath, newPath);
                         scanDirectory(currentPath);
@@ -3530,6 +3534,8 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
         newLuaScriptFile = name + ".lua";
         newLuaScriptText = newLuaScriptTemplate(name);
         f << newLuaScriptText;
+        f.close();
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
     } else {
         std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
         std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);

@@ -4291,11 +4291,19 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
 }
 
 void editor::Project::copyEngineApiToProject() {
+    // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot.
+    // Written even when the engine folder is missing or the copy fails: the stubs are built
+    // into the editor.
+    auto writeTooling = [this]() {
+        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
+        Generator::writeLuaScriptStubs(getProjectPath(), getProjectInternalPath());
+    };
     try {
         std::filesystem::path engineApiSource = FileUtils::getEngineDir();
 
         if (!std::filesystem::exists(engineApiSource)) {
             Out::warning("engine folder not found at: %s", engineApiSource.string().c_str());
+            writeTooling();
             return;
         }
 
@@ -4350,12 +4358,10 @@ void editor::Project::copyEngineApiToProject() {
 
         Out::info("Synced engine API in project: %s (%d files updated)", engineApiDest.string().c_str(), updatedFiles);
 
-        // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot
-        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
-
     } catch (const std::exception& e) {
         Out::error("Failed to copy engine API: %s", e.what());
     }
+    writeTooling();
 }
 
 void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene>& runtimeScenes) {
