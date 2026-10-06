@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "AppSettings.h"
 #include "util/ProjectUtils.h"
+#include "Generator.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
 #include "widget/SemanticSuggestions.h"
@@ -1418,6 +1419,9 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
         updateScriptProperties(instance);
         updateAllProjectSymbols();
         invalidateShadersForFile(instance);
+        if (Util::isLuaFile(fullPath.string())) {
+            Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {fullPath});
+        }
 
         return true;
     } catch (const std::exception&) {

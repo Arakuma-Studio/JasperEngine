@@ -1124,14 +1124,10 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
     context.scene = scene;
     context.printed = &result.printed;
 
-    // Environment: reads and global writes go to _G; the helpers live in the env itself
+    // Environment: reads and global writes go to _G; the helpers live in the env itself. They
+    // are set before the metatable: with __newindex in place they would land in _G, and the
+    // game's own print would then write through this call's dead context.
     lua_newtable(L);
-    lua_newtable(L);
-    lua_pushglobaltable(L);
-    lua_setfield(L, -2, "__index");
-    lua_pushglobaltable(L);
-    lua_setfield(L, -2, "__newindex");
-    lua_setmetatable(L, -2);
     if (scene && scene->scene && luabridge::push<Scene*>(L, scene->scene)) {
         lua_setfield(L, -2, "scene");
     }
@@ -1144,6 +1140,12 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
         lua_pushcclosure(L, fn, 1);
         lua_setfield(L, -2, name);
     }
+    lua_newtable(L);
+    lua_pushglobaltable(L);
+    lua_setfield(L, -2, "__index");
+    lua_pushglobaltable(L);
+    lua_setfield(L, -2, "__newindex");
+    lua_setmetatable(L, -2);
     if (!lua_setupvalue(L, chunk, 1)) lua_pop(L, 1);
 
     lua_Hook oldHook = lua_gethook(L);

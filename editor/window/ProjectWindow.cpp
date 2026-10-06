@@ -32,6 +32,8 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "Stream.h"
+#include "Factory.h"
+#include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
 #include "util/FileDialogs.h"
@@ -53,6 +55,7 @@
 #include <mutex>
 #include <atomic>
 #include <algorithm>
+#include <unordered_set>
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 
@@ -2316,6 +2319,9 @@ void editor::ProjectWindow::handleNewDirectory(){
 }
 
 void editor::ProjectWindow::startRename(const std::string& fileName){
+    if (fileName != newLuaScriptFile) {
+        newLuaScriptFile.clear();
+    }
     isRenaming = true;
     renameSelectPending = true;
     fileBeingRenamed = fileName;
@@ -2381,7 +2387,15 @@ void editor::ProjectWindow::handleRename(){
                     if (fs::exists(newPath)) {
                         ImGui::OpenPopup("File Already Exists");
                     } else {
-                        project->getProjectCommandHistory()->addCommand(new RenameFileCmd(project, fileBeingRenamed, newName, currentPath.string()));
+                        const bool newLuaScript = !newLuaScriptFile.empty() && fileBeingRenamed == newLuaScriptFile;
+                        newLuaScriptFile.clear();
+                        const bool renamed = project->getProjectCommandHistory()->addCommand(new RenameFileCmd(project, fileBeingRenamed, newName, currentPath.string()));
+                        if (renamed && newLuaScript && Util::isLuaFile(newName)) {
+                            renameNewLuaScript(newPath, newPath.stem().string());
+                        }
+                        if (renamed && (Util::isLuaFile(fileBeingRenamed) || Util::isLuaFile(newName))) {
+                            Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {oldPath, newPath});
+                        }
                         codeEditor->handleFileRename(oldPath, newPath);
                         imageViewerWindow->handleFileRename(oldPath, newPath);
                         scanDirectory(currentPath);
@@ -3444,6 +3458,56 @@ void editor::ProjectWindow::assetsCreateFolder() {
     memset(nameBuffer, 0, sizeof(nameBuffer));
 }
 
+// Create > Lua Script's template. The module is declared a ScriptInstance subclass with a
+// field per property: lua-language-server then types self and reports typos.
+static std::string newLuaScriptTemplate(const std::string& name) {
+    std::string t;
+    t += "-- " + name + ".lua\n\n";
+    t += "---@class " + name + " : ScriptInstance\n";
+    t += "---@field speed number\n";
+    t += "local " + name + " = {\n";
+    t += "    -- Editor-exposed properties\n";
+    t += "    properties = {\n";
+    t += "        {\n";
+    t += "            name = \"speed\",\n";
+    t += "            displayName = \"Speed\",\n";
+    t += "            type = \"float\",\n";
+    t += "            default = 5.0\n";
+    t += "        }\n";
+    t += "    }\n";
+    t += "}\n\n";
+    t += "function " + name + ":init()\n";
+    t += "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
+    t += "    RegisterEngineEvent(self, \"onUpdate\")\n";
+    t += "end\n\n";
+    t += "function " + name + ":onUpdate()\n";
+    t += "end\n\n";
+    t += "return " + name + "\n";
+    return t;
+}
+
+// Create > Lua Script writes NewLuaScript.lua and opens the rename box at once. Renamed while
+// still untouched, the script is rewritten with its new name as module and class name, as if
+// created with it (as Unity names a new script's class): two renamed scripts would otherwise
+// both declare `---@class NewLuaScript` and lua-language-server would merge them.
+void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::string& newStem) {
+    static const std::unordered_set<std::string> luaKeywords = {
+        "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
+        "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
+    const std::string name = Factory::toIdentifier(newStem);
+    if (name.empty() || luaKeywords.count(name)) {
+        return;
+    }
+    std::ifstream in(file, std::ios::binary);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    if (text != newLuaScriptText) {
+        return;  // edited since: leave it to its author
+    }
+    std::ofstream out(file, std::ios::trunc | std::ios::binary);
+    out << newLuaScriptTemplate(name);
+}
+
 void editor::ProjectWindow::assetsCreateScript(bool lua) {
     if (currentPath.empty()) {
         return;
@@ -3462,30 +3526,16 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     }
 
     if (lua) {
-        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc);
+        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc | std::ios::binary);
         if (!f) {
             Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
             return;
         }
-        f << "-- " << name << ".lua\n\n";
-        f << "local " << name << " = {\n";
-        f << "    -- Editor-exposed properties\n";
-        f << "    properties = {\n";
-        f << "        {\n";
-        f << "            name = \"speed\",\n";
-        f << "            displayName = \"Speed\",\n";
-        f << "            type = \"float\",\n";
-        f << "            default = 5.0\n";
-        f << "        }\n";
-        f << "    }\n";
-        f << "}\n\n";
-        f << "function " << name << ":init()\n";
-        f << "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
-        f << "    RegisterEngineEvent(self, \"onUpdate\")\n";
-        f << "end\n\n";
-        f << "function " << name << ":onUpdate()\n";
-        f << "end\n\n";
-        f << "return " << name << "\n";
+        newLuaScriptFile = name + ".lua";
+        newLuaScriptText = newLuaScriptTemplate(name);
+        f << newLuaScriptText;
+        f.close();
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
     } else {
         std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
         std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);

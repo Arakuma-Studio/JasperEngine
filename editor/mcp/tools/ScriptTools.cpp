@@ -550,6 +550,16 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         }
     }
 
+    // lua-language-server's classes of the changed scripts (of every script on a full sync)
+    std::vector<fs::path> changedLua;
+    for (const fs::path& path : changed) {
+        if (Util::isLuaFile(path.string())) changedLua.push_back(path);
+    }
+    if (full || !changedLua.empty()) {
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(),
+                                       full ? std::vector<fs::path>() : changedLua);
+    }
+
     if (anyMaterial || firstFull) project->refreshLinkedMaterials(true);
     if (anyShader || firstFull) project->invalidateCustomShaders();
     const int texturesReloaded = reloadTextures(project, images);
