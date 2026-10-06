@@ -1002,6 +1002,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n";
     cmakeContent += "set(CMAKE_OBJCXX_STANDARD ${CMAKE_CXX_STANDARD})\n";
     cmakeContent += "set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)\n\n";
+    cmakeContent += "# compile_commands.json in the build tree, for IDEs and language servers (the editor\n";
+    cmakeContent += "# also writes one for clangd in ${INTERNAL_DIR}/clangd, see .clangd)\n";
+    cmakeContent += "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n\n";
 
     cmakeContent += "# Build mode: when ON, build as JasperEngine Editor plugin (shared library)\n";
     cmakeContent += "option(JASPERENGINE_EDITOR_PLUGIN \"Build as JasperEngine Editor plugin\" OFF)\n";

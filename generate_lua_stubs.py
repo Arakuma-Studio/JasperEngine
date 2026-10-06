@@ -1766,7 +1766,7 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
               'unsigned char', 'signed char', 'std::byte', 'uintptr_t', 'intptr_t', 'std::uint32_t',
               'std::int32_t', 'std::uint64_t', 'std::int64_t', 'std::uint8_t', 'std::uint16_t'}
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
-_STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::wstring', 'wstring', 'char', 'wchar_t',
+_STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
               'char16_t', 'char32_t'}
 _SEQ = re.compile(r'^(?:std::)?(?:vector|list|deque|set|unordered_set|multiset)<(.+)>$')
 _ARR = re.compile(r'^(?:std::)?array<(.+),\s*[^,]+>$')
