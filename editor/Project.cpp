@@ -4350,6 +4350,9 @@ void editor::Project::copyEngineApiToProject() {
 
         Out::info("Synced engine API in project: %s (%d files updated)", engineApiDest.string().c_str(), updatedFiles);
 
+        // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot
+        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
+
     } catch (const std::exception& e) {
         Out::error("Failed to copy engine API: %s", e.what());
     }
