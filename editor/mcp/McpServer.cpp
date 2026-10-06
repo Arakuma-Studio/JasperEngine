@@ -653,8 +653,10 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     struct AutoSyncState {
         Json report;
         std::chrono::system_clock::time_point start{};
+        bool settle = true;
     };
     auto autoSync = std::make_shared<AutoSyncState>();
+    autoSync->settle = McpAutoSync::mayWriteFiles(def->annotations.readOnly, args);
 
     auto call = std::make_shared<McpCall>(*this, name, args,
         [this, id, reply, seq, key, autoSync](McpCall& done, const ToolResult& result) {
@@ -666,7 +668,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
             trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
             // What the tool wrote is its own, not an external change: settled on the main
             // thread once the handler has returned (before the client's next call runs)
-            if (autoSync->start != std::chrono::system_clock::time_point{}) {
+            if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
                 const auto start = autoSync->start;
                 const auto end = std::chrono::system_clock::now();
                 const std::string tool = done.tool();

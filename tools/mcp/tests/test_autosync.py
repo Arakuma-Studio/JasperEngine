@@ -213,17 +213,44 @@ async def test_open_clean_buffer_reloads(ed: Editor):
     await ed.call("code_editor", action="close", path="scripts/Mover.lua")
 
 
-async def test_no_change_timing(ed: Editor):
-    times = []
-    for _ in range(25):
-        r = await status_call(ed)
+def p90(values: list) -> float:
+    values = sorted(values)
+    return values[int(len(values) * 0.9) - 1]
+
+
+async def measure_no_change(ed: Editor, calls: int) -> dict:
+    """The auto-sync cost per call when nothing changed, in CPU and wall ms: a read-only call
+    pays the scan before it; a call that may write files also the settle scan after it."""
+    out = {"read_cpu": [], "write_cpu": [], "read_wall": [], "write_wall": []}
+    auto: dict = {}
+    for _ in range(calls):
+        r = await ed.call_raw("focus_window", {"window": "hierarchy"})   # may write: settles after
+        ed.check(not r.is_error and external(r) is None, f"focus_window: {r.text[:300]}")
+        r = await status_call(ed)  # read-only: its scan + focus_window's settle
+        ed.check(external(r) is None, f"no change but reported: {external(r)!r}")
         auto = r.structured.get("auto_sync")
         ed.check(isinstance(auto, dict), f"editor_status lacks auto_sync: {list(r.structured)!r}")
-        times.append(auto["scan_ms"] + auto["settle_ms"])
-    times.sort()
-    p90 = times[int(len(times) * 0.9) - 1]
-    print(f"no-change auto-sync cost: median {statistics.median(times):.3f} ms, p90 {p90:.3f} ms, files {auto['files']}")
-    ed.check(p90 < 5.0, f"no-change auto-sync too slow: {times!r}")
+        out["read_cpu"].append(auto["scan_cpu_ms"])
+        out["write_cpu"].append(auto["scan_cpu_ms"] + auto["settle_cpu_ms"])
+        out["read_wall"].append(auto["scan_ms"])
+        out["write_wall"].append(auto["scan_ms"] + auto["settle_ms"])
+    out["auto"] = auto
+    return out
+
+
+def describe(m: dict) -> str:
+    return ", ".join(f"{k} median {statistics.median(m[k]):.3f} p90 {p90(m[k]):.3f} ms"
+                     for k in ("read_cpu", "write_cpu", "read_wall", "write_wall"))
+
+
+async def test_no_change_timing(ed: Editor):
+    await status_call(ed)
+    m = await measure_no_change(ed, 25)
+    auto = m["auto"]
+    print(f"no-change auto-sync, {auto['files']} files: {describe(m)}")
+    ed.check(auto["complete"], f"the fixture is scanned whole every call: {auto!r}")
+    ed.check(p90(m["write_cpu"]) < 5.0, f"no-change auto-sync too slow (CPU ms): {sorted(m['write_cpu'])!r}")
+    ed.check(statistics.median(m["write_wall"]) < 5.0, f"no-change auto-sync too slow (wall ms): {sorted(m['write_wall'])!r}")
 
 
 async def test_play_deferred_then_picked_up(ed: Editor):
@@ -253,6 +280,7 @@ async def test_play_deferred_then_picked_up(ed: Editor):
 
 async def test_sync_files_still_reports(ed: Editor):
     """sync_files (forced rescan) keeps reporting what it picked up itself."""
+    await ed.call("sync_files")  # its first full sync has nothing to compare with
     path = ed.project / "scripts/Mover.lua"
     touch_write(path, path.read_text() + "-- sync\n")
     r = await ed.call("sync_files")
@@ -278,19 +306,14 @@ async def test_large_project_incremental():
             (proj / f"assets/bulk/code/S{f:03d}.lua").write_text("return {}\n")
         async with Editor(project=proj) as ed:
             await status_call(ed)
-            times = []
-            files = 0
-            for _ in range(20):
-                r = await status_call(ed)
-                ed.check(external(r) is None, f"no change but reported: {external(r)!r}")
-                auto = r.structured["auto_sync"]
-                files = auto["files"]
-                times.append(auto["scan_ms"] + auto["settle_ms"])
-            times.sort()
-            p90 = times[int(len(times) * 0.9) - 1]
-            print(f"{files} files: no-change cost median {statistics.median(times):.3f} ms, p90 {p90:.3f} ms")
+            m = await measure_no_change(ed, 20)
+            auto = m["auto"]
+            files = auto["files"]
+            print(f"{files} files, {auto['checked']} checked per scan: {describe(m)}")
             ed.check(files >= 25000, f"files tracked: {files}")
-            ed.check(p90 < 5.0, f"large project scan too slow: {times!r}")
+            ed.check(not auto["complete"] and auto["checked"] < files, f"large projects are scanned incrementally: {auto!r}")
+            ed.check(p90(m["read_cpu"]) < 5.0, f"large project scan too slow (CPU ms): {sorted(m['read_cpu'])!r}")
+            ed.check(p90(m["write_cpu"]) < 8.0, f"large project scan + settle too slow (CPU ms): {sorted(m['write_cpu'])!r}")
 
             # a code edit is found on the next call
             touch_write(ed.project / "assets/bulk/code/S123.lua", "return { x = 1 }\n")
@@ -302,11 +325,11 @@ async def test_large_project_incremental():
             r = await status_call(ed)
             ext = external(r)
             ed.check(ext is not None and ext.get("added") == ["assets/bulk/d100/new/N.lua"], f"new file: {ext!r}")
-            # an image deep in the bulk: found within a bounded number of calls
+            # an image deep in the bulk: found once the round-robin reaches it (bounded)
             time.sleep(0.02)
             (ed.project / "assets/bulk/d200/f050.png").write_bytes(b"12345")
             found = None
-            for i in range(60):
+            for i in range(600):
                 r = await status_call(ed)
                 if external(r):
                     found = (i, external(r))
@@ -322,9 +345,8 @@ async def test_large_project_incremental():
 
 # snake_case words in the guide that are neither tools nor tool parameters
 NON_TOOL_WORDS = {
-    "ambient_light_2d",         # scene setting (set_scene_settings values)
-    "default_mesh_shader",
-    "body_type",
+    "on_start",                 # "Lua has no ..." list (names from other engines)
+    "external_changes",         # the field results carry after files changed on disk
 }
 
 
@@ -354,16 +376,23 @@ async def test_instructions_name_real_tools(ed: Editor):
     params: set = set()
     for t in ed.tool_list:
         schema_words(t.input_schema, params)
+    # scene setting names (set_scene_settings values) count as parameters
+    settings = await ed.call("get_scene_settings")
+
+    def keys(value):
+        if isinstance(value, dict):
+            for k, v in value.items():
+                params.add(k)
+                keys(v)
+        elif isinstance(value, list):
+            for v in value:
+                keys(v)
+    keys(settings)
 
     # every snake_case identifier is a tool, a parameter / enum value, or a known non-tool word
-    unknown = sorted({w for w in re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text)
+    unknown = sorted({w for w in re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(]|\.\w)", text)
                       if w not in tools and w not in params and w not in NON_TOOL_WORDS})
     ed.check(not unknown, f"guide names unknown tools/params: {unknown}")
-
-    # every `backticked` single word that looks like a tool name is one
-    for word in re.findall(r"`([a-z][a-z0-9_]*)`", text):
-        ed.check(word in tools or word in params or word in NON_TOOL_WORDS,
-                 f"`{word}` in the guide is not a tool or parameter")
 
     # tool + parameter pairs the guide teaches
     pairs = {

@@ -42,8 +42,8 @@ namespace jasperengine::editor::mcp {
     // and picked up on the first call after Play stops.
     //
     // Large projects: hot files (changed this session), folders and code files are checked
-    // first, then images; a scan stops after a time budget and the next one resumes where it
-    // stopped, so a call never pays more than a few milliseconds.
+    // whole on every scan (up to 2000 each, beyond that they rotate too); images rotate
+    // within a time budget and the next scan resumes where the last one stopped.
     //
     // Main thread only.
     class McpAutoSync {
@@ -65,6 +65,10 @@ namespace jasperengine::editor::mcp {
         void afterCall(McpContext& ctx, const std::string& tool,
                        std::chrono::system_clock::time_point start, std::chrono::system_clock::time_point end);
 
+        // Whether a call may write project files, so it needs afterCall: read-only tools don't,
+        // except where they save a file on request (screenshot save_path)
+        static bool mayWriteFiles(bool readOnly, const Json& args);
+
         // syncFiles handled these absolute paths (a tool wrote them, or sync_files ran): they
         // are current. `full`: the whole project was rescanned and picked up.
         void filesSynced(McpContext& ctx, const std::vector<std::filesystem::path>& paths, bool full);
@@ -72,7 +76,7 @@ namespace jasperengine::editor::mcp {
         // Adds `report` to a tools/call result (structuredContent.external_changes + one text item)
         static void attach(Json& result, const Json& report);
 
-        // {files, dirs, scan_ms, settle_ms, complete} for editor_status
+        // {files, dirs, checked, complete, scan_ms, settle_ms, scan_cpu_ms, settle_cpu_ms} (editor_status)
         Json stats() const;
 
         // Files the scan tracks: Lua, C++, shaders, .material, images (by extension)
@@ -111,15 +115,17 @@ namespace jasperengine::editor::mcp {
         // Changes seen during Play: picked up once Play stops
         std::map<std::string, Pending> deferred;
 
-        double lastScanMs = 0.0;
-        double lastSettleMs = 0.0;
+        // Last scans: wall and thread CPU time, entries checked (stats for editor_status)
+        double lastScanMs = 0.0, lastScanCpuMs = 0.0;
+        double lastSettleMs = 0.0, lastSettleCpuMs = 0.0;
+        size_t scanChecked = 0, lastScanChecked = 0;
         bool lastComplete = true;
 
         // False when there is no project; rebased = a new baseline was just taken
         bool ensureRoot(McpContext& ctx, bool* rebased = nullptr);
         void baseline(const std::filesystem::path& projectRoot);
         void walkDir(const std::string& rel, std::vector<Change>* changes, int depth);
-        void scan(std::vector<Change>& changes, double budgetMs, bool& complete);
+        void scan(std::vector<Change>& changes, double budgetMs, size_t minImages, bool& complete);
         void checkDir(const std::string& rel, std::vector<Change>& changes);
         void checkFile(const std::string& rel, std::vector<Change>& changes);
         void removeTree(const std::string& relDir, std::vector<Change>* changes);

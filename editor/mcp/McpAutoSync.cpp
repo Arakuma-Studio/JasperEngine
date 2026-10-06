@@ -25,6 +25,7 @@
 #include <windows.h>
 #else
 #include <sys/stat.h>
+#include <time.h>
 #endif
 
 using namespace jasperengine::editor;
@@ -34,10 +35,13 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// A scan (before a call, and the settle after it) stops after this much time; the next one
-// resumes where it stopped. Each tier still advances by MIN_ITEMS per scan.
+// A scan (before a call, and the settle after it) stops checking images after this much time
+// (at least a quarter of it is theirs); the next one resumes where it stopped.
 constexpr double SCAN_BUDGET_MS = 2.0;
-constexpr size_t MIN_ITEMS = 32;
+constexpr double SETTLE_BUDGET_MS = 1.0;
+constexpr size_t MIN_ITEMS = 16;
+// Folders and code files are checked whole on every scan up to this many each
+constexpr size_t WHOLE_TIER_MAX = 2000;
 constexpr size_t HOT_MAX = 128;
 constexpr int MAX_DEPTH = 48;
 // Listed paths in a report (the rest is counted)
@@ -84,6 +88,20 @@ int64_t toNs(std::chrono::system_clock::time_point t) {
 
 double msSince(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
+// CPU time of the calling thread in ms: what a scan costs, whatever the host's load
+double threadCpuMs() {
+#ifdef _WIN32
+    FILETIME created, exited, kernel, user;
+    if (!GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user)) return 0.0;
+    auto ticks = [](const FILETIME& t) { return (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) return 0.0;
+    return static_cast<double>(ts.tv_sec) * 1000.0 + static_cast<double>(ts.tv_nsec) / 1e6;
+#endif
 }
 
 std::string lowerExtension(const std::string& name) {
@@ -277,6 +295,7 @@ void McpAutoSync::removeTree(const std::string& relDir, std::vector<Change>* cha
 }
 
 void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes) {
+    scanChecked++;
     FileMap& map = mapFor(rel);
     auto it = map.find(rel);
     if (it == map.end()) return;
@@ -297,6 +316,7 @@ void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes
 // A folder's mtime changes when an entry is added, removed or renamed in it (not when a
 // file's content changes): then its children are listed again.
 void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes) {
+    scanChecked++;
     auto known = dirs.find(rel);
     if (known == dirs.end()) return;
     FileStat st;
@@ -348,10 +368,11 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
     });
 }
 
-void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, bool& complete) {
+void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t minImages, bool& complete) {
     const auto start = std::chrono::steady_clock::now();
-    const auto deadline = start + std::chrono::microseconds(static_cast<int64_t>(budgetMs * 1000.0));
+    const auto budget = std::chrono::microseconds(static_cast<int64_t>(budgetMs * 1000.0));
     complete = true;
+    scanChecked = 0;
 
     // Files changed this session first: the ones being worked on
     const std::vector<std::string> hotNow = hot;
@@ -360,30 +381,42 @@ void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, bool& comp
         else hot.erase(std::remove(hot.begin(), hot.end(), rel), hot.end());
     }
 
-    // Round-robin over one tier from its cursor; false when the budget stopped it
-    auto sweep = [&](auto& map, std::string& cursor, auto check) {
+    // Round-robin over one tier from its cursor until `deadline` (at least minItems);
+    // false when it stopped before a full pass
+    auto sweep = [&](auto& map, std::string& cursor, auto check, std::chrono::steady_clock::time_point deadline,
+                     size_t minItems) {
         const size_t total = map.size();
         size_t done = 0;
         std::string key;
         auto it = map.lower_bound(cursor);
         while (done < total && !map.empty()) {
+            if (done >= minItems && std::chrono::steady_clock::now() >= deadline) {
+                cursor = it == map.end() ? std::string() : it->first;
+                return false;
+            }
             if (it == map.end()) it = map.begin();
             key = it->first;
             check(key);
             done++;
             it = map.upper_bound(key);   // the check may erase entries
-            if (done >= MIN_ITEMS && done < total && (done % 16) == 0 && std::chrono::steady_clock::now() >= deadline) {
-                cursor = it == map.end() ? std::string() : it->first;
-                return false;
-            }
         }
         cursor = it == map.end() ? std::string() : it->first;
         return true;
     };
 
-    if (!sweep(dirs, dirCursor, [&](const std::string& rel) { checkDir(rel, changes); })) complete = false;
-    if (!sweep(code, codeCursor, [&](const std::string& rel) { checkFile(rel, changes); })) complete = false;
-    if (!sweep(images, imageCursor, [&](const std::string& rel) { checkFile(rel, changes); })) complete = false;
+    // Folders (new and removed files) and code files are what the agent edits: checked whole
+    // on every scan unless there are very many; images share what is left of the budget
+    const auto never = std::chrono::steady_clock::time_point::max();
+    const bool dirsWhole = dirs.size() <= WHOLE_TIER_MAX;
+    if (!sweep(dirs, dirCursor, [&](const std::string& rel) { checkDir(rel, changes); },
+               dirsWhole ? never : start + budget * 3 / 10, MIN_ITEMS)) complete = false;
+    const bool codeWhole = code.size() <= WHOLE_TIER_MAX;
+    if (!sweep(code, codeCursor, [&](const std::string& rel) { checkFile(rel, changes); },
+               codeWhole ? never : start + budget * 65 / 100, MIN_ITEMS)) complete = false;
+    // Images: the rest of the budget, but at least a quarter of it whatever the rest took
+    const auto imagesDeadline = std::max(start + budget, std::chrono::steady_clock::now() + budget / 4);
+    if (!sweep(images, imageCursor, [&](const std::string& rel) { checkFile(rel, changes); },
+               imagesDeadline, minImages)) complete = false;
 }
 
 void McpAutoSync::restamp(const std::string& rel) {
@@ -483,10 +516,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     }
 
     const auto started = std::chrono::steady_clock::now();
+    const double cpuStart = threadCpuMs();
     std::vector<Change> found;
     bool complete = true;
-    scan(found, SCAN_BUDGET_MS, complete);
+    scan(found, SCAN_BUDGET_MS, MIN_ITEMS, complete);
     lastScanMs = msSince(started);
+    lastScanCpuMs = threadCpuMs() - cpuStart;
+    lastScanChecked = scanChecked;
     lastComplete = complete;
 
     // One entry per path: this scan, what the last settle left, and (once Play stopped) what
@@ -592,10 +628,12 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
 
     const auto started = std::chrono::steady_clock::now();
+    const double cpuStart = threadCpuMs();
     std::vector<Change> found;
     bool complete = true;
-    scan(found, SCAN_BUDGET_MS, complete);
+    scan(found, SETTLE_BUDGET_MS, 0, complete);
     lastSettleMs = msSince(started);
+    lastSettleCpuMs = threadCpuMs() - cpuStart;
     if (found.empty()) return;
 
     // Stamped inside the call: the tool's own writes. Older: external, for the next call.
@@ -618,6 +656,10 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     // Picked up silently (the Project window, the asset database, buffers...)
     std::vector<std::string> ignored;
     process(ctx, own, ignored);
+}
+
+bool McpAutoSync::mayWriteFiles(bool readOnly, const Json& args) {
+    return !readOnly || (args.is_object() && args.contains("save_path"));
 }
 
 void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& paths, bool full) {
@@ -706,6 +748,7 @@ void McpAutoSync::attach(Json& result, const Json& report) {
 
 Json McpAutoSync::stats() const {
     auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
-    return {{"files", code.size() + images.size()}, {"dirs", dirs.size()}, {"scan_ms", round3(lastScanMs)},
-            {"settle_ms", round3(lastSettleMs)}, {"complete", lastComplete}};
+    return {{"files", code.size() + images.size()}, {"dirs", dirs.size()}, {"checked", lastScanChecked},
+            {"complete", lastComplete}, {"scan_ms", round3(lastScanMs)}, {"settle_ms", round3(lastSettleMs)},
+            {"scan_cpu_ms", round3(lastScanCpuMs)}, {"settle_cpu_ms", round3(lastSettleCpuMs)}};
 }
