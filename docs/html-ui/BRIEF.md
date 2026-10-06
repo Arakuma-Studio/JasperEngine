@@ -3,6 +3,9 @@
 Read `docs/html-ui/DESIGN.md` (binding), then your phase spec
 (`docs/html-ui/phase-N-*.md`), then this file. Your assignment names one work package of
 that phase spec: implement all of it, completely and correctly, with tests.
+`docs/html-ui/CONTRACTS.md` lists every interface one phase provides to another: use the
+names there for everything you consume, and keep the names of everything you provide; if the
+code forces a different name or signature, keep the old one working or report the change.
 
 ## Branches and worktrees
 - Integration branch: `html-ui`. Each phase's packages branch from it and merge back into
@@ -38,8 +41,10 @@ additions only; append, don't reorder.
 
 ## Test
 - C++ unit and golden-image tests: `engine/tests/htmlui/` (googletest), target
-  `jasperengine-htmlui-tests`, run headless under Xvfb. Golden images live in
-  `engine/tests/htmlui/golden/`; regenerate only on purpose and inspect every changed image.
+  `jasperengine-htmlui-tests`, built and run headless under Xvfb by
+  `tools/build.sh htmlui-tests` (`HTMLUI_BACKEND=vulkan` for Vulkan, `HTMLUI_TEST_ARGS` for a
+  gtest filter). Golden images live in `engine/tests/htmlui/golden/`; regenerate only on
+  purpose (`JASPER_HTMLUI_UPDATE_GOLDEN=1`, glcore) and inspect every changed image.
 - MCP end-to-end: `tools/mcp/run-tests.sh tools/mcp/tests/test_<file>.py` against the real
   editor (headless Xvfb is automatic). Fixture: `JASPER_FIXTURE=/var/lib/orquester/workspaces/jaspersito/JasperEngine-2/build/fixture-unity`
   (never modify it in place; the harness copies it). Harness API: docstring of
