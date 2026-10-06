@@ -146,96 +146,78 @@ small additive change (BRIEF ownership rules) and lists it in its report.
 
 #### 3.2.1 Phase 2: compatibility layer (`engine/core/htmlui/compat/`)
 
-Constraints:
-
-- The public headers below include no lexbor and no RmlUi header.
-- Every function is exported with `JASPERENGINE_API`.
-- Every function works without `Engine::systemInit`: pure CPU, file access only through the
-  given `Loader`.
+Reconciled with `phase-2-compat.md` (§3.4, §3.5, §3.12.1, §3.13.7); the names below are phase
+2's, and `docs/html-ui/CONTRACTS.md` lists them. Namespace `jasperengine::htmlui::compat`.
+Public headers include no lexbor header; the functions phase 4 calls are `JASPERENGINE_API`.
 
 ```cpp
-// engine/core/htmlui/compat/HtmlCompat.h
-namespace jasperengine::htmlui::compat {
-
-enum class Severity { Info, Warning, Error };
-const char* severityName(Severity);                 // "info" | "warning" | "error"
-
-struct SourceLocation {
-    std::string file;   // project-relative, '/' separators ("assets/ui/menu.css")
-    int line = 0;       // 1-based, 0 = unknown
-    int column = 0;     // 1-based, 0 = unknown
-};
-
+// Diagnostics.h, DiagnosticCodes.h (phase 2 §3.4, Appendix F)
+enum class Severity : uint8_t { Error, Warning, Info };
+struct DiagCode { DiagArea area; uint16_t number; std::string id() const; };   // id(): "HTMLUI-CSS-0004"
 struct Diagnostic {
-    Severity severity = Severity::Warning;
-    std::string code;        // stable, kebab-case ("css-property-unsupported"); listed by diagnosticCodes()
-    std::string message;     // one sentence, names the construct ("position: sticky is not supported ...")
-    std::string suggestion;  // the replacement to write, may be empty
-    SourceLocation location;
+    Severity severity; DiagCode code; std::string message, suggestion, replacement, subject;
+    std::string file;                 // ASSET-relative ("ui/menu.css"); "" when generated
+    uint32_t line, column, length;    // 1-based, 0 = unknown
+    std::string origin;
 };
+std::string toText(const Diagnostic&);           // "ui/menu.css:12:5: warning: message (fix: s) [HTMLUI-CSS-0004]"
+nlohmann::json toJson(const Diagnostic&);
+struct DiagCodeInfo { DiagCode code; Severity severity; const char* name /* kebab-case */; const char* title; const char* help; };
+Span<const DiagCodeInfo> diagnosticCodes();
+const DiagCodeInfo* findDiagnosticCode(std::string_view idOrName);
 
-// File access for a conversion, rooted at the project. Paths are project-relative.
-struct Loader {
-    std::function<bool(const std::string& path, std::string& content)> read;   // html, css (<link>, @import)
-    std::function<bool(const std::string& path)> exists;                       // images, fonts, svg, lottie
-};
+// CompatOptions.h / CompatApi.h (phase 2 §3.12.1)
+struct FileAccess { std::function<bool(const std::string& assetPath, std::string& content)> read;
+                    std::function<bool(const std::string& assetPath)> exists; };   // empty = FileData
+struct CheckOptions { CompatOptions compat; bool verifyWithRmlUi = true; FileAccess files; };
+struct CheckReport { std::vector<Diagnostic> diagnostics; std::vector<std::string> files /* every file read, asset-relative */;
+                     std::vector<RemoteReference> remoteRefs; };
+CheckReport checkDocument(const std::string& htmlPath, const CheckOptions&);     // htmlPath asset-relative
+CheckReport checkStylesheet(const std::string& cssPath, const CheckOptions&);
+std::string cssPropertyName(std::string_view rcssProperty);                     // "decorator" -> "background-image"
+struct RmlSourceMap { std::vector<SourceRef> elementRefs; std::vector<SourceRef> lineRefs; };
+// CompatDocument (sourcePath, rml, sourceMap, stylesheets with RcssLineMap, dependencies, diagnostics, files)
+// and std::optional<Diagnostic> locateElement(const CompatDocument&, const Rml::Element*)  (engine-internal)
 
-// Maps a line of the generated RML/RCSS back to the authored HTML/CSS
-class JASPERENGINE_API SourceMap {
-public:
-    bool toSource(const std::string& generatedFile, int generatedLine, SourceLocation& out) const;
-};
-
-struct ConvertOptions {
-    std::string documentPath;   // project-relative .html
-    Loader loader;
-};
-
-struct ConvertResult {
-    bool ok = false;                       // false: the document cannot load (an Error explains why)
-    std::string rml;
-    std::vector<Diagnostic> diagnostics;   // every severity, in source order
-    std::vector<std::string> dependencies; // project-relative files the document reads (css, images, fonts, svg, lottie)
-    SourceMap sourceMap;
-};
-
-JASPERENGINE_API ConvertResult convertDocument(const ConvertOptions& options);
-// A stylesheet on its own (no document context): its diagnostics
-JASPERENGINE_API std::vector<Diagnostic> checkStylesheet(const std::string& path, const Loader& loader);
-
-// Required diagnostics (codes are phase 2's; these behaviours are what phase 4 tests rely on):
-// - an unreadable linked stylesheet / @import, or a missing image/font/svg/lottie file: Error
-// - a remote URL (http/https) anywhere: Error, suggestion names import_files
-// - <script>, on* event attributes (onclick=...), javascript: URLs: Error, suggestion names Lua addEventListener
-// - an unsupported element / property / value / selector / at-rule: Warning or Error, with suggestion
-// - a lossless rewrite (border shorthand expanded, rgba alpha rescaled): Info
-
-// ---------------------------------------------------------------- support tables
-enum class Support { Supported, Rewritten, Partial, Unsupported };
-enum class FeatureKind { Element, Attribute, Property, Value, Function, Unit, Selector, PseudoClass, PseudoElement, AtRule };
-struct FeatureInfo {
-    FeatureKind kind;
-    std::string name;        // "position", "position: sticky", "calc()", "rem", ":has()", "::before", "@media", "<canvas>", "onclick"
-    Support support;
-    std::string note;        // limits / what the rewrite does
-    std::string suggestion;  // for Partial / Unsupported
-    std::string code;        // the diagnostic code emitted for it ("" for Supported)
-};
-JASPERENGINE_API const std::vector<FeatureInfo>& supportTable();
-struct DiagnosticCodeInfo {
-    std::string code;
-    Severity severity;
-    std::string summary;
-};
-JASPERENGINE_API const std::vector<DiagnosticCodeInfo>& diagnosticCodes();
-// RmlUi property name -> the CSS name an author writes ("decorator" -> "background-image");
-// returns the input when the names agree
-JASPERENGINE_API std::string cssPropertyName(const std::string& rcssProperty);
-}
+// SupportTables.h (phase 2 §3.5, Appendices A-E)
+enum class Support : uint8_t { Native, Rewritten, Approximated, Emulated, Fallback, Unsupported, Ignored };
+// propertyTable(), valueTable(), selectorTable(), atRuleTable(), mediaFeatureTable(), elementTable(),
+// attributeTable(), inputTypeTable(), unitTable(), functionTable(): Span<const XxxSupport>, each row with
+// name, support, fork, (supportWithFork,) output, note, suggestion
+Support effectiveSupport(Support base, ForkFeature fork, Support withFork, const ForkFeatures&);
+ForkFeatures ForkFeatures::present();
 ```
 
-The importers live on the editor side: `editor/htmlui/HtmlUiImporters.h`, namespace
-`jasperengine::editor::htmlui`.
+How phase 4 uses them (these replace the names an earlier draft of this spec assumed;
+the rest of this spec uses phase 2's names):
+- **Converting a document without the engine** (`check --ui`, `ExamplesCompatTest`,
+  `create_ui_document`, `inspect_ui {file}`): `checkDocument(path, {compat, verifyWithRmlUi =
+  false, files = ProjectChecks::projectFiles(root)})` — pure CPU, no `Engine::systemInit`, no
+  RmlUi context. A stylesheet on its own: `checkStylesheet`.
+- **Paths:** compat paths are asset-relative; phase 4 prints and returns project-relative
+  paths by prefixing the assets directory (`assets/ui/menu.css`), and strips it on input.
+- **Codes:** the `code` phase 4 reports everywhere (CLI findings, MCP `problems`, hook keys,
+  `ui-support`) is `DiagCode::id()` (`HTMLUI-CSS-0004`); `ui-support` also gives the registry
+  `name` (`unsupported-value`). Severity names are `error`/`warning`/`info`.
+- **Support statuses** (`ui-support`, the matrix): phase 2's seven statuses, lowercase
+  (`native`, `rewritten`, `approximated`, `emulated`, `fallback`, `unsupported`, `ignored`),
+  each row's status computed with `effectiveSupport(..., ForkFeatures::present())`. After
+  phase 3 almost no row is `fallback`.
+- **Severities phase 4 tests rely on** (phase 2 Appendix F): a missing local file (linked
+  stylesheet, `@import`, image, font, svg, lottie) `HTMLUI-GEN-0001` Error; a remote
+  `http(s)` URL without an import `HTMLUI-IMP-0001` Error whose suggestion names
+  `import_files`; `<script>` with JavaScript `HTMLUI-HTML-0006` Error and `on*` attributes
+  `HTMLUI-HTML-0005` Error, both suggesting Lua `addEventListener`; `javascript:` URLs
+  `HTMLUI-HTML-0023` Info (dropped); unsupported elements (`<canvas>`, `<video>`)
+  `HTMLUI-HTML-0002` Warning; unsupported properties/values/selectors/at-rules Warning
+  (or by case) with a suggestion; lossless rewrites Info.
+- **Source mapping** (inspector style sources): the RmlUi property source names a virtual
+  sheet (`@htmlui/doc/<key>/<path>.rcss:<line>`); `CompatDocument::stylesheets[i].lines` maps
+  the line back to the authored file and line, `elementRefs` maps `data-htmlui-loc` to the
+  element's HTML position (`locateElement`).
+
+The importers live on the editor side, in phase 2's facade `editor/htmlui/HtmlUiImporters.h`
+(namespace `jasperengine::editor::htmlui`, `phase-2-compat.md` §3.13.7):
 
 ```cpp
 struct ImportResult {
@@ -248,7 +230,7 @@ struct ImportResult {
 ImportResult importGoogleFonts(const fs::path& projectRoot, const std::vector<std::string>& specs /* "Inter:400,700", "Roboto Mono:400,400i" */, const std::string& destDir);
 ImportResult importLucideIcons(const fs::path& projectRoot, const std::vector<std::string>& names /* "play" */, const std::string& destDir);
 ImportResult importUrl(const fs::path& projectRoot, const std::string& url /* image, svg, font, LottieFiles page or .json */, const std::string& destDir);
-// Every remote URL a .html/.css references (links, @import, url(), src): imported; with rewrite the
+// Every remote URL a .html/.css references (links, @import, url(), src): imported (manifest written); with rewrite the
 // returned `replaced` list is what the caller substitutes in the file (the importer never edits the file)
 ImportResult importDocumentReferences(const fs::path& projectRoot, const std::string& htmlOrCss, const std::string& destDir);
 ```
@@ -257,78 +239,87 @@ Offline testing: when the environment variable `JASPERENGINE_IMPORT_MIRROR=<dir>
 importer fetch of `https://<host><path-and-query>` reads the file
 `<dir>/<host>/<urlquote(path-and-query, safe="")>` instead. That is Python's
 `urllib.parse.quote` with nothing safe, so `/`, `?`, `=`, `&` and `:` are all percent-encoded. A
-missing file fails the import with "not found". There is no network access in that mode.
+missing file fails the import with "not found". There is no network access in that mode
+(phase 2 §3.13.7 implements it in `HttpClient`).
 
-#### 3.2.2 Phase 1: component, system, wrapper, hot reload, Lua
+#### 3.2.2 Phases 0-1 (and phase 2 hooks): component, system, wrapper, hot reload, Lua
 
-`UIDocumentComponent` (`engine/core/component/UIDocumentComponent.h`):
+`UIDocumentComponent` (`engine/core/component/UIDocumentComponent.h`, phase 0 §3.7.1 +
+phase 1 §3.8.1):
 
-- `std::string html`: path of the document, relative to the project's assets directory, as
-  texture paths are. MCP tools take and return it project-relative and convert, as
-  `McpValues` does for textures.
-- `int sortOrder`.
-- `bool visible`.
-- the render-to-texture target.
-- Catalog properties `html`, `sortOrder`, `visible`.
-- MCP component name `uidocument` (`McpRefs::componentName`).
+- `std::string filename`: path of the document, relative to the project's assets directory,
+  as texture paths are (MCP validates `filename` properties, phase 0 D10). MCP tools take and
+  return it project-relative and convert, as `McpValues` does for textures.
+- `int sortOrder`, `bool enabled` (the component checkbox; the "document" JSON reports it as
+  `visible`), `bool interactive`, `UIDocumentRenderMode renderMode` (`SCREEN`/`TEXTURE`),
+  `textureWidth`, `textureHeight`.
+- Catalog properties `filename`, `sortOrder`, `enabled`, `interactive`, `renderMode`, ….
+- MCP component name `uidocument` (YAML key and `getComponentType("uidocument")`, phase 0 C3).
 
 `UIDocumentSystem` (`engine/core/subsystem/UIDocumentSystem.h`) is registered in `Scene::init`
-(`engine/core/Scene.cpp:28-34`, after `UISystem`). Its header forward-declares `Rml::Context` and
-`Rml::ElementDocument` and includes no RmlUi header, so editor files can include it.
+(`engine/core/Scene.cpp:28-34`, after `UISystem`). Its header forward-declares the RmlUi and
+compat types it names and includes no RmlUi header, so editor files can include it.
 
 ```cpp
-Rml::Context* getContext() const;                         // the scene's context (engine-internal use)
-Rml::ElementDocument* getDocument(Entity entity) const;   // null until loaded, or after a failed load
-bool isLoaded(Entity entity) const;
-bool isRenderToTexture(Entity entity) const;
-const std::vector<htmlui::compat::Diagnostic>& getDiagnostics(Entity entity) const;  // of the last (re)load
-const htmlui::compat::SourceMap* getSourceMap(Entity entity) const;
-const std::vector<std::string>& getDependencies(Entity entity) const;  // project-relative, html included
-uint32_t getLoadCount(Entity entity) const;   // +1 on every (re)load, a stylesheet-only refresh included
-// Hot reload. Reloads each document of this scene that depends on one of `files` (project-relative) whose
-// stamp (mtime, size) differs from the stamp recorded for it at that document's last (re)load, then records
-// the new stamps. Phase 1's editor poller uses the same stamps, so a change is reloaded once, by
-// whichever of the two sees it first. CSS-only changes refresh the stylesheets in place (elements and
-// listeners kept); any other change rebuilds the document and fires UIDocument.onLoad. Returns the
-// entities reloaded and whether each was stylesheet-only.
+HtmlUIContext* getContext() const;                         // phase 0; ->getRmlContext() for the Rml::Context (engine-internal)
+Rml::ElementDocument* getDocument(Entity entity) const;    // phase 1 §3.8.6; null until loaded, or after a failed load
+bool isDocumentLoaded(Entity entity) const;                // phase 0
+// render-to-texture: the component's renderMode == TEXTURE (phase 1 §3.12)
+std::shared_ptr<const htmlui::compat::CompatDocument> getCompiledDocument(Entity entity) const;   // phase 2 H1b (source map, dependencies)
+const std::vector<htmlui::compat::Diagnostic>& getDiagnostics(Entity entity) const;              // phase 2 H1b: of the last (re)load, compile + runtime
+std::vector<std::string> getDocumentFiles(Entity entity) const;   // phase 1 §3.8.6 + phase 2 H2; asset-relative, html included
+uint32_t getLoadCount(Entity entity) const;                // phase 1 §3.8.6: +1 on every (re)load, a stylesheet-only refresh included
+// phase 1 §3.8.6: reloads each document of this scene that depends on one of `files` (asset-relative) whose
+// stamp (mtime, size) differs from the stamp recorded at that document's last (re)load, then records the new
+// stamps. Phase 1's editor watcher calls the same function, so a change is reloaded once, by whichever of the
+// two sees it first. CSS-only changes refresh the stylesheets in place (elements and listeners kept, phase 2
+// H2); any other change rebuilds the document and fires UIDocument.onLoad.
 struct Reloaded { Entity entity; bool stylesheetOnly; };
 std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files);
-std::vector<std::string> getDataModelNames(Entity entity) const;
-bool pushDataModel(lua_State* L, Entity entity, const std::string& name) const;  // pushes the bound Lua table
+std::vector<std::string> getDataModelNames(Entity entity) const;                       // phase 1 §3.9.5
+bool pushDataModel(lua_State* L, Entity entity, const std::string& name) const;        // phase 1 §3.9.5: pushes the Lua proxy
 ```
+
+In the rest of this spec, `getDependencies(entity)` means `getDocumentFiles(entity)`,
+`getSourceMap(entity)` means `getCompiledDocument(entity)->sourceMap` plus the stylesheet line
+maps, and `isLoaded(entity)` means `isDocumentLoaded(entity)`.
 
 Runtime behaviour phase 4 relies on:
 
 - Documents load, lay out and render in edit-mode scenes (Scene and Game views) without Lua, and
   in play.
 - CSS px = canvas px.
-- The UI clock (RmlUi `SystemInterface::GetElapsedTime`, CSS transitions/animations, `anime`)
+- The UI clock (phase 1 `HtmlUIClock`, §3.0 of `phase-1-integration.md`: what RmlUi
+  `SystemInterface::GetElapsedTime`, CSS transitions/animations, Lottie and `anime` read)
   advances by the engine's unscaled frame delta. It is not wall clock: under
-  `play {fixed_fps}` it is deterministic. The golden tests depend on this.
+  `play {fixed_fps}` it is deterministic, and it does not advance while `auto_pause` holds the
+  simulation. The golden tests depend on this.
 
 Lua (`engine/core/script/binding/HtmlUIClassesLua.cpp`). The examples and the guide use only
 these names.
-
 | Class / table | Members used |
 |---|---|
 | `UIDocument(scene, entity)` | properties `body`, `loaded`. Methods `getElementById`, `querySelector`, `querySelectorAll` (array table), `createElement`, `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`, `show`, `hide`. Event `onLoad`, fired after every (re)load: `RegisterEvent(self, doc.onLoad, "method")`. |
 | `UIElement` | properties `id`, `tagName`, `className`, `textContent`, `innerHTML`, `value`, `checked`, `disabled`, `style` (`el.style.width = "40%"`), `classList` (`add`, `remove`, `toggle`, `contains`), `dataset`, `parentElement`, `children`, `offsetLeft/Top/Width/Height`. Methods `getAttribute`, `setAttribute`, `removeAttribute`, `hasAttribute`, `querySelector`, `querySelectorAll`, `appendChild`, `removeChild`, `remove`, `addEventListener(type, fn)`, `removeEventListener`, `focus`, `blur`, `click`, `scrollIntoView`, `getBoundingClientRect`. |
-| `UIEvent` | properties `type`, `target`, `currentTarget`, `key` (browser key names: `"Escape"`, `"Enter"`, `"ArrowUp"`), `button`, `clientX`, `clientY`, `value`. Methods `stopPropagation`, `preventDefault`. |
+| `UIEvent` | properties `type`, `target`, `currentTarget`, `key` (browser key names: `"Escape"`, `"Enter"`, `"ArrowUp"`), `button`, `clientX`, `clientY`. Methods `stopPropagation`, `preventDefault`. Form values are read from `event.target.value` (DOM). |
 | `anime` | `animate(targets, params)` returns an Animation (`play`, `pause`, `restart`, `reverse`, `seek`, `cancel`, field `completed`). `stagger(value, opts)`, `createTimeline(opts)` (`add(targets, params, position)`, `play`, `pause`), `createSpring(opts)`, `utils.set`, `utils.remove`. Params: CSS property names (camelCase) or `translateX/Y`, `scale`, `rotate`, `opacity`. Values: number, string, `{from=..., to=...}` or a keyframe array. `duration`/`delay` in ms. `ease` as an Anime.js name (`"outElastic(1, .6)"`). `loop`, `alternate`, `autoplay`, `onComplete`, `onUpdate`. |
 | Data binding in markup | `data-model`, `{{ }}`, `data-for`, `data-if`, `data-class-*`, `data-style-*`, `data-attr-*`, `data-value`, `data-checked`, `data-event-*`. Assigning a field of the proxy updates the view. |
 | Events used by the examples | `click`, `mouseover`, `mouseout`, `keydown`, `change`, `input`, `focus`, `blur`, `dragstart`, `dragdrop`, `dragend`. |
 
 #### 3.2.3 Phase 0: C++ test harness (`engine/tests/htmlui/`)
 
-The target `jasperengine-htmlui-tests` (googletest, Xvfb) provides a fixture that:
+The target `jasperengine-htmlui-tests` (googletest, Xvfb; built and run by
+`tools/build.sh htmlui-tests`, phase 0 §3.8) provides, in `engine/tests/htmlui/harness/`:
 
-- creates a headless engine scene of a given canvas size;
-- writes files into a temporary project directory;
-- adds a GameObject with a `UIDocumentComponent` loading a given `.html`;
-- runs N frames.
-
-The fixture exposes `Scene*` and the `Entity`. Phase 4's C++ tests use that fixture under
-whatever name phase 0 gives it.
+- `GpuEnvironment::ensure()`, `setView(screenW, screenH, canvasW, canvasH, Scaling)`,
+  `runFrames(ready, maxFrames)`;
+- `SceneFixture`: a headless `Scene` with a `CAMERA_UI` camera,
+  `UIDocument addDocument(const std::string& file, int sortOrder = 0)`, `waitUntilLoaded()`;
+  it exposes the `Scene*` and, through the returned `UIDocument`, the `Entity`;
+- the asset root `engine/tests/htmlui/fixtures/`: phase-4 fixtures are committed under
+  `fixtures/p4/`; a test that needs generated files writes them under the test user-data
+  directory and loads them with the `data://` scheme (phase 0 `RmlFile`/`FileData`);
+- `HtmlUIClock::setFixedTime` (phase 1) to pin the UI clock.
 
 ### 3.3 Engine inspector and assertions (`engine/core/htmlui/`)
 
@@ -341,7 +332,7 @@ whatever name phase 0 gives it.
 
 #include "Export.h"
 #include "ecs/Entity.h"
-#include "htmlui/compat/HtmlCompat.h"
+#include "htmlui/compat/Diagnostics.h"
 
 #include <functional>
 #include <string>
@@ -398,7 +389,7 @@ struct InspectBoxModel {
 struct InspectStyle {
     std::string property;   // CSS name (compat::cssPropertyName)
     std::string value;      // computed value as CSS text ("16px", "rgba(255, 255, 255, 0.8)", "flex")
-    std::string source;     // "assets/ui/menu.css:42:3" (via compat::SourceMap), "assets/ui/menu.html:12 (style attribute)",
+    std::string source;     // "assets/ui/menu.css:42:3" (via the compat line maps, 3.2.1), "assets/ui/menu.html:12 (style attribute)",
                             // "inherited from <ref>", "user-agent", "default"
     std::string selector;   // the rule's selector when known (".panel h1")
 };
@@ -461,7 +452,8 @@ Implementation notes:
 
 - `ref` generation is checked by the tests: `query(ref)` returns exactly that element.
 - Style sources: the RmlUi `Property::source` (path, line, rule name) points into the generated
-  RCSS. It is mapped with `getSourceMap(entity)->toSource`. Inline `style` attributes map to the
+  RCSS. It is mapped back with the compiled document's stylesheet line maps
+  (`getCompiledDocument(entity)`, 3.2.1). Inline `style` attributes map to the
   element's HTML line. Properties from the compat user-agent sheet say `user-agent`. Inherited
   values name the ancestor's ref. Values that are not set say `default`.
 - `cssPropertyName` turns RmlUi names into CSS names. Values are printed as CSS:
@@ -579,7 +571,7 @@ std::string suggestion;  // ui: the fix; "" when none
   then ` [<code>]` when there is a code:
 
   ```
-  assets/ui/menu.css:12:5: warning: position: sticky is not supported, the element stays in normal flow (fix: position: relative, or absolute inside a scroll container) [css-value-unsupported]
+  assets/ui/menu.css:12:5: warning: 'mix-blend-mode' is not supported; dropped (fix: use opacity or a pre-blended image) [HTMLUI-CSS-0002]
   ```
 - `toolOrder` puts `ui` after `cpp`.
 
@@ -593,7 +585,8 @@ New section:
 static bool isUiFile(const std::string& path);
 // Sandboxed project loader: reads/exists for project-relative paths, refusing absolute paths and '..'
 // escapes (compat reports those as missing)
-static htmlui::compat::Loader projectLoader(const std::filesystem::path& projectRoot);
+// (paths given to compat are asset-relative; the reader resolves them under <project>/assets)
+static htmlui::compat::FileAccess projectFiles(const std::filesystem::path& projectRoot);
 struct UiCheck {
     std::vector<Finding> findings;   // tool "ui", severity "error"/"warning" (Info dropped), code, suggestion
     size_t documents = 0;            // .html/.htm converted
@@ -643,7 +636,7 @@ Hook mode:
 - The state file `.jasperengine/check-hook-state.json` goes to `"version": 2` with a new key:
 
   ```json
-  {"version": 2, "files": {...}, "ui_reported": {"assets/ui/menu.css": ["css-value-unsupported|position: sticky is not supported, ...", ...]}}
+  {"version": 2, "files": {...}, "ui_reported": {"assets/ui/menu.css": ["HTMLUI-CSS-0002|'mix-blend-mode' is not supported; dropped", ...]}}
   ```
 
   A version-1 file is read as before, with `ui_reported` empty.
@@ -666,14 +659,17 @@ New subcommand: `jasperengine-editor ui-support`.
 
 ```json
 {"version": 1, "editor_version": "v0.7.1-...",
- "features": [{"kind": "property", "name": "position: sticky", "support": "unsupported",
-               "note": "...", "suggestion": "...", "code": "css-value-unsupported"}, ...],
- "diagnostics": [{"code": "css-value-unsupported", "severity": "warning", "summary": "..."}, ...]}
+ "features": [{"kind": "property", "name": "mix-blend-mode", "support": "unsupported",
+               "note": "...", "suggestion": "...", "code": "HTMLUI-CSS-0002"}, ...],
+ "diagnostics": [{"code": "HTMLUI-CSS-0002", "name": "unsupported-property", "severity": "warning", "summary": "..."}, ...]}
 ```
 
 `kind` values are `element`, `attribute`, `property`, `value`, `function`, `unit`, `selector`,
-`pseudo_class`, `pseudo_element` and `at_rule`. `support` values are `supported`, `rewritten`,
-`partial` and `unsupported`. Entries keep table order.
+`pseudo_class`, `pseudo_element`, `at_rule`, `media_feature` and `input_type` (one per phase-2
+table; selector rows are split into `selector`/`pseudo_class`/`pseudo_element` by their kind).
+`support` values are phase 2's statuses, lowercase: `native`, `rewritten`, `approximated`,
+`emulated`, `fallback`, `unsupported`, `ignored`, each computed with
+`effectiveSupport(..., ForkFeatures::present())`. Entries keep table order.
 
 #### 3.4.3 Support matrix generator (`tools/mcp/gen_html_ui_support.py`)
 
@@ -694,9 +690,10 @@ Generated by `tools/mcp/gen_html_ui_support.py` from the engine's compatibility 
 (`jasperengine-editor ui-support`, editor <version>). Do not edit by hand. How to build UI:
 jasper://docs/html-ui.
 
-Legend: **supported**, works as in a browser · **rewritten**, works, the engine translates
-it · **partial**, works with the limits in Notes · **unsupported**, dropped with a diagnostic;
-use the replacement.
+Legend: **native**, works as in a browser · **rewritten**, works, the engine translates it ·
+**emulated**, works through engine code · **approximated**, works with the limits in Notes ·
+**fallback**, approximated until a fork feature lands · **unsupported**, dropped with a
+diagnostic; use the replacement · **ignored**, accepted, no effect in a game UI.
 
 ## Elements
 | Element | Support | Notes | Instead |
@@ -739,12 +736,19 @@ New function `w4::syncHtmlUi`, declared in `W4Shared.h` and defined in `ScriptTo
 Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed);
 ```
 
+- It converts the changed absolute paths to asset-relative paths (the convention of
+  `UIDocumentSystem`, phase 1 §3.8.6) before calling `reloadChangedFiles`, and reports paths
+  project-relative.
+- Phase 5 hooks `EffectRegistry::onProjectFileChanged(path)` into `reloadChangedFiles` (so
+  this path and phase 1's watcher both get it), and adds `.frag` to the extensions that
+  trigger `syncHtmlUi`: a `.frag` a live document depends on (through `@effect`, in
+  `CompatDocument::dependencies`) reloads it like a `.css`.
 - `syncFiles` (`ScriptTools.cpp:403`) calls it right after `reloadTextures` (`:565`) when any
   changed path is a UI file or an asset file.
 - Its `problems` are appended to `result["problems"]` and its `reloaded` becomes
   `result["ui_reloaded"]` (omitted when empty), so `sync_files` reports both.
-- `isTextFile` (`:114-122`) adds `.html .htm .css`, so `write_file` / `read_file` /
-  `code_editor` handle them.
+- `isTextFile` (`:114-122`) already accepts `.html .htm .css .rml .rcss` (phase 0 §3.7.5 M2);
+  phase 4 relies on it for `write_file` / `read_file` / `code_editor`.
 
 #### 3.5.3 In `McpAutoSync`
 
@@ -942,7 +946,7 @@ The text is an outline, one line per element with two spaces per depth level:
 
 ```
 assets/ui/main_menu.html in "Menu" (scene "Main"), 1280x720, load 3: 0 errors, 2 warnings
-assets/ui/main_menu.css:31:5: warning: position: sticky is not supported, ... (fix: ...) [css-value-unsupported]
+assets/ui/main_menu.css:31:5: warning: 'mix-blend-mode' is not supported; dropped (fix: ...) [HTMLUI-CSS-0002]
 body [0,0 1280x720]
   div.menu [440,120 400x480]
     h1.title "Skyward" [472,152 336x64]
@@ -1083,7 +1087,7 @@ Handler steps:
 3. Scene step (one undo step): `UndoStep`-style mark on the scene history.
    1. `CreateEntityCmd(name, EntityCreationType::GAMEOBJECT [, parent])`.
    2. `AddComponentCmd(ComponentType::UIDocumentComponent)`.
-   3. A `MultiPropertyCmd` with `html` (converted to the stored assets-relative form), `sortOrder`
+   3. A `MultiPropertyCmd` with the component property `filename` set from `html` (converted to the stored assets-relative form), `sortOrder`
       and the `properties` entries (Catalog names through `McpValues::buildPropertyCommand`).
    4. When a script is wanted: `server.runNested(call, "attach_script", {scene, entity, path})`.
    5. `groupSince(mark)`.
@@ -1181,6 +1185,10 @@ Registered in `HtmlUiTools.cpp`:
   tools must pay for themselves by trimming".
 - Shared conventions (document resolution, refs, boxes in canvas px) are explained once, in the
   instructions' HTML-UI section (3.8.3), not repeated per tool.
+- Phase 5 adds `list_ui_effects`, `set_ui_effect_time` and an `effects` key on `inspect_ui`
+  elements (omitted when empty; `InspectElement` gains `std::vector<UIEffectInfo> effects`).
+  It raises the caps above in `test_budget` by the limits it states
+  (`phase-5-effects.md` §3.13) and adds its module to `gen_tool_docs.py` `MODULES`.
 
 ### 3.7 Example library
 
@@ -1344,6 +1352,14 @@ and to true for the examples.
 
 #### 3.8.1 `docs/mcp/guide/html-ui.md` (served as `jasper://docs/html-ui`, split by DocsTools above 16 KB)
 
+The file already exists when phase 4 starts: p0-integrate created it (phase 0 feature set),
+and phases 1–3 added sections (phase 1 per package: rendering, input, editor workflow, hot
+reload, scripting, SVG/Lottie, animation, documents on meshes, text effects; phase 2 "Writing
+HTML/CSS for the engine"; phase 3 the newly native features and the §2.2 limits). p4-guide
+reorganises it into the outline below, keeping every fact those sections hold (moved into the
+matching section, not dropped). Phase 5 later appends one more top-level section, "Effects"
+(`phase-5-effects.md` §3.13), and adds its title to `test_guide_served`.
+
 Outline. Every name in it must exist: tools, Lua names and CSS features. The examples are
 copied from the example files.
 
@@ -1362,7 +1378,8 @@ copied from the example files.
 5. **CSS.**
    - Works: flex, grid, `calc`/`clamp`/`var`, transitions, keyframes, transforms, filters,
      `backdrop-filter`, gradients, `::before/::after`, media queries, `!important`.
-   - Differs: one paragraph per notable limit (`:has`, `sticky`, ...), with the replacement.
+   - Differs: one paragraph per notable limit (`@container`, `mix-blend-mode`, `writing-mode`,
+     multi-column, ... — the phase-3 §2.2 list), with the replacement.
    - Units, fonts (generic families, `@font-face` with project TTF/OTF, Google Fonts via
      `import_files fonts`) and icons (`import_files icons`, `currentColor`).
 6. **Lua API.** Getting the document, querying, events (table of types and `UIEvent` fields),
@@ -1391,8 +1408,8 @@ copied from the example files.
     - `document.querySelector` → `doc:querySelector` (colon);
     - `innerText` → `textContent`;
     - `fetch` / `localStorage` → engine APIs;
-    - `position: sticky`;
-    - `:has()`;
+    - `@container` queries → media queries or classes from Lua;
+    - `mix-blend-mode` → opacity or a pre-blended image;
     - Google Fonts `<link>` → `import_files from_document`;
     - remote `<img>`;
     - `100vh` on mobile;
@@ -1530,7 +1547,7 @@ The stubs are written to a new emitted file, `HtmlUITypes.lua`, alongside the cl
   5. Compare with tolerance 24 per channel; at most 1% of pixels may differ.
   6. On failure, write `<scratch>/<name>.actual.png` and `<name>.diff.png` and print their paths.
 
-  `JASPER_UPDATE_GOLDEN=1` rewrites the goldens (full 1280×720 crop). Whoever regenerates them
+  `JASPER_HTMLUI_UPDATE_GOLDEN=1` (the same switch as phase 0's C++ goldens) rewrites the goldens (full 1280×720 crop). Whoever regenerates them
   must look at every changed image (BRIEF). Determinism comes from `fixed_fps` + `auto_pause`
   and the unscaled UI clock (3.2.2). The test runs each example twice and requires the two
   captures to match (fraction 0) before comparing with the golden.
@@ -1588,7 +1605,7 @@ not-installed skips.
   - `editor/util/ProjectChecks.{h,cpp}`
   - `editor/cli/CommandLine.{h,cpp}`
   - `editor/mcp/McpAutoSync.{h,cpp}`
-  - `w4::syncHtmlUi` + `isTextFile` in `editor/mcp/tools/ScriptTools.cpp` and its declaration
+  - `w4::syncHtmlUi` in `editor/mcp/tools/ScriptTools.cpp` and its declaration
     in `W4Shared.h`
   - `tools/mcp/gen_html_ui_support.py` (new)
   - `docs/mcp/guide/html-ui-support.md` (generated)
@@ -1747,7 +1764,8 @@ its edge cases:
 - `MinSize` 44 default;
 - `Visible` with `unobstructed` fails when a sibling covers the center.
 
-**`ExamplesCompatTest.cpp`.** For each example and `blank`, `compat::convertDocument` over the
+**`ExamplesCompatTest.cpp`.** For each example and `blank`, `compat::checkDocument` (files read
+through a `FileAccess` on the source dir, `verifyWithRmlUi = true`) over the
 embedded tree (loader on the source dir) gives `ok`, zero Warning and zero Error.
 
 ### 5.2 `test_html_ui_checks.py` (CLI + parity)
@@ -1798,7 +1816,7 @@ embedded tree (loader on the source dir) gives `ok`, zero Warning and zero Error
    reports zero warnings.
 8. **`test_ui_support_json_and_generated_doc`.**
    - `ui-support` gives valid JSON: version, features with valid kinds and supports, every
-     non-supported feature has a `code` present in `diagnostics`.
+     `unsupported`/`fallback`/`approximated` feature has a `code` present in `diagnostics`.
    - `gen_html_ui_support.py --check` exits 0, so the committed matrix is current.
    - Corrupting a row in a temp copy (`--out tmp` then edit, `--check --out tmp`) exits 1 with a
      diff.
@@ -1892,7 +1910,8 @@ Interaction steps (before the golden):
 ### 5.5 `test_html_ui_docs.py`
 
 1. **`test_guide_served`.**
-   - `jasper://docs/html-ui` exists and is split into sections, all 16 present by title.
+   - `jasper://docs/html-ui` exists and is split into sections, all 16 present by title (the
+     test keeps the list in one constant that phase 5 extends with "Effects").
    - `jasper://docs/html-ui-support` exists.
    - `jasper://docs` lists both.
 2. **`test_guide_names_exist`** (wave 2).
@@ -1908,7 +1927,7 @@ Interaction steps (before the golden):
    - `"querySelector"` → `UIDocument:querySelector` and `UIElement:querySelector`;
    - `"anime animate"` → `anime.animate` with parameter details;
    - `"addEventListener"` → the `UIElement` entry;
-   - `"position sticky"` → a doc hit in `jasper://docs/html-ui-support`.
+   - `"mix-blend-mode"` → a doc hit in `jasper://docs/html-ui-support`.
 6. **`test_luals_ui_stubs`** (skips without lua-language-server).
    - Zero Warning+ diagnostics on every example Lua script, copied into the fixture's Lua dir.
    - `BAD_UI_LUA` reports these codes on these lines:
@@ -2074,6 +2093,8 @@ model's first attempt at a shop screen. They contain:
   `kind` + `name`):
   - `position: sticky`;
   - `.card:has(.sale)`;
+  - `mix-blend-mode: screen` and `@container (min-width: 400px)` (unsupported after phase 3, so
+    `LLM_CSS` always has warnings for the hook tests);
   - `text-overflow: ellipsis`;
   - `@media (prefers-color-scheme: dark)`;
   - `aspect-ratio: 1`;
@@ -2089,8 +2110,10 @@ model's first attempt at a shop screen. They contain:
   - `!important`;
   - `font-family: 'Karla', sans-serif`.
 
-  The rule: a diagnostic of severity ≥ warning exists at the construct's line exactly when its
-  support is `partial` or `unsupported`. Lines are found by substring search in the test's own
+  The rule: a diagnostic of severity ≥ warning exists at the construct's line when its support
+  is `unsupported` or `fallback`, and none when it is `native`, `rewritten`, `emulated` or
+  `ignored`; for `approximated` the row's diagnostic severity decides (Info: none at warning
+  level). Lines are found by substring search in the test's own
   text.
 - **A layout bug:** `.buy-legendary { width: 120px; white-space: nowrap }` with the label
   "Purchase Legendary Sword of Infinite Destiny".
@@ -2099,7 +2122,9 @@ Steps:
 
 1. **`test_cli_reports_llm_mistakes`.**
    - `check --ui --files` both files in JSON.
-   - Every definitional construct has an error at its line, with a non-empty `suggestion`.
+   - Every definitional construct has a finding at its line with a non-empty `suggestion`:
+     an error for `<script>` (`HTMLUI-HTML-0006`), `onclick` (`HTMLUI-HTML-0005`) and the two
+     remote URLs (`HTMLUI-IMP-0001`), a warning for `<canvas>` (`HTMLUI-HTML-0002`).
    - The table-driven rule holds for every listed construct.
    - Every `code` is in the `ui-support` diagnostics list.
 2. **`test_hook_feedback_like_claude_code`.** A PostToolUse `Write` of `LLM_CSS`, then of
@@ -2116,7 +2141,7 @@ Steps:
    2. move `onclick` into `ShopLlmUI.lua` with `addEventListener`;
    3. `import_files {from_document: "assets/ui/shop_llm.html"}` for the font and the image
       (mirror);
-   4. replace `sticky` and `:has()` with the suggested forms;
+   4. replace every construct reported at warning level with the suggested form;
    5. let the long label wrap (`white-space: normal; width: 240px`).
 
    The next `inspect_ui` call carries `external_changes` with `ui_reloaded` (the document) and
