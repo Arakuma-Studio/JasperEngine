@@ -4,6 +4,8 @@
 #ifndef RMLRENDERER_H
 #define RMLRENDERER_H
 
+#include "Export.h"
+
 #include <RmlUi/Core/RenderInterface.h>
 
 #include "math/Rect.h"
@@ -20,7 +22,7 @@ namespace jasperengine {
     // RmlUi's render interface on the engine render abstraction. One per HtmlUIContext:
     // records a frame's draws, then replays them in one offscreen pass into the context's
     // target, which is composited into the camera pass.
-    class RmlRenderer : public Rml::RenderInterface {
+    class JASPERENGINE_INTERNAL RmlRenderer : public Rml::RenderInterface {
     public:
         RmlRenderer();
         ~RmlRenderer() override;                    // releaseGpuResources()

@@ -4,6 +4,8 @@
 #ifndef RMLFONTENGINE_H
 #define RMLFONTENGINE_H
 
+#include "Export.h"
+
 #include <RmlUi/Core/FontEngineInterface.h>
 #include <RmlUi/Core/FontMetrics.h>
 
@@ -13,7 +15,7 @@ namespace jasperengine {
 
     // RmlUi's font engine on the engine text stack (FontFace, FontRegistry, TextShaper,
     // GlyphAtlas): HarfBuzz shaping, stb_truetype glyphs in append-only atlas pages.
-    class RmlFontEngine : public Rml::FontEngineInterface {
+    class JASPERENGINE_INTERNAL RmlFontEngine : public Rml::FontEngineInterface {
     public:
         void Initialize() override;     // registers built-ins in FontRegistry
         void Shutdown() override;       // ReleaseFontResources()

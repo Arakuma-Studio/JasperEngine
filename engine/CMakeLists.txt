@@ -1040,6 +1040,13 @@ if(JASPERENGINE_SHARED)
         PUBLIC
         JASPERENGINE_SHARED
     )
+    # RmlUi is built with hidden visibility, but the std templates it instantiates over its
+    # own enums keep default visibility; nothing of librmlui.a belongs in the dynamic symbol
+    # table. GNU ld and lld only: MSVC exports dllexport symbols alone, and ld64 has no
+    # equivalent flag (those weak std instantiations stay visible in the macOS dylib)
+    if(NOT APPLE AND NOT MSVC)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
+    endif()
 endif()
 
 # =============================================================

@@ -4,6 +4,8 @@
 #ifndef RMLSYSTEM_H
 #define RMLSYSTEM_H
 
+#include "Export.h"
+
 #include <RmlUi/Core/SystemInterface.h>
 
 #include <cstddef>
@@ -14,7 +16,7 @@ namespace jasperengine {
 
     // RmlUi's system interface: time, logging into the engine Log, document-relative paths
     // and the clipboard.
-    class RmlSystem : public Rml::SystemInterface {
+    class JASPERENGINE_INTERNAL RmlSystem : public Rml::SystemInterface {
     public:
         double GetElapsedTime() override;                 // Engine::getSystemTime() (seconds)
         bool LogMessage(Rml::Log::Type type, const Rml::String& message) override;

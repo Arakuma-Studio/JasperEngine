@@ -4,6 +4,8 @@
 #ifndef HTMLUICONTEXT_H
 #define HTMLUICONTEXT_H
 
+#include "Export.h"
+
 #include <RmlUi/Core/Types.h>
 
 #include "math/Rect.h"
@@ -25,7 +27,7 @@ namespace jasperengine {
 
     // One RmlUi context (the screen-space documents of a scene), its renderer, its
     // offscreen target and the composite into the camera pass.
-    class HtmlUIContext {
+    class JASPERENGINE_INTERNAL HtmlUIContext {
     public:
         explicit HtmlUIContext(const std::string& name);   // e.g. "scene-0x55d0c3a0"
         ~HtmlUIContext();                                    // destroy()

@@ -4,6 +4,8 @@
 #ifndef RMLFILE_H
 #define RMLFILE_H
 
+#include "Export.h"
+
 #include <RmlUi/Core/FileInterface.h>
 
 namespace jasperengine {
@@ -11,7 +13,7 @@ namespace jasperengine {
     // RmlUi's file interface over the engine's Data: ResourcePack, asset://, data://,
     // project-relative paths, Android assets and the Web preloaded FS, with no platform
     // code here. A file is read whole on Open.
-    class RmlFile : public Rml::FileInterface {
+    class JASPERENGINE_INTERNAL RmlFile : public Rml::FileInterface {
     public:
         Rml::FileHandle Open(const Rml::String& path) override;  // 0 when Data::open fails
         void Close(Rml::FileHandle file) override;
