@@ -414,7 +414,7 @@ _SPECIFIERS = {'virtual', 'static', 'inline', 'constexpr', 'explicit', 'mutable'
 _TYPE_KEYWORDS = {'int', 'float', 'double', 'char', 'bool', 'void', 'long', 'short', 'unsigned',
                   'signed', 'const', 'volatile', 'auto', 'wchar_t', 'char8_t', 'char16_t',
                   'char32_t', 'struct', 'class', 'enum', 'typename'}
-_RE_MACRO = re.compile(r'^[A-Z][A-Z0-9_]{2,}$')
+_RE_MACRO = re.compile(r'^[A-Z][A-Z0-9]*_[A-Z0-9_]+$')
 
 
 class CppModel:
@@ -1328,7 +1328,13 @@ class Resolver:
                 fn = self.pick_overload(fns, hint)
                 if fn is None:
                     return None
-                return ('free' if fn.static else 'member'), self.sig_of(fn, qual)
+                sig = self.sig_of(fn, qual)
+                targs = self.template_args_of(toks)
+                if fn.template and fn.tparams and targs:
+                    subst = {pn: normalize_type(join_tokens(ta)) for pn, ta in zip(fn.tparams, targs)}
+                    sig = Sig([(substitute(t, subst), n) for t, n in sig.params],
+                              substitute(sig.ret, subst) if sig.ret else sig.ret, sig.doc, sig.cfunc, sig.source)
+                return ('free' if fn.static else 'member'), sig
             fld = self.model.find_field(qual, name)
             if fld is not None:
                 return 'data', Sig([], fld.type, fld.doc, source=f'{qual}::{name}')
@@ -1880,3 +1886,849 @@ def split_type_list(s):
     if cur.strip():
         out.append(cur.strip())
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Hand-written signatures
+# ═══════════════════════════════════════════════════════════════════════════════
+# lua_CFunctions read their arguments from the Lua stack themselves, so their Lua
+# signature cannot be derived from C++ types. Every lua_CFunction binding needs an entry
+# here (the build lists the ones that do not have one as unresolved). Each overload is
+# (params, returns): params are (name, Lua type) with a trailing '?' on optional names.
+
+_OBJ = 'EntityHandle|ScriptInstance'
+_ORIGINAL = 'PrefabAsset|string|integer|EntityHandle'
+
+OVERRIDES = {
+    ('GameObject', 'instantiate'): {
+        'doc': [
+            "Unity's Object.Instantiate. `original` is a PrefabAsset (a Prefab script property), a prefab",
+            "path or name, a prefab id, any GameObject handle or a script instance (`self` of a script).",
+            "A position goes with a rotation (use `Quaternion.IDENTITY`). Prefabs go to the active scene",
+            "unless a parent or a scene is given. Returns the new root (named `<name>(Clone)`, its scripts",
+            "already started); for a script instance, the copy's script instance of the same class.",
+            "Returns nil when the prefab is not part of the build.",
+        ],
+        'overloads': [
+            ([('original', _ORIGINAL)], 'GameObject'),
+            ([('original', _ORIGINAL), ('parent', _OBJ), ('instantiateInWorldSpace?', 'boolean')], 'GameObject'),
+            ([('original', _ORIGINAL), ('position', 'Vector3'), ('rotation', 'Quaternion'), ('parent?', _OBJ)], 'GameObject'),
+            ([('original', 'PrefabAsset|string|integer'), ('scene', 'Scene'), ('position?', 'Vector3'), ('rotation?', 'Quaternion')], 'GameObject'),
+            # a script instance gives the copy's script instance (typed `any`: LuaLS cannot name its class)
+            ([('original', 'ScriptInstance')], 'any'),
+            ([('original', 'ScriptInstance'), ('parent', _OBJ), ('instantiateInWorldSpace?', 'boolean')], 'any'),
+            ([('original', 'ScriptInstance'), ('position', 'Vector3'), ('rotation', 'Quaternion'), ('parent?', _OBJ)], 'any'),
+        ],
+    },
+    ('GameObject', 'destroy'): {
+        'doc': ["Destroys the GameObject (and its children) at the end of the frame, or `delay` seconds",
+                "later, calling Lua `onDestroy` first. `object` is any GameObject handle or a script instance;",
+                "nil is ignored."],
+        'overloads': [([('object', _OBJ + '|nil'), ('delay?', 'number')], '')],
+    },
+    ('GameObject', 'destroyImmediate'): {
+        'doc': ["Destroys the GameObject (and its children) now. `object` is any GameObject handle or a",
+                "script instance; nil is ignored."],
+        'overloads': [([('object', _OBJ + '|nil')], '')],
+    },
+    ('Ease', 'setFunction'): {
+        'doc': ['Uses `fn` as the easing function: it maps the time fraction (0..1) to the eased value.'],
+        'overloads': [([('fn', 'fun(time: number): number')], '')],
+    },
+    ('LayerMask', 'getMask'): {
+        'doc': ['Layer mask (an integer, as Unity) of the named layers: `LayerMask.getMask("Default", "Enemies")`',
+                'or `LayerMask.getMask({"Default", "Enemies"})`.'],
+        'overloads': [([('...', 'string')], 'integer'), ([('names', 'string[]')], 'integer')],
+    },
+}
+
+for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
+    OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
+        'doc': ['Makes the two layers (0..31) collide or not (Layer Collision Matrix); `ignore` defaults to true.'],
+        'overloads': [([('layer1', 'integer'), ('layer2', 'integer'), ('ignore?', 'boolean')], '')]}
+    OVERRIDES[(_phys, 'getIgnoreLayerCollision')] = {
+        'doc': ['Whether collisions between the two layers are ignored.'],
+        'overloads': [([('layer1', 'integer'), ('layer2', 'integer')], 'boolean')]}
+    OVERRIDES[(_phys, 'getLayerCollisionMask')] = {
+        'doc': ['Mask of the layers `layer` collides with.'],
+        'overloads': [([('layer', 'integer')], 'integer')]}
+    OVERRIDES[(_phys, 'setLayerCollisionMask')] = {
+        'doc': ['Sets the mask of the layers `layer` collides with.'],
+        'overloads': [([('layer', 'integer'), ('mask', 'integer')], '')]}
+    OVERRIDES[(_phys, 'resetLayerCollisionMatrix')] = {
+        'doc': ['Every layer collides with every layer again.'],
+        'overloads': [([], '')]}
+    for _all in (False, True):
+        _ret = 'RayReturn[]' if _all else 'RayReturn'
+        OVERRIDES[(_phys, 'raycastAll' if _all else 'raycast')] = {
+            'doc': [('Every hit' if _all else 'The closest hit') + f' of a ray in the scene\'s physics world ({_vec} origin and',
+                    'direction, or a Ray), on the layers of `layerMask` (default: Physics.DEFAULT_RAYCAST_LAYERS).'],
+            'overloads': [([('scene', 'Scene'), ('ray', 'Ray'), ('layerMask?', 'integer')], _ret),
+                          ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
+                            ('layerMask?', 'integer')], _ret)]}
+
+# Handler arguments of Engine events, by name (types come from the C++ declaration)
+ENGINE_EVENT_ARGS = {
+    'onKeyDown': ['key', 'isRepeat', 'mods'], 'onKeyUp': ['key', 'isRepeat', 'mods'],
+    'onCharInput': ['char'],
+    'onMouseDown': ['button', 'x', 'y', 'mods'], 'onMouseUp': ['button', 'x', 'y', 'mods'],
+    'onMouseMove': ['x', 'y', 'mods'], 'onMouseScroll': ['xoffset', 'yoffset', 'mods'],
+    'onTouchStart': ['pointer', 'x', 'y'], 'onTouchMove': ['pointer', 'x', 'y'],
+    'onTouchEnd': ['pointer', 'x', 'y'], 'onTouchCancel': ['pointer', 'x', 'y'],
+    'onGamepadConnect': ['gamepad'], 'onGamepadDisconnect': ['gamepad'],
+    'onGamepadButtonDown': ['gamepad', 'button'], 'onGamepadButtonUp': ['gamepad', 'button'],
+    'onGamepadAxisMove': ['gamepad', 'axis', 'value'],
+}
+
+_LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
+                 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true', 'until', 'while'}
+
+_OPERATORS = {'__add': 'add', '__sub': 'sub', '__mul': 'mul', '__div': 'div', '__mod': 'mod', '__pow': 'pow',
+              '__unm': 'unm', '__idiv': 'idiv', '__band': 'band', '__bor': 'bor', '__bxor': 'bxor',
+              '__shl': 'shl', '__shr': 'shr', '__bnot': 'bnot', '__concat': 'concat', '__len': 'len'}
+
+_PHYSICS_NOTES = {
+    'defined(JASPERENGINE_PHYSICS_2D)': 'Only in builds with 2D physics (Project Settings > Build > 2D Physics).',
+    'defined(JASPERENGINE_PHYSICS_3D)': 'Only in builds with 3D physics (Project Settings > Build > 3D Physics).',
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Lua model
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LuaSig:
+    """A Lua-visible signature: params [(name, lua type, optional)], returns lua type or ''."""
+    __slots__ = ('params', 'ret', 'doc', 'vararg')
+
+    def __init__(self, params, ret, doc=None, vararg=None):
+        self.params = params
+        self.ret = ret
+        self.doc = doc or []
+        self.vararg = vararg
+
+
+def lua_name(name, used):
+    n = re.sub(r'[^A-Za-z0-9_]', '_', name or '') or 'arg'
+    if n in _LUA_KEYWORDS or n == 'self':
+        n += '_'
+    if n[0].isdigit():
+        n = '_' + n
+    base = n
+    k = 2
+    while n in used:
+        n = f'{base}{k}'
+        k += 1
+    used.add(n)
+    return n
+
+
+class Builder:
+    def __init__(self, model, bindings):
+        self.model = model
+        self.b = bindings
+        self.r = Resolver(model, bindings)
+        self.tm = TypeMapper(model, self.r)
+        self.unresolved = []
+        self.engine_events = []   # (name, LuaSig of the handler)
+
+    # ── enums ────────────────────────────────────────────────────────────────
+
+    def build_enums(self):
+        for en in self.b.enums:
+            vals = []
+            cpp_enum = None
+            for name, expr, call in en.values:
+                qual, vname = self.r.split_qualified([x for x in expr if x.t not in ('(', ')')]) if expr else (None, None)
+                v = None
+                if qual:
+                    ce = self.model.find_enum(qual)
+                    if ce is not None:
+                        cpp_enum = cpp_enum or ce
+                        for cn, cv, cdoc in ce.values:
+                            if cn == vname:
+                                v = cv
+                                break
+                vals.append((name, v, call))
+            en.resolved = vals
+            en.cpp_enum = cpp_enum
+            if cpp_enum is not None:
+                self.r.enum_ns[cpp_enum.name] = en.name
+
+    # ── classes ──────────────────────────────────────────────────────────────
+
+    def build(self):
+        self.build_enums()
+        by_cpp = {type_key(c.cpp): c for c in self.b.classes}
+        for c in self.b.classes:
+            if c.base_cpp:
+                bc = by_cpp.get(type_key(c.base_cpp))
+                c.base = bc.name if bc else None
+        for c in self.b.classes:
+            c.cpp_class = self.model.find_class(c.cpp)
+            c.lua_ctors = []
+            for call in c.ctors:
+                for targ in call.targs:
+                    c.lua_ctors.append(self.ctor_sig(c, targ))
+            fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
+                re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.base_cpp or '')
+            for m in c.members:
+                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add'):
+                    self.subscribe_member(c, m, fs.group(1), fs.group(2))
+                    continue
+                if m.kind in ('Method', 'StaticMethod'):
+                    self.function_member(c, m)
+                else:
+                    self.property_member(c, m)
+
+    def ctor_sig(self, c, targ):
+        # `void(A, B)` or `void (*) (A, B)`: the last top-level parenthesized group
+        groups = []
+        k = 0
+        while k < len(targ):
+            if targ[k].t == '(':
+                e = skip_balanced(targ, k)
+                groups.append((k, e))
+                k = e
+                continue
+            k += 1
+        if not groups:
+            return LuaSig([], c.name)
+        s, e = groups[-1]
+        params, _ = parse_params(targ[s + 1:e - 1])
+        names = [None] * len(params)
+        doc = []
+        if c.cpp_class is not None:
+            for fn in c.cpp_class.methods.get(c.cpp_class.name, []):
+                if fn.ctor and len(fn.params) == len(params) and \
+                        all(type_key(a.type) == type_key(b.type) for a, b in zip(fn.params, params)):
+                    names = [p.name for p in fn.params]
+                    doc = fn.doc
+                    break
+        used = set()
+        lp = []
+        for p, nm in zip(params, names):
+            if bare_type(p.type)[0] == 'lua_State':
+                continue
+            lp.append((lua_name(nm or self.default_param_name(p.type, len(lp)), used), self.tm.lua(p.type, c.cpp) or 'any', False))
+        return LuaSig(lp, c.name, doc)
+
+    def default_param_name(self, cpp, index):
+        base, stars = bare_type(cpp)
+        lt = self.tm.lua(cpp)
+        if lt in self.r.lua_classes:
+            return lt[0].lower() + lt[1:]
+        return f'arg{index + 1}'
+
+    def to_lua_sig(self, sig, c, drop_self, optional_bools):
+        params = list(sig.params)
+        if drop_self and params:
+            params = params[1:]
+        params = [p for p in params if bare_type(p[0])[0] != 'lua_State']
+        used = set()
+        lp = []
+        for idx, (t, nm) in enumerate(params):
+            lt = self.tm.lua(t, c.cpp) or 'any'
+            desc = ''
+            if lt == 'any' and bare_type(t)[0] not in ('LuaRef', 'luabridge::LuaRef'):
+                desc = f'C++ {bare_type(t)[0]} (not a Lua class)'
+            lp.append((lua_name(nm or self.default_param_name(t, idx), used), lt, False, desc))
+        if optional_bools:
+            k = len(lp) - 1
+            while k >= 0 and lp[k][1] == 'boolean':
+                lp[k] = (lp[k][0], lp[k][1], True, lp[k][3])
+                k -= 1
+        ret = '' if sig.ret == '' else (self.tm.lua(sig.ret, c.cpp) if sig.ret is not None else 'any')
+        return LuaSig(lp, ret, list(sig.doc))
+
+    def function_member(self, c, m):
+        key = (c.name, m.name)
+        if key in OVERRIDES:
+            ov = OVERRIDES[key]
+            m.lua_sigs = [self.override_sig(o) for o in ov['overloads']]
+            m.doc = m.call.doc + ov.get('doc', [])
+            return
+        sigs = []
+        callables = m.call.args[1:]
+        single = len(callables) == 1
+        for arg in callables:
+            res = self.r.resolve(arg, m)
+            if res is None:
+                self.unresolve(c, m, 'callable not resolved: ' + join_tokens(arg)[:80])
+                continue
+            kind, sig = res
+            if sig.cfunc:
+                self.unresolve(c, m, 'lua_CFunction needs a signature in OVERRIDES')
+                continue
+            if kind == 'data':
+                self.unresolve(c, m, 'data member bound as a function')
+                continue
+            if kind == 'member' and any(bare_type(p[0])[0] == 'lua_State' for p in sig.params):
+                self.unresolve(c, m, 'reads its arguments from the Lua stack: needs a signature in OVERRIDES')
+                continue
+            drop_self = kind == 'free' and m.kind == 'Method'
+            sigs.append(self.to_lua_sig(sig, c, drop_self, single))
+        m.lua_sigs = sigs
+        doc = list(m.call.doc)
+        for s in sigs:
+            for line in s.doc:
+                if line not in doc:
+                    doc.append(line)
+        m.doc = doc
+
+    def override_sig(self, o):
+        params, ret = o
+        lp = []
+        vararg = None
+        for nm, t in params:
+            if nm == '...':
+                vararg = t
+                continue
+            opt = nm.endswith('?')
+            lp.append((nm.rstrip('?'), t, opt))
+        return LuaSig(lp, ret, vararg=vararg)
+
+    def subscribe_member(self, c, m, ret_cpp, args_cpp):
+        args = [a for a in split_type_list(args_cpp) if a and a != 'void']
+        ret = self.tm.lua(ret_cpp) if ret_cpp != 'void' else ''
+        used = set()
+        handler_params = [(lua_name(f'arg{i + 1}', used), self.handler_arg_type(a), False) for i, a in enumerate(args)]
+        if m.name in ('call', '__call'):
+            m.lua_sigs = [LuaSig(handler_params, ret)]
+            m.doc = ['Calls every subscribed function with these arguments.'] if m.name == 'call' else []
+        else:
+            fn = 'fun(' + ', '.join(f'{n}: {t}' for n, t, _ in handler_params) + ')' + (f': {ret}' if ret else '')
+            m.lua_sigs = [LuaSig([('tag', 'string', False), ('fn', fn, False)], 'boolean')]
+            m.doc = ['Subscribes `fn` under `tag` (an existing subscription with the same tag is replaced).']
+        c.subscribe_sig = (handler_params, ret)
+
+    def handler_arg_type(self, cpp):
+        # LuaFunctionBase pushes wchar_t as a UTF-8 string
+        if bare_type(cpp)[0] == 'wchar_t':
+            return 'string'
+        return self.tm.lua(cpp) or 'any'
+
+    def property_member(self, c, m):
+        args = m.call.args
+        getter = args[1] if len(args) > 1 else None
+        setter = args[2] if len(args) > 2 else None
+        static = m.kind == 'StaticProperty'
+        m.nested_enum = None
+        if getter and getter[0].t == '[' and any(x.t == 'addVariable' for x in getter):
+            vals = []
+            for k, x in enumerate(getter):
+                if x.t == 'addVariable' and k + 1 < len(getter) and getter[k + 1].t == '(':
+                    e = skip_balanced(getter, k + 1)
+                    a = split_top(getter[k + 2:e - 1])
+                    v = None
+                    if len(a) == 2:
+                        q, vn = self.r.split_qualified(a[1])
+                        ce = self.model.find_enum(q) if q else None
+                        if ce is not None:
+                            v = next((cv for cn, cv, _ in ce.values if cn == vn), None)
+                    vals.append((literal(a[0]), v))
+            m.nested_enum = vals
+            m.lua_type = f'{c.name}.{m.name}'
+            m.writable = False
+            m.doc = list(m.call.doc)
+            if any(v is None for _, v in vals):
+                self.unresolve(c, m, 'enum table values not computed')
+            return
+        res = self.r.resolve(getter, m) if getter else None
+        if res is None:
+            self.unresolve(c, m, 'getter not resolved: ' + (join_tokens(getter)[:80] if getter else ''))
+            m.lua_type = 'any'
+            m.doc = list(m.call.doc)
+            return
+        kind, sig = res
+        if sig.cfunc:
+            self.unresolve(c, m, 'lua_CFunction property getter')
+            m.lua_type = 'any'
+            m.doc = list(m.call.doc)
+            return
+        cpp_type = sig.ret
+        if kind in ('member', 'free'):
+            n_self = 1 if (kind == 'free' and not static) else 0
+            visible = [p for p in sig.params[n_self:] if bare_type(p[0])[0] != 'lua_State']
+            if visible:
+                self.unresolve(c, m, 'getter takes arguments')
+        if cpp_type is None:
+            self.unresolve(c, m, 'getter return type not inferred')
+            m.lua_type = 'any'
+        else:
+            base, stars = bare_type(cpp_type)
+            lt = self.tm.lua(cpp_type, c.cpp)
+            m.lua_type = lt or 'any'
+            m.is_event = re.match(r'^FunctionSubscribe<', base) is not None
+            by_value = '&' not in cpp_type and stars == 0 and kind != 'data'
+            m.copy = by_value and (lt in self.r.lua_classes or lt.endswith('[]') or lt.startswith('table')) \
+                and not m.is_event
+        m.writable = setter is not None
+        m.assign_fn = None
+        if setter is not None and getattr(m, 'is_event', False):
+            sres = self.r.resolve(setter, m)
+            if sres is not None and any(bare_type(p[0])[0] == 'lua_State' for p in sres[1].params):
+                ev = self.r.lua_classes.get(m.lua_type)
+                m.assign_fn = ev
+        doc = list(m.call.doc)
+        for line in sig.doc:
+            if line not in doc:
+                doc.append(line)
+        if setter is not None and not getattr(m, 'is_event', False):
+            sres = self.r.resolve(setter, m)
+            if sres is not None:
+                for line in sres[1].doc:
+                    if line not in doc:
+                        doc.append(line)
+        m.doc = doc
+
+    def unresolve(self, c, m, why):
+        m.unresolved.append(why)
+        self.unresolved.append(f'{c.name}.{m.name}: {why}')
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Emission
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FILE_HEADER = ('---@meta _\n'
+               '-- JasperEngine Lua API stubs (LuaLS / EmmyLua annotations), generated from the engine\'s\n'
+               '-- LuaBridge bindings by the editor. Do not edit: the editor rewrites this directory.\n')
+
+
+def doc_lines(lines, indent=''):
+    out = []
+    for l in lines:
+        if 'LuaBridge' in str(l):
+            continue  # notes about the binding mechanics, not the API
+        for part in str(l).split('\n'):
+            part = part.rstrip()
+            if part:
+                out.append(f'{indent}---{part}' if part.startswith(' ') else f'{indent}---{part}')
+    return out
+
+
+class Emitter:
+    def __init__(self, builder):
+        self.bd = builder
+        self.files = {}
+
+    def sig_fun(self, s, self_type=None):
+        parts = []
+        if self_type:
+            parts.append(f'self: {self_type}')
+        for n, t, opt, *_ in s.params:
+            parts.append(f'{n}{"?" if opt else ""}: {t}')
+        if s.vararg:
+            parts.append(f'...: {s.vararg}')
+        out = f'fun({", ".join(parts)})'
+        if s.ret:
+            out += f': {s.ret}'
+        return out
+
+    def cond_notes(self, cond):
+        notes = []
+        for cnd in cond:
+            if cnd in _PHYSICS_NOTES and _PHYSICS_NOTES[cnd] not in notes:
+                notes.append(_PHYSICS_NOTES[cnd])
+        return notes
+
+    def emit_class(self, c):
+        bd = self.bd
+        L = [FILE_HEADER]
+        cls_doc = list(c.doc)
+        if c.cpp_class is not None:
+            for line in c.cpp_class.doc:
+                if line not in cls_doc:
+                    cls_doc.append(line)
+        cls_doc += self.cond_notes(c.cond)
+        L += doc_lines(cls_doc)
+        L.append(f'---@class {c.name}' + (f' : {c.base}' if c.base else '') if not c.name.startswith('FunctionSubscribe_')
+                 else f'---@class {c.name} : FunctionSubscribe')
+        for s in c.lua_ctors:
+            L.append(f'---@overload {self.sig_fun(s)}')
+        # fields
+        seen_fields = set()
+        props = [m for m in c.members if m.kind in ('Property', 'StaticProperty')]
+        last = {}
+        for m in props:
+            last[m.name] = m
+        for m in props:
+            if last[m.name] is not m or m.name in seen_fields:
+                continue
+            seen_fields.add(m.name)
+            t = m.lua_type
+            handler = None
+            ev = self.bd.r.lua_classes.get(t) if getattr(m, 'is_event', False) else None
+            if ev is not None and getattr(ev, 'subscribe_sig', None):
+                hp, hr = ev.subscribe_sig
+                handler = 'handler: fun(' + ', '.join(f'{n}: {tt}' for n, tt, _ in hp) + ')' + (f': {hr}' if hr else '')
+                if getattr(m, 'assign_fn', None):
+                    # assigning a function subscribes it ("luaFunction" tag)
+                    t = f'{t}|' + handler[len('handler: '):]
+            notes = []
+            if m.kind == 'StaticProperty':
+                notes.append('(static)')
+            if not m.writable:
+                notes.append('(read-only)')
+            if getattr(m, 'copy', False):
+                notes.append('(copy: changing its fields changes nothing, assign a new value)')
+            if getattr(m, 'is_event', False):
+                notes.append('(event: subscribe a script method with RegisterEvent(self, obj.' + m.name + ', "method"), or any '
+                             'function with :add(tag, fn)' + ('; assigning a function also adds it' if getattr(m, 'assign_fn', None) else '')
+                             + (f'; {handler}' if handler else '') + ')')
+            notes += self.cond_notes(m.call.cond)
+            desc = ' '.join(notes + [' '.join(m.doc)]).strip()
+            L.append(f'---@field {m.name} {t}' + (f' # {desc}' if desc else ''))
+            for u in m.unresolved:
+                L.append(f'-- unresolved: {c.name}.{m.name}: {u}')
+        # operators and the call metamethod
+        for m in c.members:
+            if m.kind != 'Method' or not m.name.startswith('__'):
+                continue
+            if m.name == '__call':
+                for s in getattr(m, 'lua_sigs', []):
+                    L.append(f'---@overload {self.sig_fun(s)}')
+                continue
+            op = _OPERATORS.get(m.name)
+            if not op:
+                continue
+            for s in getattr(m, 'lua_sigs', []):
+                if op in ('unm', 'len', 'bnot'):
+                    L.append(f'---@operator {op}: {s.ret or "any"}')
+                elif s.params:
+                    L.append(f'---@operator {op}({s.params[0][1]}): {s.ret or "any"}')
+        L.append(f'{c.name} = {{}}')
+        L.append('')
+        for m in props:
+            if getattr(m, 'nested_enum', None):
+                L.append(f'---Values of `{c.name}.{m.name}` (integers).')
+                L.append(f'---@class {c.name}.{m.name}')
+                for vn, vv in m.nested_enum:
+                    L.append(f'---@field {vn} integer' + (f' # {vv}' if vv is not None else ''))
+                L.append('')
+        # functions
+        emitted = {}
+        for m in c.members:
+            if m.kind not in ('Method', 'StaticMethod') or m.name.startswith('__'):
+                continue
+            emitted[m.name] = m  # LuaBridge: a later registration replaces an earlier one
+        for m in c.members:
+            if m.kind not in ('Method', 'StaticMethod') or m.name.startswith('__') or emitted.get(m.name) is not m:
+                continue
+            sigs = getattr(m, 'lua_sigs', [])
+            sep = ':' if m.kind == 'Method' else '.'
+            doc = list(m.doc)
+            if m.kind == 'StaticMethod':
+                doc = doc + ['(static: call with a dot, `' + c.name + '.' + m.name + '(...)`)']
+            doc += self.cond_notes(m.call.cond)
+            L += doc_lines(doc)
+            for u in m.unresolved:
+                L.append(f'-- unresolved: {c.name}.{m.name}: {u}')
+            if not sigs:
+                L.append('---@param ... any')
+                L.append('---@return any')
+                L.append(f'function {c.name}{sep}{m.name}(...) end')
+                L.append('')
+                continue
+            first = sigs[0]
+            names = []
+            for n, t, opt, *desc in first.params:
+                d = desc[0] if desc and desc[0] else ''
+                L.append(f'---@param {n}{"?" if opt else ""} {t}' + (f' # {d}' if d else ''))
+                names.append(n)
+            if first.vararg:
+                L.append(f'---@param ... {first.vararg}')
+                names.append('...')
+            if first.ret:
+                L.append(f'---@return {first.ret}')
+            for s in sigs[1:]:
+                L.append(f'---@overload {self.sig_fun(s, c.name if m.kind == "Method" else None)}')
+            L.append(f'function {c.name}{sep}{m.name}({", ".join(names)}) end')
+            L.append('')
+        self.files[f'{c.name}.lua'] = '\n'.join(L).rstrip() + '\n'
+
+    def emit_enum(self, en):
+        L = [FILE_HEADER]
+        doc = list(en.doc)
+        if en.cpp_enum is not None:
+            for line in en.cpp_enum.doc:
+                if line not in doc:
+                    doc.append(line)
+        doc += self.cond_notes(en.call.cond)
+        L += doc_lines(doc)
+        vals = en.resolved
+        cpp_docs = {}
+        if en.cpp_enum is not None:
+            cpp_docs = {n: d for n, _, d in en.cpp_enum.values}
+        if all(v is not None for _, v, _ in vals):
+            L.append(f'---@enum {en.name}')
+            L.append(f'{en.name} = {{')
+            for n, v, call in vals:
+                d = call.doc + cpp_docs.get(n, [])
+                for dl in doc_lines(d, '    '):
+                    L.append(dl)
+                L.append(f'    {n} = {v},')
+            L.append('}')
+        else:
+            # values the generator could not compute: still typed, not numbered
+            L.append(f'---@class {en.name}')
+            for n, v, call in vals:
+                L.append(f'---@field {n} integer' + (f' # {v}' if v is not None else ''))
+            L.append(f'{en.name} = {{}}')
+            self.bd.unresolved.append(f'{en.name}: enum values not computed')
+            L.append(f'-- unresolved: {en.name}: enum values not computed')
+        self.files[f'{en.name}.lua'] = '\n'.join(L).rstrip() + '\n'
+
+    def emit_globals(self):
+        bd = self.bd
+        L = [FILE_HEADER]
+        for name, expr, call in bd.b.globals:
+            L += doc_lines(call.doc)
+            text = join_tokens(expr)
+            value = None
+            if 'NULL_ENTITY' in text:
+                value = 0
+            else:
+                v = eval_int(expr, {}, bd.model)
+                value = v
+            L.append('---@type integer')
+            L.append(f'{name} = {value if value is not None else 0}')
+            L.append('')
+        # Engine events
+        engine = bd.r.lua_classes.get('Engine')
+        events = []
+        if engine is not None:
+            for m in engine.members:
+                if m.kind == 'StaticProperty' and getattr(m, 'is_event', False):
+                    events.append(m)
+        L.append('---Names of the Engine events a script can subscribe to with RegisterEngineEvent: the')
+        L.append('---script method with that name is called on every event.')
+        if events:
+            L.append('---@alias EngineEventName')
+            for m in events:
+                ev = bd.r.lua_classes.get(m.lua_type)
+                hp, hr = getattr(ev, 'subscribe_sig', ([], '')) if ev else ([], '')
+                names = ENGINE_EVENT_ARGS.get(m.name, [])
+                args = ', '.join(f'{names[i] if i < len(names) else n}: {t}' for i, (n, t, _) in enumerate(hp))
+                L.append(f'---| "{m.name}" # handler: function Script:{m.name}({args})' + (f' -> {hr}' if hr else ''))
+        else:
+            L.append('---@alias EngineEventName string')
+        L.append('')
+        L += [
+            '---Subscribes `self:<methodName>(...)` to the Engine event of the same name (`Engine.<methodName>`):',
+            '---`RegisterEngineEvent(self, "onUpdate")` in `init()` makes the engine call `self:onUpdate()` every',
+            '---frame. The method must already exist on `self`. Registering the same method again (same tag)',
+            '---replaces the subscription; subscriptions end when the script instance is released. Engine events',
+            '---are skipped while the script\'s GameObject is inactive or the script is disabled.',
+            '---@param self table # the script instance (`self`)',
+            '---@param methodName EngineEventName',
+            '---@param tag? string # subscription tag (default: unique per instance and method)',
+            'function RegisterEngineEvent(self, methodName, tag) end',
+            '',
+            '---Subscribes `self:<methodName>(...)` to any event object: a component or physics event such as',
+            '---`self.scene:getPhysicsSystem().beginContact2D` or `Button(self.scene, self.entity):getButtonComponent().onPress`.',
+            '---Not guarded by the GameObject\'s active state.',
+            '---@param self table # the script instance (`self`)',
+            '---@param event FunctionSubscribe|function # the event object (an event field: its type also lists the function it accepts)',
+            '---@param methodName string',
+            '---@param tag? string',
+            'function RegisterEvent(self, event, methodName, tag) end',
+            '',
+            '---An event object (the `FunctionSubscribe_*` classes): functions subscribed to it are called when',
+            '---the event fires. Subscribe a script method with RegisterEvent / RegisterEngineEvent, or any',
+            '---function with `event:add(tag, fn)`.',
+            '---@class FunctionSubscribe',
+            '',
+            '---What Input.getTouches() returns for each touch (a plain table, not a class).',
+            '---@class Touch',
+            '---@field pointer integer',
+            '---@field position Vector2',
+            '',
+        ]
+        self.files['Globals.lua'] = '\n'.join(L).rstrip() + '\n'
+
+    def emit_script(self):
+        bd = self.bd
+        wrappers = sorted(c.name for c in bd.b.classes if self.derives(c, 'EntityHandle'))
+        types = ['bool', 'boolean', 'int', 'integer', 'float', 'number', 'string', 'vector2', 'vec2', 'vector3',
+                 'vec3', 'vector4', 'vec4', 'color3', 'color4', 'Prefab', 'entity'] + wrappers
+        L = [FILE_HEADER]
+        L += [
+            '-- The script module contract. A Lua script returns a module table; for every Script component',
+            '-- entry using it the engine makes an instance (the module is its __index), sets `self.__name`,',
+            '-- `self.scene`, `self.entity` and every property, then calls `init(self)`. Annotate a script\'s',
+            '-- module as a subclass to get completion and checks on `self`:',
+            '--',
+            '--   ---@class Player : ScriptInstance',
+            '--   ---@field speed number',
+            '--   local Player = { properties = { { name = "speed", type = "float", default = 5.0 } } }',
+            '--',
+            '--   function Player:init() RegisterEngineEvent(self, "onUpdate") end',
+            '--   function Player:onUpdate() local dt = Engine.deltatime end',
+            '--   return Player',
+            '',
+            '---Value of a property entry\'s `type` (case-insensitive). Any other string is a Lua script class',
+            '---name: the property then holds that GameObject\'s script instance.',
+            '---@alias ScriptPropertyType',
+        ]
+        for t in types:
+            L.append(f'---| "{t}"')
+        L += [
+            '---| string',
+            '',
+            '---One entry of a script\'s `properties` table: shown in the Inspector and set on `self.<name>`',
+            '---before `init()`. Entity references (a wrapper class name, "entity" or a script class name) are',
+            '---nil when unassigned; "Prefab" is a PrefabAsset or nil.',
+            '---@class ScriptPropertyDef',
+            '---@field name string # field name on `self` (required)',
+            '---@field displayName? string # Inspector label (default: name)',
+            '---@field type? ScriptPropertyType # default "float"',
+            '---@field default? any # default value: number, boolean, string, or an array table for vectors/colors ({x, y, z})',
+            '',
+            '---A Lua script instance (`self` in a script\'s methods). `init(self)` is called once after every',
+            '---instance of the scene exists; `onDestroy(self)` when its GameObject is destroyed at runtime.',
+            '---Other methods run only when registered (RegisterEngineEvent / RegisterEvent).',
+            '---@class ScriptInstance',
+            '---@field scene Scene # the scene of the GameObject the script is attached to',
+            '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
+            '---@field __name string # the script class name (the file name)',
+            '---@field properties? ScriptPropertyDef[] # the properties the Inspector shows',
+            '',
+        ]
+        self.files['Script.lua'] = '\n'.join(L).rstrip() + '\n'
+
+    def derives(self, c, base):
+        seen = set()
+        while c is not None and c.name not in seen:
+            if c.name == base:
+                return True
+            seen.add(c.name)
+            c = self.bd.r.lua_classes.get(c.base) if c.base else None
+        return False
+
+    def emit_all(self):
+        for en in self.bd.b.enums:
+            self.emit_enum(en)
+        for c in self.bd.b.classes:
+            self.emit_class(c)
+        self.emit_globals()
+        self.emit_script()
+        return self.files
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Output
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def c_string_literals(text, max_part=12000):
+    """Split text into C string literal parts (each a sequence of adjacent literals)."""
+    parts = []
+    cur = []
+    size = 0
+    for line in text.splitlines(keepends=True):
+        esc = ''
+        for ch in line.encode('utf-8'):
+            if ch == 0x5C:
+                esc += '\\\\'
+            elif ch == 0x22:
+                esc += '\\"'
+            elif ch == 0x0A:
+                esc += '\\n'
+            elif ch == 0x09:
+                esc += '\\t'
+            elif ch == 0x3F:
+                esc += '\\?'  # no trigraphs
+            elif 0x20 <= ch < 0x7F:
+                esc += chr(ch)
+            else:
+                esc += '\\%03o' % ch
+        if size + len(line) > max_part and cur:
+            parts.append(cur)
+            cur = []
+            size = 0
+        cur.append(f'"{esc}"')
+        size += len(line)
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def write_header(files, path):
+    out = ['// Auto-generated by generate_lua_stubs.py from the Lua bindings. DO NOT EDIT.',
+           '#pragma once', '', 'namespace jasperengine::editor::luastubs {', '',
+           'struct StubFile {', '    const char* name;', '    const char* const* parts;', '    unsigned int partCount;', '};', '']
+    names = sorted(files)
+    for idx, name in enumerate(names):
+        parts = c_string_literals(files[name])
+        out.append(f'static const char* const file{idx}[] = {{')
+        for p in parts:
+            out.append('    ' + '\n    '.join(p) + ',')
+        out.append('};')
+    out.append('')
+    out.append('static const StubFile stubFiles[] = {')
+    for idx, name in enumerate(names):
+        out.append(f'    {{"{name}", file{idx}, sizeof(file{idx}) / sizeof(file{idx}[0])}},')
+    out.append('};')
+    out.append('')
+    out.append('} // namespace jasperengine::editor::luastubs')
+    out.append('')
+    content = '\n'.join(out)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    old = None
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            old = f.read()
+    if old != content:
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(content)
+
+
+def generate(binding_dir, core_dir):
+    model = CppModel()
+    for root, dirs, fnames in os.walk(core_dir):
+        dirs.sort()
+        for fn in sorted(fnames):
+            if fn.endswith('.h'):
+                model.parse_file(os.path.join(root, fn))
+    bindings = Bindings(model)
+    for fn in sorted(os.listdir(binding_dir)):
+        if fn.endswith('.cpp'):
+            bindings.parse_file(os.path.join(binding_dir, fn))
+    builder = Builder(model, bindings)
+    builder.build()
+    files = Emitter(builder).emit_all()
+    return files, builder
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('binding_dir')
+    ap.add_argument('core_dir')
+    ap.add_argument('output_header')
+    ap.add_argument('--out-dir', help='also write the .lua files here (stale .lua files are removed)')
+    args = ap.parse_args()
+    files, builder = generate(args.binding_dir, args.core_dir)
+    write_header(files, args.output_header)
+    if args.out_dir:
+        os.makedirs(args.out_dir, exist_ok=True)
+        for fn in os.listdir(args.out_dir):
+            if fn.endswith('.lua') and fn not in files:
+                os.remove(os.path.join(args.out_dir, fn))
+        for name, text in files.items():
+            p = os.path.join(args.out_dir, name)
+            old = None
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    old = f.read()
+            if old != text:
+                with open(p, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(text)
+    print(f'[generate_lua_stubs] {len(files)} stub files, {len(builder.b.classes)} classes, '
+          f'{len(builder.b.enums)} enums, {len(builder.unresolved)} unresolved')
+    for u in builder.unresolved:
+        print(f'  unresolved: {u}')
+
+
+if __name__ == '__main__':
+    main()
