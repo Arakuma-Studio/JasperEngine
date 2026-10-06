@@ -46,6 +46,7 @@
 #include "command/type/MoveEntityOrderCmd.h"
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 #include "pool/ShaderPool.h"

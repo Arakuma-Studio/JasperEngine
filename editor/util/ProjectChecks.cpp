@@ -149,7 +149,7 @@ bool editor::ProjectChecks::isSkippedDir(const fs::path& dir) {
 bool editor::ProjectChecks::isInSkippedDir(const fs::path& relative) {
     const fs::path parent = relative.lexically_normal().parent_path();
     for (const fs::path& part : parent) {
-        if (part == "." ) continue;
+        if (part == ".") continue;
         if (isSkippedDir(part)) return true;
     }
     return false;
