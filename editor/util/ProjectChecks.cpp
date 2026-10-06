@@ -61,19 +61,32 @@ std::string oneLine(const std::string& text) {
     return out;
 }
 
-// "<chunk>:<line>: <message>" -> line + message (line 0 and the whole text otherwise)
+// "<chunk>:<line>: <message>" -> line + message (line 0 and the whole text otherwise). Lua
+// shortens a long chunk name to "...<its end>".
 void splitLuaMessage(const std::string& text, const std::string& chunkName, int& line, std::string& message) {
     line = 0;
     message = text;
-    const std::string prefix = chunkName + ":";
-    if (text.rfind(prefix, 0) != 0) return;
-    const size_t colon = text.find(':', prefix.size());
-    if (colon == std::string::npos || colon == prefix.size()) return;
-    for (size_t i = prefix.size(); i < colon; i++) {
+    size_t prefixEnd = std::string::npos;
+    if (text.rfind(chunkName + ":", 0) == 0) {
+        prefixEnd = chunkName.size() + 1;
+    } else if (text.rfind("...", 0) == 0) {
+        // the shortened name is the end of the chunk name, before ":<digits>:"
+        for (size_t colon = text.find(':', 3); colon != std::string::npos; colon = text.find(':', colon + 1)) {
+            const std::string tail = text.substr(3, colon - 3);
+            if (chunkName.size() >= tail.size() && chunkName.compare(chunkName.size() - tail.size(), tail.size(), tail) == 0) {
+                prefixEnd = colon + 1;
+                break;
+            }
+        }
+    }
+    if (prefixEnd == std::string::npos) return;
+    const size_t colon = text.find(':', prefixEnd);
+    if (colon == std::string::npos || colon == prefixEnd) return;
+    for (size_t i = prefixEnd; i < colon; i++) {
         if (!std::isdigit(static_cast<unsigned char>(text[i]))) return;
     }
     try {
-        line = std::stoi(text.substr(prefix.size(), colon - prefix.size()));
+        line = std::stoi(text.substr(prefixEnd, colon - prefixEnd));
     } catch (...) {
         line = 0;
         return;
@@ -247,13 +260,20 @@ void* limitedAlloc(void* ud, void* ptr, size_t osize, size_t nsize) {
     return block;
 }
 
-void stepHook(lua_State* L, lua_Debug*) {
+void stepHook(lua_State* L, lua_Debug* ar) {
     void* ud = nullptr;
     lua_getallocf(L, &ud);
     IsolatedLimits* limits = static_cast<IsolatedLimits*>(ud);
     limits->steps += kHookEvery;
     if (limits->steps > limits->maxSteps) {
-        luaL_error(L, "the script did not finish loading (an endless loop?)");
+        const char* message = "the script did not finish loading (an endless loop?)";
+        // the chunk name in full (short_src is truncated for long paths)
+        if (lua_getinfo(L, "Sl", ar) && ar->currentline > 0 && ar->source && ar->source[0] == '@') {
+            lua_pushfstring(L, "%s:%d: %s", ar->source + 1, ar->currentline, message);
+        } else {
+            lua_pushstring(L, message);
+        }
+        lua_error(L);
     }
 }
 

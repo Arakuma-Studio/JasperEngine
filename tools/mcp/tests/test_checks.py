@@ -216,6 +216,36 @@ async def test_cli_broken_lua_text_and_json():
         bad = next(f for f in data["findings"] if f["path"] == "scripts/BadDefault.lua")
         check_eq(bad["line"], 0, "a property problem has no line")
 
+        # a long path (Lua shortens long chunk names in its messages) keeps its line
+        deep = "scripts/" + "/".join(["a_rather_long_folder_name"] * 4) + "/Deep.lua"
+        write(project, deep, BROKEN_LUA)
+        write(project, deep.replace("Deep", "DeepBoom"), BOOM_LUA)
+        code, data = run_json(project, "--files", deep, deep.replace("Deep", "DeepBoom"))
+        check_eq(sorted((f["path"], f["line"], f["message"]) for f in data["findings"]),
+                 [(deep, 3, "unexpected symbol near '='"), (deep.replace("Deep", "DeepBoom"), 2, "runtime error at load: boom")],
+                 "line numbers of a long path")
+
+
+async def test_cli_lua_isolated_state():
+    """The CLI runs each script's top level in an isolated state: no files, processes or endless loops."""
+    with scratch_project() as project:
+        marker = project.parent / "touched-by-lua"
+        write(project, "scripts/Writer.lua",
+              f"local f = io.open({json.dumps(str(marker))}, 'w')\nif f then f:write('x') f:close() end\n"
+              "local ok = pcall(function() return os.execute('true') end)\nreturn {}\n")
+        write(project, "scripts/Forever.lua", "local T = {}\nwhile true do end\nreturn T\n")
+        write(project, "scripts/Hungry.lua", "local t = {}\nfor i = 1, 1e9 do t[i] = string.rep('x', 1024) .. i end\nreturn t\n")
+        t0 = time.monotonic()
+        code, data = run_json(project, "--files", "scripts/Writer.lua", "scripts/Forever.lua", "scripts/Hungry.lua")
+        seconds = time.monotonic() - t0
+        check(not marker.exists(), "a script can't write files from the check")
+        by_path = {f["path"]: f for f in data["findings"]}
+        check("scripts/Writer.lua" not in by_path, f"io is an inert stand-in, os.execute is gone (no crash): {data}")
+        check_eq((by_path["scripts/Forever.lua"]["line"], code), (2, 1), f"an endless loop is stopped: {data}")
+        check("did not finish loading" in by_path["scripts/Forever.lua"]["message"], by_path["scripts/Forever.lua"]["message"])
+        check("not enough memory" in by_path["scripts/Hungry.lua"]["message"], f"memory is capped: {data}")
+        check(seconds < 20, f"the limits keep it quick: {seconds:.1f}s")
+
 
 async def test_cli_files_filter():
     with scratch_project() as project:
