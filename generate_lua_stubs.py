@@ -2369,37 +2369,42 @@ end
 local okGuide, guide = pcall(require, 'parser.guide')
 
 local function transform(ast)
-    local changed = false
-    guide.eachSourceTypes(ast, { 'setfield', 'setindex' }, function (source)
+    -- The tree is walked with guide.eachChild, not guide.eachSource(Type): those cache their
+    -- source lists in the tree, and this runs before the server adds the doc comments to it.
+    local found = {}
+    local stack = { ast }
+    while #stack > 0 do
+        local source = stack[#stack]
+        stack[#stack] = nil
+        if source.type == 'setfield' or source.type == 'setindex' then
+            found[#found + 1] = source
+        end
+        guide.eachChild(source, function (child)
+            stack[#stack + 1] = child
+        end)
+    end
+    for _, source in ipairs(found) do
         local node = source.node
         -- a global name of the chunk's environment (not a local, not a field)
-        if not node or node.type ~= 'getglobal' or node.next ~= source
-        or not node.node or node.node.tag ~= '_ENV' then
-            return
+        if node and node.type == 'getglobal' and node.next == source
+        and node.node and node.node.tag == '_ENV' then
+            local known = fields[node[1]]
+            local key = guide.getKeyName(source)
+            if known and type(key) == 'string' and known[key] then
+                -- what the parser builds for `(Engine).timeScale = v`
+                local paren = {
+                    type   = 'paren',
+                    start  = node.start,
+                    finish = node.finish,
+                    exp    = node,
+                    parent = source,
+                    next   = source,
+                }
+                node.parent = paren
+                node.next   = nil
+                source.node = paren
+            end
         end
-        local known = fields[node[1]]
-        local key = guide.getKeyName(source)
-        if not known or type(key) ~= 'string' or not known[key] then
-            return
-        end
-        -- what the parser builds for `(Engine).timeScale = v`
-        local paren = {
-            type   = 'paren',
-            start  = node.start,
-            finish = node.finish,
-            exp    = node,
-            parent = source,
-            next   = source,
-        }
-        node.parent = paren
-        node.next   = nil
-        source.node = paren
-        changed = true
-    end)
-    if changed then
-        -- source lists cached by type: they must see the new nodes
-        ast._typeCache = nil
-        ast._eachCache = nil
     end
 end
 

@@ -84,6 +84,15 @@ BAD_LUA_EXPECTED = {
     26: "assign-type-mismatch",  # number <- boolean, indexed with a string
 }
 
+# A script without engine fields assigned: the plugin leaves the checks driven by the doc
+# comments as they are (it must not walk the syntax tree in a way that hides them)
+BAD_DOCS_LUA = """---@class (exact) BadPoint
+---@field x number
+local badPoint = { x = 1, y = 2 }
+print(badPoint)
+"""
+BAD_DOCS_LUA_EXPECTED = {3: "inject-field"}  # not a field of the exact class
+
 # Typical script code that must check clean: an annotated script module, events, physics
 # events, operators, static members, the hand-written lua_CFunction signatures
 GOOD_LUA = """---@class Good : ScriptInstance
@@ -533,13 +542,15 @@ async def test_luals_zero_diagnostics_on_known_good_scripts(ed: Editor):
 
 async def test_luals_reports_api_mistakes(ed: Editor):
     await wait_tooling(ed)
-    ws = lua_workspace(ed, {"Bad.lua": BAD_LUA})
+    ws = lua_workspace(ed, {"Bad.lua": BAD_LUA, "BadDocs.lua": BAD_DOCS_LUA})
     try:
-        diags = [d for d in luals_check(ws) if d["file"].endswith("Bad.lua")]
-        got = {d["line"]: d["code"] for d in diags}
-        for line, code in BAD_LUA_EXPECTED.items():
-            ed.check_eq(got.get(line), code, f"Bad.lua:{line} ({BAD_LUA.splitlines()[line - 1].strip()}); all: {diags}")
-        ed.check_eq(len(diags), len(BAD_LUA_EXPECTED), f"unexpected diagnostics: {diags}")
+        all_diags = luals_check(ws)
+        for name, text, expected in (("Bad.lua", BAD_LUA, BAD_LUA_EXPECTED), ("BadDocs.lua", BAD_DOCS_LUA, BAD_DOCS_LUA_EXPECTED)):
+            diags = [d for d in all_diags if d["file"].endswith(name)]
+            got = {d["line"]: d["code"] for d in diags}
+            for line, code in expected.items():
+                ed.check_eq(got.get(line), code, f"{name}:{line} ({text.splitlines()[line - 1].strip()}); all: {diags}")
+            ed.check_eq(len(diags), len(expected), f"unexpected diagnostics in {name}: {diags}")
     finally:
         shutil.rmtree(ws.parent, ignore_errors=True)
 
