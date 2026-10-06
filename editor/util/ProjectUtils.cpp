@@ -76,6 +76,7 @@
 using namespace jasperengine;
 
 static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry);
+static bool parseLuaPropertiesTableProtected(lua_State* L, ScriptEntry& entry, std::string* error);
 
 namespace {
 
@@ -1808,7 +1809,10 @@ void editor::ProjectUtils::loadLuaScriptProperties(ScriptEntry& entry, const std
         return;
     }
 
-    parseLuaPropertiesTable(L, entry);
+    std::string error;
+    if (!parseLuaPropertiesTableProtected(L, entry, &error)) {
+        Out::error("Failed to read the properties of Lua script \"%s\": %s", luaPath.c_str(), error.c_str());
+    }
 }
 
 void editor::ProjectUtils::loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName) {
@@ -1826,7 +1830,60 @@ void editor::ProjectUtils::loadLuaScriptPropertiesFromString(ScriptEntry& entry,
         return;
     }
 
-    parseLuaPropertiesTable(L, entry);
+    // a property that can't be read is ignored like a parse error (the code may be mid-edit)
+    parseLuaPropertiesTableProtected(L, entry, nullptr);
+}
+
+editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::runLuaScriptProperties(lua_State* L, ScriptEntry& entry, const std::string& code, const std::string& chunkName) {
+    LuaPropertiesResult result;
+    if (!L) return result;
+
+    const int top = lua_gettop(L);
+    const std::string chunk = "@" + chunkName;
+    if (luaL_loadbuffer(L, code.data(), code.size(), chunk.c_str()) != LUA_OK) {
+        result.status = LuaPropertiesResult::LoadError;
+        result.message = LuaBinding::getLuaStackErrorString(L, -1);
+        lua_settop(L, top);
+        return result;
+    }
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+        result.status = LuaPropertiesResult::RunError;
+        result.message = LuaBinding::getLuaStackErrorString(L, -1);
+        lua_settop(L, top);
+        return result;
+    }
+    if (lua_istable(L, -1) && !parseLuaPropertiesTableProtected(L, entry, &result.message)) {
+        result.status = LuaPropertiesResult::PropertyError;
+    }
+    lua_settop(L, top);
+    return result;
+}
+
+namespace {
+    int parseLuaPropertiesThunk(lua_State* L) {
+        ScriptEntry* entry = static_cast<ScriptEntry*>(lua_touserdata(L, 1));
+        lua_settop(L, 2);   // the script table on top, as parseLuaPropertiesTable wants it
+        parseLuaPropertiesTable(L, *entry);
+        return 0;
+    }
+}
+
+// parseLuaPropertiesTable in a protected call: a property default luaL_opt* can't convert
+// raises a Lua error, which unprotected would abort the editor. Pops the script table at the
+// top of the stack, like parseLuaPropertiesTable. entry is left unchanged on failure.
+static bool parseLuaPropertiesTableProtected(lua_State* L, ScriptEntry& entry, std::string* error) {
+    const std::vector<ScriptProperty> previous = entry.properties;
+    lua_pushcfunction(L, parseLuaPropertiesThunk);
+    lua_pushlightuserdata(L, &entry);
+    lua_pushvalue(L, -3);
+    const bool ok = lua_pcall(L, 2, 0, 0) == LUA_OK;
+    if (!ok) {
+        if (error) *error = LuaBinding::getLuaStackErrorString(L, -1);
+        lua_pop(L, 1);
+        entry.properties = previous;
+    }
+    lua_pop(L, 1);  // the script table
+    return ok;
 }
 
 static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
@@ -1888,6 +1945,17 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                 lua_pop(L, 1);
 
                 lua_getfield(L, -1, "default");
+                if (!lua_isnoneornil(L, -1) && (prop.type == ScriptPropertyType::Int || prop.type == ScriptPropertyType::Float)) {
+                    const bool isInt = prop.type == ScriptPropertyType::Int;
+                    int convertible = 0;
+                    if (isInt) lua_tointegerx(L, -1, &convertible);
+                    else lua_tonumberx(L, -1, &convertible);
+                    if (!convertible) {
+                        const char* got = lua_isnumber(L, -1) ? lua_tostring(L, -1) : luaL_typename(L, -1);
+                        luaL_error(L, "property '%s' (%s): default must be %s, got %s", prop.name.c_str(),
+                                   isInt ? "int" : "float", isInt ? "an integer" : "a number", got);
+                    }
+                }
                 prop.defaultValue = editor::ProjectUtils::luaValueToScriptPropertyValue(L, -1, prop.type);
                 prop.value = prop.defaultValue;
                 lua_pop(L, 1);

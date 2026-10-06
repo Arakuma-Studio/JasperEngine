@@ -80,6 +80,17 @@ public:
     static ScriptPropertyValue luaValueToScriptPropertyValue(lua_State* L, int idx, ScriptPropertyType type);
     static void loadLuaScriptProperties(ScriptEntry& entry, const std::string& luaPath);
     static void loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName);
+    // What reading a Lua script's properties did: the script failed to load (syntax) or to
+    // run its top level, or a property declaration can't be read (a default of the wrong type).
+    // message is Lua's ("<chunkName>:<line>: ..." when Lua knows the line).
+    struct LuaPropertiesResult {
+        enum Status { Ok, LoadError, RunError, PropertyError } status = Ok;
+        std::string message;
+    };
+    // Reads a Lua script's properties as the editor does: runs its top level in L (this
+    // executes the file) and reads the `properties` of the table it returns, all in protected
+    // calls. The chunk is named "@<chunkName>". entry keeps its properties on failure.
+    static LuaPropertiesResult runLuaScriptProperties(lua_State* L, ScriptEntry& entry, const std::string& code, const std::string& chunkName);
 
     static void collectModelEntities(Scene* scene, const ModelComponent& model, std::vector<Entity>& out);
 

@@ -27,8 +27,10 @@
 #include "command/type/PropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "pool/TextureDataPool.h"
+#include "script/LuaBinding.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
+#include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
@@ -231,30 +233,11 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
 // ------------------------------------------------------------------ Lua syntax
 
 LuaSyntax checkLuaSyntax(const std::string& code, const std::string& chunkName) {
+    const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, chunkName);
     LuaSyntax result;
-    lua_State* L = luaL_newstate();
-    if (!L) return result;
-    const std::string chunk = "@" + chunkName;
-    if (luaL_loadbuffer(L, code.data(), code.size(), chunk.c_str()) != LUA_OK) {
-        result.ok = false;
-        const char* message = lua_tostring(L, -1);
-        std::string text = message ? message : "syntax error";
-        // "<chunk>:<line>: <message>"
-        const std::string prefix = chunkName + ":";
-        if (text.rfind(prefix, 0) == 0) {
-            const size_t colon = text.find(':', prefix.size());
-            if (colon != std::string::npos) {
-                try {
-                    result.line = std::stoi(text.substr(prefix.size(), colon - prefix.size()));
-                    text = text.substr(colon + 1);
-                    if (!text.empty() && text[0] == ' ') text.erase(0, 1);
-                } catch (...) {
-                }
-            }
-        }
-        result.message = text;
-    }
-    lua_close(L);
+    result.ok = syntax.ok;
+    result.line = syntax.line;
+    result.message = syntax.message;
     return result;
 }
 
@@ -1299,39 +1282,43 @@ void checkScriptTool(const CallPtr& call) {
 
     Json data = {{"path", name}, {"language", language}};
     if (language == "lua") {
-        LuaSyntax syntax = checkLuaSyntax(code, name);
-        data["ok"] = syntax.ok;
-        if (!syntax.ok) {
-            data["errors"] = Json::array({{{"line", syntax.line}, {"message", syntax.message}}});
-            call->ok("Lua syntax error at line " + std::to_string(syntax.line) + ": " + syntax.message, data);
+        // Syntax, then the properties the Inspector will show: like the Inspector, this runs the
+        // chunk's top level in the editor's Lua state (the CLI uses an isolated one)
+        const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, name, LuaBinding::getLuaState());
+        data["ok"] = check.findings.empty();
+        data["findings"] = ProjectChecks::toJson(check.findings);
+        if (!check.syntaxOk) {
+            const ProjectChecks::Finding& error = check.findings.front();
+            data["errors"] = Json::array({{{"line", error.line}, {"message", error.message}}});
+            call->ok("Lua syntax error at line " + std::to_string(error.line) + ": " + error.message, data);
             return;
         }
-        // The properties the Inspector will show (runs the chunk's top level in the editor's Lua
-        // state, as the Inspector does)
-        ScriptEntry probe;
-        ProjectUtils::loadLuaScriptPropertiesFromString(probe, code, name);
         Json props = Json::array();
-        for (const ScriptProperty& prop : probe.properties) props.push_back({{"name", prop.name}, {"type", scriptPropertyTypeName(prop)}});
+        for (const ScriptProperty& prop : check.properties) props.push_back({{"name", prop.name}, {"type", scriptPropertyTypeName(prop)}});
         data["properties"] = props;
+        if (!check.findings.empty()) {
+            const ProjectChecks::Finding& error = check.findings.front();
+            data["errors"] = Json::array({{{"line", error.line}, {"message", error.message}}});
+            call->ok("Lua syntax OK, but loading the script failed" +
+                     (error.line > 0 ? " at line " + std::to_string(error.line) : std::string()) + ": " + error.message, data);
+            return;
+        }
         call->ok("Lua syntax OK; " + std::to_string(props.size()) + " propert" + (props.size() == 1 ? "y" : "ies") +
                  " declared. Runtime errors only show in Play (read the Console).", data);
         return;
     }
     if (language == "cpp_header") {
-        auto className = ScriptParser::findScriptClassNameFromString(code);
-        data["class_name"] = className ? Json(*className) : Json(nullptr);
-        if (className) {
-            auto base = ScriptParser::inheritsScriptBaseFromString(code, *className);
-            if (base) data["kind"] = *base ? "cpp_script" : "cpp_subclass";
-        }
+        const ProjectChecks::CppHeaderInfo header = ProjectChecks::checkCppHeader(code, name);
+        data["class_name"] = header.className ? Json(*header.className) : Json(nullptr);
+        if (header.directScript) data["kind"] = *header.directScript ? "cpp_script" : "cpp_subclass";
         Json props = Json::array();
-        for (const ScriptProperty& prop : ScriptParser::parseScriptPropertiesFromString(code, name)) {
+        for (const ScriptProperty& prop : header.properties) {
             props.push_back({{"name", prop.name}, {"type", scriptPropertyTypeName(prop)}});
         }
         data["properties"] = props;
-        call->ok(className ? "Script class " + *className + " with " + std::to_string(props.size()) +
-                             " DPROPERTY field(s). Compile with compile_scripts to check the code."
-                           : "No single script class found in the header (none, or several).", data);
+        call->ok(header.className ? "Script class " + *header.className + " with " + std::to_string(props.size()) +
+                                        " DPROPERTY field(s). Compile with compile_scripts to check the code."
+                                  : "No single script class found in the header (none, or several).", data);
         return;
     }
     if (language == "cpp_source") {
@@ -1379,36 +1366,6 @@ void syncFilesTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ compile_scripts
 
-struct Diagnostic {
-    std::string file;
-    int line = 0;
-    int column = 0;
-    std::string severity;
-    std::string message;
-};
-
-std::vector<Diagnostic> parseDiagnostics(const std::vector<std::string>& lines) {
-    // gcc/clang: file:line:col: error: message      MSVC: file(line,col): error C1234: message
-    static const std::regex gnu(R"(^(.+?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.*)$)");
-    static const std::regex msvc(R"(^\s*(.+?)\((\d+)(?:,(\d+))?\)\s*:\s*(fatal error|error|warning)\s*\w*\d*\s*:\s*(.*)$)");
-    std::vector<Diagnostic> out;
-    for (const std::string& raw : lines) {
-        std::string line = raw;
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
-        std::smatch m;
-        if (std::regex_match(line, m, gnu) || std::regex_match(line, m, msvc)) {
-            Diagnostic d;
-            d.file = m[1].str();
-            d.line = std::atoi(m[2].str().c_str());
-            d.column = m[3].matched ? std::atoi(m[3].str().c_str()) : 0;
-            d.severity = m[4].str() == "fatal error" ? "error" : m[4].str();
-            d.message = m[5].str();
-            out.push_back(d);
-        }
-    }
-    return out;
-}
-
 std::mutex compileMutex;
 std::weak_ptr<McpJob> runningCompile;
 
@@ -1433,34 +1390,26 @@ void compileScriptsTool(const CallPtr& call) {
         return;
     }
 
-    std::vector<SceneScriptSource> scripts;
-    try {
-        scripts = project->prepareScriptBuild();
-    } catch (const std::exception& e) {
-        call->fail(std::string("Generating the build files failed: ") + e.what());
-        return;
-    }
-    if (scripts.empty() && project->getScriptDirs().empty()) {
-        call->ok("Nothing to compile: no enabled C++ script is attached to a GameObject and the project has no script "
-                 "directories. (Lua scripts are not compiled: use check_script for their syntax.)",
-                 Json{{"success", true}, {"scripts", Json::array()}});
-        return;
-    }
-
-    const LocalBuildSettings settings = AppSettings::getBuildSettings(project->getProjectPath() / "project.yaml");
-    const bool useDefaultKit = settings.cCompiler.empty() && settings.cxxCompiler.empty() && settings.generator.empty();
-    CMakeKit kit;
-    kit.cCompiler = settings.cCompiler;
-    kit.cxxCompiler = settings.cxxCompiler;
-    kit.generator = settings.generator;
-    const std::string missing = Generator::checkBuildTools(useDefaultKit, &kit);
-    if (!missing.empty()) {
-        call->fail("C++ build tools are missing:\n" + missing, Json{{"success", false}});
-        return;
+    ProjectChecks::CppBuildPlan plan;
+    std::string error;
+    switch (ProjectChecks::prepareCppBuild(project, plan, error)) {
+        case ProjectChecks::CppPrepare::Failed:
+            call->fail(error);
+            return;
+        case ProjectChecks::CppPrepare::MissingTools:
+            call->fail(error, Json{{"success", false}});
+            return;
+        case ProjectChecks::CppPrepare::NothingToBuild:
+            call->ok("Nothing to compile: no enabled C++ script is attached to a GameObject and the project has no script "
+                     "directories. (Lua scripts are not compiled: use check_script for their syntax.)",
+                     Json{{"success", true}, {"scripts", Json::array()}});
+            return;
+        case ProjectChecks::CppPrepare::Ready:
+            break;
     }
 
     Json scriptList = Json::array();
-    for (const SceneScriptSource& script : scripts) {
+    for (const SceneScriptSource& script : plan.scripts) {
         scriptList.push_back({{"class_name", script.className}, {"path", script.path.generic_string()},
                               {"header_path", script.headerPath.generic_string()}});
     }
@@ -1473,60 +1422,25 @@ void compileScriptsTool(const CallPtr& call) {
     auto generator = std::make_shared<Generator>();
     const uint64_t firstLog = Out::lastLogId();
     const fs::path projectPath = project->getProjectPath();
-    const fs::path internalPath = project->getProjectInternalPath();
     const auto started = std::chrono::steady_clock::now();
     job->setCancelHandler([generator]() { generator->cancelBuild(); });
-    job->setProgress(-1.0, "Configuring and building " + std::to_string(scripts.size()) + " script(s)");
-    generator->build(projectPath, internalPath / "build", kit.cCompiler, kit.cxxCompiler, kit.generator, settings.buildJobs);
+    job->setProgress(-1.0, "Configuring and building " + std::to_string(plan.scripts.size()) + " script(s)");
+    ProjectChecks::startCppBuild(project, *generator, plan);
 
     std::thread([job, generator, firstLog, projectPath, scriptList, started]() {
-        uint64_t cursor = firstLog;
-        std::vector<std::string> output;
-        auto drain = [&]() {
-            for (const LogEntry& entry : Out::getLogsSince(cursor)) {
-                cursor = entry.id;
-                if (entry.type == LogType::Info || entry.type == LogType::Success) continue;
-                std::istringstream lines(entry.message);
-                std::string line;
-                while (std::getline(lines, line)) {
-                    output.push_back(line);
-                    job->log(line);
-                }
-            }
-        };
-        while (generator->isBuildInProgress()) {
-            drain();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }
-        generator->waitForBuildToComplete();
-        drain();
-
+        const std::vector<std::string> output =
+            ProjectChecks::waitCppBuild(*generator, firstLog, [&job](const std::string& line) { job->log(line); });
         const bool success = generator->didLastBuildSucceed();
-        std::vector<Diagnostic> diagnostics = parseDiagnostics(output);
+        const ProjectChecks::CppBuildReport report = ProjectChecks::summarizeCppBuild(projectPath, success, output);
         Json errors = Json::array(), warnings = Json::array();
-        std::set<std::string> seen;
-        for (const Diagnostic& d : diagnostics) {
-            if (d.severity == "note") continue;
-            std::string file = d.file;
-            const fs::path abs(file);
-            if (abs.is_absolute()) {
-                const fs::path rel = abs.lexically_normal().lexically_relative(projectPath.lexically_normal());
-                if (!rel.empty() && *rel.begin() != "..") file = rel.generic_string();
-            }
-            const std::string key = file + ":" + std::to_string(d.line) + ":" + d.message;
-            if (!seen.insert(key).second) continue;
-            Json item = {{"file", file}, {"line", d.line}, {"column", d.column}, {"message", d.message}};
-            if (d.severity == "error") {
-                if (errors.size() < 60) errors.push_back(item);
-            } else if (warnings.size() < 30) {
-                warnings.push_back(item);
+        for (const auto& [list, out] : {std::make_pair(&report.errors, &errors), std::make_pair(&report.warnings, &warnings)}) {
+            for (const ProjectChecks::CppDiagnostic& d : *list) {
+                out->push_back({{"file", d.file}, {"line", d.line}, {"column", d.column}, {"message", d.message}});
             }
         }
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-        Json tail = Json::array();
-        for (size_t i = output.size() > 30 ? output.size() - 30 : 0; i < output.size(); i++) tail.push_back(output[i]);
         Json result = {{"success", success}, {"errors", errors}, {"warnings", warnings}, {"scripts", scriptList},
-                       {"seconds", std::round(seconds * 10.0) / 10.0}, {"log_tail", tail}};
+                       {"seconds", std::round(seconds * 10.0) / 10.0}, {"log_tail", report.logTail}};
         if (job->cancelRequested()) {
             job->markCancelled("Build cancelled.");
         } else if (success) {
