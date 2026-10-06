@@ -48,8 +48,10 @@ output variable.
 
 If a custom shader fails to compile, the GameObject falls back to the built-in shader and the
 error is in the Console: read it and the forked source, then fix minimally. `write_file` on a
-`.vert`/`.frag`/`.glsl` compiles the forks using it and returns the errors (line + message);
-after editing on disk, call `sync_files` then `check_shader` (no arguments: every fork in use).
+`.vert`/`.frag`/`.glsl` compiles the forks using it and returns the errors (line + message).
+Edits made on disk with your own tools are compiled before your next tool call, whose result
+lists the errors in `external_changes.problems`; `check_shader` (no arguments: every fork in
+use) checks on demand.
 
 Targets of `fork_shader`: `component` (a GameObject's renderable), `depth` (a Mesh's depth
 pass), `scene_default` (with `shader_type`: every component of that type without its own fork)

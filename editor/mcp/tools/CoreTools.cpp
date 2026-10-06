@@ -4,6 +4,7 @@
 // Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog
 #include "McpTools.h"
 
+#include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -318,6 +319,7 @@ void editorStatusTool(const CallPtr& call) {
         }},
         {"jobs", jobs},
         {"waiting_calls", status.pendingCalls},
+        {"auto_sync", McpAutoSync::get().stats()},
         {"dialog", dialog},
         {"mcp", {
             {"server", McpServer::SERVER_NAME},

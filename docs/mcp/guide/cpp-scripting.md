@@ -157,7 +157,9 @@ disabled entry) are skipped.
   `source_content`) and can attach it. `attach_script` attaches an existing `.h`/`.cpp` pair,
   `update_script_entry` repoints / reorders / enables, `detach_script` removes it.
 - `set_script_properties` sets DPROPERTY values on a GameObject (`{"speed": 300}`);
-  `list_scripts` shows them. A new DPROPERTY appears after the header is saved and
-  `sync_files` (or `write_file`) re-parses it.
-- Edit sources with your own file tools and call `sync_files`, or use `write_file` (undoable,
-  reloads open editor buffers). Then `compile_scripts`.
+  `list_scripts` shows them. A new DPROPERTY appears once the saved header is re-parsed:
+  before your next tool call (listed in its `external_changes`).
+- Edit sources with your own file tools (clangd works with the generated
+  `compile_commands.json` when present; engine headers are in `.jasperengine/engine-api/`).
+  Then `compile_scripts`, or `jasperengine-editor check` from a shell. `write_file` is for
+  clients without file access.

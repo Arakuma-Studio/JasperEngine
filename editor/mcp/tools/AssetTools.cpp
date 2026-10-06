@@ -1542,8 +1542,8 @@ void forkShaderTool(const CallPtr& call) {
     auto finish = [call](const std::string& base, Json data, const std::string& text) {
         data["vert_path"] = Util::resolveCustomShaderPaths(base).vert;
         data["frag_path"] = Util::resolveCustomShaderPaths(base).frag;
-        call->ok(text + " Read the files, change only the shading math, and edit them with write_file (it compiles the fork "
-                        "and reports errors) or on disk + sync_files + check_shader.", data);
+        call->ok(text + " Read the files and change only the shading math; your edits are compiled before your next "
+                        "call (errors in external_changes), or check them now with check_shader.", data);
     };
     const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
@@ -2228,7 +2228,9 @@ void registerAssetTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "read_file";
         tool.title = "Read File";
-        tool.description = "Read a project text file (as on disk); the result text is the content.";
+        tool.description =
+            "Read a project text file (as on disk); the result text is the content. For clients without file "
+            "access (e.g. remote HTTP): if you can reach the project folder, read it with your own tools.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
@@ -2245,11 +2247,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "Create or change a project text file (undo scope project) and validate it: Lua syntax, shader "
-            "forks using it recompiled (errors with lines), materials parsed; editor buffers and script "
-            "properties refresh. content = whole file, or edits [{old_text, new_text}] (old_text must match "
-            "once unless replace_all). Refuses project.yaml, .scene, .prefab and files with unsaved code "
-            "editor edits. Files edited with your own tools need sync_files.";
+            "For clients without file access (e.g. remote HTTP); if you can reach the project folder, edit with "
+            "your own tools (picked up automatically). Creates or changes a project text file (undo scope "
+            "project) and validates it: Lua syntax, shader forks using it recompiled (errors with lines), "
+            "materials parsed. content = whole file, or edits [{old_text, new_text}] (old_text must match once "
+            "unless replace_all). Refuses project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},
@@ -2390,7 +2392,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Copy a built-in shader into the project (<directory>/<name>.vert/.frag) and point a target at it: "
             "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh "
             "fork displaces or discards), scene_default (shader_type, for components without their own), "
-            "post_process (pass_index, or omit to add a pass). Edit with write_file; parameters with "
+            "post_process (pass_index, or omit to add a pass). Edit the files; parameters with "
             "set_shader_uniform. Returns {custom_shader, vert_path, frag_path}.";
         tool.inputSchema = object({
             {"target", stringEnum("Default: component when entity is given.", {"component", "depth", "scene_default", "post_process"})},
