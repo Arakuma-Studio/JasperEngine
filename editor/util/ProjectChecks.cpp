@@ -671,22 +671,28 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         return check;
     } catch (const std::exception& e) {
         check.ok = false;
+        // (the editor may be building the same fork for the scene meanwhile: same message twice)
         std::string log;
+        std::set<std::string> logged;
         for (const LogEntry& entry : Out::getLogsSince(before)) {
-            if (entry.type == LogType::Error && entry.message.find("Shader") != std::string::npos) log += entry.message + "\n";
+            if (entry.type == LogType::Error && entry.message.find("Shader") != std::string::npos && logged.insert(entry.message).second) {
+                log += entry.message + "\n";
+            }
         }
         if (log.empty()) log = e.what();
         if (log.size() > 6000) log = log.substr(0, 6000) + "\n...";
         check.errors = parseShaderLog(log);
         check.log = log;
 
+        std::set<std::string> seen;
         for (const Json& error : check.errors) {
             const std::string message = error.value("message", std::string());
             if (message.find("compilation terminated") != std::string::npos) continue;
             std::string text = message;
             while (!text.empty() && text.back() == ' ') text.pop_back();
-            check.findings.push_back({"shader", shaderSourcePath(project, use.base, error.value("source", std::string())),
-                                      error.value("line", 0), 0, error.value("severity", std::string("error")), text});
+            Finding finding{"shader", shaderSourcePath(project, use.base, error.value("source", std::string())),
+                            error.value("line", 0), 0, error.value("severity", std::string("error")), text};
+            if (seen.insert(finding.path + ":" + std::to_string(finding.line) + ":" + finding.message).second) check.findings.push_back(finding);
         }
         if (check.findings.empty()) {
             // no file:line (a link or cross-compile failure): the first line of the log

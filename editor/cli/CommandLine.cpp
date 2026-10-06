@@ -38,11 +38,15 @@
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
 #include "util/EntityPath.h"
+#include "util/ProjectChecks.h"
+#include "util/Util.h"
 #include "imgui.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <thread>
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
@@ -65,6 +69,11 @@
     #define NOMINMAX
     #include <windows.h>
     #include <cstdio>
+    #include <fcntl.h>
+    #include <io.h>
+#else
+    #include <fcntl.h>
+    #include <unistd.h>
 #endif
 
 namespace jasperengine::editor {
@@ -227,6 +236,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks and C++ scripts (compiler-style).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
@@ -1489,6 +1499,416 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
 int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return runSceneDump(argc, argv, getCommandName(executableName));
+}
+
+// ---- check: the project checks of the MCP tools, from a shell, CI or an agent hook ----
+//
+// Lua scripts (syntax, then the top level run in an isolated lua_State to read the properties),
+// shader forks (compiled as check_shader compiles them) and C++ scripts (built as Play and
+// compile_scripts build them). See docs/mcp/checks.md.
+namespace {
+
+struct CheckOptions {
+    fs::path project;
+    bool lua = false;
+    bool shaders = false;
+    bool cpp = false;
+    bool all = false;
+    bool filesGiven = false;
+    std::vector<std::string> files;
+    std::string format = "text";
+    bool quiet = false;
+    bool hook = false;
+    bool help = false;
+};
+
+void printCheckUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << " check --project <project-dir|project.yaml> [options]\n\n"
+        << "Options:\n"
+        << "  -p, --project <path>     Project directory or project.yaml file.\n"
+        << "      --lua                Lua scripts: syntax, and the top level run in an isolated Lua state\n"
+        << "                           (as the editor reads script properties).\n"
+        << "      --shaders            Shader forks: compiled as the editor compiles them.\n"
+        << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
+        << "      --all                All three. Default: --lua --shaders.\n"
+        << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
+        << "                           the project); files outside the project or of other kinds are ignored.\n"
+        << "      --format <format>    text (default) or json.\n"
+        << "  -q, --quiet              No summary line.\n"
+        << "      --hook               Agent hook mode: read the hook's JSON on stdin (Claude Code Edit/Write,\n"
+        << "                           Codex apply_patch), check the edited files, print problems on stderr\n"
+        << "                           and exit 2 when there are errors (0 otherwise, 1 when it can't run).\n"
+        << "  -h, --help               Show this help.\n\n"
+        << "Text output, one line per problem, paths relative to the project:\n"
+        << "  path:line:col: error|warning: message   (unknown line or column left out)\n"
+        << "Exit code: 0 no errors (warnings allowed), 1 errors, 2 usage error.\n";
+}
+
+bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& error) {
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            options.help = true;
+        } else if (arg == "-p" || arg == "--project") {
+            std::string value;
+            if (!requireValue(argc, argv, i, value, error)) return false;
+            options.project = value;
+        } else if (arg == "--lua") {
+            options.lua = true;
+        } else if (arg == "--shaders") {
+            options.shaders = true;
+        } else if (arg == "--cpp") {
+            options.cpp = true;
+        } else if (arg == "--all") {
+            options.all = true;
+        } else if (arg == "--files") {
+            options.filesGiven = true;
+            while (i + 1 < argc && std::strncmp(argv[i + 1], "--", 2) != 0) options.files.push_back(argv[++i]);
+        } else if (arg == "--format") {
+            if (!requireValue(argc, argv, i, options.format, error)) return false;
+            if (options.format != "text" && options.format != "json") {
+                error = "--format must be text or json";
+                return false;
+            }
+        } else if (arg == "-q" || arg == "--quiet") {
+            options.quiet = true;
+        } else if (arg == "--hook") {
+            options.hook = true;
+        } else {
+            error = "Unknown option: " + arg;
+            return false;
+        }
+    }
+    if (options.help) return true;
+    if (options.project.empty()) {
+        error = "--project is required";
+        return false;
+    }
+    if (options.hook && options.filesGiven) {
+        error = "--hook reads the files from stdin: don't pass --files too";
+        return false;
+    }
+    return true;
+}
+
+// The files an agent hook's JSON names: Claude Code's tool_input.file_path / notebook_path, and
+// the "*** Add File:" / "*** Update File:" / "*** Move to:" lines of a Codex apply_patch
+bool hookFiles(const std::string& input, std::vector<std::string>& files, fs::path& base, std::string& error) {
+    nlohmann::json hook;
+    try {
+        hook = nlohmann::json::parse(input);
+    } catch (const std::exception&) {
+        error = "stdin is not an agent hook's JSON";
+        return false;
+    }
+    if (!hook.is_object()) {
+        error = "stdin is not an agent hook's JSON object";
+        return false;
+    }
+    if (hook.contains("cwd") && hook["cwd"].is_string()) base = hook["cwd"].get<std::string>();
+    const nlohmann::json input_ = hook.value("tool_input", nlohmann::json::object());
+    if (!input_.is_object()) return true;
+    for (const char* key : {"file_path", "notebook_path"}) {
+        if (input_.contains(key) && input_[key].is_string()) files.push_back(input_[key].get<std::string>());
+    }
+    for (const char* key : {"command", "patch", "input"}) {
+        if (!input_.contains(key) || !input_[key].is_string()) continue;
+        std::istringstream lines(input_[key].get<std::string>());
+        std::string line;
+        while (std::getline(lines, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            for (const char* marker : {"*** Add File: ", "*** Update File: ", "*** Move to: "}) {
+                const std::string prefix(marker);
+                if (line.rfind(prefix, 0) == 0) files.push_back(line.substr(prefix.size()));
+            }
+        }
+    }
+    return true;
+}
+
+fs::path canonicalOr(const fs::path& path) {
+    std::error_code ec;
+    fs::path canonical = fs::weakly_canonical(path, ec);
+    return ec ? path.lexically_normal() : canonical;
+}
+
+// Engine and tool output (Out, glslang, CMake) goes to the null device while the checks run:
+// stdout carries only the findings
+class QuietOutput {
+public:
+    QuietOutput() {
+        std::cout.flush();
+        std::cerr.flush();
+        std::fflush(stdout);
+        std::fflush(stderr);
+#if defined(_WIN32)
+        savedOut = _dup(1);
+        savedErr = _dup(2);
+        const int null = _open("NUL", _O_WRONLY);
+        if (null >= 0) {
+            _dup2(null, 1);
+            _dup2(null, 2);
+            _close(null);
+        }
+#else
+        savedOut = dup(1);
+        savedErr = dup(2);
+        const int null = open("/dev/null", O_WRONLY);
+        if (null >= 0) {
+            dup2(null, 1);
+            dup2(null, 2);
+            close(null);
+        }
+#endif
+    }
+    ~QuietOutput() {
+        std::cout.flush();
+        std::cerr.flush();
+        std::fflush(stdout);
+        std::fflush(stderr);
+#if defined(_WIN32)
+        if (savedOut >= 0) { _dup2(savedOut, 1); _close(savedOut); }
+        if (savedErr >= 0) { _dup2(savedErr, 2); _close(savedErr); }
+#else
+        if (savedOut >= 0) { dup2(savedOut, 1); close(savedOut); }
+        if (savedErr >= 0) { dup2(savedErr, 2); close(savedErr); }
+#endif
+    }
+
+private:
+    int savedOut = -1;
+    int savedErr = -1;
+};
+
+struct CheckRun {
+    std::vector<ProjectChecks::Finding> findings;
+    std::vector<std::pair<std::string, size_t>> checked;   // category, count (in run order)
+    std::vector<std::string> cppLogTail;                   // a failed C++ build without diagnostics
+    std::string fatal;                                     // the checks could not run
+};
+
+std::string plural(size_t count, const std::string& word) {
+    return std::to_string(count) + " " + word + (count == 1 ? "" : "s");
+}
+
+CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
+                   bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted) {
+    CheckRun run;
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    if (cppWanted) AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    EngineRuntimeGuard engineRuntime;
+    Engine::systemInit(argc, argv, platform.get());
+    engineRuntime.initialized = true;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    if (luaWanted) {
+        // every script in a fresh isolated state: running one can't touch the files, the
+        // process or the next script
+        const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
+        const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(root);
+        size_t count = 0;
+        for (const fs::path& file : luaFiles) {
+            std::string code;
+            if (!ProjectChecks::readFile(file, code)) continue;
+            count++;
+            lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
+            const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, ProjectChecks::projectRelative(root, file), L);
+            ProjectChecks::closeIsolatedLuaState(L);
+            run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
+        }
+        run.checked.push_back({"lua", count});
+    }
+
+    if (shadersWanted || cppWanted) {
+        if (!project.loadProject(root, false)) {
+            run.fatal = "the project could not be loaded: " + root.string();
+            return run;
+        }
+        // every scene, so the forks in use and the scripts attached are all known
+        auto& scenes = project.getScenes();
+        for (size_t i = 0; i < scenes.size(); i++) {
+            if (!scenes[i].filepath.empty() && !scenes[i].scene) {
+                project.loadScene(scenes[i].filepath, false, false, true);
+            }
+        }
+    }
+
+    if (shadersWanted) {
+        ProjectChecks::invalidateShaderCaches(&project);
+        // an include (.glsl) can be reached by any fork, used by a scene or not yet
+        const bool include = std::any_of(shaderFiles.begin(), shaderFiles.end(), [](const std::string& file) {
+            return fs::path(file).extension() == ".glsl";
+        });
+        std::vector<ProjectChecks::ShaderUse> forks = (shadersAll || include) ? ProjectChecks::shaderForksInProject(&project)
+                                                                              : ProjectChecks::shaderForksUsingFiles(&project, shaderFiles);
+        for (ProjectChecks::ShaderUse& use : forks) {
+            const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
+            const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
+            run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
+        }
+        run.checked.push_back({"shaders", forks.size()});
+    }
+
+    if (cppWanted) {
+        ProjectChecks::CppBuildPlan plan;
+        std::string error;
+        const ProjectChecks::CppPrepare prepared = ProjectChecks::prepareCppBuild(&project, plan, error);
+        if (prepared == ProjectChecks::CppPrepare::Failed || prepared == ProjectChecks::CppPrepare::MissingTools) {
+            run.findings.push_back({"cpp", "", 0, 0, "error", error});
+        } else if (prepared == ProjectChecks::CppPrepare::Ready) {
+            Generator generator;
+            const uint64_t firstLog = Out::lastLogId();
+            ProjectChecks::startCppBuild(&project, generator, plan);
+            const std::vector<std::string> output = ProjectChecks::waitCppBuild(generator, firstLog);
+            const ProjectChecks::CppBuildReport report =
+                ProjectChecks::summarizeCppBuild(root, generator.didLastBuildSucceed(), output);
+            run.findings.insert(run.findings.end(), report.findings.begin(), report.findings.end());
+            if (!report.success && report.errors.empty()) run.cppLogTail = report.logTail;
+        }
+        run.checked.push_back({"cpp", plan.scripts.size()});
+    }
+    return run;
+}
+
+int runCheck(int argc, char** argv, const std::string& commandName) {
+    const auto started = std::chrono::steady_clock::now();
+    CheckOptions options;
+    std::string error;
+    if (!parseCheckArgs(argc, argv, options, error)) {
+        std::cerr << commandName << " check: " << error << "\n\n";
+        printCheckUsage(commandName);
+        return options.hook ? 1 : 2;
+    }
+    if (options.help) {
+        printCheckUsage(commandName);
+        return 0;
+    }
+    const int usageExit = options.hook ? 1 : 2;
+
+    fs::path root = fs::absolute(options.project);
+    if (root.filename() == "project.yaml") root = root.parent_path();
+    root = canonicalOr(root);
+    std::error_code ec;
+    if (!fs::is_regular_file(root / "project.yaml", ec)) {
+        std::cerr << commandName << " check: no project.yaml in " << root.string() << "\n";
+        return usageExit;
+    }
+
+    bool lua = options.lua || options.all;
+    bool shaders = options.shaders || options.all;
+    const bool cpp = options.cpp || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.all) lua = shaders = true;
+
+    fs::path base = fs::current_path(ec);
+    std::vector<std::string> files = options.files;
+    if (options.hook) {
+        std::ostringstream input;
+        input << std::cin.rdbuf();
+        if (!hookFiles(input.str(), files, base, error)) {
+            std::cerr << commandName << " check --hook: " << error << "\n";
+            return 1;
+        }
+        if (files.empty()) return 0;
+    }
+
+    // what to check
+    std::vector<fs::path> luaFiles;
+    std::vector<std::string> shaderFiles;
+    bool cppFiles = false;
+    const bool fileMode = options.filesGiven || options.hook;
+    if (fileMode) {
+        std::set<std::string> seen;
+        for (const std::string& given : files) {
+            fs::path path(given);
+            if (path.is_relative()) {
+                fs::path fromBase = base / path;
+                path = (!fs::exists(fromBase, ec) && fs::exists(root / path, ec)) ? root / path : fromBase;
+            }
+            if (!fs::is_regular_file(path, ec)) continue;   // deleted, a directory
+            path = canonicalOr(path);
+            const fs::path rel = path.lexically_relative(root);
+            if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) {
+                if (!options.quiet && !options.hook) std::cerr << commandName << " check: not in the project, skipped: " << given << "\n";
+                continue;
+            }
+            if (ProjectChecks::isInSkippedDir(rel) || !seen.insert(rel.generic_string()).second) continue;
+            const std::string name = rel.generic_string();
+            if (Util::isLuaFile(name)) {
+                if (lua) luaFiles.push_back(path);
+            } else if (Util::isShaderFile(name)) {
+                if (shaders) shaderFiles.push_back(name);
+            } else if (Util::isHeaderFile(name) || Util::isSourceFile(name) || rel.extension() == ".c" || rel.extension() == ".inl") {
+                cppFiles = true;
+            }
+        }
+    } else if (lua) {
+        luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
+    }
+    const bool luaWanted = fileMode ? !luaFiles.empty() : lua;
+    const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
+    const bool cppWanted = cpp && (!fileMode || cppFiles);
+
+    CheckRun run;
+    if (luaWanted || shadersWanted || cppWanted) {
+        QuietOutput quiet;
+        run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted);
+    }
+    if (!run.fatal.empty()) {
+        std::cerr << commandName << " check: " << run.fatal << "\n";
+        return usageExit;
+    }
+    ProjectChecks::sortFindings(run.findings);
+    const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
+    const size_t warnings = ProjectChecks::countSeverity(run.findings, "warning");
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+
+    if (options.hook) {
+        for (const ProjectChecks::Finding& finding : run.findings) std::cerr << ProjectChecks::toText(finding) << "\n";
+        for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
+        std::cerr.flush();
+        return errors ? 2 : 0;
+    }
+
+    if (options.format == "json") {
+        nlohmann::json checked = nlohmann::json::object();
+        for (const auto& [category, count] : run.checked) checked[category] = count;
+        const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
+                                    {"findings", ProjectChecks::toJson(run.findings)},
+                                    {"seconds", std::round(seconds * 100.0) / 100.0}};
+        std::cout << out.dump(1) << std::endl;
+    } else {
+        for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
+        std::cout.flush();
+        if (!options.quiet) {
+            for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
+        }
+    }
+    if (!options.quiet) {
+        std::string what;
+        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}};
+        for (const auto& [category, count] : run.checked) {
+            what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
+        }
+        char time[32];
+        std::snprintf(time, sizeof(time), "%.2fs", seconds);
+        std::cerr << "check: " << plural(errors, "error") << ", " << plural(warnings, "warning")
+                  << (what.empty() ? std::string(" (nothing to check)") : " (" + what + ")") << " in " << time << "\n";
+    }
+    return errors ? 1 : 0;
+}
+
+}
+
+int CommandLine::runCheckCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runCheck(argc, argv, getCommandName(executableName));
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {

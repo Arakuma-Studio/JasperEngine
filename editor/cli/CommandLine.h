@@ -22,6 +22,9 @@ namespace jasperengine::editor {
 
         static int runBenchmarkHelp(const char* executableName);
 
+        // Checks a project's Lua scripts, shader forks and C++ scripts (see docs/mcp/checks.md)
+        static int runCheckCommand(int argc, char** argv, const char* executableName);
+
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);
     };

@@ -149,9 +149,9 @@ async def test_cli_usage():
         check_eq(r.returncode, 2, f"unknown option: {r.stderr}")
         r = run_check(project, "--format", "xml")
         check_eq(r.returncode, 2, f"bad --format: {r.stderr}")
-        r = run_check(project / "missing")
+        r = run_check(project / "missing", cwd=project)
         check_eq(r.returncode, 2, f"missing project: {r.stderr}")
-        r = run_check(project / "project.yaml", "--lua")
+        r = run_check(project / "project.yaml", "--lua", cwd=project)
         check_eq(r.returncode, 0, f"project.yaml is accepted as --project: {r.stdout}{r.stderr}")
     r = subprocess.run(editor_bin() + ["--help"], capture_output=True, text=True, timeout=60)
     check(" check " in r.stdout, f"the main help lists check: {r.stdout}")
@@ -306,10 +306,10 @@ async def test_cli_shaders():
         write(project, "shaders/inc/extra.glsl", "// extra\nfloat extraValue() {\n    return missing_include_symbol;\n}\n")
         code, data = run_json(project, "--files", "shaders/inc/extra.glsl")
         check_eq(code, 1, f"include error: {data}")
-        first = data["findings"][0]
-        check_eq((first["tool"], first["path"], first["line"], first["severity"]),
-                 ("shader", "shaders/inc/extra.glsl", 3, "error"), f"include finding: {data['findings']}")
-        check("missing_include_symbol" in first["message"], first["message"])
+        include = [f for f in data["findings"] if f["path"] == "shaders/inc/extra.glsl"]
+        check(include, f"an error in the include is reported in it: {data['findings']}")
+        check_eq((include[0]["tool"], include[0]["line"], include[0]["severity"]), ("shader", 3, "error"), "include finding")
+        check("missing_include_symbol" in include[0]["message"], include[0]["message"])
 
         # --files with the .frag only checks its fork; a lone .vert without its pair is ignored
         (project / frag).write_text(source)
