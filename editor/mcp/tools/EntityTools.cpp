@@ -608,7 +608,14 @@ void createEntityTool(const CallPtr& call) {
         });
     }
     if (!runSceneCommand(sceneId, steps, error)) {
-        call->fail(error);
+        // every step was undone: the GameObject the first step made (and its id) is gone
+        if (*created != NULL_ENTITY) {
+            const std::string label = "GameObject " + std::to_string(*created) + " \"";
+            for (size_t at = error.find(label); at != std::string::npos; at = error.find(label, at)) {
+                error.replace(at, label.size(), "the new GameObject \"");
+            }
+        }
+        call->fail("Nothing was created (create_entity is one step and was rolled back): " + error);
         return;
     }
     const Entity entity = *created;

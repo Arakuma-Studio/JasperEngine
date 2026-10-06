@@ -73,20 +73,25 @@ bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 
-bool AppSettings::initialize() {
+bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
     // keeps them. A desktop launcher starts the app in "/" instead, so there
     // they go to the per-user config directory: nothing could be saved
-    // otherwise.
+    // otherwise. A project folder is never used (settings.yaml, the layout ini
+    // and editor.log would land in the game), nor, with preferUserDirectory
+    // (`jasperengine-editor mcp`, started in whatever folder the MCP client is
+    // in), a working directory that has no settings.yaml yet.
     const std::filesystem::path workingDir = std::filesystem::current_path();
     const std::filesystem::path workingDirSettings = workingDir / "settings.yaml";
 
     std::error_code ec;
-    if (std::filesystem::exists(workingDirSettings, ec)) {
+    const bool projectFolder = std::filesystem::exists(workingDir / "project.yaml", ec);
+    if (std::filesystem::exists(workingDirSettings, ec) && !projectFolder) {
         configFilePath = workingDirSettings;
     } else {
         const std::filesystem::path userDir = userConfigDirectory();
-        if (std::filesystem::exists(userDir / "settings.yaml", ec) || !isWritableDirectory(workingDir)) {
+        if (preferUserDirectory || projectFolder || std::filesystem::exists(userDir / "settings.yaml", ec) ||
+            !isWritableDirectory(workingDir)) {
             configFilePath = userDir / "settings.yaml";
         } else {
             configFilePath = workingDirSettings;

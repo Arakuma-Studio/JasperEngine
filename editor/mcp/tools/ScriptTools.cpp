@@ -277,22 +277,35 @@ std::map<std::string, FileStamp> scanProject(Project* project) {
     return files;
 }
 
-void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths) {
+// Takes the new stamps of `paths`; with the lists, says which of them were added, modified or
+// removed since the snapshot (a path the snapshot already has with the same stamp: neither)
+void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths, Json* added = nullptr,
+                           Json* modified = nullptr, Json* removed = nullptr) {
     std::lock_guard<std::mutex> lock(snapshotMutex);
     if (!snapshotValid || snapshotProject != project->getProjectPath()) return;
+    std::set<std::string> seen;
     for (const fs::path& path : paths) {
         const std::string rel = projectRelative(project, path);
+        if (!seen.insert(rel).second) continue;
+        const bool inside = !rel.empty() && rel != path.generic_string();
         std::error_code ec;
         if (fs::is_regular_file(path, ec)) {
             FileStamp stamp;
             stamp.time = fs::last_write_time(path, ec);
             stamp.size = fs::file_size(path, ec);
+            auto it = snapshot.find(rel);
+            if (inside && added && it == snapshot.end()) added->push_back(rel);
+            else if (inside && modified && it != snapshot.end() && (it->second.time != stamp.time || it->second.size != stamp.size)) {
+                modified->push_back(rel);
+            }
             snapshot[rel] = stamp;
         } else {
+            if (inside && removed && snapshot.erase(rel)) removed->push_back(rel);
             snapshot.erase(rel);
             // a removed directory: forget what it held
             const std::string prefix = rel + "/";
             for (auto it = snapshot.lower_bound(prefix); it != snapshot.end() && it->first.rfind(prefix, 0) == 0;) {
+                if (inside && removed && !fs::is_directory(path, ec)) removed->push_back(it->first);
                 it = snapshot.erase(it);
             }
         }
@@ -372,6 +385,21 @@ std::vector<std::string> propertyNames(const ScriptEntry& entry) {
 
 } // namespace
 
+void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready) {
+    if (!project || project->getProjectPath().empty()) return;
+    std::map<std::string, FileStamp> now = scanProject(project);
+    // changed already (since the server started): a full sync lists them, unless the
+    // automatic pick-up reports them first
+    for (const std::string& rel : changedAlready) {
+        auto it = now.find(rel);
+        if (it != now.end()) it->second.size = static_cast<std::uintmax_t>(-1);
+    }
+    std::lock_guard<std::mutex> lock(snapshotMutex);
+    snapshot = std::move(now);
+    snapshotProject = project->getProjectPath();
+    snapshotValid = true;
+}
+
 Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full) {
     Project* project = ctx.project();
     Json problems = Json::array();
@@ -380,6 +408,9 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
 
     std::set<fs::path> changed;
     for (const fs::path& path : changedIn) changed.insert(path.lexically_normal());
+
+    // the snapshot of a project opened since the last frame
+    McpAutoSync::get().prepare(ctx);
 
     // What changed on disk since the last sync (full syncs scan the project)
     if (full) {
@@ -410,7 +441,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         snapshotProject = project->getProjectPath();
         snapshotValid = true;
     } else {
-        updateSnapshotEntries(project, changedIn);
+        updateSnapshotEntries(project, changedIn, &added, &modified, &removed);
     }
 
     bool anyShader = false, anyMaterial = false;

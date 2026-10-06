@@ -55,6 +55,15 @@ namespace jasperengine::editor::mcp {
         // made before the first call are still found.
         void tick(McpContext& ctx);
 
+        // When the MCP server starts (before the startup project loads): files of the
+        // `--project` project changed after this, while it was loading, are reported by the
+        // first call instead of being taken into the baseline unseen.
+        void serverStarted();
+
+        // Takes the baseline now if the project changed since the last frame (syncFiles, before
+        // it compares the project with its snapshot)
+        void prepare(McpContext& ctx);
+
         // Before a top-level tools/call. Calls `run(report)` (report: external_changes, or
         // null when nothing changed) now, or once the shader forks touched by the changes are
         // compiled (the call waits for them through call->waitUntil).
@@ -109,6 +118,8 @@ namespace jasperengine::editor::mcp {
         };
 
         std::filesystem::path root;                // project folder of the baseline; empty = none
+        int64_t serverStartNs = 0;                 // serverStarted(), ns since the Unix epoch
+        bool startupBaselineTaken = false;
         FileMap code;                              // Lua, C++, shaders, materials
         FileMap images;
         std::map<std::string, int64_t> dirs;       // project-relative folder ("" = root) -> mtime

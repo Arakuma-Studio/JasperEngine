@@ -46,6 +46,7 @@
 #include "command/type/MoveEntityOrderCmd.h"
 #include <chrono>
 #include <cmath>
+#include <ctime>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -1538,9 +1539,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
-        << "      --hook               Agent hook mode: read the hook's JSON on stdin (Claude Code Edit/Write,\n"
-        << "                           Codex apply_patch), check the edited files, print problems on stderr\n"
-        << "                           and exit 2 when there are errors (0 otherwise, 1 when it can't run).\n"
+        << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
+        << "                           Edit/Write/Bash, Codex apply_patch/shell), check the files it names and\n"
+        << "                           the project files changed since the last --hook run (shell edits), print\n"
+        << "                           problems on stderr and exit 2 when there are errors (0 otherwise, 1 when\n"
+        << "                           it can't run). Logs each run to .jasperengine/check-hook.log.\n"
         << "  -h, --help               Show this help.\n\n"
         << "Text output, one line per problem, paths relative to the project:\n"
         << "  path:line:col: error|warning: message   (unknown line or column left out)\n"
@@ -1596,7 +1599,7 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
 
 // The files an agent hook's JSON names: Claude Code's tool_input.file_path / notebook_path, and
 // the "*** Add File:" / "*** Update File:" / "*** Move to:" lines of a Codex apply_patch
-bool hookFiles(const std::string& input, std::vector<std::string>& files, fs::path& base, std::string& error) {
+bool hookFiles(const std::string& input, std::vector<std::string>& files, fs::path& base, std::string& tool, std::string& error) {
     nlohmann::json hook;
     try {
         hook = nlohmann::json::parse(input);
@@ -1609,6 +1612,7 @@ bool hookFiles(const std::string& input, std::vector<std::string>& files, fs::pa
         return false;
     }
     if (hook.contains("cwd") && hook["cwd"].is_string()) base = hook["cwd"].get<std::string>();
+    if (hook.contains("tool_name") && hook["tool_name"].is_string()) tool = hook["tool_name"].get<std::string>();
     const nlohmann::json input_ = hook.value("tool_input", nlohmann::json::object());
     if (!input_.is_object()) return true;
     for (const char* key : {"file_path", "notebook_path"}) {
@@ -1627,6 +1631,138 @@ bool hookFiles(const std::string& input, std::vector<std::string>& files, fs::pa
         }
     }
     return true;
+}
+
+// ---- hook state: the files a shell (Bash sed -i, heredocs, scripts) changed since the last run
+//
+// A PostToolUse hook only names the files of Edit/Write/apply_patch calls; an agent that edits
+// through its shell leaves no path in the hook input. So every --hook run also lists the
+// project's Lua, shader and C++ files with their stamps (.jasperengine/check-hook-state.json) and
+// checks the ones that changed since the previous run, whatever the tool was: each change is
+// checked once. The first run (no state yet) checks the files changed in the last minutes, the
+// edits made before the hook first ran, not the project's old problems.
+
+constexpr const char* HOOK_STATE_FILE = "check-hook-state.json";
+constexpr const char* HOOK_LOG_FILE = "check-hook.log";
+constexpr int HOOK_FIRST_RUN_MINUTES = 10;
+constexpr uintmax_t HOOK_LOG_MAX_BYTES = 512 * 1024;
+
+struct HookStamp {
+    int64_t time = 0;   // file_time_type ticks (only compared with other stamps of this machine)
+    uintmax_t size = 0;
+};
+
+bool isHookTrackedFile(const std::string& rel) {
+    if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
+    const std::string ext = fs::path(rel).extension().string();
+    return ext == ".c" || ext == ".inl";
+}
+
+std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
+    std::map<std::string, HookStamp> files;
+    static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
+                                                        ".cpp", ".cc", ".cxx", ".c", ".inl"};
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
+        std::error_code ec;
+        HookStamp stamp;
+        stamp.time = static_cast<int64_t>(fs::last_write_time(file, ec).time_since_epoch().count());
+        if (ec) continue;
+        stamp.size = fs::file_size(file, ec);
+        if (ec) continue;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (isHookTrackedFile(rel)) files[rel] = stamp;
+    }
+    return files;
+}
+
+bool loadHookState(const fs::path& file, std::map<std::string, HookStamp>& state) {
+    std::string text;
+    if (!ProjectChecks::readFile(file, text)) return false;
+    try {
+        const nlohmann::json json = nlohmann::json::parse(text);
+        if (!json.is_object() || !json.contains("files") || !json["files"].is_object()) return false;
+        for (auto it = json["files"].begin(); it != json["files"].end(); ++it) {
+            if (!it.value().is_array() || it.value().size() != 2) continue;
+            state[it.key()] = {it.value()[0].get<int64_t>(), it.value()[1].get<uintmax_t>()};
+        }
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+void saveHookState(const fs::path& file, const std::map<std::string, HookStamp>& state) {
+    nlohmann::json files = nlohmann::json::object();
+    for (const auto& [rel, stamp] : state) files[rel] = {stamp.time, stamp.size};
+    const nlohmann::json json = {{"version", 1}, {"files", files}};
+    std::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    // a hook running in parallel must never read half a file
+    const fs::path temp = file.string() + ".tmp" + std::to_string(static_cast<long long>(
+        std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007));
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out) return;
+        out << json.dump();
+        if (!out) {
+            out.close();
+            fs::remove(temp, ec);
+            return;
+        }
+    }
+    fs::rename(temp, file, ec);
+    if (ec) fs::remove(temp, ec);
+}
+
+// The files changed since the last run (all recently changed ones on the first run), and the new state
+std::vector<std::string> hookChangedFiles(const fs::path& root) {
+    const fs::path stateFile = root / ".jasperengine" / HOOK_STATE_FILE;
+    std::map<std::string, HookStamp> previous;
+    const bool hasState = loadHookState(stateFile, previous);
+    const std::map<std::string, HookStamp> now = scanHookFiles(root);
+    const int64_t recent = static_cast<int64_t>(
+        (fs::file_time_type::clock::now() - std::chrono::minutes(HOOK_FIRST_RUN_MINUTES)).time_since_epoch().count());
+    std::vector<std::string> changed;
+    for (const auto& [rel, stamp] : now) {
+        if (!hasState) {
+            if (stamp.time >= recent) changed.push_back(rel);
+            continue;
+        }
+        auto it = previous.find(rel);
+        if (it == previous.end() || it->second.time != stamp.time || it->second.size != stamp.size) changed.push_back(rel);
+    }
+    saveHookState(stateFile, now);
+    return changed;
+}
+
+// One line per run in .jasperengine/check-hook.log: time, tool, files checked, result
+void appendHookLog(const fs::path& root, const std::string& tool, const std::vector<std::string>& files,
+                   const std::string& result, int exitCode, double seconds) {
+    const fs::path dir = root / ".jasperengine";
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) fs::create_directories(dir, ec);
+    const fs::path log = dir / HOOK_LOG_FILE;
+    if (fs::file_size(log, ec) > HOOK_LOG_MAX_BYTES && !ec) {
+        fs::rename(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
+    }
+    std::ofstream out(log, std::ios::app);
+    if (!out) return;
+    const std::time_t now = std::time(nullptr);
+    std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    std::string list;
+    for (size_t i = 0; i < files.size() && i < 20; i++) list += (i ? "," : "") + files[i];
+    if (files.size() > 20) list += ",+" + std::to_string(files.size() - 20) + " more";
+    char time[32];
+    std::snprintf(time, sizeof(time), "%.2fs", seconds);
+    out << stamp << " tool=" << (tool.empty() ? "?" : tool) << " files=" << (list.empty() ? "-" : list) << " "
+        << result << " exit " << exitCode << " " << time << "\n";
 }
 
 fs::path canonicalOr(const fs::path& path) {
@@ -1809,20 +1945,29 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
 
     fs::path base = fs::current_path(ec);
     std::vector<std::string> files = options.files;
+    std::string hookTool;
     if (options.hook) {
         std::ostringstream input;
         input << std::cin.rdbuf();
-        if (!hookFiles(input.str(), files, base, error)) {
+        if (!hookFiles(input.str(), files, base, hookTool, error)) {
             std::cerr << commandName << " check --hook: " << error << "\n";
+            appendHookLog(root, hookTool, {}, "error: " + error, 1, 0.0);
             return 1;
         }
-        if (files.empty()) return 0;
+        // what the agent's shell (or any other tool) changed since the last run
+        for (const std::string& rel : hookChangedFiles(root)) files.push_back((root / rel).string());
+        if (files.empty()) {
+            const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+            appendHookLog(root, hookTool, {}, "nothing changed", 0, seconds);
+            return 0;
+        }
     }
 
     // what to check
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
     bool cppFiles = false;
+    std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
     if (fileMode) {
         std::set<std::string> seen;
@@ -1841,6 +1986,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             }
             if (ProjectChecks::isInSkippedDir(rel) || !seen.insert(rel.generic_string()).second) continue;
             const std::string name = rel.generic_string();
+            if (isHookTrackedFile(name)) checkedNames.push_back(name);
             if (Util::isLuaFile(name)) {
                 if (lua) luaFiles.push_back(path);
             } else if (Util::isShaderFile(name)) {
@@ -1863,6 +2009,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
+        if (options.hook) appendHookLog(root, hookTool, checkedNames, "error: " + run.fatal, usageExit, 0.0);
         return usageExit;
     }
     ProjectChecks::sortFindings(run.findings);
@@ -1874,7 +2021,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         for (const ProjectChecks::Finding& finding : run.findings) std::cerr << ProjectChecks::toText(finding) << "\n";
         for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
         std::cerr.flush();
-        return errors ? 2 : 0;
+        const int code = errors ? 2 : 0;
+        appendHookLog(root, hookTool, checkedNames, plural(errors, "error") + ", " + plural(warnings, "warning"), code, seconds);
+        return code;
     }
 
     if (options.format == "json") {

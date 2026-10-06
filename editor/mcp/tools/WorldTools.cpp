@@ -296,6 +296,13 @@ public:
     void rollback() {
         while (history->position() > start && history->canUndo()) history->undo();
     }
+    // Rolls back and fails the call; when something had been applied, the error says it is
+    // all gone (it may name a GameObject the call made)
+    void fail(const CallPtr& call, const std::string& error) {
+        const bool undone = changed();
+        rollback();
+        call->fail(undone ? "Nothing was created or changed (the call was rolled back): " + error : error);
+    }
 
 private:
     CommandHistory* history;
@@ -527,8 +534,7 @@ void sculptTerrainTool(const CallPtr& call) {
         std::string error;
         TerrainScriptedBrush brush;
         if (!item.is_object() || !pickName(brushModes(), stringOr(item, "mode", "raise"), brush.mode, where + ".mode", error)) {
-            step.rollback();
-            call->fail(error.empty() ? where + " must be an object." : error);
+            step.fail(call, error.empty() ? where + " must be an object." : error);
             return;
         }
         static const std::vector<std::pair<const char*, TerrainBrushShape>> shapes = {
@@ -537,8 +543,7 @@ void sculptTerrainTool(const CallPtr& call) {
             {"smooth", TerrainBrushFalloff::Smooth}, {"linear", TerrainBrushFalloff::Linear}, {"constant", TerrainBrushFalloff::Constant}};
         if (!pickName(shapes, stringOr(item, "shape", "circle"), brush.shape, where + ".shape", error) ||
             !pickName(falloffs, stringOr(item, "falloff", "smooth"), brush.falloff, where + ".falloff", error)) {
-            step.rollback();
-            call->fail(error);
+            step.fail(call, error);
             return;
         }
         brush.size = numberOr(item, "size", 4.0f);
@@ -555,8 +560,7 @@ void sculptTerrainTool(const CallPtr& call) {
         if (has(item, "mask")) {
             std::string stored;
             if (!McpValues::assetPathFromJson(target.project, stringOr(item, "mask", ""), stored, error)) {
-                step.rollback();
-                call->fail(where + ".mask: " + error);
+                step.fail(call, where + ".mask: " + error);
                 return;
             }
             brush.maskPath = stored;
@@ -564,8 +568,7 @@ void sculptTerrainTool(const CallPtr& call) {
         if (has(item, "asset")) {
             std::string stored;
             if (!McpValues::assetPathFromJson(target.project, stringOr(item, "asset", ""), stored, error)) {
-                step.rollback();
-                call->fail(where + ".asset: " + error);
+                step.fail(call, where + ".asset: " + error);
                 return;
             }
             brush.placeAssetPath = stored;
@@ -578,24 +581,21 @@ void sculptTerrainTool(const CallPtr& call) {
         brush.placeAlignToNormal = numberOr(item, "align_to_normal", 0.0f);
 
         if (!item.contains("points") || !item["points"].is_array() || item["points"].empty()) {
-            step.rollback();
-            call->fail(where + ".points must be a non-empty array of [x, z] (or [x, y, z]) points.");
+            step.fail(call, where + ".points must be a non-empty array of [x, z] (or [x, y, z]) points.");
             return;
         }
         std::vector<Vector3> points;
         for (const Json& p : item["points"]) {
             Vector3 local;
             if (!terrainPoint(p, world, inverseModel, transform.worldPosition.y, local)) {
-                step.rollback();
-                call->fail(where + ".points: each point is [x, z] or [x, y, z] numbers.");
+                step.fail(call, where + ".points: each point is [x, z] or [x, y, z] numbers.");
                 return;
             }
             points.push_back(local);
         }
         int placed = 0;
         if (!window->scriptedStroke(target.sceneId(), target.entity, brush, points, error, &placed)) {
-            step.rollback();
-            call->fail(where + ": " + error);
+            step.fail(call, where + ": " + error);
             return;
         }
         Json result = {{"mode", nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
@@ -1358,8 +1358,7 @@ void editCollidersTool(const CallPtr& call) {
             addProp<float>(*material, target, target.entity, bodyType, it.key(), it.value().get<float>());
         }
         if (!step.add(material)) {
-            step.rollback();
-            call->fail("The editor rejected the body friction/restitution.");
+            step.fail(call, "The editor rejected the body friction/restitution.");
             return;
         }
     }
@@ -1369,8 +1368,7 @@ void editCollidersTool(const CallPtr& call) {
         if (!addCatalogProperties(target.project, target.scene, target.entity, bodyType, args["body"], *bodyProps, error) ||
             !step.add(bodyProps)) {
             if (error.empty()) error = "The editor rejected the body properties.";
-            step.rollback();
-            call->fail("body: " + error);
+            step.fail(call, "body: " + error);
             return;
         }
     }
@@ -1476,11 +1474,11 @@ void setJointTool(const CallPtr& call) {
     if (has(args, "type")) {
         if (is2D) {
             Joint2DType type;
-            if (!pickName(joint2DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.rollback(); call->fail(error); return; }
+            if (!pickName(joint2DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
             addProp<Joint2DType>(*multi, target, joint, jointType, "type", type);
         } else {
             Joint3DType type;
-            if (!pickName(joint3DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.rollback(); call->fail(error); return; }
+            if (!pickName(joint3DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
             addProp<Joint3DType>(*multi, target, joint, jointType, "type", type);
         }
     }
@@ -1491,7 +1489,7 @@ void setJointTool(const CallPtr& call) {
         for (const VecArg& v : {VecArg{"anchor_a", "anchorA"}, VecArg{"anchor_b", "anchorB"}, VecArg{"axis", "axis"}, VecArg{"target", "target"}}) {
             Vector2 value;
             if (!has(args, v.arg)) continue;
-            if (!readVec2(args, v.arg, value, error)) { delete multi; step.rollback(); call->fail(error); return; }
+            if (!readVec2(args, v.arg, value, error)) { delete multi; step.fail(call, error); return; }
             addProp<Vector2>(*multi, target, joint, jointType, v.prop, value);
         }
         if (has(args, "rope")) addProp<bool>(*multi, target, joint, jointType, "rope", boolOr(args, "rope", false));
@@ -1499,12 +1497,12 @@ void setJointTool(const CallPtr& call) {
         for (const VecArg& v : {VecArg{"anchor_a", "anchorA"}, VecArg{"anchor_b", "anchorB"}, VecArg{"anchor", "anchor"}, VecArg{"axis", "axis"}, VecArg{"normal", "normal"}}) {
             Vector3 value;
             if (!has(args, v.arg)) continue;
-            if (!readVec3(args, v.arg, value, error)) { delete multi; step.rollback(); call->fail(error); return; }
+            if (!readVec3(args, v.arg, value, error)) { delete multi; step.fail(call, error); return; }
             addProp<Vector3>(*multi, target, joint, jointType, v.prop, value);
         }
         if (has(args, "limits")) {
             Vector2 limits;
-            if (!readVec2(args, "limits", limits, error)) { delete multi; step.rollback(); call->fail(error); return; }
+            if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, error); return; }
             addProp<float>(*multi, target, joint, jointType, "limitsMin", limits.x);
             addProp<float>(*multi, target, joint, jointType, "limitsMax", limits.y);
         }
@@ -1515,13 +1513,11 @@ void setJointTool(const CallPtr& call) {
     }
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, joint, jointType, args["properties"], *multi, error)) {
         delete multi;
-        step.rollback();
-        call->fail("properties: " + error);
+        step.fail(call, "properties: " + error);
         return;
     }
     if (!step.add(multi)) {
-        step.rollback();
-        call->fail("The editor rejected the joint edit.");
+        step.fail(call, "The editor rejected the joint edit.");
         return;
     }
     step.commit();
@@ -1842,8 +1838,7 @@ void editTilemapTool(const CallPtr& call) {
         return;
     }
     auto failWith = [&](const std::string& message) {
-        step.rollback();
-        call->fail(message);
+        step.fail(call, message);
     };
     if (!scene->findComponent<TilemapComponent>(target.entity) || !scene->findComponent<MeshComponent>(target.entity)) {
         failWith("\"" + scene->getEntityName(target.entity) + "\" is not a Tilemap (create one with create: {name}).");
@@ -2208,8 +2203,7 @@ void setSpriteFramesTool(const CallPtr& call) {
         return;
     }
     auto failWith = [&](const std::string& message) {
-        step.rollback();
-        call->fail(message);
+        step.fail(call, message);
     };
     SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target.entity);
     if (!sprite || !scene->findComponent<MeshComponent>(target.entity)) {
@@ -2426,8 +2420,7 @@ void setSpriteAnimationTool(const CallPtr& call) {
                              boolOr(args, "autoplay", true) ? ActionState::Running : ActionState::Stopped);
     }
     if (!step.add(multi)) {
-        step.rollback();
-        call->fail("The editor rejected the sprite animation edit.");
+        step.fail(call, "The editor rejected the sprite animation edit.");
         return;
     }
     step.commit();
@@ -2687,8 +2680,7 @@ void editAnimationTool(const CallPtr& call) {
     std::string error;
     UndoStep step(target.sceneId());
     auto failWith = [&](const std::string& message) {
-        step.rollback();
-        call->fail(message);
+        step.fail(call, message);
     };
 
     Entity animTarget = NULL_ENTITY;
@@ -3423,8 +3415,7 @@ void createUiTool(const CallPtr& call) {
     build.step = &step;
     Json tree;
     if (!buildUiNode(build, args["root"], parent, "root", tree, error)) {
-        step.rollback();
-        call->fail(error);
+        step.fail(call, error);
         return;
     }
     step.commit();
@@ -3695,8 +3686,7 @@ void createParticlesTool(const CallPtr& call) {
     std::string error;
     UndoStep step(target.sceneId());
     auto failWith = [&](const std::string& message) {
-        step.rollback();
-        call->fail(message);
+        step.fail(call, message);
     };
 
     Entity system = NULL_ENTITY;
@@ -3890,20 +3880,17 @@ void setModelTool(const CallPtr& call) {
         return;
     }
     if (!scene->findComponent<ModelComponent>(target.entity)) {
-        step.rollback();
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" has no Model component.");
+        step.fail(call, "\"" + scene->getEntityName(target.entity) + "\" has no Model component.");
         return;
     }
     if (clear) {
         std::string reason;
         if (!ModelClearCmd::canClear(target.project, target.sceneId(), target.entity, &reason)) {
-            step.rollback();
-            call->fail("Can't clear the model: " + reason);
+            step.fail(call, "Can't clear the model: " + reason);
             return;
         }
         if (!step.add(new ModelClearCmd(target.project, target.sceneId(), target.entity))) {
-            step.rollback();
-            call->fail("The editor could not clear the model.");
+            step.fail(call, "The editor could not clear the model.");
             return;
         }
         step.commit();
@@ -3914,8 +3901,7 @@ void setModelTool(const CallPtr& call) {
         ? new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored, boolOr(args, "merge_static_meshes", false))
         : new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored);
     if (!step.add(load)) {
-        step.rollback();
-        call->fail("The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ file (the console has details).");
+        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ file (the console has details).");
         return;
     }
     step.commit();

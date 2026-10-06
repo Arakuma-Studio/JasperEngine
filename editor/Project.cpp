@@ -4882,6 +4882,11 @@ const char* versionControlIgnore =
     "# Written by the game while it runs, Play mode included.\n"
     "UserSettings.xml\n"
     "\n"
+    "# The editor's own settings and layout, left here by an editor started in this\n"
+    "# folder (older versions; they now go to the user's config directory).\n"
+    "/settings.yaml\n"
+    "/editor_layout_v2.ini\n"
+    "\n"
     "*.log\n"
     ".DS_Store\n"
     "Thumbs.db\n";
