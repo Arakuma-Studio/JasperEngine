@@ -36,11 +36,13 @@ std::string StringUtils::toUTF8(wchar_t codepoint){
     return out;
 }
 
-std::vector<uint32_t> StringUtils::decodeUtf8ToCodepoints(const std::string& text, bool& hadInvalid) {
-    hadInvalid = false;
+namespace {
 
-    std::vector<uint32_t> out;
-    out.reserve(text.size());
+// Keep validation and malformed-byte consumption identical for all UTF-8 consumers.
+// Counting does not need an intermediate codepoint vector.
+template <typename Emit>
+void visitUtf8Codepoints(const std::string& text, bool& hadInvalid, Emit emit) {
+    hadInvalid = false;
 
     const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
     size_t i = 0;
@@ -112,9 +114,17 @@ std::vector<uint32_t> StringUtils::decodeUtf8ToCodepoints(const std::string& tex
             i += 1;
         }
 
-        out.push_back(cp);
+        emit(cp);
     }
+}
 
+} // namespace
+
+std::vector<uint32_t> StringUtils::decodeUtf8ToCodepoints(const std::string& text, bool& hadInvalid) {
+    hadInvalid = false;
+    std::vector<uint32_t> out;
+    out.reserve(text.size());
+    visitUtf8Codepoints(text, hadInvalid, [&out](uint32_t cp) { out.push_back(cp); });
     return out;
 }
 
@@ -174,7 +184,9 @@ std::vector<std::string> StringUtils::split(const std::string& text, char separa
 
 size_t StringUtils::countCodepoints(const std::string& text) {
     bool hadInvalid = false;
-    return decodeUtf8ToCodepoints(text, hadInvalid).size();
+    size_t count = 0;
+    visitUtf8Codepoints(text, hadInvalid, [&count](uint32_t) { ++count; });
+    return count;
 }
 
 void StringUtils::eraseCodepointsUtf8(std::string& text, size_t startIndex, size_t endIndex) {

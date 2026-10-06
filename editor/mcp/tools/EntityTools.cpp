@@ -35,6 +35,8 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -98,17 +100,24 @@ Entity parentOf(Scene* scene, Entity entity) {
 // Children by parent, in Transform (Hierarchy) order; roots in the scene's entity order
 struct Hierarchy {
     std::vector<Entity> roots;
-    std::map<Entity, std::vector<Entity>> children;
+    std::unordered_map<Entity, std::vector<Entity>> children;
 };
 
 Hierarchy buildHierarchy(SceneProject* scene) {
     Hierarchy hierarchy;
     Scene* registry = scene->scene;
-    std::set<Entity> authored(scene->entities.begin(), scene->entities.end());
     const bool playing = scene->playState != ScenePlayState::STOPPED;
+    // Membership does not determine order: the vectors below retain Transform and
+    // authored order. Runtime trees need no authored-membership index.
+    std::unordered_set<Entity> authored;
+    if (!playing) {
+        authored.reserve(scene->entities.size());
+        authored.insert(scene->entities.begin(), scene->entities.end());
+    }
     auto transforms = registry->getComponentArray<Transform>();
-    std::set<Entity> withTransform;
     const size_t count = transforms ? transforms->size() : 0;
+    std::unordered_set<Entity> withTransform;
+    withTransform.reserve(count);
     for (size_t i = 0; i < count; i++) {
         const Entity entity = transforms->getEntity(i);
         if (!playing && !authored.count(entity)) continue;
@@ -119,7 +128,10 @@ Hierarchy buildHierarchy(SceneProject* scene) {
     }
     // GameObjects without a Transform are roots, kept in the scene's order among the others
     std::vector<Entity> ordered;
-    std::set<Entity> rootSet(hierarchy.roots.begin(), hierarchy.roots.end());
+    ordered.reserve(hierarchy.roots.size());
+    std::unordered_set<Entity> rootSet;
+    rootSet.reserve(hierarchy.roots.size());
+    rootSet.insert(hierarchy.roots.begin(), hierarchy.roots.end());
     for (Entity entity : scene->entities) {
         if (rootSet.count(entity) || (!withTransform.count(entity) && registry->isEntityCreated(entity))) {
             ordered.push_back(entity);
@@ -129,7 +141,7 @@ Hierarchy buildHierarchy(SceneProject* scene) {
     for (Entity entity : hierarchy.roots) {
         if (rootSet.count(entity)) ordered.push_back(entity);  // runtime-made roots
     }
-    hierarchy.roots = ordered;
+    hierarchy.roots = std::move(ordered);
     return hierarchy;
 }
 
@@ -293,7 +305,10 @@ void emitText(TreeState& state, Entity entity, int depth) {
     if (childCount > 0 && depth + 1 > state.maxDepth) line += " {+" + std::to_string(childCount) + " children}";
     state.text += line + "\n";
     if (childCount > 0 && depth + 1 <= state.maxDepth) {
-        for (Entity child : it->second) emitText(state, child, depth + 1);
+        for (Entity child : it->second) {
+            emitText(state, child, depth + 1);
+            if (state.truncated) break;
+        }
     }
 }
 
@@ -318,9 +333,9 @@ Json emitJson(TreeState& state, Entity entity, int depth) {
             for (Entity child : it->second) {
                 Json item = emitJson(state, child, depth + 1);
                 if (item.is_null()) break;
-                children.push_back(item);
+                children.push_back(std::move(item));
             }
-            node["children"] = children;
+            node["children"] = std::move(children);
         }
     }
     return node;
@@ -364,9 +379,9 @@ void getSceneTreeTool(const CallPtr& call) {
         for (Entity entity : starts) {
             Json node = emitJson(state, entity, 0);
             if (node.is_null()) break;
-            nodes.push_back(node);
+            nodes.push_back(std::move(node));
         }
-        data["nodes"] = nodes;
+        data["nodes"] = std::move(nodes);
         data["truncated"] = state.truncated;
         call->ok(header + (state.truncated ? " (truncated at " + std::to_string(state.limit) + " nodes)" : "") +
                  ": tree in structured content.", data);

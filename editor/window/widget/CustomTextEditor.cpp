@@ -3429,8 +3429,11 @@ void CustomTextEditor::renderSearchHighlights(ImDrawList* drawList, const ImVec2
 
     ImU32 highlightColor = ImGui::ColorConvertFloat4ToU32(searchHighlightColor);
 
-    for (const auto& result : searchResults) {
-        if (result.line < startLine || result.line > endLine) continue;
+    // updateSearchResults emits matches in line order; only visit visible ones.
+    auto first = std::lower_bound(searchResults.begin(), searchResults.end(), startLine,
+        [](const TextPosition& result, int line) { return result.line < line; });
+    for (auto it = first; it != searchResults.end() && it->line <= endLine; ++it) {
+        const auto& result = *it;
 
         int endColumn = result.column + static_cast<int>(searchText.size());
         float x = origin.x + textStartX + byteOffsetToPixelX(result.line, result.column);

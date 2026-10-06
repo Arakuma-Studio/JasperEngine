@@ -161,6 +161,42 @@ namespace jasperengine{
             return it->second.name;
         }
 
+        // Scan metadata directly: building an id snapshot then looking up each
+        // name/tag repeats tree searches and copies strings for every candidate.
+        // Map iteration preserves the lowest-id first-match order.
+        template<typename Predicate>
+        Entity findByName(const std::string& name, Predicate matches) const {
+            for (const auto& [entity, data] : metadata){
+                if (data.name == name && matches(entity)){
+                    return entity;
+                }
+            }
+            return NULL_ENTITY;
+        }
+
+        Entity findByName(const std::string& name) const {
+            return findByName(name, [](Entity){ return true; });
+        }
+
+        Entity findByTag(const std::string& tag) const {
+            for (const auto& [entity, data] : metadata){
+                if (data.tag == tag){
+                    return entity;
+                }
+            }
+            return NULL_ENTITY;
+        }
+
+        std::vector<Entity> findAllByTag(const std::string& tag) const {
+            std::vector<Entity> found;
+            for (const auto& [entity, data] : metadata){
+                if (data.tag == tag){
+                    found.push_back(entity);
+                }
+            }
+            return found;
+        }
+
         // Returns true when the flag changed
         bool setActive(Entity entity, bool active) {
             auto it = metadata.find(entity);

@@ -3914,6 +3914,17 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
     candidates.clear();
 
     range = InstanceViewRange();
+    range.offset = (unsigned int)view.data.size();
+
+    // KEEP already arrives in draw order. Above the exact integer range of a
+    // float, retain the existing sort's tie ordering for its rounded index keys.
+    const bool keepOrder = order == InstanceOrder::KEEP && count <= (1u << 24);
+    if (keepOrder && !instmesh.cullInstances){
+        if (count > 0)
+            view.data.insert(view.data.end(), instances, instances + count);
+        range.lodCount[0] = count;
+        return;
+    }
 
     const Vector3& worldScale = transform.worldScale;
     const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
@@ -3930,6 +3941,12 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
                 continue;
         }
 
+        if (keepOrder){
+            view.data.push_back(instances[i]);
+            range.lodCount[0]++;
+            continue;
+        }
+
         Candidate candidate;
         candidate.index = i;
         candidate.lod = 0;
@@ -3944,11 +3961,13 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
         candidates.push_back(candidate);
     }
 
+    if (keepOrder)
+        return;
+
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
         return a.lod != b.lod ? a.lod < b.lod : a.key < b.key;
     });
 
-    range.offset = (unsigned int)view.data.size();
     for (const Candidate& candidate : candidates){
         view.data.push_back(instances[candidate.index]);
         range.lodCount[candidate.lod]++;

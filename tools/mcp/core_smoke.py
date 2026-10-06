@@ -114,7 +114,7 @@ async def exercise(session, label):
     scene_id = data.get("project", {}).get("selected_scene_id")
 
     summary = await session.call_tool("get_project_summary", {})
-    check(not is_error(summary) and structured(summary).get("scenes"), f"[{label}] get_project_summary")
+    check(not is_error(summary) and structured(summary).get("scenes_in_build"), f"[{label}] get_project_summary")
 
     async def entity_count():
         r = await session.call_tool("find_entities", {"scene": scene_id, "limit": 100000})

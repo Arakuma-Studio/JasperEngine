@@ -9,22 +9,47 @@ using namespace jasperengine;
 
 namespace {
 
-std::string pathOf(EntityRegistry* registry, Entity entity, editor::EntityPath::Cache& cache, int depth) {
+// A lookup may visit most of the scene. Count each preceding Transform only once,
+// including siblings outside the caller's entity list. Build the index lazily so a
+// match near the beginning of Transform order still does only a small amount of work.
+struct SiblingIndices {
+    std::map<std::pair<Entity, std::string>, int> counts;
+    std::vector<int> indices;
+
+    int get(EntityRegistry* registry, size_t own) {
+        auto transforms = registry->getComponentArray<Transform>();
+        while (indices.size() <= own) {
+            const size_t i = indices.size();
+            const Entity entity = transforms->getEntity(i);
+            const Entity parent = transforms->getComponentFromIndex(i).parent;
+            indices.push_back(counts[{parent, registry->getEntityName(entity)}]++);
+        }
+        return indices[own];
+    }
+};
+
+std::string pathOf(EntityRegistry* registry, Entity entity, editor::EntityPath::Cache& cache, int depth,
+                   SiblingIndices* siblings = nullptr) {
     auto it = cache.find(entity);
     if (it != cache.end()) return it->second;
     std::string parentPath;
     Entity parent = NULL_ENTITY;
     if (Transform* transform = registry->findComponent<Transform>(entity)) parent = transform->parent;
-    if (parent != NULL_ENTITY && depth < 256) parentPath = pathOf(registry, parent, cache, depth + 1) + "/";
+    if (parent != NULL_ENTITY && depth < 256) parentPath = pathOf(registry, parent, cache, depth + 1, siblings) + "/";
     // index among the earlier siblings of the same name, in Transform order
     std::string name = registry->getEntityName(entity);
     int index = 0;
     if (registry->findComponent<Transform>(entity)) {
         auto transforms = registry->getComponentArray<Transform>();
         size_t own = transforms->getIndex(entity);
-        for (size_t i = 0; i < own; i++) {
-            Entity other = transforms->getEntity(i);
-            if (transforms->getComponentFromIndex(i).parent == parent && registry->getEntityName(other) == name) index++;
+        // Small prefixes are cheaper to scan than to allocate a sibling index.
+        if (siblings && own >= 16) {
+            index = siblings->get(registry, own);
+        } else {
+            for (size_t i = 0; i < own; i++) {
+                Entity other = transforms->getEntity(i);
+                if (transforms->getComponentFromIndex(i).parent == parent && registry->getEntityName(other) == name) index++;
+            }
         }
     }
     std::string path = parentPath + name + (index ? "#" + std::to_string(index) : "");
@@ -47,8 +72,12 @@ std::string editor::EntityPath::of(const SceneProject& sceneProject, Entity enti
 Entity editor::EntityPath::find(EntityRegistry* registry, const std::vector<Entity>& entities, const std::string& path) {
     if (!registry) return NULL_ENTITY;
     Cache cache;
+    SiblingIndices siblings;
+    // A small candidate subset may lie late in a large Transform array. Avoid
+    // indexing that entire prefix when only a handful of paths will be tested.
+    SiblingIndices* siblingIndex = entities.size() >= 16 ? &siblings : nullptr;
     for (Entity entity : entities) {
-        if (registry->isEntityCreated(entity) && pathOf(registry, entity, cache, 0) == path) {
+        if (registry->isEntityCreated(entity) && pathOf(registry, entity, cache, 0, siblingIndex) == path) {
             return entity;
         }
     }

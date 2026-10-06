@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <vector>
 #include <string>
 #include "imgui.h"
@@ -38,7 +39,7 @@ namespace jasperengine::editor {
             int count;                       // identical entries merged into this row
         };
 
-        std::vector<LogData> logs;
+        std::deque<LogData> logs;             // constant-time eviction of the oldest entry
         size_t storedLogLineCount;           // raw log lines kept, trimmed to MAX_STORED_LOG_LINES
         uint64_t nextLogId;
         size_t severityCounts[SEVERITY_COUNT];

@@ -194,25 +194,21 @@ void ConsoleWindow::enforceStoredLineLimit() {
         return;
     }
 
-    size_t eraseCount = 0;
-    while (storedLogLineCount > MAX_STORED_LOG_LINES && eraseCount < logs.size()) {
+    while (storedLogLineCount > MAX_STORED_LOG_LINES && !logs.empty()) {
         const size_t excess = storedLogLineCount - MAX_STORED_LOG_LINES;
-        const size_t frontLines = countRawLines(logs[eraseCount].message);
+        const size_t frontLines = countRawLines(logs.front().message);
 
         if (frontLines <= excess) {
             storedLogLineCount -= frontLines;
-            eraseCount++;
+            severityCounts[severityOf(logs.front().type)]--;
+            logs.pop_front();
             continue;
         }
 
-        storedLogLineCount -= trimLeadingRawLines(logs[eraseCount].message, excess);
+        // A partial trim keeps the entry, including its id and severity count.
+        storedLogLineCount -= trimLeadingRawLines(logs.front().message, excess);
         break;
     }
-
-    if (eraseCount > 0) {
-        logs.erase(logs.begin(), logs.begin() + static_cast<std::ptrdiff_t>(eraseCount));
-    }
-    recountSeverities();
 }
 
 void ConsoleWindow::recountSeverities() {
