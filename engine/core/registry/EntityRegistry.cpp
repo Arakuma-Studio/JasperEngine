@@ -271,21 +271,13 @@ std::string EntityRegistry::getEntityName(Entity entity) const {
 }
 
 Entity EntityRegistry::findEntity(const std::string& name) const {
-    for (Entity entity : entityManager.getEntityList()){
-        if (entityManager.getName(entity) == name){
-            return entity;
-        }
-    }
-    return NULL_ENTITY;
+    return entityManager.findByName(name);
 }
 
 Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const {
-    for (Entity entity : entityManager.getEntityList()){
-        if (entityManager.getName(entity) == name && isParentOf(parent, entity)){
-            return entity;
-        }
-    }
-    return NULL_ENTITY;
+    return entityManager.findByName(name, [this, parent](Entity entity){
+        return isParentOf(parent, entity);
+    });
 }
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
@@ -342,12 +334,7 @@ Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
         Log::error("Tag: %s is not defined.", tag.c_str());
         return NULL_ENTITY;
     }
-    for (Entity entity : entityManager.getEntityList()){
-        if (entityManager.getTag(entity) == tag){
-            return entity;
-        }
-    }
-    return NULL_ENTITY;
+    return entityManager.findByTag(tag);
 }
 
 std::vector<Entity> EntityRegistry::findEntitiesByTag(const std::string& tag) const {
@@ -356,12 +343,7 @@ std::vector<Entity> EntityRegistry::findEntitiesByTag(const std::string& tag) co
         Log::error("Tag: %s is not defined.", tag.c_str());
         return found;
     }
-    for (Entity entity : entityManager.getEntityList()){
-        if (entityManager.getTag(entity) == tag){
-            found.push_back(entity);
-        }
-    }
-    return found;
+    return entityManager.findAllByTag(tag);
 }
 
 Entity EntityRegistry::findOldestParent(Entity entity){
