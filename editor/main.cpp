@@ -25,6 +25,9 @@ int main(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "scene-dump") == 0) {
         return editor::CommandLine::runSceneDumpCommand(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
+        return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "benchmark") == 0) {
         if (argc >= 3 && (std::strcmp(argv[2], "-h") == 0 || std::strcmp(argv[2], "--help") == 0 || std::strcmp(argv[2], "help") == 0)) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);

@@ -35,6 +35,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -49,6 +50,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -66,181 +68,57 @@ namespace fs = std::filesystem;
 
 namespace w4 {
 
-namespace {
-
-bool shaderTypeForComponent(ComponentType component, ShaderType& out) {
-    switch (component) {
-        case ComponentType::MeshComponent: out = ShaderType::MESH; return true;
-        case ComponentType::UIComponent: out = ShaderType::UI; return true;
-        case ComponentType::PointsComponent: out = ShaderType::POINTS; return true;
-        case ComponentType::LineRendererComponent: out = ShaderType::LINES; return true;
-        case ComponentType::SkyboxComponent: out = ShaderType::SKYBOX; return true;
-        default: return false;
-    }
-}
-
-// Every customShader value in use in the loaded scenes, with its shader type
-std::vector<ShaderUse> allShaderForks(Project* project) {
-    std::vector<ShaderUse> uses;
-    std::set<std::pair<std::string, int>> seen;
-    auto add = [&](const std::string& base, ShaderType type) {
-        if (base.empty()) return;
-        if (seen.insert({base, static_cast<int>(type)}).second) uses.push_back({base, static_cast<int>(type)});
-    };
-    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-        if (!sceneProject->scene) continue;
-        Scene* scene = sceneProject->scene;
-        for (Entity entity : sceneProject->entities) {
-            for (ComponentType component : Catalog::findComponents(scene, entity)) {
-                ShaderType type;
-                if (!shaderTypeForComponent(component, type)) continue;
-                if (auto* value = Catalog::getPropertyRef<std::string>(scene, entity, component, "customShader")) add(*value, type);
-                if (component == ComponentType::MeshComponent) {
-                    if (auto* depth = Catalog::getPropertyRef<std::string>(scene, entity, component, "customDepthShader")) add(*depth, ShaderType::DEPTH);
-                }
-            }
-        }
-        const std::pair<const char*, ShaderType> defaults[] = {
-            {"default_mesh_shader", ShaderType::MESH}, {"default_ui_shader", ShaderType::UI},
-            {"default_sky_shader", ShaderType::SKYBOX}, {"default_points_shader", ShaderType::POINTS},
-            {"default_lines_shader", ShaderType::LINES}};
-        for (const auto& [property, type] : defaults) {
-            add(Catalog::getSceneProperty<std::string>(scene, property), type);
-        }
-        for (const PostProcessPass& pass : scene->getPostProcessPasses()) add(pass.shader, ShaderType::POSTPROCESS);
-    }
-    return uses;
-}
-
-} // namespace
-
 std::vector<ShaderUse> shaderForksUsingFiles(Project* project, const std::vector<std::string>& files) {
     std::vector<ShaderUse> result;
-    std::set<std::string> covered;
-    const std::vector<ShaderUse> forks = allShaderForks(project);
-    for (const std::string& file : files) {
-        const std::string ext = extensionOf(file);
-        if (ext == ".glsl") {
-            // an include can be reached by any fork (private copies, project-root overrides)
-            for (const ShaderUse& use : forks) {
-                if (covered.insert(use.base + "#" + std::to_string(use.shaderType)).second) result.push_back(use);
-            }
-            continue;
-        }
-        bool found = false;
-        for (const ShaderUse& use : forks) {
-            Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(use.base);
-            if (paths.vert == file || paths.frag == file) {
-                found = true;
-                if (covered.insert(use.base + "#" + std::to_string(use.shaderType)).second) result.push_back(use);
-            }
-        }
-        if (!found && (ext == ".vert" || ext == ".frag")) {
-            // not used by anything yet: check it if its pair exists
-            const std::string base = (fs::path(file).parent_path() / fs::path(file).stem()).generic_string();
-            std::error_code ec;
-            if (fs::exists(project->getProjectPath() / (base + ".vert"), ec) && fs::exists(project->getProjectPath() / (base + ".frag"), ec) &&
-                covered.insert(base + "#-1").second) {
-                result.push_back({base, -1});
-            }
-        }
+    for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, files)) {
+        result.push_back({use.base, use.shaderType});
     }
     return result;
 }
 
 namespace {
 
-std::string shaderTypeName(int type) {
-    switch (static_cast<ShaderType>(type)) {
-        case ShaderType::MESH: return "mesh";
-        case ShaderType::UI: return "ui";
-        case ShaderType::SKYBOX: return "sky";
-        case ShaderType::POINTS: return "points";
-        case ShaderType::LINES: return "lines";
-        case ShaderType::DEPTH: return "depth";
-        case ShaderType::POSTPROCESS: return "post_process";
-        default: return "unknown";
-    }
-}
-
-// Guesses the type of an unused fork from its fragment entry point name / includes
-int guessShaderType(Project* project, const std::string& base) {
-    std::string frag;
-    readFile(project->getProjectPath() / Util::resolveCustomShaderPaths(base).frag, frag);
-    if (frag.find("u_fs_postParams") != std::string::npos || frag.find("postprocess") != std::string::npos) return static_cast<int>(ShaderType::POSTPROCESS);
-    if (frag.find("includes/ui") != std::string::npos) return static_cast<int>(ShaderType::UI);
-    if (frag.find("includes/sky") != std::string::npos) return static_cast<int>(ShaderType::SKYBOX);
-    if (frag.find("includes/points") != std::string::npos) return static_cast<int>(ShaderType::POINTS);
-    if (frag.find("includes/lines") != std::string::npos) return static_cast<int>(ShaderType::LINES);
-    return static_cast<int>(ShaderType::MESH);
-}
-
-Json parseShaderLog(const std::string& log) {
-    // glslang: "ERROR: 0:12: 'x' : undeclared identifier" (also "<file>:12:")
-    static const std::regex line(R"((ERROR|WARNING):\s*([^:\n]*):(\d+):\s*(.*))");
-    Json errors = Json::array();
-    std::istringstream in(log);
-    std::string text;
-    while (std::getline(in, text)) {
-        std::smatch m;
-        if (std::regex_search(text, m, line)) {
-            errors.push_back({{"severity", m[1].str() == "ERROR" ? "error" : "warning"}, {"source", m[2].str()},
-                              {"line", std::atoi(m[3].str().c_str())}, {"message", m[4].str()}});
-        }
-        if (errors.size() >= 30) break;
-    }
-    return errors;
-}
-
-} // namespace
-
-void checkShadersAsync(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results)> done) {
+// Compiles the forks on a worker thread (ProjectChecks::runShaderCheck); `done` gets, on the main
+// thread, the results [{shader, type, ok, errors, log}] and the findings of them all
+void checkShadersWithFindings(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results, Json findings)> done) {
     Project* project = call->ctx().project();
     // Drops cached builds and source snapshots so both the check and the scene use the files on disk
-    project->invalidateCustomShaders();
+    ProjectChecks::invalidateShaderCaches(project);
     struct Job {
-        std::vector<ShaderUse> forks;
-        std::vector<ShaderKey> keys;
+        std::vector<ProjectChecks::ShaderUse> forks;
+        std::vector<uint64_t> keys;
         Json results = Json::array();
+        std::vector<ProjectChecks::Finding> findings;
         std::atomic<bool> finished{false};
     };
     auto job = std::make_shared<Job>();
-    for (ShaderUse& use : forks) {
-        if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
-        const uint16_t customId = ShaderPool::registerCustomShader(use.base);
-        job->keys.push_back(ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), 0, customId));
+    for (const ShaderUse& fork : forks) {
+        ProjectChecks::ShaderUse use{fork.base, fork.shaderType};
+        job->keys.push_back(ProjectChecks::prepareShaderCheck(project, use));
         job->forks.push_back(use);
     }
     std::thread([job, project]() {
-        ShaderBuilder builder;
         for (size_t i = 0; i < job->forks.size(); i++) {
-            const uint64_t before = Out::lastLogId();
-            Json item = {{"shader", job->forks[i].base}, {"type", shaderTypeName(job->forks[i].shaderType)}};
-            try {
-                builder.buildShaderForExport(job->keys[i], project, ShaderPool::getShaderBackend());
-                item["ok"] = true;
-            } catch (const std::exception& e) {
-                item["ok"] = false;
-                std::string log;
-                for (const LogEntry& entry : Out::getLogsSince(before)) {
-                    if (entry.type == LogType::Error && entry.message.find("Shader") != std::string::npos) log += entry.message + "\n";
-                }
-                if (log.empty()) log = e.what();
-                if (log.size() > 6000) log = log.substr(0, 6000) + "\n...";
-                item["errors"] = parseShaderLog(log);
-                item["log"] = log;
-            }
-            job->results.push_back(item);
+            const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(project, job->forks[i], job->keys[i]);
+            job->results.push_back(ProjectChecks::toJson(check));
+            job->findings.insert(job->findings.end(), check.findings.begin(), check.findings.end());
         }
         job->finished = true;
     }).detach();
     call->waitUntil([job]() { return job->finished.load(); }, 120000, [job, done](bool timedOut) {
         if (timedOut) {
-            done(Json::array({{{"ok", false}, {"log", "Shader check timed out."}}}));
+            done(Json::array({{{"ok", false}, {"log", "Shader check timed out."}}}), Json::array());
             return;
         }
-        done(job->results);
+        ProjectChecks::sortFindings(job->findings);
+        done(job->results, ProjectChecks::toJson(job->findings));
     });
+}
+
+} // namespace
+
+void checkShadersAsync(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results)> done) {
+    checkShadersWithFindings(call, std::move(forks), [done](Json results, Json) { done(std::move(results)); });
 }
 
 } // namespace w4
@@ -325,7 +203,7 @@ bool resolveTarget(const CallPtr& call, Target& target, bool entityRequired) {
 bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& shaderType) {
     Scene* scene = target.scene->scene;
     if (target.hasComponent) {
-        if (!shaderTypeForComponent(target.component, shaderType)) {
+        if (!ProjectChecks::shaderTypeForComponent(target.component, shaderType)) {
             call->fail("The component does not take custom shaders: use mesh, ui, points, linerenderer or skybox.");
             return false;
         }
@@ -340,7 +218,7 @@ bool resolveShaderComponent(const CallPtr& call, Target& target, ShaderType& sha
         if (McpRefs::hasComponent(target.scene, target.entity, candidate)) {
             target.component = candidate;
             target.hasComponent = true;
-            shaderTypeForComponent(candidate, shaderType);
+            ProjectChecks::shaderTypeForComponent(candidate, shaderType);
             return true;
         }
     }
@@ -1921,11 +1799,11 @@ void checkShaderTool(const CallPtr& call) {
         // every fork in use
         forks = shaderForksUsingFiles(project, {"x.glsl"});
         if (forks.empty()) {
-            call->ok("No custom shader is used by the loaded scenes.", Json{{"results", Json::array()}});
+            call->ok("No custom shader is used by the loaded scenes.", Json{{"results", Json::array()}, {"failed", 0}, {"findings", Json::array()}});
             return;
         }
     }
-    checkShadersAsync(call, forks, [call](Json results) {
+    checkShadersWithFindings(call, forks, [call](Json results, Json findings) {
         size_t failed = 0;
         std::string text;
         for (const Json& r : results) {
@@ -1942,7 +1820,7 @@ void checkShaderTool(const CallPtr& call) {
             }
         }
         call->ok((failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text,
-                 Json{{"results", results}, {"failed", failed}});
+                 Json{{"results", results}, {"failed", failed}, {"findings", findings}});
     });
 }
 
@@ -2160,6 +2038,158 @@ void placeholderArtTool(const CallPtr& call) {
                                             Json{{"path", rel}, {"width", width}, {"height", height}});
     if (encodePng(pixels.data(), width, height, 256, base64, pw, ph)) result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
+}
+
+// ------------------------------------------------------------------ search_files
+
+// Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+void searchFilesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    const std::string pattern = args.value("pattern", "");
+    if (pattern.empty()) {
+        call->fail("pattern is required.");
+        return;
+    }
+    const bool useRegex = args.value("regex", false);
+    const bool caseSensitive = args.value("case_sensitive", true);
+    const std::string glob = args.value("glob", "");
+    const int context = std::clamp(args.value("context", 0), 0, 10);
+    const size_t maxResults = static_cast<size_t>(std::clamp(args.value("max_results", 50), 1, 500));
+    constexpr uintmax_t maxFileSize = 2 * 1024 * 1024;
+    constexpr size_t maxText = 300;
+
+    const fs::path root = project->getProjectPath();
+    std::error_code ec;
+    const fs::path canonicalRoot = fs::weakly_canonical(root, ec);
+    auto insideProject = [&](const fs::path& path) {
+        std::error_code e;
+        const fs::path canonical = fs::weakly_canonical(path, e);
+        return !e && Util::isInsidePath(canonical, canonicalRoot);
+    };
+
+    // the filter: a glob over project-relative paths (file names when it has no '/'), or a file/folder
+    fs::path scope = root;
+    std::string fileGlob = glob;
+    if (!glob.empty()) {
+        const fs::path g(glob);
+        if (g.is_absolute() || g.has_root_name() || g.has_root_directory()) {
+            call->fail("glob must be relative to the project (no absolute paths).");
+            return;
+        }
+        for (const fs::path& part : g.lexically_normal()) {
+            if (part == "..") {
+                call->fail("glob must stay inside the project (no '..').");
+                return;
+            }
+        }
+        if (glob.find_first_of("*?") == std::string::npos) {
+            const fs::path target = (root / g).lexically_normal();
+            if (fs::is_directory(target, ec)) {
+                scope = target;
+                fileGlob.clear();
+            } else {
+                fileGlob = g.lexically_normal().generic_string();
+            }
+        }
+    }
+
+    std::regex expression;
+    if (useRegex) {
+        try {
+            auto flags = std::regex::ECMAScript;
+            if (!caseSensitive) flags |= std::regex::icase;
+            expression = std::regex(pattern, flags);
+        } catch (const std::regex_error& e) {
+            call->fail(std::string("Invalid regex (ECMAScript syntax): ") + e.what() + ". Or pass regex: false for literal text.");
+            return;
+        }
+    }
+    const std::string needle = caseSensitive ? pattern : lowerCase(pattern);
+    auto matches = [&](const std::string& line) {
+        if (useRegex) {
+            // very long lines (minified data) would make std::regex recurse too deep
+            return line.size() <= 4000 && std::regex_search(line, expression);
+        }
+        return (caseSensitive ? line : lowerCase(line)).find(needle) != std::string::npos;
+    };
+    auto clip = [&](const std::string& text) { return text.size() > maxText ? text.substr(0, maxText) + "..." : text; };
+
+    std::vector<fs::path> files;
+    const fs::path scopeRel = fs::path(projectRelative(project, scope));
+    const bool scopeSkipped = scope != root && (isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
+    if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
+        for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
+             it.increment(ec)) {
+            const fs::path& path = it->path();
+            const std::string name = path.filename().string();
+            if (it->is_directory(ec)) {
+                if (isSkippedDir(path)) it.disable_recursion_pending();
+                continue;
+            }
+            if (name.empty() || name[0] == '.' || !it->is_regular_file(ec) || !isTextFile(path)) continue;
+            if (it->is_symlink(ec) && !insideProject(path)) continue;
+            if (!fileGlob.empty()) {
+                const std::string rel = projectRelative(project, path);
+                if (!globMatch(fileGlob, fileGlob.find('/') != std::string::npos ? rel : name)) continue;
+            }
+            files.push_back(path);
+        }
+    }
+    std::sort(files.begin(), files.end());
+
+    Json found = Json::array();
+    size_t total = 0, searched = 0;
+    bool timedOut = false;
+    std::string text;
+    const auto started = std::chrono::steady_clock::now();
+    for (const fs::path& file : files) {
+        if (std::chrono::steady_clock::now() - started > std::chrono::seconds(10)) {
+            timedOut = true;
+            break;
+        }
+        if (fs::file_size(file, ec) > maxFileSize || ec) continue;
+        std::string content;
+        if (!readFile(file, content)) continue;
+        if (content.find('\0') != std::string::npos) continue;   // binary
+        searched++;
+        std::vector<std::string> lines;
+        std::istringstream in(content);
+        for (std::string line; std::getline(in, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            lines.push_back(std::move(line));
+        }
+        const std::string rel = projectRelative(project, file);
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (!matches(lines[i])) continue;
+            total++;
+            if (found.size() >= maxResults) continue;
+            Json item = {{"path", rel}, {"line", i + 1}, {"text", clip(lines[i])}};
+            if (context > 0) {
+                Json before = Json::array(), after = Json::array();
+                for (size_t j = i >= static_cast<size_t>(context) ? i - context : 0; j < i; j++) {
+                    before.push_back(clip(lines[j]));
+                    text += rel + "-" + std::to_string(j + 1) + "- " + clip(lines[j]) + "\n";
+                }
+                text += rel + ":" + std::to_string(i + 1) + ": " + clip(lines[i]) + "\n";
+                for (size_t j = i + 1; j < lines.size() && j <= i + static_cast<size_t>(context); j++) {
+                    after.push_back(clip(lines[j]));
+                    text += rel + "-" + std::to_string(j + 1) + "- " + clip(lines[j]) + "\n";
+                }
+                item["context"] = {{"before", before}, {"after", after}};
+                text += "--\n";
+            } else {
+                text += rel + ":" + std::to_string(i + 1) + ": " + clip(lines[i]) + "\n";
+            }
+            found.push_back(item);
+        }
+    }
+    const bool truncated = total > found.size() || timedOut;
+    std::string header = std::to_string(total) + " match(es) in " + std::to_string(searched) + " file(s) searched";
+    if (total > found.size()) header += " (showing " + std::to_string(found.size()) + ": raise max_results or narrow glob)";
+    if (timedOut) header += " (stopped after 10 s: narrow glob)";
+    call->ok(header + (text.empty() ? "." : ":\n" + text),
+             Json{{"matches", found}, {"total", total}, {"truncated", truncated}, {"files_searched", searched}});
 }
 
 } // namespace
@@ -2518,6 +2548,27 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "search_files";
+        tool.title = "Search Files";
+        tool.description =
+            "Grep project text files (scripts, shaders, docs, configs): for HTTP clients without file access; "
+            "locally use grep. ECMAScript regex. Returns {matches: [{path, line, text, context}], total}.";
+        tool.inputSchema = object({
+            {"pattern", string("")},
+            {"regex", boolean("")},
+            {"case_sensitive", withDefault(boolean(""), true)},
+            {"glob", string("\"*.lua\", \"scripts/**\" or a path.")},
+            {"context", integer("", 0, 10)},
+            {"max_results", withDefault(integer("", 1, 500), 50)}
+        }, {"pattern"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = searchFilesTool;
         registry.addTool(std::move(tool));
     }
 }
