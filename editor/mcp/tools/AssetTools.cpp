@@ -50,6 +50,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -2039,6 +2040,158 @@ void placeholderArtTool(const CallPtr& call) {
     call->reply(std::move(result));
 }
 
+// ------------------------------------------------------------------ search_files
+
+// Searches the project's text files (what read_file reads): literal or ECMAScript regex, per line
+void searchFilesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    const std::string pattern = args.value("pattern", "");
+    if (pattern.empty()) {
+        call->fail("pattern is required.");
+        return;
+    }
+    const bool useRegex = args.value("regex", false);
+    const bool caseSensitive = args.value("case_sensitive", true);
+    const std::string glob = args.value("glob", "");
+    const int context = std::clamp(args.value("context", 0), 0, 10);
+    const size_t maxResults = static_cast<size_t>(std::clamp(args.value("max_results", 50), 1, 500));
+    constexpr uintmax_t maxFileSize = 2 * 1024 * 1024;
+    constexpr size_t maxText = 300;
+
+    const fs::path root = project->getProjectPath();
+    std::error_code ec;
+    const fs::path canonicalRoot = fs::weakly_canonical(root, ec);
+    auto insideProject = [&](const fs::path& path) {
+        std::error_code e;
+        const fs::path canonical = fs::weakly_canonical(path, e);
+        return !e && Util::isInsidePath(canonical, canonicalRoot);
+    };
+
+    // the filter: a glob over project-relative paths (file names when it has no '/'), or a file/folder
+    fs::path scope = root;
+    std::string fileGlob = glob;
+    if (!glob.empty()) {
+        const fs::path g(glob);
+        if (g.is_absolute() || g.has_root_name() || g.has_root_directory()) {
+            call->fail("glob must be relative to the project (no absolute paths).");
+            return;
+        }
+        for (const fs::path& part : g.lexically_normal()) {
+            if (part == "..") {
+                call->fail("glob must stay inside the project (no '..').");
+                return;
+            }
+        }
+        if (glob.find_first_of("*?") == std::string::npos) {
+            const fs::path target = (root / g).lexically_normal();
+            if (fs::is_directory(target, ec)) {
+                scope = target;
+                fileGlob.clear();
+            } else {
+                fileGlob = g.lexically_normal().generic_string();
+            }
+        }
+    }
+
+    std::regex expression;
+    if (useRegex) {
+        try {
+            auto flags = std::regex::ECMAScript;
+            if (!caseSensitive) flags |= std::regex::icase;
+            expression = std::regex(pattern, flags);
+        } catch (const std::regex_error& e) {
+            call->fail(std::string("Invalid regex (ECMAScript syntax): ") + e.what() + ". Or pass regex: false for literal text.");
+            return;
+        }
+    }
+    const std::string needle = caseSensitive ? pattern : lowerCase(pattern);
+    auto matches = [&](const std::string& line) {
+        if (useRegex) {
+            // very long lines (minified data) would make std::regex recurse too deep
+            return line.size() <= 4000 && std::regex_search(line, expression);
+        }
+        return (caseSensitive ? line : lowerCase(line)).find(needle) != std::string::npos;
+    };
+    auto clip = [&](const std::string& text) { return text.size() > maxText ? text.substr(0, maxText) + "..." : text; };
+
+    std::vector<fs::path> files;
+    const fs::path scopeRel = fs::path(projectRelative(project, scope));
+    const bool scopeSkipped = scope != root && (isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
+    if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
+        for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
+             it.increment(ec)) {
+            const fs::path& path = it->path();
+            const std::string name = path.filename().string();
+            if (it->is_directory(ec)) {
+                if (isSkippedDir(path)) it.disable_recursion_pending();
+                continue;
+            }
+            if (name.empty() || name[0] == '.' || !it->is_regular_file(ec) || !isTextFile(path)) continue;
+            if (it->is_symlink(ec) && !insideProject(path)) continue;
+            if (!fileGlob.empty()) {
+                const std::string rel = projectRelative(project, path);
+                if (!globMatch(fileGlob, fileGlob.find('/') != std::string::npos ? rel : name)) continue;
+            }
+            files.push_back(path);
+        }
+    }
+    std::sort(files.begin(), files.end());
+
+    Json found = Json::array();
+    size_t total = 0, searched = 0;
+    bool timedOut = false;
+    std::string text;
+    const auto started = std::chrono::steady_clock::now();
+    for (const fs::path& file : files) {
+        if (std::chrono::steady_clock::now() - started > std::chrono::seconds(10)) {
+            timedOut = true;
+            break;
+        }
+        if (fs::file_size(file, ec) > maxFileSize || ec) continue;
+        std::string content;
+        if (!readFile(file, content)) continue;
+        if (content.find('\0') != std::string::npos) continue;   // binary
+        searched++;
+        std::vector<std::string> lines;
+        std::istringstream in(content);
+        for (std::string line; std::getline(in, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            lines.push_back(std::move(line));
+        }
+        const std::string rel = projectRelative(project, file);
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (!matches(lines[i])) continue;
+            total++;
+            if (found.size() >= maxResults) continue;
+            Json item = {{"path", rel}, {"line", i + 1}, {"text", clip(lines[i])}};
+            if (context > 0) {
+                Json before = Json::array(), after = Json::array();
+                for (size_t j = i >= static_cast<size_t>(context) ? i - context : 0; j < i; j++) {
+                    before.push_back(clip(lines[j]));
+                    text += rel + "-" + std::to_string(j + 1) + "- " + clip(lines[j]) + "\n";
+                }
+                text += rel + ":" + std::to_string(i + 1) + ": " + clip(lines[i]) + "\n";
+                for (size_t j = i + 1; j < lines.size() && j <= i + static_cast<size_t>(context); j++) {
+                    after.push_back(clip(lines[j]));
+                    text += rel + "-" + std::to_string(j + 1) + "- " + clip(lines[j]) + "\n";
+                }
+                item["context"] = {{"before", before}, {"after", after}};
+                text += "--\n";
+            } else {
+                text += rel + ":" + std::to_string(i + 1) + ": " + clip(lines[i]) + "\n";
+            }
+            found.push_back(item);
+        }
+    }
+    const bool truncated = total > found.size() || timedOut;
+    std::string header = std::to_string(total) + " match(es) in " + std::to_string(searched) + " file(s) searched";
+    if (total > found.size()) header += " (showing " + std::to_string(found.size()) + ": raise max_results or narrow glob)";
+    if (timedOut) header += " (stopped after 10 s: narrow glob)";
+    call->ok(header + (text.empty() ? "." : ":\n" + text),
+             Json{{"matches", found}, {"total", total}, {"truncated", truncated}, {"files_searched", searched}});
+}
+
 } // namespace
 
 void registerAssetTools(McpRegistry& registry) {
@@ -2393,6 +2546,27 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path"});
         tool.handler = placeholderArtTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "search_files";
+        tool.title = "Search Files";
+        tool.description =
+            "Grep project text files (scripts, shaders, docs, configs): for HTTP clients without file access; "
+            "locally use grep. ECMAScript regex. Returns {matches: [{path, line, text, context}], total}.";
+        tool.inputSchema = object({
+            {"pattern", string("")},
+            {"regex", boolean("")},
+            {"case_sensitive", withDefault(boolean(""), true)},
+            {"glob", string("\"*.lua\", \"scripts/**\" or a path.")},
+            {"context", integer("", 0, 10)},
+            {"max_results", withDefault(integer("", 1, 500), 50)}
+        }, {"pattern"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = searchFilesTool;
         registry.addTool(std::move(tool));
     }
 }
