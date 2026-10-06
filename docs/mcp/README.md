@@ -58,12 +58,19 @@ In the examples below, replace `/opt/jasperengine/bin/jasperengine-editor` with 
 binary (in a source build it is `build/linux/editor-install/bin/jasperengine-editor`) and
 `/home/me/games/MyGame` with your project folder.
 
+Run the agent with the project folder as its working directory. The project is a normal
+folder of files: the agent reads, edits and greps the Lua scripts, C++ sources, shaders and
+materials with its own tools (and git), and uses the MCP tools for the editor itself (scenes,
+GameObjects, play, screenshots, checks). See [Code](#code-scripts-shaders-materials) below.
+
 ### Claude Code
 
-stdio:
+From the project folder (the server is then registered for that folder):
 
 ```sh
-claude mcp add jasper -- /opt/jasperengine/bin/jasperengine-editor mcp --project /home/me/games/MyGame --headless
+cd /home/me/games/MyGame
+claude mcp add jasper -- /opt/jasperengine/bin/jasperengine-editor mcp --project . --headless
+claude
 ```
 
 Attach to an editor you have open, after enabling MCP in Editor Settings:
@@ -98,7 +105,9 @@ return before `MCP_TOOL_TIMEOUT` and the agent checks on them with `get_job`.
 
 ### Codex
 
-`~/.codex/config.toml` (or the project's `.codex/config.toml`):
+Start Codex in the project folder (`cd /home/me/games/MyGame && codex`, or
+`codex -C /home/me/games/MyGame`). `~/.codex/config.toml` (or the project's
+`.codex/config.toml`):
 
 ```toml
 [mcp_servers.jasper]
@@ -157,6 +166,36 @@ and saves that project, so never point it at the fixture itself. The path is res
 the directory where you start the client, so start it at the repository root (or set
 `JASPER_EDITOR` to an absolute path).
 
+## Code (scripts, shaders, materials)
+
+Agents edit code with their own tools, not through MCP file tools:
+
+- `editor_status` returns the project's absolute path (`project.path`).
+- The engine API is in `.jasperengine/engine-api/` (C++ headers, plus Lua API stubs in its
+  `lua/` folder when the project has them). lua-language-server and clangd work with the
+  generated `.luarc.json` and `compile_commands.json`.
+- **Changes are picked up automatically.** Before every tool call the server looks for Lua,
+  C++, shader, `.material` and image files changed on disk since the last call (a stat scan
+  of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
+  `node_modules` and `trash`). If any changed, the editor reloads clean code editor buffers,
+  re-parses script properties, compiles the shader forks that use a changed shader, refreshes
+  materials, textures and the Project window, and that call's result carries
+  `external_changes: {changed, added, removed, problems: [{path, line, message}]}` and one
+  text line. While a scene plays, the changes are listed as `deferred` and picked up when
+  play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
+  `project.yaml` and the terrain maps the terrain tools write are not watched: edit them with
+  the tools. `sync_files` forces a full
+  rescan; `editor_status.auto_sync` shows the scan's size and cost.
+- Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
+  `jasperengine-editor check` from a shell (see [checks.md](checks.md)).
+- `write_file` / `read_file` are for clients without access to the project folder (an HTTP
+  client on another machine).
+
+A scan checks folders and code files whole on every call (up to 2000 of each) and images in
+rotation within a ~2 ms budget, so it costs about 0.1 ms per call on a small project and a few
+milliseconds on one with tens of thousands of files; an image changed deep in a huge asset
+folder can take a while to be noticed (`sync_files` finds it at once).
+
 ## Servers without a screen
 
 On a server, use `--headless` and install `Xvfb` (Debian or Ubuntu: `apt install xvfb`). Use
@@ -175,7 +214,7 @@ no effect there.
   `Authorization: Bearer <token>`. To reach an editor on another machine, use an SSH tunnel
   (`ssh -L 47615:127.0.0.1:47615 host`). Never expose the port directly.
 - Give the agent the same trust you would give a developer on the project. It can write any
-  file in the project, and C++ scripts it writes are compiled and run inside the editor
+  file in the project (with its own tools, or through `write_file`), and C++ scripts it writes are compiled and run inside the editor
   process when you press Play. The agent cannot leave the project folder: asset paths must
   stay inside it, and only the explicit import tools read files from elsewhere.
 - Every call is listed in the editor's MCP activity window, and every edit can be undone.

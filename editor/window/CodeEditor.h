@@ -138,6 +138,9 @@ namespace jasperengine::editor {
         bool saveFile(const std::string& filepath);
         // Discards the buffer's unsaved edits and loads the file from disk
         bool reloadFile(const std::string& filepath);
+        // These script files (absolute) were just re-parsed by MCP's file sync: the 1 s watch
+        // of referenced scripts takes their current mtime instead of re-parsing them again
+        void markScriptFilesCurrent(const std::vector<fs::path>& files);
 
         void show();
     };

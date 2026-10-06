@@ -5,6 +5,7 @@
 #include "McpTools.h"
 #include "W4Shared.h"
 
+#include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -442,7 +443,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     Json scriptChanges = Json::array();
     std::set<fs::path> checkedLua;
     if (project->isAnyScenePlaying()) {
-        notes.push_back("A scene is playing: script properties are re-parsed after Play stops (call sync_files again then).");
+        notes.push_back("A scene is playing: script properties are re-parsed after Play stops.");
     } else {
         for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
             if (!sceneProject->scene) continue;
@@ -549,6 +550,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     };
     if (texturesReloaded > 0) result["textures_reloaded"] = texturesReloaded;
     if (anyShader) result["shaders_invalidated"] = true;
+    // Handled now: not an external change for the automatic pick-up before the next call
+    McpAutoSync::get().filesSynced(ctx, std::vector<fs::path>(changed.begin(), changed.end()), full);
     return result;
 }
 
@@ -1150,7 +1153,7 @@ void setScriptPropertiesTool(const CallPtr& call) {
     auto available = [&]() {
         std::string text;
         for (const ScriptProperty& prop : entry.properties) text += (text.empty() ? "" : ", ") + prop.name + " (" + scriptPropertyTypeName(prop) + ")";
-        return text.empty() ? std::string("none; declare them in the script and call sync_files") : text;
+        return text.empty() ? std::string("none; declare them in the script (picked up before your next call)") : text;
     };
 
     auto* multi = new MultiPropertyCmd();
@@ -1555,10 +1558,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "create_script";
         tool.title = "Create Script";
         tool.description =
-            "Create a script from the editor template, optionally attached to entity. kind lua: module table "
-            "in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the GameObject's class "
-            "(e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) replace the "
-            "template. Returns {path, header_path, script, problems}. Compile C++ with compile_scripts.";
+            "Create a script from the engine template, optionally attached to entity; then edit the file with "
+            "your own tools. kind lua: module table in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: "
+            "subclass of the GameObject's class (e.g. Mesh), needs entity. content (Lua) or header_content + "
+            "source_content (C++) replace the template. Returns {path, header_path, script, problems}.";
         tool.inputSchema = object({
             {"kind", stringEnum("", {"lua", "cpp_script", "cpp_subclass"})},
             {"name", string("Class/module name = file name.")},
@@ -1643,7 +1646,7 @@ void registerScriptTools(McpRegistry& registry) {
             "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
             "set_properties scripts[i].<name>). Prefab properties take a .prefab path; GameObject properties "
             "an entity ref, or {\"scene\": <scene>, \"id\": <id>} for one in another scene; \"enabled\" "
-            "toggles the script. After adding a property to the file, call sync_files first.";
+            "toggles the script. Properties added to the file are picked up before your next call.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1697,10 +1700,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "sync_files";
         tool.title = "Sync Files";
         tool.description =
-            "Call after editing files on disk with your own tools: the editor picks them up now (not on its 1 "
-            "s poll): clean code editor buffers, script properties, Lua syntax, materials, shaders, textures, "
-            "assets. Returns {changed: {added, modified, removed}, script_properties, problems: [{path, line, "
-            "message}]}. Not for .scene/.prefab/project.yaml.";
+            "Rarely needed: files edited on disk are picked up before every tool call (external_changes). Forces "
+            "a full rescan: code editor buffers, every attached script's properties, Lua syntax, materials, "
+            "shaders, textures, assets. Returns {changed: {added, modified, removed}, script_properties, problems: "
+            "[{path, line, message}]}. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
             {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
