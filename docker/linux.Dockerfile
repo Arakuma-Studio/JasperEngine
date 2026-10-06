@@ -22,6 +22,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
+# sokol's Vulkan backend binds through VK_EXT_descriptor_buffer, which needs Vulkan headers
+# 1.3.235 or newer; 22.04's libvulkan-dev is 1.3.204. The headers go to /usr/local, ahead of
+# the system ones; the 1.3.204 loader is fine (extension entry points come from the driver).
+ARG VULKAN_HEADERS_VERSION=v1.3.296
+RUN git clone --quiet --depth 1 --branch ${VULKAN_HEADERS_VERSION} \
+        https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/vulkan-headers \
+    && cmake -S /tmp/vulkan-headers -B /tmp/vulkan-headers/build -DCMAKE_INSTALL_PREFIX=/usr/local >/dev/null \
+    && cmake --install /tmp/vulkan-headers/build >/dev/null \
+    && rm -rf /tmp/vulkan-headers
+
 # The build runs as the host user; git refuses bind-mounted repos owned by
 # someone else unless they are marked safe.
 RUN git config --system --add safe.directory '*'

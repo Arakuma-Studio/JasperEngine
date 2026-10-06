@@ -112,3 +112,41 @@ TEST(HarnessGpuTest, ComponentUIImage){
 
     EXPECT_GOLDEN("harness_component_ui");
 }
+
+TEST(HarnessGpuTest, ComponentUITexture){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
+
+    SceneFixture fixture;
+
+    // checker.png (64x64, 8 px cells, top-left cell red) drawn at 2x: 16 px cells. Textured
+    // draws need image views and samplers, which lavapipe before Mesa 24 creates only with
+    // sokol's descriptor size limit raised (sokol_gfx.h _SG_VK_MAX_DESCRIPTOR_DATA_SIZE)
+    Image& checker = fixture.add<Image>();
+    checker.setTexture("common/checker.png");
+    checker.setPosition(100, 50);
+    checker.setSize(128, 128);
+
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+
+    Pixels pixels;
+    ASSERT_TRUE(pixels.read());
+
+    // cell centers: (column, row) -> (100 + 16 * column + 8, 50 + 16 * row + 8)
+    EXPECT_TRUE(pixels.is(108, 58, 255, 0, 0));       // (0, 0) red: the image's top-left
+    EXPECT_TRUE(pixels.is(140, 58, 255, 255, 255));   // (2, 0) white
+    EXPECT_TRUE(pixels.is(108, 90, 255, 255, 255));   // (0, 2) white
+    EXPECT_TRUE(pixels.is(220, 170, 255, 255, 255));  // (7, 7) white
+    // gray cells are darker than white on every backend (the exact value depends on the UI
+    // shader's color conversion, the golden pins it)
+    const uint8_t* gray = &pixels.rgba[(size_t(58) * pixels.width + 124) * 4];   // (1, 0)
+    EXPECT_LT(gray[0], 200);
+    EXPECT_EQ(gray[0], gray[1]);
+    EXPECT_EQ(gray[1], gray[2]);
+    // outside
+    EXPECT_TRUE(pixels.is(97, 100, background, background, background));
+    EXPECT_TRUE(pixels.is(231, 100, background, background, background));
+    EXPECT_TRUE(pixels.is(160, 181, background, background, background));
+
+    EXPECT_GOLDEN("harness_component_ui_texture");
+}
