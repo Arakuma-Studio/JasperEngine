@@ -223,12 +223,13 @@ Rules for every workstream:
 
 The project is a normal folder. Agents (run with the project folder as their working
 directory) read, edit, grep and git its Lua scripts, C++ sources, shaders and materials with
-their own tools and language servers (`.luarc.json`, `compile_commands.json`, the engine API
-snapshot in `.jasperengine/engine-api/`). MCP is for what needs the editor: making it notice
+their own tools and language servers (`.luarc.json` for lua-language-server with the Lua API
+stubs in `.jasperengine/engine-api/lua/`, `.clangd` -> `.jasperengine/clangd/compile_commands.json`
+for clangd, the engine API snapshot in `.jasperengine/engine-api/`). MCP is for what needs the editor: making it notice
 the changes, validating with the engine's own compilers (`check_script`, `check_shader`,
 `compile_scripts`, or the `jasperengine-editor check` CLI), attaching scripts and setting
-their properties, playing and observing. `write_file` / `read_file` remain for clients
-without file access (remote HTTP).
+their properties, playing and observing. `write_file` / `read_file` / `search_files` remain
+for clients without file access (remote HTTP).
 
 ### Automatic pick-up (McpAutoSync)
 

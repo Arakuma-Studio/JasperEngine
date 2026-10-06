@@ -95,14 +95,11 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` with a `---@field` per
-property (the templates do): lua-language-server then types self and catches typos.
+GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name; the
+templates do): lua-language-server then types self, properties included, and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
----@field speed number
----@field label Text
----@field bullet PrefabAsset
 local Player = {
     properties = {
         { name = "speed", displayName = "Speed", type = "float", default = 300.0 },
