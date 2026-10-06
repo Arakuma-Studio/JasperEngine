@@ -1597,10 +1597,65 @@ void writeLuaApiStubs(const fs::path& stubsDir) {
     }
 }
 
+// engine-api/luals-plugin.lua.txt: the lua-language-server plugin generated with the stubs
+// (generate_lua_stubs.py, LUALS_PLUGIN): it has an assignment to a static field of an engine
+// class through the global table (`Engine.timeScale = "fast"`) checked against the field's type,
+// which the server otherwise reads as the definition of a new global. Not a .lua file, so the
+// server does not take it for a script of the project.
+void writeLuaLsPlugin(const fs::path& file) {
+    std::string content;
+    for (unsigned int i = 0; i < luastubs::luaLsPlugin.partCount; i++) {
+        content += luastubs::luaLsPlugin.parts[i];
+    }
+    if (!FileUtils::writeIfChanged(file, content)) {
+        Out::warning("Could not write the lua-language-server plugin %s", file.string().c_str());
+    }
+}
+
+// runtime.plugin of .luarc.json: the engine's plugin is added, first when the file lists plugins
+// of its own (the server runs them in order and keeps the last one's result; the engine's plugin
+// passes the events it does not use on). Returns whether `root` changed.
+bool mergeLuaRcPlugin(nlohmann::json& root, const std::string& plugin) {
+    using Json = nlohmann::json;
+    Json* entry = nullptr;
+    if (root.contains("runtime.plugin")) {
+        entry = &root["runtime.plugin"];
+    } else if (root.contains("runtime") && root["runtime"].is_object()) {
+        entry = &root["runtime"]["plugin"];
+    } else {
+        entry = &root["runtime.plugin"];
+    }
+    auto isOurs = [&](const Json& value) {
+        return value.is_string() && normalizeLibraryEntry(value.get<std::string>()) == normalizeLibraryEntry(plugin);
+    };
+    if (entry->is_null() || (entry->is_string() && entry->get<std::string>().empty())) {
+        *entry = plugin;
+        return true;
+    }
+    if (entry->is_string()) {
+        if (isOurs(*entry)) {
+            return false;
+        }
+        *entry = Json::array({plugin, *entry});
+        return true;
+    }
+    if (entry->is_array()) {
+        for (const auto& value : *entry) {
+            if (isOurs(value)) {
+                return false;
+            }
+        }
+        entry->insert(entry->begin(), plugin);
+        return true;
+    }
+    Out::warning(".luarc.json: runtime.plugin is not a path or a list; leaving it unchanged (add \"%s\" for the checks of the engine classes' static fields).", plugin.c_str());
+    return false;
+}
+
 // .luarc.json at the project root, read by lua-language-server (and the VS Code Lua extension).
-// An existing file is merged into: only a missing library entry or Lua version is added, in the
-// style (dotted or nested keys) the file already uses.
-void writeLuaRc(const fs::path& projectPath, const std::string& library) {
+// An existing file is merged into: only a missing library entry, Lua version or the engine's
+// plugin is added, in the style (dotted or nested keys) the file already uses.
+void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin) {
     using Json = nlohmann::json;
     const fs::path file = projectPath / ".luarc.json";
     const std::string luaVersion = "Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR;
@@ -1611,6 +1666,7 @@ void writeLuaRc(const fs::path& projectPath, const std::string& library) {
         root["$schema"] = "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json";
         root["runtime.version"] = luaVersion;
         root["workspace.library"] = Json::array({library});
+        root["runtime.plugin"] = plugin;
         FileUtils::writeIfChanged(file, root.dump(4) + "\n");
         return;
     }
@@ -1664,6 +1720,10 @@ void writeLuaRc(const fs::path& projectPath, const std::string& library) {
             libraries->push_back(library);
             changed = true;
         }
+    }
+
+    if (mergeLuaRcPlugin(root, plugin)) {
+        changed = true;
     }
 
     if (changed) {
@@ -1780,8 +1840,10 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
     try {
         const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
         const fs::path stubsRelative = relativeInternalPath / "engine-api" / "lua";
+        const fs::path pluginRelative = relativeInternalPath / "engine-api" / luastubs::luaLsPlugin.name;
         writeLuaApiStubs(projectPath / stubsRelative);
-        writeLuaRc(projectPath, stubsRelative.generic_string());
+        writeLuaLsPlugin(projectPath / pluginRelative);
+        writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string());
         writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);
         writeClangdConfig(projectPath, (relativeInternalPath / "clangd").generic_string());
     } catch (const std::exception& e) {

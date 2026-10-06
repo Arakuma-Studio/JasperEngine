@@ -24,6 +24,9 @@ from harness import REPO, Editor, _main_checkout, skip
 TIMEOUT = 900
 LUA_DIR = ".jasperengine/engine-api/lua"
 CLANGD_DB = ".jasperengine/clangd/compile_commands.json"
+# lua-language-server plugin (runtime.plugin) that has assignments to the engine classes' static
+# fields through the global table (`Engine.timeScale = v`) checked against their types
+LUALS_PLUGIN = ".jasperengine/engine-api/luals-plugin.lua.txt"
 
 # Known-good Lua scripts used by the smoke tests besides the default fixture's own
 GOOD_LUA_DIRS = ["tools/fixtures/prefab-runtime/scripts", "tools/fixtures/runtime-shaders/scripts"]
@@ -46,6 +49,14 @@ function Bad:init()
     go.position = 5
     local engine = Engine
     engine.timeScale = "fast"
+    Engine.timeScale = "fast"
+    Engine.useDegrees = 1
+    Input.KEY_SPACE = {}
+    AudioSystem.globalVolume = true
+    Vector3.UNIT_X = 5
+    SceneManager.currentSceneName = 3
+    Engine.scene = "main"
+    Engine["fixedDeltatime"] = false
 end
 
 return Bad
@@ -60,8 +71,17 @@ BAD_LUA_EXPECTED = {
     11: "param-type-mismatch",  # string where a key code goes
     14: "assign-type-mismatch",  # instance property: string to integer
     16: "assign-type-mismatch",  # instance property: number to Vector3
-    18: "assign-type-mismatch",  # static property through a local (not through the global
-                                 # `Engine.timeScale = ...`: see docs/mcp/guide/editor-integration.md)
+    18: "assign-type-mismatch",  # static property through a local
+    # static properties through the global class table (the stubs' LuaLS plugin, see
+    # docs/mcp/guide/editor-integration.md)
+    19: "assign-type-mismatch",  # number <- string
+    20: "assign-type-mismatch",  # boolean <- integer
+    21: "assign-type-mismatch",  # integer constant <- table
+    22: "assign-type-mismatch",  # number <- boolean
+    23: "assign-type-mismatch",  # Vector3 constant <- integer
+    24: "assign-type-mismatch",  # string <- integer
+    25: "assign-type-mismatch",  # Scene <- string
+    26: "assign-type-mismatch",  # number <- boolean, indexed with a string
 }
 
 # Typical script code that must check clean: an annotated script module, events, physics
@@ -86,6 +106,18 @@ function Good:init()
     button:getButtonComponent().onPress = function() Log.print("pressed") end
     Engine.timeScale = 0.5
     Engine.fixedDeltatime = 1 / 60
+    Engine.useDegrees = false
+    Engine.mouseCursor = CursorType.CROSSHAIR
+    Engine.scene = Engine.getScene()
+    AudioSystem.globalVolume = self.speed * 0.1
+    SceneManager.loadingDelay = 0.5
+    Engine.timeScale, Engine.fixedDeltatime = 1, 0
+    Engine["timeScale"] = Engine.timeScale * 0.5
+    Engine.onViewLoaded = function() Log.print("view") end
+    Engine.gameDebugFlag = true  -- a field of the game's own on an engine table
+    Log.print(tostring(Engine.gameDebugFlag))
+    GameState = { level = 1 }  -- the game's own global table
+    GameState.level = "boss"
     Log.print("frames " .. tostring(Engine.frameCount) .. " " .. tostring(Engine.gameTime))
 end
 
@@ -198,10 +230,11 @@ def clangd_check(path: Path) -> tuple[int, list[str]]:
 
 
 def lua_workspace(ed: Editor, scripts: dict[str, str] | None = None, dirs: list[Path] | None = None) -> Path:
-    """A scratch workspace with the project's stubs and .luarc.json plus the given scripts."""
+    """A scratch workspace with the project's stubs, LuaLS plugin and .luarc.json plus the given scripts."""
     ws = Path(tempfile.mkdtemp(prefix="jasper-luals-")) / "ws"
     (ws / LUA_DIR).parent.mkdir(parents=True)
     shutil.copytree(ed.project / LUA_DIR, ws / LUA_DIR)
+    shutil.copy(ed.project / LUALS_PLUGIN, ws / LUALS_PLUGIN)
     shutil.copy(ed.project / ".luarc.json", ws / ".luarc.json")
     for i, d in enumerate(dirs or []):
         shutil.copytree(d, ws / f"src{i}")
@@ -236,6 +269,15 @@ async def test_files_written(ed: Editor):
     luarc = json.loads((proj / ".luarc.json").read_text())
     ed.check_eq(luarc.get("runtime.version"), "Lua 5.4", ".luarc.json runtime.version")
     ed.check(LUA_DIR in luarc.get("workspace.library", []), f".luarc.json workspace.library: {luarc!r}")
+    ed.check_eq(luarc.get("runtime.plugin"), LUALS_PLUGIN, ".luarc.json runtime.plugin")
+    plugin = (proj / LUALS_PLUGIN).read_text() if (proj / LUALS_PLUGIN).exists() else ""
+    ed.check("function OnTransformAst(" in plugin, f"{LUALS_PLUGIN} is not the LuaLS plugin: {plugin[:300]!r}")
+    statics = {m.group(1): (m.group(2) or m.group(3)).split()
+               for m in re.finditer(r'^    (\w+) = (?:"([^"]*)"|\[\[(.*?)\]\]),$', plugin, re.M | re.S)}
+    for cls, field in (("Engine", "timeScale"), ("Input", "KEY_SPACE"), ("AudioSystem", "globalVolume"), ("Vector3", "UNIT_X")):
+        ed.check(field in statics.get(cls, []), f"{cls}.{field} not in the plugin's static fields: {sorted(statics)}")
+    ed.check("CameraType" not in statics and "width" not in statics.get("Sprite", []),
+             "only static fields of classes (no enums, no instance fields)")
 
     clangd = (proj / ".clangd").read_text()
     ed.check(clangd.startswith("# Generated by JasperEngine Editor."), ".clangd marker line")
@@ -322,6 +364,7 @@ async def test_luarc_and_clangd_respect_user_files(ed: Editor):
         ed.check_eq(luarc["workspace"]["checkThirdParty"], False, "user key kept")
         ed.check_eq(luarc["diagnostics"], {"disable": ["lowercase-global"]}, "user diagnostics kept")
         ed.check_eq(luarc.get("runtime.version"), "Lua 5.4", "runtime.version added")
+        ed.check_eq(luarc.get("runtime.plugin"), LUALS_PLUGIN, "runtime.plugin added")
         ed.check_eq((proj / ".clangd").read_text(), user_clangd, "user .clangd unchanged")
         ed.check((proj / CLANGD_DB).exists(), "compile database still written")
         ed.check((proj / LUA_DIR / "Vector3.lua").exists(), "stubs written")
@@ -335,6 +378,47 @@ async def test_luarc_and_clangd_respect_user_files(ed: Editor):
         await ed.call("open_project", path=str(ed.project), unsaved="discard")
         await ed.call("open_project", path=str(proj), unsaved="discard")
         ed.check(not (proj / LUA_DIR / "NoLongerBound.lua").exists(), "stale stub not removed")
+    finally:
+        await ed.call("open_project", path=str(ed.project), unsaved="discard")
+        shutil.rmtree(proj.parent, ignore_errors=True)
+
+
+USER_PLUGIN = """-- the user's own lua-language-server plugin: USER_PLUGIN_MACRO(...) reads as print(...)
+function OnSetText(uri, text)
+    local diffs = {}
+    for s, f in text:gmatch('()USER_PLUGIN_MACRO()') do
+        diffs[#diffs + 1] = { start = s, finish = f - 1, text = 'print' }
+    end
+    return diffs
+end
+"""
+
+
+async def test_luarc_keeps_user_plugin(ed: Editor):
+    """A .luarc.json with a plugin of its own (nested keys): the engine's plugin is listed first,
+    and both run (the user's rewrites a macro, the engine's reports a wrong-type static field)."""
+    proj = Path(tempfile.mkdtemp(prefix="jasper-userplugin-")) / "UserPlugin"
+    shutil.copytree(ed.project, proj, ignore=shutil.ignore_patterns(".jasperengine", ".luarc.json", ".clangd"))
+    (proj / ".luarc.json").write_text('{ "runtime": { "version": "Lua 5.4", "plugin": "luals/my-plugin.txt" } }\n')
+    (proj / "luals").mkdir()
+    (proj / "luals/my-plugin.txt").write_text(USER_PLUGIN)
+    script = proj / "scripts/PluginProbe.lua"
+    script.write_text('USER_PLUGIN_MACRO("macro")\nEngine.timeScale = "fast"\nEngine.timeScale = 0.5\n')
+    try:
+        await ed.call("open_project", path=str(proj), unsaved="discard")
+        await wait_tooling(ed)
+        luarc = json.loads((proj / ".luarc.json").read_text())
+        ed.check_eq(luarc["runtime"], {"version": "Lua 5.4", "plugin": [LUALS_PLUGIN, "luals/my-plugin.txt"]},
+                    "runtime.plugin: the engine's first, the user's kept")
+        ed.check("runtime.plugin" not in luarc, f"nested style kept: {luarc!r}")
+        before = (proj / ".luarc.json").read_text()
+        if find_tool("lua-language-server"):
+            diags = [d for d in luals_check(proj) if d["file"].endswith("PluginProbe.lua")]
+            ed.check_eq([(d["line"], d["code"]) for d in diags], [(2, "assign-type-mismatch")],
+                        f"both plugins ran: {diags}")
+        await ed.call("open_project", path=str(ed.project), unsaved="discard")
+        await ed.call("open_project", path=str(proj), unsaved="discard")
+        ed.check_eq((proj / ".luarc.json").read_text(), before, ".luarc.json rewritten without a change")
     finally:
         await ed.call("open_project", path=str(ed.project), unsaved="discard")
         shutil.rmtree(proj.parent, ignore_errors=True)

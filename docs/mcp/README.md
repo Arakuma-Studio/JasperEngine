@@ -174,7 +174,8 @@ Agents edit code with their own tools, not through MCP file tools:
 - The engine API is in `.jasperengine/engine-api/`: C++ headers, and Lua API stubs (LuaLS
   annotations) in `.jasperengine/engine-api/lua/`, written whenever the editor creates or
   opens a project. lua-language-server reads the generated `.luarc.json` (whose
-  `workspace.library` is the stubs folder); clangd reads the generated `.clangd`, which points
+  `workspace.library` is the stubs folder, and `runtime.plugin` the plugin that checks
+  assignments such as `Engine.timeScale = 0.5`); clangd reads the generated `.clangd`, which points
   it at `.jasperengine/clangd/compile_commands.json`. A Lua script whose module is declared
   `---@class <Name> : ScriptInstance` (the editor's templates do it) gets `self` typed,
   properties included: the editor writes each script's class from its `properties` table
