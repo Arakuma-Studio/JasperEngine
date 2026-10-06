@@ -1,6 +1,6 @@
 # Performance audit
 
-This audit targets repeated CPU work in the native engine, editor, and MCP tools. Measurements compare production code at `0da9f6ab81b25880ef6b51341f80c00eabead4b0` with the changes in this commit. The benchmarks isolate the affected operations; their speedups do not represent whole-frame FPS improvements.
+This audit targets repeated CPU work in the native engine, editor, and MCP tools. Measurements compare production code at `0da9f6ab81b25880ef6b51341f80c00eabead4b0` with implementation commit `6d719930`. The benchmarks isolate the affected operations; their speedups do not represent whole-frame FPS improvements.
 
 ## Critical paths
 
@@ -64,7 +64,7 @@ python3 tools/performance/run-string-utils.py --baseline "$BASELINE" --allocatio
 
 The dedicated correctness fixtures compare old and new results, including randomized hierarchy text and JSON, entity mutations and duplicate matches, malformed UTF-8, console rollover and filtering, visible highlight rectangles, and 480 instance-view cases. These checks passed with AddressSanitizer and UndefinedBehaviorSanitizer. For sanitizer reproduction, add `--sanitize` to the path, registry, instance-view, and MCP commands; add `--sanitize --check-only` to console and text-search commands; use `--check` for StringUtils. UTF-8 checks cover every Unicode scalar encoding, all 65,536 two-byte combinations, and 10,000 random byte strings. Linux executes the native wide-character branch; the UTF-16 branch is unchanged.
 
-The stable-source Linux Release editor and standalone sample build passed with `JOBS=4 tools/build.sh linux`. Independent MCP stdio/HTTP smoke checks passed, including schema validation for all 129 tools, session handling, SSE, undo/redo, and grouped batches. The smoke test's stale project-summary assertion was corrected to check the existing `scenes_in_build` field; the production API did not change.
+The stable-source Linux Release editor and standalone sample build passed with `JOBS=4 tools/build.sh linux`. Independent MCP stdio/HTTP smoke checks passed, including schema validation for all 129 tools, session handling, SSE, undo/redo, and grouped batches. The smoke test's stale project-summary assertion was corrected to check the existing `scenes_in_build` field; the production API did not change. The crash-reporting test now holds simulation between calls so that its expected Lua error occurs during the wait it checks, rather than racing ahead of the assertion.
 
 The tracked `tools/fixtures/runtime-shaders` project passed a live Play smoke test: instanced, skinned, custom, depth, and fog shader variants compiled with no failures or pending work. A captured Game view showed the scene geometry and all five instanced rings. This is rendering correctness evidence, not a GPU performance measurement.
 
@@ -74,7 +74,9 @@ The full live MCP suite uses a preexisting local TappyPlane project at `build/pe
 JASPER_FIXTURE="$PWD/build/performance/integration/tappy" tools/mcp/run-tests.sh -j 3
 ```
 
-The final run completed with **156 passed, 0 failed, and 3 skipped in 641.2 seconds**. The skips are opt-in desktop build/player tests (two) and a C++ build-error Play test (one). The ordinary C++ script compilation test did run and pass. The suite also exercised scene save/reload, hierarchy queries, UI, physics initialization, screenshot capture, and concurrent transport stress. Logs and the runtime-shader screenshot are retained under `build/performance/integration/` in this workspace.
+The final supervised run completed with **156 passed, 0 failed, and 3 skipped in 478.2 seconds**. Both the directly captured Python runner status and the outer command status were **0** (`mcp-verified.exit` and `mcp-verified.log`). The skips are opt-in desktop build/player tests (two) and a C++ build-error Play test (one). The ordinary C++ script compilation test did run and pass. The suite also exercised scene save/reload, hierarchy queries, UI, physics initialization, screenshot capture, and concurrent transport stress. Logs and the runtime-shader screenshot are retained under `build/performance/integration/` in this workspace.
+
+[GitHub CI for the implementation commit](https://github.com/JasperRaccoon/JasperEngine/actions/runs/37444069000) could not start its Linux, Web, or Android jobs: GitHub reported failed account payments or a spending-limit restriction. No build steps ran there. The completed build verification above is local Linux verification; it does not claim cross-platform CI success.
 
 ## Deferred changes
 

@@ -403,20 +403,24 @@ async def test_restart_and_job_mode(ed: Editor):
 
 
 async def test_crash_is_reported(ed: Editor):
-    await ed.call("play", action="start")
-    # an engine event whose Lua handler errors: the editor's crash guard stops play
-    await ed.call("eval_lua", code=(
-        "local t = {__name = 'McpCrashProbe'}\n"
-        "function t:onUpdate() error('mcp crash probe') end\n"
-        "RegisterEngineEvent(t, 'onUpdate')"))
-    r = await ed.call_raw("wait", {"seconds": 5})
-    ed.check(r.is_error, f"wait should fail when play crashes: {r.text}")
-    ed.check_eq(r.structured["reason"], "play_ended", "reason")
-    ed.check("mcp crash probe" in r.text, f"crash error not reported: {r.text}")
-    st = await ed.call("get_play_state")
-    ed.check_eq(st["state"], "stopped", "crash stops play")
-    ed.check_eq(st["last_session"]["ended"], "crashed", f"last session: {st['last_session']}")
-    ed.check("mcp crash probe" in st["last_session"].get("crash", ""), "crash message kept")
+    # Hold between calls so the handler cannot crash before wait begins observing play.
+    await ed.call("play", action="start", auto_pause=True)
+    try:
+        # an engine event whose Lua handler errors: the editor's crash guard stops play
+        await ed.call("eval_lua", code=(
+            "local t = {__name = 'McpCrashProbe'}\n"
+            "function t:onUpdate() error('mcp crash probe') end\n"
+            "RegisterEngineEvent(t, 'onUpdate')"))
+        r = await ed.call_raw("wait", {"seconds": 5})
+        ed.check(r.is_error, f"wait should fail when play crashes: {r.text}")
+        ed.check_eq(r.structured["reason"], "play_ended", "reason")
+        ed.check("mcp crash probe" in r.text, f"crash error not reported: {r.text}")
+        st = await ed.call("get_play_state")
+        ed.check_eq(st["state"], "stopped", "crash stops play")
+        ed.check_eq(st["last_session"]["ended"], "crashed", f"last session: {st['last_session']}")
+        ed.check("mcp crash probe" in st["last_session"].get("crash", ""), "crash message kept")
+    finally:
+        await ed.call("play", action="set", auto_pause=False)
 
 
 async def test_lua_script_error_file(ed: Editor):
