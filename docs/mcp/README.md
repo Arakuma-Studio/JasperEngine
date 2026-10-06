@@ -171,9 +171,15 @@ the directory where you start the client, so start it at the repository root (or
 Agents edit code with their own tools, not through MCP file tools:
 
 - `editor_status` returns the project's absolute path (`project.path`).
-- The engine API is in `.jasperengine/engine-api/` (C++ headers, plus Lua API stubs in its
-  `lua/` folder when the project has them). lua-language-server and clangd work with the
-  generated `.luarc.json` and `compile_commands.json`.
+- The engine API is in `.jasperengine/engine-api/`: C++ headers, and Lua API stubs (LuaLS
+  annotations) in `.jasperengine/engine-api/lua/`, written whenever the editor creates or
+  opens a project. lua-language-server reads the generated `.luarc.json` (whose
+  `workspace.library` is the stubs folder); clangd reads the generated `.clangd`, which points
+  it at `.jasperengine/clangd/compile_commands.json`. A Lua script whose module is declared
+  `---@class <Name> : ScriptInstance` (the editor's templates do it) gets `self` typed,
+  properties included: the editor writes each script's class from its `properties` table
+  (`.jasperengine/engine-api/lua/scripts/<Name>.lua`). See
+  [guide/editor-integration.md](guide/editor-integration.md).
 - **Changes are picked up automatically.** Before every tool call the server looks for Lua,
   C++, shader, `.material` and image files changed on disk since the last call (a stat scan
   of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
@@ -187,9 +193,12 @@ Agents edit code with their own tools, not through MCP file tools:
   the tools. `sync_files` forces a full
   rescan; `editor_status.auto_sync` shows the scan's size and cost.
 - Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
-  `jasperengine-editor check` from a shell (see [checks.md](checks.md)).
-- `write_file` / `read_file` are for clients without access to the project folder (an HTTP
-  client on another machine).
+  `jasperengine-editor check` from a shell (see [checks.md](checks.md)). As a Claude Code
+  PostToolUse hook (or Codex hook), `jasperengine-editor check --project "$CLAUDE_PROJECT_DIR" --hook`
+  checks every file the agent edits and feeds the errors back to it: the settings snippet is in
+  [checks.md](checks.md#agent-hooks).
+- `write_file` / `read_file` / `search_files` are for clients without access to the project
+  folder (an HTTP client on another machine).
 
 A scan checks folders and code files whole on every call (up to 2000 of each) and images in
 rotation within a ~2 ms budget, so it costs about 0.1 ms per call on a small project and a few

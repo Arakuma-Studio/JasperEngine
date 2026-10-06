@@ -147,6 +147,11 @@ namespace jasperengine::editor {
         bool renameSelectPending;
         std::string fileBeingRenamed;
 
+        // The Lua script Create > Lua Script just wrote (file name in currentPath, its text):
+        // renamed while still untouched, its module takes the new name (renameNewLuaScript)
+        std::string newLuaScriptFile;
+        std::string newLuaScriptText;
+
         bool isCreatingNewDirectory;
 
         std::filesystem::file_time_type lastWriteTime;
@@ -260,6 +265,7 @@ namespace jasperengine::editor {
         void handleNewDirectory();
         void startRename(const std::string& fileName);
         void handleRename();
+        void renameNewLuaScript(const fs::path& file, const std::string& newStem);
         void copySelectedFiles(bool cut);
         void pasteFiles(const fs::path& targetDirectory);
         void importExternalPaths(const std::vector<std::string>& sourcePaths);

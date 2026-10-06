@@ -4,12 +4,13 @@ Every JasperEngine project carries the engine API on disk, so a coding agent (Cl
 Codex) or an editor works on scripts with its own tools: grep, file reads, and the
 lua-language-server and clangd language servers. Nothing here needs the MCP server.
 
-The editor writes these files when it opens a project and again on every build (Play,
-`compile_scripts`), so they always match the engine of the editor that last opened it:
+The editor writes these files when it creates or opens a project and again on every build
+(Play, `compile_scripts`), so they always match the engine of the editor that last opened it:
 
 | File | What it is |
 |---|---|
 | `.jasperengine/engine-api/lua/*.lua` | Lua API stubs (LuaLS / EmmyLua annotations) generated from the engine's Lua bindings: one file per class (`Vector3.lua`, `Sprite.lua`, `Engine.lua`...) and per enum (`CameraType.lua`), plus `Globals.lua` (`RegisterEngineEvent`, `RegisterEvent`, `NULL_ENTITY`, the Engine event names) and `Script.lua` (the script module contract: `ScriptInstance`, `properties` entries). |
+| `.jasperengine/engine-api/lua/scripts/<Name>.lua` | The class of each Lua script of the project (`<Name>` = its file name): `---@class <Name> : ScriptInstance` with a `---@field` per entry of its `properties` table, typed as the engine sets it on `self` (`float` -> `number`, `Sprite` -> `Sprite`, `Prefab` -> `PrefabAsset`, `entity` -> `ScriptInstance\|EntityHandle`, another script's name -> that script's class). Read by running the script's top level in an isolated Lua state, as `jasperengine-editor check` does. Rewritten on open, when a script is saved in the code editor or created / renamed in the Project window, and when the editor picks up a changed script (before every MCP tool call, `sync_files`). Fields the script declares itself (`---@field`) are left out; a script that does not load keeps its last class; a script named like an engine class (`Camera.lua`) gets none. |
 | `.luarc.json` | lua-language-server settings: `runtime.version` (the engine's Lua, 5.4) and `workspace.library` pointing at the stubs. An existing file is merged into: only a missing library entry or Lua version is added, other keys are kept. |
 | `.jasperengine/engine-api/` | C++ engine API headers (the snapshot C++ scripts compile against). |
 | `.jasperengine/clangd/compile_commands.json` | Compile commands of every C++ source of the project: the C++ standard from Project Settings, the definitions and include directories of the plugin build. Absolute paths, rewritten on open and build (a moved project is fixed the next time the editor opens it). `engine_api.cpp` next to it includes the whole engine API so clangd indexes it. |
@@ -53,13 +54,14 @@ It reports unknown globals, unknown methods and fields of engine classes, wrong 
 types and counts, and unknown Engine event names in `RegisterEngineEvent`. An editor with the
 Lua extension (VS Code: sumneko.lua) or an agent with a Lua LSP picks `.luarc.json` up by itself.
 
-Annotate a script module as a `ScriptInstance` subclass to get checks on `self` (`self.scene`,
-`self.entity` and the properties):
+Declare a script module as its `ScriptInstance` subclass to get checks on `self` (`self.scene`,
+`self.entity` and the properties). The class name is the file name; the editor's templates
+(`create_script`, the Add Script dialog, the Project window's Create > Lua Script) write the
+line. The properties' fields come from the generated `scripts/<Name>.lua` class, so they need
+no annotation of their own (a `---@field` you write wins over the generated one):
 
 ```lua
 ---@class Player : ScriptInstance
----@field speed number
----@field target Sprite
 local Player = {
     properties = {
         { name = "speed", displayName = "Speed", type = "float", default = 5.0 },
@@ -78,7 +80,22 @@ end
 return Player
 ```
 
-Without the annotation the script still checks, but fields of `self` are untyped.
+Without the annotation the script still checks, but fields of `self` are untyped and a typo
+or a wrong method on a property (`self.target:notAMethod()`) goes unnoticed.
+
+### What it cannot check: assigning through a global class table
+
+Assigning a wrong type to an engine property is reported on an object
+(`sprite.width = "x"`, `go.position = 5`: `assign-type-mismatch`) and through a local
+(`local engine = Engine; engine.timeScale = "fast"`), but not through the global class table
+itself: `Engine.timeScale = "fast"` passes. lua-language-server (3.19) treats every assignment
+to a field of a global name (`Engine.timeScale = ...`, `Input.x = ...`) as the definition of a
+global variable typed by the assigned value (`vm/global.lua` compiles such a set as a global of
+its own, and `vm.compileByGlobal` types it by its value), so the `---@field timeScale number`
+of the class is never compared with it. No form of the stubs changes this (`---@type Engine`
+on the global, `---@class (exact)`, a typed `Engine.timeScale` declaration all leave it
+unreported); it is the language server's rule for globals. Reads are typed as usual
+(`---@type string` then `local s = Engine.timeScale` is reported).
 
 ## C++: clangd
 

@@ -70,6 +70,35 @@ async def test_create_lua_script_and_properties(ed: Editor):
     await ed.call("create_script", kind="lua", name="Templated", expect_error=True)  # exists
 
 
+async def test_lua_template_typed_class(ed: Editor):
+    """The Lua template declares its module as a ScriptInstance subclass with a field per
+    property (typed self for lua-language-server); properties still parse and it plays."""
+    ed.require_tools("create_script", "list_scripts", "play", "wait", "read_console")
+    eid = await make_entity(ed, "TypedHost")
+    made = await ed.call("create_script", kind="lua", name="TypedTpl", entity=eid)
+    text = (ed.project / made["path"]).read_text()
+    head = text.split("local TypedTpl = {", 1)[0]
+    for line in ("---@class TypedTpl : ScriptInstance", "---@field speed number", "---@field isActive boolean"):
+        ed.check(line + "\n" in head, f"template should declare `{line}` before the module table: {text[:400]}")
+    ed.check_eq(made["problems"], [], "problems of the template")
+    props = {p["name"]: p["value"] for p in made["script"]["properties"]}
+    ed.check_eq(props, {"speed": 5.0, "isActive": True}, "template properties parsed")
+
+    await ed.call("save_scene")
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    r = await ed.call_raw("play", {"action": "start", "timeout_seconds": 300})
+    ed.check(not r.is_error, f"play failed: {r.text[:500]}")
+    try:
+        await ed.call("wait", frames=150)
+        log = await ed.call("read_console", since=cursor, limit=1000)
+    finally:
+        await ed.call("play", action="stop")
+    msgs = [e["message"] for e in log["entries"]]
+    ed.check(any("] Counter: 60" in m for m in msgs), f"the template's onUpdate did not log: {msgs[-20:]}")
+    errors = [e["message"] for e in log["entries"] if e["type"] == "error"]
+    ed.check(not errors, f"errors while playing the template: {errors}")
+
+
 SPAWNER = """local Spawner = {
     properties = {
         { name = "brick", displayName = "Brick", type = "Prefab" },

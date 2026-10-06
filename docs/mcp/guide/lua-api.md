@@ -27,6 +27,7 @@ name (`Player.lua` -> `Player`).
 
 ```lua
 -- Player.lua
+---@class Player : ScriptInstance
 local Player = {
     properties = {
         { name = "speed",   displayName = "Speed",   type = "float", default = 200.0 },
@@ -54,8 +55,14 @@ Inspector will show; `set_script_properties` sets them on a GameObject. Edit scr
 own file tools: before your next tool call the editor reloads the code editor, re-parses
 `properties` (new entries appear in the Inspector) and that call's result lists the file in
 `external_changes` with syntax errors and their line numbers (during play: once play stops).
-Runtime errors only appear when playing: read the Console. Lua API stubs for
-lua-language-server, when the project has them, are in `.jasperengine/engine-api/lua/`.
+Runtime errors only appear when playing: read the Console.
+
+The `---@class Player : ScriptInstance` line (the editor's templates write it; `Player` = the
+file name) is a LuaLS annotation, a comment to the engine: it lets lua-language-server type
+`self` (`self.scene`, `self.entity` and every property, whose types the editor reads from the
+`properties` table) and report a typo such as `self.entiy`. The Lua API stubs it checks
+against are in `.jasperengine/engine-api/lua/`, written whenever the editor creates or opens
+the project (see [editor-integration.md](editor-integration.md)).
 
 ### 1.1 Lifecycle
 
@@ -376,7 +383,10 @@ Constants (static properties, integers, no parentheses):
 
 `Log.print(s)`, `Log.verbose(s)`, `Log.debug(s)`, `Log.warn(s)`, `Log.error(s)`.
 Pass ONE string: `Log.print("score " .. tostring(n))` or `Log.print(string.format("%d", n))`.
-Plain Lua `print` writes to stdout, not the engine log; prefer `Log.*`.
+Plain Lua `print(...)` goes to the engine log too, as an info line (the editor's Console, in
+Play and at edit time; a game's platform log in an exported build): it takes any number of
+values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
+levels.
 
 ### 2.4 UserSettings (static, persistent key/value)
 
@@ -535,13 +545,15 @@ No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
 | Fields (rw) | `x y` | `x y z` | `x y z w` |
 | Constants | `ZERO UNIT_X UNIT_Y NEGATIVE_UNIT_X NEGATIVE_UNIT_Y UNIT_SCALE` | `ZERO UNIT_X UNIT_Y UNIT_Z UNIT_SCALE` | `ZERO UNIT_X UNIT_Y UNIT_Z UNIT_W UNIT_SCALE` |
 | `+ -` (vector) | yes | yes | yes |
-| `*` | `v * number`, `v * v` | `v * number`, `v * v` | `v * number`, `v * v` |
-| `/` | `v / number`, `v / v` | `v / v` ONLY (no scalar: use `v * (1/s)`) | `v / number`, `v / v` |
-| unary `-`, `==`, `<`, `tostring` | yes | yes | yes |
+| `*` | `v * number`, `number * v`, `v * v` | `v * number`, `number * v`, `v * v` | `v * number`, `number * v`, `v * v` |
+| `/` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` |
+| unary `-`, `==`, `<`, `<=`, `>`, `>=`, `tostring` | yes | yes | yes |
 | Methods | `length() squaredLength() distance(v) squaredDistance(v) dotProduct(v) normalize() normalized() normalizeL() midPoint(v) makeFloor(v) makeCeil(v) perpendicular() crossProduct(v) normalizedCopy() reflect(n) swap(v) isValid()` | `length() squaredLength() dotProduct(v) absDotProduct(v) distance(v) squaredDistance(v) normalize() normalized() normalizeL() crossProduct(v) midPoint(v) makeFloor(v) makeCeil(v) perpendicular() reflect(n) isValid()` | `dotProduct(v) divideByW() swap(v) isNaN() isValid()` |
 
 Constants are static properties returning copies: `Vector3.ZERO` (no parentheses).
-`number * vector` (number on the left) is not supported: write `vector * number`.
+`v * v`, `v / v` and `number / v` are component-wise. `<` is true when every component is
+smaller, `<=` when every component is smaller or equal (so `a < b` and `b < a` can both be
+false). `==` with a value of another class is `false`. There is no `v + number`.
 
 ### 3.2 Quaternion
 
@@ -554,7 +566,7 @@ Constants are static properties returning copies: `Vector3.ZERO` (no parentheses
 | `Quaternion(angle, axisVector3)` | angle-axis |
 | `Quaternion(Matrix3)`, `Quaternion(Matrix4)`, `Quaternion(xAxis, yAxis, zAxis)` | |
 | `Quaternion.IDENTITY` | static |
-| fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector; `+ - unary- == tostring` | |
+| fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector, `* number` / `number *` scales; `+ - unary- == tostring` | |
 | methods | `fromEulerAngles(x, y, z, order)`, `getEulerAngles(order)`, `fromAngle(a)` (Z axis), `fromAngleAxis(a, axis)`, `fromAxes(...)`, `fromRotationMatrix(m)`, `getRotationMatrix()`, `xAxis() yAxis() zAxis()`, `dot(q) norm() inverse() unitInverse() exp() log()`, `normalize() normalized() normalizeL()`, `getRoll() getPitch() getYaw()` (default units) |
 | static | `Quaternion.slerp(t, a, b [, shortestPath])`, `Quaternion.nlerp(t, a, b [, shortestPath])`, `Quaternion.squad(...)`, `Quaternion.slerpExtraSpins(...)`, `Quaternion.lookRotation(forward [, up])` |
 
@@ -566,7 +578,7 @@ Constants are static properties returning copies: `Vector3.ZERO` (no parentheses
 |---|---|
 | `Rect(x, y, w, h)` | rw `x y width height`; `contains(...)`, `setRect(...)`, `fitOnRect(r)`, `getVector()`, `isZero()`, `isNormalized()` |
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
-| `Matrix3`, `Matrix4` | `+ - * == tostring`; `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
+| `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
 
 ---
@@ -975,10 +987,9 @@ Rigidbody wrappers by index.
 11. **Teleporting physics bodies**: set the body (`rb2d.position = Vector2(...)`,
     `rb.position = Vector3(...)`) rather than the GameObject transform; also reset
     `linearVelocity` if needed.
-12. **Vector arithmetic**: put the vector on the left (`v * 2`, not `2 * v`). `Vector3`
-    has no `vector / number`; use `v * (1 / n)`. Use the bound `Vector3(...)` constructor,
-    not plain tables, when an API needs a vector (plain tables are only for `default`
-    values in `properties`).
+12. **Vector arithmetic**: `v * 2`, `2 * v`, `v / 2` and `v + w` work; `v + 1` does not (no
+    vector + number). Use the bound `Vector3(...)` constructor, not plain tables, when an API
+    needs a vector (plain tables are only for `default` values in `properties`).
 13. **Event methods must exist before registering**, and the name passed to
     `RegisterEngineEvent` must be an Engine event name (`"onUpdate"`, not `"update"`).
     Define the handler on the module table (`function M:onUpdate() ... end`).

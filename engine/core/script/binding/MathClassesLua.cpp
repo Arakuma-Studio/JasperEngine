@@ -5,6 +5,8 @@
 
 #include "lua.hpp"
 
+#include <cassert>
+
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
 
@@ -40,6 +42,72 @@ static T constantCopy(){
     return Value;
 }
 
+// Operators. Bind them with exact signatures (luabridge::overload or a lambda), never with a
+// C-style cast: a cast to a signature the class does not declare still compiles and calls the
+// function with arguments of the wrong type (generate_lua_stubs.py reports such casts).
+
+// __eq: Lua calls it for any two userdata (`v == q`, `v2 == v3`); a value of another class is
+// not equal (a typed argument would raise an error instead). Compares a copy: some classes
+// (Rect) declare a non-const operator==.
+template <class T>
+static bool equalsLua(const T& value, const luabridge::LuaRef& other){
+    if (!other.isInstance<T>())
+        return false;
+    const auto otherValue = other.cast<T>();
+    T copy(value);
+    return otherValue && copy == *otherValue;
+}
+
+// `number <op> value` (2 * v, 1 / v). Lua calls the metamethod of whichever operand has one
+// with the operands in order, so the number comes first; LuaBridge's overloads all take the
+// object first. addNumberFirst wraps a registered metamethod (in the class and the const class
+// metatables): a number first operand goes to Op(number, value), anything else to the
+// overloads. The stubs need nothing: LuaLS reads `---@operator mul(number)` both ways round.
+template <class T>
+static T numberTimes(float number, const T& value){
+    return value * number;
+}
+
+template <class T>
+static T numberDividedBy(float number, const T& value){
+    return number / value;
+}
+
+static Vector3 numberDividedByVector3(float number, const Vector3& value){
+    return Vector3(number / value.x, number / value.y, number / value.z);
+}
+
+template <class T, T (*Op)(float, const T&)>
+static int numberFirstMetamethod(lua_State* L){
+    if (lua_type(L, 1) == LUA_TNUMBER) {
+        const auto number = luabridge::Stack<float>::get(L, 1);
+        const auto value = luabridge::Stack<T>::get(L, 2);
+        if (number && value) {
+            const auto pushed = luabridge::Stack<T>::push(L, Op(*number, *value));
+            if (!pushed)
+                return luaL_error(L, "%s", pushed.message().c_str());
+            return 1;
+        }
+    }
+    // the class's own metamethod (upvalue 1), with the same arguments
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);
+    return lua_gettop(L);
+}
+
+template <class T, T (*Op)(float, const T&)>
+static void addNumberFirst(lua_State* L, const char* metamethod){
+    for (const void* key : {luabridge::detail::getClassRegistryKey<T>(), luabridge::detail::getConstRegistryKey<T>()}) {
+        lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+        lua_getfield(L, -1, metamethod);
+        assert(lua_isfunction(L, -1));
+        lua_pushcclosure(L, &numberFirstMetamethod<T, Op>, 1);
+        lua_setfield(L, -2, metamethod);
+        lua_pop(L, 1);
+    }
+}
+
 void LuaBinding::registerMathClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
@@ -70,8 +138,10 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("x", &Vector2::x, &Vector2::x)
         .addProperty("y", &Vector2::y, &Vector2::y)
         .addFunction("__tostring", &Vector2::toString)
-        .addFunction("__eq", &Vector2::operator==)
+        .addFunction("__eq", &equalsLua<Vector2>)
         .addFunction("__lt", &Vector2::operator<)
+        .addFunction("__le", [](const Vector2& v, const Vector2& other) -> bool {
+            return v.x <= other.x && v.y <= other.y; })
         .addFunction("__sub", (Vector2 (Vector2::*)(const Vector2&) const)&Vector2::operator-)
         .addFunction("__add", (Vector2 (Vector2::*)(const Vector2&) const)&Vector2::operator+)
         .addFunction("__div", 
@@ -117,11 +187,17 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("y", &Vector3::y, &Vector3::y)
         .addProperty("z", &Vector3::z, &Vector3::z)
         .addFunction("__tostring", &Vector3::toString)
-        .addFunction("__eq", &Vector3::operator==)
+        .addFunction("__eq", &equalsLua<Vector3>)
         .addFunction("__lt", &Vector3::operator<)
+        .addFunction("__le", [](const Vector3& v, const Vector3& other) -> bool {
+            return v.x <= other.x && v.y <= other.y && v.z <= other.z; })
         .addFunction("__sub", (Vector3 (Vector3::*)(const Vector3&) const)&Vector3::operator-)
         .addFunction("__add", (Vector3 (Vector3::*)(const Vector3&) const)&Vector3::operator+)
-        .addFunction("__div", (Vector3 (Vector3::*)(const Vector3&) const)&Vector3::operator/)
+        .addFunction("__div",
+            luabridge::overload<float>(&Vector3::operator/),
+            // component-wise, as __mul (Vector2 and Vector4 declare it, Vector3 does not)
+            [](const Vector3& v, const Vector3& divisor) -> Vector3 {
+                return Vector3(v.x / divisor.x, v.y / divisor.y, v.z / divisor.z); })
         .addFunction("__mul", 
             luabridge::overload<float>(&Vector3::operator*), // need float operator first to fix estrange error in Emscripten
             luabridge::overload<const Vector3&>(&Vector3::operator*))
@@ -163,8 +239,10 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("z", &Vector4::z, &Vector4::z)
         .addProperty("w", &Vector4::w, &Vector4::w)
         .addFunction("__tostring", &Vector4::toString)
-        .addFunction("__eq", &Vector4::operator==)
+        .addFunction("__eq", &equalsLua<Vector4>)
         .addFunction("__lt", &Vector4::operator<)
+        .addFunction("__le", [](const Vector4& v, const Vector4& other) -> bool {
+            return v.x <= other.x && v.y <= other.y && v.z <= other.z && v.w <= other.w; })
         .addFunction("__sub", (Vector4 (Vector4::*)(const Vector4&) const)&Vector4::operator-)
         .addFunction("__add", (Vector4 (Vector4::*)(const Vector4&) const)&Vector4::operator+)
         .addFunction("__div", 
@@ -189,7 +267,7 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("width", &Rect::getWidth, &Rect::setWidth)
         .addProperty("height", &Rect::getHeight, &Rect::setHeight)
         .addFunction("__tostring", &Rect::toString)
-        .addFunction("__eq", &Rect::operator==)
+        .addFunction("__eq", &equalsLua<Rect>)
         .addFunction("getVector", &Rect::getVector)
         .addFunction("setRect", 
             luabridge::overload<Rect>(&Rect::setRect),
@@ -227,10 +305,13 @@ void LuaBinding::registerMathClasses(lua_State *L){
                 float, float, float, 
                 float, float, float)>()
         .addFunction("__tostring", &Matrix3::toString)
-        .addFunction("__eq", &Matrix3::operator==)
+        .addFunction("__eq", &equalsLua<Matrix3>)
         .addFunction("__sub", (Matrix3 (Matrix3::*)(const Matrix3&) const)&Matrix3::operator-)
         .addFunction("__add", (Matrix3 (Matrix3::*)(const Matrix3&) const)&Matrix3::operator+)
-        .addFunction("__mul", (Matrix3 (Matrix3::*)(const Matrix3&) const)&Matrix3::operator*)
+        .addFunction("__mul",
+            luabridge::overload<float>(&Matrix3::operator*),
+            luabridge::overload<const Vector3&>(&Matrix3::operator*),
+            luabridge::overload<const Matrix3&>(&Matrix3::operator*))
         .addFunction("row", &Matrix3::row)
         .addFunction("column", &Matrix3::column)
         .addFunction("set", &Matrix3::set)
@@ -264,10 +345,14 @@ void LuaBinding::registerMathClasses(lua_State *L){
                 float, float, float, float,
                 float, float, float, float)>()
         .addFunction("__tostring", &Matrix4::toString)
-        .addFunction("__eq", &Matrix4::operator==)
+        .addFunction("__eq", &equalsLua<Matrix4>)
         .addFunction("__sub", (Matrix4 (Matrix4::*)(const Matrix4&) const)&Matrix4::operator-)
         .addFunction("__add", (Matrix4 (Matrix4::*)(const Matrix4&) const)&Matrix4::operator+)
-        .addFunction("__mul", (Matrix4 (Matrix4::*)(const Matrix4&) const)&Matrix4::operator*)
+        .addFunction("__mul",
+            luabridge::overload<float>(&Matrix4::operator*),
+            luabridge::overload<const Vector3&>(&Matrix4::operator*),
+            luabridge::overload<const Vector4&>(&Matrix4::operator*),
+            luabridge::overload<const Matrix4&>(&Matrix4::operator*))
         .addFunction("row", &Matrix4::row)
         .addFunction("column", &Matrix4::column)
         .addFunction("set", &Matrix4::set)
@@ -320,10 +405,11 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addProperty("y", &Quaternion::y, &Quaternion::y)
         .addProperty("z", &Quaternion::z, &Quaternion::z)
         .addFunction("__tostring", &Quaternion::toString)
-        .addFunction("__eq", &Quaternion::operator==)
+        .addFunction("__eq", &equalsLua<Quaternion>)
         .addFunction("__sub", (Quaternion (Quaternion::*)(const Quaternion&) const)&Quaternion::operator-)
         .addFunction("__add", (Quaternion (Quaternion::*)(const Quaternion&) const)&Quaternion::operator+)
         .addFunction("__mul",
+            luabridge::overload<float>(&Quaternion::operator*),
             luabridge::overload<const Quaternion&>(&Quaternion::operator*),
             luabridge::overload<const Vector3&>(&Quaternion::operator*))
         .addFunction("__unm", (Quaternion (Quaternion::*)() const)&Quaternion::operator-)
@@ -375,7 +461,7 @@ void LuaBinding::registerMathClasses(lua_State *L){
             void(const Vector3&, const Vector3&), 
             void(const Vector3&, const Vector3&, const Vector3&)>()
         .addFunction("__unm", (Plane (Plane::*)() const)&Plane::operator-)
-        .addFunction("__eq", &Plane::operator==)
+        .addFunction("__eq", &equalsLua<Plane>)
         .addFunction("getSide", 
             luabridge::overload<const Vector3&>(&Plane::getSide),
             luabridge::overload<const Vector3&, const Vector3&>(&Plane::getSide),
@@ -606,6 +692,16 @@ void LuaBinding::registerMathClasses(lua_State *L){
 #endif
         )
         .endClass();
+
+    addNumberFirst<Vector2, &numberTimes<Vector2>>(L, "__mul");
+    addNumberFirst<Vector2, &numberDividedBy<Vector2>>(L, "__div");
+    addNumberFirst<Vector3, &numberTimes<Vector3>>(L, "__mul");
+    addNumberFirst<Vector3, &numberDividedByVector3>(L, "__div");
+    addNumberFirst<Vector4, &numberTimes<Vector4>>(L, "__mul");
+    addNumberFirst<Vector4, &numberDividedBy<Vector4>>(L, "__div");
+    addNumberFirst<Quaternion, &numberTimes<Quaternion>>(L, "__mul");
+    addNumberFirst<Matrix3, &numberTimes<Matrix3>>(L, "__mul");
+    addNumberFirst<Matrix4, &numberTimes<Matrix4>>(L, "__mul");
 
 #endif //DISABLE_LUA_BINDINGS
 }

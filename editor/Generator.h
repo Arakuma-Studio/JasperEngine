@@ -149,6 +149,14 @@ namespace jasperengine::editor {
         // pointing clangd at it. A .luarc.json is merged into, a .clangd without the generated
         // marker line is left alone.
         static void writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs);
+        // Lua script classes for lua-language-server: <internal>/engine-api/lua/scripts/<Name>.lua
+        // declares `---@class <Name> : ScriptInstance` with a `---@field` per property of the
+        // script <Name>.lua (read by running its top level in an isolated Lua state, as the
+        // `check` CLI does). A script that declares the class itself gets `self` typed. Main
+        // thread only. changedFiles empty: every script, stale classes removed; otherwise only
+        // those (absolute paths; a deleted script drops its class).
+        static void writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
+                                        const std::vector<fs::path>& changedFiles = {});
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();

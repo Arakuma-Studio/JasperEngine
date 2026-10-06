@@ -159,7 +159,7 @@ disabled entry) are skipped.
 - `set_script_properties` sets DPROPERTY values on a GameObject (`{"speed": 300}`);
   `list_scripts` shows them. A new DPROPERTY appears once the saved header is re-parsed:
   before your next tool call (listed in its `external_changes`).
-- Edit sources with your own file tools (clangd works with the generated
-  `compile_commands.json` when present; engine headers are in `.jasperengine/engine-api/`).
-  Then `compile_scripts`, or `jasperengine-editor check` from a shell. `write_file` is for
-  clients without file access.
+- Edit sources with your own file tools (clangd reads the generated `.clangd`, which points
+  it at `.jasperengine/clangd/compile_commands.json`; engine headers are in
+  `.jasperengine/engine-api/`). Then `compile_scripts`, or `jasperengine-editor check` from a
+  shell. `write_file` / `read_file` / `search_files` are for clients without file access.
