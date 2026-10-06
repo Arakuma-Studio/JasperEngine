@@ -2682,6 +2682,8 @@ def write_header(files, path):
     if old != content:
         with open(path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
+    else:
+        os.utime(path)  # the build compares its time with the inputs'
 
 
 def generate(binding_dir, core_dir):

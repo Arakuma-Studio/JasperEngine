@@ -143,6 +143,14 @@ namespace jasperengine::editor {
     public:
         // AGENTS.md at the project root: (re)writes the JasperEngine section, keeps the rest
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
+        // Files for code tools and language servers, refreshed on project open and on every
+        // build: the Lua API stubs (<internal>/engine-api/lua) with a .luarc.json pointing
+        // lua-language-server at them, and a compile database (<internal>/clangd) with a .clangd
+        // pointing clangd at it. A .luarc.json is merged into, a .clangd without the generated
+        // marker line is left alone.
+        static void writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs);
+        // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
+        static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
         ~Generator();
         // Export rebuilds the engine, so it does not need the editor's ABI.
