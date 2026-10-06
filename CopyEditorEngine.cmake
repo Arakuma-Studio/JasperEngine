@@ -14,8 +14,11 @@ file(REMOVE_RECURSE
      "${ENGINE_DEST}/workspaces/androidstudio/.gradle"
      "${ENGINE_DEST}/workspaces/androidstudio/app/build"
      "${ENGINE_DEST}/workspaces/androidstudio/app/.cxx")
+# engine/tests (test sources, fixtures, golden images) is not SDK input either; the regex
+# matches that one directory, not the tests directories of vendored libraries
 file(COPY "${ENGINE_SOURCE}/" DESTINATION "${ENGINE_DEST}"
      PATTERN ".cxx" EXCLUDE
      PATTERN ".gradle" EXCLUDE
      PATTERN "build" EXCLUDE
-     PATTERN ".git" EXCLUDE)
+     PATTERN ".git" EXCLUDE
+     REGEX "/engine/tests$" EXCLUDE)
