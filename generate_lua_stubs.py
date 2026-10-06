@@ -1155,6 +1155,8 @@ class Bindings:
                 if ns is not None:
                     ns.values.append((literal(c.args[0]), c.args[1], c))
                 elif cls is None:
+                    if chain_doc and not c.doc:
+                        c.doc = chain_doc
                     self.globals.append((literal(c.args[0]), c.args[1], c))
             elif cls is not None:
                 if c.name == 'addConstructor':
