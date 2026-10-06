@@ -155,6 +155,21 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     return ext == ".c" || ext == ".inl";
 }
 
+bool McpAutoSync::isEditorOwnedFile(const std::string& rel) {
+    // Terrain maps the editor writes from its in-memory terrain (TerrainMapFileWriter, after the
+    // edit returns): reloading them from disk would only undo edits (TerrainEditWindow's rule)
+    const size_t slash = rel.find_last_of('/');
+    const std::string name = slash == std::string::npos ? rel : rel.substr(slash + 1);
+    if (name.rfind("terrain_edit_", 0) != 0 || slash == std::string::npos) return false;
+    const std::string parent = rel.substr(0, slash);
+    const size_t parentSlash = parent.find_last_of('/');
+    return (parentSlash == std::string::npos ? parent : parent.substr(parentSlash + 1)) == "terrain_maps";
+}
+
+bool McpAutoSync::tracks(const std::string& rel) {
+    return isTrackedFile(rel) && !isEditorOwnedFile(rel);
+}
+
 bool McpAutoSync::isSkippedDirName(const std::string& name) {
     if (name.empty() || name[0] == '.') return true;   // .jasperengine, .git, .vscode, .trash...
     std::string lower = name;
@@ -233,7 +248,7 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
             if (!isSkippedDirName(name)) walkDir(child, changes, depth + 1);
             continue;
         }
-        if (!isTrackedFile(name)) continue;
+        if (!tracks(child)) continue;
         FileStat fileStat;
         if (!statPath(absolute(child), fileStat) || fileStat.isDir) continue;
         FileMap& map = mapFor(child);
@@ -343,7 +358,7 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
             if (!dirs.count(child)) walkDir(child, &changes, 1);
             continue;
         }
-        if (!isTrackedFile(name)) continue;
+        if (!tracks(child)) continue;
         presentFiles.insert(child);
         FileMap& map = mapFor(child);
         if (map.count(child)) continue;   // modifications: checkFile
@@ -435,7 +450,7 @@ void McpAutoSync::restamp(const std::string& rel) {
         walkDir(rel, nullptr, 1);
         return;
     }
-    if (!isTrackedFile(rel)) return;
+    if (!tracks(rel)) return;
     mapFor(rel)[rel] = {st.mtime, st.size};
 }
 
@@ -644,26 +659,13 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     lastSettleCpuMs = threadCpuMs() - cpuStart;
     if (found.empty()) return;
 
-    // Stamped inside the call: the tool's own writes. Older: external, for the next call.
+    // Stamped inside the call: the tool's own writes, which the tool handled (the scan has
+    // taken their new stamps). Older: external, for the next call.
     const int64_t from = toNs(start) - SETTLE_SLACK_NS;
     const int64_t to = toNs(end) + SETTLE_SLACK_NS / 5;
-    std::vector<Change> own;
-    for (Change& change : found) {
-        if (change.when >= from && change.when <= to) {
-            change.report = false;
-            own.push_back(change);
-        } else {
-            merge(pendingExternal, change.rel, change.kind, true);
-        }
+    for (const Change& change : found) {
+        if (change.when < from || change.when > to) merge(pendingExternal, change.rel, change.kind, true);
     }
-    if (own.empty()) return;
-    if (ctx.isPlaying()) {
-        for (const Change& change : own) merge(deferred, change.rel, change.kind, false);
-        return;
-    }
-    // Picked up silently (the Project window, the asset database, buffers...)
-    std::vector<std::string> ignored;
-    process(ctx, own, ignored);
 }
 
 bool McpAutoSync::mayWriteFiles(bool readOnly, const Json& args) {
@@ -692,7 +694,7 @@ void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& path
         pendingExternal.erase(key);
         if (playing) {
             // syncFiles leaves script properties for after Play: make sure they get re-parsed then
-            if (isTrackedFile(key)) merge(deferred, key, 'm', false);
+            if (Util::isScriptFile(key)) merge(deferred, key, 'm', false);
         } else {
             deferred.erase(key);
             if (Util::isScriptFile(key)) scripts.push_back(path);

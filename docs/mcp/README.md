@@ -182,8 +182,9 @@ Agents edit code with their own tools, not through MCP file tools:
   materials, textures and the Project window, and that call's result carries
   `external_changes: {changed, added, removed, problems: [{path, line, message}]}` and one
   text line. While a scene plays, the changes are listed as `deferred` and picked up when
-  play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab` and
-  `project.yaml` are not watched: edit them with the tools. `sync_files` forces a full
+  play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
+  `project.yaml` and the terrain maps the terrain tools write are not watched: edit them with
+  the tools. `sync_files` forces a full
   rescan; `editor_status.auto_sync` shows the scan's size and cost.
 - Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
   `jasperengine-editor check` from a shell (see [checks.md](checks.md)).

@@ -240,7 +240,9 @@ the same work and reports it itself):
   (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
   `.material`, images) and folders (mtime: an added, removed or renamed entry), skipping
   hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
-  `.scene`, `.prefab` and `project.yaml` are not tracked: the editor owns them. Files changed
+  `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
+  in-memory terrain (`terrain_maps/terrain_edit_*.png`, written asynchronously after a
+  sculpt) are not tracked: the editor owns them. Files changed
   this session, folders and code files are checked whole on every call (up to 2000 of each);
   images rotate within a ~2 ms budget, resuming where the last scan stopped. The baseline is
   taken (in `McpServer::tick`) when a project opens.
@@ -257,10 +259,11 @@ the same work and reports it itself):
   the material and asset tools, `code_editor` save, undo of file writes) restamps what it
   handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
   with `save_path`), a settle scan posted to the main thread attributes changes stamped
-  inside the call's time window to the tool (picked up silently: `fork_shader`, screenshots
-  saved into the project, terrain maps); older ones are reported by the next call.
-  Limitation: an external edit made *while* a writing call runs is taken as the tool's
-  (picked up, not reported).
+  inside the call's time window to the tool, which handled them (`fork_shader`, screenshots
+  saved into the project, terrain maps): their stamps are taken, nothing is re-run (a texture
+  reload would undo a terrain tool's in-memory edit). Older ones are reported by the next
+  call. Limitation: an external edit made *while* a writing call runs is taken as the tool's
+  (neither picked up nor reported; `sync_files` or the editor's own poll catch it).
 - **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
   snapshot when it stops; `CodeEditor::checkExternalScriptChanges` waits too). Changes found
   then are reported with `deferred` (Lua syntax still checked) and picked up by the first

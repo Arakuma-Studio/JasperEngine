@@ -23,9 +23,9 @@ namespace jasperengine::editor::mcp {
     //
     // Before every top-level tools/call, a cheap stat-based scan finds the project's Lua, C++,
     // shader, .material and image files that changed since the last scan (not .scene / .prefab /
-    // project.yaml: the editor owns those). If any did, the sync_files pick-up runs on them
-    // (code editor buffers, script properties, Lua syntax, materials, shader forks, textures,
-    // asset database) and the call's result gets
+    // project.yaml, nor the terrain maps the terrain tools write: the editor owns those). If
+    // any did, the sync_files pick-up runs on them (code editor buffers, script properties, Lua
+    // syntax, materials, shader forks, textures, asset database) and the call's result gets
     //   external_changes: {changed, added?, removed?, problems: [{path, line, message}],
     //                      script_properties?, deferred?}
     // plus one text line. Shader forks using a changed shader file are compiled before the
@@ -33,8 +33,9 @@ namespace jasperengine::editor::mcp {
     //
     // Files the MCP tools write themselves are not external: syncFiles (the funnel of
     // write_file, create_script, the material and asset tools) restamps what it handled, and
-    // after each call a "settle" scan takes every change stamped inside the call's time window
-    // as the tool's own (fork_shader, screenshots saved into the project, terrain maps...).
+    // after each call that may write files a "settle" scan takes every change stamped inside
+    // the call's time window as the tool's own, already handled by it (fork_shader,
+    // screenshots saved into the project, terrain maps...): absorbed, not picked up again.
     // Changes older than the call stay external and are reported by the next call.
     //
     // While a scene plays, the editor does not re-parse scripts (Play restores the scene from a
@@ -83,6 +84,10 @@ namespace jasperengine::editor::mcp {
         static bool isTrackedFile(const std::string& path);
         // Folders the scan skips: hidden (.jasperengine, .git...), build, node_modules, trash
         static bool isSkippedDirName(const std::string& name);
+        // Files the editor writes from its own state (terrain_maps/terrain_edit_*.png): not tracked
+        static bool isEditorOwnedFile(const std::string& rel);
+        // isTrackedFile and not editor-owned
+        static bool tracks(const std::string& rel);
 
     private:
         McpAutoSync() = default;
