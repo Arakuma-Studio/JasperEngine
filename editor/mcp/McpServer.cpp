@@ -69,6 +69,7 @@ void McpServer::start(App& app) {
     started = true;
     appPtr = &app;
     ctx = std::make_unique<McpContext>(app, *this);
+    McpAutoSync::get().serverStarted();
 
     registerAllTools();
 

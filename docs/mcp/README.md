@@ -195,8 +195,8 @@ Agents edit code with their own tools, not through MCP file tools:
 - Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
   `jasperengine-editor check` from a shell (see [checks.md](checks.md)). As a Claude Code
   PostToolUse hook (or Codex hook), `jasperengine-editor check --project "$CLAUDE_PROJECT_DIR" --hook`
-  checks every file the agent edits and feeds the errors back to it: the settings snippet is in
-  [checks.md](checks.md#agent-hooks).
+  checks every file the agent edits, through its shell too (matcher `...|Bash`), and feeds the
+  errors back to it: the settings snippet is in [checks.md](checks.md#agent-hooks).
 - `write_file` / `read_file` / `search_files` are for clients without access to the project
   folder (an HTTP client on another machine).
 

@@ -4,6 +4,7 @@
 #include "McpAutoSync.h"
 
 #include "McpContext.h"
+#include "McpServer.h"
 #include "tools/W4Shared.h"
 
 #include "Project.h"
@@ -209,6 +210,29 @@ bool McpAutoSync::ensureRoot(McpContext& ctx, bool* rebased) {
     if (path.empty()) return false;
     if (path != root) {
         baseline(path);
+        // The startup project: what changed since the server started (an agent editing while it
+        // loaded) is external, for the first call
+        std::set<std::string> recent;
+        if (!startupBaselineTaken) {
+            startupBaselineTaken = true;
+            const fs::path& startup = mcpLaunchOptions().project;
+            std::error_code ec;
+            if (serverStartNs > 0 && !startup.empty() && fs::equivalent(startup, path, ec)) {
+                const int64_t since = serverStartNs - SETTLE_SLACK_NS;
+                for (const FileMap* map : {&code, &images}) {
+                    for (const auto& [rel, stamp] : *map) {
+                        if (stamp.mtime >= since) recent.insert(rel);
+                    }
+                }
+                for (const std::string& rel : recent) {
+                    merge(pendingExternal, rel, 'm', true);
+                    markHot(rel);
+                }
+            }
+        }
+        // sync_files' own snapshot starts here too: whichever of the two sees an edit first
+        // reports it, and tells the other it is handled
+        w4::takeSyncSnapshot(project, recent);
         if (rebased) *rebased = true;
     }
     return true;
@@ -272,6 +296,14 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
 
 void McpAutoSync::tick(McpContext& ctx) {
     ensureRoot(ctx);
+}
+
+void McpAutoSync::prepare(McpContext& ctx) {
+    ensureRoot(ctx);
+}
+
+void McpAutoSync::serverStarted() {
+    if (serverStartNs == 0) serverStartNs = toNs(std::chrono::system_clock::now());
 }
 
 // ------------------------------------------------------------------ scanning
@@ -523,9 +555,9 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
 }
 
 void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::string& tool, std::function<void(Json)> run) {
-    // sync_files does the same work and reports it itself
-    bool rebased = false;
-    if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) {
+    // sync_files does the same work and reports it itself. A baseline just taken (the call came
+    // before the frame that would have) has nothing new, but may hold the startup changes.
+    if (tool == "sync_files" || !ensureRoot(ctx)) {
         run(nullptr);
         return;
     }

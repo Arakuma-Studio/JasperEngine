@@ -107,6 +107,10 @@ Check one file:
 clangd --check=scripts/Player.cpp
 ```
 
+It prints the file's diagnostics as `E[...] [code] Line N: message` lines and ends with
+`All checks completed, N errors`. (`--check-locations=false` skips the per-token feature checks;
+with clangd 18 it printed the same diagnostics and count, so it is not needed for errors.)
+
 Headers and C++ files created after the editor last wrote the compile database get the flags
 of the closest listed source, so a new script checks right away; the editor lists it on its
 next open or build. The C++ standard is Project Settings > Build > C++ Standard

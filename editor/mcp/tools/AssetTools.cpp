@@ -1916,6 +1916,14 @@ void placeholderArtTool(const CallPtr& call) {
     if (!resolveExisting(call, "path", file, false)) return;
     if (extensionOf(file) != ".png") file += ".png";
     const std::string rel = projectRelative(project, file);
+    // project-relative like the paths of set_properties / create_entity, which only take assets
+    if (!project->isInsideAssetsPath(file)) {
+        const std::string assets = projectRelative(project, project->getAssetsPath());
+        call->fail("path is project-relative, like the texture paths the other tools take: \"" + rel +
+                   "\" is outside the assets directory (\"" + assets + "\"), so no component could use it. Use \"" +
+                   projectRelative(project, project->getAssetsPath() / fs::path(rel)) + "\".");
+        return;
+    }
     std::error_code ec;
     if (fs::exists(file, ec) && !args.value("overwrite", false)) {
         call->fail(rel + " already exists; pass overwrite: true to replace it.");
@@ -2034,7 +2042,7 @@ void placeholderArtTool(const CallPtr& call) {
     std::string base64;
     int pw = 0, ph = 0;
     ToolResult result = ToolResult::success("Generated " + rel + " (" + std::to_string(width) + "x" + std::to_string(height) + " " + shape +
-                                                ")." + (project->isInsideAssetsPath(file) ? "" : " Note: outside the assets directory, components can't reference it."),
+                                                "): reference it as \"" + rel + "\".",
                                             Json{{"path", rel}, {"width", width}, {"height", height}});
     if (encodePng(pixels.data(), width, height, 256, base64, pw, ph)) result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
@@ -2533,7 +2541,8 @@ void registerAssetTools(McpRegistry& registry) {
             "optional outline and background (default transparent); gradient goes color -> color2, checker alternates "
             "them. Colors [r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath(".png path under the assets dir.")},
+            {"path", assetPath("Project-relative .png path inside the assets dir, e.g. \"assets/sprites/coin.png\" "
+                               "(the path set_properties / create_entity then take).")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},

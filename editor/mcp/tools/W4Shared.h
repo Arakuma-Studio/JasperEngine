@@ -12,6 +12,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,9 @@ namespace jasperengine::editor::mcp {
         // every attached script and scans the project for changes since the last sync.
         // Returns {changed, code_editor, script_properties, problems, notes}.
         Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changed, bool full);
+        // The project's files as syncFiles' next full sync compares them: taken when the project is
+        // opened (McpAutoSync's baseline), so edits made before the first sync are listed by it
+        void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready = {});
 
         // Lua syntax check without running the chunk (luaL_loadbuffer). line = 0 when ok.
         struct LuaSyntax {

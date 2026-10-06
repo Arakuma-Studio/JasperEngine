@@ -280,7 +280,7 @@ async def test_play_deferred_then_picked_up(ed: Editor):
 
 async def test_sync_files_still_reports(ed: Editor):
     """sync_files (forced rescan) keeps reporting what it picked up itself."""
-    await ed.call("sync_files")  # its first full sync has nothing to compare with
+    await ed.call("sync_files")  # everything up to here picked up
     path = ed.project / "scripts/Mover.lua"
     touch_write(path, path.read_text() + "-- sync\n")
     r = await ed.call("sync_files")

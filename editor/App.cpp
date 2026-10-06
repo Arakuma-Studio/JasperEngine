@@ -3754,7 +3754,7 @@ bool editor::App::isMainThread() const {
 }
 
 void editor::App::initializeSettings() {
-    AppSettings::initialize();
+    AppSettings::initialize(mcp::mcpLaunchOptions().stdio);
 
     // Next to settings.yaml, where a user can find it to report a crash.
     const std::filesystem::path logFile = AppSettings::getConfigDirectory() / "editor.log";

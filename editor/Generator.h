@@ -143,6 +143,8 @@ namespace jasperengine::editor {
     public:
         // AGENTS.md at the project root: (re)writes the JasperEngine section, keeps the rest
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
+        // CLAUDE.md importing AGENTS.md, unless the project has its own (written by writeAgentsFile)
+        static void writeClaudeFile(const fs::path& projectPath);
         // Files for code tools and language servers, refreshed on project open and on every
         // build: the Lua API stubs (<internal>/engine-api/lua) with a .luarc.json pointing
         // lua-language-server at them, and a compile database (<internal>/clangd) with a .clangd
