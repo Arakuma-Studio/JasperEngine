@@ -1550,7 +1550,7 @@ The stubs are written to a new emitted file, `HtmlUITypes.lua`, alongside the cl
 ## 4. Work packages
 
 Five packages run in two waves. Each works in
-`/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branch `html-ui/<slug>`
+`/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branch `hui/<slug>`
 (BRIEF). Each package's tests that need another package's tools use
 `ed.require_tools(...)` / `has_tool` and skip until that package is merged. The phase acceptance
 run (section 6) is on the merged `html-ui` with nothing skipped except the LuaLS/clangd

@@ -9,7 +9,7 @@ that phase spec: implement all of it, completely and correctly, with tests.
   it; when a phase passes its acceptance tests, `html-ui` is merged into `main`.
 - Your worktree and branch are given in your assignment (for example
   `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/p1-render` on
-  `html-ui/p1-render`). Work and commit only there. Never touch the main checkout
+  `hui/p1-render`). Work and commit only there. Never touch the main checkout
   (`/var/lib/orquester/workspaces/jaspersito/JasperEngine-2`) or another worktree. Do not push.
 - Commit early and often with clear messages (what and why). Fork patches to RmlUi are
   separate commits prefixed `rmlui:` and recorded in `docs/html-ui/FORK.md`.

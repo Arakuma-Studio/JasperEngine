@@ -1795,7 +1795,7 @@ Each patch is a separate commit prefixed `rmlui:`, with a `docs/html-ui/FORK.md`
 Each package merges `html-ui` into its branch before finishing (BRIEF).
 
 Worktrees: `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branch
-`html-ui/<slug>`.
+`hui/<slug>`.
 
 ---
 

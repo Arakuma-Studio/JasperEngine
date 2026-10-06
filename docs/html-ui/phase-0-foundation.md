@@ -1622,7 +1622,7 @@ benchmark replaces this with full data.
 Waves: wave 1 runs in parallel; wave 2 starts when p0-foundation is merged into
 `html-ui`; wave 3 starts when all wave-2 packages are merged. Worktrees
 `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branches
-`html-ui/<slug>` (BRIEF).
+`hui/<slug>` (BRIEF).
 
 ### Wave 1
 

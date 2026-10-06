@@ -1554,7 +1554,7 @@ grid-in-flex,flex-in-grid,percent-gap}.html`.
 
 Waves: **wave 0** (2 packages in parallel) lands first; **wave 1** (7 packages in parallel) branches
 from `html-ui` after both wave-0 packages merged; **wave 2** (1 package) after all wave-1 packages
-merged. Worktrees and branches follow BRIEF.md (`…-wt/<slug>` on `html-ui/<slug>`).
+merged. Worktrees and branches follow BRIEF.md (`…-wt/<slug>` on `hui/<slug>`).
 
 Ownership rules on top of BRIEF.md: in the hot-spot files (§3.0) a wave-1 package edits only its
 own groundwork section and the functions listed as owned below. Logic goes into the package's own
