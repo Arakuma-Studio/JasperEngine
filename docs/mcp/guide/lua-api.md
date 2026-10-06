@@ -634,9 +634,9 @@ Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Mo
 | `scale` | rw `Vector3` | |
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
 | `getWorldScale()` | method | |
-| `visible` | rw bool | also `setVisibleOnly(b)` |
+| `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | |
-| `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order |
+| `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
@@ -647,6 +647,15 @@ Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Mo
 
 There is no `getComponent`: wrap the same entity with the class you need
 (`Sprite(self.scene, self.entity)`).
+
+**2D draw order.** A 2D or UI scene's camera draws without a depth test, in Hierarchy order: a
+parent before its children, and among siblings the later one on top (a GameObject created at
+runtime goes last, so on top). Position Z does not change the order (it only has to stay inside
+the camera's near/far range, -10..10 by default); there is no sorting layer, and `layer` only
+selects the cameras that render a GameObject. Reorder with `moveToTop()`/`moveUp()`/`moveDown()`/
+`moveToBottom()` (among siblings) or in the Hierarchy. A camera with `depthTest` on (3D, and
+cameras created with `Camera(scene)`) draws opaque meshes by depth, then transparent ones (most
+sprites) sorted by their distance to the camera position, not by Z.
 
 ### 4.3 Mesh (base of Primitive, Sprite, Model, Tilemap, ...) - partial
 

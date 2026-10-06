@@ -1413,9 +1413,11 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools.\n\n";
     agentsContent += "- Scripts, shaders and other text files: edit them on disk with your own tools. The editor picks the changes up automatically before every MCP tool call "
                      "(the call's result lists them under `external_changes`, with problems such as Lua syntax errors); no sync step is needed.\n";
-    agentsContent += "- Lua API: one stub file per engine class in `" + (engineApiRelativePath / "lua").generic_string() + "/`, for lua-language-server (`.luarc.json` at the project root points at them).\n";
+    agentsContent += "- Lua API: one stub file per engine class in `" + (engineApiRelativePath / "lua").generic_string() + "/`, and the class of each project script (its properties as fields) in `" +
+                     (engineApiRelativePath / "lua" / "scripts").generic_string() + "/`, for lua-language-server (`.luarc.json` at the project root points at them). "
+                     "Start a script module with `---@class <FileName> : ScriptInstance` (the templates do) so `self` is typed.\n";
     agentsContent += "- C++ API: the headers in `" + engineApiRelativePath.generic_string() + "/`; `.clangd` (with `" + (relativeInternalPath / "clangd").generic_string() +
-                     "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp --check-locations=false`. "
+                     "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp`. "
                      "C++ scripts build when a scene plays, or with the `compile_scripts` tool.\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "

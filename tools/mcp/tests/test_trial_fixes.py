@@ -234,8 +234,8 @@ async def test_agents_md_and_claude_md(ed: Editor):
     got = await ed.session.read_resource("jasper://project/AGENTS.md")
     text = "".join(getattr(c, "text", "") or "" for c in got.contents)
     ed.check("followed by the `sync_files`" not in text, "old sync_files workflow")
-    for needle in ("automatically", ".jasperengine/engine-api/lua", ".luarc.json", ".clangd",
-                   "jasperengine-editor check", "--hook"):
+    for needle in ("automatically", ".jasperengine/engine-api/lua", ".jasperengine/engine-api/lua/scripts",
+                   "---@class", ": ScriptInstance", ".luarc.json", ".clangd", "jasperengine-editor check", "--hook"):
         ed.check(needle in text, f"AGENTS.md mentions {needle!r}")
     check_eq(text.count("# JasperEngine Project Context"), 1, "title once")
     ed.check(claude_file.is_file(), "CLAUDE.md generated next to AGENTS.md")
