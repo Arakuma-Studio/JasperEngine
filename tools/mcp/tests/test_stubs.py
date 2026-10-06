@@ -40,6 +40,12 @@ function Bad:init()
     self.scene:findEntityy("Hub")
     Input.isKeyPressed("space")
     print(d)
+    local sprite = Sprite(self.scene, self.entity)
+    sprite.width = "x"
+    local go = GameObject(self.scene, self.entity)
+    go.position = 5
+    local engine = Engine
+    engine.timeScale = "fast"
 end
 
 return Bad
@@ -52,6 +58,10 @@ BAD_LUA_EXPECTED = {
     9: "undefined-global",
     10: "undefined-field",      # no such Scene method
     11: "param-type-mismatch",  # string where a key code goes
+    14: "assign-type-mismatch",  # instance property: string to integer
+    16: "assign-type-mismatch",  # instance property: number to Vector3
+    18: "assign-type-mismatch",  # static property through a local (not through the global
+                                 # `Engine.timeScale = ...`: see docs/mcp/guide/editor-integration.md)
 }
 
 # Typical script code that must check clean: an annotated script module, events, physics
@@ -93,6 +103,7 @@ function Good:onUpdate()
     local dt = Engine.deltatime
     local p = self.go.position
     self.go.position = Vector3(p.x + self.speed * dt, p.y, p.z) + Vector3.UNIT_Y * 0.5
+    self.go.position = p / 2 + 2 * Vector3.UNIT_X - p / Vector3(1, 2, 4) + Matrix4.translateMatrix(p) * Vector3.ZERO
     self.counter = self.counter + 1
     local hit = Physics2D.raycast(self.scene, Vector2(0, 0), Vector2(0, -1), 100)
     if hit.hit then print(hit.point.x) end
@@ -335,6 +346,7 @@ async def test_luarc_and_clangd_respect_user_files(ed: Editor):
 
 async def test_luals_zero_diagnostics_on_fixture(ed: Editor):
     """The fixture project as an agent sees it: the editor's .luarc.json and stubs, its scripts."""
+    await wait_tooling(ed)
     diags = luals_check(ed.project)
     ed.check(not diags, f"lua-language-server diagnostics on the fixture: {diags}")
     scripts = [p for p in ed.project.rglob("*.lua") if ".jasperengine" not in p.parts]
@@ -342,6 +354,7 @@ async def test_luals_zero_diagnostics_on_fixture(ed: Editor):
 
 
 async def test_luals_zero_diagnostics_on_known_good_scripts(ed: Editor):
+    await wait_tooling(ed)
     ws = lua_workspace(ed, {"Good.lua": GOOD_LUA}, [REPO / d for d in GOOD_LUA_DIRS])
     try:
         diags = luals_check(ws)
@@ -351,6 +364,7 @@ async def test_luals_zero_diagnostics_on_known_good_scripts(ed: Editor):
 
 
 async def test_luals_reports_api_mistakes(ed: Editor):
+    await wait_tooling(ed)
     ws = lua_workspace(ed, {"Bad.lua": BAD_LUA})
     try:
         diags = [d for d in luals_check(ws) if d["file"].endswith("Bad.lua")]
@@ -362,13 +376,48 @@ async def test_luals_reports_api_mistakes(ed: Editor):
         shutil.rmtree(ws.parent, ignore_errors=True)
 
 
+# Appended to the Lua template: self is typed through its `---@class X : ScriptInstance`
+# (line of the probe, 1 = its `function` line -> diagnostic code)
+TEMPLATE_PROBE = """
+function StubTemplateCheck:probe()
+    print(self.entiy)
+    self.scene:findEntityy("Hub")
+    ---@type string
+    local entity = self.entity
+    ---@type string
+    local speed = self.speed
+    ---@type string
+    local active = self.isActive
+    print(entity, speed, active, self.counter + 1, self.scene:findEntity("Hub"))
+end
+"""
+TEMPLATE_PROBE_EXPECTED = {
+    2: "undefined-field",       # a typo of self.entity
+    3: "undefined-field",       # self.scene is a Scene
+    5: "assign-type-mismatch",  # self.entity is an integer
+    7: "assign-type-mismatch",  # the speed property is a number
+    9: "assign-type-mismatch",  # the isActive property is a boolean
+}
+
+
 async def test_luals_new_lua_script_template(ed: Editor):
-    """The editor's Lua template (create_script kind lua) checks clean."""
+    """The editor's Lua template (create_script kind lua) checks clean, and its class
+    annotation types self: a typo or a wrong type through self is reported."""
+    await wait_tooling(ed)
     made = await ed.call("create_script", kind="lua", name="StubTemplateCheck")
     path = ed.project / made["path"]
     try:
+        text = path.read_text()
+        ed.check("---@class StubTemplateCheck : ScriptInstance\n" in text, f"template class annotation: {text[:300]}")
         diags = [d for d in luals_check(ed.project) if d["file"].endswith("StubTemplateCheck.lua")]
         ed.check(not diags, f"diagnostics on the Lua template: {diags}")
+
+        body, ret = text.rsplit("return StubTemplateCheck", 1)
+        first = body.count("\n") + 1  # file line of the probe's `function` line
+        path.write_text(body + TEMPLATE_PROBE.lstrip("\n") + "\nreturn StubTemplateCheck" + ret)
+        diags = [d for d in luals_check(ed.project) if d["file"].endswith("StubTemplateCheck.lua")]
+        got = {d["line"] - first + 1: d["code"] for d in diags}
+        ed.check_eq(got, TEMPLATE_PROBE_EXPECTED, f"diagnostics through the typed self: {diags}")
     finally:
         path.unlink(missing_ok=True)
         await ed.call("sync_files")
@@ -379,6 +428,7 @@ async def test_luals_new_lua_script_template(ed: Editor):
 
 
 async def test_clangd_cpp_templates_parse(ed: Editor):
+    await wait_tooling(ed)
     eid = None
     made = await ed.call("create_entity", name="StubCppHost", type="box")
     for key in ("entity_id", "id"):
