@@ -378,6 +378,22 @@ add_custom_command(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+# LuaLS annotation stubs of the Lua API, embedded in the editor, which writes them into every
+# project (.jasperengine/engine-api/lua, see Generator::writeEditorTooling). The .lua files
+# are also left in the build tree for inspection.
+set(LUA_STUBS_HEADER "${GENERATED_DIR}/engine_lua_stubs.h")
+set(LUA_STUBS_DIR "${GENERATED_DIR}/engine-api-lua")
+set(GENERATE_LUA_STUBS_SCRIPT "${CMAKE_SOURCE_DIR}/generate_lua_stubs.py")
+
+add_custom_command(
+    OUTPUT ${LUA_STUBS_HEADER}
+    COMMAND ${Python3_EXECUTABLE} ${GENERATE_LUA_STUBS_SCRIPT}
+            ${BINDING_DIR} ${ENGINE_CORE_DIR} ${LUA_STUBS_HEADER} --out-dir ${LUA_STUBS_DIR}
+    DEPENDS ${GENERATE_LUA_STUBS_SCRIPT} ${BINDING_FILES} ${ENGINE_HEADERS}
+    COMMENT "Generating Lua API stubs (engine_lua_stubs.h) from Lua bindings and C++ headers"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
@@ -487,7 +503,7 @@ set_property(
 
 include_directories (${EDITOR_DIR})
 
-add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER})
+add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
@@ -521,6 +537,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
+    ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
@@ -562,6 +579,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp

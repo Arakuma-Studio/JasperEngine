@@ -4291,11 +4291,19 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
 }
 
 void editor::Project::copyEngineApiToProject() {
+    // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot.
+    // Written even when the engine folder is missing or the copy fails: the stubs are built
+    // into the editor.
+    auto writeTooling = [this]() {
+        Generator::writeEditorTooling(getProjectPath(), getProjectInternalPath(), getCxxStandard(), getScriptDirs());
+        Generator::writeLuaScriptStubs(getProjectPath(), getProjectInternalPath());
+    };
     try {
         std::filesystem::path engineApiSource = FileUtils::getEngineDir();
 
         if (!std::filesystem::exists(engineApiSource)) {
             Out::warning("engine folder not found at: %s", engineApiSource.string().c_str());
+            writeTooling();
             return;
         }
 
@@ -4353,6 +4361,7 @@ void editor::Project::copyEngineApiToProject() {
     } catch (const std::exception& e) {
         Out::error("Failed to copy engine API: %s", e.what());
     }
+    writeTooling();
 }
 
 void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene>& runtimeScenes) {
@@ -4878,6 +4887,11 @@ const char* versionControlIgnore =
     "\n"
     "# Written by the game while it runs, Play mode included.\n"
     "UserSettings.xml\n"
+    "\n"
+    "# The editor's own settings and layout, left here by an editor started in this\n"
+    "# folder (older versions; they now go to the user's config directory).\n"
+    "/settings.yaml\n"
+    "/editor_layout_v2.ini\n"
     "\n"
     "*.log\n"
     ".DS_Store\n"

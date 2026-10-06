@@ -11,6 +11,10 @@
 #include "util/FileUtils.h"
 #include "util/ShellEnv.h"
 #include "util/Util.h"
+#include "engine_lua_stubs.h"
+#include "util/ProjectChecks.h"
+#include "json.hpp"
+#include "lua.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +30,7 @@
 #include <algorithm>
 #include <functional>
 #include <regex>
+#include <set>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -150,9 +155,9 @@ bool editor::Generator::clearStaleCMakeCache(const fs::path& projectPath, const 
     }
 
     if (cachedPath != currentPath) {
-        Out::warning("Project path changed. Cleaning build directory...");
-        Out::warning("  Previous: %s", cachedHomeDir.c_str());
-        Out::warning("  Current: %s", projectPath.string().c_str());
+        // expected after a copy or a move of the project: the build just starts over
+        Out::info("Project path changed (was %s, now %s). Cleaning build directory...", cachedHomeDir.c_str(),
+                  projectPath.string().c_str());
 
         return cleanBuildDirectory(buildPath);
     }
@@ -999,6 +1004,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n";
     cmakeContent += "set(CMAKE_OBJCXX_STANDARD ${CMAKE_CXX_STANDARD})\n";
     cmakeContent += "set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)\n\n";
+    cmakeContent += "# compile_commands.json in the build tree, for IDEs and language servers (the editor\n";
+    cmakeContent += "# also writes one for clangd in ${INTERNAL_DIR}/clangd, see .clangd)\n";
+    cmakeContent += "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n\n";
 
     cmakeContent += "# Build mode: when ON, build as JasperEngine Editor plugin (shared library)\n";
     cmakeContent += "option(JASPERENGINE_EDITOR_PLUGIN \"Build as JasperEngine Editor plugin\" OFF)\n";
@@ -1064,33 +1072,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_include_directories(" + libName + " ${JASPERENGINE_LIB_SYSTEM} PRIVATE\n";
     cmakeContent += includeDirsBlock + "\n";
-    cmakeContent += "    " + engineApiPathStr + "\n";
-    cmakeContent += "    " + engineApiPathStr + "/libs/sokol\n";
-    cmakeContent += "    " + engineApiPathStr + "/libs/box2d/include\n";
-    cmakeContent += "    " + engineApiPathStr + "/libs/joltphysics\n";
-    cmakeContent += "    " + engineApiPathStr + "/renders\n";
-    cmakeContent += "    " + engineApiPathStr + "/core\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/action\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/action/keyframe\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/buffer\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/component\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/ecs\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/io\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/manager\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/math\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/object\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/object/sound\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/object/ui\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/object/environment\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/object/physics\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/pool\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/registry\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/render\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/script\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/shader\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/subsystem\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/texture\n";
-    cmakeContent += "    " + engineApiPathStr + "/core/util\n";
+    for (const std::string& dir : engineApiIncludeDirs()) {
+        cmakeContent += "    " + engineApiPathStr + (dir.empty() ? "" : "/" + dir) + "\n";
+    }
     cmakeContent += ")\n\n";
 
     cmakeContent += "# libjasperengine is searched in JASPERENGINE_LIB_DIR; by default it points to the JasperEngine Editor\n";
@@ -1242,26 +1226,205 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     }
 
     writeAgentsFile(projectPath, projectInternalPath);
+    writeEditorTooling(projectPath, projectInternalPath, cxxStandard, scriptDirs);
+}
+
+namespace {
+
+bool isLuaIdentifier(const std::string& name) {
+    static const std::unordered_set<std::string> keywords = {
+        "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
+        "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
+    if (name.empty() || keywords.count(name)) return false;
+    if (!(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_')) return false;
+    return std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '_'; });
+}
+
+// The ---@field names a script declares itself under ---@class <className>: the generated class
+// must not declare them again (lua-language-server reports duplicate-doc-field)
+std::set<std::string> fieldsDeclaredInScript(const std::string& code, const std::string& className) {
+    static const std::regex classLine(R"(^\s*---\s*@class\s+(?:\([^)]*\)\s*)?([A-Za-z_][\w.]*))");
+    static const std::regex fieldLine(R"(^\s*---\s*@field\s+(?:(?:private|protected|public|package)\s+)?([A-Za-z_]\w*))");
+    std::set<std::string> fields;
+    bool inClass = false;
+    size_t start = 0;
+    while (start <= code.size()) {
+        size_t end = code.find('\n', start);
+        if (end == std::string::npos) end = code.size();
+        const std::string line = code.substr(start, end - start);
+        start = end + 1;
+        std::smatch m;
+        if (std::regex_search(line, m, classLine)) {
+            inClass = m[1].str() == className;
+        } else if (line.find_first_not_of(" \t") != std::string::npos &&
+                   line.compare(line.find_first_not_of(" \t"), 3, "---") == 0) {
+            if (inClass && std::regex_search(line, m, fieldLine)) fields.insert(m[1].str());
+        } else {
+            inClass = false;
+        }
+        if (end == code.size()) break;
+    }
+    return fields;
+}
+
+// The Lua type of a script property's value on self (LuaBinding::createLuaScriptInstance and
+// resolveLuaScriptReferences). Unassigned references are nil; the type leaves that out so code
+// reading a property does not need a nil check per use.
+std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::string, std::string>& wrappers,
+                            const std::set<std::string>& scriptClasses) {
+    switch (prop.type) {
+        case ScriptPropertyType::Bool: return "boolean";
+        case ScriptPropertyType::Int: return "integer";
+        case ScriptPropertyType::Float: return "number";
+        case ScriptPropertyType::String: return "string";
+        case ScriptPropertyType::Vector2: return "Vector2";
+        case ScriptPropertyType::Vector3:
+        case ScriptPropertyType::Color3: return "Vector3";
+        case ScriptPropertyType::Vector4:
+        case ScriptPropertyType::Color4: return "Vector4";
+        case ScriptPropertyType::Prefab: return "PrefabAsset";
+        case ScriptPropertyType::EntityReference: break;
+    }
+    // "entity": the GameObject's first Lua script instance, else an EntityHandle
+    if (prop.ptrTypeName.empty()) return "ScriptInstance|EntityHandle";
+    // a script class name: that script's instance (LuaBinding::pushScriptObject)
+    if (scriptClasses.count(prop.ptrTypeName)) return prop.ptrTypeName;
+    // a wrapper class, case-insensitive (LuaBinding::normalizePtrTypeName)
+    std::string key = prop.ptrTypeName;
+    key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c) || c == '*' || c == '&'; }), key.end());
+    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    auto it = wrappers.find(key);
+    return it != wrappers.end() ? it->second : "EntityHandle";
+}
+
+std::string luaScriptStub(const std::string& className, const std::string& relPath, const std::vector<ScriptProperty>& properties,
+                          const std::set<std::string>& declared, const std::map<std::string, std::string>& wrappers,
+                          const std::set<std::string>& scriptClasses) {
+    std::string out;
+    out += "---@meta _\n";
+    out += "-- Generated by JasperEngine Editor from the properties of " + relPath + ". Do not edit: rewritten\n";
+    out += "-- when the script changes. Declare the module in the script to type self:\n";
+    out += "--   ---@class " + className + " : ScriptInstance\n";
+    out += "--   local " + className + " = { properties = { ... } }\n\n";
+    out += "---@class " + className + " : ScriptInstance\n";
+    for (const ScriptProperty& prop : properties) {
+        if (!isLuaIdentifier(prop.name) || declared.count(prop.name)) continue;
+        out += "---@field " + prop.name + " " + luaPropertyType(prop, wrappers, scriptClasses);
+        if (!prop.displayName.empty() && prop.displayName != prop.name) out += " # " + prop.displayName;
+        out += "\n";
+    }
+    return out;
+}
+
+} // namespace
+
+void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
+                                            const std::vector<fs::path>& changedFiles) {
+    try {
+        const fs::path stubsDir = projectInternalPath / "engine-api" / "lua" / "scripts";
+        const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(projectPath);
+
+        // engine names: a script named like an engine class or enum keeps its own declaration
+        // (a generated class would merge into the engine's)
+        std::set<std::string> engineNames;
+        for (const auto& file : luastubs::stubFiles) {
+            std::string name = file.name;
+            if (name.size() > 4) engineNames.insert(name.substr(0, name.size() - 4));
+        }
+        std::map<std::string, std::string> wrappers;
+        for (const char* name : luastubs::entityHandleClasses) {
+            std::string key = name;
+            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            wrappers[key] = name;
+        }
+
+        // every script class: the first file of each name (sorted paths), inside the Lua directory
+        std::map<std::string, fs::path> classes;
+        for (const fs::path& file : ProjectChecks::findProjectFiles(projectPath, {".lua"})) {
+            const std::string name = file.stem().string();
+            if (!Util::isInsidePath(file, luaRoot) || !isLuaIdentifier(name) || engineNames.count(name)) continue;
+            classes.emplace(name, file);
+        }
+        std::set<std::string> scriptClasses;
+        for (const auto& entry : classes) scriptClasses.insert(entry.first);
+
+        std::vector<std::pair<std::string, fs::path>> todo;
+        std::set<std::string> removed;
+        if (changedFiles.empty()) {
+            for (const auto& entry : classes) todo.push_back(entry);
+        } else {
+            for (const fs::path& changed : changedFiles) {
+                if (!Util::isLuaFile(changed.string())) continue;
+                const std::string name = changed.stem().string();
+                auto it = classes.find(name);
+                if (it == classes.end()) removed.insert(name);
+                else if (it->second.lexically_normal() == changed.lexically_normal()) todo.push_back(*it);
+            }
+        }
+
+        std::error_code ec;
+        if (!todo.empty()) {
+            fs::create_directories(stubsDir, ec);
+            const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
+            for (const auto& [name, file] : todo) {
+                std::string code;
+                if (!ProjectChecks::readFile(file, code)) continue;
+                const std::string rel = ProjectChecks::projectRelative(projectPath, file);
+                lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
+                const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, rel, L);
+                ProjectChecks::closeIsolatedLuaState(L);
+                // a script that does not load (being edited?) keeps the class of its last good version
+                if (!check.findings.empty()) continue;
+                FileUtils::writeIfChanged(stubsDir / (name + ".lua"),
+                    luaScriptStub(name, rel, check.properties, fieldsDeclaredInScript(code, name), wrappers, scriptClasses));
+            }
+        }
+
+        // classes of scripts that are gone (a full pass: anything not a script class now)
+        for (auto it = fs::directory_iterator(stubsDir, ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+            const fs::path path = it->path();
+            if (path.extension() != ".lua") continue;
+            const std::string name = path.stem().string();
+            const bool stale = changedFiles.empty() ? classes.count(name) == 0 : removed.count(name) > 0;
+            std::error_code removeEc;
+            if (stale) fs::remove(path, removeEc);
+        }
+    } catch (const std::exception& e) {
+        Out::warning("Could not write the Lua script classes for lua-language-server: %s", e.what());
+    }
 }
 
 void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath) {
     const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     const fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
-    fs::path agentsFile = projectPath / "AGENTS.md";
+    // AGENTS.md and CLAUDE.md are written once, when missing. After that they belong to the
+    // project (agents and people edit them), so the editor never changes an existing file.
+    const fs::path agentsFile = projectPath / "AGENTS.md";
+    std::error_code ec;
+    if (fs::exists(agentsFile, ec) || ec) {
+        writeClaudeFile(projectPath);
+        return;
+    }
     std::string agentsContent;
-    const std::string agentsBegin = "<!-- BEGIN JASPERENGINE GENERATED CONTEXT -->";
-    const std::string agentsEnd = "<!-- END JASPERENGINE GENERATED CONTEXT -->";
-    agentsContent += agentsBegin + "\n";
-    agentsContent += "<!-- This section is regenerated by JasperEngine Editor. Keep project-specific instructions outside these markers. -->\n\n";
     agentsContent += "# JasperEngine Project Context\n\n";
     agentsContent += "This project was generated by JasperEngine Editor version `" JASPERENGINE_EDITOR_VERSION "`.\n\n";
-    agentsContent += "## Driving the editor (MCP)\n\n";
-    agentsContent += "JasperEngine Editor embeds an MCP server, so an agent can build the game through the real editor instead of editing `*.scene`/`*.prefab`/`project.yaml` by hand "
+    agentsContent += "## Working with the editor (MCP)\n\n";
+    agentsContent += "JasperEngine Editor embeds an MCP server: build scenes, prefabs, UI and project settings, and playtest, through its tools instead of editing `*.scene`/`*.prefab`/`project.yaml` by hand "
                      "(the open editor would overwrite such edits). Start it with `jasperengine-editor mcp --project <this directory>` as a stdio MCP server, "
                      "or attach to an editor that is already open over HTTP (Editor Settings > MCP, `http://127.0.0.1:47615/mcp` by default). "
-                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools; scripts, shaders and other text files may still be edited on disk, "
-                     "followed by the `sync_files` tool so the editor reloads them, and C++ scripts are compiled with `compile_scripts`.\n\n";
+                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools.\n\n";
+    agentsContent += "- Scripts, shaders and other text files: edit them on disk with your own tools. The editor picks the changes up automatically before every MCP tool call "
+                     "(the call's result lists them under `external_changes`, with problems such as Lua syntax errors); no sync step is needed.\n";
+    agentsContent += "- Lua API: one stub file per engine class in `" + (engineApiRelativePath / "lua").generic_string() + "/`, and the class of each project script (its properties as fields) in `" +
+                     (engineApiRelativePath / "lua" / "scripts").generic_string() + "/`, for lua-language-server (`.luarc.json` at the project root points at them). "
+                     "Start a script module with `---@class <FileName> : ScriptInstance` (the templates do) so `self` is typed.\n";
+    agentsContent += "- C++ API: the headers in `" + engineApiRelativePath.generic_string() + "/`; `.clangd` (with `" + (relativeInternalPath / "clangd").generic_string() +
+                     "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp`. "
+                     "C++ scripts build when a scene plays, or with the `compile_scripts` tool.\n";
+    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, C++ build; exit code 1 on errors). "
+                     "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
+                     "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
     agentsContent += "## Source references\n\n";
     agentsContent += "- Runtime API headers used by this project (snapshot): `" + engineApiRelativePath.generic_string() + "`\n";
     agentsContent += "- Full engine **and editor** source (upstream): https://github.com/JasperRaccoon/JasperEngine\n\n";
@@ -1324,35 +1487,324 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "\nBoth modes link the editor's engine library, which always has Box2D and Jolt. "
                      "Project Settings > Build > 2D/3D Physics (`physics2D`/`physics3D` in `project.yaml`) only affects the export, which rebuilds the engine without a disabled backend; "
                      "code that must build either way guards on `JASPERENGINE_PHYSICS_2D`/`JASPERENGINE_PHYSICS_3D`. `RayFilter::BOUNDS` ray casts against mesh bounds and needs neither.\n";
-    agentsContent += "\n" + agentsEnd;
-
-    // Only replace our marked section. Unmarked files may contain user edits,
-    // including additions to older generated files, so retain them in full.
-    if (fs::exists(agentsFile)) {
-        std::ifstream input(agentsFile, std::ios::binary);
-        std::string existing((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        if (!input || input.bad()) {
-            Out::warning("Could not read AGENTS.md; leaving it unchanged.");
-            return;
-        }
-        const size_t begin = existing.find(agentsBegin);
-        const size_t end = existing.find(agentsEnd);
-        if (begin == std::string::npos && end == std::string::npos) {
-            agentsContent = existing + (existing.empty() ? "" : "\n\n") + agentsContent + "\n";
-        } else if (begin == std::string::npos || end == std::string::npos || end < begin ||
-                   existing.find(agentsBegin, begin + agentsBegin.size()) != std::string::npos ||
-                   existing.find(agentsEnd, end + agentsEnd.size()) != std::string::npos) {
-            Out::warning("AGENTS.md has incomplete or duplicate JasperEngine section markers; leaving it unchanged.");
-            return;
-        } else {
-            existing.replace(begin, end + agentsEnd.size() - begin, agentsContent);
-            agentsContent = std::move(existing);
-        }
-    } else {
-        agentsContent += "\n";
-    }
 
     FileUtils::writeIfChanged(agentsFile, agentsContent);
+    writeClaudeFile(projectPath);
+}
+
+// Claude Code reads CLAUDE.md, not AGENTS.md: a project without one gets a CLAUDE.md that imports
+// AGENTS.md. Written once, when missing; an existing CLAUDE.md is never changed.
+void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
+    const fs::path claudeFile = projectPath / "CLAUDE.md";
+    std::error_code ec;
+    if (fs::exists(claudeFile, ec) || ec) return;
+    FileUtils::writeIfChanged(claudeFile, "@AGENTS.md\n");
+}
+
+const std::vector<std::string>& editor::Generator::engineApiIncludeDirs() {
+    static const std::vector<std::string> dirs = {
+        "", "libs/sokol", "libs/box2d/include", "libs/joltphysics", "renders",
+        "core", "core/action", "core/action/keyframe", "core/buffer", "core/component", "core/ecs",
+        "core/io", "core/manager", "core/math", "core/object", "core/object/sound", "core/object/ui",
+        "core/object/environment", "core/object/physics", "core/pool", "core/registry", "core/render",
+        "core/script", "core/shader", "core/subsystem", "core/texture", "core/util",
+    };
+    return dirs;
+}
+
+namespace jasperengine::editor {
+namespace {
+
+// First line of the editor's .clangd: a file without it belongs to the user
+const char* const clangdMarker = "# Generated by JasperEngine Editor.";
+
+std::string normalizeLibraryEntry(std::string value) {
+    std::replace(value.begin(), value.end(), '\\', '/');
+    while (value.rfind("./", 0) == 0) value.erase(0, 2);
+    while (value.size() > 1 && value.back() == '/') value.pop_back();
+    return value;
+}
+
+// .jasperengine/engine-api/lua: one stub file per Lua class and enum, generated from the bindings
+// at build time (generate_lua_stubs.py). Files of classes the engine no longer binds go.
+void writeLuaApiStubs(const fs::path& stubsDir) {
+    std::unordered_set<std::string> names;
+    int failed = 0;
+    for (const auto& file : luastubs::stubFiles) {
+        std::string content;
+        for (unsigned int i = 0; i < file.partCount; i++) {
+            content += file.parts[i];
+        }
+        names.insert(file.name);
+        if (!FileUtils::writeIfChanged(stubsDir / file.name, content)) {
+            failed++;
+        }
+    }
+    if (failed > 0) {
+        Out::warning("Could not write %d Lua API stub files in %s", failed, stubsDir.string().c_str());
+    }
+    std::error_code ec;
+    for (auto it = fs::directory_iterator(stubsDir, ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        std::error_code fileEc;
+        const fs::path path = it->path();
+        if (path.extension() == ".lua" && it->is_regular_file(fileEc) && names.count(path.filename().string()) == 0) {
+            fs::remove(path, fileEc);
+        }
+    }
+}
+
+// engine-api/luals-plugin.lua.txt: the lua-language-server plugin generated with the stubs
+// (generate_lua_stubs.py, LUALS_PLUGIN): it has an assignment to a static field of an engine
+// class through the global table (`Engine.timeScale = "fast"`) checked against the field's type,
+// which the server otherwise reads as the definition of a new global. Not a .lua file, so the
+// server does not take it for a script of the project.
+void writeLuaLsPlugin(const fs::path& file) {
+    std::string content;
+    for (unsigned int i = 0; i < luastubs::luaLsPlugin.partCount; i++) {
+        content += luastubs::luaLsPlugin.parts[i];
+    }
+    if (!FileUtils::writeIfChanged(file, content)) {
+        Out::warning("Could not write the lua-language-server plugin %s", file.string().c_str());
+    }
+}
+
+// runtime.plugin of .luarc.json: the engine's plugin is added, first when the file lists plugins
+// of its own (the server runs them in order and keeps the last one's result; the engine's plugin
+// passes the events it does not use on). Returns whether `root` changed.
+bool mergeLuaRcPlugin(nlohmann::json& root, const std::string& plugin) {
+    using Json = nlohmann::json;
+    Json* entry = nullptr;
+    if (root.contains("runtime.plugin")) {
+        entry = &root["runtime.plugin"];
+    } else if (root.contains("runtime") && root["runtime"].is_object()) {
+        entry = &root["runtime"]["plugin"];
+    } else {
+        entry = &root["runtime.plugin"];
+    }
+    auto isOurs = [&](const Json& value) {
+        return value.is_string() && normalizeLibraryEntry(value.get<std::string>()) == normalizeLibraryEntry(plugin);
+    };
+    if (entry->is_null() || (entry->is_string() && entry->get<std::string>().empty())) {
+        *entry = plugin;
+        return true;
+    }
+    if (entry->is_string()) {
+        if (isOurs(*entry)) {
+            return false;
+        }
+        *entry = Json::array({plugin, *entry});
+        return true;
+    }
+    if (entry->is_array()) {
+        for (const auto& value : *entry) {
+            if (isOurs(value)) {
+                return false;
+            }
+        }
+        entry->insert(entry->begin(), plugin);
+        return true;
+    }
+    Out::warning(".luarc.json: runtime.plugin is not a path or a list; leaving it unchanged (add \"%s\" for the checks of the engine classes' static fields).", plugin.c_str());
+    return false;
+}
+
+// .luarc.json at the project root, read by lua-language-server (and the VS Code Lua extension).
+// An existing file is merged into: only a missing library entry, Lua version or the engine's
+// plugin is added, in the style (dotted or nested keys) the file already uses.
+void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin) {
+    using Json = nlohmann::json;
+    const fs::path file = projectPath / ".luarc.json";
+    const std::string luaVersion = "Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR;
+
+    std::error_code ec;
+    if (!fs::exists(file, ec)) {
+        Json root = Json::object();
+        root["$schema"] = "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json";
+        root["runtime.version"] = luaVersion;
+        root["workspace.library"] = Json::array({library});
+        root["runtime.plugin"] = plugin;
+        FileUtils::writeIfChanged(file, root.dump(4) + "\n");
+        return;
+    }
+
+    std::ifstream input(file, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (!input && !input.eof()) {
+        Out::warning("Could not read .luarc.json; leaving it unchanged.");
+        return;
+    }
+    Json root = Json::parse(text, nullptr, false, true);
+    if (root.is_discarded() || !root.is_object()) {
+        Out::warning(".luarc.json is not a JSON object; leaving it unchanged (add \"%s\" to workspace.library for the engine's Lua API).", library.c_str());
+        return;
+    }
+
+    bool changed = false;
+    const bool hasVersion = root.contains("runtime.version") ||
+        (root.contains("runtime") && root["runtime"].is_object() && root["runtime"].contains("version"));
+    if (!hasVersion) {
+        if (root.contains("runtime") && root["runtime"].is_object()) {
+            root["runtime"]["version"] = luaVersion;
+        } else {
+            root["runtime.version"] = luaVersion;
+        }
+        changed = true;
+    }
+
+    Json* libraries = nullptr;
+    if (root.contains("workspace.library")) {
+        libraries = &root["workspace.library"];
+    } else if (root.contains("workspace") && root["workspace"].is_object()) {
+        libraries = &root["workspace"]["library"];
+    } else {
+        libraries = &root["workspace.library"];
+    }
+    if (libraries->is_null()) {
+        *libraries = Json::array();
+    }
+    if (!libraries->is_array()) {
+        Out::warning(".luarc.json: workspace.library is not a list; leaving it unchanged (add \"%s\" for the engine's Lua API).", library.c_str());
+    } else {
+        bool present = false;
+        for (const auto& entry : *libraries) {
+            if (entry.is_string() && normalizeLibraryEntry(entry.get<std::string>()) == normalizeLibraryEntry(library)) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) {
+            libraries->push_back(library);
+            changed = true;
+        }
+    }
+
+    if (mergeLuaRcPlugin(root, plugin)) {
+        changed = true;
+    }
+
+    if (changed) {
+        FileUtils::writeIfChanged(file, root.dump(4) + "\n");
+    }
+}
+
+void collectCppSources(const fs::path& root, std::vector<std::string>& out, std::unordered_set<std::string>& seen) {
+    std::error_code ec;
+    if (!fs::is_directory(root, ec)) {
+        return;
+    }
+    for (auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        std::error_code entryEc;
+        const std::string name = it->path().filename().string();
+        // as script discovery (Generator::writeSourceFiles): hidden and build directories hold
+        // generated sources and build trees
+        if (it->is_directory(entryEc)) {
+            if (name.empty() || name[0] == '.' || name == "build") {
+                it.disable_recursion_pending();
+            }
+            continue;
+        }
+        if (it->is_regular_file(entryEc) && Util::isSourceFile(name)) {
+            const std::string path = it->path().lexically_normal().generic_string();
+            if (seen.insert(path).second) {
+                out.push_back(path);
+            }
+        }
+    }
+}
+
+// compile_commands.json for clangd in <internal>/clangd: every C++ source of the project with
+// the flags its plugin build uses (generated CMakeLists.txt: C++ standard, definitions, include
+// directories), plus engine_api.cpp, which includes the whole engine API so clangd indexes it.
+// Paths are absolute (clangd needs them); the editor rewrites the file whenever the project is
+// opened or built, so a moved project is fixed the next time it is opened. clangd infers the
+// flags of headers and of new files from these entries.
+void writeCompileDatabase(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs) {
+    using Json = nlohmann::json;
+    const fs::path dbDir = projectInternalPath / "clangd";
+    const fs::path project = projectPath.lexically_normal();
+    const fs::path engineApi = (projectInternalPath / "engine-api").lexically_normal();
+
+    std::vector<std::string> flags = {
+        "c++", "-std=c++" + std::to_string(cxxStandard),
+        "-DJASPERENGINE_PHYSICS_2D", "-DJASPERENGINE_PHYSICS_3D",
+        "-DJASPERENGINE_EDITOR_PLUGIN", "-DJASPERENGINE_SHARED", "-DJASPERENGINE_EDITOR",
+        "-I" + project.generic_string(),
+    };
+    std::vector<fs::path> roots = {project};
+    for (const fs::path& dir : scriptDirs) {
+        const fs::path absolute = (dir.is_absolute() ? dir : project / dir).lexically_normal();
+        flags.push_back("-I" + absolute.generic_string());
+        roots.push_back(absolute);
+    }
+    for (const std::string& dir : editor::Generator::engineApiIncludeDirs()) {
+        flags.push_back("-isystem");
+        flags.push_back((dir.empty() ? engineApi : engineApi / dir).generic_string());
+    }
+
+    const fs::path anchor = dbDir / "engine_api.cpp";
+    FileUtils::writeIfChanged(anchor,
+        "// Generated by JasperEngine Editor: makes clangd index the engine API of this project.\n"
+        "#include \"JasperEngine.h\"\n");
+
+    std::vector<std::string> sources;
+    std::unordered_set<std::string> seen;
+    for (const fs::path& root : roots) {
+        collectCppSources(root, sources, seen);
+    }
+    std::sort(sources.begin(), sources.end());
+    sources.insert(sources.begin(), anchor.lexically_normal().generic_string());
+
+    Json db = Json::array();
+    for (const std::string& source : sources) {
+        Json args = flags;
+        args.push_back("-c");
+        args.push_back(source);
+        db.push_back({{"directory", project.generic_string()}, {"file", source}, {"arguments", args}});
+    }
+    if (!FileUtils::writeIfChanged(dbDir / "compile_commands.json", db.dump(2) + "\n")) {
+        Out::warning("Could not write %s", (dbDir / "compile_commands.json").string().c_str());
+    }
+}
+
+// .clangd at the project root: points clangd at the compile database. A .clangd without the
+// marker line is the user's and stays as it is.
+void writeClangdConfig(const fs::path& projectPath, const std::string& databaseDir) {
+    const fs::path file = projectPath / ".clangd";
+    std::error_code ec;
+    if (fs::exists(file, ec)) {
+        std::ifstream input(file);
+        std::string firstLine;
+        std::getline(input, firstLine);
+        if (firstLine.rfind(clangdMarker, 0) != 0) {
+            return;
+        }
+    }
+    std::string content;
+    content += std::string(clangdMarker) + " Delete this line to keep your own edits: the editor then leaves this file alone.\n";
+    content += "# The compile commands of this project's C++ scripts (C++ standard, engine API include\n";
+    content += "# directories) are in " + databaseDir + ", rewritten when the project is opened or built.\n";
+    content += "CompileFlags:\n";
+    content += "  CompilationDatabase: " + databaseDir + "\n";
+    FileUtils::writeIfChanged(file, content);
+}
+
+} // namespace
+} // namespace jasperengine::editor
+
+void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs) {
+    try {
+        const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
+        const fs::path stubsRelative = relativeInternalPath / "engine-api" / "lua";
+        const fs::path pluginRelative = relativeInternalPath / "engine-api" / luastubs::luaLsPlugin.name;
+        writeLuaApiStubs(projectPath / stubsRelative);
+        writeLuaLsPlugin(projectPath / pluginRelative);
+        writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string());
+        writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);
+        writeClangdConfig(projectPath, (relativeInternalPath / "clangd").generic_string());
+    } catch (const std::exception& e) {
+        Out::error("Failed to write the code tool files (Lua API stubs, .luarc.json, .clangd): %s", e.what());
+    }
 }
 
 std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,

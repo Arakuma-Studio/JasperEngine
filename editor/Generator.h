@@ -141,8 +141,27 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
-        // AGENTS.md at the project root: (re)writes the JasperEngine section, keeps the rest
+        // AGENTS.md at the project root, written only when the project has none (then CLAUDE.md likewise)
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
+        // CLAUDE.md importing AGENTS.md, written only when the project has none
+        static void writeClaudeFile(const fs::path& projectPath);
+        // Files for code tools and language servers, refreshed on project open and on every
+        // build: the Lua API stubs (<internal>/engine-api/lua) and the lua-language-server plugin
+        // (<internal>/engine-api/luals-plugin.lua.txt) with a .luarc.json pointing
+        // lua-language-server at them, and a compile database (<internal>/clangd) with a .clangd
+        // pointing clangd at it. A .luarc.json is merged into, a .clangd without the generated
+        // marker line is left alone.
+        static void writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs);
+        // Lua script classes for lua-language-server: <internal>/engine-api/lua/scripts/<Name>.lua
+        // declares `---@class <Name> : ScriptInstance` with a `---@field` per property of the
+        // script <Name>.lua (read by running its top level in an isolated Lua state, as the
+        // `check` CLI does). A script that declares the class itself gets `self` typed. Main
+        // thread only. changedFiles empty: every script, stale classes removed; otherwise only
+        // those (absolute paths; a deleted script drops its class).
+        static void writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
+                                        const std::vector<fs::path>& changedFiles = {});
+        // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
+        static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
         ~Generator();
         // Export rebuilds the engine, so it does not need the editor's ABI.

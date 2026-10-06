@@ -64,10 +64,13 @@ editor/mcp/
   McpSchema.{h,cpp}       JSON Schema builders (objectSchema, vec3Schema, refSchema...)
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
-  legacy/                 the old EditorActionRegistry/Executor + helpers, namespace mcp::legacy
+  McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
+  McpLaunch.{h,cpp}       `jasperengine-editor mcp` command line, stdio fd setup, --headless Xvfb
+  McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call
+  EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
-    LegacyTools.cpp       adapter: registers every legacy action as an MCP tool
-    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status
+    McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h: helpers shared by modules
+    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
     ProjectTools.cpp      W5
     SceneTools.cpp        W1
     EntityTools.cpp       W1
@@ -84,9 +87,10 @@ editor/mcp/
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
-`McpServer` calls them all in a fixed order (Legacy first, then the rest). The core creates
-every file above (empty register functions where not yet implemented) and lists them all
-in `CMakeLists.txt`, so workstreams never need to touch CMake or each other's files.
+`McpServer` calls them all in a fixed order (Core first, then the rest; a later module may
+replace a tool by registering the same name). Every file above is listed in `CMakeLists.txt`.
+(The first version also adapted the old in-editor agent's actions as "legacy" tools; every
+one was replaced by a module tool and the layer was deleted.)
 
 ## Registry API
 
@@ -107,7 +111,7 @@ struct ToolDef {
 };
 
 class McpRegistry {
-    void addTool(ToolDef def);           // same name replaces (modules override legacy tools)
+    void addTool(ToolDef def);           // same name replaces
     void removeTool(const std::string& name);
     void addResource(ResourceDef);        // static uri
     void addResourceTemplate(ResourceTemplateDef);  // uri template e.g. jasper://scene/{id}
@@ -196,7 +200,7 @@ Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 
 | W | Owner files | Scope |
 |---|---|---|
-| Core | `editor/mcp/*` (not tools/ modules), `editor/main.cpp`, `App.*`, `AppSettings.*`, CMake, removal of `editor/ai`, `AiChatWindow`, `AiSettingsWindow`, libcurl | server, transports, registry, calls/jobs/batch, legacy adapter, activity window, CLI |
+| Core | `editor/mcp/*` (not tools/ modules), `editor/main.cpp`, `App.*`, `AppSettings.*`, CMake, removal of `editor/ai`, `AiChatWindow`, `AiSettingsWindow`, libcurl | server, transports, registry, calls/jobs/batch, activity window, CLI |
 | Enablers | `editor/util/EntityPath.*`, `Out.*`, `ConsoleWindow.*`, Lua print, `SceneRender.*`, `GraphicUtils.*`, `Project.*` non-interactive APIs, `CommandLine.cpp` | see above |
 | Harness | `tools/mcp/*`, `docs/mcp/*` (except this file), `.mcp.json`, `McpInstructions.cpp` | Python MCP test harness, agent guide, client setup docs |
 | W1 | `SceneTools.cpp`, `EntityTools.cpp`, `ComponentTools.cpp`, `McpValues.*`, `McpRefs.*` | scenes, hierarchy, GameObjects, components, all property types, selection, clipboard, scene settings |
@@ -210,17 +214,77 @@ Rules for every workstream:
 - Prefer fewer, more powerful tools with excellent descriptions and schemas over many
   narrow ones. A tool description says what it does, what it returns, and the common
   mistakes. Target well under 150 tools in total.
-- Replace legacy tools in your area by registering the same name (or `removeTool` the
-  legacy name and add a better one). Do not edit `editor/mcp/legacy/*` except for a bug fix.
 - Edits through commands (undoable); file writes refresh the Project window, the asset
   database and open code editor buffers.
 - Every tool has a test in `tools/mcp/tests/` run through the harness against a real
   editor under Xvfb.
 
+## Code lives on disk: agents edit it with their own tools
+
+The project is a normal folder. Agents (run with the project folder as their working
+directory) read, edit, grep and git its Lua scripts, C++ sources, shaders and materials with
+their own tools and language servers (`.luarc.json` for lua-language-server with the Lua API
+stubs in `.jasperengine/engine-api/lua/`, `.clangd` -> `.jasperengine/clangd/compile_commands.json`
+for clangd, the engine API snapshot in `.jasperengine/engine-api/`). MCP is for what needs the editor: making it notice
+the changes, validating with the engine's own compilers (`check_script`, `check_shader`,
+`compile_scripts`, or the `jasperengine-editor check` CLI), attaching scripts and setting
+their properties, playing and observing. `write_file` / `read_file` / `search_files` remain
+for clients without file access (remote HTTP).
+
+### Automatic pick-up (McpAutoSync)
+
+`McpServer::handleToolsCall` runs `McpAutoSync::beforeCall` on the main thread before every
+top-level tools/call (not for calls nested in `batch`, nor before `sync_files`, which does
+the same work and reports it itself):
+
+- **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
+  (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
+  `.material`, images) and folders (mtime: an added, removed or renamed entry), skipping
+  hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
+  `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
+  in-memory terrain (`terrain_maps/terrain_edit_*.png`, written asynchronously after a
+  sculpt) are not tracked: the editor owns them. Files changed
+  this session, folders and code files are checked whole on every call (up to 2000 of each);
+  images rotate within a ~2 ms budget, resuming where the last scan stopped. The baseline is
+  taken (in `McpServer::tick`) when a project opens.
+- **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp; the same as
+  `sync_files` with paths): clean code editor buffers reloaded, script properties re-parsed,
+  Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, asset
+  database and Project window refreshed. Shader forks using a changed shader file are then
+  compiled (`w4::checkShadersAsync`; the call waits for it through `waitUntil`) so their
+  errors are reported with the call.
+- **Report**: the call's result gets `structuredContent.external_changes` = `{changed,
+  added?, removed?, changed_count?, problems: [{path, line, message}], script_properties?,
+  reloaded_buffers?, deferred?}` and one text content item; nothing when nothing changed.
+- **Not the agent's changes**: `syncFiles` (the funnel of `write_file`, `create_script`,
+  the material and asset tools, `code_editor` save, undo of file writes) restamps what it
+  handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
+  with `save_path`), a settle scan posted to the main thread attributes changes stamped
+  inside the call's time window to the tool, which handled them (`fork_shader`, screenshots
+  saved into the project, terrain maps): their stamps are taken, nothing is re-run (a texture
+  reload would undo a terrain tool's in-memory edit). Older ones are reported by the next
+  call. Limitation: an external edit made *while* a writing call runs is taken as the tool's
+  (neither picked up nor reported; `sync_files` or the editor's own poll catch it).
+- **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
+  snapshot when it stops; `CodeEditor::checkExternalScriptChanges` waits too). Changes found
+  then are reported with `deferred` (Lua syntax still checked) and picked up by the first
+  call after play stops.
+- **The editor's own 1 s poll** (`CodeEditor::checkFileChanges` for open buffers,
+  `checkExternalScriptChanges` for attached scripts) keeps running for humans. Buffers are
+  reloaded through the same `checkFileChanges` (one shared `lastWriteTime`, so never twice);
+  after a sync `CodeEditor::markScriptFilesCurrent` updates the script watch so it does not
+  re-parse the same file again; if the poll was first, the re-parse finds no property change.
+- Cost: `editor_status.auto_sync` = `{files, dirs, checked, complete, scan_ms, settle_ms,
+  scan_cpu_ms, settle_cpu_ms}`; ~0.1 ms per call (0.25 ms with the settle) on the fixture
+  project (`tools/mcp/tests/test_autosync.py` measures it, and a 25k-file project).
+
 ## Agent guide (instructions)
 
-`initialize.instructions` and the `jasper://guide` resource carry the agent guide: how
-the engine maps to Unity, scene/entity addressing, the build loop (edit → play → screenshot
-→ read console → fix), Lua and C++ scripting conventions, physics rules, shader forking —
-ported from the old in-editor agent's system prompt (`AiService::buildSystemPrompt`) and
-extended for the new tools.
+`initialize.instructions` and the `jasper://guide` resource carry the agent guide
+(`McpInstructions.cpp`): how the engine maps to Unity, scene/entity addressing, the loop
+(inspect → edit → save → play → screenshot → read console → fix), working on code with the
+agent's own tools, play and time control, Lua and C++ scripting conventions, 2D/3D and UI,
+physics, prefabs, shader forking, shipping. It is sent every session: keep it tight (about
+16 KB); deeper references are the `jasper://docs/...` resources (`docs/mcp/guide/*.md`).
+`test_autosync.py::test_instructions_name_real_tools` checks that every tool and parameter
+name it mentions exists.

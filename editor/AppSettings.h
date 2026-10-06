@@ -127,7 +127,9 @@ public:
     static bool setBuildSettings(const std::filesystem::path& projectFile, const LocalBuildSettings& value);
 
     // Initialization
-    static bool initialize();
+    // preferUserDirectory: keep the files in the per-user config directory unless the working
+    // directory already has a settings.yaml (MCP mode, started in the client's folder)
+    static bool initialize(bool preferUserDirectory = false);
 
     // Directory where editor config files live (settings.yaml, layout ini, ...)
     static std::filesystem::path getConfigDirectory();

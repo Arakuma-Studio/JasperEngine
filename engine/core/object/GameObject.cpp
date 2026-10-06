@@ -150,7 +150,10 @@ Vector3 GameObject::getWorldScale() const{
 
 void GameObject::setVisible(bool visible){
     Transform& transform = getComponent<Transform>();
-    if (transform.visible != visible){
+    // Hiding always reaches the children: a parent saved hidden (the editor stores each flag on
+    // its own) keeps visible children until it is hidden again. Showing a visible parent stays a
+    // no-op, so a child hidden on its own is not shown again by it.
+    if (transform.visible != visible || !visible){
         transform.visible = visible;
         transform.needUpdateChildVisibility = true;
     }

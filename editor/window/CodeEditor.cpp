@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "AppSettings.h"
 #include "util/ProjectUtils.h"
+#include "Generator.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
 #include "widget/SemanticSuggestions.h"
@@ -1418,6 +1419,9 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
         updateScriptProperties(instance);
         updateAllProjectSymbols();
         invalidateShadersForFile(instance);
+        if (Util::isLuaFile(fullPath.string())) {
+            Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {fullPath});
+        }
 
         return true;
     } catch (const std::exception&) {
@@ -1565,6 +1569,16 @@ void editor::CodeEditor::syncWithDisk(std::vector<std::string>& reloaded, std::v
         } else if (instance.lastWriteTime != before) {
             reloaded.push_back(key);
         }
+    }
+}
+
+void editor::CodeEditor::markScriptFilesCurrent(const std::vector<fs::path>& files) {
+    for (const fs::path& file : files) {
+        auto it = watchedScriptFiles.find(toRelativePath(file.string()));
+        if (it == watchedScriptFiles.end()) continue;
+        std::error_code ec;
+        const fs::file_time_type time = fs::last_write_time(file, ec);
+        if (!ec) it->second = time;
     }
 }
 

@@ -108,6 +108,7 @@ struct HeldInput {
     std::set<int> keys;
     std::set<int> mouseButtons;
     Vector2 mousePos = Vector2(0, 0);   // view (framebuffer) pixels
+    bool mousePosKnown = false;         // mousePos was set by an injected event this session
     std::map<int, Vector2> touches;     // pointer → view pixels
     std::set<int> gamepads;             // connected virtual gamepads
     std::map<int, std::set<int>> gamepadButtons;
@@ -1123,14 +1124,10 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
     context.scene = scene;
     context.printed = &result.printed;
 
-    // Environment: reads and global writes go to _G; the helpers live in the env itself
+    // Environment: reads and global writes go to _G; the helpers live in the env itself. They
+    // are set before the metatable: with __newindex in place they would land in _G, and the
+    // game's own print would then write through this call's dead context.
     lua_newtable(L);
-    lua_newtable(L);
-    lua_pushglobaltable(L);
-    lua_setfield(L, -2, "__index");
-    lua_pushglobaltable(L);
-    lua_setfield(L, -2, "__newindex");
-    lua_setmetatable(L, -2);
     if (scene && scene->scene && luabridge::push<Scene*>(L, scene->scene)) {
         lua_setfield(L, -2, "scene");
     }
@@ -1143,6 +1140,12 @@ LuaEvalResult runLua(Project* project, SceneProject* scene, const std::string& c
         lua_pushcclosure(L, fn, 1);
         lua_setfield(L, -2, name);
     }
+    lua_newtable(L);
+    lua_pushglobaltable(L);
+    lua_setfield(L, -2, "__index");
+    lua_pushglobaltable(L);
+    lua_setfield(L, -2, "__newindex");
+    lua_setmetatable(L, -2);
     if (!lua_setupvalue(L, chunk, 1)) lua_pop(L, 1);
 
     lua_Hook oldHook = lua_gethook(L);
@@ -1874,6 +1877,33 @@ void listRuntimeEntitiesTool(const CallPtr& call) {
     call->ok(text, data);
 }
 
+// A C++ script's DPROPERTY member, read live through the pointer the generated bindings set
+Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& prop) {
+    void* member = prop.memberPtr;
+    switch (prop.type) {
+        case ScriptPropertyType::Bool: return *static_cast<bool*>(member);
+        case ScriptPropertyType::Int: return *static_cast<int*>(member);
+        case ScriptPropertyType::Float: return McpValues::number(*static_cast<float*>(member));
+        case ScriptPropertyType::String: return *static_cast<std::string*>(member);
+        case ScriptPropertyType::Vector2: return McpValues::toJson(*static_cast<Vector2*>(member));
+        case ScriptPropertyType::Vector3:
+        case ScriptPropertyType::Color3: return McpValues::toJson(*static_cast<Vector3*>(member));
+        case ScriptPropertyType::Vector4:
+        case ScriptPropertyType::Color4: return McpValues::toJson(*static_cast<Vector4*>(member));
+        case ScriptPropertyType::EntityReference: {
+            // a pointer member (Sprite*, a script class...): null, or the GameObject it was bound to
+            if (*static_cast<void**>(member) == nullptr) return nullptr;
+            if (!std::holds_alternative<EntityReference>(prop.value)) return Json{{"bound", true}};
+            return McpValues::entityReferenceToJson(project, sp, std::get<EntityReference>(prop.value));
+        }
+        case ScriptPropertyType::Prefab: {
+            const std::string& path = static_cast<PrefabAsset*>(member)->getPath();
+            return path.empty() ? Json(nullptr) : Json(path);
+        }
+    }
+    return nullptr;
+}
+
 Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxDepth) {
     Json scripts = Json::array();
     ScriptComponent* component = sp->scene->findComponent<ScriptComponent>(entity);
@@ -1892,6 +1922,13 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
             }
             item["state"] = fields;
             lua_settop(L, top);
+        } else if (entry.type == ScriptType::CPP && entry.instance) {
+            // C++ has no reflection: the DPROPERTY members (what the Inspector shows)
+            Json fields = Json::object();
+            for (const ScriptProperty& prop : entry.properties) {
+                if (prop.memberPtr) fields[prop.name] = cppMemberJson(project, sp, prop);
+            }
+            item["state"] = fields;
         }
         scripts.push_back(item);
     }
@@ -2119,6 +2156,18 @@ bool toViewPoint(const std::string& space, double x, double y, Vector2& out, std
     return true;
 }
 
+// Where a mouse event without x,y happens: the last injected pointer position, else the game's
+// current mouse position (view pixels)
+Vector2 currentPointerView() {
+    const HeldInput& held = state().held;
+    if (held.mousePosKnown) return held.mousePos;
+    const Vector2 canvas = Input::getMousePosition();
+    Vector2 p;
+    std::string error;
+    if (toViewPoint("canvas", canvas.x, canvas.y, p, error)) return p;
+    return held.mousePos;
+}
+
 void markPointerInjected(McpContext& ctx) {
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(true);
 }
@@ -2242,7 +2291,8 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         }
         double x = 0, y = 0;
         const bool hasPoint = readPoint(event, "x", "y", "position", x, y);
-        if (!hasPoint && action != "scroll" && action != "up") {
+        // down / up / click without a point: where the pointer is
+        if (!hasPoint && (action == "move" || action == "drag")) {
             error = "mouse " + action + " needs x and y (or position [x,y])";
             return false;
         }
@@ -2263,12 +2313,13 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
                 Engine::systemMouseMove(p.x, p.y, mods);
             }
             held.mousePos = p;
+            held.mousePosKnown = true;
             return std::string();
         };
-        auto pressAt = [c, space, mods, button, asTouch](double px, double py) -> std::string {
-            Vector2 p;
+        auto pressAt = [c, space, mods, button, asTouch, hasPoint](double px, double py) -> std::string {
+            Vector2 p = currentPointerView();
             std::string err;
-            if (!toViewPoint(space, px, py, p, err)) return err;
+            if (hasPoint && !toViewPoint(space, px, py, p, err)) return err;
             markPointerInjected(*c);
             HeldInput& held = state().held;
             if (asTouch) {
@@ -2280,11 +2331,12 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
                 held.mouseButtons.insert(button);
             }
             held.mousePos = p;
+            held.mousePosKnown = true;
             return std::string();
         };
         auto releaseAt = [c, space, mods, button, asTouch, hasPoint](double px, double py) -> std::string {
             HeldInput& held = state().held;
-            Vector2 p = held.mousePos;
+            Vector2 p = currentPointerView();
             if (hasPoint) {
                 std::string err;
                 if (!toViewPoint(space, px, py, p, err)) return err;
@@ -2298,6 +2350,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
                 held.mouseButtons.erase(button);
             }
             held.mousePos = p;
+            held.mousePosKnown = true;
             return std::string();
         };
 
@@ -2724,7 +2777,10 @@ void waitTool(const CallPtr& call) {
         return;
     }
     const double scale = std::max(0.05, static_cast<double>(Engine::getTimeScale()));
-    double timeout = args.value("timeout_seconds", until.empty() ? 0.0 : 30.0);
+    // until alone: 30 s; with a cap (game_seconds / frames / seconds) the wall clock follows the cap,
+    // however slowly the game runs
+    const bool capped = gameSeconds > 0.0 || frames > 0 || seconds > 0.0;
+    double timeout = args.value("timeout_seconds", until.empty() || capped ? 0.0 : 30.0);
     if (timeout <= 0.0) {
         timeout = std::max({seconds + 30.0, frames / 10.0 + 30.0, gameSeconds / scale * 10.0 + 30.0});
     }
@@ -2819,19 +2875,10 @@ void waitTool(const CallPtr& call) {
         }
         // game frames while it plays; editor frames otherwise
         ws->frames = playing ? static_cast<int>(Engine::getGameFrames() - ws->engineFrames) : ws->ticks;
-        if (frames > 0 && ws->frames >= frames) {
-            ws->reason = "frames";
-            return true;
-        }
-        if (seconds > 0.0 && secondsSince(ws->start) >= seconds) {
-            ws->reason = "seconds";
-            return true;
-        }
-        if (gameSeconds > 0.0 && Engine::getGameTime() - ws->engineTime >= gameSeconds - 1e-9) {
-            ws->reason = "game_seconds";
-            return true;
-        }
-        if (!until.empty() && (++ws->polls % pollEvery) == 0) {
+        // the condition first: with it, seconds / game_seconds / frames are caps
+        const bool capReached = (frames > 0 && ws->frames >= frames) || (seconds > 0.0 && secondsSince(ws->start) >= seconds) ||
+                                (gameSeconds > 0.0 && Engine::getGameTime() - ws->engineTime >= gameSeconds - 1e-9);
+        if (!until.empty() && ((++ws->polls % pollEvery) == 0 || capReached)) {
             SceneProject* scene = p->getScene(playId);
             if (scene && scene->playState == ScenePlayState::PLAYING) {
                 LuaEvalResult r = runLua(p, scene, until, 2.0, 3, 50);
@@ -2846,6 +2893,18 @@ void waitTool(const CallPtr& call) {
                     return true;
                 }
             }
+        }
+        if (frames > 0 && ws->frames >= frames) {
+            ws->reason = "frames";
+            return true;
+        }
+        if (seconds > 0.0 && secondsSince(ws->start) >= seconds) {
+            ws->reason = "seconds";
+            return true;
+        }
+        if (gameSeconds > 0.0 && Engine::getGameTime() - ws->engineTime >= gameSeconds - 1e-9) {
+            ws->reason = "game_seconds";
+            return true;
         }
         // the input's events for the next frame, once this one ran its checks
         if (input && !input->finished) {
@@ -2919,6 +2978,9 @@ void waitTool(const CallPtr& call) {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
                    ws->conditionValue.dump() + ".";
             isError = !until.empty();
+        } else if (!until.empty() && (ws->reason == "frames" || ws->reason == "seconds" || ws->reason == "game_seconds")) {
+            text = "Reached the " + ws->reason + " cap (" + elapsed + "); the condition is still " + ws->conditionValue.dump() + ".";
+            isError = true;
         } else {
             text = "Waited " + elapsed + ".";
         }
@@ -2996,10 +3058,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Wait / Run Game";
         tool.description =
             "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
-            "the Lua `until` is truthy (checked between frames); returns reason, elapsed time/frames/game_seconds, "
-            "console lines, play state. input: send_input events from the first frame; the wait ends at its "
-            "condition (leftover input skipped, its presses released) or when the input is done. isError if play "
-            "ended, input failed or `until` errored/timed out.";
+            "the Lua `until` is truthy (checked between frames; then seconds/game_seconds/frames are caps); returns "
+            "reason, elapsed time/frames/game_seconds, console lines, play state. input: send_input events from the "
+            "first frame; the wait ends at its condition (leftover input skipped, its presses released) or when the "
+            "input is done. isError if play ended, input failed or `until` errored/timed out/hit its cap.";
         tool.inputSchema = object({
             {"seconds", number("", 0, 600)},
             {"game_seconds", number("", 0, 3600)},
@@ -3007,7 +3069,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"until", string("Lua condition (eval_lua helpers).")},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
-            {"timeout_seconds", number("Default: 30 (until) or run time + 30.", 0.5, 3600)},
+            {"timeout_seconds", number("Wall clock. Default: 30 (until without a cap), else scaled to the run "
+                                       "time + 30.", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
             {"console_limit", withDefault(integer("", 0, 1000), 50)},
             {"only_problems", withDefault(boolean(""), false)},
@@ -3067,7 +3130,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Runtime GameObject";
         tool.description =
             "Live values of a GameObject in the running game (runtime-spawned too): component properties this "
-            "frame and Lua script instance fields. Only while playing.";
+            "frame and script state (Lua instance fields; C++ DPROPERTY members). Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
@@ -3110,8 +3173,8 @@ void registerPlayTools(McpRegistry& registry) {
             "Inject input into the running game across frames (no focus needed). events run in order, each "
             "{type, ...}; first action listed = default:\nkey: key (space, a, 0, left, f1, kp_0...), action "
             "press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text\nmouse: action "
-            "click|double_click|down|up|move|drag|scroll, x, y, button left|right|middle, to [x,y] + steps "
-            "(drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\ngamepad: "
+            "click|double_click|down|up|move|drag|scroll, x, y (click/down/up: default the pointer's position), "
+            "button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\ngamepad: "
             "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
             "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
             "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
