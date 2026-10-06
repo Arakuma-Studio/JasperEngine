@@ -69,7 +69,9 @@ public:
         // frame (a no-change redraw is just compositing). Marking the picture's transform
         // dirty makes every shape re-transform, re-stroke and re-rasterize, which is the cost
         // of drawing the document for the first time at this size.
+#ifndef THORVG_BENCH_CACHED_REDRAW // only for checking the method (docs/html-ui/svg-benchmark.md)
         picture->transform(identity);
+#endif
         return draw();
     }
 
