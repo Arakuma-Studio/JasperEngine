@@ -5,6 +5,7 @@
 #include "McpTools.h"
 #include "W4Shared.h"
 
+#include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -566,6 +567,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     };
     if (texturesReloaded > 0) result["textures_reloaded"] = texturesReloaded;
     if (anyShader) result["shaders_invalidated"] = true;
+    // Handled now: not an external change for the automatic pick-up before the next call
+    McpAutoSync::get().filesSynced(ctx, std::vector<fs::path>(changed.begin(), changed.end()), full);
     return result;
 }
 

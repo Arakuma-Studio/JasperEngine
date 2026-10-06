@@ -1568,6 +1568,16 @@ void editor::CodeEditor::syncWithDisk(std::vector<std::string>& reloaded, std::v
     }
 }
 
+void editor::CodeEditor::markScriptFilesCurrent(const std::vector<fs::path>& files) {
+    for (const fs::path& file : files) {
+        auto it = watchedScriptFiles.find(toRelativePath(file.string()));
+        if (it == watchedScriptFiles.end()) continue;
+        std::error_code ec;
+        const fs::file_time_type time = fs::last_write_time(file, ec);
+        if (!ec) it->second = time;
+    }
+}
+
 bool editor::CodeEditor::saveFile(const std::string& filepath) {
     auto it = editors.find(toRelativePath(filepath));
     if (it == editors.end()) return false;
