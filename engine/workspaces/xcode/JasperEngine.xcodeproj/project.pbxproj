@@ -1296,6 +1296,436 @@
 		7DC000B22E7A0100C91BA0C0 /* ShaderVariantCollection.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000AB2E7A0100C91BA0C0 /* ShaderVariantCollection.h */; };
 		7DC000B52E7A0100C91BA0C0 /* ShaderVariantCompiler.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */; };
 		7DC000B92E7A0100C91BA0C0 /* shaderlib.h in Headers */ = {isa = PBXBuildFile; fileRef = 7DC000B82E7A0100C91BA0C0 /* shaderlib.h */; };
+		48544D4C0000000000000002 /* HtmlUI.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000001 /* HtmlUI.h */; };
+		48544D4C0000000000000004 /* HtmlUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000003 /* HtmlUI.cpp */; };
+		48544D4C0000000000000005 /* HtmlUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000003 /* HtmlUI.cpp */; };
+		48544D4C0000000000000007 /* HtmlUIContext.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000006 /* HtmlUIContext.h */; };
+		48544D4C0000000000000009 /* HtmlUIContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000008 /* HtmlUIContext.cpp */; };
+		48544D4C000000000000000A /* HtmlUIContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000008 /* HtmlUIContext.cpp */; };
+		48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000000B /* HtmlUIContextRender.cpp */; };
+		48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000000B /* HtmlUIContextRender.cpp */; };
+		48544D4C000000000000000F /* RmlFile.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000000E /* RmlFile.h */; };
+		48544D4C0000000000000011 /* RmlFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000010 /* RmlFile.cpp */; };
+		48544D4C0000000000000012 /* RmlFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000010 /* RmlFile.cpp */; };
+		48544D4C0000000000000014 /* RmlFontEngine.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000013 /* RmlFontEngine.h */; };
+		48544D4C0000000000000016 /* RmlFontEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000015 /* RmlFontEngine.cpp */; };
+		48544D4C0000000000000017 /* RmlFontEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000015 /* RmlFontEngine.cpp */; };
+		48544D4C0000000000000019 /* RmlRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000018 /* RmlRenderer.h */; };
+		48544D4C000000000000001B /* RmlRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001A /* RmlRenderer.cpp */; };
+		48544D4C000000000000001C /* RmlRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001A /* RmlRenderer.cpp */; };
+		48544D4C000000000000001E /* RmlSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001D /* RmlSystem.h */; };
+		48544D4C0000000000000020 /* RmlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001F /* RmlSystem.cpp */; };
+		48544D4C0000000000000021 /* RmlSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001F /* RmlSystem.cpp */; };
+		48544D4C0000000000000023 /* FontFace.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000022 /* FontFace.h */; };
+		48544D4C0000000000000025 /* FontFace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000024 /* FontFace.cpp */; };
+		48544D4C0000000000000026 /* FontFace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000024 /* FontFace.cpp */; };
+		48544D4C0000000000000028 /* FontRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000027 /* FontRegistry.h */; };
+		48544D4C000000000000002A /* FontRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000029 /* FontRegistry.cpp */; };
+		48544D4C000000000000002B /* FontRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000029 /* FontRegistry.cpp */; };
+		48544D4C000000000000002D /* GlyphAtlas.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000002C /* GlyphAtlas.h */; };
+		48544D4C000000000000002F /* GlyphAtlas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000002E /* GlyphAtlas.cpp */; };
+		48544D4C0000000000000030 /* GlyphAtlas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000002E /* GlyphAtlas.cpp */; };
+		48544D4C0000000000000032 /* TextShaper.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000031 /* TextShaper.h */; };
+		48544D4C0000000000000034 /* TextShaper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000033 /* TextShaper.cpp */; };
+		48544D4C0000000000000035 /* TextShaper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000033 /* TextShaper.cpp */; };
+		48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000036 /* UIDocumentSystem.h */; };
+		48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
+		48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
+		48544D4C000000000000003C /* UIDocument.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003B /* UIDocument.h */; };
+		48544D4C000000000000003E /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
+		48544D4C000000000000003F /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
+		48544D4C0000000000000041 /* UIElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000040 /* UIElement.h */; };
+		48544D4C0000000000000043 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
+		48544D4C0000000000000044 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
+		48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000045 /* UIDocumentComponent.h */; };
+		48544D4C0000000000000049 /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
+		48544D4C000000000000004A /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
+		48544D4C000000000000004C /* Box.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000004B /* Box.cpp */; };
+		48544D4C000000000000004D /* Box.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000004B /* Box.cpp */; };
+		48544D4C000000000000004F /* BoxShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000004E /* BoxShadowCache.cpp */; };
+		48544D4C0000000000000050 /* BoxShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000004E /* BoxShadowCache.cpp */; };
+		48544D4C0000000000000052 /* CallbackTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000051 /* CallbackTexture.cpp */; };
+		48544D4C0000000000000053 /* CallbackTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000051 /* CallbackTexture.cpp */; };
+		48544D4C0000000000000055 /* Clock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000054 /* Clock.cpp */; };
+		48544D4C0000000000000056 /* Clock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000054 /* Clock.cpp */; };
+		48544D4C0000000000000058 /* CompiledFilterShader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000057 /* CompiledFilterShader.cpp */; };
+		48544D4C0000000000000059 /* CompiledFilterShader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000057 /* CompiledFilterShader.cpp */; };
+		48544D4C000000000000005B /* ComputeProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000005A /* ComputeProperty.cpp */; };
+		48544D4C000000000000005C /* ComputeProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000005A /* ComputeProperty.cpp */; };
+		48544D4C000000000000005E /* ComputedValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000005D /* ComputedValues.cpp */; };
+		48544D4C000000000000005F /* ComputedValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000005D /* ComputedValues.cpp */; };
+		48544D4C0000000000000061 /* Context.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000060 /* Context.cpp */; };
+		48544D4C0000000000000062 /* Context.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000060 /* Context.cpp */; };
+		48544D4C0000000000000064 /* ContextInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000063 /* ContextInstancer.cpp */; };
+		48544D4C0000000000000065 /* ContextInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000063 /* ContextInstancer.cpp */; };
+		48544D4C0000000000000067 /* ContextInstancerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000066 /* ContextInstancerDefault.cpp */; };
+		48544D4C0000000000000068 /* ContextInstancerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000066 /* ContextInstancerDefault.cpp */; };
+		48544D4C000000000000006A /* ConvolutionFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000069 /* ConvolutionFilter.cpp */; };
+		48544D4C000000000000006B /* ConvolutionFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000069 /* ConvolutionFilter.cpp */; };
+		48544D4C000000000000006D /* Core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000006C /* Core.cpp */; };
+		48544D4C000000000000006E /* Core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000006C /* Core.cpp */; };
+		48544D4C0000000000000070 /* DataController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000006F /* DataController.cpp */; };
+		48544D4C0000000000000071 /* DataController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000006F /* DataController.cpp */; };
+		48544D4C0000000000000073 /* DataControllerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000072 /* DataControllerDefault.cpp */; };
+		48544D4C0000000000000074 /* DataControllerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000072 /* DataControllerDefault.cpp */; };
+		48544D4C0000000000000076 /* DataExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000075 /* DataExpression.cpp */; };
+		48544D4C0000000000000077 /* DataExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000075 /* DataExpression.cpp */; };
+		48544D4C0000000000000079 /* DataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000078 /* DataModel.cpp */; };
+		48544D4C000000000000007A /* DataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000078 /* DataModel.cpp */; };
+		48544D4C000000000000007C /* DataModelHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000007B /* DataModelHandle.cpp */; };
+		48544D4C000000000000007D /* DataModelHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000007B /* DataModelHandle.cpp */; };
+		48544D4C000000000000007F /* DataTypeRegister.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000007E /* DataTypeRegister.cpp */; };
+		48544D4C0000000000000080 /* DataTypeRegister.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000007E /* DataTypeRegister.cpp */; };
+		48544D4C0000000000000082 /* DataVariable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000081 /* DataVariable.cpp */; };
+		48544D4C0000000000000083 /* DataVariable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000081 /* DataVariable.cpp */; };
+		48544D4C0000000000000085 /* DataView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000084 /* DataView.cpp */; };
+		48544D4C0000000000000086 /* DataView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000084 /* DataView.cpp */; };
+		48544D4C0000000000000088 /* DataViewDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000087 /* DataViewDefault.cpp */; };
+		48544D4C0000000000000089 /* DataViewDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000087 /* DataViewDefault.cpp */; };
+		48544D4C000000000000008B /* Decorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000008A /* Decorator.cpp */; };
+		48544D4C000000000000008C /* Decorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000008A /* Decorator.cpp */; };
+		48544D4C000000000000008E /* DecoratorGradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000008D /* DecoratorGradient.cpp */; };
+		48544D4C000000000000008F /* DecoratorGradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000008D /* DecoratorGradient.cpp */; };
+		48544D4C0000000000000091 /* DecoratorNinePatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000090 /* DecoratorNinePatch.cpp */; };
+		48544D4C0000000000000092 /* DecoratorNinePatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000090 /* DecoratorNinePatch.cpp */; };
+		48544D4C0000000000000094 /* DecoratorShader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000093 /* DecoratorShader.cpp */; };
+		48544D4C0000000000000095 /* DecoratorShader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000093 /* DecoratorShader.cpp */; };
+		48544D4C0000000000000097 /* DecoratorText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000096 /* DecoratorText.cpp */; };
+		48544D4C0000000000000098 /* DecoratorText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000096 /* DecoratorText.cpp */; };
+		48544D4C000000000000009A /* DecoratorTiled.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000099 /* DecoratorTiled.cpp */; };
+		48544D4C000000000000009B /* DecoratorTiled.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000099 /* DecoratorTiled.cpp */; };
+		48544D4C000000000000009D /* DecoratorTiledBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000009C /* DecoratorTiledBox.cpp */; };
+		48544D4C000000000000009E /* DecoratorTiledBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000009C /* DecoratorTiledBox.cpp */; };
+		48544D4C00000000000000A0 /* DecoratorTiledHorizontal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000009F /* DecoratorTiledHorizontal.cpp */; };
+		48544D4C00000000000000A1 /* DecoratorTiledHorizontal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000009F /* DecoratorTiledHorizontal.cpp */; };
+		48544D4C00000000000000A3 /* DecoratorTiledImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A2 /* DecoratorTiledImage.cpp */; };
+		48544D4C00000000000000A4 /* DecoratorTiledImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A2 /* DecoratorTiledImage.cpp */; };
+		48544D4C00000000000000A6 /* DecoratorTiledVertical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A5 /* DecoratorTiledVertical.cpp */; };
+		48544D4C00000000000000A7 /* DecoratorTiledVertical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A5 /* DecoratorTiledVertical.cpp */; };
+		48544D4C00000000000000A9 /* DecoratorUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A8 /* DecoratorUtilities.cpp */; };
+		48544D4C00000000000000AA /* DecoratorUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000A8 /* DecoratorUtilities.cpp */; };
+		48544D4C00000000000000AC /* DocumentHeader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000AB /* DocumentHeader.cpp */; };
+		48544D4C00000000000000AD /* DocumentHeader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000AB /* DocumentHeader.cpp */; };
+		48544D4C00000000000000AF /* EffectSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000AE /* EffectSpecification.cpp */; };
+		48544D4C00000000000000B0 /* EffectSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000AE /* EffectSpecification.cpp */; };
+		48544D4C00000000000000B2 /* Element.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B1 /* Element.cpp */; };
+		48544D4C00000000000000B3 /* Element.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B1 /* Element.cpp */; };
+		48544D4C00000000000000B5 /* ElementAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B4 /* ElementAnimation.cpp */; };
+		48544D4C00000000000000B6 /* ElementAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B4 /* ElementAnimation.cpp */; };
+		48544D4C00000000000000B8 /* ElementBackgroundBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B7 /* ElementBackgroundBorder.cpp */; };
+		48544D4C00000000000000B9 /* ElementBackgroundBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000B7 /* ElementBackgroundBorder.cpp */; };
+		48544D4C00000000000000BB /* ElementDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000BA /* ElementDefinition.cpp */; };
+		48544D4C00000000000000BC /* ElementDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000BA /* ElementDefinition.cpp */; };
+		48544D4C00000000000000BE /* ElementDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000BD /* ElementDocument.cpp */; };
+		48544D4C00000000000000BF /* ElementDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000BD /* ElementDocument.cpp */; };
+		48544D4C00000000000000C1 /* ElementEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C0 /* ElementEffects.cpp */; };
+		48544D4C00000000000000C2 /* ElementEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C0 /* ElementEffects.cpp */; };
+		48544D4C00000000000000C4 /* ElementHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C3 /* ElementHandle.cpp */; };
+		48544D4C00000000000000C5 /* ElementHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C3 /* ElementHandle.cpp */; };
+		48544D4C00000000000000C7 /* ElementInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C6 /* ElementInstancer.cpp */; };
+		48544D4C00000000000000C8 /* ElementInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C6 /* ElementInstancer.cpp */; };
+		48544D4C00000000000000CA /* ElementMeta.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C9 /* ElementMeta.cpp */; };
+		48544D4C00000000000000CB /* ElementMeta.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000C9 /* ElementMeta.cpp */; };
+		48544D4C00000000000000CD /* ElementScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000CC /* ElementScroll.cpp */; };
+		48544D4C00000000000000CE /* ElementScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000CC /* ElementScroll.cpp */; };
+		48544D4C00000000000000D0 /* ElementStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000CF /* ElementStyle.cpp */; };
+		48544D4C00000000000000D1 /* ElementStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000CF /* ElementStyle.cpp */; };
+		48544D4C00000000000000D3 /* ElementText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D2 /* ElementText.cpp */; };
+		48544D4C00000000000000D4 /* ElementText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D2 /* ElementText.cpp */; };
+		48544D4C00000000000000D6 /* ElementUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D5 /* ElementUtilities.cpp */; };
+		48544D4C00000000000000D7 /* ElementUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D5 /* ElementUtilities.cpp */; };
+		48544D4C00000000000000D9 /* Event.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D8 /* Event.cpp */; };
+		48544D4C00000000000000DA /* Event.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000D8 /* Event.cpp */; };
+		48544D4C00000000000000DC /* EventDispatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000DB /* EventDispatcher.cpp */; };
+		48544D4C00000000000000DD /* EventDispatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000DB /* EventDispatcher.cpp */; };
+		48544D4C00000000000000DF /* EventInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000DE /* EventInstancer.cpp */; };
+		48544D4C00000000000000E0 /* EventInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000DE /* EventInstancer.cpp */; };
+		48544D4C00000000000000E2 /* EventInstancerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E1 /* EventInstancerDefault.cpp */; };
+		48544D4C00000000000000E3 /* EventInstancerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E1 /* EventInstancerDefault.cpp */; };
+		48544D4C00000000000000E5 /* EventListenerInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E4 /* EventListenerInstancer.cpp */; };
+		48544D4C00000000000000E6 /* EventListenerInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E4 /* EventListenerInstancer.cpp */; };
+		48544D4C00000000000000E8 /* EventSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E7 /* EventSpecification.cpp */; };
+		48544D4C00000000000000E9 /* EventSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000E7 /* EventSpecification.cpp */; };
+		48544D4C00000000000000EB /* Factory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000EA /* Factory.cpp */; };
+		48544D4C00000000000000EC /* Factory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000EA /* Factory.cpp */; };
+		48544D4C00000000000000EE /* FileInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000ED /* FileInterface.cpp */; };
+		48544D4C00000000000000EF /* FileInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000ED /* FileInterface.cpp */; };
+		48544D4C00000000000000F1 /* FileInterfaceDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F0 /* FileInterfaceDefault.cpp */; };
+		48544D4C00000000000000F2 /* FileInterfaceDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F0 /* FileInterfaceDefault.cpp */; };
+		48544D4C00000000000000F4 /* Filter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F3 /* Filter.cpp */; };
+		48544D4C00000000000000F5 /* Filter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F3 /* Filter.cpp */; };
+		48544D4C00000000000000F7 /* FilterBasic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F6 /* FilterBasic.cpp */; };
+		48544D4C00000000000000F8 /* FilterBasic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F6 /* FilterBasic.cpp */; };
+		48544D4C00000000000000FA /* FilterBlur.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F9 /* FilterBlur.cpp */; };
+		48544D4C00000000000000FB /* FilterBlur.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000F9 /* FilterBlur.cpp */; };
+		48544D4C00000000000000FD /* FilterDropShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000FC /* FilterDropShadow.cpp */; };
+		48544D4C00000000000000FE /* FilterDropShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000FC /* FilterDropShadow.cpp */; };
+		48544D4C0000000000000100 /* FontEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000FF /* FontEffect.cpp */; };
+		48544D4C0000000000000101 /* FontEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000000FF /* FontEffect.cpp */; };
+		48544D4C0000000000000103 /* FontEffectBlur.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000102 /* FontEffectBlur.cpp */; };
+		48544D4C0000000000000104 /* FontEffectBlur.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000102 /* FontEffectBlur.cpp */; };
+		48544D4C0000000000000106 /* FontEffectGlow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000105 /* FontEffectGlow.cpp */; };
+		48544D4C0000000000000107 /* FontEffectGlow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000105 /* FontEffectGlow.cpp */; };
+		48544D4C0000000000000109 /* FontEffectInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000108 /* FontEffectInstancer.cpp */; };
+		48544D4C000000000000010A /* FontEffectInstancer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000108 /* FontEffectInstancer.cpp */; };
+		48544D4C000000000000010C /* FontEffectOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000010B /* FontEffectOutline.cpp */; };
+		48544D4C000000000000010D /* FontEffectOutline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000010B /* FontEffectOutline.cpp */; };
+		48544D4C000000000000010F /* FontEffectShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000010E /* FontEffectShadow.cpp */; };
+		48544D4C0000000000000110 /* FontEffectShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000010E /* FontEffectShadow.cpp */; };
+		48544D4C0000000000000112 /* FontEngineInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000111 /* FontEngineInterface.cpp */; };
+		48544D4C0000000000000113 /* FontEngineInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000111 /* FontEngineInterface.cpp */; };
+		48544D4C0000000000000115 /* Geometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000114 /* Geometry.cpp */; };
+		48544D4C0000000000000116 /* Geometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000114 /* Geometry.cpp */; };
+		48544D4C0000000000000118 /* GeometryBackgroundBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000117 /* GeometryBackgroundBorder.cpp */; };
+		48544D4C0000000000000119 /* GeometryBackgroundBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000117 /* GeometryBackgroundBorder.cpp */; };
+		48544D4C000000000000011B /* GeometryBoxShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000011A /* GeometryBoxShadow.cpp */; };
+		48544D4C000000000000011C /* GeometryBoxShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000011A /* GeometryBoxShadow.cpp */; };
+		48544D4C000000000000011E /* Log.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000011D /* Log.cpp */; };
+		48544D4C000000000000011F /* Log.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000011D /* Log.cpp */; };
+		48544D4C0000000000000121 /* LogDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000120 /* LogDefault.cpp */; };
+		48544D4C0000000000000122 /* LogDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000120 /* LogDefault.cpp */; };
+		48544D4C0000000000000124 /* Math.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000123 /* Math.cpp */; };
+		48544D4C0000000000000125 /* Math.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000123 /* Math.cpp */; };
+		48544D4C0000000000000127 /* Memory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000126 /* Memory.cpp */; };
+		48544D4C0000000000000128 /* Memory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000126 /* Memory.cpp */; };
+		48544D4C000000000000012A /* MeshUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000129 /* MeshUtilities.cpp */; };
+		48544D4C000000000000012B /* MeshUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000129 /* MeshUtilities.cpp */; };
+		48544D4C000000000000012D /* ObserverPtr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000012C /* ObserverPtr.cpp */; };
+		48544D4C000000000000012E /* ObserverPtr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000012C /* ObserverPtr.cpp */; };
+		48544D4C0000000000000130 /* Plugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000012F /* Plugin.cpp */; };
+		48544D4C0000000000000131 /* Plugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000012F /* Plugin.cpp */; };
+		48544D4C0000000000000133 /* PluginRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000132 /* PluginRegistry.cpp */; };
+		48544D4C0000000000000134 /* PluginRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000132 /* PluginRegistry.cpp */; };
+		48544D4C0000000000000136 /* Profiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000135 /* Profiling.cpp */; };
+		48544D4C0000000000000137 /* Profiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000135 /* Profiling.cpp */; };
+		48544D4C0000000000000139 /* PropertiesIteratorView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000138 /* PropertiesIteratorView.cpp */; };
+		48544D4C000000000000013A /* PropertiesIteratorView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000138 /* PropertiesIteratorView.cpp */; };
+		48544D4C000000000000013C /* Property.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000013B /* Property.cpp */; };
+		48544D4C000000000000013D /* Property.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000013B /* Property.cpp */; };
+		48544D4C000000000000013F /* PropertyDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000013E /* PropertyDefinition.cpp */; };
+		48544D4C0000000000000140 /* PropertyDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000013E /* PropertyDefinition.cpp */; };
+		48544D4C0000000000000142 /* PropertyDictionary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000141 /* PropertyDictionary.cpp */; };
+		48544D4C0000000000000143 /* PropertyDictionary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000141 /* PropertyDictionary.cpp */; };
+		48544D4C0000000000000145 /* PropertyParserAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000144 /* PropertyParserAnimation.cpp */; };
+		48544D4C0000000000000146 /* PropertyParserAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000144 /* PropertyParserAnimation.cpp */; };
+		48544D4C0000000000000148 /* PropertyParserBoxShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000147 /* PropertyParserBoxShadow.cpp */; };
+		48544D4C0000000000000149 /* PropertyParserBoxShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000147 /* PropertyParserBoxShadow.cpp */; };
+		48544D4C000000000000014B /* PropertyParserColorStopList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000014A /* PropertyParserColorStopList.cpp */; };
+		48544D4C000000000000014C /* PropertyParserColorStopList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000014A /* PropertyParserColorStopList.cpp */; };
+		48544D4C000000000000014E /* PropertyParserColour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000014D /* PropertyParserColour.cpp */; };
+		48544D4C000000000000014F /* PropertyParserColour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000014D /* PropertyParserColour.cpp */; };
+		48544D4C0000000000000151 /* PropertyParserDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000150 /* PropertyParserDecorator.cpp */; };
+		48544D4C0000000000000152 /* PropertyParserDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000150 /* PropertyParserDecorator.cpp */; };
+		48544D4C0000000000000154 /* PropertyParserFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000153 /* PropertyParserFilter.cpp */; };
+		48544D4C0000000000000155 /* PropertyParserFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000153 /* PropertyParserFilter.cpp */; };
+		48544D4C0000000000000157 /* PropertyParserFontEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000156 /* PropertyParserFontEffect.cpp */; };
+		48544D4C0000000000000158 /* PropertyParserFontEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000156 /* PropertyParserFontEffect.cpp */; };
+		48544D4C000000000000015A /* PropertyParserKeyword.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000159 /* PropertyParserKeyword.cpp */; };
+		48544D4C000000000000015B /* PropertyParserKeyword.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000159 /* PropertyParserKeyword.cpp */; };
+		48544D4C000000000000015D /* PropertyParserNumber.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000015C /* PropertyParserNumber.cpp */; };
+		48544D4C000000000000015E /* PropertyParserNumber.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000015C /* PropertyParserNumber.cpp */; };
+		48544D4C0000000000000160 /* PropertyParserRatio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000015F /* PropertyParserRatio.cpp */; };
+		48544D4C0000000000000161 /* PropertyParserRatio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000015F /* PropertyParserRatio.cpp */; };
+		48544D4C0000000000000163 /* PropertyParserString.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000162 /* PropertyParserString.cpp */; };
+		48544D4C0000000000000164 /* PropertyParserString.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000162 /* PropertyParserString.cpp */; };
+		48544D4C0000000000000166 /* PropertyParserTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000165 /* PropertyParserTransform.cpp */; };
+		48544D4C0000000000000167 /* PropertyParserTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000165 /* PropertyParserTransform.cpp */; };
+		48544D4C0000000000000169 /* PropertySpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000168 /* PropertySpecification.cpp */; };
+		48544D4C000000000000016A /* PropertySpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000168 /* PropertySpecification.cpp */; };
+		48544D4C000000000000016C /* RenderInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000016B /* RenderInterface.cpp */; };
+		48544D4C000000000000016D /* RenderInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000016B /* RenderInterface.cpp */; };
+		48544D4C000000000000016F /* RenderInterfaceCompatibility.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000016E /* RenderInterfaceCompatibility.cpp */; };
+		48544D4C0000000000000170 /* RenderInterfaceCompatibility.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000016E /* RenderInterfaceCompatibility.cpp */; };
+		48544D4C0000000000000172 /* RenderManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000171 /* RenderManager.cpp */; };
+		48544D4C0000000000000173 /* RenderManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000171 /* RenderManager.cpp */; };
+		48544D4C0000000000000175 /* RenderManagerAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000174 /* RenderManagerAccess.cpp */; };
+		48544D4C0000000000000176 /* RenderManagerAccess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000174 /* RenderManagerAccess.cpp */; };
+		48544D4C0000000000000178 /* ScriptInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000177 /* ScriptInterface.cpp */; };
+		48544D4C0000000000000179 /* ScriptInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000177 /* ScriptInterface.cpp */; };
+		48544D4C000000000000017B /* ScrollController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000017A /* ScrollController.cpp */; };
+		48544D4C000000000000017C /* ScrollController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000017A /* ScrollController.cpp */; };
+		48544D4C000000000000017E /* Spritesheet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000017D /* Spritesheet.cpp */; };
+		48544D4C000000000000017F /* Spritesheet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000017D /* Spritesheet.cpp */; };
+		48544D4C0000000000000181 /* Stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000180 /* Stream.cpp */; };
+		48544D4C0000000000000182 /* Stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000180 /* Stream.cpp */; };
+		48544D4C0000000000000184 /* StreamFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000183 /* StreamFile.cpp */; };
+		48544D4C0000000000000185 /* StreamFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000183 /* StreamFile.cpp */; };
+		48544D4C0000000000000187 /* StreamMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000186 /* StreamMemory.cpp */; };
+		48544D4C0000000000000188 /* StreamMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000186 /* StreamMemory.cpp */; };
+		48544D4C000000000000018A /* StringUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000189 /* StringUtilities.cpp */; };
+		48544D4C000000000000018B /* StringUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000189 /* StringUtilities.cpp */; };
+		48544D4C000000000000018D /* StyleSheet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000018C /* StyleSheet.cpp */; };
+		48544D4C000000000000018E /* StyleSheet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000018C /* StyleSheet.cpp */; };
+		48544D4C0000000000000190 /* StyleSheetContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000018F /* StyleSheetContainer.cpp */; };
+		48544D4C0000000000000191 /* StyleSheetContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000018F /* StyleSheetContainer.cpp */; };
+		48544D4C0000000000000193 /* StyleSheetFactory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000192 /* StyleSheetFactory.cpp */; };
+		48544D4C0000000000000194 /* StyleSheetFactory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000192 /* StyleSheetFactory.cpp */; };
+		48544D4C0000000000000196 /* StyleSheetNode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000195 /* StyleSheetNode.cpp */; };
+		48544D4C0000000000000197 /* StyleSheetNode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000195 /* StyleSheetNode.cpp */; };
+		48544D4C0000000000000199 /* StyleSheetParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000198 /* StyleSheetParser.cpp */; };
+		48544D4C000000000000019A /* StyleSheetParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000198 /* StyleSheetParser.cpp */; };
+		48544D4C000000000000019C /* StyleSheetSelector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000019B /* StyleSheetSelector.cpp */; };
+		48544D4C000000000000019D /* StyleSheetSelector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000019B /* StyleSheetSelector.cpp */; };
+		48544D4C000000000000019F /* StyleSheetSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000019E /* StyleSheetSpecification.cpp */; };
+		48544D4C00000000000001A0 /* StyleSheetSpecification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000019E /* StyleSheetSpecification.cpp */; };
+		48544D4C00000000000001A2 /* SystemInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A1 /* SystemInterface.cpp */; };
+		48544D4C00000000000001A3 /* SystemInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A1 /* SystemInterface.cpp */; };
+		48544D4C00000000000001A5 /* Template.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A4 /* Template.cpp */; };
+		48544D4C00000000000001A6 /* Template.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A4 /* Template.cpp */; };
+		48544D4C00000000000001A8 /* TemplateCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A7 /* TemplateCache.cpp */; };
+		48544D4C00000000000001A9 /* TemplateCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001A7 /* TemplateCache.cpp */; };
+		48544D4C00000000000001AB /* Texture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001AA /* Texture.cpp */; };
+		48544D4C00000000000001AC /* Texture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001AA /* Texture.cpp */; };
+		48544D4C00000000000001AE /* TextureDatabase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001AD /* TextureDatabase.cpp */; };
+		48544D4C00000000000001AF /* TextureDatabase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001AD /* TextureDatabase.cpp */; };
+		48544D4C00000000000001B1 /* TextureLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B0 /* TextureLayout.cpp */; };
+		48544D4C00000000000001B2 /* TextureLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B0 /* TextureLayout.cpp */; };
+		48544D4C00000000000001B4 /* TextureLayoutRectangle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B3 /* TextureLayoutRectangle.cpp */; };
+		48544D4C00000000000001B5 /* TextureLayoutRectangle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B3 /* TextureLayoutRectangle.cpp */; };
+		48544D4C00000000000001B7 /* TextureLayoutRow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B6 /* TextureLayoutRow.cpp */; };
+		48544D4C00000000000001B8 /* TextureLayoutRow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B6 /* TextureLayoutRow.cpp */; };
+		48544D4C00000000000001BA /* TextureLayoutTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B9 /* TextureLayoutTexture.cpp */; };
+		48544D4C00000000000001BB /* TextureLayoutTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001B9 /* TextureLayoutTexture.cpp */; };
+		48544D4C00000000000001BD /* Traits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001BC /* Traits.cpp */; };
+		48544D4C00000000000001BE /* Traits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001BC /* Traits.cpp */; };
+		48544D4C00000000000001C0 /* Transform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001BF /* Transform.cpp */; };
+		48544D4C00000000000001C1 /* Transform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001BF /* Transform.cpp */; };
+		48544D4C00000000000001C3 /* TransformPrimitive.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C2 /* TransformPrimitive.cpp */; };
+		48544D4C00000000000001C4 /* TransformPrimitive.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C2 /* TransformPrimitive.cpp */; };
+		48544D4C00000000000001C6 /* TransformState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C5 /* TransformState.cpp */; };
+		48544D4C00000000000001C7 /* TransformState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C5 /* TransformState.cpp */; };
+		48544D4C00000000000001C9 /* TransformUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C8 /* TransformUtilities.cpp */; };
+		48544D4C00000000000001CA /* TransformUtilities.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001C8 /* TransformUtilities.cpp */; };
+		48544D4C00000000000001CC /* Tween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001CB /* Tween.cpp */; };
+		48544D4C00000000000001CD /* Tween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001CB /* Tween.cpp */; };
+		48544D4C00000000000001CF /* TypeConverter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001CE /* TypeConverter.cpp */; };
+		48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001CE /* TypeConverter.cpp */; };
+		48544D4C00000000000001D2 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
+		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
+		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		48544D4C00000000000001D8 /* WidgetScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D7 /* WidgetScroll.cpp */; };
+		48544D4C00000000000001D9 /* WidgetScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D7 /* WidgetScroll.cpp */; };
+		48544D4C00000000000001DB /* XMLNodeHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001DA /* XMLNodeHandler.cpp */; };
+		48544D4C00000000000001DC /* XMLNodeHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001DA /* XMLNodeHandler.cpp */; };
+		48544D4C00000000000001DE /* XMLNodeHandlerBody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001DD /* XMLNodeHandlerBody.cpp */; };
+		48544D4C00000000000001DF /* XMLNodeHandlerBody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001DD /* XMLNodeHandlerBody.cpp */; };
+		48544D4C00000000000001E1 /* XMLNodeHandlerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E0 /* XMLNodeHandlerDefault.cpp */; };
+		48544D4C00000000000001E2 /* XMLNodeHandlerDefault.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E0 /* XMLNodeHandlerDefault.cpp */; };
+		48544D4C00000000000001E4 /* XMLNodeHandlerHead.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E3 /* XMLNodeHandlerHead.cpp */; };
+		48544D4C00000000000001E5 /* XMLNodeHandlerHead.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E3 /* XMLNodeHandlerHead.cpp */; };
+		48544D4C00000000000001E7 /* XMLNodeHandlerTemplate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E6 /* XMLNodeHandlerTemplate.cpp */; };
+		48544D4C00000000000001E8 /* XMLNodeHandlerTemplate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E6 /* XMLNodeHandlerTemplate.cpp */; };
+		48544D4C00000000000001EA /* XMLParseTools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E9 /* XMLParseTools.cpp */; };
+		48544D4C00000000000001EB /* XMLParseTools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001E9 /* XMLParseTools.cpp */; };
+		48544D4C00000000000001ED /* XMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001EC /* XMLParser.cpp */; };
+		48544D4C00000000000001EE /* XMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001EC /* XMLParser.cpp */; };
+		48544D4C00000000000001F1 /* ElementForm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F0 /* ElementForm.cpp */; };
+		48544D4C00000000000001F2 /* ElementForm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F0 /* ElementForm.cpp */; };
+		48544D4C00000000000001F4 /* ElementFormControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F3 /* ElementFormControl.cpp */; };
+		48544D4C00000000000001F5 /* ElementFormControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F3 /* ElementFormControl.cpp */; };
+		48544D4C00000000000001F7 /* ElementFormControlInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F6 /* ElementFormControlInput.cpp */; };
+		48544D4C00000000000001F8 /* ElementFormControlInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F6 /* ElementFormControlInput.cpp */; };
+		48544D4C00000000000001FA /* ElementFormControlSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F9 /* ElementFormControlSelect.cpp */; };
+		48544D4C00000000000001FB /* ElementFormControlSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001F9 /* ElementFormControlSelect.cpp */; };
+		48544D4C00000000000001FD /* ElementFormControlTextArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001FC /* ElementFormControlTextArea.cpp */; };
+		48544D4C00000000000001FE /* ElementFormControlTextArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001FC /* ElementFormControlTextArea.cpp */; };
+		48544D4C0000000000000200 /* ElementImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001FF /* ElementImage.cpp */; };
+		48544D4C0000000000000201 /* ElementImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001FF /* ElementImage.cpp */; };
+		48544D4C0000000000000203 /* ElementLabel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000202 /* ElementLabel.cpp */; };
+		48544D4C0000000000000204 /* ElementLabel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000202 /* ElementLabel.cpp */; };
+		48544D4C0000000000000206 /* ElementProgress.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000205 /* ElementProgress.cpp */; };
+		48544D4C0000000000000207 /* ElementProgress.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000205 /* ElementProgress.cpp */; };
+		48544D4C0000000000000209 /* ElementTabSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000208 /* ElementTabSet.cpp */; };
+		48544D4C000000000000020A /* ElementTabSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000208 /* ElementTabSet.cpp */; };
+		48544D4C000000000000020C /* ElementTextSelection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000020B /* ElementTextSelection.cpp */; };
+		48544D4C000000000000020D /* ElementTextSelection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000020B /* ElementTextSelection.cpp */; };
+		48544D4C000000000000020F /* InputType.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000020E /* InputType.cpp */; };
+		48544D4C0000000000000210 /* InputType.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000020E /* InputType.cpp */; };
+		48544D4C0000000000000212 /* InputTypeButton.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000211 /* InputTypeButton.cpp */; };
+		48544D4C0000000000000213 /* InputTypeButton.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000211 /* InputTypeButton.cpp */; };
+		48544D4C0000000000000215 /* InputTypeCheckbox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000214 /* InputTypeCheckbox.cpp */; };
+		48544D4C0000000000000216 /* InputTypeCheckbox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000214 /* InputTypeCheckbox.cpp */; };
+		48544D4C0000000000000218 /* InputTypeRadio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000217 /* InputTypeRadio.cpp */; };
+		48544D4C0000000000000219 /* InputTypeRadio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000217 /* InputTypeRadio.cpp */; };
+		48544D4C000000000000021B /* InputTypeRange.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000021A /* InputTypeRange.cpp */; };
+		48544D4C000000000000021C /* InputTypeRange.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000021A /* InputTypeRange.cpp */; };
+		48544D4C000000000000021E /* InputTypeSubmit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000021D /* InputTypeSubmit.cpp */; };
+		48544D4C000000000000021F /* InputTypeSubmit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000021D /* InputTypeSubmit.cpp */; };
+		48544D4C0000000000000221 /* InputTypeText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000220 /* InputTypeText.cpp */; };
+		48544D4C0000000000000222 /* InputTypeText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000220 /* InputTypeText.cpp */; };
+		48544D4C0000000000000224 /* WidgetDropDown.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000223 /* WidgetDropDown.cpp */; };
+		48544D4C0000000000000225 /* WidgetDropDown.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000223 /* WidgetDropDown.cpp */; };
+		48544D4C0000000000000227 /* WidgetSlider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000226 /* WidgetSlider.cpp */; };
+		48544D4C0000000000000228 /* WidgetSlider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000226 /* WidgetSlider.cpp */; };
+		48544D4C000000000000022A /* WidgetTextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000229 /* WidgetTextInput.cpp */; };
+		48544D4C000000000000022B /* WidgetTextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000229 /* WidgetTextInput.cpp */; };
+		48544D4C000000000000022D /* WidgetTextInputMultiLine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000022C /* WidgetTextInputMultiLine.cpp */; };
+		48544D4C000000000000022E /* WidgetTextInputMultiLine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000022C /* WidgetTextInputMultiLine.cpp */; };
+		48544D4C0000000000000230 /* WidgetTextInputSingleLine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000022F /* WidgetTextInputSingleLine.cpp */; };
+		48544D4C0000000000000231 /* WidgetTextInputSingleLine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000022F /* WidgetTextInputSingleLine.cpp */; };
+		48544D4C0000000000000233 /* WidgetTextInputSingleLinePassword.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000232 /* WidgetTextInputSingleLinePassword.cpp */; };
+		48544D4C0000000000000234 /* WidgetTextInputSingleLinePassword.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000232 /* WidgetTextInputSingleLinePassword.cpp */; };
+		48544D4C0000000000000236 /* XMLNodeHandlerSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000235 /* XMLNodeHandlerSelect.cpp */; };
+		48544D4C0000000000000237 /* XMLNodeHandlerSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000235 /* XMLNodeHandlerSelect.cpp */; };
+		48544D4C0000000000000239 /* XMLNodeHandlerTabSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000238 /* XMLNodeHandlerTabSet.cpp */; };
+		48544D4C000000000000023A /* XMLNodeHandlerTabSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000238 /* XMLNodeHandlerTabSet.cpp */; };
+		48544D4C000000000000023C /* XMLNodeHandlerTextArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000023B /* XMLNodeHandlerTextArea.cpp */; };
+		48544D4C000000000000023D /* XMLNodeHandlerTextArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000023B /* XMLNodeHandlerTextArea.cpp */; };
+		48544D4C0000000000000240 /* BlockContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000023F /* BlockContainer.cpp */; };
+		48544D4C0000000000000241 /* BlockContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000023F /* BlockContainer.cpp */; };
+		48544D4C0000000000000243 /* BlockFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000242 /* BlockFormattingContext.cpp */; };
+		48544D4C0000000000000244 /* BlockFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000242 /* BlockFormattingContext.cpp */; };
+		48544D4C0000000000000246 /* ContainerBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000245 /* ContainerBox.cpp */; };
+		48544D4C0000000000000247 /* ContainerBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000245 /* ContainerBox.cpp */; };
+		48544D4C0000000000000249 /* FlexFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000248 /* FlexFormattingContext.cpp */; };
+		48544D4C000000000000024A /* FlexFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000248 /* FlexFormattingContext.cpp */; };
+		48544D4C000000000000024C /* FloatedBoxSpace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000024B /* FloatedBoxSpace.cpp */; };
+		48544D4C000000000000024D /* FloatedBoxSpace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000024B /* FloatedBoxSpace.cpp */; };
+		48544D4C000000000000024F /* FormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000024E /* FormattingContext.cpp */; };
+		48544D4C0000000000000250 /* FormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000024E /* FormattingContext.cpp */; };
+		48544D4C0000000000000252 /* InlineBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000251 /* InlineBox.cpp */; };
+		48544D4C0000000000000253 /* InlineBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000251 /* InlineBox.cpp */; };
+		48544D4C0000000000000255 /* InlineContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000254 /* InlineContainer.cpp */; };
+		48544D4C0000000000000256 /* InlineContainer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000254 /* InlineContainer.cpp */; };
+		48544D4C0000000000000258 /* InlineLevelBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000257 /* InlineLevelBox.cpp */; };
+		48544D4C0000000000000259 /* InlineLevelBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000257 /* InlineLevelBox.cpp */; };
+		48544D4C000000000000025B /* LayoutBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000025A /* LayoutBox.cpp */; };
+		48544D4C000000000000025C /* LayoutBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000025A /* LayoutBox.cpp */; };
+		48544D4C000000000000025E /* LayoutDetails.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000025D /* LayoutDetails.cpp */; };
+		48544D4C000000000000025F /* LayoutDetails.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000025D /* LayoutDetails.cpp */; };
+		48544D4C0000000000000261 /* LayoutEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000260 /* LayoutEngine.cpp */; };
+		48544D4C0000000000000262 /* LayoutEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000260 /* LayoutEngine.cpp */; };
+		48544D4C0000000000000264 /* LayoutPools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000263 /* LayoutPools.cpp */; };
+		48544D4C0000000000000265 /* LayoutPools.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000263 /* LayoutPools.cpp */; };
+		48544D4C0000000000000267 /* LineBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000266 /* LineBox.cpp */; };
+		48544D4C0000000000000268 /* LineBox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000266 /* LineBox.cpp */; };
+		48544D4C000000000000026A /* ReplacedFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000269 /* ReplacedFormattingContext.cpp */; };
+		48544D4C000000000000026B /* ReplacedFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000269 /* ReplacedFormattingContext.cpp */; };
+		48544D4C000000000000026D /* TableFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000026C /* TableFormattingContext.cpp */; };
+		48544D4C000000000000026E /* TableFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000026C /* TableFormattingContext.cpp */; };
+		48544D4C0000000000000270 /* TableFormattingDetails.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000026F /* TableFormattingDetails.cpp */; };
+		48544D4C0000000000000271 /* TableFormattingDetails.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000026F /* TableFormattingDetails.cpp */; };
+		48544D4C0000000000000274 /* Debugger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000273 /* Debugger.cpp */; };
+		48544D4C0000000000000275 /* Debugger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000273 /* Debugger.cpp */; };
+		48544D4C0000000000000277 /* DebuggerPlugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000276 /* DebuggerPlugin.cpp */; };
+		48544D4C0000000000000278 /* DebuggerPlugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000276 /* DebuggerPlugin.cpp */; };
+		48544D4C000000000000027A /* DebuggerSystemInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000279 /* DebuggerSystemInterface.cpp */; };
+		48544D4C000000000000027B /* DebuggerSystemInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000279 /* DebuggerSystemInterface.cpp */; };
+		48544D4C000000000000027D /* ElementContextHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000027C /* ElementContextHook.cpp */; };
+		48544D4C000000000000027E /* ElementContextHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000027C /* ElementContextHook.cpp */; };
+		48544D4C0000000000000280 /* ElementDataModels.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000027F /* ElementDataModels.cpp */; };
+		48544D4C0000000000000281 /* ElementDataModels.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000027F /* ElementDataModels.cpp */; };
+		48544D4C0000000000000283 /* ElementDebugDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000282 /* ElementDebugDocument.cpp */; };
+		48544D4C0000000000000284 /* ElementDebugDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000282 /* ElementDebugDocument.cpp */; };
+		48544D4C0000000000000286 /* ElementInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000285 /* ElementInfo.cpp */; };
+		48544D4C0000000000000287 /* ElementInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000285 /* ElementInfo.cpp */; };
+		48544D4C0000000000000289 /* ElementLog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000288 /* ElementLog.cpp */; };
+		48544D4C000000000000028A /* ElementLog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000288 /* ElementLog.cpp */; };
+		48544D4C000000000000028C /* Geometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000028B /* Geometry.cpp */; };
+		48544D4C000000000000028D /* Geometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000028B /* Geometry.cpp */; };
+		48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000290 /* librmlui-ios.a */; };
+		48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000291 /* librmlui-macos.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1522,6 +1952,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7DC0000B2E7A0100C91BA0C0;
 			remoteInfo = "shadercompiler-macos";
+		};
+		48544D4C000000000000029B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 48544D4C000000000000029A;
+			remoteInfo = "rmlui-ios";
+		};
+		48544D4C00000000000002A4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 48544D4C00000000000002A3;
+			remoteInfo = "rmlui-macos";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -3163,6 +3607,229 @@
 		7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderVariantCompiler.h; sourceTree = "<group>"; };
 		7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderVariantCompiler.cpp; sourceTree = "<group>"; };
 		7DC000B82E7A0100C91BA0C0 /* shaderlib.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = shaderlib.h; sourceTree = "<group>"; };
+		48544D4C0000000000000001 /* HtmlUI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUI.h; sourceTree = "<group>"; };
+		48544D4C0000000000000003 /* HtmlUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUI.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000006 /* HtmlUIContext.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIContext.h; sourceTree = "<group>"; };
+		48544D4C0000000000000008 /* HtmlUIContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContext.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000000B /* HtmlUIContextRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContextRender.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000000E /* RmlFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFile.h; sourceTree = "<group>"; };
+		48544D4C0000000000000010 /* RmlFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFile.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000013 /* RmlFontEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFontEngine.h; sourceTree = "<group>"; };
+		48544D4C0000000000000015 /* RmlFontEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFontEngine.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000018 /* RmlRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlRenderer.h; sourceTree = "<group>"; };
+		48544D4C000000000000001A /* RmlRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRenderer.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000001D /* RmlSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlSystem.h; sourceTree = "<group>"; };
+		48544D4C000000000000001F /* RmlSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlSystem.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000022 /* FontFace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FontFace.h; sourceTree = "<group>"; };
+		48544D4C0000000000000024 /* FontFace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontFace.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000027 /* FontRegistry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FontRegistry.h; sourceTree = "<group>"; };
+		48544D4C0000000000000029 /* FontRegistry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontRegistry.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000002C /* GlyphAtlas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GlyphAtlas.h; sourceTree = "<group>"; };
+		48544D4C000000000000002E /* GlyphAtlas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GlyphAtlas.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000031 /* TextShaper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextShaper.h; sourceTree = "<group>"; };
+		48544D4C0000000000000033 /* TextShaper.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextShaper.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000036 /* UIDocumentSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystem.h; sourceTree = "<group>"; };
+		48544D4C0000000000000038 /* UIDocumentSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystem.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000003B /* UIDocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocument.h; sourceTree = "<group>"; };
+		48544D4C000000000000003D /* UIDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocument.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000040 /* UIElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElement.h; sourceTree = "<group>"; };
+		48544D4C0000000000000042 /* UIElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElement.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000045 /* UIDocumentComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentComponent.h; sourceTree = "<group>"; };
+		48544D4C0000000000000048 /* BaseXMLParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BaseXMLParser.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000004B /* Box.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Box.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000004E /* BoxShadowCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BoxShadowCache.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000051 /* CallbackTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CallbackTexture.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000054 /* Clock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Clock.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000057 /* CompiledFilterShader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompiledFilterShader.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000005A /* ComputeProperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ComputeProperty.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000005D /* ComputedValues.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ComputedValues.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000060 /* Context.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Context.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000063 /* ContextInstancer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextInstancer.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000066 /* ContextInstancerDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContextInstancerDefault.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000069 /* ConvolutionFilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConvolutionFilter.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000006C /* Core.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Core.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000006F /* DataController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataController.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000072 /* DataControllerDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataControllerDefault.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000075 /* DataExpression.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataExpression.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000078 /* DataModel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataModel.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000007B /* DataModelHandle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataModelHandle.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000007E /* DataTypeRegister.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataTypeRegister.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000081 /* DataVariable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataVariable.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000084 /* DataView.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataView.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000087 /* DataViewDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DataViewDefault.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000008A /* Decorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Decorator.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000008D /* DecoratorGradient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorGradient.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000090 /* DecoratorNinePatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorNinePatch.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000093 /* DecoratorShader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorShader.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000096 /* DecoratorText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorText.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000099 /* DecoratorTiled.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorTiled.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000009C /* DecoratorTiledBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorTiledBox.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000009F /* DecoratorTiledHorizontal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorTiledHorizontal.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000A2 /* DecoratorTiledImage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorTiledImage.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000A5 /* DecoratorTiledVertical.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorTiledVertical.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000A8 /* DecoratorUtilities.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorUtilities.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000AB /* DocumentHeader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DocumentHeader.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000AE /* EffectSpecification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSpecification.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000B1 /* Element.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Element.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000B4 /* ElementAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementAnimation.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000B7 /* ElementBackgroundBorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementBackgroundBorder.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000BA /* ElementDefinition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementDefinition.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000BD /* ElementDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementDocument.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000C0 /* ElementEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementEffects.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000C3 /* ElementHandle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementHandle.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000C6 /* ElementInstancer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementInstancer.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000C9 /* ElementMeta.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementMeta.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000CC /* ElementScroll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementScroll.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000CF /* ElementStyle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyle.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000D2 /* ElementText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementText.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000D5 /* ElementUtilities.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementUtilities.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000D8 /* Event.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Event.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000DB /* EventDispatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EventDispatcher.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000DE /* EventInstancer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EventInstancer.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000E1 /* EventInstancerDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EventInstancerDefault.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000E4 /* EventListenerInstancer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EventListenerInstancer.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000E7 /* EventSpecification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EventSpecification.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000EA /* Factory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Factory.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000ED /* FileInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileInterface.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000F0 /* FileInterfaceDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileInterfaceDefault.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000F3 /* Filter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Filter.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000F6 /* FilterBasic.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FilterBasic.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000F9 /* FilterBlur.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FilterBlur.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000FC /* FilterDropShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FilterDropShadow.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000000FF /* FontEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffect.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000102 /* FontEffectBlur.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffectBlur.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000105 /* FontEffectGlow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffectGlow.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000108 /* FontEffectInstancer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffectInstancer.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000010B /* FontEffectOutline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffectOutline.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000010E /* FontEffectShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEffectShadow.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000111 /* FontEngineInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontEngineInterface.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000114 /* Geometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Geometry.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000117 /* GeometryBackgroundBorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GeometryBackgroundBorder.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000011A /* GeometryBoxShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GeometryBoxShadow.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000011D /* Log.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Log.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000120 /* LogDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LogDefault.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000123 /* Math.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Math.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000126 /* Memory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Memory.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000129 /* MeshUtilities.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshUtilities.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000012C /* ObserverPtr.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ObserverPtr.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000012F /* Plugin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Plugin.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000132 /* PluginRegistry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PluginRegistry.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000135 /* Profiling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Profiling.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000138 /* PropertiesIteratorView.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertiesIteratorView.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000013B /* Property.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Property.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000013E /* PropertyDefinition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyDefinition.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000141 /* PropertyDictionary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyDictionary.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000144 /* PropertyParserAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserAnimation.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000147 /* PropertyParserBoxShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserBoxShadow.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000014A /* PropertyParserColorStopList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserColorStopList.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000014D /* PropertyParserColour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserColour.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000150 /* PropertyParserDecorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserDecorator.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000153 /* PropertyParserFilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserFilter.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000156 /* PropertyParserFontEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserFontEffect.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000159 /* PropertyParserKeyword.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserKeyword.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000015C /* PropertyParserNumber.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserNumber.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000015F /* PropertyParserRatio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserRatio.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000162 /* PropertyParserString.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserString.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000165 /* PropertyParserTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserTransform.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000168 /* PropertySpecification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertySpecification.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000016B /* RenderInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderInterface.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000016E /* RenderInterfaceCompatibility.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderInterfaceCompatibility.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000171 /* RenderManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderManager.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000174 /* RenderManagerAccess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderManagerAccess.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000177 /* ScriptInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptInterface.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000017A /* ScrollController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScrollController.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000017D /* Spritesheet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Spritesheet.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000180 /* Stream.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Stream.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000183 /* StreamFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StreamFile.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000186 /* StreamMemory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StreamMemory.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000189 /* StringUtilities.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StringUtilities.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000018C /* StyleSheet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheet.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000018F /* StyleSheetContainer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetContainer.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000192 /* StyleSheetFactory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetFactory.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000195 /* StyleSheetNode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetNode.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000198 /* StyleSheetParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetParser.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000019B /* StyleSheetSelector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetSelector.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000019E /* StyleSheetSpecification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleSheetSpecification.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001A1 /* SystemInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SystemInterface.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001A4 /* Template.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Template.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001A7 /* TemplateCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TemplateCache.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001AA /* Texture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Texture.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001AD /* TextureDatabase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureDatabase.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001B0 /* TextureLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureLayout.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001B3 /* TextureLayoutRectangle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureLayoutRectangle.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001B6 /* TextureLayoutRow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureLayoutRow.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001B9 /* TextureLayoutTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureLayoutTexture.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001BC /* Traits.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Traits.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001BF /* Transform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Transform.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001C2 /* TransformPrimitive.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransformPrimitive.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001C5 /* TransformState.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransformState.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001C8 /* TransformUtilities.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransformUtilities.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001CB /* Tween.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Tween.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001D7 /* WidgetScroll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetScroll.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001DA /* XMLNodeHandler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandler.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001DD /* XMLNodeHandlerBody.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerBody.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001E0 /* XMLNodeHandlerDefault.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerDefault.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001E3 /* XMLNodeHandlerHead.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerHead.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001E6 /* XMLNodeHandlerTemplate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerTemplate.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001E9 /* XMLParseTools.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLParseTools.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001EC /* XMLParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLParser.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001F0 /* ElementForm.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementForm.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001F3 /* ElementFormControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementFormControl.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001F6 /* ElementFormControlInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementFormControlInput.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001F9 /* ElementFormControlSelect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementFormControlSelect.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001FC /* ElementFormControlTextArea.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementFormControlTextArea.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000001FF /* ElementImage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementImage.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000202 /* ElementLabel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementLabel.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000205 /* ElementProgress.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementProgress.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000208 /* ElementTabSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTabSet.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000020B /* ElementTextSelection.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTextSelection.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000020E /* InputType.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputType.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000211 /* InputTypeButton.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeButton.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000214 /* InputTypeCheckbox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeCheckbox.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000217 /* InputTypeRadio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeRadio.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000021A /* InputTypeRange.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeRange.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000021D /* InputTypeSubmit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeSubmit.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000220 /* InputTypeText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputTypeText.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000223 /* WidgetDropDown.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetDropDown.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000226 /* WidgetSlider.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetSlider.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000229 /* WidgetTextInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetTextInput.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000022C /* WidgetTextInputMultiLine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetTextInputMultiLine.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000022F /* WidgetTextInputSingleLine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetTextInputSingleLine.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000232 /* WidgetTextInputSingleLinePassword.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetTextInputSingleLinePassword.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000235 /* XMLNodeHandlerSelect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerSelect.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000238 /* XMLNodeHandlerTabSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerTabSet.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000023B /* XMLNodeHandlerTextArea.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerTextArea.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000023F /* BlockContainer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BlockContainer.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000242 /* BlockFormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BlockFormattingContext.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000245 /* ContainerBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContainerBox.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000248 /* FlexFormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FlexFormattingContext.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000024B /* FloatedBoxSpace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FloatedBoxSpace.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000024E /* FormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FormattingContext.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000251 /* InlineBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InlineBox.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000254 /* InlineContainer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InlineContainer.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000257 /* InlineLevelBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InlineLevelBox.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000025A /* LayoutBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutBox.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000025D /* LayoutDetails.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutDetails.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000260 /* LayoutEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutEngine.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000263 /* LayoutPools.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutPools.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000266 /* LineBox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LineBox.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000269 /* ReplacedFormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ReplacedFormattingContext.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000026C /* TableFormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TableFormattingContext.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000026F /* TableFormattingDetails.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TableFormattingDetails.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000273 /* Debugger.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Debugger.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000276 /* DebuggerPlugin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebuggerPlugin.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000279 /* DebuggerSystemInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebuggerSystemInterface.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000027C /* ElementContextHook.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementContextHook.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000027F /* ElementDataModels.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementDataModels.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000282 /* ElementDebugDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementDebugDocument.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000285 /* ElementInfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementInfo.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000288 /* ElementLog.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementLog.cpp; sourceTree = "<group>"; };
+		48544D4C000000000000028B /* Geometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Geometry.cpp; sourceTree = "<group>"; };
+		48544D4C0000000000000290 /* librmlui-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3213,6 +3880,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				71A800092AD9A001007C91BA /* libharfbuzz-ios.a in Frameworks */,
+				48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */,
 				71A800292AD9A002007C91BA /* libsheenbidi-ios.a in Frameworks */,
 				71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */,
 				7DC000072E7A0100C91BA0C0 /* libshadercompiler-ios.a in Frameworks */,
@@ -3265,6 +3933,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				71A8000A2AD9A001007C91BA /* libharfbuzz-macos.a in Frameworks */,
+				48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */,
 				71A8002A2AD9A002007C91BA /* libsheenbidi-macos.a in Frameworks */,
 				71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */,
 				7DC000112E7A0100C91BA0C0 /* libshadercompiler-macos.a in Frameworks */,
@@ -3411,6 +4080,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		7DC0000E2E7A0100C91BA0C0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48544D4C0000000000000296 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48544D4C000000000000029F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -4201,6 +4884,8 @@
 				7105CADA2AD61D35007C91BA /* libjoltphysics-ios.a */,
 				71A800072AD9A001007C91BA /* libharfbuzz-ios.a */,
 				71A800082AD9A001007C91BA /* libharfbuzz-macos.a */,
+				48544D4C0000000000000290 /* librmlui-ios.a */,
+				48544D4C0000000000000291 /* librmlui-macos.a */,
 				71A800272AD9A002007C91BA /* libsheenbidi-ios.a */,
 				71A800282AD9A002007C91BA /* libsheenbidi-macos.a */,
 				71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */,
@@ -4231,6 +4916,7 @@
 				7162FC4425962A0E0075B97D /* component */,
 				7162FC7A25962A0E0075B97D /* JasperEngine.h */,
 				71E36B8125D5996400EFEED4 /* ecs */,
+				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
@@ -4287,6 +4973,14 @@
 				71ABBD39279116E1001CE3AF /* UniqueToken.cpp */,
 				71393EE428F8EF9F0074442E /* XMLUtils.h */,
 				71393EE328F8EF9E0074442E /* XMLUtils.cpp */,
+				48544D4C0000000000000022 /* FontFace.h */,
+				48544D4C0000000000000024 /* FontFace.cpp */,
+				48544D4C0000000000000027 /* FontRegistry.h */,
+				48544D4C0000000000000029 /* FontRegistry.cpp */,
+				48544D4C000000000000002C /* GlyphAtlas.h */,
+				48544D4C000000000000002E /* GlyphAtlas.cpp */,
+				48544D4C0000000000000031 /* TextShaper.h */,
+				48544D4C0000000000000033 /* TextShaper.cpp */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -4385,6 +5079,7 @@
 				71ABBD372791167A001CE3AF /* UIComponent.h */,
 				717AD989292118EF007D7DB5 /* LayoutGroupComponent.h */,
 				71451BB6270C9D0F00712643 /* RectTransformComponent.h */,
+				48544D4C0000000000000045 /* UIDocumentComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -4497,6 +5192,8 @@
 				7162FC7125962A0E0075B97D /* RenderSystem.h */,
 				71ABBD22277A31E6001CE3AF /* UISystem.cpp */,
 				71ABBD21277A31E6001CE3AF /* UISystem.h */,
+				48544D4C0000000000000036 /* UIDocumentSystem.h */,
+				48544D4C0000000000000038 /* UIDocumentSystem.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -4560,6 +5257,7 @@
 				71FCE4C328E0FA31003C5217 /* luabridge3 */,
 				71C00532D2E7A0100C91BA00 /* meshoptimizer */,
 				17BFFB742FF201F9008F5B7C /* nanosvg */,
+				48544D4C000000000000028F /* rmlui */,
 				7DC000152E7A0100C91BA0C0 /* shadercompiler */,
 				71A8002B2AD9A002007C91BA /* sheenbidi */,
 				7162FC9725962A0E0075B97D /* sokol */,
@@ -5494,6 +6192,10 @@
 				713E580927BA9CE400376680 /* InputField.cpp */,
 				717AD9832919E1CB007D7DB5 /* RectTransform.h */,
 				717AD9822919E1CB007D7DB5 /* RectTransform.cpp */,
+				48544D4C000000000000003B /* UIDocument.h */,
+				48544D4C000000000000003D /* UIDocument.cpp */,
+				48544D4C0000000000000040 /* UIElement.h */,
+				48544D4C0000000000000042 /* UIElement.cpp */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -5923,6 +6625,262 @@
 			path = shadercompiler;
 			sourceTree = "<group>";
 		};
+		48544D4C0000000000000047 /* htmlui */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C0000000000000001 /* HtmlUI.h */,
+				48544D4C0000000000000003 /* HtmlUI.cpp */,
+				48544D4C0000000000000006 /* HtmlUIContext.h */,
+				48544D4C0000000000000008 /* HtmlUIContext.cpp */,
+				48544D4C000000000000000B /* HtmlUIContextRender.cpp */,
+				48544D4C000000000000000E /* RmlFile.h */,
+				48544D4C0000000000000010 /* RmlFile.cpp */,
+				48544D4C0000000000000013 /* RmlFontEngine.h */,
+				48544D4C0000000000000015 /* RmlFontEngine.cpp */,
+				48544D4C0000000000000018 /* RmlRenderer.h */,
+				48544D4C000000000000001A /* RmlRenderer.cpp */,
+				48544D4C000000000000001D /* RmlSystem.h */,
+				48544D4C000000000000001F /* RmlSystem.cpp */,
+			);
+			path = htmlui;
+			sourceTree = "<group>";
+		};
+		48544D4C00000000000001EF /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C0000000000000048 /* BaseXMLParser.cpp */,
+				48544D4C000000000000004B /* Box.cpp */,
+				48544D4C000000000000004E /* BoxShadowCache.cpp */,
+				48544D4C0000000000000051 /* CallbackTexture.cpp */,
+				48544D4C0000000000000054 /* Clock.cpp */,
+				48544D4C0000000000000057 /* CompiledFilterShader.cpp */,
+				48544D4C000000000000005A /* ComputeProperty.cpp */,
+				48544D4C000000000000005D /* ComputedValues.cpp */,
+				48544D4C0000000000000060 /* Context.cpp */,
+				48544D4C0000000000000063 /* ContextInstancer.cpp */,
+				48544D4C0000000000000066 /* ContextInstancerDefault.cpp */,
+				48544D4C0000000000000069 /* ConvolutionFilter.cpp */,
+				48544D4C000000000000006C /* Core.cpp */,
+				48544D4C000000000000006F /* DataController.cpp */,
+				48544D4C0000000000000072 /* DataControllerDefault.cpp */,
+				48544D4C0000000000000075 /* DataExpression.cpp */,
+				48544D4C0000000000000078 /* DataModel.cpp */,
+				48544D4C000000000000007B /* DataModelHandle.cpp */,
+				48544D4C000000000000007E /* DataTypeRegister.cpp */,
+				48544D4C0000000000000081 /* DataVariable.cpp */,
+				48544D4C0000000000000084 /* DataView.cpp */,
+				48544D4C0000000000000087 /* DataViewDefault.cpp */,
+				48544D4C000000000000008A /* Decorator.cpp */,
+				48544D4C000000000000008D /* DecoratorGradient.cpp */,
+				48544D4C0000000000000090 /* DecoratorNinePatch.cpp */,
+				48544D4C0000000000000093 /* DecoratorShader.cpp */,
+				48544D4C0000000000000096 /* DecoratorText.cpp */,
+				48544D4C0000000000000099 /* DecoratorTiled.cpp */,
+				48544D4C000000000000009C /* DecoratorTiledBox.cpp */,
+				48544D4C000000000000009F /* DecoratorTiledHorizontal.cpp */,
+				48544D4C00000000000000A2 /* DecoratorTiledImage.cpp */,
+				48544D4C00000000000000A5 /* DecoratorTiledVertical.cpp */,
+				48544D4C00000000000000A8 /* DecoratorUtilities.cpp */,
+				48544D4C00000000000000AB /* DocumentHeader.cpp */,
+				48544D4C00000000000000AE /* EffectSpecification.cpp */,
+				48544D4C00000000000000B1 /* Element.cpp */,
+				48544D4C00000000000000B4 /* ElementAnimation.cpp */,
+				48544D4C00000000000000B7 /* ElementBackgroundBorder.cpp */,
+				48544D4C00000000000000BA /* ElementDefinition.cpp */,
+				48544D4C00000000000000BD /* ElementDocument.cpp */,
+				48544D4C00000000000000C0 /* ElementEffects.cpp */,
+				48544D4C00000000000000C3 /* ElementHandle.cpp */,
+				48544D4C00000000000000C6 /* ElementInstancer.cpp */,
+				48544D4C00000000000000C9 /* ElementMeta.cpp */,
+				48544D4C00000000000000CC /* ElementScroll.cpp */,
+				48544D4C00000000000000CF /* ElementStyle.cpp */,
+				48544D4C00000000000000D2 /* ElementText.cpp */,
+				48544D4C00000000000000D5 /* ElementUtilities.cpp */,
+				48544D4C00000000000000D8 /* Event.cpp */,
+				48544D4C00000000000000DB /* EventDispatcher.cpp */,
+				48544D4C00000000000000DE /* EventInstancer.cpp */,
+				48544D4C00000000000000E1 /* EventInstancerDefault.cpp */,
+				48544D4C00000000000000E4 /* EventListenerInstancer.cpp */,
+				48544D4C00000000000000E7 /* EventSpecification.cpp */,
+				48544D4C00000000000000EA /* Factory.cpp */,
+				48544D4C00000000000000ED /* FileInterface.cpp */,
+				48544D4C00000000000000F0 /* FileInterfaceDefault.cpp */,
+				48544D4C00000000000000F3 /* Filter.cpp */,
+				48544D4C00000000000000F6 /* FilterBasic.cpp */,
+				48544D4C00000000000000F9 /* FilterBlur.cpp */,
+				48544D4C00000000000000FC /* FilterDropShadow.cpp */,
+				48544D4C00000000000000FF /* FontEffect.cpp */,
+				48544D4C0000000000000102 /* FontEffectBlur.cpp */,
+				48544D4C0000000000000105 /* FontEffectGlow.cpp */,
+				48544D4C0000000000000108 /* FontEffectInstancer.cpp */,
+				48544D4C000000000000010B /* FontEffectOutline.cpp */,
+				48544D4C000000000000010E /* FontEffectShadow.cpp */,
+				48544D4C0000000000000111 /* FontEngineInterface.cpp */,
+				48544D4C0000000000000114 /* Geometry.cpp */,
+				48544D4C0000000000000117 /* GeometryBackgroundBorder.cpp */,
+				48544D4C000000000000011A /* GeometryBoxShadow.cpp */,
+				48544D4C000000000000011D /* Log.cpp */,
+				48544D4C0000000000000120 /* LogDefault.cpp */,
+				48544D4C0000000000000123 /* Math.cpp */,
+				48544D4C0000000000000126 /* Memory.cpp */,
+				48544D4C0000000000000129 /* MeshUtilities.cpp */,
+				48544D4C000000000000012C /* ObserverPtr.cpp */,
+				48544D4C000000000000012F /* Plugin.cpp */,
+				48544D4C0000000000000132 /* PluginRegistry.cpp */,
+				48544D4C0000000000000135 /* Profiling.cpp */,
+				48544D4C0000000000000138 /* PropertiesIteratorView.cpp */,
+				48544D4C000000000000013B /* Property.cpp */,
+				48544D4C000000000000013E /* PropertyDefinition.cpp */,
+				48544D4C0000000000000141 /* PropertyDictionary.cpp */,
+				48544D4C0000000000000144 /* PropertyParserAnimation.cpp */,
+				48544D4C0000000000000147 /* PropertyParserBoxShadow.cpp */,
+				48544D4C000000000000014A /* PropertyParserColorStopList.cpp */,
+				48544D4C000000000000014D /* PropertyParserColour.cpp */,
+				48544D4C0000000000000150 /* PropertyParserDecorator.cpp */,
+				48544D4C0000000000000153 /* PropertyParserFilter.cpp */,
+				48544D4C0000000000000156 /* PropertyParserFontEffect.cpp */,
+				48544D4C0000000000000159 /* PropertyParserKeyword.cpp */,
+				48544D4C000000000000015C /* PropertyParserNumber.cpp */,
+				48544D4C000000000000015F /* PropertyParserRatio.cpp */,
+				48544D4C0000000000000162 /* PropertyParserString.cpp */,
+				48544D4C0000000000000165 /* PropertyParserTransform.cpp */,
+				48544D4C0000000000000168 /* PropertySpecification.cpp */,
+				48544D4C000000000000016B /* RenderInterface.cpp */,
+				48544D4C000000000000016E /* RenderInterfaceCompatibility.cpp */,
+				48544D4C0000000000000171 /* RenderManager.cpp */,
+				48544D4C0000000000000174 /* RenderManagerAccess.cpp */,
+				48544D4C0000000000000177 /* ScriptInterface.cpp */,
+				48544D4C000000000000017A /* ScrollController.cpp */,
+				48544D4C000000000000017D /* Spritesheet.cpp */,
+				48544D4C0000000000000180 /* Stream.cpp */,
+				48544D4C0000000000000183 /* StreamFile.cpp */,
+				48544D4C0000000000000186 /* StreamMemory.cpp */,
+				48544D4C0000000000000189 /* StringUtilities.cpp */,
+				48544D4C000000000000018C /* StyleSheet.cpp */,
+				48544D4C000000000000018F /* StyleSheetContainer.cpp */,
+				48544D4C0000000000000192 /* StyleSheetFactory.cpp */,
+				48544D4C0000000000000195 /* StyleSheetNode.cpp */,
+				48544D4C0000000000000198 /* StyleSheetParser.cpp */,
+				48544D4C000000000000019B /* StyleSheetSelector.cpp */,
+				48544D4C000000000000019E /* StyleSheetSpecification.cpp */,
+				48544D4C00000000000001A1 /* SystemInterface.cpp */,
+				48544D4C00000000000001A4 /* Template.cpp */,
+				48544D4C00000000000001A7 /* TemplateCache.cpp */,
+				48544D4C00000000000001AA /* Texture.cpp */,
+				48544D4C00000000000001AD /* TextureDatabase.cpp */,
+				48544D4C00000000000001B0 /* TextureLayout.cpp */,
+				48544D4C00000000000001B3 /* TextureLayoutRectangle.cpp */,
+				48544D4C00000000000001B6 /* TextureLayoutRow.cpp */,
+				48544D4C00000000000001B9 /* TextureLayoutTexture.cpp */,
+				48544D4C00000000000001BC /* Traits.cpp */,
+				48544D4C00000000000001BF /* Transform.cpp */,
+				48544D4C00000000000001C2 /* TransformPrimitive.cpp */,
+				48544D4C00000000000001C5 /* TransformState.cpp */,
+				48544D4C00000000000001C8 /* TransformUtilities.cpp */,
+				48544D4C00000000000001CB /* Tween.cpp */,
+				48544D4C00000000000001CE /* TypeConverter.cpp */,
+				48544D4C00000000000001D1 /* URL.cpp */,
+				48544D4C00000000000001D4 /* Variant.cpp */,
+				48544D4C00000000000001D7 /* WidgetScroll.cpp */,
+				48544D4C00000000000001DA /* XMLNodeHandler.cpp */,
+				48544D4C00000000000001DD /* XMLNodeHandlerBody.cpp */,
+				48544D4C00000000000001E0 /* XMLNodeHandlerDefault.cpp */,
+				48544D4C00000000000001E3 /* XMLNodeHandlerHead.cpp */,
+				48544D4C00000000000001E6 /* XMLNodeHandlerTemplate.cpp */,
+				48544D4C00000000000001E9 /* XMLParseTools.cpp */,
+				48544D4C00000000000001EC /* XMLParser.cpp */,
+			);
+			name = Core;
+			path = Source/Core;
+			sourceTree = "<group>";
+		};
+		48544D4C000000000000023E /* Elements */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C00000000000001F0 /* ElementForm.cpp */,
+				48544D4C00000000000001F3 /* ElementFormControl.cpp */,
+				48544D4C00000000000001F6 /* ElementFormControlInput.cpp */,
+				48544D4C00000000000001F9 /* ElementFormControlSelect.cpp */,
+				48544D4C00000000000001FC /* ElementFormControlTextArea.cpp */,
+				48544D4C00000000000001FF /* ElementImage.cpp */,
+				48544D4C0000000000000202 /* ElementLabel.cpp */,
+				48544D4C0000000000000205 /* ElementProgress.cpp */,
+				48544D4C0000000000000208 /* ElementTabSet.cpp */,
+				48544D4C000000000000020B /* ElementTextSelection.cpp */,
+				48544D4C000000000000020E /* InputType.cpp */,
+				48544D4C0000000000000211 /* InputTypeButton.cpp */,
+				48544D4C0000000000000214 /* InputTypeCheckbox.cpp */,
+				48544D4C0000000000000217 /* InputTypeRadio.cpp */,
+				48544D4C000000000000021A /* InputTypeRange.cpp */,
+				48544D4C000000000000021D /* InputTypeSubmit.cpp */,
+				48544D4C0000000000000220 /* InputTypeText.cpp */,
+				48544D4C0000000000000223 /* WidgetDropDown.cpp */,
+				48544D4C0000000000000226 /* WidgetSlider.cpp */,
+				48544D4C0000000000000229 /* WidgetTextInput.cpp */,
+				48544D4C000000000000022C /* WidgetTextInputMultiLine.cpp */,
+				48544D4C000000000000022F /* WidgetTextInputSingleLine.cpp */,
+				48544D4C0000000000000232 /* WidgetTextInputSingleLinePassword.cpp */,
+				48544D4C0000000000000235 /* XMLNodeHandlerSelect.cpp */,
+				48544D4C0000000000000238 /* XMLNodeHandlerTabSet.cpp */,
+				48544D4C000000000000023B /* XMLNodeHandlerTextArea.cpp */,
+			);
+			name = Elements;
+			path = Source/Core/Elements;
+			sourceTree = "<group>";
+		};
+		48544D4C0000000000000272 /* Layout */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C000000000000023F /* BlockContainer.cpp */,
+				48544D4C0000000000000242 /* BlockFormattingContext.cpp */,
+				48544D4C0000000000000245 /* ContainerBox.cpp */,
+				48544D4C0000000000000248 /* FlexFormattingContext.cpp */,
+				48544D4C000000000000024B /* FloatedBoxSpace.cpp */,
+				48544D4C000000000000024E /* FormattingContext.cpp */,
+				48544D4C0000000000000251 /* InlineBox.cpp */,
+				48544D4C0000000000000254 /* InlineContainer.cpp */,
+				48544D4C0000000000000257 /* InlineLevelBox.cpp */,
+				48544D4C000000000000025A /* LayoutBox.cpp */,
+				48544D4C000000000000025D /* LayoutDetails.cpp */,
+				48544D4C0000000000000260 /* LayoutEngine.cpp */,
+				48544D4C0000000000000263 /* LayoutPools.cpp */,
+				48544D4C0000000000000266 /* LineBox.cpp */,
+				48544D4C0000000000000269 /* ReplacedFormattingContext.cpp */,
+				48544D4C000000000000026C /* TableFormattingContext.cpp */,
+				48544D4C000000000000026F /* TableFormattingDetails.cpp */,
+			);
+			name = Layout;
+			path = Source/Core/Layout;
+			sourceTree = "<group>";
+		};
+		48544D4C000000000000028E /* Debugger */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C0000000000000273 /* Debugger.cpp */,
+				48544D4C0000000000000276 /* DebuggerPlugin.cpp */,
+				48544D4C0000000000000279 /* DebuggerSystemInterface.cpp */,
+				48544D4C000000000000027C /* ElementContextHook.cpp */,
+				48544D4C000000000000027F /* ElementDataModels.cpp */,
+				48544D4C0000000000000282 /* ElementDebugDocument.cpp */,
+				48544D4C0000000000000285 /* ElementInfo.cpp */,
+				48544D4C0000000000000288 /* ElementLog.cpp */,
+				48544D4C000000000000028B /* Geometry.cpp */,
+			);
+			name = Debugger;
+			path = Source/Debugger;
+			sourceTree = "<group>";
+		};
+		48544D4C000000000000028F /* rmlui */ = {
+			isa = PBXGroup;
+			children = (
+				48544D4C00000000000001EF /* Core */,
+				48544D4C000000000000023E /* Elements */,
+				48544D4C0000000000000272 /* Layout */,
+				48544D4C000000000000028E /* Debugger */,
+			);
+			path = rmlui;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -6154,6 +7112,20 @@
 				1787AD8E2F673CE000DB1D75 /* PrefabComponent.h in Headers */,
 				71E824862A9C238900C8E6F2 /* Joint2DComponent.h in Headers */,
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
+				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
+				48544D4C0000000000000007 /* HtmlUIContext.h in Headers */,
+				48544D4C000000000000000F /* RmlFile.h in Headers */,
+				48544D4C0000000000000014 /* RmlFontEngine.h in Headers */,
+				48544D4C0000000000000019 /* RmlRenderer.h in Headers */,
+				48544D4C000000000000001E /* RmlSystem.h in Headers */,
+				48544D4C0000000000000023 /* FontFace.h in Headers */,
+				48544D4C0000000000000028 /* FontRegistry.h in Headers */,
+				48544D4C000000000000002D /* GlyphAtlas.h in Headers */,
+				48544D4C0000000000000032 /* TextShaper.h in Headers */,
+				48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */,
+				48544D4C000000000000003C /* UIDocument.h in Headers */,
+				48544D4C0000000000000041 /* UIElement.h in Headers */,
+				48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6375,6 +7347,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		48544D4C0000000000000294 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48544D4C000000000000029D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -6491,6 +7477,7 @@
 			);
 			dependencies = (
 				71A8001B2AD9A001007C91BA /* PBXTargetDependency */,
+				48544D4C000000000000029C /* PBXTargetDependency */,
 				71A8003E2AD9A002007C91BA /* PBXTargetDependency */,
 				71C004B2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7DC000062E7A0100C91BA0C0 /* PBXTargetDependency */,
@@ -6574,6 +7561,7 @@
 			);
 			dependencies = (
 				71A8001D2AD9A001007C91BA /* PBXTargetDependency */,
+				48544D4C00000000000002A5 /* PBXTargetDependency */,
 				71A800402AD9A002007C91BA /* PBXTargetDependency */,
 				71C004C2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7DC000102E7A0100C91BA0C0 /* PBXTargetDependency */,
@@ -6917,6 +7905,40 @@
 			productReference = 7DC0000C2E7A0100C91BA0C0 /* libshadercompiler-macos.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		48544D4C000000000000029A /* rmlui-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48544D4C0000000000000299 /* Build configuration list for PBXNativeTarget "rmlui-ios" */;
+			buildPhases = (
+				48544D4C0000000000000294 /* Headers */,
+				48544D4C0000000000000295 /* Sources */,
+				48544D4C0000000000000296 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "rmlui-ios";
+			productName = "rmlui-ios";
+			productReference = 48544D4C0000000000000290 /* librmlui-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		48544D4C00000000000002A3 /* rmlui-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48544D4C00000000000002A2 /* Build configuration list for PBXNativeTarget "rmlui-macos" */;
+			buildPhases = (
+				48544D4C000000000000029D /* Headers */,
+				48544D4C000000000000029E /* Sources */,
+				48544D4C000000000000029F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "rmlui-macos";
+			productName = "rmlui-macos";
+			productReference = 48544D4C0000000000000291 /* librmlui-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -6926,6 +7948,12 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					48544D4C000000000000029A = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					48544D4C00000000000002A3 = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
 					7105CACA2AD61D1E007C91BA = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
@@ -7040,6 +8068,8 @@
 				7105CAD92AD61D35007C91BA /* joltphysics-ios */,
 				71A8000D2AD9A001007C91BA /* harfbuzz-macos */,
 				71A8000C2AD9A001007C91BA /* harfbuzz-ios */,
+				48544D4C00000000000002A3 /* rmlui-macos */,
+				48544D4C000000000000029A /* rmlui-ios */,
 				71A800302AD9A002007C91BA /* sheenbidi-macos */,
 				71A8002F2AD9A002007C91BA /* sheenbidi-ios */,
 				71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */,
@@ -7590,6 +8620,20 @@
 				71C33FBD2A315918007A5822 /* Model.cpp in Sources */,
 				713D82B6259D307F00567F9F /* SokolTexture.cpp in Sources */,
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
+				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
+				48544D4C0000000000000009 /* HtmlUIContext.cpp in Sources */,
+				48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */,
+				48544D4C0000000000000011 /* RmlFile.cpp in Sources */,
+				48544D4C0000000000000016 /* RmlFontEngine.cpp in Sources */,
+				48544D4C000000000000001B /* RmlRenderer.cpp in Sources */,
+				48544D4C0000000000000020 /* RmlSystem.cpp in Sources */,
+				48544D4C0000000000000025 /* FontFace.cpp in Sources */,
+				48544D4C000000000000002A /* FontRegistry.cpp in Sources */,
+				48544D4C000000000000002F /* GlyphAtlas.cpp in Sources */,
+				48544D4C0000000000000034 /* TextShaper.cpp in Sources */,
+				48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */,
+				48544D4C000000000000003E /* UIDocument.cpp in Sources */,
+				48544D4C0000000000000043 /* UIElement.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7787,6 +8831,20 @@
 				71C33FBC2A315918007A5822 /* Model.cpp in Sources */,
 				7162FD5E25963AE10075B97D /* ExternalBuffer.cpp in Sources */,
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
+				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
+				48544D4C000000000000000A /* HtmlUIContext.cpp in Sources */,
+				48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */,
+				48544D4C0000000000000012 /* RmlFile.cpp in Sources */,
+				48544D4C0000000000000017 /* RmlFontEngine.cpp in Sources */,
+				48544D4C000000000000001C /* RmlRenderer.cpp in Sources */,
+				48544D4C0000000000000021 /* RmlSystem.cpp in Sources */,
+				48544D4C0000000000000026 /* FontFace.cpp in Sources */,
+				48544D4C000000000000002B /* FontRegistry.cpp in Sources */,
+				48544D4C0000000000000030 /* GlyphAtlas.cpp in Sources */,
+				48544D4C0000000000000035 /* TextShaper.cpp in Sources */,
+				48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */,
+				48544D4C000000000000003F /* UIDocument.cpp in Sources */,
+				48544D4C0000000000000044 /* UIElement.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8224,6 +9282,406 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		48544D4C0000000000000295 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48544D4C0000000000000049 /* BaseXMLParser.cpp in Sources */,
+				48544D4C000000000000004C /* Box.cpp in Sources */,
+				48544D4C000000000000004F /* BoxShadowCache.cpp in Sources */,
+				48544D4C0000000000000052 /* CallbackTexture.cpp in Sources */,
+				48544D4C0000000000000055 /* Clock.cpp in Sources */,
+				48544D4C0000000000000058 /* CompiledFilterShader.cpp in Sources */,
+				48544D4C000000000000005B /* ComputeProperty.cpp in Sources */,
+				48544D4C000000000000005E /* ComputedValues.cpp in Sources */,
+				48544D4C0000000000000061 /* Context.cpp in Sources */,
+				48544D4C0000000000000064 /* ContextInstancer.cpp in Sources */,
+				48544D4C0000000000000067 /* ContextInstancerDefault.cpp in Sources */,
+				48544D4C000000000000006A /* ConvolutionFilter.cpp in Sources */,
+				48544D4C000000000000006D /* Core.cpp in Sources */,
+				48544D4C0000000000000070 /* DataController.cpp in Sources */,
+				48544D4C0000000000000073 /* DataControllerDefault.cpp in Sources */,
+				48544D4C0000000000000076 /* DataExpression.cpp in Sources */,
+				48544D4C0000000000000079 /* DataModel.cpp in Sources */,
+				48544D4C000000000000007C /* DataModelHandle.cpp in Sources */,
+				48544D4C000000000000007F /* DataTypeRegister.cpp in Sources */,
+				48544D4C0000000000000082 /* DataVariable.cpp in Sources */,
+				48544D4C0000000000000085 /* DataView.cpp in Sources */,
+				48544D4C0000000000000088 /* DataViewDefault.cpp in Sources */,
+				48544D4C000000000000008B /* Decorator.cpp in Sources */,
+				48544D4C000000000000008E /* DecoratorGradient.cpp in Sources */,
+				48544D4C0000000000000091 /* DecoratorNinePatch.cpp in Sources */,
+				48544D4C0000000000000094 /* DecoratorShader.cpp in Sources */,
+				48544D4C0000000000000097 /* DecoratorText.cpp in Sources */,
+				48544D4C000000000000009A /* DecoratorTiled.cpp in Sources */,
+				48544D4C000000000000009D /* DecoratorTiledBox.cpp in Sources */,
+				48544D4C00000000000000A0 /* DecoratorTiledHorizontal.cpp in Sources */,
+				48544D4C00000000000000A3 /* DecoratorTiledImage.cpp in Sources */,
+				48544D4C00000000000000A6 /* DecoratorTiledVertical.cpp in Sources */,
+				48544D4C00000000000000A9 /* DecoratorUtilities.cpp in Sources */,
+				48544D4C00000000000000AC /* DocumentHeader.cpp in Sources */,
+				48544D4C00000000000000AF /* EffectSpecification.cpp in Sources */,
+				48544D4C00000000000000B2 /* Element.cpp in Sources */,
+				48544D4C00000000000000B5 /* ElementAnimation.cpp in Sources */,
+				48544D4C00000000000000B8 /* ElementBackgroundBorder.cpp in Sources */,
+				48544D4C00000000000000BB /* ElementDefinition.cpp in Sources */,
+				48544D4C00000000000000BE /* ElementDocument.cpp in Sources */,
+				48544D4C00000000000000C1 /* ElementEffects.cpp in Sources */,
+				48544D4C00000000000000C4 /* ElementHandle.cpp in Sources */,
+				48544D4C00000000000000C7 /* ElementInstancer.cpp in Sources */,
+				48544D4C00000000000000CA /* ElementMeta.cpp in Sources */,
+				48544D4C00000000000000CD /* ElementScroll.cpp in Sources */,
+				48544D4C00000000000000D0 /* ElementStyle.cpp in Sources */,
+				48544D4C00000000000000D3 /* ElementText.cpp in Sources */,
+				48544D4C00000000000000D6 /* ElementUtilities.cpp in Sources */,
+				48544D4C00000000000000D9 /* Event.cpp in Sources */,
+				48544D4C00000000000000DC /* EventDispatcher.cpp in Sources */,
+				48544D4C00000000000000DF /* EventInstancer.cpp in Sources */,
+				48544D4C00000000000000E2 /* EventInstancerDefault.cpp in Sources */,
+				48544D4C00000000000000E5 /* EventListenerInstancer.cpp in Sources */,
+				48544D4C00000000000000E8 /* EventSpecification.cpp in Sources */,
+				48544D4C00000000000000EB /* Factory.cpp in Sources */,
+				48544D4C00000000000000EE /* FileInterface.cpp in Sources */,
+				48544D4C00000000000000F1 /* FileInterfaceDefault.cpp in Sources */,
+				48544D4C00000000000000F4 /* Filter.cpp in Sources */,
+				48544D4C00000000000000F7 /* FilterBasic.cpp in Sources */,
+				48544D4C00000000000000FA /* FilterBlur.cpp in Sources */,
+				48544D4C00000000000000FD /* FilterDropShadow.cpp in Sources */,
+				48544D4C0000000000000100 /* FontEffect.cpp in Sources */,
+				48544D4C0000000000000103 /* FontEffectBlur.cpp in Sources */,
+				48544D4C0000000000000106 /* FontEffectGlow.cpp in Sources */,
+				48544D4C0000000000000109 /* FontEffectInstancer.cpp in Sources */,
+				48544D4C000000000000010C /* FontEffectOutline.cpp in Sources */,
+				48544D4C000000000000010F /* FontEffectShadow.cpp in Sources */,
+				48544D4C0000000000000112 /* FontEngineInterface.cpp in Sources */,
+				48544D4C0000000000000115 /* Geometry.cpp in Sources */,
+				48544D4C0000000000000118 /* GeometryBackgroundBorder.cpp in Sources */,
+				48544D4C000000000000011B /* GeometryBoxShadow.cpp in Sources */,
+				48544D4C000000000000011E /* Log.cpp in Sources */,
+				48544D4C0000000000000121 /* LogDefault.cpp in Sources */,
+				48544D4C0000000000000124 /* Math.cpp in Sources */,
+				48544D4C0000000000000127 /* Memory.cpp in Sources */,
+				48544D4C000000000000012A /* MeshUtilities.cpp in Sources */,
+				48544D4C000000000000012D /* ObserverPtr.cpp in Sources */,
+				48544D4C0000000000000130 /* Plugin.cpp in Sources */,
+				48544D4C0000000000000133 /* PluginRegistry.cpp in Sources */,
+				48544D4C0000000000000136 /* Profiling.cpp in Sources */,
+				48544D4C0000000000000139 /* PropertiesIteratorView.cpp in Sources */,
+				48544D4C000000000000013C /* Property.cpp in Sources */,
+				48544D4C000000000000013F /* PropertyDefinition.cpp in Sources */,
+				48544D4C0000000000000142 /* PropertyDictionary.cpp in Sources */,
+				48544D4C0000000000000145 /* PropertyParserAnimation.cpp in Sources */,
+				48544D4C0000000000000148 /* PropertyParserBoxShadow.cpp in Sources */,
+				48544D4C000000000000014B /* PropertyParserColorStopList.cpp in Sources */,
+				48544D4C000000000000014E /* PropertyParserColour.cpp in Sources */,
+				48544D4C0000000000000151 /* PropertyParserDecorator.cpp in Sources */,
+				48544D4C0000000000000154 /* PropertyParserFilter.cpp in Sources */,
+				48544D4C0000000000000157 /* PropertyParserFontEffect.cpp in Sources */,
+				48544D4C000000000000015A /* PropertyParserKeyword.cpp in Sources */,
+				48544D4C000000000000015D /* PropertyParserNumber.cpp in Sources */,
+				48544D4C0000000000000160 /* PropertyParserRatio.cpp in Sources */,
+				48544D4C0000000000000163 /* PropertyParserString.cpp in Sources */,
+				48544D4C0000000000000166 /* PropertyParserTransform.cpp in Sources */,
+				48544D4C0000000000000169 /* PropertySpecification.cpp in Sources */,
+				48544D4C000000000000016C /* RenderInterface.cpp in Sources */,
+				48544D4C000000000000016F /* RenderInterfaceCompatibility.cpp in Sources */,
+				48544D4C0000000000000172 /* RenderManager.cpp in Sources */,
+				48544D4C0000000000000175 /* RenderManagerAccess.cpp in Sources */,
+				48544D4C0000000000000178 /* ScriptInterface.cpp in Sources */,
+				48544D4C000000000000017B /* ScrollController.cpp in Sources */,
+				48544D4C000000000000017E /* Spritesheet.cpp in Sources */,
+				48544D4C0000000000000181 /* Stream.cpp in Sources */,
+				48544D4C0000000000000184 /* StreamFile.cpp in Sources */,
+				48544D4C0000000000000187 /* StreamMemory.cpp in Sources */,
+				48544D4C000000000000018A /* StringUtilities.cpp in Sources */,
+				48544D4C000000000000018D /* StyleSheet.cpp in Sources */,
+				48544D4C0000000000000190 /* StyleSheetContainer.cpp in Sources */,
+				48544D4C0000000000000193 /* StyleSheetFactory.cpp in Sources */,
+				48544D4C0000000000000196 /* StyleSheetNode.cpp in Sources */,
+				48544D4C0000000000000199 /* StyleSheetParser.cpp in Sources */,
+				48544D4C000000000000019C /* StyleSheetSelector.cpp in Sources */,
+				48544D4C000000000000019F /* StyleSheetSpecification.cpp in Sources */,
+				48544D4C00000000000001A2 /* SystemInterface.cpp in Sources */,
+				48544D4C00000000000001A5 /* Template.cpp in Sources */,
+				48544D4C00000000000001A8 /* TemplateCache.cpp in Sources */,
+				48544D4C00000000000001AB /* Texture.cpp in Sources */,
+				48544D4C00000000000001AE /* TextureDatabase.cpp in Sources */,
+				48544D4C00000000000001B1 /* TextureLayout.cpp in Sources */,
+				48544D4C00000000000001B4 /* TextureLayoutRectangle.cpp in Sources */,
+				48544D4C00000000000001B7 /* TextureLayoutRow.cpp in Sources */,
+				48544D4C00000000000001BA /* TextureLayoutTexture.cpp in Sources */,
+				48544D4C00000000000001BD /* Traits.cpp in Sources */,
+				48544D4C00000000000001C0 /* Transform.cpp in Sources */,
+				48544D4C00000000000001C3 /* TransformPrimitive.cpp in Sources */,
+				48544D4C00000000000001C6 /* TransformState.cpp in Sources */,
+				48544D4C00000000000001C9 /* TransformUtilities.cpp in Sources */,
+				48544D4C00000000000001CC /* Tween.cpp in Sources */,
+				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
+				48544D4C00000000000001D2 /* URL.cpp in Sources */,
+				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				48544D4C00000000000001D8 /* WidgetScroll.cpp in Sources */,
+				48544D4C00000000000001DB /* XMLNodeHandler.cpp in Sources */,
+				48544D4C00000000000001DE /* XMLNodeHandlerBody.cpp in Sources */,
+				48544D4C00000000000001E1 /* XMLNodeHandlerDefault.cpp in Sources */,
+				48544D4C00000000000001E4 /* XMLNodeHandlerHead.cpp in Sources */,
+				48544D4C00000000000001E7 /* XMLNodeHandlerTemplate.cpp in Sources */,
+				48544D4C00000000000001EA /* XMLParseTools.cpp in Sources */,
+				48544D4C00000000000001ED /* XMLParser.cpp in Sources */,
+				48544D4C00000000000001F1 /* ElementForm.cpp in Sources */,
+				48544D4C00000000000001F4 /* ElementFormControl.cpp in Sources */,
+				48544D4C00000000000001F7 /* ElementFormControlInput.cpp in Sources */,
+				48544D4C00000000000001FA /* ElementFormControlSelect.cpp in Sources */,
+				48544D4C00000000000001FD /* ElementFormControlTextArea.cpp in Sources */,
+				48544D4C0000000000000200 /* ElementImage.cpp in Sources */,
+				48544D4C0000000000000203 /* ElementLabel.cpp in Sources */,
+				48544D4C0000000000000206 /* ElementProgress.cpp in Sources */,
+				48544D4C0000000000000209 /* ElementTabSet.cpp in Sources */,
+				48544D4C000000000000020C /* ElementTextSelection.cpp in Sources */,
+				48544D4C000000000000020F /* InputType.cpp in Sources */,
+				48544D4C0000000000000212 /* InputTypeButton.cpp in Sources */,
+				48544D4C0000000000000215 /* InputTypeCheckbox.cpp in Sources */,
+				48544D4C0000000000000218 /* InputTypeRadio.cpp in Sources */,
+				48544D4C000000000000021B /* InputTypeRange.cpp in Sources */,
+				48544D4C000000000000021E /* InputTypeSubmit.cpp in Sources */,
+				48544D4C0000000000000221 /* InputTypeText.cpp in Sources */,
+				48544D4C0000000000000224 /* WidgetDropDown.cpp in Sources */,
+				48544D4C0000000000000227 /* WidgetSlider.cpp in Sources */,
+				48544D4C000000000000022A /* WidgetTextInput.cpp in Sources */,
+				48544D4C000000000000022D /* WidgetTextInputMultiLine.cpp in Sources */,
+				48544D4C0000000000000230 /* WidgetTextInputSingleLine.cpp in Sources */,
+				48544D4C0000000000000233 /* WidgetTextInputSingleLinePassword.cpp in Sources */,
+				48544D4C0000000000000236 /* XMLNodeHandlerSelect.cpp in Sources */,
+				48544D4C0000000000000239 /* XMLNodeHandlerTabSet.cpp in Sources */,
+				48544D4C000000000000023C /* XMLNodeHandlerTextArea.cpp in Sources */,
+				48544D4C0000000000000240 /* BlockContainer.cpp in Sources */,
+				48544D4C0000000000000243 /* BlockFormattingContext.cpp in Sources */,
+				48544D4C0000000000000246 /* ContainerBox.cpp in Sources */,
+				48544D4C0000000000000249 /* FlexFormattingContext.cpp in Sources */,
+				48544D4C000000000000024C /* FloatedBoxSpace.cpp in Sources */,
+				48544D4C000000000000024F /* FormattingContext.cpp in Sources */,
+				48544D4C0000000000000252 /* InlineBox.cpp in Sources */,
+				48544D4C0000000000000255 /* InlineContainer.cpp in Sources */,
+				48544D4C0000000000000258 /* InlineLevelBox.cpp in Sources */,
+				48544D4C000000000000025B /* LayoutBox.cpp in Sources */,
+				48544D4C000000000000025E /* LayoutDetails.cpp in Sources */,
+				48544D4C0000000000000261 /* LayoutEngine.cpp in Sources */,
+				48544D4C0000000000000264 /* LayoutPools.cpp in Sources */,
+				48544D4C0000000000000267 /* LineBox.cpp in Sources */,
+				48544D4C000000000000026A /* ReplacedFormattingContext.cpp in Sources */,
+				48544D4C000000000000026D /* TableFormattingContext.cpp in Sources */,
+				48544D4C0000000000000270 /* TableFormattingDetails.cpp in Sources */,
+				48544D4C0000000000000274 /* Debugger.cpp in Sources */,
+				48544D4C0000000000000277 /* DebuggerPlugin.cpp in Sources */,
+				48544D4C000000000000027A /* DebuggerSystemInterface.cpp in Sources */,
+				48544D4C000000000000027D /* ElementContextHook.cpp in Sources */,
+				48544D4C0000000000000280 /* ElementDataModels.cpp in Sources */,
+				48544D4C0000000000000283 /* ElementDebugDocument.cpp in Sources */,
+				48544D4C0000000000000286 /* ElementInfo.cpp in Sources */,
+				48544D4C0000000000000289 /* ElementLog.cpp in Sources */,
+				48544D4C000000000000028C /* Geometry.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48544D4C000000000000029E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48544D4C000000000000004A /* BaseXMLParser.cpp in Sources */,
+				48544D4C000000000000004D /* Box.cpp in Sources */,
+				48544D4C0000000000000050 /* BoxShadowCache.cpp in Sources */,
+				48544D4C0000000000000053 /* CallbackTexture.cpp in Sources */,
+				48544D4C0000000000000056 /* Clock.cpp in Sources */,
+				48544D4C0000000000000059 /* CompiledFilterShader.cpp in Sources */,
+				48544D4C000000000000005C /* ComputeProperty.cpp in Sources */,
+				48544D4C000000000000005F /* ComputedValues.cpp in Sources */,
+				48544D4C0000000000000062 /* Context.cpp in Sources */,
+				48544D4C0000000000000065 /* ContextInstancer.cpp in Sources */,
+				48544D4C0000000000000068 /* ContextInstancerDefault.cpp in Sources */,
+				48544D4C000000000000006B /* ConvolutionFilter.cpp in Sources */,
+				48544D4C000000000000006E /* Core.cpp in Sources */,
+				48544D4C0000000000000071 /* DataController.cpp in Sources */,
+				48544D4C0000000000000074 /* DataControllerDefault.cpp in Sources */,
+				48544D4C0000000000000077 /* DataExpression.cpp in Sources */,
+				48544D4C000000000000007A /* DataModel.cpp in Sources */,
+				48544D4C000000000000007D /* DataModelHandle.cpp in Sources */,
+				48544D4C0000000000000080 /* DataTypeRegister.cpp in Sources */,
+				48544D4C0000000000000083 /* DataVariable.cpp in Sources */,
+				48544D4C0000000000000086 /* DataView.cpp in Sources */,
+				48544D4C0000000000000089 /* DataViewDefault.cpp in Sources */,
+				48544D4C000000000000008C /* Decorator.cpp in Sources */,
+				48544D4C000000000000008F /* DecoratorGradient.cpp in Sources */,
+				48544D4C0000000000000092 /* DecoratorNinePatch.cpp in Sources */,
+				48544D4C0000000000000095 /* DecoratorShader.cpp in Sources */,
+				48544D4C0000000000000098 /* DecoratorText.cpp in Sources */,
+				48544D4C000000000000009B /* DecoratorTiled.cpp in Sources */,
+				48544D4C000000000000009E /* DecoratorTiledBox.cpp in Sources */,
+				48544D4C00000000000000A1 /* DecoratorTiledHorizontal.cpp in Sources */,
+				48544D4C00000000000000A4 /* DecoratorTiledImage.cpp in Sources */,
+				48544D4C00000000000000A7 /* DecoratorTiledVertical.cpp in Sources */,
+				48544D4C00000000000000AA /* DecoratorUtilities.cpp in Sources */,
+				48544D4C00000000000000AD /* DocumentHeader.cpp in Sources */,
+				48544D4C00000000000000B0 /* EffectSpecification.cpp in Sources */,
+				48544D4C00000000000000B3 /* Element.cpp in Sources */,
+				48544D4C00000000000000B6 /* ElementAnimation.cpp in Sources */,
+				48544D4C00000000000000B9 /* ElementBackgroundBorder.cpp in Sources */,
+				48544D4C00000000000000BC /* ElementDefinition.cpp in Sources */,
+				48544D4C00000000000000BF /* ElementDocument.cpp in Sources */,
+				48544D4C00000000000000C2 /* ElementEffects.cpp in Sources */,
+				48544D4C00000000000000C5 /* ElementHandle.cpp in Sources */,
+				48544D4C00000000000000C8 /* ElementInstancer.cpp in Sources */,
+				48544D4C00000000000000CB /* ElementMeta.cpp in Sources */,
+				48544D4C00000000000000CE /* ElementScroll.cpp in Sources */,
+				48544D4C00000000000000D1 /* ElementStyle.cpp in Sources */,
+				48544D4C00000000000000D4 /* ElementText.cpp in Sources */,
+				48544D4C00000000000000D7 /* ElementUtilities.cpp in Sources */,
+				48544D4C00000000000000DA /* Event.cpp in Sources */,
+				48544D4C00000000000000DD /* EventDispatcher.cpp in Sources */,
+				48544D4C00000000000000E0 /* EventInstancer.cpp in Sources */,
+				48544D4C00000000000000E3 /* EventInstancerDefault.cpp in Sources */,
+				48544D4C00000000000000E6 /* EventListenerInstancer.cpp in Sources */,
+				48544D4C00000000000000E9 /* EventSpecification.cpp in Sources */,
+				48544D4C00000000000000EC /* Factory.cpp in Sources */,
+				48544D4C00000000000000EF /* FileInterface.cpp in Sources */,
+				48544D4C00000000000000F2 /* FileInterfaceDefault.cpp in Sources */,
+				48544D4C00000000000000F5 /* Filter.cpp in Sources */,
+				48544D4C00000000000000F8 /* FilterBasic.cpp in Sources */,
+				48544D4C00000000000000FB /* FilterBlur.cpp in Sources */,
+				48544D4C00000000000000FE /* FilterDropShadow.cpp in Sources */,
+				48544D4C0000000000000101 /* FontEffect.cpp in Sources */,
+				48544D4C0000000000000104 /* FontEffectBlur.cpp in Sources */,
+				48544D4C0000000000000107 /* FontEffectGlow.cpp in Sources */,
+				48544D4C000000000000010A /* FontEffectInstancer.cpp in Sources */,
+				48544D4C000000000000010D /* FontEffectOutline.cpp in Sources */,
+				48544D4C0000000000000110 /* FontEffectShadow.cpp in Sources */,
+				48544D4C0000000000000113 /* FontEngineInterface.cpp in Sources */,
+				48544D4C0000000000000116 /* Geometry.cpp in Sources */,
+				48544D4C0000000000000119 /* GeometryBackgroundBorder.cpp in Sources */,
+				48544D4C000000000000011C /* GeometryBoxShadow.cpp in Sources */,
+				48544D4C000000000000011F /* Log.cpp in Sources */,
+				48544D4C0000000000000122 /* LogDefault.cpp in Sources */,
+				48544D4C0000000000000125 /* Math.cpp in Sources */,
+				48544D4C0000000000000128 /* Memory.cpp in Sources */,
+				48544D4C000000000000012B /* MeshUtilities.cpp in Sources */,
+				48544D4C000000000000012E /* ObserverPtr.cpp in Sources */,
+				48544D4C0000000000000131 /* Plugin.cpp in Sources */,
+				48544D4C0000000000000134 /* PluginRegistry.cpp in Sources */,
+				48544D4C0000000000000137 /* Profiling.cpp in Sources */,
+				48544D4C000000000000013A /* PropertiesIteratorView.cpp in Sources */,
+				48544D4C000000000000013D /* Property.cpp in Sources */,
+				48544D4C0000000000000140 /* PropertyDefinition.cpp in Sources */,
+				48544D4C0000000000000143 /* PropertyDictionary.cpp in Sources */,
+				48544D4C0000000000000146 /* PropertyParserAnimation.cpp in Sources */,
+				48544D4C0000000000000149 /* PropertyParserBoxShadow.cpp in Sources */,
+				48544D4C000000000000014C /* PropertyParserColorStopList.cpp in Sources */,
+				48544D4C000000000000014F /* PropertyParserColour.cpp in Sources */,
+				48544D4C0000000000000152 /* PropertyParserDecorator.cpp in Sources */,
+				48544D4C0000000000000155 /* PropertyParserFilter.cpp in Sources */,
+				48544D4C0000000000000158 /* PropertyParserFontEffect.cpp in Sources */,
+				48544D4C000000000000015B /* PropertyParserKeyword.cpp in Sources */,
+				48544D4C000000000000015E /* PropertyParserNumber.cpp in Sources */,
+				48544D4C0000000000000161 /* PropertyParserRatio.cpp in Sources */,
+				48544D4C0000000000000164 /* PropertyParserString.cpp in Sources */,
+				48544D4C0000000000000167 /* PropertyParserTransform.cpp in Sources */,
+				48544D4C000000000000016A /* PropertySpecification.cpp in Sources */,
+				48544D4C000000000000016D /* RenderInterface.cpp in Sources */,
+				48544D4C0000000000000170 /* RenderInterfaceCompatibility.cpp in Sources */,
+				48544D4C0000000000000173 /* RenderManager.cpp in Sources */,
+				48544D4C0000000000000176 /* RenderManagerAccess.cpp in Sources */,
+				48544D4C0000000000000179 /* ScriptInterface.cpp in Sources */,
+				48544D4C000000000000017C /* ScrollController.cpp in Sources */,
+				48544D4C000000000000017F /* Spritesheet.cpp in Sources */,
+				48544D4C0000000000000182 /* Stream.cpp in Sources */,
+				48544D4C0000000000000185 /* StreamFile.cpp in Sources */,
+				48544D4C0000000000000188 /* StreamMemory.cpp in Sources */,
+				48544D4C000000000000018B /* StringUtilities.cpp in Sources */,
+				48544D4C000000000000018E /* StyleSheet.cpp in Sources */,
+				48544D4C0000000000000191 /* StyleSheetContainer.cpp in Sources */,
+				48544D4C0000000000000194 /* StyleSheetFactory.cpp in Sources */,
+				48544D4C0000000000000197 /* StyleSheetNode.cpp in Sources */,
+				48544D4C000000000000019A /* StyleSheetParser.cpp in Sources */,
+				48544D4C000000000000019D /* StyleSheetSelector.cpp in Sources */,
+				48544D4C00000000000001A0 /* StyleSheetSpecification.cpp in Sources */,
+				48544D4C00000000000001A3 /* SystemInterface.cpp in Sources */,
+				48544D4C00000000000001A6 /* Template.cpp in Sources */,
+				48544D4C00000000000001A9 /* TemplateCache.cpp in Sources */,
+				48544D4C00000000000001AC /* Texture.cpp in Sources */,
+				48544D4C00000000000001AF /* TextureDatabase.cpp in Sources */,
+				48544D4C00000000000001B2 /* TextureLayout.cpp in Sources */,
+				48544D4C00000000000001B5 /* TextureLayoutRectangle.cpp in Sources */,
+				48544D4C00000000000001B8 /* TextureLayoutRow.cpp in Sources */,
+				48544D4C00000000000001BB /* TextureLayoutTexture.cpp in Sources */,
+				48544D4C00000000000001BE /* Traits.cpp in Sources */,
+				48544D4C00000000000001C1 /* Transform.cpp in Sources */,
+				48544D4C00000000000001C4 /* TransformPrimitive.cpp in Sources */,
+				48544D4C00000000000001C7 /* TransformState.cpp in Sources */,
+				48544D4C00000000000001CA /* TransformUtilities.cpp in Sources */,
+				48544D4C00000000000001CD /* Tween.cpp in Sources */,
+				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
+				48544D4C00000000000001D3 /* URL.cpp in Sources */,
+				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				48544D4C00000000000001D9 /* WidgetScroll.cpp in Sources */,
+				48544D4C00000000000001DC /* XMLNodeHandler.cpp in Sources */,
+				48544D4C00000000000001DF /* XMLNodeHandlerBody.cpp in Sources */,
+				48544D4C00000000000001E2 /* XMLNodeHandlerDefault.cpp in Sources */,
+				48544D4C00000000000001E5 /* XMLNodeHandlerHead.cpp in Sources */,
+				48544D4C00000000000001E8 /* XMLNodeHandlerTemplate.cpp in Sources */,
+				48544D4C00000000000001EB /* XMLParseTools.cpp in Sources */,
+				48544D4C00000000000001EE /* XMLParser.cpp in Sources */,
+				48544D4C00000000000001F2 /* ElementForm.cpp in Sources */,
+				48544D4C00000000000001F5 /* ElementFormControl.cpp in Sources */,
+				48544D4C00000000000001F8 /* ElementFormControlInput.cpp in Sources */,
+				48544D4C00000000000001FB /* ElementFormControlSelect.cpp in Sources */,
+				48544D4C00000000000001FE /* ElementFormControlTextArea.cpp in Sources */,
+				48544D4C0000000000000201 /* ElementImage.cpp in Sources */,
+				48544D4C0000000000000204 /* ElementLabel.cpp in Sources */,
+				48544D4C0000000000000207 /* ElementProgress.cpp in Sources */,
+				48544D4C000000000000020A /* ElementTabSet.cpp in Sources */,
+				48544D4C000000000000020D /* ElementTextSelection.cpp in Sources */,
+				48544D4C0000000000000210 /* InputType.cpp in Sources */,
+				48544D4C0000000000000213 /* InputTypeButton.cpp in Sources */,
+				48544D4C0000000000000216 /* InputTypeCheckbox.cpp in Sources */,
+				48544D4C0000000000000219 /* InputTypeRadio.cpp in Sources */,
+				48544D4C000000000000021C /* InputTypeRange.cpp in Sources */,
+				48544D4C000000000000021F /* InputTypeSubmit.cpp in Sources */,
+				48544D4C0000000000000222 /* InputTypeText.cpp in Sources */,
+				48544D4C0000000000000225 /* WidgetDropDown.cpp in Sources */,
+				48544D4C0000000000000228 /* WidgetSlider.cpp in Sources */,
+				48544D4C000000000000022B /* WidgetTextInput.cpp in Sources */,
+				48544D4C000000000000022E /* WidgetTextInputMultiLine.cpp in Sources */,
+				48544D4C0000000000000231 /* WidgetTextInputSingleLine.cpp in Sources */,
+				48544D4C0000000000000234 /* WidgetTextInputSingleLinePassword.cpp in Sources */,
+				48544D4C0000000000000237 /* XMLNodeHandlerSelect.cpp in Sources */,
+				48544D4C000000000000023A /* XMLNodeHandlerTabSet.cpp in Sources */,
+				48544D4C000000000000023D /* XMLNodeHandlerTextArea.cpp in Sources */,
+				48544D4C0000000000000241 /* BlockContainer.cpp in Sources */,
+				48544D4C0000000000000244 /* BlockFormattingContext.cpp in Sources */,
+				48544D4C0000000000000247 /* ContainerBox.cpp in Sources */,
+				48544D4C000000000000024A /* FlexFormattingContext.cpp in Sources */,
+				48544D4C000000000000024D /* FloatedBoxSpace.cpp in Sources */,
+				48544D4C0000000000000250 /* FormattingContext.cpp in Sources */,
+				48544D4C0000000000000253 /* InlineBox.cpp in Sources */,
+				48544D4C0000000000000256 /* InlineContainer.cpp in Sources */,
+				48544D4C0000000000000259 /* InlineLevelBox.cpp in Sources */,
+				48544D4C000000000000025C /* LayoutBox.cpp in Sources */,
+				48544D4C000000000000025F /* LayoutDetails.cpp in Sources */,
+				48544D4C0000000000000262 /* LayoutEngine.cpp in Sources */,
+				48544D4C0000000000000265 /* LayoutPools.cpp in Sources */,
+				48544D4C0000000000000268 /* LineBox.cpp in Sources */,
+				48544D4C000000000000026B /* ReplacedFormattingContext.cpp in Sources */,
+				48544D4C000000000000026E /* TableFormattingContext.cpp in Sources */,
+				48544D4C0000000000000271 /* TableFormattingDetails.cpp in Sources */,
+				48544D4C0000000000000275 /* Debugger.cpp in Sources */,
+				48544D4C0000000000000278 /* DebuggerPlugin.cpp in Sources */,
+				48544D4C000000000000027B /* DebuggerSystemInterface.cpp in Sources */,
+				48544D4C000000000000027E /* ElementContextHook.cpp in Sources */,
+				48544D4C0000000000000281 /* ElementDataModels.cpp in Sources */,
+				48544D4C0000000000000284 /* ElementDebugDocument.cpp in Sources */,
+				48544D4C0000000000000287 /* ElementInfo.cpp in Sources */,
+				48544D4C000000000000028A /* ElementLog.cpp in Sources */,
+				48544D4C000000000000028D /* Geometry.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -8386,6 +9844,16 @@
 			isa = PBXTargetDependency;
 			target = 7DC0000B2E7A0100C91BA0C0 /* shadercompiler-macos */;
 			targetProxy = 7DC0000F2E7A0100C91BA0C0 /* PBXContainerItemProxy */;
+		};
+		48544D4C000000000000029C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 48544D4C000000000000029A /* rmlui-ios */;
+			targetProxy = 48544D4C000000000000029B /* PBXContainerItemProxy */;
+		};
+		48544D4C00000000000002A5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 48544D4C00000000000002A3 /* rmlui-macos */;
+			targetProxy = 48544D4C00000000000002A4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -8598,6 +10066,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8607,6 +10076,8 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8631,6 +10102,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8640,6 +10112,8 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8820,6 +10294,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8828,6 +10303,8 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8860,6 +10337,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8868,6 +10346,8 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8906,6 +10386,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8914,6 +10395,8 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8949,6 +10432,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -8957,6 +10441,8 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -8990,6 +10476,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -8999,6 +10486,8 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -9026,6 +10515,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					RMLUI_STATIC_LIB,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -9035,6 +10525,8 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
@@ -9821,6 +11313,107 @@
 			};
 			name = Release;
 		};
+		48544D4C0000000000000297 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					RMLUI_STATIC_LIB,
+					"RMLUI_VERSION=\\\"6.3\\\"",
+					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		48544D4C0000000000000298 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					RMLUI_STATIC_LIB,
+					"RMLUI_VERSION=\\\"6.3\\\"",
+					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		48544D4C00000000000002A0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					RMLUI_STATIC_LIB,
+					"RMLUI_VERSION=\\\"6.3\\\"",
+					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		48544D4C00000000000002A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					RMLUI_STATIC_LIB,
+					"RMLUI_VERSION=\\\"6.3\\\"",
+					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -10099,6 +11692,24 @@
 			buildConfigurations = (
 				7DC000122E7A0100C91BA0C0 /* Debug */,
 				7DC000132E7A0100C91BA0C0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		48544D4C0000000000000299 /* Build configuration list for PBXNativeTarget "rmlui-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48544D4C0000000000000297 /* Debug */,
+				48544D4C0000000000000298 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		48544D4C00000000000002A2 /* Build configuration list for PBXNativeTarget "rmlui-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48544D4C00000000000002A0 /* Debug */,
+				48544D4C00000000000002A1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
