@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libwayland-dev wayland-protocols extra-cmake-modules \
         libdbus-1-dev \
         ccache \
-        # Headless runs: virtual X server, Mesa software GL, screenshots.
+        # Headless runs: virtual X server, Mesa software GL and Vulkan (lavapipe), screenshots.
         xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus xdotool \
+        mesa-vulkan-drivers vulkan-tools \
     # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
     && wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
         | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg \
