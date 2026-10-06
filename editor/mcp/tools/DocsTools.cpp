@@ -597,7 +597,8 @@ void registerDocsTools(McpRegistry& registry) {
                 "bodies with colliders where things collide.\n"
                 "4. Scripts: create_script (kind " + std::string(language == "Lua" ? "lua" : "cpp_script") + ") attached to the "
                 "GameObjects; expose tunables as properties and set them with set_script_properties. " +
-                std::string(language == "Lua" ? "check_script after each edit (or sync_files after editing on disk)."
+                std::string(language == "Lua" ? "Edit the files with your own tools; fix the problems the next call reports "
+                                                                "(external_changes), or check_script."
                                               : "compile_scripts after each edit and fix every error it lists.") + "\n"
                 "5. Save the scene, play it, take Game view screenshots, drive it with the input tools and read the Console "
                 "since your last cursor. Stop, fix, repeat until it plays correctly and the Console is clean.\n"

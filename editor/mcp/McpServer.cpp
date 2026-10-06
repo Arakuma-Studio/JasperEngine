@@ -3,6 +3,7 @@
 
 #include "McpServer.h"
 
+#include "McpAutoSync.h"
 #include "McpContext.h"
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
@@ -647,17 +648,38 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     const uint64_t seq = beginActivity(client, name, args);
     const std::string key = inflightKey(session->id, id);
 
+    // Files changed on disk since the last call (McpAutoSync): the report the main thread
+    // writes before the handler runs, and when the handler started (unset: it never ran)
+    struct AutoSyncState {
+        Json report;
+        std::chrono::system_clock::time_point start{};
+        bool settle = true;
+    };
+    auto autoSync = std::make_shared<AutoSyncState>();
+    autoSync->settle = McpAutoSync::mayWriteFiles(def->annotations.readOnly, args);
+
     auto call = std::make_shared<McpCall>(*this, name, args,
-        [this, id, reply, seq, key](McpCall& done, const ToolResult& result) {
+        [this, id, reply, seq, key, autoSync](McpCall& done, const ToolResult& result) {
             {
                 std::lock_guard<std::mutex> lock(inflightMutex);
                 inflight.erase(key);
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
             trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
+            // What the tool wrote is its own, not an external change: settled on the main
+            // thread once the handler has returned (before the client's next call runs)
+            if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
+                const auto start = autoSync->start;
+                const auto end = std::chrono::system_clock::now();
+                const std::string tool = done.tool();
+                runOnMainThread([this, tool, start, end]() {
+                    if (ctx) McpAutoSync::get().afterCall(*ctx, tool, start, end);
+                });
+            }
             // A cancelled request gets no response (MCP cancellation)
             if (!done.cancelled()) {
                 Json out = result.toJson();
+                McpAutoSync::attach(out, autoSync->report);
                 capResultSize(out);
                 reply->respond(makeResult(id, std::move(out)));
             } else {
@@ -684,14 +706,23 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     }
 
     trace("queued", name + " " + key);
-    runOnMainThread([this, call, name, key]() {
+    runOnMainThread([this, call, name, key, autoSync]() {
         trace("run", name + " " + key);
-        const ToolDef* def = reg.findTool(name);
-        if (!def) {
+        if (!reg.findTool(name)) {
             call->fail("Unknown tool: " + name);
             return;
         }
-        execute(call, *def);
+        // Pick up files the agent edited on disk first (may wait for shader checks)
+        McpAutoSync::get().beforeCall(*ctx, call, name, [this, call, name, autoSync](Json report) {
+            autoSync->report = std::move(report);
+            const ToolDef* def = reg.findTool(name);
+            if (!def) {
+                call->fail("Unknown tool: " + name);
+                return;
+            }
+            autoSync->start = std::chrono::system_clock::now();
+            execute(call, *def);
+        });
     });
 }
 
@@ -895,7 +926,9 @@ size_t McpServer::pendingCount() const {
 }
 
 void McpServer::tick() {
-    if (!started || deferred.empty()) return;
+    if (!started) return;
+    if (ctx) McpAutoSync::get().tick(*ctx);
+    if (deferred.empty()) return;
 
     // Callbacks may defer again (chained waits), so work on a snapshot
     std::vector<Deferred> current;

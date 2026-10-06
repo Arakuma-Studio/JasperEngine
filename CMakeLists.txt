@@ -537,6 +537,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
+    ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp

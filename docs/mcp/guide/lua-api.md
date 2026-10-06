@@ -50,10 +50,12 @@ return Player
 
 Tools: `create_script` (kind `lua`, optional `content`, `entity` to attach) writes the file in
 the Lua directory; `check_script` checks syntax (without running) and lists the properties the
-Inspector will show; `set_script_properties` sets them on a GameObject. After editing a script
-with your own file tools call `sync_files`: it reloads the code editor, re-parses `properties`
-(new entries appear in the Inspector) and reports syntax errors with line numbers. Runtime
-errors only appear when playing: read the Console.
+Inspector will show; `set_script_properties` sets them on a GameObject. Edit scripts with your
+own file tools: before your next tool call the editor reloads the code editor, re-parses
+`properties` (new entries appear in the Inspector) and that call's result lists the file in
+`external_changes` with syntax errors and their line numbers (during play: once play stops).
+Runtime errors only appear when playing: read the Console. Lua API stubs for
+lua-language-server, when the project has them, are in `.jasperengine/engine-api/lua/`.
 
 ### 1.1 Lifecycle
 
@@ -294,8 +296,12 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 
 | Name | Kind | Notes |
 |---|---|---|
-| `deltatime` | ro | seconds since last frame (clamped). Same value inside `onFixedUpdate`. |
+| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate`. |
 | `updateTime` | rw | fixed step in seconds (default 1/60). Also `Engine.setUpdateTimeMS(ms)` |
+| `timeScale` | rw | game speed (Unity's `Time.timeScale`): scales the frame delta, physics steps, actions, animations, tweens, particles. 1 = real time, 0 = frozen (frames still draw, `onUpdate` runs with delta 0). Clamped to [0, 100] |
+| `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
+| `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
+| `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor |
 | `framerate` | ro | fps |
 | `systemTime` | ro | |

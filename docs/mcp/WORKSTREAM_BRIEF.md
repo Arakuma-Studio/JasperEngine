@@ -1,21 +1,21 @@
 # Brief for MCP tool workstreams (W1–W6)
 
 Read `docs/mcp/DESIGN.md` first (binding), then this. The core server, transports,
-registry, legacy tools, enablers and harness are merged on branch `mcp`.
+registry, enablers, harness and every tool module are merged on `main`; new work branches
+from there.
 
 ## Where things are
 - Framework: `editor/mcp/` — `McpRegistry.h` (ToolDef, ResourceDef, PromptDef), `McpCall.h`
   (CallPtr: args/ok/fail/reply/waitUntil/afterFrames/detach/progress/cancelled), `McpContext.h`
-  (app(), project(), windows, jobs(), isPlaying(), legacyExecutor()), `McpJobs.h` (long jobs +
+  (app(), project(), windows, jobs(), isPlaying()), `McpJobs.h` (long jobs +
   `replyWhenJobDone`), `McpRefs.h` (resolveScene/resolveEntity/entityJson/resolveComponent/
   resolveProjectPath), `McpValues.h` (JSON <-> property values, buildPropertyCommand),
   `McpSchema.h` (`schema::object/string/vec3/sceneRef/entityRef/...`), `tools/McpTools.h`.
   Read these headers before writing code; follow `tools/CoreTools.cpp` as the style model.
-- Legacy tools (the old in-editor agent's 90+ actions) are registered by
-  `tools/LegacyTools.cpp` from `legacy/EditorActionRegistry.cpp` + `legacy/EditorActionExecutor.cpp`.
-  They're a useful reference for how to call editor APIs. Replace the ones in your area:
-  register the same name (replaces) or `removeTool(old)` and add a better one. Do not edit
-  `legacy/*` (bug fixes only, keep them minimal).
+- Files on disk: agents edit code with their own tools; `McpAutoSync` picks the changes up
+  before every tools/call (DESIGN.md "Automatic pick-up"). A tool that writes project files
+  should go through `w4::writeFilesUndoable` / `w4::syncFiles` (W4Shared.h), which refresh
+  the editor and tell the auto-sync the files are not external changes.
 - Enablers: `editor/util/EntityPath.h`, `Out::getLogsSince/getRecentLogs/lastLogId/clearConsole`,
   `SceneRender::getFramebuffer()`, `GraphicUtils::encodeFramebufferPng(fb, out, flipY=false,
   maxWidth, &w, &h)`, Project `createSceneNow/openSceneNow/closeSceneNow/saveSceneNow/
@@ -59,8 +59,9 @@ helper in your own file and mention the shared refactor in your report)
   `detail`/`limit` params.
 
 ## Build & test
-- Your worktree: `/var/lib/orquester/workspaces/jaspersito/JasperEngine-wt/<name>` on branch
-  `mcp-<name>`. Never touch the main checkout or other worktrees. Commit there (no push).
+- Your worktree: `/var/lib/orquester/workspaces/jaspersito/JasperEngine-wt/<name>` on the
+  branch your assignment names. Never touch the main checkout or other worktrees. Commit there
+  (no push).
 - Build: `SKIP_ENGINE=1 JOBS=3 tools/build.sh linux` (docker, shared ccache; first build in a
   new worktree a few minutes, incremental ~30 s). Host is heavily loaded: never more than JOBS=3.
 - Test with the harness against the real editor (headless Xvfb is automatic):
@@ -73,8 +74,11 @@ helper in your own file and mention the shared refactor in your report)
   worktree's build/). Never modify fixtures in place.
 - Kill only processes you started, by PID. Never `pkill -f jasperengine-editor`.
 - Also run `tools/mcp/run-tests.sh tools/mcp/tests/test_protocol.py` before finishing.
-- Before finishing: `git merge mcp` into your branch (others may have landed) and rebuild +
-  retest if it brought changes; resolve conflicts carefully.
+- Clean up only the scratch directories your own test runs kept (the exact paths the harness
+  prints), never by wildcard: other agents' editors use the same temp directory.
+- Before finishing: merge the integration branch your assignment names into your branch
+  (others may have landed), rebuild and run the full suite (`run-tests.sh -j 2`); resolve
+  conflicts carefully.
 
 ## Report (your final message)
 Tool list (name — one line), files changed outside your owned files and why, test command +
