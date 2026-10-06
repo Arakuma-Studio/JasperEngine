@@ -222,6 +222,19 @@ endif()
 missing `RmlFile` is an error instead of silently bypassing `ResourcePack` and Android
 assets.
 
+Hidden visibility alone does not keep RmlUi out of the editor's `libjasperengine.so`
+(found when building): the std templates RmlUi instantiates over its own enums
+(`std::vector<Rml::PropertyId>`, ...) keep default visibility, and engine classes that
+derive from RmlUi interfaces export methods with `Rml::` parameter types. So:
+- `engine/CMakeLists.txt`, shared engine only, not Apple/MSVC:
+  `target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")`;
+- `engine/core/Export.h` defines `JASPERENGINE_INTERNAL` (`visibility("hidden")` on
+  GCC/Clang outside Windows); `RmlSystem`, `RmlFile`, `RmlFontEngine`, `RmlRenderer` and
+  `HtmlUIContext` are declared `class JASPERENGINE_INTERNAL ...` (internal: only the engine
+  uses them; `HtmlUI` stays `JASPERENGINE_API`).
+On macOS (ld64 has no `--exclude-libs`) the weak std instantiations stay visible in the
+dylib.
+
 #### 3.2.3 `engine/CMakeLists.txt` changes
 
 | Where | Change |
@@ -390,7 +403,7 @@ in `HtmlUI.cpp`, so they outlive `Rml::Shutdown()`.
 #### 3.3.2 `engine/core/htmlui/RmlSystem.{h,cpp}`
 
 ```cpp
-class RmlSystem : public Rml::SystemInterface {
+class JASPERENGINE_INTERNAL RmlSystem : public Rml::SystemInterface {
 public:
     double GetElapsedTime() override;                 // Engine::getSystemTime() (seconds)
     bool LogMessage(Rml::Log::Type type, const Rml::String& message) override;
@@ -404,6 +417,9 @@ public:
     size_t getErrorCount() const;    // LT_ERROR + LT_ASSERT
     size_t getWarningCount() const;  // LT_WARNING
     void resetCounters();
+
+    // JoinPath without the RmlUi types (JoinPath calls it)
+    static std::string joinPath(const std::string& documentPath, const std::string& path);
 };
 ```
 
@@ -421,7 +437,7 @@ public:
 #### 3.3.3 `engine/core/htmlui/RmlFile.{h,cpp}`
 
 ```cpp
-class RmlFile : public Rml::FileInterface {
+class JASPERENGINE_INTERNAL RmlFile : public Rml::FileInterface {
 public:
     Rml::FileHandle Open(const Rml::String& path) override;  // new Data; Data::open(path) != FILEDATA_OK -> delete, return 0
     void Close(Rml::FileHandle file) override;
@@ -635,7 +651,7 @@ use): `sg_pipeline_desc describePipeline(PipelineType pipType) const;` returning
 
 ```cpp
 namespace jasperengine {
-    class RmlRenderer : public Rml::RenderInterface {
+    class JASPERENGINE_INTERNAL RmlRenderer : public Rml::RenderInterface {
     public:
         RmlRenderer();
         ~RmlRenderer() override;                    // releaseGpuResources()
@@ -776,7 +792,7 @@ Behavior:
 namespace jasperengine {
     class RmlRenderer;
 
-    class HtmlUIContext {
+    class JASPERENGINE_INTERNAL HtmlUIContext {
     public:
         explicit HtmlUIContext(const std::string& name);   // e.g. "scene-0x55d0c3a0"
         ~HtmlUIContext();                                    // destroy()
@@ -1060,7 +1076,7 @@ MCP tests that create text.
 #### 3.6.4 `engine/core/htmlui/RmlFontEngine.{h,cpp}`
 
 ```cpp
-class RmlFontEngine : public Rml::FontEngineInterface {
+class JASPERENGINE_INTERNAL RmlFontEngine : public Rml::FontEngineInterface {
 public:
     void Initialize() override;     // registers built-ins in FontRegistry
     void Shutdown() override;       // ReleaseFontResources()
@@ -1977,7 +1993,8 @@ All must hold before phase 0 is merged into `main`:
 - [ ] `engine/libs/rmlui` contains exactly the subset of 3.2.1; `FORK.md` exists with
       upstream URL, tag, commit, subset, removals and an empty patch table.
 - [ ] `rmlui` is static, `RMLUI_STATIC_LIB` public, hidden visibility on non-MSVC,
-      `-w`, linked into `jasperengine`; `nm -D build/linux/editor-install/.../libjasperengine.so | grep -c ' Rml::'` is 0.
+      `-w`, linked into `jasperengine`; `nm -D -C build/linux/editor-install/bin/libjasperengine.so | grep -c 'Rml::'` is 0
+      (demangled: the mangled `nm -D` output never contains ` Rml::`).
 - [ ] `engine/tests` is excluded from the editor install; exports never contain it.
 - [ ] Xcode workspace has `rmlui-ios`/`rmlui-macos` targets, header paths and every
       file of 3.2.6 (diff reviewed).
