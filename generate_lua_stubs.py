@@ -998,6 +998,15 @@ def type_key(t):
     return t
 
 
+def signature_key(t):
+    """Exact key of a type in a function signature: only a top-level const of a by-value type is
+    dropped (it is not part of the signature); references, pointers and other consts count."""
+    t = normalize_type(t).replace('std::', '')
+    if '&' not in t and '*' not in t:
+        t = re.sub(r'\bconst\b', '', t)
+    return t.replace(' ', '')
+
+
 def bare_type(t):
     """(base type text, pointer count) with cv-qualifiers and references removed."""
     t = normalize_type(t)
@@ -1068,14 +1077,15 @@ class LuaEnum:
 
 
 class Sig:
-    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'source')
+    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'source', 'problem')
 
-    def __init__(self, params, ret, doc=None, cfunc=False, source=''):
+    def __init__(self, params, ret, doc=None, cfunc=False, source='', problem=None):
         self.params = params    # [(cpp type, name or None)], Lua-visible only
         self.ret = ret          # cpp type, '' for void, None for unknown
         self.doc = doc or []
         self.cfunc = cfunc
         self.source = source
+        self.problem = problem  # why the binding is wrong (a cast to a signature that does not exist)
 
     def __repr__(self):
         return f'Sig({self.params} -> {self.ret!r})'
@@ -1277,10 +1287,24 @@ class Resolver:
                 names = [p.name for p in fn.params]
                 doc = fn.doc
                 break
+        # A cast to a function pointer type selects the overload with exactly that signature;
+        # when there is none and the name has a single overload, the cast still compiles, as a
+        # reinterpretation: LuaBridge then calls the function with arguments of the wrong
+        # types (Vector3's __div was cast to an operator/(const Vector3&) that does not exist)
+        problem = None
+        if fns and not any(len(fn.params) == len(ptypes)
+                           and all(signature_key(a.type) == signature_key(b) for a, b in zip(fn.params, ptypes))
+                           and (cls is None or fn.static or fn.const == const)
+                           and (fn.ret is None or signature_key(fn.ret) == signature_key(ret))
+                           for fn in fns):
+            have = '; '.join(f'{fn.ret} {name}({", ".join(p.type for p in fn.params)}){" const" if fn.const else ""}'
+                             for fn in fns)
+            problem = (f'cast to {ret} ({cls + "::" if cls else ""}*)({", ".join(ptypes)}){" const" if const else ""} '
+                       f'matches no declaration of {name}: {have}')
         params = list(zip(ptypes, names))
         if cls is not None:
-            return 'member', Sig(params, ret, doc, source=f'{cls}::{name}')
-        return 'free', Sig(params, ret, doc, source=name or '')
+            return 'member', Sig(params, ret, doc, source=f'{cls}::{name}', problem=problem)
+        return 'free', Sig(params, ret, doc, source=name or '', problem=problem)
 
     def split_qualified(self, toks):
         """`A::B::name<targs>` -> ('A::B', 'name') (template args dropped)."""
@@ -2159,6 +2183,9 @@ class Builder:
                 self.unresolve(c, m, 'callable not resolved: ' + join_tokens(arg)[:80])
                 continue
             kind, sig = res
+            if sig.problem:
+                self.unresolve(c, m, sig.problem)
+                continue
             if sig.cfunc:
                 self.unresolve(c, m, 'lua_CFunction needs a signature in OVERRIDES')
                 continue
@@ -2243,6 +2270,8 @@ class Builder:
             m.doc = list(m.call.doc)
             return
         kind, sig = res
+        if sig.problem:
+            self.unresolve(c, m, 'getter: ' + sig.problem)
         if sig.cfunc:
             self.unresolve(c, m, 'lua_CFunction property getter')
             m.lua_type = 'any'
@@ -2278,6 +2307,8 @@ class Builder:
                 doc.append(line)
         if setter is not None and not getattr(m, 'is_event', False):
             sres = self.r.resolve(setter, m)
+            if sres is not None and sres[1].problem:
+                self.unresolve(c, m, 'setter: ' + sres[1].problem)
             if sres is not None:
                 for line in sres[1].doc:
                     if line not in doc:
