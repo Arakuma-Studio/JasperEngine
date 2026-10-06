@@ -240,7 +240,7 @@ async def test_agents_md_and_claude_md(ed: Editor):
     check_eq(text.count("# JasperEngine Project Context"), 1, "title once")
     ed.check(claude_file.is_file(), "CLAUDE.md generated next to AGENTS.md")
     claude = claude_file.read_text()
-    ed.check("@AGENTS.md" in claude and "BEGIN JASPERENGINE" in claude, claude)
+    ed.check("@AGENTS.md" in claude, claude)
     ed.check(len(claude) < 600, f"CLAUDE.md stays minimal: {len(claude)} chars")
 
     # a project's own CLAUDE.md is left alone
@@ -249,6 +249,36 @@ async def test_agents_md_and_claude_md(ed: Editor):
     await ed.session.read_resource("jasper://project/AGENTS.md")
     check_eq(claude_file.read_text(), "# My rules\nBe nice.\n", "user CLAUDE.md untouched")
     claude_file.unlink()
+
+
+async def test_existing_agents_and_claude_md_never_rewritten(ed: Editor):
+    """AGENTS.md and CLAUDE.md are written only when missing: once present they belong to the
+    project, even when they still carry the old generated-section markers or stale text."""
+    agents_file = ed.project / "AGENTS.md"
+    claude_file = ed.project / "CLAUDE.md"
+    agents_text = ("# Team rules\n\n<!-- BEGIN JASPERENGINE GENERATED CONTEXT -->\nstale engine notes\n"
+                   "<!-- END JASPERENGINE GENERATED CONTEXT -->\n\nKeep this.\n")
+    claude_text = ("<!-- BEGIN JASPERENGINE GENERATED CONTEXT -->\n@OLD.md\n"
+                   "<!-- END JASPERENGINE GENERATED CONTEXT -->\nMine.\n")
+    agents_file.write_text(agents_text)
+    claude_file.write_text(claude_text)
+    # every path that generates project files: the resource, a Play (writes the C++ sources) and the check CLI
+    await ed.session.read_resource("jasper://project/AGENTS.md")
+    await ed.call("play", action="start", scene="Main Scene", wait=True)
+    await ed.call("play", action="stop")
+    import subprocess
+    import harness
+    subprocess.run(harness.editor_command() + ["check", "--project", str(ed.project), "--lua", "--cpp"],
+                   capture_output=True, timeout=600)
+    check_eq(agents_file.read_text(), agents_text, "existing AGENTS.md untouched")
+    check_eq(claude_file.read_text(), claude_text, "existing CLAUDE.md untouched")
+
+    # a missing CLAUDE.md is still created next to an existing AGENTS.md (when the project's files are generated)
+    claude_file.unlink()
+    await ed.call("play", action="start", scene="Main Scene", wait=True)
+    await ed.call("play", action="stop")
+    ed.check(claude_file.is_file() and "@AGENTS.md" in claude_file.read_text(), "missing CLAUDE.md created")
+    check_eq(agents_file.read_text(), agents_text, "AGENTS.md still untouched")
 
 
 async def test_wait_until_capped_by_game_seconds(ed: Editor):

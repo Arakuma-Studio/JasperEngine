@@ -141,9 +141,9 @@ namespace jasperengine::editor {
         void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard);
 
     public:
-        // AGENTS.md at the project root: (re)writes the JasperEngine section, keeps the rest
+        // AGENTS.md at the project root, written only when the project has none (then CLAUDE.md likewise)
         static void writeAgentsFile(const fs::path& projectPath, const fs::path& projectInternalPath);
-        // CLAUDE.md importing AGENTS.md, unless the project has its own (written by writeAgentsFile)
+        // CLAUDE.md importing AGENTS.md, written only when the project has none
         static void writeClaudeFile(const fs::path& projectPath);
         // Files for code tools and language servers, refreshed on project open and on every
         // build: the Lua API stubs (<internal>/engine-api/lua) and the lua-language-server plugin
