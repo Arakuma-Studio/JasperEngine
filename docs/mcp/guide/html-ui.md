@@ -272,7 +272,7 @@ Events (on the element; they do not bubble, capture listeners see them):
 
 | Event | When |
 |---|---|
-| `load` | the animation was read (a frame after the document loaded, so listeners added after loading get it) |
+| `load` | the animation was read (a frame after the document loaded, so listeners added right after loading get it; in the editor a document is already loaded when play starts, so check `getTotalFrames() > 0` instead of waiting for it) |
 | `error` | the file is missing or unreadable, the `.lottie` is invalid, `animation` names no animation; `event.detail.message` in Lua (and the Console) says which |
 | `play` / `pause` | playback starts (autoplay included) / stops (`pause()`, `stop()`) |
 | `loop` | each time an iteration ends and the next begins |
