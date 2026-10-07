@@ -699,7 +699,7 @@ namespace {
     template<class T> std::shared_ptr<T> timerSeek(T* t, double time, bool muteCallbacks){ t->seek(time, muteCallbacks); return self(t); }
     template<class T> std::shared_ptr<T> timerComplete(T* t, bool muteCallbacks){ t->complete(muteCallbacks); return self(t); }
 
-    // then(fn) / andThen(fn): Lua cannot spell `:then`
+    // andThen(fn): Anime's then(), renamed (`then` is a Lua keyword)
     void thenImpl(lua_State* L){
         std::shared_ptr<AnimTimer> timer = timerOf(L, 1);
         if (timer && lua_isfunction(L, 2))
@@ -1265,7 +1265,6 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
         .addFunction("seek", &timerSeek<AnimTimer>)
         .addFunction("complete", &timerComplete<AnimTimer>)
         .addFunction("andThen", &luaThen)
-        .addFunction("then", &luaThen)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

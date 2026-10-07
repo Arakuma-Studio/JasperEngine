@@ -126,8 +126,8 @@ TEST_F(AnimeLuaTest, CallbacksInOrderWithLoopsAndAlternate){
     EXPECT_EQ(text("table.concat(log, ' ')"), "begin:0 loop:1 loop:2 complete:2 then");
     // forwards, backwards, forwards
     EXPECT_EQ(number("t.x"), 100);
-    // `then` is a Lua keyword: a["then"] works too
-    ASSERT_EQ(run("log = {}; a[\"then\"](a, function() log[1] = 'again' end)"), "");
+    // already completed: at once
+    ASSERT_EQ(run("log = {}; a:andThen(function() log[1] = 'again' end)"), "");
     EXPECT_EQ(text("log[1]"), "again");
 }
 

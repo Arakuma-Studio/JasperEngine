@@ -1947,6 +1947,73 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
 
+# anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
+# are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
+_ANIME_TARGETS = 'AnimeTargets'
+OVERRIDES.update({
+    ('anime', 'animate'): {
+        'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
+                '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('params', 'AnimeAnimationParams')], 'AnimeAnimation')]},
+    ('anime', 'createTimeline'): {
+        'doc': ['A timeline: animations, timers, calls and labels placed at positions.'],
+        'overloads': [([('params?', 'AnimeTimelineParams')], 'AnimeTimeline')]},
+    ('anime', 'createTimer'): {
+        'doc': ['A timer: a duration with loops and callbacks, animating nothing.'],
+        'overloads': [([('params?', 'AnimeTimerParams')], 'AnimeTimer')]},
+    ('anime', 'createSpring'): {
+        'doc': ['A spring easing (`ease = spring`); the animation lasts its settling duration.'],
+        'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'spring'): {
+        'doc': ['Same as anime.createSpring.'],
+        'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'stagger'): {
+        'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
+                'delays, property values or timeline positions.'],
+        'overloads': [([('value', 'number|string|number[]|string[]'), ('params?', 'AnimeStaggerParams')], 'AnimeStagger')]},
+    ('anime', 'cubicBezier'): {
+        'doc': ['A cubic Bézier easing (CSS cubic-bezier()).'],
+        'overloads': [([('x1', 'number'), ('y1', 'number'), ('x2', 'number'), ('y2', 'number')], 'AnimeEase')]},
+    ('anime', 'steps'): {
+        'doc': ['A stepped easing (CSS steps(); jump-start when `fromStart`).'],
+        'overloads': [([('steps', 'integer'), ('fromStart?', 'boolean')], 'AnimeEase')]},
+    ('anime', 'linear'): {
+        'doc': ['A piecewise linear easing through the points (numbers, or "value percent%" strings).'],
+        'overloads': [([('...', 'number|string')], 'AnimeEase')]},
+    ('anime', 'irregular'): {
+        'doc': ['A random steps easing.'],
+        'overloads': [([('length?', 'integer'), ('randomness?', 'number')], 'AnimeEase')]},
+    ('AnimeEase', '__call'): {
+        'doc': ['ease(t): the eased value; for the parametric eases (in, out, inOut, outIn, *Back, *Elastic)',
+                'ease(params...) makes a new ease (anime.eases.outElastic(1, .6)).'],
+        'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
+    ('AnimeStagger', '__call'): {
+        'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+    ('AnimeTimer', 'andThen'): {
+        'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
+                'renamed because `then` is a Lua keyword.'],
+        'overloads': [([('fn', 'fun(timer: AnimeTimer)')], 'AnimeTimer')]},
+    ('AnimeTimeline', 'add'): {
+        'doc': ['Adds an animation of `targets` at `position` (default: the end), or a timer',
+                '(`timerParams`), or syncs an anime object. A stagger position adds one child per target.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('params', 'AnimeAnimationParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline'),
+                      ([('timerParams', 'AnimeTimerParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline'),
+                      ([('timer', 'AnimeTimer'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'set'): {
+        'doc': ['Sets `props` on `targets` at `position`.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('props', 'AnimeAnimationParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'call'): {
+        'doc': ['Calls `fn(timeline)` when the playhead crosses `position`.'],
+        'overloads': [([('fn', 'fun(timeline: AnimeTimeline)'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'sync'): {
+        'doc': ['Drives `timer` (an animation, timer or timeline) from this timeline, from `position`.'],
+        'overloads': [([('timer', 'AnimeTimer'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'remove'): {
+        'doc': ['Removes the tweens of `targets` (of `property` only, when given) from the timeline.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('property?', 'string')], 'AnimeTimeline')]},
+})
+
 # Handler arguments of Engine events, by name (types come from the C++ declaration)
 ENGINE_EVENT_ARGS = {
     'onKeyDown': ['key', 'isRepeat', 'mods'], 'onKeyUp': ['key', 'isRepeat', 'mods'],
