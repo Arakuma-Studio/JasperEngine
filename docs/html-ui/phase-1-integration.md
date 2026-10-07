@@ -1735,6 +1735,82 @@ document through phase 0's `loadDocumentNow`, so
   lists sources explicitly, e.g. lines 91-92) gets every new engine source of every package.
   Each package adds its own files there.
 
+#### 3.9.6 As implemented (p1-lua)
+Details the implementation fixed, binding for the packages that build on it:
+- **Internal header.** `engine/core/object/ui/HtmlUIScriptInternal.h` declares
+  `HtmlUIEventState`, `UIDataModelState`, `HtmlUIDataModelRecord`, `HtmlUIScriptState` (its
+  methods are defined in `UIDocumentSystemScript.cpp`), `HtmlUIElementRegistry` (handle tokens
+  and the detached pool), `HtmlUIScriptAccess` and `HtmlUILua` (Lua conversions, defined in
+  `HtmlUIClassesLua.cpp`: `pushValue`, `toValue`, `pushEvent`, `pushElement`, `pushModel`,
+  `call`). These structs hold RmlUi types only by pointer or through an RmlUi base class and
+  are not `JASPERENGINE_INTERNAL` (`UIDocumentSystem` holds `HtmlUIScriptState`; a hidden type
+  there makes GCC warn). `UIDocumentSystem::getScriptState()` (public, engine-internal) gives
+  the state. `HtmlUIEventListener.h` holds `HtmlUIEventListener` and `HtmlUIEventNames` (DOM
+  name mapping; DOM `change` is the RmlUi event `htmlui-change`, synthesized per context by a
+  capture listener on the context root).
+- **Handles and the detached pool** are process-wide, like RmlUi. Every `UIElementHandle`
+  carries the element's token (`HtmlUIElementRegistry::token`, one per element, shared by all
+  its handles). Detached trees are pooled by root with their document and context; at the end
+  of each `UIDocumentSystem::update` a tree no handle reaches (no live token on any of its
+  elements) is destroyed. Pools go with their document (unload) and context.
+- **Hooks in the phase-0 `UIDocumentSystem.cpp`** (one line each): `load()` →
+  `scriptLoadDocuments()` (every enabled document loads with the scene); `ensureContext()` →
+  `scriptContextCreated()` (data models into the new context, change synthesizer);
+  `destroyContext()` (first line) → `scriptContextDestroying()`; `applyComponent` after a load →
+  `scriptDocumentLoaded(entity)`; `unloadEntityDocument` → `scriptDocumentUnloading(entity,
+  document)`; `onComponentRemoved` → `scriptComponentRemoved(entity)`; end of `update()` →
+  `scriptUpdate()`; and before `context->loadDocument` in `applyComponent` →
+  `scriptDocumentLoading(filename)`, which creates an empty placeholder RmlUi model (missing
+  variables allowed) for every `data-model` name of the file that no script created yet, so a
+  document loads without RmlUi errors in edit mode and before `init`; `createDataModel` removes
+  the placeholder and reloads the document. `onLoad`/`onUnload` are queued by the load/unload
+  hooks and fired after the context update (never inside `applyComponent`'s loop), or at once
+  after a synchronous load (`Scene::load`, `UIDocument::load`, a getter that loads a due
+  document), so a script's `init` is not called back for the load before it. A reload path that
+  bypasses `applyComponent`/`unloadEntityDocument` (p1-editor) calls the hooks itself.
+- **Play stop.** The editor plays the main scene in place (its snapshot is restored), so
+  documents are not destroyed with a scene at stop. `LuaBinding::cleanupLuaScripts(Scene*)`
+  (one additive line) calls `UIDocumentSystem::releaseScriptState()`: data models removed,
+  documents unloaded at once (listeners and their Lua functions, detached elements and DOM
+  changes go) and loaded again at the next update. `Engine::clearComponentSubscriptions` clears
+  `UIDocumentComponent::onLoad/onUnload` like the other component events.
+  `UIDocument` getters load a due document first, so a script's `init` works whichever of
+  `Scene::load` and the scripts' init runs first.
+- **Data models** live in `HtmlUIScriptState` per scene, owned by the creating entity. They
+  survive the context (view loss destroys and recreates it: the RmlUi side is rebuilt) and are
+  removed by `removeDataModel`, with the component, or with the system. A model removed by one
+  of its own data-event callbacks is destroyed after the update.
+- **Lua.** In Lua the data model is the proxy (a plain userdata named `UIDataModel` with
+  `__index/__newindex/__len/__pairs/__eq/__tostring`; nested tables are proxies with a path),
+  not a LuaBridge value class; the top level answers the methods `onChange, removeOnChange,
+  dirty, dirtyAll, getName, isValid, get, set` first, so these cannot be data keys. Lua tables
+  with keys 1..n (or empty) become arrays, other tables objects with sorted keys.
+  `addEventListener`, `removeEventListener`, `dispatchEvent`, `createDataModel`,
+  `getDataModel` and `classList:add/remove` are `lua_CFunction`s (they take Lua functions and
+  option tables and raise errors with no C++ object alive), typed in the stub generator's
+  `OVERRIDES`; `_PARAM_TYPE_OVERRIDES` exists (empty) for `luabridge::LuaRef` parameters of
+  later packages (p1-anim). A dead element is detected in front of LuaBridge's `__index` /
+  `__newindex` of `UIElement`, `UIClassList`, `UIStyle`, `UIDataset`, so every member but
+  `isValid` raises. Queries and navigation return `nil` for no element. Lua diagnostics:
+  `UIDocument.getLiveLuaRefCount()` (= `HtmlUIScriptState::liveLuaRefs()`).
+- **Stub fragments** `engine/core/script/binding/stubs/*.lua` are added to the generated stubs
+  (a fragment named like a generated file is appended to it); `CMakeLists.txt` lists them as
+  dependencies of the stub generation.
+- **Fork patch** (§3.14 patch 1): a prevented event counts as consumed for every caller
+  (`DispatchEvent` returns false: a prevented `wheel` does not scroll, a prevented `mousedown`
+  starts no drag), and the text input of a prevented key down is dropped until the next key
+  down or key up. `UIElement::dispatchEvent` reads the prevented flag through an event
+  parameter set by `UIEvent::preventDefault`.
+- **Key fields.** `keyCode = RmlKeyMap::fromRmlKey(key_identifier)`, `key = domKey(keyCode,
+  fromRmlModifiers(modifier parameters))`, `code = domCode(keyCode)` (p1-input); `repeat`: RmlUi
+  has no repeat flag, so the context root's capture listener (the one that synthesizes
+  `change`) tracks held keys and marks a key down of a held key as a repeat.
+- **`UIDocumentComponent` in Lua** (`UIDocument:getUIDocumentComponent()`): `filename`,
+  `sortOrder`, `enabled`, `interactive`, `needReload`, ro `loaded`, and the events `onLoad`,
+  `onUnload` (the script-event generator of p1-editor uses them).
+- **`data-for` indices** (`i` in `data-for="item, i : items"`) are 0-based, as RmlUi gives
+  them; the guide says so.
+
 ---
 
 ### 3.10 Vector graphics with ThorVG (p1-vector)

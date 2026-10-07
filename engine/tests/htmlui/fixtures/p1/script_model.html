@@ -1,0 +1,19 @@
+<html>
+<head>
+    <title>script model</title>
+    <link type="text/css" href="../common/base.css"/>
+    <style>
+        body { width: 100%; height: 100%; margin: 0px; }
+        .row { height: 20px; }
+        input { display: inline-block; width: 120px; height: 20px; }
+    </style>
+</head>
+<body>
+    <div id="shop" data-model="shop">
+        <p id="gold">{{ gold }}</p>
+        <div id="rows"><div class="row" data-for="item, i : items" data-event-click="buy(i)">{{ item.name }}: {{ item.price }}</div></div>
+        <input id="name" type="text" data-value="text"/>
+        <input id="flag" type="checkbox" data-checked="flag"/>
+    </div>
+</body>
+</html>
