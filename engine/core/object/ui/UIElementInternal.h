@@ -12,15 +12,19 @@
 
 #include <RmlUi/Core/ObserverPtr.h>
 
+#include <memory>
+
 namespace Rml {
     class Element;
 }
 
 namespace jasperengine{
 
-    // p1-lua adds the detached-pool token here (phase 1 §3.9.2)
     struct UIElementHandle{
         Rml::ObserverPtr<Rml::Element> element;
+        // shared by every handle of the element (HtmlUIElementRegistry::token): a detached tree
+        // (createElement, removeChild ...) stays alive while a handle of one of its elements does
+        std::shared_ptr<int> token;
     };
 
     struct UIElementAccess{

@@ -44,10 +44,8 @@ LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other): m_vm(other.m_vm)
 
 LuaFunctionBase::~LuaFunctionBase(){
     // delete the reference from registry
-    if (LuaBinding::getLuaState()){ //check if state is not closed
-        if (lua_isfunction(m_vm, -1)) {
-            luaL_unref(m_vm, LUA_REGISTRYINDEX, m_func);
-        }
+    if (LuaBinding::getLuaState() && m_func != LUA_NOREF){ //check if state is not closed
+        luaL_unref(m_vm, LUA_REGISTRYINDEX, m_func);
     }
 }
 

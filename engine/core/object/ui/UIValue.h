@@ -14,6 +14,8 @@ namespace jasperengine{
 
     // A JSON-like value tree: the storage of data models (UIDataModel), event details and
     // the Lua conversion (defined by p1-lua, UIValue.cpp)
+    struct HtmlUIScriptAccess;
+
     class JASPERENGINE_API UIValue {
     public:
         enum class Type { NIL, BOOL, NUMBER, STRING, ARRAY, OBJECT };
@@ -29,7 +31,11 @@ namespace jasperengine{
         void push(UIValue); void erase(size_t); void erase(const std::string&);
         std::vector<std::string> keys() const;                 // insertion order
 
+        bool operator==(const UIValue& other) const;            // deep; numbers compare exactly
+        bool operator!=(const UIValue& other) const;
+
     private:
+        friend struct HtmlUIScriptAccess;   // p1-lua internals (HtmlUIScriptInternal.h) walk the tree
         Type type = Type::NIL;
         bool boolValue = false;
         double numberValue = 0.0;

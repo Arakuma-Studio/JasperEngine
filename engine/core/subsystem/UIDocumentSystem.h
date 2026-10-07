@@ -137,6 +137,8 @@ namespace jasperengine{
         // --- p1-lua (UIDocumentSystemScript.cpp, §3.9.5) ---
         std::vector<std::string> getDataModelNames(Entity entity) const;
         bool pushDataModel(lua_State* L, Entity entity, const std::string& name);   // pushes the model's Lua proxy
+        // engine-internal (HtmlUIScriptInternal.h): data models and notifications of this scene
+        HtmlUIScriptState& getScriptState();
 
         // --- p1-rtt (UIDocumentSystemTexture.cpp, §3.12) ---
         bool dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch);
@@ -189,6 +191,15 @@ namespace jasperengine{
         // their counterparts in the new one. p1-lua moves those elements' listeners and warns
         // about the ones it drops
         void scriptDocumentReloaded(Entity entity, const std::unordered_map<Rml::Element*, Rml::Element*>& oldToNew);
+        // one-line hooks of the phase-0 UIDocumentSystem.cpp (a reload path that bypasses
+        // applyComponent/unloadEntityDocument calls scriptDocumentLoaded/scriptDocumentUnloading itself)
+        void scriptLoadDocuments();                 // load(): every enabled document, so a script's init can query them
+        void scriptContextCreated();                // ensureContext(): data models into the new context, DOM change events
+        void scriptContextDestroying();             // destroyContext(), first: detached pools, RmlUi side of the data models
+        void scriptDocumentLoaded(Entity entity);   // applyComponent, after a load: onLoad (fired after the context update)
+        void scriptDocumentUnloading(Entity entity, Rml::ElementDocument* document);   // unloadEntityDocument: pool, onUnload
+        void scriptComponentRemoved(Entity entity); // onComponentRemoved: the data models the document created
+        void scriptUpdate();                        // end of update(): detached pool, onChange, onUnload/onLoad
 
         // --- p1-editor ---
         std::shared_ptr<HtmlUIReloadState> reloadState;
