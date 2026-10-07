@@ -14,6 +14,7 @@
 #include "object/ui/UIElementInternal.h"
 
 #include "lua.hpp"
+#include "LuaBridge.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Property.h>
@@ -310,7 +311,8 @@ TEST_F(AnimeLuaTest, SelectorsOnDocuments){
     AnimEngine::instance().reset();
     AnimEngine::instance().tick(HtmlUIClock::now());
     ASSERT_EQ(run("a = anime.animate('.card', { opacity = 0.25, translateX = 20, duration = 100, delay = anime.stagger(10) })"), "");
-    EXPECT_EQ(text("type(a.targets)"), "table");
+    EXPECT_EQ(number("#a.targets"), 3);
+    EXPECT_EQ(text("a.targets[1].className"), "card");
     HtmlUIClock::setFixedTime(1.5);
     AnimEngine::instance().tick(HtmlUIClock::now());
     Rml::Element* first = UIElementAccess::get(document.getElementById("box"));
@@ -326,6 +328,59 @@ TEST_F(AnimeLuaTest, SelectorsOnDocuments){
     }
     // utils.get on a selector
     EXPECT_EQ(text("anime.utils.get('#box', 'width')"), "100px");
+    AnimEngine::instance().reset();
+    HtmlUIClock::reset();
+}
+
+TEST_F(AnimeLuaTest, UIElementHandlesFromLua){
+    ASSERT_TRUE(GpuEnvironment::ensure());
+    SceneFixture fixture;
+    UIDocument& document = fixture.add<UIDocument>();
+    ASSERT_TRUE(document.load("p1/anime.html"));
+    HtmlUIClock::setFixedTime(1.0);
+    AnimEngine::instance().reset();
+    AnimEngine::instance().tick(HtmlUIClock::now());
+    updateDocuments(fixture.getScene());
+    ASSERT_TRUE(luabridge::push(L, document));
+    lua_setglobal(L, "doc");
+
+    // a UIElement handle, a list from querySelectorAll, function values receiving the elements
+    ASSERT_EQ(run(R"(
+        box = doc:getElementById('box')
+        a = anime.animate(box, { translateX = 100, duration = 100, ease = 'linear' })
+        cards = anime.animate(doc:querySelectorAll('.card'), {
+            translateX = function(el, i, total) return el.className == 'card' and (i + 1) * 10 or -1 end, duration = 0 })
+    )"), "");
+    EXPECT_EQ(number("#a.targets"), 1);
+    EXPECT_EQ(text("a.targets[1].id"), "box");
+    EXPECT_EQ(text("a.targets[1] == box"), "true");
+    EXPECT_EQ(number("#cards.targets"), 3);
+
+    // the selector root: a UIDocument, an element, an element without matches (a warning)
+    EXPECT_EQ(number("#anime.animate('.card', { opacity = 0.5, duration = 0, root = doc }).targets"), 3);
+    EXPECT_EQ(number("#anime.animate('.card', { opacity = 0.5, duration = 0, root = doc:getElementById('holder') }).targets"), 3);
+    TestSystem::get().clearLogs();
+    EXPECT_EQ(number("#anime.animate('.card', { opacity = 0.5, duration = 0, root = box }).targets"), 0);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "no target found"), 1u);
+
+    HtmlUIClock::setFixedTime(1.2);
+    AnimEngine::instance().tick(HtmlUIClock::now());
+    updateDocuments(fixture.getScene());
+    // the element API sees the transforms anime wrote
+    EXPECT_NEAR(number("box:getBoundingClientRect().left"), 110, 1e-3);
+    EXPECT_NEAR(number("box:getBoundingClientRect().width"), 100, 1e-3);
+    EXPECT_NEAR(number("doc:querySelectorAll('.card')[2]:getBoundingClientRect().left - doc:getElementById('holder'):getBoundingClientRect().left"), 2 + 20, 1e-3);
+    EXPECT_EQ(text("anime.utils.get(box, 'translateX')"), "100px");
+
+    // a gone element: the handle is invalid, the animation on it cancelled silently
+    ASSERT_EQ(run("gone = anime.animate(doc:getElementById('holder'):querySelector('.card'), { x = 50, duration = 1000 })"), "");
+    ASSERT_EQ(run("doc:getElementById('holder').innerHTML = ''"), "");
+    HtmlUIClock::setFixedTime(1.3);
+    AnimEngine::instance().tick(HtmlUIClock::now());
+    EXPECT_EQ(text("gone.cancelled"), "true");
+
+    ASSERT_EQ(run("doc, box, a, cards, gone = nil, nil, nil, nil, nil"), "");
+    lua_gc(L, LUA_GCCOLLECT, 0);
     AnimEngine::instance().reset();
     HtmlUIClock::reset();
 }

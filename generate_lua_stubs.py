@@ -1947,6 +1947,42 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
 
+# HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
+# option tables, and raise errors with no C++ object alive)
+_LISTENER = 'fun(event: UIEvent)'
+_LISTENER_OPTIONS = 'boolean|UIEventListenerOptions'
+for _cls, _target in (('UIElement', 'the element'), ('UIDocument', 'the document element')):
+    OVERRIDES[(_cls, 'addEventListener')] = {
+        'doc': [f'Calls `listener` with a UIEvent when a `type` event reaches {_target} (browser names: click,',
+                'keydown, input, change, wheel ...). `options` is `true` for the capture phase, or',
+                '`{capture = boolean, once = boolean}`. The same function, type and phase again is ignored.'],
+        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+    OVERRIDES[(_cls, 'removeEventListener')] = {
+        'doc': ['Removes the listener added with the same type, function and capture phase.'],
+        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+OVERRIDES[('UIElement', 'dispatchEvent')] = {
+    'doc': ['Sends a `type` event from the element (custom names too); listeners read `detail` as',
+            '`event.detail` (a copy). Returns false when a listener called preventDefault().'],
+    'overloads': [([('type', 'string'), ('detail?', 'any'), ('bubbles?', 'boolean')], 'boolean')]}
+OVERRIDES[('UIDocument', 'createDataModel')] = {
+    'doc': ['Creates the data model `name` (data-model="name" in the document) from a table: functions',
+            'become data-event callbacks (`data-event-click="buy(i)"` calls `buy(event, i)`), every other',
+            'value the model\'s data, read and written through the returned proxy (`model.gold = 20`).',
+            'Its top-level keys are fixed. A loaded document that uses the model reloads.'],
+    'overloads': [([('name', 'string'), ('initial', 'table')], 'UIDataModel')]}
+OVERRIDES[('UIDocument', 'getDataModel')] = {
+    'doc': ['The proxy of a data model this document created, or nil.'],
+    'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+OVERRIDES[('UIClassList', 'add')] = {
+    'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
+OVERRIDES[('UIClassList', 'remove')] = {
+    'doc': ['Removes the classes.'], 'overloads': [([('...', 'string')], '')]}
+
+# Precise LuaLS types of parameters whose C++ type says nothing (luabridge::LuaRef becomes
+# `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
+# bound function that takes a callback or a parameter table belongs here.
+_PARAM_TYPE_OVERRIDES = {
+}
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
 _ANIME_TARGETS = 'AnimeTargets'
@@ -2165,7 +2201,7 @@ class Builder:
             return lt[0].lower() + lt[1:]
         return f'arg{index + 1}'
 
-    def to_lua_sig(self, sig, c, drop_self, optional_bools):
+    def to_lua_sig(self, sig, c, drop_self, optional_bools, member=None):
         params = list(sig.params)
         if drop_self and params:
             params = params[1:]
@@ -2177,7 +2213,11 @@ class Builder:
             desc = ''
             if lt == 'any' and bare_type(t)[0] not in ('LuaRef', 'luabridge::LuaRef'):
                 desc = f'C++ {bare_type(t)[0]} (not a Lua class)'
-            lp.append((lua_name(nm or self.default_param_name(t, idx), used), lt, False, desc))
+            name = lua_name(nm or self.default_param_name(t, idx), used)
+            override = _PARAM_TYPE_OVERRIDES.get((c.name, member.name if member else None, nm or name))
+            if override:
+                lt, desc = override, ''
+            lp.append((name, lt, False, desc))
         if optional_bools:
             k = len(lp) - 1
             while k >= 0 and lp[k][1] == 'boolean':
@@ -2215,7 +2255,7 @@ class Builder:
                 self.unresolve(c, m, 'reads its arguments from the Lua stack: needs a signature in OVERRIDES')
                 continue
             drop_self = kind == 'free' and m.kind == 'Method'
-            sigs.append(self.to_lua_sig(sig, c, drop_self, single))
+            sigs.append(self.to_lua_sig(sig, c, drop_self, single, m))
         m.lua_sigs = sigs
         doc = list(m.call.doc)
         for s in sigs:
@@ -2882,7 +2922,26 @@ def generate(binding_dir, core_dir):
     builder.build()
     emitter = Emitter(builder)
     files = emitter.emit_all()
+    add_stub_fragments(files, os.path.join(binding_dir, 'stubs'))
     return files, builder, emitter.plugin
+
+
+def add_stub_fragments(files, fragments_dir):
+    """Hand-written LuaLS files (binding/stubs/*.lua: `---@class` shapes of parameter tables and
+    what the bindings cannot describe) join the generated ones; a fragment named like a generated
+    file is appended to it."""
+    if not os.path.isdir(fragments_dir):
+        return
+    for fn in sorted(os.listdir(fragments_dir)):
+        if not fn.endswith('.lua'):
+            continue
+        with open(os.path.join(fragments_dir, fn), 'r', encoding='utf-8') as f:
+            text = f.read().replace('\r\n', '\n')
+        body = text[len('---@meta _\n'):] if text.startswith('---@meta _\n') else text
+        if fn in files:
+            files[fn] = files[fn].rstrip('\n') + '\n\n' + body.lstrip('\n')
+        else:
+            files[fn] = FILE_HEADER + body.lstrip('\n')
 
 
 def main():

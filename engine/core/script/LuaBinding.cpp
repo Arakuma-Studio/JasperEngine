@@ -43,6 +43,8 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
+#include "object/ui/UIDocument.h"
+#include "subsystem/UIDocumentSystem.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
@@ -477,6 +479,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerMathClasses(L); 
     registerUtilClasses(L);
     registerThreadClasses(L);
+    registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
@@ -622,6 +625,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Scrollbar, "scrollbar");
     DISPATCH_TYPE(Progressbar, "progressbar");
     DISPATCH_TYPE(InputField, "inputfield");
+    DISPATCH_TYPE(UIDocument, "uidocument");
     DISPATCH_TYPE(Bone, "bone");
 #ifdef JASPERENGINE_PHYSICS_2D
     DISPATCH_TYPE(Rigidbody2D, "rigidbody2d");
@@ -954,6 +958,9 @@ void LuaBinding::cleanupLuaScripts(Scene* scene) {
             }
         }
     }
+
+    // what the scripts made in the scene's HTML documents (listeners, data models) goes too
+    scene->getSystem<UIDocumentSystem>()->releaseScriptState();
 }
 
 void LuaBinding::cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities) {

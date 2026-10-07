@@ -909,6 +909,43 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
 
+### 4.18 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
+
+Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
+
+- `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
+  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`; `load(file)`,
+  `reload()`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
+  `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
+  `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
+  `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
+  `removeDataModel(name)`, `getTargetTexture()`, `getUIDocumentComponent()` (rw `filename`,
+  `sortOrder`, `enabled`, `interactive`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`; static
+  `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
+- `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
+  dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `value`, `checked`,
+  `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`, `parentElement`, `children`,
+  `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
+  `childElementCount`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`,
+  `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `classList`, `style`, `dataset`;
+  methods `getAttribute`, `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes`,
+  `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
+  `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
+  `blur`, `click`, `scrollIntoView`, `scrollTo`, `scrollBy`, `getBoundingClientRect` (UIRect),
+  `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
+- `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`;
+  `style.fontSize` / `style["font-size"]` (computed value; assign the inline style, `""`/nil
+  removes); `dataset.userName` (`data-user-name`).
+- `UIEvent` (valid while the listener runs): `type`, `target`, `currentTarget`, `eventPhase`,
+  `key`, `code`, `keyCode`, `["repeat"]`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`,
+  `clientX`, `clientY`, `button` (0 left, 1 middle, 2 right), `deltaX`, `deltaY`, `data`,
+  `detail`, `defaultPrevented`; `stopPropagation()`, `stopImmediatePropagation()`,
+  `preventDefault()`.
+- Data model proxy: fields read/write the model (`model.gold = 1`, `model.items[1].name`,
+  `table.insert(model.items, t)`); top-level keys fixed; methods `onChange(name, fn)`,
+  `removeOnChange(id)`, `dirty(name)`, `dirtyAll()`, `get(path)`, `set(path, v)`,
+  `getName()`, `isValid()`. `data-for` indices are 0-based.
+
 ---
 
 ## 5. Enums (exact Lua spelling; values are integers)

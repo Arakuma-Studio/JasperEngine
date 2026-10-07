@@ -946,6 +946,13 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         inputField.onSubmit.clear();
     }
 
+    auto documents = scene->getComponentArray<UIDocumentComponent>();
+    for (size_t i = 0; i < documents->size(); i++) {
+        UIDocumentComponent& document = documents->getComponentFromIndex(i);
+        document.onLoad.clear();
+        document.onUnload.clear();
+    }
+
     auto sounds = scene->getComponentArray<AudioSourceComponent>();
     for (size_t i = 0; i < sounds->size(); i++) {
         AudioSourceComponent& sound = sounds->getComponentFromIndex(i);

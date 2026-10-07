@@ -483,12 +483,15 @@ public:
 	/// Sends an event to this element.
 	/// @param[in] type Event type in string form.
 	/// @param[in] parameters The event parameters.
-	/// @return True if the event was not consumed (ie, was prevented from propagating by an element), false if it was.
+	/// @return True if the event was not consumed (ie, was prevented from propagating, or had its default action prevented,
+	/// by an element), false if it was.
 	bool DispatchEvent(const String& type, const Dictionary& parameters);
 	/// Sends an event to this element, overriding the default behavior for the given event type.
 	bool DispatchEvent(const String& type, const Dictionary& parameters, bool interruptible, bool bubbles = true);
 	/// Sends an event to this element by event id.
 	bool DispatchEvent(EventId id, const Dictionary& parameters);
+	/// Sends an event to this element by event id, reporting whether a listener prevented its default action.
+	bool DispatchEvent(EventId id, const Dictionary& parameters, bool* default_prevented);
 
 	/// Scrolls the parent element's contents so that this element is visible.
 	/// @param[in] options Scroll parameters that control the desired element alignment relative to the parent.

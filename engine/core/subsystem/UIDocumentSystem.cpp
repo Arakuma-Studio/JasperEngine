@@ -39,9 +39,11 @@ UIDocumentSystem::~UIDocumentSystem(){
 }
 
 void UIDocumentSystem::load(){
+    scriptLoadDocuments();
 }
 
 void UIDocumentSystem::destroyContext(){
+    scriptContextDestroying();
     documents.clear();
     inputState.reset();
     delete context;
@@ -92,6 +94,7 @@ bool UIDocumentSystem::ensureContext(){
         return false;
     }
     context = created;
+    scriptContextCreated();
 
     if (debuggerVisible){
         context->setDebuggerVisible(true);
@@ -110,6 +113,7 @@ void UIDocumentSystem::unloadEntityDocument(Entity entity){
     if (it == documents.end())
         return;
 
+    scriptDocumentUnloading(entity, it->second);
     if (context){
         context->unloadDocument(it->second);
     }
@@ -131,11 +135,13 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
+            scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = context->loadDocument(document.filename);
             if (loadedDocument){
                 documents[entity] = loadedDocument;
                 document.loaded = true;
+                scriptDocumentLoaded(entity);
             }else{
                 document.loadFailed = true;
             }
@@ -196,6 +202,7 @@ void UIDocumentSystem::update(double dt){
     // control characters that came without their key down this frame, before the layout
     updateInput();
     context->update();
+    scriptUpdate();
 }
 
 void UIDocumentSystem::draw(){
@@ -216,6 +223,7 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
         return;
 
     unloadEntityDocument(entity);
+    scriptComponentRemoved(entity);
 }
 
 void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
