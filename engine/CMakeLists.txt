@@ -799,6 +799,19 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
+    core/htmlui/anim/AnimAnimation.cpp
+    core/htmlui/anim/AnimCommon.cpp
+    core/htmlui/anim/AnimEasing.cpp
+    core/htmlui/anim/AnimEngine.cpp
+    core/htmlui/anim/AnimParams.cpp
+    core/htmlui/anim/AnimProperty.cpp
+    core/htmlui/anim/AnimSpring.cpp
+    core/htmlui/anim/AnimTargets.cpp
+    core/htmlui/anim/AnimTimeline.cpp
+    core/htmlui/anim/AnimTimer.cpp
+    core/htmlui/anim/AnimUtils.cpp
+    core/htmlui/anim/AnimValue.cpp
+    core/htmlui/anim/Anime.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
@@ -884,6 +897,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/UtilClassesLua.cpp
+    core/script/binding/HtmlUIAnimeLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
