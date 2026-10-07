@@ -139,7 +139,7 @@ Conventions that apply everywhere:
 | `<svg>` / `decorator: svg()` on ThorVG (fork patch `rmlui: SVG plugin rasterises with ThorVG`) | element | P1 p1-vector | P2 H8 (`SvgPreprocess`, `rasterizeSvg`) | P1 §3.10.2 |
 | `<lottie>` (`UILottieElement`, attributes `src autoplay loop speed direction mode segment marker animation`; events) | element | P1 p1-vector | P2 (web-component mapping, H9 adds `playonhover`) | P1 §3.10.3 |
 | `TextureData` SVG on ThorVG; nanosvg removed | engine | P1 p1-vector | — | P1 §3.10.4 |
-| `anime` (`animate`, `createTimeline`, `createTimer`, `createSpring`, `stagger`, `eases`, `utils`), custom-property animation; `AnimEngine::tick(HtmlUIClock::now())`, `reset()` | Lua/C++ | P1 p1-anim | P2 (`<script type="text/lua">` env), P4 examples, P5 C7 | P1 §3.11 |
+| `anime` (`animate`, `createTimeline`, `createTimer`, `createSpring`, `stagger`, `eases`, `utils`), custom-property animation; C++ `Anime` / `AnimParam` / `AnimTargets` (`htmlui/anim/`); `AnimEngine::tick(HtmlUIClock::now())`, `reset()`, `addResetListener`; `AnimLua::getLiveLuaRefs()` | Lua/C++ | P1 p1-anim | P2 (`<script type="text/lua">` env), P4 examples, P5 C7 | P1 §3.11 |
 
 ## 10. Compatibility layer (phase 2, `jasperengine::htmlui::compat`)
 
