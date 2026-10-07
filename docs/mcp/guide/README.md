@@ -13,6 +13,7 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 | [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |
 | [shaders.md](shaders.md) | `jasper://docs/shaders` | forking built-in shaders, editing rules, the custom uniform block |
 | [prefabs.md](prefabs.md) | `jasper://docs/prefabs` | overrides, Apply/Revert, Prefab Mode, variants, Instantiate/Destroy, the build's prefabs |
+| [html-ui.md](html-ui.md) | `jasper://docs/html-ui` | HTML/CSS documents (UI Document component): what phase 0 supports, the RCSS rules to write them, fonts, pointer input, the C++ API, limits |
 | [../../unity-glossary.md](../../unity-glossary.md) | `jasper://docs/unity-glossary` | Unity term to engine name tables |
 
 Keep these in sync with the engine: a name in them must exist in the bindings or headers.
