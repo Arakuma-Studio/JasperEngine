@@ -8,6 +8,8 @@
 
 #include "TestRenderCommon.h"
 
+#include "harness/SceneFixture.h"
+
 #include "HtmlUIClock.h"
 #include "HtmlUIContext.h"
 #include "HtmlUITexture.h"
@@ -664,4 +666,42 @@ TEST(RenderP1Test, UnpremultipliedCopy){
     // nothing: transparent
     EXPECT_TRUE(probe.is(48, 8, 0, 0, 0, 0, 0));
     straight.destroy();
+}
+
+TEST(RenderP1Test, TwoViewSizesKeepTheirTargets){
+    JASPER_REQUIRE_GPU();
+    SceneFixture fixture;
+    fixture.addDocument("p1/filter_chain.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    UIDocumentSystem& system = *fixture.getScene().getSystem<UIDocumentSystem>();
+    HtmlUIContext* context = system.getContext();
+    ASSERT_NE(context, nullptr);
+
+    // two views of different sizes draw the scene in turn (the editor's Scene and Game views)
+    const Rect views[2] = {Rect(0, 0, 640, 360), Rect(0, 0, 800, 450)};
+    RmlRenderTarget* targets[2] = {nullptr, nullptr};
+    uint64_t creates[2] = {0, 0};
+    for (int frame = 0; frame < 8; frame++){
+        const int view = frame % 2;
+        beginTestFrame();
+        system.update(0);
+        system.renderOffscreen(views[view]);
+        ASSERT_TRUE(context->getRenderer().hasFrame(SystemRender::getFrameCount()));
+        RmlRenderTarget* target = context->getRenderTarget();
+        ASSERT_NE(target, nullptr);
+        EXPECT_EQ(target->getWidth(), (int)views[view].getWidth());
+        // the context draws into the target of that size: from the third frame on, the same one
+        // as two frames ago, never recreated
+        if (frame >= 2){
+            EXPECT_EQ(target, targets[view]);
+            EXPECT_EQ(target->getCreateCount(), creates[view]);
+        }
+        targets[view] = target;
+        creates[view] = target->getCreateCount();
+        SystemRender::commit();
+    }
+    EXPECT_NE(targets[0], targets[1]);
+    EXPECT_EQ(system.getRenderStats().passes, context->getRenderer().getStats().passes);
+    EXPECT_GT(system.getRenderStats().passes, 1u);
+    EXPECT_GT(system.getRenderStats().filtersApplied, 0u);
 }

@@ -85,6 +85,9 @@ namespace jasperengine {
         Rml::Context* context = nullptr;
         std::unique_ptr<RmlRenderer> renderer;
         std::unique_ptr<RmlRenderTarget> renderTarget;
+        // the target of the other size when two views of different sizes draw the scene in
+        // turn (the editor's Scene and Game views): swapped instead of recreated every frame
+        std::unique_ptr<RmlRenderTarget> spareTarget;
         bool updatedSinceRender = true;
         bool hasContent = false;          // the target holds a rendered frame
         uint64_t lastRenderFrame = UINT64_MAX;

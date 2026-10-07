@@ -99,8 +99,21 @@ bool HtmlUIContext::render(const Rect& viewRect){
     const float rasterScale = std::min(std::max(std::round(pixelRatio * 4.0f) / 4.0f, 1.0f), 4.0f);
     HtmlUI::getFontEngine().setRasterScale(rasterScale);
 
-    // recreated when the view size or the sample count changes
-    if (renderTarget->ensure(size.x, size.y, getSampleCount()) || !renderTarget->isCreated()){
+    // recreated when the view size or the sample count changes; a second size (another view)
+    // keeps its own target
+    const int samples = getSampleCount();
+    auto matches = [&](const std::unique_ptr<RmlRenderTarget>& t){
+        return t && t->isCreated() && t->getWidth() == size.x && t->getHeight() == size.y && t->getSampleCount() == samples;
+    };
+    if (!matches(renderTarget)){
+        if (!spareTarget)
+            spareTarget.reset(new RmlRenderTarget());
+        std::swap(renderTarget, spareTarget);
+        hasContent = false;
+        if (spareTarget->isCreated() && spareTarget->getSampleCount() != samples)
+            spareTarget->destroy();
+    }
+    if (renderTarget->ensure(size.x, size.y, samples) || !renderTarget->isCreated()){
         hasContent = false;
         if (!renderTarget->isCreated()){
             Log::error("[HTML UI] could not create the %d x %d document target of '%s'", size.x, size.y, name.c_str());
@@ -163,6 +176,8 @@ void HtmlUIContext::releaseGpuResources(){
 
     if (renderTarget)
         renderTarget->destroy();
+    if (spareTarget)
+        spareTarget->destroy();
 }
 
 bool HtmlUIContext::hasRenderedFrame() const{
