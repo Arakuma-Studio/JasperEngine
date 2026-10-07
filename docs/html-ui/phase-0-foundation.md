@@ -1796,7 +1796,10 @@ Touches additively: `Render.h` (BlendState, `HTMLUI`), `ObjectRender.{h,cpp}`,
 `SokolObject.{h,cpp}`, `SystemRender.{h,cpp}` (`getFrameCount`), `ShaderVariantCompiler.cpp`,
 `ShaderPool.{h,cpp}`, `CoreClassesLua.cpp`, `RenderSystem.cpp` (include + the three hooks of
 3.5.5), `editor/window/dialog/ExportWindow.cpp`, `editor/shader/ShaderVariantCollector.cpp`,
-`editor/Project.cpp` (shader key lines only), `Scene.cpp` (the `UIDocumentSystem`
+`editor/Project.cpp` (shader key lines only; both ask
+`EntityRegistry::isComponentRegistered<UIDocumentComponent>()` first, a new accessor in
+`EntityRegistry.h`/`ComponentManager.h`, so saving never throws whatever the merge order of
+p0-render and p0-ecs), `Scene.cpp` (the `UIDocumentSystem`
 registration line of p0-ecs, identical, so the hooks resolve before p0-ecs lands),
 `engine/CMakeLists.txt` (the test build includes SPIRV-Cross's HLSL and MSL back ends for
 `HtmlUIShaderTest`; a standalone game build keeps only its own).
