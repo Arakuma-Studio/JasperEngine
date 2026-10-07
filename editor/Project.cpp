@@ -35,6 +35,7 @@
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
+#include "component/UIDocumentComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -2882,6 +2883,12 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+
+    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    if (scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+    }
 
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing
