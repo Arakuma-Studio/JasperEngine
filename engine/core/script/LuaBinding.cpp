@@ -477,6 +477,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerMathClasses(L); 
     registerUtilClasses(L);
     registerThreadClasses(L);
+    registerHtmlUIVectorClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }

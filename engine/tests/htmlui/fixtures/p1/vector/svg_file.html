@@ -1,0 +1,28 @@
+<html>
+<head>
+    <link type="text/css" href="../../common/base.css"/>
+    <link type="text/css" href="vector.css"/>
+    <style>
+        #icon24 { left: 20px; top: 20px; width: 24px; height: 24px; }
+        #icon64 { left: 60px; top: 20px; width: 64px; height: 64px; }
+        #icon256 { left: 140px; top: 20px; width: 256px; height: 256px; }
+        #crop { left: 420px; top: 20px; }
+        #nocrop { left: 410px; top: 80px; }
+        #tint { left: 20px; top: 300px; width: 64px; height: 64px; image-color: #ff8000; }
+        #tintfade { left: 100px; top: 300px; width: 64px; height: 64px; image-color: #00a0ff; opacity: 0.5; }
+        #decorated { left: 200px; top: 300px; width: 64px; height: 64px; decorator: svg(../../common/icon.svg); }
+        #decocrop { left: 290px; top: 300px; width: 64px; height: 64px; decorator: svg(crop.svg crop-to-content); }
+    </style>
+</head>
+<body>
+    <svg id="icon24" class="abs" src="../../common/icon.svg"/>
+    <svg id="icon64" class="abs" src="../../common/icon.svg"/>
+    <svg id="icon256" class="abs" src="../../common/icon.svg"/>
+    <svg id="crop" class="abs" src="crop.svg" crop-to-content="crop-to-content"/>
+    <svg id="nocrop" class="abs" src="crop.svg"/>
+    <svg id="tint" class="abs" src="white.svg"/>
+    <svg id="tintfade" class="abs" src="white.svg"/>
+    <div id="decorated" class="abs"/>
+    <div id="decocrop" class="abs"/>
+</body>
+</html>
