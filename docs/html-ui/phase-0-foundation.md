@@ -960,9 +960,11 @@ it (5.1 `RmlRendererTest.NoLeaksAfterContextDestroy`).
 // FontFace.h: one font file (or collection member), shared by every size and user
 class JASPERENGINE_API FontFace {
 public:
-    static std::shared_ptr<FontFace> loadFile(const std::string& path, int faceIndex = 0);
+    // nothing is logged: on failure nullptr and *error = "Font file not found: <path>" or
+    // "Failed to initialize font: <label>"; callers log with their own prefix
+    static std::shared_ptr<FontFace> loadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr);
     static std::shared_ptr<FontFace> loadMemory(const unsigned char* data, size_t length, int faceIndex,
-                                                bool copy, const std::string& label);
+                                                bool copy, const std::string& label, std::string* error = nullptr);
     ~FontFace();
 
     const std::string& getLabel() const;        // path or label
@@ -1010,23 +1012,30 @@ public:
     // sans-serif, serif, monospace, system-ui, ui-sans-serif, ui-serif, ui-monospace, cursive,
     // fantasy -> built-in "Roboto" (no serif/monospace face is built in; documented)
     static bool isGenericFamily(const std::string& family);
+    static bool hasFamily(const std::string& family);               // generics and built-ins included
+    static std::string normalizeFamily(const std::string& family);  // lowercase, quotes/whitespace stripped
     static const std::vector<std::shared_ptr<FontFace>>& getFallbackFaces();
     static std::shared_ptr<FontFace> getBuiltInLatin();    // Roboto, family "Roboto"
     static std::shared_ptr<FontFace> getBuiltInArabic();   // Noto Sans Arabic
     // cache for STBText: the same file parsed once
-    static std::shared_ptr<FontFace> getOrLoadFile(const std::string& path, int faceIndex = 0);
+    static std::shared_ptr<FontFace> getOrLoadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr);
     static void clear();   // tests; Engine::clearPools does not touch it
 };
 ```
 Family names are compared case-insensitively with surrounding quotes and whitespace
-stripped. The built-ins are registered lazily on first use.
+stripped. The built-ins are registered lazily on first use. A generic family is
+looked up as the family "Roboto" with the normal weight/style matching, so a project's
+Roboto Bold serves `sans-serif` bold (the built-in Roboto otherwise). `FontFace` checks the
+collection header and table directory bounds before stb_truetype reads the file (it
+trusts its input). The file cache holds `weak_ptr`s: a file is parsed once while someone
+holds it.
 
 ```cpp
 // TextShaper.h: HarfBuzz + SheenBidi shaping over a fallback chain (moved out of STBText)
 struct ShapedGlyph { uint16_t face; bool rtl; uint32_t glyphIndex; float xOffset, yOffset, xAdvance; size_t cluster; unsigned int line; };
 struct ShapeOptions {
     bool kerning = true;          // false: hb feature "kern" = 0
-    float letterSpacing = 0.0f;   // pixels added to each glyph advance; != 0 also turns off liga/clig/dlig
+    float letterSpacing = 0.0f;   // pixels added after each cluster (to its last glyph in visual order); != 0 also turns off liga/clig/dlig
     int baseDirection = 0;        // 0 auto (SBLevelDefaultLTR, today's behavior), 1 LTR, 2 RTL
     std::string language;         // empty: guessed as STBText does (STBText.cpp:152-157)
 };
@@ -1100,24 +1109,31 @@ public:
     void setRasterScale(float scale);   // physical px per document px; change -> clear glyphs/pages, version++
     float getRasterScale() const;
     size_t getPageCount() const;        // tests
+    std::vector<const FontFace*> getChain(Rml::FontFaceHandle handle) const;   // tests
+    static std::vector<std::string> splitFamilyList(const std::string& families);
 };
 ```
 
 Handles: `FontFaceHandle` = pointer to an internal
 `struct FaceHandle { std::vector<std::shared_ptr<FontFace>> chain; std::vector<float> emScales; int size; Rml::FontMetrics metrics; }`
 cached by key `(normalized family list, italic, weight, size)`; never freed until
-`ReleaseFontResources`.
+`ReleaseFontResources`. A successful `LoadFontFace` moves the cached handles out of the
+lookup table (they stay valid for the elements holding them, new lookups see the new
+face) and bumps the version.
 
 `GetFontFaceHandle`:
 1. RmlUi 6.3 passes `font-family: A, B` as one string (DESIGN research facts). Split on
-   commas, strip quotes/whitespace, lowercase. Empty family list -> default chain (RmlUi
+   commas (outside quotes), strip quotes/whitespace, lowercase. (RmlUi 6.3's RCSS parser
+   rejects a quoted value such as `'No Such Font', sans-serif` as a syntax error, so in
+   phase 0 documents lists are unquoted; phase 2's rewrite handles quotes.) Empty family list -> default chain (RmlUi
    warns "No font face defined" when the handle is 0, `ElementText.cpp:86`; we never
    return 0 for a valid size).
-2. For each name: generic -> built-in Roboto; else `FontRegistry::find(name, weight,
-   italic)`; unknown -> skipped and `Log::warn("[HTML UI] font-family '%s' is not loaded")`
-   once per name.
-3. Append `FontRegistry::getFallbackFaces()`, then built-in Roboto and Noto Sans Arabic;
-   remove duplicates.
+2. For each name: `FontRegistry::find(name, weight, italic)` (a generic name resolves
+   through the registry's "Roboto" family); unknown -> skipped and
+   `Log::warn("[HTML UI] font-family '%s' is not loaded")` once per name.
+3. When no name resolved (empty or all unknown list), built-in Roboto first; then
+   `FontRegistry::getFallbackFaces()`, then built-in Roboto and Noto Sans Arabic; remove
+   duplicates. (Fallback faces never displace the default font as the primary face.)
 4. `weight == Auto` -> 400. Style italic with no italic face -> normal face (synthetic
    italic is phase 1).
 5. Metrics from the primary face, em scale `scaleForEmSize(size)`: `size`;
@@ -1868,7 +1884,9 @@ Font (p0-font):
 - `FontRegistryTest.NearestWeightRules` (each CSS rule with registered 300/400/700
   faces), `.ItalicPreference`, `.GenericFamilies`, `.CaseAndQuotes`.
 - `TextShaperTest.KerningToggle` ("AV" narrower with kerning), `.LetterSpacing`
-  (n glyphs -> +n*ls), `.RtlOrder`, `.ArabicJoins` (fewer glyphs than codepoints for a
+  (n glyphs -> +n*ls), `.RtlOrder`, `.ArabicJoins` (contextual forms differ from the isolated glyphs; the
+  built-in Noto Sans Arabic subset has no lam-alef ligature, so the ligature check uses
+  Roboto's "fi"; was: fewer glyphs than codepoints for a
   ligature-forming word), `.MatchesSTBTextShaping`.
 - `GlyphAtlasTest.PackNoOverlap`, `.FullReturnsFalse`.
 - `RmlFontEngineTest.HandleCaching`, `.FamilyListSplitAndFallback` ("Missing, sans-serif":

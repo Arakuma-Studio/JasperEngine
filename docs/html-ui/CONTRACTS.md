@@ -84,8 +84,8 @@ Conventions that apply everywhere:
 
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
-| `FontFace`, `FontRegistry` (`registerFace`, `find`, `isGenericFamily`, built-ins, `getOrLoadFile`), `TextShaper` (`ShapeOptions`), `GlyphAtlas` | C++ | P0 p0-font | P1 (font effects, synthesis), P2 H6 (`hasFamily`), P3 (`emoji`/`math` generics, `word_spacing`) | P0 §3.6.2 |
-| `RmlFontEngine` (comma-split family lists, glyph pages append-only, one global `GetVersion`, `setRasterScale`) | C++ | P0 p0-font | P1 p1-rtt (effects, synthetic bold/italic, per-context `setRasterScale(RenderManager&, float)`, `reloadFontFile`), P2 H6 (`hasFamily`, `setRenderTextForTesting`), P3 (`word_spacing`, canonical family list) | P0 §3.6.4, P1 §3.13 |
+| `FontFace` (`loadFile/loadMemory(..., std::string* error)`, logs nothing), `FontRegistry` (`registerFace`, `find`, `hasFamily`, `isGenericFamily`, `normalizeFamily`, built-ins, `getOrLoadFile`), `TextShaper` (`ShapeOptions`), `GlyphAtlas` | C++ | P0 p0-font | P1 (font effects, synthesis), P2 H6 (`hasFamily`), P3 (`emoji`/`math` generics, `word_spacing`) | P0 §3.6.2 |
+| `RmlFontEngine` (comma-split family lists, glyph pages append-only, one global `GetVersion`, `setRasterScale`; tests: `getChain`, `splitFamilyList`, `getPageCount`) | C++ | P0 p0-font | P1 p1-rtt (effects, synthetic bold/italic, per-context `setRasterScale(RenderManager&, float)`, `reloadFontFile`), P2 H6 (`hasFamily`, `setRenderTextForTesting`), P3 (`word_spacing`, canonical family list) | P0 §3.6.4, P1 §3.13 |
 
 ## 6. ECS, component, system, GameObject API
 
