@@ -942,6 +942,8 @@ else()
             PATTERN ".gradle" EXCLUDE
             PATTERN "build" EXCLUDE
             PATTERN ".git" EXCLUDE
+            # test sources, fixtures and golden images (engine/tests only, not a vendored lib's tests)
+            REGEX "/engine/tests$" EXCLUDE
     )
 endif()
 

@@ -169,7 +169,7 @@ engine/libs/rmlui/
   Include/RmlUi/Config/**
   Include/RmlUi/Core/**          (includes Containers/robin_hood.h, itlib, their LICENSE.txt)
   Include/RmlUi/Debugger/**
-  Source/Core/*.{cpp,h}
+  Source/Core/*.{cpp,h,inl}       (Pool.inl is included by Pool.h)
   Source/Core/Elements/*.{cpp,h}
   Source/Core/Layout/*.{cpp,h}
   Source/Debugger/*.{cpp,h}      (+ Source/Debugger/LICENSE.txt: embedded Courier Prime, OFL)
@@ -221,6 +221,19 @@ endif()
 `RMLUI_NO_FILE_INTERFACE_DEFAULT` removes the `fopen` default (`Core.cpp:101-108`), so a
 missing `RmlFile` is an error instead of silently bypassing `ResourcePack` and Android
 assets.
+
+Hidden visibility alone does not keep RmlUi out of the editor's `libjasperengine.so`
+(found when building): the std templates RmlUi instantiates over its own enums
+(`std::vector<Rml::PropertyId>`, ...) keep default visibility, and engine classes that
+derive from RmlUi interfaces export methods with `Rml::` parameter types. So:
+- `engine/CMakeLists.txt`, shared engine only, not Apple/MSVC:
+  `target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")`;
+- `engine/core/Export.h` defines `JASPERENGINE_INTERNAL` (`visibility("hidden")` on
+  GCC/Clang outside Windows); `RmlSystem`, `RmlFile`, `RmlFontEngine`, `RmlRenderer` and
+  `HtmlUIContext` are declared `class JASPERENGINE_INTERNAL ...` (internal: only the engine
+  uses them; `HtmlUI` stays `JASPERENGINE_API`).
+On macOS (ld64 has no `--exclude-libs`) the weak std instantiations stay visible in the
+dylib.
 
 #### 3.2.3 `engine/CMakeLists.txt` changes
 
@@ -362,9 +375,11 @@ namespace jasperengine {
 
         // HtmlUIContext registers itself so view loss can drop GPU objects of all of them
         static void registerContext(HtmlUIContext* context);
-        static void unregisterContext(HtmlUIContext* context);
+        static void unregisterContext(HtmlUIContext* context);   // also detaches the debugger from it
+        static size_t getContextCount();
         // the context the RmlUi debugger is attached to (nullptr = none)
         static void setDebuggerContext(HtmlUIContext* context, bool visible);
+        static HtmlUIContext* getDebuggerContext();
     };
 }
 ```
@@ -372,7 +387,15 @@ namespace jasperengine {
 `onViewDestroyed` handler (fires before scenes are destroyed and before `sg_shutdown`,
 `Engine.cpp:1316-1328`): for every registered context call
 `HtmlUIContext::releaseGpuResources()` (3.5.6), then `Rml::ReleaseFontResources()` once.
-RmlUi regenerates geometry and textures lazily once the view is back.
+RmlUi regenerates geometry and textures lazily once the view is back. Every `acquire()`
+(not only the first) adds the subscription again (same tag, so it is never doubled): the
+editor's play-mode stop calls `Engine::clearAllSubscriptions(true)` (`editor/Project.cpp:7666`),
+which drops it while edit-mode scenes keep their contexts.
+
+`setDebuggerContext(context, visible)`: a context without an `Rml::Context` (not created)
+or `nullptr` shuts the debugger down; a different context than the current host shuts it
+down and initialises it again there (`Rml::Debugger::Initialise(host)` both hosts and
+inspects that context); then `Rml::Debugger::SetVisible(visible)`.
 
 The interface objects (`RmlSystem`, `RmlFile`, `RmlFontEngine`) are function-local statics
 in `HtmlUI.cpp`, so they outlive `Rml::Shutdown()`.
@@ -380,7 +403,7 @@ in `HtmlUI.cpp`, so they outlive `Rml::Shutdown()`.
 #### 3.3.2 `engine/core/htmlui/RmlSystem.{h,cpp}`
 
 ```cpp
-class RmlSystem : public Rml::SystemInterface {
+class JASPERENGINE_INTERNAL RmlSystem : public Rml::SystemInterface {
 public:
     double GetElapsedTime() override;                 // Engine::getSystemTime() (seconds)
     bool LogMessage(Rml::Log::Type type, const Rml::String& message) override;
@@ -394,6 +417,9 @@ public:
     size_t getErrorCount() const;    // LT_ERROR + LT_ASSERT
     size_t getWarningCount() const;  // LT_WARNING
     void resetCounters();
+
+    // JoinPath without the RmlUi types (JoinPath calls it)
+    static std::string joinPath(const std::string& documentPath, const std::string& path);
 };
 ```
 
@@ -411,7 +437,7 @@ public:
 #### 3.3.3 `engine/core/htmlui/RmlFile.{h,cpp}`
 
 ```cpp
-class RmlFile : public Rml::FileInterface {
+class JASPERENGINE_INTERNAL RmlFile : public Rml::FileInterface {
 public:
     Rml::FileHandle Open(const Rml::String& path) override;  // new Data; Data::open(path) != FILEDATA_OK -> delete, return 0
     void Close(Rml::FileHandle file) override;
@@ -422,6 +448,12 @@ public:
     bool LoadFile(const Rml::String& path, Rml::String& out_data) override;  // one Data::open + copy
 };
 ```
+
+The handle is a small struct holding the `Data` and the read position: `Data::seek`
+clamps to `length - 1` (`Data.cpp:83-90`), so it cannot stand at the end of the file the
+way `fseek` can; `Read`/`Seek`/`Tell` work on that position over `Data::getMemPtr()`.
+An empty path returns 0 without opening anything (it would resolve to the asset
+directory itself).
 
 `Data::open(const char*)` (`engine/core/io/Data.cpp:124-155`) already resolves
 `ResourcePack::readOwned`, then `File::open` -> `FileData::getSystemPath`
@@ -619,7 +651,7 @@ use): `sg_pipeline_desc describePipeline(PipelineType pipType) const;` returning
 
 ```cpp
 namespace jasperengine {
-    class RmlRenderer : public Rml::RenderInterface {
+    class JASPERENGINE_INTERNAL RmlRenderer : public Rml::RenderInterface {
     public:
         RmlRenderer();
         ~RmlRenderer() override;                    // releaseGpuResources()
@@ -760,7 +792,7 @@ Behavior:
 namespace jasperengine {
     class RmlRenderer;
 
-    class HtmlUIContext {
+    class JASPERENGINE_INTERNAL HtmlUIContext {
     public:
         explicit HtmlUIContext(const std::string& name);   // e.g. "scene-0x55d0c3a0"
         ~HtmlUIContext();                                    // destroy()
@@ -1005,7 +1037,10 @@ public:
     static void shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
                            const std::vector<uint32_t>& codepoints, size_t offset, size_t length,
                            unsigned int line, const ShapeOptions& options, std::vector<ShapedGlyph>& out);
-    static float measure(...same inputs...);   // total advance of shapeRange
+    // total advance of shapeRange
+    static float measure(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
+                         const std::vector<uint32_t>& codepoints, size_t offset, size_t length,
+                         const ShapeOptions& options);
     static void decodeUtf8(const char* text, size_t length, std::vector<uint32_t>& codepoints);
 };
 ```
@@ -1041,7 +1076,7 @@ MCP tests that create text.
 #### 3.6.4 `engine/core/htmlui/RmlFontEngine.{h,cpp}`
 
 ```cpp
-class RmlFontEngine : public Rml::FontEngineInterface {
+class JASPERENGINE_INTERNAL RmlFontEngine : public Rml::FontEngineInterface {
 public:
     void Initialize() override;     // registers built-ins in FontRegistry
     void Shutdown() override;       // ReleaseFontResources()
@@ -1425,7 +1460,7 @@ Not in phase 0 (phase 1): Hierarchy Create entry, icon, `Project::visitAssetPath
 ```cmake
 # googletest from the repository's yaml-cpp test tree (not shipped with the engine)
 set(JASPER_GTEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/yaml-cpp/test/gtest-1.11.0")
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5)          # gtest 1.11 declares 2.8.12; CMake 4 rejects it otherwise
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)         # gtest 1.11 declares 2.8.12: CMake 4 rejects it, 3.x warns
 set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -1437,7 +1472,9 @@ file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
 add_executable(jasperengine-htmlui-tests ${HTMLUI_TEST_SOURCES}
     ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
 target_include_directories(jasperengine-htmlui-tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR} ${JASPERENGINE_ROOT}/platform/linux ${JASPERENGINE_ROOT}/platform/common)
+    ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/harness
+    ${JASPERENGINE_ROOT}/platform/linux ${JASPERENGINE_ROOT}/platform/common)
+find_package(X11 REQUIRED)
 target_link_libraries(jasperengine-htmlui-tests PRIVATE jasperengine rmlui gtest X11::X11)
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
     target_sources(jasperengine-htmlui-tests PRIVATE ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp)
@@ -1457,20 +1494,23 @@ CMake edit.
 
 | File | Contents |
 |---|---|
-| `HeadlessContext.{h,cpp}` | Opens the X display (`WindowLinux::openDisplay/create`, hidden or unmapped window of the requested size); GL: GLX 4.1 core context (copy of `selectVisual`/`createContext` in `engine/platform/linux/JasperEngineLinux.cpp:96-196`); Vulkan: `VulkanContext::create` with an Xlib surface (`JasperEngineLinux.cpp:203-218`). Never includes RmlUi headers (X11 macros `None`, `Bool` clash with RmlUi enums). The harness never presents: frames render into an engine `Framebuffer` (no swapchain pass), and the swapchain is never acquired. |
-| `TestSystem.{h,cpp}` | `class TestSystem : public System`: screen size settable; `getSokolEnvironment/Swapchain` (Vulkan: `VulkanContext::environment/swapchain`); `getAssetPath()` = `JASPER_HTMLUI_TEST_SOURCE_DIR "/fixtures"`; user data, cache = `JASPER_HTMLUI_TEST_BINARY_DIR "/userdata"`; shader path = binary dir `/shaders` (empty: the runtime compiler compiles from the embedded shaderlib, `ShaderPool.cpp:546-618`); `isUserDataLoaded()` true. |
-| `GpuEnvironment.{h,cpp}` | Lazy, once per process: `HeadlessContext`, `Engine::systemInit(argc, argv, &testSystem)`, `Engine::systemViewLoaded()`, `ShaderPool::setAsyncCompilation(false)`, an engine `Framebuffer` target set with `Engine::setFramebuffer`. API: `static void ensure()`; `static void setView(int screenW, int screenH, int canvasW, int canvasH, Scaling)` (resizes target, `Engine::setCanvasSize`, `setScalingMode`, `systemViewChanged`); `static bool runFrames(std::function<bool()> ready, int maxFrames = 300)` (calls `Engine::systemDraw()` until `ready()` then 2 more frames); `static Framebuffer& target()`. Shutdown in a gtest `Environment::TearDown`: `systemViewDestroyed`, `systemShutdown`. |
-| `Readback.{h,cpp}` | `bool readTexture(TextureRender& texture, int w, int h, std::vector<uint8_t>& rgba)`: GL `glGetTexImage` (as `editor/util/GraphicUtils.cpp:75-83`); Vulkan staging-buffer copy (as `GraphicUtils.cpp:86-226`) using `getVulkanImageHandler()`. Output rows top-down (offscreen targets are top-left origin on every backend; verified by the `orientation` golden). |
-| `ImageCompare.{h,cpp}` | `struct CompareOptions { int pixelThreshold = 24; double maxBadFraction = 0.0005; double maxMeanDiff = 1.0; };` `CompareResult compareWithGolden(const std::string& name, const std::vector<uint8_t>& rgba, int w, int h, const CompareOptions& = {});` loads `golden/<name>.png` (stb_image), per-pixel `d = max channel abs diff`; fails if `count(d > pixelThreshold) > maxBadFraction * pixels` or `mean(d) > maxMeanDiff` or sizes differ or golden missing. On failure writes `<binary>/htmlui-test-output/<name>.actual.png` and `<name>.diff.png` (golden at 30 % gray + red proportional to `d` where `d > pixelThreshold`). With `JASPER_HTMLUI_UPDATE_GOLDEN=1` it writes the golden instead and passes (only allowed on glcore). Macro `EXPECT_GOLDEN(name)` reads back `GpuEnvironment::target()` and compares. |
-| `RecordingRenderInterface.{h,cpp}` | CPU-only `Rml::RenderInterface` for tests without a GPU: stores compiled geometry, generated textures (pixels), and the draw list of a frame. Used by font and context tests. |
-| `SceneFixture.{h,cpp}` | Creates a `Scene` with a `CAMERA_UI` camera, background color `#1E1E1E` (opaque), sets it as the engine scene; `UIDocument addDocument(const std::string& file, int sortOrder = 0)`; `bool waitUntilLoaded()` = `runFrames` until `RenderSystem::isAllLoaded()` and `UIDocumentSystem::isAllLoaded()`; destroys the scene in the destructor. |
-| `main.cpp` (top level) | `InitGoogleTest`, adds the environment; GPU init happens only when a test calls `GpuEnvironment::ensure()`, so CPU-only suites run without a display. |
+| `HeadlessContext.{h,cpp}` | `static bool create(int w, int h)`, `destroy()`, `isCreated()`, `getBackendName()`. Opens the X display (`WindowLinux::openDisplay/create`, a window that is never mapped); GL: GLX 4.1 core context (copy of `selectVisual`/`createContext` in `engine/platform/linux/JasperEngineLinux.cpp:96-196`); Vulkan: `VulkanContext::create` with an Xlib surface (`JasperEngineLinux.cpp:203-218`). Never includes RmlUi headers (X11 macros `None`, `Bool` clash with RmlUi enums). The harness never presents: frames render into an engine `Framebuffer` (no swapchain pass), and the swapchain is never acquired. |
+| `TestSystem.{h,cpp}` | `class TestSystem : public System` (namespace `jasperengine::test`, like the whole harness): `static TestSystem& get()`; `setScreenSize(w, h)`; `getSokolEnvironment/Swapchain` (Vulkan: `VulkanContext::environment/swapchain`); `getAssetPath()` = `JASPER_HTMLUI_TEST_SOURCE_DIR "/fixtures"` (also the Lua path); user data, cache = `JASPER_HTMLUI_TEST_BINARY_DIR "/userdata"`; shader path = binary dir `/shaders` (empty: the runtime compiler compiles from the embedded shaderlib, `ShaderPool.cpp:546-618`); `isUserDataLoaded()` true. Keeps a copy of every log line: `getLogs()`, `countLogs(type, text)`, `clearLogs()` (type = `D_LOG_ERROR`/`D_LOG_WARN`/`D_LOG_VERBOSE`/`D_LOG_DEBUG`; `Log::debug` prints nothing in Release). |
+| `GpuEnvironment.{h,cpp}` | `static void initEngine(argc, argv)`: called by `main` before any test, `Engine::systemInit(argc, argv, new TestSystem)` (no GPU), so CPU-only suites get `System::instance()`, `Log` and `FileData`. `static bool ensure()`: lazily, once per process, `HeadlessContext::create`, an engine `Framebuffer` target set with `Engine::setFramebuffer`, `Engine::systemViewLoaded()`, `systemViewChanged()`, `ShaderPool::setAsyncCompilation(false)`; false (reason on stderr) without a display or device; macro `JASPER_REQUIRE_GPU()` asserts it. `static bool isReady()`; `static void setView(int screenW, int screenH, int canvasW, int canvasH, Scaling)` (screen size of the TestSystem = target size, `Engine::setCanvasSize`, `setScalingMode`, `systemViewChanged`); `static bool runFrames(std::function<bool()> ready, int maxFrames = 300)` (calls `Engine::systemDraw()` until `ready()` then 2 more frames); `static void drawFrames(int count)`; `static Framebuffer& target()`; `static void shutdown()` (`systemViewDestroyed`, `systemShutdown`, device, display), run by the gtest environment `GpuTestEnvironment::TearDown`. |
+| `Readback.{h,cpp}` | `bool readTexture(TextureRender& texture, int w, int h, std::vector<uint8_t>& rgba)`: GL `glGetTexImage` (as `editor/util/GraphicUtils.cpp:75-83`, then `sg_reset_state_cache()`); Vulkan staging-buffer copy (as `GraphicUtils.cpp:86-226`) using `getVulkanImageHandler()`. Output rows top-down (offscreen targets are top-left origin on every backend; verified by `HarnessGpuTest.ComponentUIImage` on glcore and vulkan, and by the `orientation` golden). |
+| `ImageCompare.{h,cpp}` | `struct CompareOptions { int pixelThreshold = 24; double maxBadFraction = 0.0005; double maxMeanDiff = 1.0; };` `CompareResult` (`passed`, `updated`, `message`, `maxDiff`, `meanDiff`, `badPixels`, `badFraction`, `actualPath`, `diffPath`). `CompareResult compareWithGolden(const std::string& name, const std::vector<uint8_t>& rgba, int w, int h, const CompareOptions& = {});` loads `golden/<name>.png` (stb_image), per-pixel `d = max channel abs diff` over RGBA; fails if `count(d > pixelThreshold) > maxBadFraction * pixels` or `mean(d) > maxMeanDiff` or sizes differ or golden missing. On failure writes `<binary>/htmlui-test-output/<name>.actual.png` and `<name>.diff.png` (golden at 30 % gray + red proportional to `d` where `d > pixelThreshold`; a missing golden writes the actual image only). With `JASPER_HTMLUI_UPDATE_GOLDEN=1` it writes the golden instead and passes (only allowed on glcore; fails on vulkan). Also `compareWithGoldenFile(goldenPath, outputDir, name, ...)`, `compareTargetWithGolden(name, options)` (reads back `GpuEnvironment::target()`), `readPng`, `writePng`. Macros `EXPECT_GOLDEN(name)` and `EXPECT_GOLDEN_OPTIONS(name, options)` read back `GpuEnvironment::target()` and compare. |
+| `RecordingRenderInterface.{h,cpp}` | CPU-only `Rml::RenderInterface` for tests without a GPU: stores compiled geometry (copies), generated textures (pixels), loaded textures (source; dimensions read with stb_image through `Data`, 0 when unreadable), every `LoadTexture` request, and the draw list of a frame (geometry, translation, texture, scissor, transform). `beginFrame()` clears the draw list; `getDraws()`, `getLiveGeometryCount()`, `getLiveTextureCount()`, `getCompiledGeometryTotal()`, `getGeometry(h)`, `getTexture(h)`, `getLoadRequests()`. Must outlive `Rml::Shutdown()`. Used by font and context tests. |
+| `SceneFixture.{h,cpp}` | Creates a `Scene` with a `CAMERA_UI` camera, background color `#1E1E1E` (opaque), sets it as the engine scene (removed in the destructor). `UIDocument addDocument(const std::string& file, int sortOrder = 0)`; `template<T> T& add()` for any GameObject (objects belong to the fixture; returned handles do not own their entity); `bool waitUntilLoaded(int maxFrames = 300)` = `runFrames` until `RenderSystem::isAllLoaded()` and, once a document was added, `UIDocumentSystem::isAllLoaded()` (`Scene::getSystem` of a system `Scene::init` did not register is undefined behavior in Release, so the document system is only asked when documents exist). |
+| `main.cpp` (top level) | `InitGoogleTest`, `GpuEnvironment::initEngine`, adds `GpuTestEnvironment`; GPU init happens only when a test calls `GpuEnvironment::ensure()`, so CPU-only suites run without a display. |
 
 Fixtures live in `engine/tests/htmlui/fixtures/` (asset root of the tests):
 `common/base.css` (phase-0 stand-in for the user-agent stylesheet: `body, div, p, h1, h2,
 h3, section, header, footer, ul, li, button { display: block; }`, `body { font-family:
-sans-serif; font-size: 16px; color: #ffffff; }`), images (`checker.png` 64x64,
-`alpha50.png` 32x32 red at 50 % alpha, `icon.svg`), and the HTML documents of 5.2. All
+sans-serif; font-size: 16px; color: #ffffff; }`), the shared images in `common/`
+(`checker.png` 64x64, 8 px cells white/#404040 with the top-left cell red as an orientation
+mark; `alpha50.png` 32x32 red at 50 % alpha (255,0,0,128); `icon.svg` 24x24, a #2060c0
+rounded square with a white circle), `common/foundation.html` + `common/rmlfile.txt` (the
+foundation tests), and the HTML documents of 5.2 in each package's own fixture directory. All
 documents use XML-well-formed HTML (`<html><head>...</head><body>...</body></html>`, RmlUi
 accepts any root; `<link type="text/css" href="...">` is accepted,
 `XMLNodeHandlerHead.cpp:57-62`) and RCSS syntax (colors as `#RRGGBBAA`, `border: 2px
@@ -1481,6 +1521,11 @@ accepts any root; `<link type="text/css" href="...">` is accepted,
 - `docker/linux.Dockerfile` (headless tools line 15): add `mesa-vulkan-drivers
   vulkan-tools`. Verified in the current image: after installing, lavapipe (Mesa 23.2.1,
   Vulkan 1.3.255) exposes `VK_EXT_descriptor_buffer`, which sokol's Vulkan backend needs.
+  The image also needs newer Vulkan headers: 22.04's `libvulkan-dev` is 1.3.204, which
+  lacks the `VK_EXT_descriptor_buffer` declarations sokol compiles against (1.3.235+), so no
+  Vulkan build ever compiled in this image before. A separate layer installs
+  KhronosGroup/Vulkan-Headers `v1.3.296` into `/usr/local` (found first by FindVulkan and the
+  compiler); the 1.3.204 loader stays.
 - `tools/build.sh`: new target `htmlui-tests` (uses the linux image). Env
   `HTMLUI_BACKEND=glcore|vulkan` (default glcore), `BUILD_TYPE` (default Release),
   `RUN=0` to build only, `HTMLUI_TEST_ARGS` passed to the binary (e.g.
@@ -1498,6 +1543,12 @@ accepts any root; `<link type="text/css" href="...">` is accepted,
   `editor-vulkan-install` (passes `-DGRAPHIC_BACKEND=vulkan`), so MCP tests can run a
   Vulkan editor (`JASPER_EDITOR=build/linux/editor-vulkan-install/bin/jasperengine-editor`).
   The host has lavapipe (Mesa 25.2.8).
+- sokol's Vulkan backend caps descriptor data at `_SG_VK_MAX_DESCRIPTOR_DATA_SIZE`
+  (`engine/libs/sokol/sokol_gfx.h`), 256 bytes upstream with a FIXME about llvmpipe.
+  The image's lavapipe (Mesa 23.2.1) reports 280-byte sampler, image and uniform-buffer
+  descriptors (the host's Mesa 25.2.8: 64), so every sampler and texture view failed to
+  create and textured draws were silently skipped. p0-foundation raised it to 320
+  (one-line change, commented in place).
 - Golden update: `JASPER_HTMLUI_UPDATE_GOLDEN=1 HTMLUI_TEST_ARGS=--gtest_filter=<suite>.* tools/build.sh htmlui-tests`
   (glcore only); inspect every changed PNG before committing.
 
@@ -1662,7 +1713,9 @@ refcount, re-initialise after full release), `ImageCompareTest` (identical, with
 tolerance, beyond tolerance writes actual/diff, missing golden fails, update mode),
 `HarnessGpuTest` (golden `harness_clear` = background only; golden
 `harness_component_ui` = an existing component-UI `Image` with a color at a known canvas
-rect, proving orientation, readback and compare on glcore and vulkan). Builds: linux
+rect, proving orientation, readback and compare on glcore and vulkan; golden
+`harness_component_ui_texture` = the same with `checker.png`, proving image views and
+samplers on lavapipe). Builds: linux
 editor (glcore), engine sample, web, android, htmlui-tests glcore + vulkan.
 
 #### p0-svg-bench
@@ -1777,7 +1830,9 @@ Foundation (p0-foundation):
 - `HtmlUILifecycleTest.RefCount`, `.ReinitialiseAfterRelease`,
   `.LoadFontFaceMissingFileFails`.
 - `ImageCompareTest.*` (identical, tolerance, failure artifacts, missing golden, update mode).
-- `HarnessGpuTest.Clear`, `.ComponentUIImage` (goldens `harness_clear`, `harness_component_ui`).
+- `HarnessGpuTest.Clear`, `.ComponentUIImage`, `.ComponentUITexture` (goldens `harness_clear`,
+  `harness_component_ui`, `harness_component_ui_texture`: a component-UI `Image` with
+  `common/checker.png`, proving textured draws on both backends).
 
 Render (p0-render):
 - `BlendStateTest.DefaultUnchanged` (every pipeline type's `describePipeline` equals the
@@ -1938,7 +1993,8 @@ All must hold before phase 0 is merged into `main`:
 - [ ] `engine/libs/rmlui` contains exactly the subset of 3.2.1; `FORK.md` exists with
       upstream URL, tag, commit, subset, removals and an empty patch table.
 - [ ] `rmlui` is static, `RMLUI_STATIC_LIB` public, hidden visibility on non-MSVC,
-      `-w`, linked into `jasperengine`; `nm -D build/linux/editor-install/.../libjasperengine.so | grep -c ' Rml::'` is 0.
+      `-w`, linked into `jasperengine`; `nm -D -C build/linux/editor-install/bin/libjasperengine.so | grep -c 'Rml::'` is 0
+      (demangled: the mangled `nm -D` output never contains ` Rml::`).
 - [ ] `engine/tests` is excluded from the editor install; exports never contain it.
 - [ ] Xcode workspace has `rmlui-ios`/`rmlui-macos` targets, header paths and every
       file of 3.2.6 (diff reviewed).
