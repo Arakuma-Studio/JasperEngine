@@ -6,7 +6,6 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "Input.h"
-#include "Log.h"
 #include "object/ui/UIElement.h"
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
