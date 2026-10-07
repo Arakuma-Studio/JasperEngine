@@ -21,6 +21,7 @@
 #include "math/AABB.h"
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -9174,6 +9175,16 @@ void RenderSystem::drawFramePasses(){
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
     renderReflectionProbeCapture();
+
+    // HTML UI documents draw into their own offscreen target before any camera pass, so
+    // the composite below never needs a second swapchain pass (Vulkan allows one a frame)
+    bool renderDocuments = true;
+#ifdef JASPERENGINE_EDITOR
+    // a frame drawn for the Scene view (editor overlays on) does not show documents yet (phase 1)
+    renderDocuments = rv().secondary || !drawEditorOverlays;
+#endif
+    if (renderDocuments)
+        scene->getSystem<UIDocumentSystem>()->renderOffscreen(targetViewRect());
 }
 
 // Depth passes of the shadow-casting lights into the projective and point atlases of
@@ -9952,6 +9963,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         transparentRenders.pop();
+    }
+
+    //---------Draw HTML UI documents (in front of everything, including component UI)----------
+    bool drawDocuments = isMainCamera && !pass.renderToTexture;
+#ifdef JASPERENGINE_EDITOR
+    drawDocuments = drawDocuments && !passDrawsOverlays;
+#endif
+    if (drawDocuments){
+        camera.render.applyScissor(colorPassViewport);
+        scene->getSystem<UIDocumentSystem>()->drawComposite(colorPip, isRenderingFlipped(camera));
     }
 
     camera.render.endRenderPass();
@@ -10742,6 +10763,12 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     // pipelines are baked at load: a camera needing a new one reloads the objects on
     // the next update, and until then they skip its pass
     viewPipelines |= colorPipeline(*sceneCamera, true);
+
+    // documents of a view without editor overlays (the editor's Game view) render at the
+    // view's size; the editor commits a sokol frame per view, so a Scene view frame that
+    // skipped them does not keep them from this one
+    if (!desc.editorOverlays)
+        scene->getSystem<UIDocumentSystem>()->renderOffscreen(desc.viewRect);
 
     // a scene drawn only through views does the frame's shared work here: uploads,
     // 2D shadows, probe faces and its render-to-texture cameras

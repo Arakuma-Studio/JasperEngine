@@ -14,6 +14,8 @@ namespace jasperengine{
         static void commitQueue();
         static void executeQueue();
         static void commit();
+        // frames committed so far: work that may run once per frame keys on it
+        static uint64_t getFrameCount();
         static void shutdown();
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);

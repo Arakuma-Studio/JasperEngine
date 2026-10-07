@@ -1,0 +1,20 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="render.css"/>
+    <style>
+        #red { left: 40px; top: 40px; width: 160px; height: 120px; background-color: #FF000080; }
+        #blue { left: 120px; top: 100px; width: 160px; height: 120px; background-color: #0000FF80; }
+        #group { left: 340px; top: 40px; width: 240px; height: 160px; opacity: 0.5; background-color: #ffffff; }
+        #child { position: absolute; left: 40px; top: 40px; width: 100px; height: 60px; background-color: #00ff00; }
+        #childalpha { position: absolute; left: 100px; top: 80px; width: 100px; height: 60px; background-color: #0000FF80; }
+        #onbg { left: 40px; top: 260px; width: 560px; height: 60px; background-color: #FFFFFF40; }
+    </style>
+</head>
+<body>
+    <div id="red" class="abs"/>
+    <div id="blue" class="abs"/>
+    <div id="group" class="abs"><div id="child"/><div id="childalpha"/></div>
+    <div id="onbg" class="abs"/>
+</body>
+</html>

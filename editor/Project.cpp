@@ -47,6 +47,7 @@
 #include "util/Util.h"
 
 #include "texture/Texture.h"
+#include "component/UIDocumentComponent.h"
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
@@ -2882,6 +2883,12 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+
+    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+    }
 
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing

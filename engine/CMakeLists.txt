@@ -712,14 +712,14 @@ add_subdirectory(libs/rmlui)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
-    # the editor exports for every API.
+    # the editor exports for every API, and so do the HTML UI tests (HtmlUIShaderTest)
     if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-        if(GRAPHIC_BACKEND STREQUAL "d3d11")
+        if(GRAPHIC_BACKEND STREQUAL "d3d11" OR JASPERENGINE_HTMLUI_TESTS)
             set(SHADERCOMPILER_HLSL ON CACHE BOOL "" FORCE)
         else()
             set(SHADERCOMPILER_HLSL OFF CACHE BOOL "" FORCE)
         endif()
-        if(GRAPHIC_BACKEND STREQUAL "metal")
+        if(GRAPHIC_BACKEND STREQUAL "metal" OR JASPERENGINE_HTMLUI_TESTS)
             set(SHADERCOMPILER_MSL ON CACHE BOOL "" FORCE)
         else()
             set(SHADERCOMPILER_MSL OFF CACHE BOOL "" FORCE)

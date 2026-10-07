@@ -132,9 +132,15 @@ Engine::systemDraw                                   engine/core/Engine.cpp:1131
 ```
 
 `RenderSystem::drawView` (editor views, `RenderSystem.cpp:10730`) calls `drawFramePasses()`
-once per frame (`frameDrawn` guard, `:10748`) and then `renderCameraPass`, so the same two
-hooks cover the editor's Game view. Documents are not drawn when the pass draws editor
-overlays (Scene view); that is phase 1.
+once per frame (`frameDrawn` guard, `:10748`) and then `renderCameraPass`. That alone does
+not cover the editor's edit-mode Game view: the Scene view's `systemDraw` runs
+`drawFramePasses()` first, with editor overlays on, so it skips the documents, and the Game
+view's `drawView` then finds the frame drawn. So `drawView` also calls
+`renderOffscreen(desc.viewRect)` for a view without editor overlays (3.5.5); the editor
+commits a sokol frame per view (`Engine::drawView`), and `HtmlUIContext::render` runs at most
+once per sokol frame (`SystemRender::getFrameCount`), so the stream buffers still take one
+update a frame. Documents are not drawn when the pass draws editor overlays (Scene view);
+that is phase 1.
 
 Ownership of the new code (names used in section 4):
 
@@ -566,9 +572,13 @@ in vec2 a_position;
 in vec4 a_color;
 #ifdef HAS_TEXTURE
     in vec2 a_texcoord1;
+#endif
+
+// varyings in the same order in both stages: their locations follow declaration order
+out vec4 v_color;
+#ifdef HAS_TEXTURE
     out vec2 v_uv1;
 #endif
-out vec4 v_color;
 
 void main() {
     v_color = a_color;
@@ -589,9 +599,9 @@ void main() {
 // color targets store sRGB-encoded values, so blending happens in sRGB space like a browser.
 in vec4 v_color;
 #ifdef HAS_TEXTURE
+    in vec2 v_uv1;
     uniform texture2D u_htmluiTexture;
     uniform sampler u_htmlui_smp;
-    in vec2 v_uv1;
 #endif
 out vec4 g_finalColor;
 
@@ -621,6 +631,11 @@ Indices: `int` from RmlUi -> `AttributeDataType::UNSIGNED_INT` (uint32 index buf
 core in GLES3/WebGL2).
 
 Blend: `BlendState::premultipliedAlpha()` on every HTML UI pipeline.
+
+Varyings: the stages declare them in the same order (`v_color`, then `v_uv1`). The sources
+have no `layout(location)`; glslang numbers varyings in declaration order, so a different
+order per stage links `v_uv1` to `v_color` on GL (found by p0-render: the textured variant
+failed to link).
 
 #### 3.4.4 Test accessor
 
@@ -687,14 +702,24 @@ namespace jasperengine {
         static Rect toTargetScissor(Rml::Rectanglei region, Rml::Vector2i contextSize,
                                     Rml::Vector2i targetSize, bool openGLFlipped);
 
+        // beginFrame ran in that frame (SystemRender::getFrameCount); HtmlUIContext::render
+        // renders at most once per sokol frame
+        bool hasFrame(uint64_t frame) const;
+
         // test statistics
         size_t getLiveGeometryCount() const;
         size_t getLiveTextureCount() const;
         size_t getLastFrameDrawCount() const;
         size_t getVertexCapacity() const;
+        TextureRender* getTextureRender(Rml::TextureHandle texture) const;   // nullptr when unknown or dead
+        // sokol ids of every buffer and image the renderer owns (leak tests)
+        void getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint32_t>& images) const;
     };
 }
 ```
+
+`SystemRender::getFrameCount()` (new, render abstraction): sokol frames committed so far,
+incremented by `SystemRender::commit()`.
 
 Internal types (in the `.cpp`):
 
@@ -759,7 +784,8 @@ Behavior:
 - `loadPipelines`: `ShaderPool::get(ShaderType::HTMLUI, getHtmlUIProperties(false))` and
   `(true)`; if either `!isCreated()` return false (retry next frame; build failure is
   logged by ShaderPool). Creates (once, recreated when buffers grow):
-  - two STREAM buffers via `BufferRender::createBuffer(size, nullptr, VERTEX_BUFFER|INDEX_BUFFER, BufferUsage::STREAM)`;
+  - two STREAM buffers via `BufferRender::createBuffer(size, nullptr, VERTEX_BUFFER, BufferUsage::STREAM)`
+    and `(..., INDEX_BUFFER, ...)`;
     initial capacity 16384 vertices / 49152 indices, doubled until the frame fits;
   - `ObjectRender colorObject, texturedObject`: `beginLoad(TRIANGLES)`, `setShader`,
     three `addAttribute(shaderData.getAttrIndex(...), &vertexBuffer, ..., stride 20, offset, normalized, false)`
@@ -821,7 +847,7 @@ namespace jasperengine {
         bool render(const Rect& viewRect);
         // inside the camera pass; nothing when the last render() did not draw
         void composite(PipelineType colorPipeline, bool flipY);
-        void releaseGpuResources();      // target + renderer->releaseGpuResources()
+        void releaseGpuResources();      // Rml::ReleaseTextures(renderer) + renderer->releaseGpuResources() + target
         bool hasRenderedFrame() const;   // at least one successful render() since (re)creation
         float getPixelRatio() const;
         FramebufferRender* getTarget();  // tests (readback of the document layer)
@@ -853,6 +879,15 @@ namespace jasperengine {
 4. `renderer->beginFrame(dimensions, targetSize)`; `context->Render()`;
    `renderedThisFrame = renderer->endFrame(target, pass)`; set `renderedOnce` when true.
 5. Return `renderedThisFrame`.
+
+Step 0: if the renderer already began a frame in this sokol frame
+(`renderer->hasFrame(SystemRender::getFrameCount())`), return the previous result; an
+editor view after the frame's own passes (3.1) must not update the stream buffers twice.
+
+`releaseGpuResources()`: `Rml::ReleaseTextures(renderer)` first (while RmlUi is initialised),
+so RmlUi drops its file and callback texture handles and loads them again when it draws
+next (compiled geometry is CPU-only and survives), then `renderer->releaseGpuResources()`
+and the target.
 
 `composite(colorPipeline, flipY)`: if `!renderedThisFrame` return. Map
 `PIP_DEFAULT`/`PIP_DEFAULT_NODEPTH` -> `PIP_DEFAULT_NODEPTH`, every `PIP_RTT*` ->
@@ -909,6 +944,11 @@ not by the quad.
   }
   ```
   `colorPip` is the pass's pipeline (`:9638`), `isRenderingFlipped` at `:7764`.
+- In `drawView`, before the `if (!frameDrawn)` block (found by p0-render, see 3.1):
+  ```cpp
+  if (!desc.editorOverlays)
+      scene->getSystem<UIDocumentSystem>()->renderOffscreen(desc.viewRect);
+  ```
 
 Vulkan: the offscreen pass in `drawFramePasses` targets the context's own framebuffer;
 the composite is a draw inside the camera's existing pass. Stacked scenes on Vulkan
@@ -1753,18 +1793,27 @@ Owns: `RmlRenderer.{h,cpp}`, `HtmlUIContextRender.cpp`, `engine/shaderlib/htmlui
 `engine/tests/htmlui/fixtures/render/**`.
 
 Touches additively: `Render.h` (BlendState, `HTMLUI`), `ObjectRender.{h,cpp}`,
-`SokolObject.{h,cpp}`, `ShaderVariantCompiler.cpp`, `ShaderPool.{h,cpp}`,
-`CoreClassesLua.cpp`, `RenderSystem.cpp` (include + the two hooks of 3.5.5),
-`editor/window/dialog/ExportWindow.cpp`, `editor/shader/ShaderVariantCollector.cpp`,
-`editor/Project.cpp` (shader key lines only).
+`SokolObject.{h,cpp}`, `SystemRender.{h,cpp}` (`getFrameCount`), `ShaderVariantCompiler.cpp`,
+`ShaderPool.{h,cpp}`, `CoreClassesLua.cpp`, `RenderSystem.cpp` (include + the three hooks of
+3.5.5), `editor/window/dialog/ExportWindow.cpp`, `editor/shader/ShaderVariantCollector.cpp`,
+`editor/Project.cpp` (shader key lines only; both ask
+`EntityRegistry::isComponentRegistered<UIDocumentComponent>()` first, a new accessor in
+`EntityRegistry.h`/`ComponentManager.h`, so saving never throws whatever the merge order of
+p0-render and p0-ecs), `Scene.cpp` (the `UIDocumentSystem`
+registration line of p0-ecs, identical, so the hooks resolve before p0-ecs lands),
+`engine/CMakeLists.txt` (the test build includes SPIRV-Cross's HLSL and MSL back ends for
+`HtmlUIShaderTest`; a standalone game build keeps only its own).
 
 Dependencies: uses `HtmlUI` (final from p0-foundation) and the skeleton
 `RmlFontEngine` (no text in its fixtures). Its tests do not depend on p0-ecs: a test
 helper `RenderTestContext` (`engine/tests/htmlui/TestRenderCommon.h`) creates an
 `Rml::Context` with an `RmlRenderer` and its own `FramebufferRender` target, and
 `renderFrame()` runs exactly the sequence of `HtmlUIContext::render` (3.5.3):
-`beginFrame`, `Context::Update`, `Context::Render`, `endFrame`, then
-`SystemRender::commit()` (one sokol frame per call). Goldens read that target back.
+`RuntimeShaderCompiler::beginFrame()` (what `Engine::systemDraw` does: without it the main
+thread compiles only one variant ever), `beginFrame`, `Context::Update`, `Context::Render`,
+`endFrame`, then `drawComposite` of that layer into an opaque #1E1E1E "screen" target, then
+`SystemRender::commit()` (one sokol frame per call). Goldens read the screen back (so they
+are opaque and also cover the composite); tests read the layer for premultiplied values.
 `HtmlUIContextRender.cpp` itself is that same thin sequence plus the composite; it is
 exercised end to end by the wave-3 goldens.
 
@@ -1862,14 +1911,21 @@ Render (p0-render):
   `htmlui` parses, `getShaderTypeName`, property name `Tex`.
 - `RmlRendererTest.ScissorConversion` (table: identity, scaled 2x, GL flipped vs not,
   clamping, empty rect), `.GeometryLifetime` (compile/release counts), `.RenderOutsideFrameIgnored`,
-  `.LoadTexturePremultiplies` (alpha50.png read back from the texture: (128,0,0,128) ±1),
+  `.GeometryLifetimeThroughContext` (a document's geometry goes back on unload),
+  `.LoadTexturePremultiplies` (alpha50.png drawn 1:1 into the layer, read back: (128,0,0,128)
+  ±1; a sampled texture cannot be read back on Vulkan, only attachments carry TRANSFER_SRC),
   `.LoadTextureMissingReturnsZero` (+ one error logged), `.LoadTextureSvg`,
   `.GenerateTexture`, `.ReleaseDuringFrameIsDeferred` (texture alive until endFrame,
   destroyed after), `.BufferGrowth` (5000 elements: capacity grows, frame correct),
   `.WaitsForShaders` (endFrame false until pipelines exist, no crash),
   `.NoLeaksAfterContextDestroy` (live geometry/texture counts 0, sokol buffer/image
-  handles invalid), `.ViewLossAndRecovery` (`releaseGpuResources` then render again
-  produces the same golden).
+  handles invalid), `.ViewLossAndRecovery` (`Rml::ReleaseTextures` + `releaseGpuResources`
+  then render again produces the same golden), `.DeadTextureHandlesAreFreed` (a dead
+  handle is skipped by draws and freed by `ReleaseTexture`). `BlendStateTest
+  .CustomFactorsAndOperations` (every factor/operation maps to sokol's).
+  `RmlRendererGoldenTest.*` (one per golden of 5.2, each also probing the pixels its
+  fixture defines, no `[HTML UI]` warning or error logged) and `.ResolutionScaling` (640x360
+  document into a 1280x720 target: sharp edges and scissor at 2x).
 
 Font (p0-font):
 - `STBTextCharacterizationTest.LatinLine`, `.ArabicShapingBidi`, `.MultilineWrap`,
@@ -1930,7 +1986,7 @@ Renderer-level (p0-render, `golden/render_*.png`, `RenderTestContext`, no text):
 | `render_flex` | flex row/column, `justify-content` (start/center/space-between), `align-items`, `gap`, `flex-grow`, `flex-wrap` |
 | `render_images` | `<img>` of `checker.png` at 1x and scaled 2.5x, `alpha50.png` over white (expect (255,128,128) ±2), `decorator: image(checker.png)`, `icon.svg` |
 | `render_alpha` | overlapping `#FF000080`, `#0000FF80` boxes, `opacity: 0.5` subtree, composite over the background |
-| `render_scissor` | `overflow: hidden` containers clipping children, nested clips, scrolled container (`SetScrollTop` from test code) |
+| `render_scissor` | `overflow: hidden` containers clipping children, nested clips, scrolled container (`SetScrollTop` from test code). The clipped children are in normal flow: RmlUi 6.3 clips only when the content overflows the element's scrollable area, and an absolutely positioned child does not add to it |
 | `render_transform` | `transform: rotate(15deg)`, `scale(1.5)`, `translate`, perspective on a box (no clipping) |
 | `render_many` | 5000 small boxes (buffer growth) |
 
