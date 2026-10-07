@@ -67,7 +67,6 @@ local InputProbe = {
         { name = "scrolls", type = "int", default = 0 },
         { name = "touches", type = "int", default = 0 },
         { name = "clicks", type = "int", default = 0 },
-        { name = "luaApi", type = "string", default = "" },
     }
 }
 
@@ -80,18 +79,15 @@ function InputProbe:init()
 end
 
 -- the element API arrives with p1-lua: a click listener on the button when it is there
-function InputProbe:update()
-    if self.luaApi ~= "" then return end
-    if UIDocument == nil then
-        self.luaApi = "absent"
-        return
-    end
+-- (called through eval_lua once the document is loaded)
+function InputProbe:attach()
+    if UIDocument == nil then return "absent" end
     local ok, err = pcall(function()
         local doc = UIDocument(self.scene, self.entity)
-        if not doc:isLoaded() then error("not loaded") end
         doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
     end)
-    if ok then self.luaApi = "listening" elseif not tostring(err):find("not loaded") then self.luaApi = "error: " .. tostring(err) end
+    if ok then return "listening" end
+    return "error: " .. tostring(err)
 end
 
 function InputProbe:onMouseDown(button, x, y, mods) self.downs = self.downs + 1 end
@@ -247,7 +243,7 @@ async def test_setup_and_play(ed: Editor):
     started = await ed.call("play", action="start", scene=S["scene"])
     ed.check(started, "play started")
     await send(ed, {"type": "wait", "frames": 3})
-    api = await probe(ed, "luaApi")
+    api = (await ed.call("eval_lua", code="return script('Menu', 'InputProbe'):attach()"))["values"][0]
     ed.check(api in ("absent", "listening"), f"the probe script's element API check: {api!r}")
     S["luaApi"] = api
 
