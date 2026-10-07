@@ -63,6 +63,12 @@ public:
 	/// Returns true if the event is still immediate propagating.
 	bool IsImmediatePropagating() const;
 
+	/// Prevents the default action of the event (DOM preventDefault): the elements' default actions are skipped, and
+	/// the dispatch reports the event as consumed. Unlike StopPropagation, the event keeps propagating to listeners.
+	void PreventDefault();
+	/// Returns true if PreventDefault() was called on the event.
+	bool IsDefaultPrevented() const;
+
 	/// Checks if the event is of a certain type.
 	/// @param type The name of the type to check for.
 	/// @return True if the event is of the requested type, false otherwise.
@@ -107,6 +113,7 @@ private:
 
 	bool interrupted = false;
 	bool interrupted_immediate = false;
+	bool default_prevented = false;
 
 	bool has_mouse_position = false;
 	Vector2f mouse_screen_position = Vector2f(0, 0);

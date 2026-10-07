@@ -56,9 +56,11 @@ public:
 	/// @param[in] interruptible Can the event propagation be stopped
 	/// @param[in] bubbles True if the event should execute the bubble phase
 	/// @param[in] default_action_phase The phases to execute default actions in
-	/// @return True if the event was not consumed (ie, was prevented from propagating by an element), false if it was.
+	/// @param[out] default_prevented Set to whether a listener prevented the event's default action (if not null)
+	/// @return True if the event was not consumed (ie, was prevented from propagating, or had its default action prevented, by an
+	/// element), false if it was.
 	static bool DispatchEvent(Element* target_element, EventId id, const String& type, const Dictionary& parameters, bool interruptible, bool bubbles,
-		DefaultActionPhase default_action_phase);
+		DefaultActionPhase default_action_phase, bool* default_prevented = nullptr);
 
 	/// Returns event types with number of listeners for debugging.
 	/// @return Summary of attached listeners.
