@@ -1416,7 +1416,7 @@ namespace {
         std::vector<UIDocumentSystem*> systems;
         for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
             if (canSendDocumentEvents(*it))
-                systems.push_back((*it)->getSystem<UIDocumentSystem>());
+                systems.push_back((*it)->getSystem<UIDocumentSystem>().get());
         }
         return systems;
     }
@@ -1426,7 +1426,7 @@ namespace {
         for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
             if (!canSendDocumentEvents(*it))
                 continue;
-            if (event((*it)->getSystem<UIDocumentSystem>()))
+            if (event((*it)->getSystem<UIDocumentSystem>().get()))
                 return *it;
         }
         return nullptr;
@@ -1441,7 +1441,7 @@ namespace {
         for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
             if ((*it)->getEnableUIEvents() == UIEventState::DISABLED)
                 continue;
-            UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>();
+            UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>().get();
             if (consumed && !documents->hasPointerCapture(pointer, button, touch))
                 continue;
             if (event(documents))

@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "Log.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
@@ -79,8 +80,9 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     textInputHandler->setContext(context);
     // the caret area: context pixels to canvas pixels (texture contexts set their own mapper)
     textInputHandler->setCanvasMapper([this](const Rect& area){
-        const float scaleX = (dimensions.x > 0) ? (float)Engine::getCanvasWidth() / (float)dimensions.x : 1.0f;
-        const float scaleY = (dimensions.y > 0) ? (float)Engine::getCanvasHeight() / (float)dimensions.y : 1.0f;
+        const Rml::Vector2i size = this->dimensions;
+        const float scaleX = (size.x > 0) ? (float)Engine::getCanvasWidth() / (float)size.x : 1.0f;
+        const float scaleY = (size.y > 0) ? (float)Engine::getCanvasHeight() / (float)size.y : 1.0f;
         return Rect(area.getX() * scaleX, area.getY() * scaleY, area.getWidth() * scaleX, area.getHeight() * scaleY);
     });
 

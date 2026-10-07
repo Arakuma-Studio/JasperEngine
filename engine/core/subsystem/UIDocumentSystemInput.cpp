@@ -14,6 +14,7 @@
 #include "htmlui/RmlTextInputHandler.h"
 #include "util/StringUtils.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -275,11 +276,13 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
         // false: propagation was stopped (a text field handling the key) or the default prevented
         const bool propagated = rmlContext->ProcessKeyDown(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
 
-        if (focus && !propagated)
+        if (isTextControl(focus, true)){
+            // a text field takes every key but Escape and the function keys. RmlUi's text
+            // widget stops the propagation of every key it sees, so that cannot tell here
+            consumed = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+        }else if (focus && !propagated){
             consumed = true;
-        // a text field takes every key but Escape and the function keys
-        if (isTextControl(focus, true) && key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25))
-            consumed = true;
+        }
     }
 
     if (key >= 0 && key <= D_KEY_LAST)
