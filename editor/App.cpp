@@ -2498,8 +2498,12 @@ void editor::App::engineRender(){
             // isAllLoaded skips empty UIs, and an image builds its geometry only once its texture loads
             auto us = sp.scene->getSystem<UISystem>();
             if (us && us->hasPendingImages()) active = true;
-            // HTML documents (and their shaders) loading, until one frame shows them
-            if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;
+            // HTML documents (and their shaders) loading, until one frame shows them; only a
+            // Game view frame does (the Scene view does not draw documents yet), so without
+            // one, redrawing would never end
+            if (gameWindow->wantsEditPass(sp.id) || gameWindow->hostsScene(sp.id)) {
+                if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;
+            }
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             gaugeAnimating = sp.sceneRender->getUILayer()->isCameraGaugeAnimating();
             if (thumbnailsPending) active = true;
