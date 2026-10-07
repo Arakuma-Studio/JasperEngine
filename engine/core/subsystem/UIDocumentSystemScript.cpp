@@ -347,6 +347,10 @@ void HtmlUIScriptState::afterUpdate(){
         }
     }
 
+    fireNotifications();
+}
+
+void HtmlUIScriptState::fireNotifications(){
     // onUnload/onLoad, in the order they happened
     std::vector<Notification> pending = std::move(notifications);
     notifications.clear();
@@ -423,6 +427,9 @@ void UIDocumentSystem::scriptLoadDocuments(){
     }
     for (Entity entity : entities){
         loadDocumentNow(entity);
+    }
+    if (scriptState){
+        scriptState->fireNotifications();
     }
 }
 

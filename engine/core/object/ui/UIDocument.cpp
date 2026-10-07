@@ -22,8 +22,10 @@ namespace {
         Rml::ElementDocument* document = system->getDocument(entity);
         if (!document){
             const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
-            if (component && component->needReload && !component->filename.empty() && system->loadDocumentNow(entity))
+            if (component && component->needReload && !component->filename.empty() && system->loadDocumentNow(entity)){
                 document = system->getDocument(entity);
+                system->getScriptState().fireNotifications();
+            }
         }
         return document;
     }
@@ -59,7 +61,11 @@ bool UIDocument::load(const std::string& filename){
     document.filename = filename;
     document.needReload = true;
 
-    return scene->getSystem<UIDocumentSystem>()->loadDocumentNow(entity);
+    UIDocumentSystem* system = scene->getSystem<UIDocumentSystem>().get();
+    const bool loaded = system->loadDocumentNow(entity);
+    // onUnload/onLoad of this load run now, as the load event of a browser
+    system->getScriptState().fireNotifications();
+    return loaded;
 }
 
 void UIDocument::reload(){

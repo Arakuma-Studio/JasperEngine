@@ -72,6 +72,10 @@ namespace {
         return out;
     }
 
+    bool isStyleMethod(const std::string& name){
+        return name == "getPropertyValue" || name == "setProperty" || name == "removeProperty";
+    }
+
     std::string describeElement(const UIElement& element){
         if (!element.isValid())
             return "UIElement(invalid)";
@@ -960,7 +964,9 @@ namespace {
                     const bool ok = toValueImpl(L, -1, item, error, depth + 1);
                     lua_pop(L, 1);
                     if (!ok){
-                        error = "'" + key + "': " + error;
+                        // the key that holds the bad value, once
+                        if (depth == 0)
+                            error = "'" + key + "': " + error;
                         return false;
                     }
                     out[key] = std::move(item);
@@ -1273,8 +1279,9 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             self->element.removeStyle(cssName(name));
             return old;
         })
+        // (LuaBridge asks the fallback first: nil for the method names lets it find them)
         .addIndexMetaMethod([](UIStyle& self, const luabridge::LuaRef& key, lua_State* L) -> luabridge::LuaRef {
-            if (!key.isString())
+            if (!key.isString() || isStyleMethod(key.unsafe_cast<std::string>()))
                 return luabridge::LuaRef(L);
             return luabridge::LuaRef(L, self.element.getStyle(cssName(key.unsafe_cast<std::string>())));
         })

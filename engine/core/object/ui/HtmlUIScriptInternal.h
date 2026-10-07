@@ -159,6 +159,9 @@ namespace jasperengine{
 
         // after the context update: data-value writes (onChange), then onUnload/onLoad
         void afterUpdate();
+        // onUnload/onLoad queued so far (also right after a synchronous load: the scene's load,
+        // UIDocument::load, so an init that runs after it is not called back for that load)
+        void fireNotifications();
 
         static UIDataModel makeHandle(HtmlUIDataModelRecord* record);
         // Lua references held by listeners, data-model events and onChange callbacks (tests)

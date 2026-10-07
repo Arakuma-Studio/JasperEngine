@@ -17,6 +17,10 @@ namespace {
 
     class ScriptLuaTest : public ScriptTest {};
 
+    bool endsWith(const std::string& text, const std::string& end){
+        return text.size() >= end.size() && text.compare(text.size() - end.size(), end.size(), end) == 0;
+    }
+
 }
 
 TEST_F(ScriptLuaTest, ElementProperties){
@@ -375,15 +379,16 @@ TEST_F(ScriptLuaTest, DeadHandlesRaise){
     ASSERT_TRUE(document->load("ecs/basic.html"));
     setDocumentGlobal();
 
-    const std::string message = kHtmlUIDeadElementMessage;
+    // the message, after the location of the Lua line
+    #define EXPECT_DEAD(code) { const std::string error = code; EXPECT_TRUE(endsWith(error, kHtmlUIDeadElementMessage)) << error; }
     EXPECT_LUA("assert(el:isValid() == false)");
-    EXPECT_EQ(lua("return el.id"), message);
-    EXPECT_EQ(lua("el.id = 'x'"), message);
-    EXPECT_EQ(lua("el:getAttribute('id')"), message);
-    EXPECT_EQ(lua("el:appendChild(doc:getElementById('box'))"), message);
-    EXPECT_EQ(lua("return result.width"), message);
-    EXPECT_EQ(lua("result.width = '1px'"), message);
-    EXPECT_EQ(lua("model:add('x')"), message);
+    EXPECT_DEAD(lua("return el.id"));
+    EXPECT_DEAD(lua("el.id = 'x'"));
+    EXPECT_DEAD(lua("el:getAttribute('id')"));
+    EXPECT_DEAD(lua("el:appendChild(doc:getElementById('box'))"));
+    EXPECT_DEAD(lua("return result.width"));
+    EXPECT_DEAD(lua("result.width = '1px'"));
+    EXPECT_DEAD(lua("model:add('x')"));
     // equality and tostring still work
     EXPECT_LUA("assert(el == el and tostring(el) == 'UIElement(invalid)')");
 }
