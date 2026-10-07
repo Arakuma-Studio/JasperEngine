@@ -99,8 +99,11 @@ struct CollectedListener {
 };
 
 bool EventDispatcher::DispatchEvent(Element* target_element, const EventId id, const String& type, const Dictionary& parameters,
-	const bool interruptible, const bool bubbles, const DefaultActionPhase default_action_phase)
+	const bool interruptible, const bool bubbles, const DefaultActionPhase default_action_phase, bool* default_prevented)
 {
+	if (default_prevented)
+		*default_prevented = false;
+
 	RMLUI_ASSERTMSG(!((int)default_action_phase & (int)EventPhase::Capture),
 		"We assume here that the default action phases cannot include capture phase.");
 
@@ -170,10 +173,10 @@ bool EventDispatcher::DispatchEvent(Element* target_element, const EventId id, c
 			break;
 	}
 
-	// Process the default actions.
+	// Process the default actions, unless a listener prevented them.
 	for (auto& element_ptr : default_action_elements)
 	{
-		if (!event->IsPropagating())
+		if (!event->IsPropagating() || event->IsDefaultPrevented())
 			break;
 
 		if (Element* element = element_ptr.get())
@@ -184,7 +187,10 @@ bool EventDispatcher::DispatchEvent(Element* target_element, const EventId id, c
 		}
 	}
 
-	bool propagating = event->IsPropagating();
+	// A prevented event counts as consumed, like a stopped one.
+	if (default_prevented)
+		*default_prevented = event->IsDefaultPrevented();
+	bool propagating = event->IsPropagating() && !event->IsDefaultPrevented();
 
 	return propagating;
 }

@@ -1943,6 +1943,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
         add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX));
     }
+    // an HTML UI document: geometry, gradients and layer/filter passes (RmlRenderer)
+    if (scene->findComponent<UIDocumentComponent>(entity)){
+        for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            add(variant.first, variant.second, 0);
+    }
 }
 
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
@@ -9180,8 +9185,12 @@ void RenderSystem::drawFramePasses(){
     // the composite below never needs a second swapchain pass (Vulkan allows one a frame)
     bool renderDocuments = true;
 #ifdef JASPERENGINE_EDITOR
-    // a frame drawn for the Scene view (editor overlays on) does not show documents yet (phase 1)
-    renderDocuments = rv().secondary || !drawEditorOverlays;
+    // the Scene view shows documents of UI and 2D scenes (canvas in world space); a 3D
+    // scene's free camera has no canvas, its documents show in the Game view only
+    if (drawEditorOverlays && !rv().secondary){
+        CameraComponent* sceneCamera = scene->findComponent<CameraComponent>(scene->getCamera());
+        renderDocuments = sceneCamera && sceneCamera->type != CameraType::CAMERA_PERSPECTIVE;
+    }
 #endif
     if (renderDocuments)
         scene->getSystem<UIDocumentSystem>()->renderOffscreen(targetViewRect());
@@ -9966,13 +9975,15 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
+    // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
+    // 3D camera fills its viewport, in the game camera only
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
 #ifdef JASPERENGINE_EDITOR
-    drawDocuments = drawDocuments && !passDrawsOverlays;
+    drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
 #endif
     if (drawDocuments){
         camera.render.applyScissor(colorPassViewport);
-        scene->getSystem<UIDocumentSystem>()->drawComposite(colorPip, isRenderingFlipped(camera));
+        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera));
     }
 
     camera.render.endRenderPass();

@@ -4,10 +4,11 @@
 #ifndef HTMLUI_TEST_RENDER_COMMON_H
 #define HTMLUI_TEST_RENDER_COMMON_H
 
-// RenderTestContext: an Rml::Context drawn by an RmlRenderer into its own target, without
-// scenes or the ECS. renderFrame() is the sequence of HtmlUIContext::render (beginFrame,
-// Context::Update, Context::Render, endFrame), then the composite of that layer over an
-// opaque #1E1E1E "screen" target, then SystemRender::commit(): one sokol frame per call.
+// RenderTestContext: an Rml::Context drawn by an RmlRenderer into its own RmlRenderTarget
+// (layers with the given MSAA sample count), without scenes or the ECS. renderFrame() is the
+// sequence of HtmlUIContext::render (beginFrame, Context::Update, Context::Render, endFrame),
+// then the composite of layer 0 over an opaque #1E1E1E "screen" target, then
+// SystemRender::commit(): one sokol frame per call.
 
 #include "harness/GpuEnvironment.h"
 #include "harness/ImageCompare.h"
@@ -45,7 +46,7 @@ namespace jasperengine { namespace test {
         static constexpr int background = 0x1E;
 
         // target (and screen) size in pixels, context dimensions in document px
-        explicit RenderTestContext(int targetWidth = 640, int targetHeight = 360, int contextWidth = 0, int contextHeight = 0){
+        explicit RenderTestContext(int targetWidth = 640, int targetHeight = 360, int contextWidth = 0, int contextHeight = 0, int sampleCount = 1){
             targetSize = Rml::Vector2i(targetWidth, targetHeight);
             contextSize = Rml::Vector2i(contextWidth > 0 ? contextWidth : targetWidth, contextHeight > 0 ? contextHeight : targetHeight);
 
@@ -57,8 +58,7 @@ namespace jasperengine { namespace test {
             name = "render-test-" + std::to_string(++counter);
             context = Rml::CreateContext(name, contextSize, &renderer);
 
-            target.createFramebuffer(TextureType::TEXTURE_2D, targetSize.x, targetSize.y, TextureFilter::LINEAR, TextureFilter::LINEAR,
-                                     TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false);
+            target.ensure(targetSize.x, targetSize.y, sampleCount);
             screen.createFramebuffer(TextureType::TEXTURE_2D, targetSize.x, targetSize.y, TextureFilter::LINEAR, TextureFilter::LINEAR,
                                      TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false);
         }
@@ -86,7 +86,7 @@ namespace jasperengine { namespace test {
                 Rml::ReleaseRenderManagers();
             }
             renderer.releaseGpuResources();
-            target.destroyFramebuffer();
+            target.destroy();
             screen.destroyFramebuffer();
             if (acquired){
                 HtmlUI::release();
@@ -108,24 +108,32 @@ namespace jasperengine { namespace test {
             return document;
         }
 
-        // one frame; false when the renderer dropped it (shaders not ready)
+        // one frame; false when the renderer dropped it (shaders not ready). The target is
+        // created again after a view loss, as HtmlUIContext::render does
         bool renderFrame(){
             beginTestFrame();
-            renderer.beginFrame(contextSize, targetSize);
+            if (!target.isCreated())
+                target.ensure(targetSize.x, targetSize.y, sampleCount());
+            const bool begun = renderer.beginFrame(target, contextSize);
             if (context){
                 context->Update();
-                context->Render();
+                if (begun)
+                    context->Render();
             }
-            bool drawn = renderer.endFrame(target, layerPass);
+            bool drawn = renderer.endFrame();
             if (drawn)
                 compositeToScreen();
             SystemRender::commit();
             return drawn;
         }
 
-        // frames until one is drawn (shaders compile on the first), then one more so
-        // anything loaded during the first frame is in place
-        bool renderUntilDrawn(int maxFrames = 10){
+        int sampleCount() const{
+            return target.getSampleCount();
+        }
+
+        // frames until one is drawn (the UI shader variants compile, one per frame, on the
+        // first ones), then one more so anything loaded during the first frame is in place
+        bool renderUntilDrawn(int maxFrames = 30){
             for (int i = 0; i < maxFrames; i++){
                 if (renderFrame())
                     return renderFrame();
@@ -133,9 +141,11 @@ namespace jasperengine { namespace test {
             return false;
         }
 
-        // the document layer: premultiplied RGBA, transparent where nothing was drawn
+        // the document layer (layer 0, resolved): premultiplied RGBA, transparent where
+        // nothing was drawn
         bool readLayer(std::vector<uint8_t>& rgba){
-            return readTexture(target.getColorTexture(), targetSize.x, targetSize.y, rgba);
+            FramebufferRender* layer = target.getComposited();
+            return layer && readTexture(layer->getColorTexture(), targetSize.x, targetSize.y, rgba);
         }
 
         // the layer composited over the background
@@ -155,7 +165,7 @@ namespace jasperengine { namespace test {
 
         Rml::Context* context = nullptr;
         RmlRenderer renderer;
-        FramebufferRender target;
+        RmlRenderTarget target;
         FramebufferRender screen;
         Rml::Vector2i contextSize;
         Rml::Vector2i targetSize;
@@ -169,13 +179,12 @@ namespace jasperengine { namespace test {
             screenPass.applyViewport(full);
             screenPass.applyScissor(full);
             // an offscreen camera pass renders Y-flipped on GL (RenderSystem::isRenderingFlipped)
-            renderer.drawComposite(target.getColorTexture(), PIP_RTT_NODEPTH, Engine::isOpenGL());
+            renderer.drawComposite(target.getComposited()->getColorTexture(), PIP_RTT_NODEPTH, Engine::isOpenGL());
             screenPass.endRenderPass();
         }
 
         std::string name;
         bool acquired = false;
-        CameraRender layerPass;
         CameraRender screenPass;
     };
 

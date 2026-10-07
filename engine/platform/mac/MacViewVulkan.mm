@@ -4,12 +4,18 @@
 #import "MacViewVulkan.h"
 
 #include "MacInputRouter.h"
+#include "MacTextInputClient.h"
 #include "WindowMac.h"
 
 #include <algorithm>
 
+// SystemMac reaches the text input client through the content view
+@interface MacViewVulkan () <MacTextInputView>
+@end
+
 @implementation MacViewVulkan {
     MacInputRouter* _router;
+    MacTextInputClient* _textInput;
 }
 
 - (CALayer*)makeBackingLayer { return [CAMetalLayer layer]; }
@@ -21,6 +27,7 @@
         // Or a live resize stretches the last frame until the next one lands
         self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
         _router = [[MacInputRouter alloc] initWithView:self];
+        _textInput = [[MacTextInputClient alloc] initWithView:self];
         [self updateDrawableSize];
     }
     return self;
@@ -84,17 +91,19 @@
 - (void)mouseEntered:(NSEvent*)event { [_router mouseEntered:event]; }
 - (void)mouseExited:(NSEvent*)event { [_router mouseExited:event]; }
 
-// NSTextInputClient is a view protocol, so it cannot move into the router
-- (void)insertText:(id)string replacementRange:(NSRange)range { (void)range; [_router insertText:string]; }
+// NSTextInputClient is a view protocol, so it cannot move into the router or the
+// text input client; the view only forwards
+- (MacTextInputClient*)engineTextInputClient { return _textInput; }
+- (void)insertText:(id)string replacementRange:(NSRange)range { [_textInput insertText:string replacementRange:range]; }
 - (void)doCommandBySelector:(SEL)selector { [_router doCommandBySelector:selector]; }
-- (void)setMarkedText:(id)string selectedRange:(NSRange)selected replacementRange:(NSRange)replacement { (void)string; (void)selected; (void)replacement; }
-- (void)unmarkText {}
-- (NSRange)selectedRange { return NSMakeRange(NSNotFound, 0); }
-- (NSRange)markedRange { return NSMakeRange(NSNotFound, 0); }
-- (BOOL)hasMarkedText { return NO; }
-- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual { (void)range; (void)actual; return nil; }
-- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText { return @[]; }
-- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual { (void)range; (void)actual; return NSZeroRect; }
-- (NSUInteger)characterIndexForPoint:(NSPoint)point { (void)point; return 0; }
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selected replacementRange:(NSRange)replacement { [_textInput setMarkedText:string selectedRange:selected replacementRange:replacement]; }
+- (void)unmarkText { [_textInput unmarkText]; }
+- (NSRange)selectedRange { return [_textInput selectedRange]; }
+- (NSRange)markedRange { return [_textInput markedRange]; }
+- (BOOL)hasMarkedText { return [_textInput hasMarkedText]; }
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual { return [_textInput attributedSubstringForProposedRange:range actualRange:actual]; }
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText { return [_textInput validAttributesForMarkedText]; }
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual { return [_textInput firstRectForCharacterRange:range actualRange:actual]; }
+- (NSUInteger)characterIndexForPoint:(NSPoint)point { return [_textInput characterIndexForPoint:point]; }
 
 @end

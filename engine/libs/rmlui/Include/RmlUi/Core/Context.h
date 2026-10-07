@@ -325,6 +325,9 @@ private:
 	ElementPtr root;
 	// The element that currently has input focus.
 	Element* focus;
+	// The last key down had its default action prevented: the text input it produces is dropped, as in a browser,
+	// until the next key down or key up.
+	bool suppress_text_input = false;
 	// The top-most element being hovered over.
 	Element* hover;
 	// The element that was being hovered over when the primary mouse button was pressed most recently.

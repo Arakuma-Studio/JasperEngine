@@ -351,20 +351,6 @@ Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const 
     return document;
 }
 
-void UIDocumentSystem::documentLoaded(Entity entity){
-    if (documents.find(entity) == documents.end())
-        return;
-    if (UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(entity)){
-        document->onLoad.call();
-    }
-}
-
-void UIDocumentSystem::documentUnloading(Entity entity){
-    if (UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(entity)){
-        document->onUnload.call();
-    }
-}
-
 void UIDocumentSystem::reloadContextDestroyed(){
     if (context){
         HtmlUIFileLog::forgetRenderer(&getContext()->getRenderer());
@@ -426,12 +412,12 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
     // 1. capture, by id
     const DocumentSnapshot snapshot = captureState(oldDocument, rmlContext);
 
-    documentUnloading(entity);
-
     // 2. load the new one next to the old one, which RmlUi only destroys at the next update
+    scriptDocumentLoading(component->filename);
     Rml::ElementDocument* newDocument = loadEntityDocument(entity, component->filename);
     if (!newDocument){
         // the old document goes too, as with a plain load of a broken file
+        scriptDocumentUnloading(entity, oldDocument);
         getContext()->unloadDocument(oldDocument);
         documents.erase(it);
         component->loaded = false;
@@ -453,6 +439,8 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
     }
     scriptDocumentReloaded(entity, oldToNew);
 
+    // the old document's handles, detached elements and onUnload go with it
+    scriptDocumentUnloading(entity, oldDocument);
     getContext()->unloadDocument(oldDocument);
     documents[entity] = newDocument;
     component->loaded = true;
@@ -476,8 +464,8 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
     restoreScrollAndFocus(newDocument, snapshot);
     getContext()->update();
 
-    // 5. notify
-    documentLoaded(entity);
+    // 5. notify: onUnload then onLoad, fired at the end of the next update
+    scriptDocumentLoaded(entity);
 }
 
 void UIDocumentSystem::reloadStyleSheets(Entity entity){

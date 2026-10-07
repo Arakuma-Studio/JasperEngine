@@ -3567,7 +3567,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      transmission adds foliageTransmission to u_fs_pbrParams.
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v29";
+    // v30: HTML UI gradient and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v30";
 }
 
 void editor::App::pushTabNotificationStyle(){

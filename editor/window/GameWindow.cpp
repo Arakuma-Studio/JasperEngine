@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -538,28 +539,36 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         }
 
         if (settings.showStats) {
-            drawStats(areaMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y));
+            drawStats(areaMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y), sceneProject);
         }
     }
     ImGui::EndChild();
 }
 
-void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax) {
+void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject) {
     const Engine::FrameStats& frameStats = Engine::getFrameStats();
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[4][96];
+    char lines[5][96];
+    int lineCount = 4;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
+    // the scene's HTML UI documents (their offscreen passes are not in the counters above)
+    UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
+    if (documents && documents->hasDocuments()) {
+        const HtmlUIRenderStats& ui = documents->getRenderStats();
+        snprintf(lines[4], sizeof(lines[4]), "HTML UI: %u passes, %u draws, %u pipelines", ui.passes, ui.drawCalls, ui.pipelineApplies);
+        lineCount = 5;
+    }
 
     float boxWidth = 0.0f;
-    for (const char* line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line).x);
+    for (int i = 0; i < lineCount; i++) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(lines[i]).x);
     const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * 4.0f + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
+    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * (float)lineCount + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
 
     const float margin = Theme::dpi(8.0f);
     ImVec2 boxMin(imageMax.x - boxSize.x - margin, imageMin.y + margin);
@@ -567,7 +576,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax) {
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(boxMin, ImVec2(boxMin.x + boxSize.x, boxMin.y + boxSize.y), IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < lineCount; i++) {
         const ImU32 color = i == 0 ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
         drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * i), color, lines[i]);
     }

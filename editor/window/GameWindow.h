@@ -52,7 +52,7 @@ namespace jasperengine::editor {
         void saveSettings();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
-        void drawStats(ImVec2 imageMin, ImVec2 imageMax);
+        void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;
         uint32_t getTargetSceneId() const;
 

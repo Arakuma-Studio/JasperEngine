@@ -1,0 +1,16 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G23: text at opacity .5 over a gradient (premultiplied blending) */
+        #gradient { left: 20px; top: 40px; width: 470px; height: 200px; decorator: linear-gradient(90deg, #ff0000, #0000ff); }
+        #text { position: absolute; left: 20px; top: 40px; width: 440px; font-size: 64px; color: #ffffff; opacity: 0.5; }
+        #solid { left: 20px; top: 280px; width: 200px; height: 60px; background-color: #ffffff; opacity: 0.5; }
+    </style>
+</head>
+<body>
+    <div id="gradient" class="abs"><div id="text">Halfway</div></div>
+    <div id="solid" class="abs"/>
+</body>
+</html>

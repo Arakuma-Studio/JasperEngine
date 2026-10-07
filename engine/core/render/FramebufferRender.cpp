@@ -37,6 +37,13 @@ bool FramebufferRender::createFramebufferMRT(int width, int height, TextureFilte
         return false;
 }
 
+bool FramebufferRender::createFramebuffer(const FramebufferDesc& desc){
+    if (Engine::isViewLoaded() && !isCreated())
+        return backend.createFramebuffer(desc);
+    else
+        return false;
+}
+
 void FramebufferRender::destroyFramebuffer(){
     backend.destroyFramebuffer();
 }
@@ -55,6 +62,10 @@ TextureRender& FramebufferRender::getColorAttachmentTexture(int index){
 
 int FramebufferRender::getNumColorAttachments() const{
     return backend.getNumColorAttachments();
+}
+
+int FramebufferRender::getSampleCount() const{
+    return backend.getSampleCount();
 }
 
 TextureRender& FramebufferRender::getDepthTexture(){

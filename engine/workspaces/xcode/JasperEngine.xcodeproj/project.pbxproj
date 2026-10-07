@@ -861,6 +861,8 @@
 		718FDDF92837CA9A00AF314C /* glsl330.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF32837CA9A00AF314C /* glsl330.h */; };
 		718FDDFA2837CA9A00AF314C /* hlsl5.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF42837CA9A00AF314C /* hlsl5.h */; };
 		71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
+		503152450000000000000002 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
+		503152450000000000000003 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
 		71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		71A41CB729AC3D7C006953D3 /* SokolCmdQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */; };
 		71A800032AD9A001007C91BA /* harfbuzz.cc in Sources */ = {isa = PBXBuildFile; fileRef = 71A800012AD9A001007C91BA /* harfbuzz.cc */; };
@@ -950,6 +952,7 @@
 		71C33FBD2A315918007A5822 /* Model.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E36B5325D5994100EFEED4 /* Model.cpp */; };
 		71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */; };
 		71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */; };
+		71C5A10B2F0A11B000A1B2C0 /* MacTextInputClient.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */; };
 		71CC839526B8C4D800EEBB93 /* Light.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71CC839326B8C4D800EEBB93 /* Light.cpp */; };
 		71CC839626B8C4D800EEBB93 /* Light.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71CC839326B8C4D800EEBB93 /* Light.cpp */; };
 		71CC839726B8C4D800EEBB93 /* Light.h in Headers */ = {isa = PBXBuildFile; fileRef = 71CC839426B8C4D800EEBB93 /* Light.h */; };
@@ -1337,6 +1340,18 @@
 		48544D4C0000000000000041 /* UIElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000040 /* UIElement.h */; };
 		48544D4C0000000000000043 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
 		48544D4C0000000000000044 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
+		50314C550000000000000005 /* UIEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000004 /* UIEvent.cpp */; };
+		50314C550000000000000006 /* UIEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000004 /* UIEvent.cpp */; };
+		50314C550000000000000008 /* UIDataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000007 /* UIDataModel.cpp */; };
+		50314C550000000000000009 /* UIDataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000007 /* UIDataModel.cpp */; };
+		50314C55000000000000000B /* UIValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000A /* UIValue.cpp */; };
+		50314C55000000000000000C /* UIValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000A /* UIValue.cpp */; };
+		50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000D /* HtmlUIEventListener.cpp */; };
+		50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000D /* HtmlUIEventListener.cpp */; };
+		50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
+		50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
+		50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
+		50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
 		48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000045 /* UIDocumentComponent.h */; };
 		48544D4C0000000000000049 /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
 		48544D4C000000000000004A /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
@@ -1732,6 +1747,48 @@
 		4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A1 /* HtmlUIDependencies.h */; };
 		4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
 		4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
+		414E494D4500000000000002 /* AnimAnimation.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000001 /* AnimAnimation.h */; };
+		414E494D4500000000000004 /* AnimCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000003 /* AnimCommon.h */; };
+		414E494D4500000000000006 /* AnimEasing.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000005 /* AnimEasing.h */; };
+		414E494D4500000000000008 /* AnimEngine.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000007 /* AnimEngine.h */; };
+		414E494D450000000000000A /* AnimLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000009 /* AnimLua.h */; };
+		414E494D450000000000000C /* AnimParams.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000000B /* AnimParams.h */; };
+		414E494D450000000000000E /* AnimProperty.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000000D /* AnimProperty.h */; };
+		414E494D4500000000000010 /* AnimSpring.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000000F /* AnimSpring.h */; };
+		414E494D4500000000000012 /* AnimTargets.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000011 /* AnimTargets.h */; };
+		414E494D4500000000000014 /* AnimTimeline.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000013 /* AnimTimeline.h */; };
+		414E494D4500000000000016 /* AnimTimer.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000015 /* AnimTimer.h */; };
+		414E494D4500000000000018 /* AnimUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000017 /* AnimUtils.h */; };
+		414E494D450000000000001A /* AnimValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000019 /* AnimValue.h */; };
+		414E494D450000000000001C /* Anime.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000001B /* Anime.h */; };
+		414E494D450000000000001E /* AnimAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000001D /* AnimAnimation.cpp */; };
+		414E494D450000000000001F /* AnimAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000001D /* AnimAnimation.cpp */; };
+		414E494D4500000000000021 /* AnimCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000020 /* AnimCommon.cpp */; };
+		414E494D4500000000000022 /* AnimCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000020 /* AnimCommon.cpp */; };
+		414E494D4500000000000024 /* AnimEasing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000023 /* AnimEasing.cpp */; };
+		414E494D4500000000000025 /* AnimEasing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000023 /* AnimEasing.cpp */; };
+		414E494D4500000000000027 /* AnimEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000026 /* AnimEngine.cpp */; };
+		414E494D4500000000000028 /* AnimEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000026 /* AnimEngine.cpp */; };
+		414E494D450000000000002A /* AnimParams.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000029 /* AnimParams.cpp */; };
+		414E494D450000000000002B /* AnimParams.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000029 /* AnimParams.cpp */; };
+		414E494D450000000000002D /* AnimProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000002C /* AnimProperty.cpp */; };
+		414E494D450000000000002E /* AnimProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000002C /* AnimProperty.cpp */; };
+		414E494D4500000000000030 /* AnimSpring.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000002F /* AnimSpring.cpp */; };
+		414E494D4500000000000031 /* AnimSpring.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000002F /* AnimSpring.cpp */; };
+		414E494D4500000000000033 /* AnimTargets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000032 /* AnimTargets.cpp */; };
+		414E494D4500000000000034 /* AnimTargets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000032 /* AnimTargets.cpp */; };
+		414E494D4500000000000036 /* AnimTimeline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000035 /* AnimTimeline.cpp */; };
+		414E494D4500000000000037 /* AnimTimeline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000035 /* AnimTimeline.cpp */; };
+		414E494D4500000000000039 /* AnimTimer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000038 /* AnimTimer.cpp */; };
+		414E494D450000000000003A /* AnimTimer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000038 /* AnimTimer.cpp */; };
+		414E494D450000000000003C /* AnimUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000003B /* AnimUtils.cpp */; };
+		414E494D450000000000003D /* AnimUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000003B /* AnimUtils.cpp */; };
+		414E494D450000000000003F /* AnimValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000003E /* AnimValue.cpp */; };
+		414E494D4500000000000040 /* AnimValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D450000000000003E /* AnimValue.cpp */; };
+		414E494D4500000000000042 /* Anime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000041 /* Anime.cpp */; };
+		414E494D4500000000000043 /* Anime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000041 /* Anime.cpp */; };
+		414E494D4500000000000045 /* HtmlUIAnimeLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */; };
+		414E494D4500000000000046 /* HtmlUIAnimeLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */; };
 		48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AB /* HtmlUIRenderStats.h */; };
 		48544D4C00000000000002AE /* HtmlUITexture.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AD /* HtmlUITexture.h */; };
 		48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AF /* HtmlUITexture.cpp */; };
@@ -1744,6 +1801,12 @@
 		48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
 		48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
 		48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
+		48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
+		48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D4 /* RmlKeyMap.cpp */; };
+		48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D4 /* RmlKeyMap.cpp */; };
+		48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */; };
+		48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */; };
 		48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
 		48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
 		48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */; };
@@ -2925,6 +2988,7 @@
 		718FDDF32837CA9A00AF314C /* glsl330.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glsl330.h; sourceTree = "<group>"; };
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
+		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
 		71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolCmdQueue.h; sourceTree = "<group>"; };
 		71A800012AD9A001007C91BA /* harfbuzz.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = harfbuzz.cc; sourceTree = "<group>"; };
 		71A800022AD9A001007C91BA /* hb.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hb.h; sourceTree = "<group>"; };
@@ -3402,6 +3466,9 @@
 		71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacViewMetal.h; sourceTree = "<group>"; };
 		71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacViewMetal.mm; sourceTree = "<group>"; };
 		71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyCodesMac.h; sourceTree = "<group>"; };
+		71C5A1082F0A11B000A1B2C0 /* MacTextInputClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacTextInputClient.h; sourceTree = "<group>"; };
+		71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacTextInputClient.mm; sourceTree = "<group>"; };
+		71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyCodesIOS.h; sourceTree = "<group>"; };
 		71CC839126B8C49B00EEBB93 /* SkyboxComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SkyboxComponent.h; sourceTree = "<group>"; };
 		71CC839226B8C49B00EEBB93 /* LightComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LightComponent.h; sourceTree = "<group>"; };
 		71CC839326B8C4D800EEBB93 /* Light.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Light.cpp; sourceTree = "<group>"; };
@@ -3658,6 +3725,16 @@
 		48544D4C000000000000003D /* UIDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocument.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000040 /* UIElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElement.h; sourceTree = "<group>"; };
 		48544D4C0000000000000042 /* UIElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElement.cpp; sourceTree = "<group>"; };
+		50314C550000000000000001 /* HtmlUIScriptInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIScriptInternal.h; sourceTree = "<group>"; };
+		50314C550000000000000002 /* HtmlUIEventListener.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIEventListener.h; sourceTree = "<group>"; };
+		50314C550000000000000003 /* HtmlUIValueDefinition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIValueDefinition.h; sourceTree = "<group>"; };
+		50314C550000000000000004 /* UIEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIEvent.cpp; sourceTree = "<group>"; };
+		50314C550000000000000007 /* UIDataModel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDataModel.cpp; sourceTree = "<group>"; };
+		50314C55000000000000000A /* UIValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIValue.cpp; sourceTree = "<group>"; };
+		50314C55000000000000000D /* HtmlUIEventListener.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIEventListener.cpp; sourceTree = "<group>"; };
+		50314C550000000000000010 /* HtmlUIValueDefinition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIValueDefinition.cpp; sourceTree = "<group>"; };
+		50314C550000000000000013 /* HtmlUIClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClassesLua.h; sourceTree = "<group>"; };
+		50314C550000000000000014 /* HtmlUIClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClassesLua.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000045 /* UIDocumentComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentComponent.h; sourceTree = "<group>"; };
 		48544D4C0000000000000048 /* BaseXMLParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BaseXMLParser.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000004B /* Box.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Box.cpp; sourceTree = "<group>"; };
@@ -3858,6 +3935,34 @@
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
 		4544495431300000000000A1 /* HtmlUIDependencies.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIDependencies.h; sourceTree = "<group>"; };
 		4544495431300000000000A3 /* HtmlUIDependencies.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIDependencies.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000001 /* AnimAnimation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimAnimation.h; sourceTree = "<group>"; };
+		414E494D4500000000000003 /* AnimCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimCommon.h; sourceTree = "<group>"; };
+		414E494D4500000000000005 /* AnimEasing.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimEasing.h; sourceTree = "<group>"; };
+		414E494D4500000000000007 /* AnimEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimEngine.h; sourceTree = "<group>"; };
+		414E494D4500000000000009 /* AnimLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimLua.h; sourceTree = "<group>"; };
+		414E494D450000000000000B /* AnimParams.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimParams.h; sourceTree = "<group>"; };
+		414E494D450000000000000D /* AnimProperty.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimProperty.h; sourceTree = "<group>"; };
+		414E494D450000000000000F /* AnimSpring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSpring.h; sourceTree = "<group>"; };
+		414E494D4500000000000011 /* AnimTargets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimTargets.h; sourceTree = "<group>"; };
+		414E494D4500000000000013 /* AnimTimeline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimTimeline.h; sourceTree = "<group>"; };
+		414E494D4500000000000015 /* AnimTimer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimTimer.h; sourceTree = "<group>"; };
+		414E494D4500000000000017 /* AnimUtils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimUtils.h; sourceTree = "<group>"; };
+		414E494D4500000000000019 /* AnimValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimValue.h; sourceTree = "<group>"; };
+		414E494D450000000000001B /* Anime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Anime.h; sourceTree = "<group>"; };
+		414E494D450000000000001D /* AnimAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimAnimation.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000020 /* AnimCommon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimCommon.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000023 /* AnimEasing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimEasing.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000026 /* AnimEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimEngine.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000029 /* AnimParams.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimParams.cpp; sourceTree = "<group>"; };
+		414E494D450000000000002C /* AnimProperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimProperty.cpp; sourceTree = "<group>"; };
+		414E494D450000000000002F /* AnimSpring.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSpring.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000032 /* AnimTargets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimTargets.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000035 /* AnimTimeline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimTimeline.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000038 /* AnimTimer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimTimer.cpp; sourceTree = "<group>"; };
+		414E494D450000000000003B /* AnimUtils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimUtils.cpp; sourceTree = "<group>"; };
+		414E494D450000000000003E /* AnimValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimValue.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000041 /* Anime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Anime.cpp; sourceTree = "<group>"; };
+		414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIAnimeLua.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002AB /* HtmlUIRenderStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIRenderStats.h; sourceTree = "<group>"; };
 		48544D4C00000000000002AD /* HtmlUITexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUITexture.h; sourceTree = "<group>"; };
 		48544D4C00000000000002AF /* HtmlUITexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUITexture.cpp; sourceTree = "<group>"; };
@@ -3867,6 +3972,12 @@
 		48544D4C00000000000002B8 /* UIValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIValue.h; sourceTree = "<group>"; };
 		48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemReload.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContextInput.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D3 /* RmlKeyMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlKeyMap.h; sourceTree = "<group>"; };
+		48544D4C00000000000002D4 /* RmlKeyMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlKeyMap.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D7 /* RmlTextInputHandler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlTextInputHandler.h; sourceTree = "<group>"; };
+		48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlTextInputHandler.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002DB /* Utf16Combiner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Utf16Combiner.h; sourceTree = "<group>"; };
 		48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemRender.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemScript.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemTexture.cpp; sourceTree = "<group>"; };
@@ -4178,6 +4289,9 @@
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
+				50314C550000000000000013 /* HtmlUIClassesLua.h */,
+				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
+				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -4845,6 +4959,7 @@
 				713D8336259D407A00567F9F /* AppDelegate.m */,
 				710AD75025B733E100A7B12F /* EngineView.h */,
 				710AD75125B7343400A7B12F /* EngineView.mm */,
+				71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */,
 				713D8335259D407A00567F9F /* main.m */,
 				713D8337259D407A00567F9F /* ViewController.h */,
 				713D8334259D407A00567F9F /* ViewController.m */,
@@ -5007,6 +5122,7 @@
 				71ABBD27277A3210001CE3AF /* STBText.h */,
 				71ABBD26277A3210001CE3AF /* STBText.cpp */,
 				7128D0AD25BB18DC00965B51 /* StringUtils.h */,
+				48544D4C00000000000002DB /* Utf16Combiner.h */,
 				7128D0AC25BB18DC00965B51 /* StringUtils.cpp */,
 				71FFE3FE2A369FE90089A6C9 /* ThreadUtils.h */,
 				71ABBD3A279116E1001CE3AF /* UniqueToken.h */,
@@ -5274,6 +5390,7 @@
 				7162FC8B25962A0E0075B97D /* SokolBuffer.cpp */,
 				7162FC8E25962A0E0075B97D /* SokolBuffer.h */,
 				71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */,
+				503152450000000000000001 /* SokolPipelineCache.cpp */,
 				71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */,
 				71CC83A926B8D54800EEBB93 /* SokolFramebuffer.cpp */,
 				71CC83A826B8D54800EEBB93 /* SokolFramebuffer.h */,
@@ -6241,6 +6358,14 @@
 				48544D4C000000000000003D /* UIDocument.cpp */,
 				48544D4C0000000000000040 /* UIElement.h */,
 				48544D4C0000000000000042 /* UIElement.cpp */,
+				50314C550000000000000001 /* HtmlUIScriptInternal.h */,
+				50314C550000000000000002 /* HtmlUIEventListener.h */,
+				50314C550000000000000003 /* HtmlUIValueDefinition.h */,
+				50314C550000000000000004 /* UIEvent.cpp */,
+				50314C550000000000000007 /* UIDataModel.cpp */,
+				50314C55000000000000000A /* UIValue.cpp */,
+				50314C55000000000000000D /* HtmlUIEventListener.cpp */,
+				50314C550000000000000010 /* HtmlUIValueDefinition.cpp */,
 				48544D4C00000000000002B2 /* UIDataModel.h */,
 				48544D4C00000000000002B4 /* UIElementInternal.h */,
 				48544D4C00000000000002B6 /* UIEvent.h */,
@@ -6385,6 +6510,8 @@
 				71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */,
 				71C5A1002F0A11B000A1B2C0 /* MacInputRouter.h */,
 				71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */,
+				71C5A1082F0A11B000A1B2C0 /* MacTextInputClient.h */,
+				71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */,
 				71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */,
 				71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */,
 			);
@@ -6674,6 +6801,40 @@
 			path = shadercompiler;
 			sourceTree = "<group>";
 		};
+		414E494D4500000000000047 /* anim */ = {
+			isa = PBXGroup;
+			children = (
+				414E494D4500000000000001 /* AnimAnimation.h */,
+				414E494D4500000000000003 /* AnimCommon.h */,
+				414E494D4500000000000005 /* AnimEasing.h */,
+				414E494D4500000000000007 /* AnimEngine.h */,
+				414E494D4500000000000009 /* AnimLua.h */,
+				414E494D450000000000000B /* AnimParams.h */,
+				414E494D450000000000000D /* AnimProperty.h */,
+				414E494D450000000000000F /* AnimSpring.h */,
+				414E494D4500000000000011 /* AnimTargets.h */,
+				414E494D4500000000000013 /* AnimTimeline.h */,
+				414E494D4500000000000015 /* AnimTimer.h */,
+				414E494D4500000000000017 /* AnimUtils.h */,
+				414E494D4500000000000019 /* AnimValue.h */,
+				414E494D450000000000001B /* Anime.h */,
+				414E494D450000000000001D /* AnimAnimation.cpp */,
+				414E494D4500000000000020 /* AnimCommon.cpp */,
+				414E494D4500000000000023 /* AnimEasing.cpp */,
+				414E494D4500000000000026 /* AnimEngine.cpp */,
+				414E494D4500000000000029 /* AnimParams.cpp */,
+				414E494D450000000000002C /* AnimProperty.cpp */,
+				414E494D450000000000002F /* AnimSpring.cpp */,
+				414E494D4500000000000032 /* AnimTargets.cpp */,
+				414E494D4500000000000035 /* AnimTimeline.cpp */,
+				414E494D4500000000000038 /* AnimTimer.cpp */,
+				414E494D450000000000003B /* AnimUtils.cpp */,
+				414E494D450000000000003E /* AnimValue.cpp */,
+				414E494D4500000000000041 /* Anime.cpp */,
+			);
+			path = anim;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -6689,6 +6850,7 @@
 				48544D4C0000000000000006 /* HtmlUIContext.h */,
 				48544D4C0000000000000008 /* HtmlUIContext.cpp */,
 				48544D4C000000000000000B /* HtmlUIContextRender.cpp */,
+				48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */,
 				48544D4C000000000000000E /* RmlFile.h */,
 				48544D4C0000000000000010 /* RmlFile.cpp */,
 				48544D4C0000000000000013 /* RmlFontEngine.h */,
@@ -6697,6 +6859,11 @@
 				48544D4C000000000000001A /* RmlRenderer.cpp */,
 				48544D4C000000000000001D /* RmlSystem.h */,
 				48544D4C000000000000001F /* RmlSystem.cpp */,
+				48544D4C00000000000002D3 /* RmlKeyMap.h */,
+				48544D4C00000000000002D4 /* RmlKeyMap.cpp */,
+				48544D4C00000000000002D7 /* RmlTextInputHandler.h */,
+				48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */,
+				414E494D4500000000000047 /* anim */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -7171,6 +7338,20 @@
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
 				4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */,
+				414E494D4500000000000002 /* AnimAnimation.h in Headers */,
+				414E494D4500000000000004 /* AnimCommon.h in Headers */,
+				414E494D4500000000000006 /* AnimEasing.h in Headers */,
+				414E494D4500000000000008 /* AnimEngine.h in Headers */,
+				414E494D450000000000000A /* AnimLua.h in Headers */,
+				414E494D450000000000000C /* AnimParams.h in Headers */,
+				414E494D450000000000000E /* AnimProperty.h in Headers */,
+				414E494D4500000000000010 /* AnimSpring.h in Headers */,
+				414E494D4500000000000012 /* AnimTargets.h in Headers */,
+				414E494D4500000000000014 /* AnimTimeline.h in Headers */,
+				414E494D4500000000000016 /* AnimTimer.h in Headers */,
+				414E494D4500000000000018 /* AnimUtils.h in Headers */,
+				414E494D450000000000001A /* AnimValue.h in Headers */,
+				414E494D450000000000001C /* Anime.h in Headers */,
 				48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */,
 				48544D4C00000000000002AE /* HtmlUITexture.h in Headers */,
 				48544D4C0000000000000007 /* HtmlUIContext.h in Headers */,
@@ -8567,7 +8748,9 @@
 				A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */,
 				713D8295259D307F00567F9F /* UserSettings.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
+				503152450000000000000003 /* SokolPipelineCache.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
+				414E494D4500000000000046 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE628F8EF9F0074442E /* XMLUtils.cpp in Sources */,
 				713D8296259D307F00567F9F /* File.cpp in Sources */,
 				71ABBD2A277A3210001CE3AF /* STBText.cpp in Sources */,
@@ -8687,6 +8870,19 @@
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
 				4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */,
+				414E494D450000000000001E /* AnimAnimation.cpp in Sources */,
+				414E494D4500000000000021 /* AnimCommon.cpp in Sources */,
+				414E494D4500000000000024 /* AnimEasing.cpp in Sources */,
+				414E494D4500000000000027 /* AnimEngine.cpp in Sources */,
+				414E494D450000000000002A /* AnimParams.cpp in Sources */,
+				414E494D450000000000002D /* AnimProperty.cpp in Sources */,
+				414E494D4500000000000030 /* AnimSpring.cpp in Sources */,
+				414E494D4500000000000033 /* AnimTargets.cpp in Sources */,
+				414E494D4500000000000036 /* AnimTimeline.cpp in Sources */,
+				414E494D4500000000000039 /* AnimTimer.cpp in Sources */,
+				414E494D450000000000003C /* AnimUtils.cpp in Sources */,
+				414E494D450000000000003F /* AnimValue.cpp in Sources */,
+				414E494D4500000000000042 /* Anime.cpp in Sources */,
 				48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */,
 				48544D4C0000000000000009 /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */,
@@ -8700,12 +8896,21 @@
 				48544D4C0000000000000034 /* TextShaper.cpp in Sources */,
 				48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */,
 				48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */,
+				48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */,
+				48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */,
 				48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */,
 				48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003E /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000043 /* UIElement.cpp in Sources */,
+				50314C550000000000000005 /* UIEvent.cpp in Sources */,
+				50314C550000000000000008 /* UIDataModel.cpp in Sources */,
+				50314C55000000000000000B /* UIValue.cpp in Sources */,
+				50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */,
+				50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */,
+				50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8741,6 +8946,7 @@
 				710AD78625B7A1F600A7B12F /* EngineView.mm in Sources */,
 				71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */,
 				71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */,
+				71C5A10B2F0A11B000A1B2C0 /* MacTextInputClient.mm in Sources */,
 				713D8323259D3F8F00567F9F /* ViewController.m in Sources */,
 				713D8325259D3F8F00567F9F /* AppDelegate.m in Sources */,
 				17995BF83003C3A800411B78 /* JasperEngineGameController.mm in Sources */,
@@ -8785,7 +8991,9 @@
 				A6E16455A1CC719DB7052664 /* PrefabAsset.cpp in Sources */,
 				7162FE102596A5BE0075B97D /* SokolCamera.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
+				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
+				414E494D4500000000000045 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE528F8EF9F0074442E /* XMLUtils.cpp in Sources */,
 				7162FD1225963AE00075B97D /* Log.cpp in Sources */,
 				71ABBD29277A3210001CE3AF /* STBText.cpp in Sources */,
@@ -8906,6 +9114,19 @@
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
 				4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */,
+				414E494D450000000000001F /* AnimAnimation.cpp in Sources */,
+				414E494D4500000000000022 /* AnimCommon.cpp in Sources */,
+				414E494D4500000000000025 /* AnimEasing.cpp in Sources */,
+				414E494D4500000000000028 /* AnimEngine.cpp in Sources */,
+				414E494D450000000000002B /* AnimParams.cpp in Sources */,
+				414E494D450000000000002E /* AnimProperty.cpp in Sources */,
+				414E494D4500000000000031 /* AnimSpring.cpp in Sources */,
+				414E494D4500000000000034 /* AnimTargets.cpp in Sources */,
+				414E494D4500000000000037 /* AnimTimeline.cpp in Sources */,
+				414E494D450000000000003A /* AnimTimer.cpp in Sources */,
+				414E494D450000000000003D /* AnimUtils.cpp in Sources */,
+				414E494D4500000000000040 /* AnimValue.cpp in Sources */,
+				414E494D4500000000000043 /* Anime.cpp in Sources */,
 				48544D4C00000000000002B1 /* HtmlUITexture.cpp in Sources */,
 				48544D4C000000000000000A /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */,
@@ -8919,12 +9140,21 @@
 				48544D4C0000000000000035 /* TextShaper.cpp in Sources */,
 				48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */,
 				48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */,
+				48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */,
+				48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */,
 				48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */,
 				48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003F /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000044 /* UIElement.cpp in Sources */,
+				50314C550000000000000006 /* UIEvent.cpp in Sources */,
+				50314C550000000000000009 /* UIDataModel.cpp in Sources */,
+				50314C55000000000000000C /* UIValue.cpp in Sources */,
+				50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */,
+				50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */,
+				50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

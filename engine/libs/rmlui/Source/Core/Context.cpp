@@ -531,10 +531,14 @@ bool Context::ProcessKeyDown(Input::KeyIdentifier key_identifier, int key_modifi
 	GenerateKeyEventParameters(parameters, key_identifier);
 	GenerateKeyModifierEventParameters(parameters, key_modifier_state);
 
-	if (focus)
-		return focus->DispatchEvent(EventId::Keydown, parameters);
-	else
-		return root->DispatchEvent(EventId::Keydown, parameters);
+	// DispatchEvent is false when the event was stopped or its default action prevented; only the latter drops
+	// the text input of the key (a stopped key down still types, e.g. in a text field that stops propagation)
+	suppress_text_input = false;
+	Element* target = (focus ? focus : root.get());
+	bool default_prevented = false;
+	const bool propagating = target->DispatchEvent(EventId::Keydown, parameters, &default_prevented);
+	suppress_text_input = default_prevented;
+	return propagating;
 }
 
 bool Context::ProcessKeyUp(Input::KeyIdentifier key_identifier, int key_modifier_state)
@@ -544,6 +548,7 @@ bool Context::ProcessKeyUp(Input::KeyIdentifier key_identifier, int key_modifier
 	GenerateKeyEventParameters(parameters, key_identifier);
 	GenerateKeyModifierEventParameters(parameters, key_modifier_state);
 
+	suppress_text_input = false;
 	if (focus)
 		return focus->DispatchEvent(EventId::Keyup, parameters);
 	else
@@ -567,6 +572,10 @@ bool Context::ProcessTextInput(Character character)
 
 bool Context::ProcessTextInput(const String& string)
 {
+	// the key down that produced this text had its default action prevented
+	if (suppress_text_input)
+		return false;
+
 	Element* target = (focus ? focus : root.get());
 
 	Dictionary parameters;

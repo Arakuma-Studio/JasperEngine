@@ -263,6 +263,18 @@ void WindowMac::setMouseCursor(CursorType type) {
         case CursorType::NOT_ALLOWED:
             cursor = [NSCursor operationNotAllowedCursor];
             break;
+        // NSCursor has no public busy or help cursor (the spinning wait cursor is
+        // the system's own, shown when the main thread stalls), so these stay arrows
+        case CursorType::WAIT:
+        case CursorType::PROGRESS:
+        case CursorType::HELP:
+            break;
+        case CursorType::GRAB:
+            cursor = [NSCursor openHandCursor];
+            break;
+        case CursorType::GRABBING:
+            cursor = [NSCursor closedHandCursor];
+            break;
     }
 
     [cursor set];
