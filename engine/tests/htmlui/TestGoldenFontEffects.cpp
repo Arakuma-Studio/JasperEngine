@@ -154,7 +154,7 @@ TEST_F(TextFeatureGoldenTest, FontSynthesis){
     ASSERT_FALSE(both.empty());
     // bold stems carry more ink
     EXPECT_GT(bold.count, regular.count * 13 / 10);
-    EXPECT_GT(both.count, regular.count * 13 / 10);
+    EXPECT_GT(both.count, regular.count * 12 / 10);   // the slanted stems are partly cut at x = 92
 
     // the advance grows by the dilation (40 / 24 -> 2 px at raster scale 1): the sixth stem
     // starts 5 * 2 px further right than the regular one, the first in the same place

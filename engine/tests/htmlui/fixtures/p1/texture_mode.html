@@ -1,0 +1,28 @@
+<html>
+<head>
+    <title>texture mode</title>
+    <link type="text/css" href="../common/base.css"/>
+    <style>
+        /* G25: a TEXTURE-mode document (256x256 CSS px) read back from its target texture:
+           straight alpha, top-left origin */
+        body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; }
+        .abs { position: absolute; }
+        #red { left: 0; top: 0; width: 64px; height: 64px; background-color: #ff0000; }
+        #white50 { left: 64px; top: 0; width: 64px; height: 64px; background-color: #ffffff80; }
+        #blue25 { left: 128px; top: 0; width: 64px; height: 64px; background-color: #0000ff40; }
+        #gradient { left: 0; top: 96px; width: 256px; height: 48px; border-radius: 16px;
+                    decorator: linear-gradient(90deg, #ff8000, #0080ff); }
+        #label { left: 8px; top: 160px; font-size: 40px; color: #ffffff; font-effect: outline(2px #000000); }
+        #panel { left: 160px; top: 200px; width: 80px; height: 40px; background-color: #20c020;
+                 border-radius: 12px; transform: rotate(10deg); }
+    </style>
+</head>
+<body>
+    <div id="red" class="abs"></div>
+    <div id="white50" class="abs"></div>
+    <div id="blue25" class="abs"></div>
+    <div id="gradient" class="abs"></div>
+    <div id="label" class="abs">Texture</div>
+    <div id="panel" class="abs"></div>
+</body>
+</html>

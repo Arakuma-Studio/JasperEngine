@@ -7,13 +7,16 @@
 
 #include "TestGoldenCommon.h"
 
+#include "HtmlUIClock.h"
 #include "HtmlUIContext.h"
+#include "RmlRenderer.h"
 #include "Input.h"
 #include "UIWorldRaycast.h"
 #include "component/MeshComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "object/Camera.h"
 #include "object/Primitive.h"
+#include "object/ui/Image.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
 
@@ -93,9 +96,9 @@ namespace {
             return document ? document->GetElementById(id) : nullptr;
         }
 
-        bool pointer(PointerPhase phase, const Vector3& world, int id = 0){
+        bool pointer(PointerPhase phase, const Vector3& world, int id = 0, bool touch = false){
             const Vector2 point = project(scene(), world);
-            return system().dispatchWorldPointer(id, D_MOUSE_BUTTON_LEFT, point.x, point.y, 0, phase, false);
+            return system().dispatchWorldPointer(id, touch ? -1 : D_MOUSE_BUTTON_LEFT, point.x, point.y, 0, phase, touch);
         }
     };
 
@@ -342,17 +345,31 @@ TEST_F(TextureModeTest, WorldPointerCapture){
     EXPECT_TRUE(tl->IsPseudoClassSet("active"));
     EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0)));
     EXPECT_TRUE(tl->IsPseudoClassSet("hover"));   // clamped to the top-left corner, still on #tl
-    // another pointer is not captured
-    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0), 1));
+    // a touch pointer is not captured by the mouse
+    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0), 1, true));
+    EXPECT_TRUE(system().hasPointerCapture(0, D_MOUSE_BUTTON_LEFT, false));
     // released off-surface, over the clamped corner: a click on #tl, then nothing captured
     EXPECT_TRUE(pointer(PointerPhase::UP, Vector3(-4.0f, 4.0f, 0)));
     EXPECT_EQ(clicks.count, 1);
     EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0)));
 
-    // a cancel releases the capture
-    EXPECT_TRUE(pointer(PointerPhase::DOWN, Vector3(-0.5f, 0.5f, 0), 2));
-    EXPECT_TRUE(system().dispatchWorldPointer(2, 0, 0, 0, 0, PointerPhase::CANCEL, true));
-    EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0), 2));
+    EXPECT_FALSE(system().hasPointerCapture(0, D_MOUSE_BUTTON_LEFT, false));
+
+    // touches: each pointer captured on its own; a cancel releases without a click
+    EXPECT_TRUE(pointer(PointerPhase::DOWN, Vector3(-0.5f, 0.5f, 0), 2, true));
+    EXPECT_TRUE(system().hasPointerCapture(2, -1, true));
+    EXPECT_FALSE(system().hasPointerCapture(3, -1, true));
+    EXPECT_TRUE(pointer(PointerPhase::MOVE, Vector3(-4.0f, 4.0f, 0), 2, true));
+    EXPECT_TRUE(system().dispatchWorldPointer(2, -1, 0, 0, 0, PointerPhase::CANCEL, true));
+    EXPECT_FALSE(system().hasPointerCapture(2, -1, true));
+    EXPECT_EQ(clicks.count, 1);
+    // a tap: start and end on #tl clicks it
+    EXPECT_TRUE(pointer(PointerPhase::DOWN, Vector3(-0.5f, 0.5f, 0), 3, true));
+    EXPECT_TRUE(pointer(PointerPhase::UP, Vector3(-0.5f, 0.5f, 0), 3, true));
+    EXPECT_EQ(clicks.count, 2);
+    // a touch on the transparent body is not taken, and not tracked
+    EXPECT_FALSE(pointer(PointerPhase::DOWN, Vector3(0.5f, 0.5f, 0), 4, true));
+    EXPECT_FALSE(system().getTextureContext(document.getEntity())->hasTouch(4));
 
     tl->RemoveEventListener(Rml::EventId::Click, &clicks);
 }
@@ -391,4 +408,157 @@ TEST_F(TextureModeTest, WorldPointerNearestFirst){
     EXPECT_FALSE(pointer(PointerPhase::MOVE, Vector3(6.0f, 0.0f, 0)));
     EXPECT_FALSE(farTl->IsPseudoClassSet("hover"));
     EXPECT_FALSE(farBr->IsPseudoClassSet("hover"));
+}
+
+namespace {
+
+    // a 2D UI scene (the fixture's own camera) with one texture-mode document
+    class TextureTargetTest : public FullPathGoldenTest {
+    protected:
+        void SetUp() override{
+            FullPathGoldenTest::SetUp();
+            HtmlUIClock::setFixedTime(0.0);
+        }
+        void TearDown() override{
+            HtmlUIClock::setFixedTime(std::nullopt);
+            FullPathGoldenTest::TearDown();
+        }
+
+        static UIDocument textureDocument(SceneFixture& fixture, int width, int height, float ratio){
+            UIDocument document = fixture.addDocument("p1/texture_mode.html");
+            UIDocumentComponent& component = document.getComponent<UIDocumentComponent>();
+            component.renderMode = UIDocumentRenderMode::TEXTURE;
+            component.textureWidth = width;
+            component.textureHeight = height;
+            component.pixelRatio = ratio;
+            return document;
+        }
+
+        struct Texels {
+            std::vector<uint8_t> rgba;
+            int width = 0, height = 0;
+            const uint8_t* at(int x, int y) const{ return &rgba[(size_t(y) * width + x) * 4]; }
+            ::testing::AssertionResult is(int x, int y, int r, int g, int b, int a, int tolerance = 1) const{
+                const uint8_t* p = at(x, y);
+                if (std::abs(p[0] - r) <= tolerance && std::abs(p[1] - g) <= tolerance && std::abs(p[2] - b) <= tolerance &&
+                    std::abs(p[3] - a) <= tolerance)
+                    return ::testing::AssertionSuccess();
+                return ::testing::AssertionFailure() << "texel (" << x << ", " << y << ") is (" << int(p[0]) << ", " << int(p[1]) << ", "
+                                                     << int(p[2]) << ", " << int(p[3]) << "), expected (" << r << ", " << g << ", " << b
+                                                     << ", " << a << ") +-" << tolerance;
+            }
+        };
+
+        static bool read(Framebuffer& target, Texels& texels){
+            texels.width = (int)target.getWidth();
+            texels.height = (int)target.getHeight();
+            return readTexture(target.getRender().getColorTexture(), texels.width, texels.height, texels.rgba);
+        }
+    };
+
+}
+
+TEST_F(TextureTargetTest, StraightAlphaTopLeft){
+    SceneFixture fixture;
+    UIDocument document = textureDocument(fixture, 256, 256, 0.0f);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+
+    Framebuffer* target = document.getTargetTexture();
+    ASSERT_NE(target, nullptr);
+    ASSERT_TRUE(target->isCreated());
+    EXPECT_EQ(target->getWidth(), 256u);
+    EXPECT_EQ(target->getHeight(), 256u);
+    EXPECT_EQ(target->getRender().getSampleCount(), 1);
+
+    Texels texels;
+    ASSERT_TRUE(read(*target, texels));
+    // an opaque red div; the top-left square is at texel (0, 0): top-left origin
+    EXPECT_TRUE(texels.is(0, 0, 255, 0, 0, 255));
+    EXPECT_TRUE(texels.is(32, 32, 255, 0, 0, 255));
+    EXPECT_TRUE(texels.is(63, 63, 255, 0, 0, 255));
+    // 50% white: straight (255, 255, 255, 128), not premultiplied (128, 128, 128, 128)
+    EXPECT_TRUE(texels.is(96, 32, 255, 255, 255, 128));
+    // 25% blue
+    EXPECT_TRUE(texels.is(160, 32, 0, 0, 255, 64));
+    // the transparent body
+    EXPECT_EQ(texels.at(220, 32)[3], 0);
+    EXPECT_EQ(texels.at(128, 80)[3], 0);
+
+    // the screen context draws nothing of it: the scene stays the background
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+    EXPECT_TRUE(screen.isBackground(32, 32));
+
+    // G25
+    CompareResult result = compareWithGolden("p1/texture_mode", texels.rgba, texels.width, texels.height);
+    EXPECT_TRUE(result.passed) << result.message;
+}
+
+TEST_F(TextureTargetTest, PixelRatioAndConsumers){
+    SceneFixture fixture;
+    // 512 texels for the 256 CSS px layout
+    UIDocument document = textureDocument(fixture, 512, 512, 2.0f);
+    // an Image showing the texture: upright
+    Image& image = fixture.add<Image>();
+    image.setPosition(100, 50);
+    image.setSize(128, 128);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Framebuffer* target = document.getTargetTexture();
+    ASSERT_NE(target, nullptr);
+    image.setTexture(target);
+    GpuEnvironment::drawFrames(2);
+
+    Texels texels;
+    ASSERT_TRUE(read(*target, texels));
+    ASSERT_EQ(texels.width, 512);
+    // the red square spans 128 texels
+    EXPECT_TRUE(texels.is(120, 120, 255, 0, 0, 255));
+    EXPECT_TRUE(texels.is(136, 60, 255, 255, 255, 128));
+
+    // the image's top-left quarter (64 texels of 512 -> 16 px) is red, its top right corner empty
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+    EXPECT_TRUE(screen.is(100 + 4, 50 + 4, 255, 0, 0, 8));
+    EXPECT_TRUE(screen.isBackground(100 + 124, 50 + 4));
+
+    // hidden: the texture is cleared
+    const unsigned long version = target->getVersion();
+    document.hide();
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(read(*target, texels));
+    EXPECT_EQ(texels.at(120, 120)[3], 0);
+    // shown again: drawn again, the same Framebuffer (consumers keep it)
+    document.show();
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(read(*target, texels));
+    EXPECT_TRUE(texels.is(120, 120, 255, 0, 0, 255));
+    EXPECT_EQ(document.getTargetTexture(), target);
+
+    // a new size recreates the texture (a version bump rebinds consumers)
+    document.getComponent<UIDocumentComponent>().textureWidth = 256;
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(target->getWidth(), 256u);
+    EXPECT_GT(target->getVersion(), version);
+    ASSERT_TRUE(read(*target, texels));
+    EXPECT_TRUE(texels.is(60, 60, 255, 0, 0, 255));   // 256 x 512 texels: 128 x 256 CSS px
+}
+
+TEST_F(TextureTargetTest, NoLeaksOverReloads){
+    SceneFixture fixture;
+    UIDocument document = textureDocument(fixture, 128, 128, 1.0f);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    UIDocumentSystem& system = *fixture.getScene().getSystem<UIDocumentSystem>();
+    HtmlUIContext* context = system.getTextureContext(document.getEntity());
+    ASSERT_NE(context, nullptr);
+    const size_t textures = context->getRenderer().getLiveTextureCount();
+    const size_t geometry = context->getRenderer().getLiveGeometryCount();
+
+    for (int i = 0; i < 20; i++){
+        document.getComponent<UIDocumentComponent>().needReload = true;
+        GpuEnvironment::drawFrames(1);
+    }
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(system.getTextureContext(document.getEntity()), context);
+    EXPECT_EQ(context->getRenderer().getLiveTextureCount(), textures);
+    EXPECT_EQ(context->getRenderer().getLiveGeometryCount(), geometry);
 }
