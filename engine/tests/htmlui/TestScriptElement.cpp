@@ -331,14 +331,19 @@ TEST_F(ScriptElementTest, HandlesAfterUnload){
     EXPECT_FALSE(created.isValid()) << "the detached pool goes with its document";
     EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);
 
-    // every method returns a default and logs once per method
-    TestSystem::get().clearLogs();
-    EXPECT_EQ(btn.getId(), "");
+    // every method returns a default and logs a warning once per method (process-wide: an
+    // earlier test may have used it already), never again
     EXPECT_EQ(btn.getId(), "");
     EXPECT_FALSE(btn.appendChild(created).isValid());
     EXPECT_FLOAT_EQ(btn.getBoundingClientRect().width, 0.0f);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, kHtmlUIDeadElementMessage), 3u);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "UIElement::getId"), 1u);
+    EXPECT_FALSE(btn.getParentElement().isValid());
+    EXPECT_LE(TestSystem::get().countLogs(D_LOG_WARN, "(UIElement::getId)"), 1u);
+    TestSystem::get().clearLogs();
+    EXPECT_EQ(btn.getId(), "");
+    EXPECT_FALSE(btn.appendChild(created).isValid());
+    btn.getBoundingClientRect();
+    btn.getParentElement();
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, kHtmlUIDeadElementMessage), 0u);
     TestSystem::get().clearLogs();
 }
 
