@@ -20,13 +20,13 @@ using namespace jasperengine;
 #if defined(SOKOL_VULKAN)
 // as editor/util/GraphicUtils.cpp readFramebufferPixels: a staging buffer copy of the image,
 // which sokol keeps in SHADER_READ_ONLY_OPTIMAL between passes
-static bool readVulkanImage(TextureRender& texture, int width, int height, std::vector<uint8_t>& rgba){
+static bool readVulkanImage(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& rgba){
     sg_environment environment = System::instance().getSokolEnvironment();
     VkPhysicalDevice physicalDevice = reinterpret_cast<VkPhysicalDevice>(const_cast<void*>(environment.vulkan.physical_device));
     VkDevice device = reinterpret_cast<VkDevice>(const_cast<void*>(environment.vulkan.device));
     VkQueue queue = reinterpret_cast<VkQueue>(const_cast<void*>(environment.vulkan.queue));
     VkImage image = reinterpret_cast<VkImage>(const_cast<void*>(texture.getVulkanImageHandler()));
-    const VkDeviceSize dataSize = static_cast<VkDeviceSize>(width) * height * 4;
+    const VkDeviceSize dataSize = static_cast<VkDeviceSize>(width) * height * bytesPerPixel;
 
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
     VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
@@ -162,12 +162,16 @@ static bool readVulkanImage(TextureRender& texture, int width, int height, std::
 #endif
 
 bool jasperengine::test::readTexture(TextureRender& texture, int width, int height, std::vector<uint8_t>& rgba){
-    rgba.clear();
-    if (width <= 0 || height <= 0)
+    return readTexturePixels(texture, width, height, 4, rgba);
+}
+
+bool jasperengine::test::readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels){
+    pixels.clear();
+    if (width <= 0 || height <= 0 || (bytesPerPixel != 4 && bytesPerPixel != 1))
         return false;
 
 #if defined(SOKOL_VULKAN)
-    return readVulkanImage(texture, width, height, rgba);
+    return readVulkanImage(texture, width, height, bytesPerPixel, pixels);
 #else
     const GLuint handle = texture.getGLHandler();
     if (handle == 0)
@@ -176,10 +180,10 @@ bool jasperengine::test::readTexture(TextureRender& texture, int width, int heig
     // errors of earlier GL calls are not this readback's
     while (glGetError() != GL_NO_ERROR) {}
 
-    rgba.resize(static_cast<size_t>(width) * height * 4);
+    pixels.resize(static_cast<size_t>(width) * height * bytesPerPixel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glBindTexture(GL_TEXTURE_2D, handle);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    glGetTexImage(GL_TEXTURE_2D, 0, (bytesPerPixel == 4) ? GL_RGBA : GL_RED, GL_UNSIGNED_BYTE, pixels.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     const bool ok = glGetError() == GL_NO_ERROR;
     // sokol caches GL bindings and pixel store state; it must not trust them after this

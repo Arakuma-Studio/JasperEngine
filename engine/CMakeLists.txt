@@ -791,8 +791,10 @@ set(JASPERENGINE_SRCS
     core/buffer/InterleavedBuffer.cpp
     core/ecs/ComponentManager.cpp
     core/htmlui/HtmlUI.cpp
+    core/htmlui/HtmlUIClock.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
+    core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
@@ -895,6 +897,11 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
+    core/subsystem/UIDocumentSystemRender.cpp
+    core/subsystem/UIDocumentSystemInput.cpp
+    core/subsystem/UIDocumentSystemScript.cpp
+    core/subsystem/UIDocumentSystemReload.cpp
+    core/subsystem/UIDocumentSystemTexture.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
     core/texture/Texture.cpp

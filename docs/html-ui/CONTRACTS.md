@@ -53,7 +53,7 @@ Conventions that apply everywhere:
 | `HtmlUI::acquire/release/isInitialized/getReferenceCount`, `loadFontFace`, `getSystemInterface/getFileInterface/getFontEngine`, `registerContext/unregisterContext`, `setDebuggerContext` | C++ (internal) | P0 p0-foundation | P1 (ThorVG, SVG plugin, `lottie` instancer after `Rml::Initialise`), P2 H1 (`registerRuntime`), P5 C6 (`EffectRegistry::initialise`, plugin) | P0 §3.3.1 |
 | `RmlSystem` (`LogMessage` with `[HTML UI] `, `JoinPath`, log listener/counters) | C++ | P0 p0-foundation | P1 (clipboard, `ActivateKeyboard`, `SetMouseCursor`, `GetElapsedTime` → clock), P2 H3 (`RmlLogTranslator` first) | P0 §3.3.2 |
 | `RmlFile` (`Data::open`) | C++ | P0 p0-foundation | P1 (runtime file log), P2 H3b (`@htmlui/` virtual files) | P0 §3.3.3 |
-| `HtmlUIClock::now/advance/setFixedTime/getFixedTime/reset`; `Engine::systemDraw` advances it (unscaled delta, 0 while held); editor edit mode advances it | C++ | P1 wave-0 commit | P1 (RmlSystem, Lottie, `anime`), P3 FixtureRunner `advance`, P4 goldens, P5 `EffectClock` | P1 §3.0 item 6 |
+| `HtmlUIClock::now/advance/setFixedTime/getFixedTime/reset` (`engine/core/htmlui/HtmlUIClock.h`); `Engine::systemDraw` advances it (unscaled delta, 0 while held or paused; editor edit mode goes through `systemDraw` too); `advance` is a no-op while a fixed time is set, and clearing it resumes from the fixed value | C++ | P1 wave-0 commit | P1 (RmlSystem, Lottie, `anime`), P3 FixtureRunner `advance`, P4 goldens, P5 `EffectClock` | P1 §3.0 item 6 |
 
 ## 3. Render abstraction and renderer
 
@@ -64,12 +64,12 @@ Conventions that apply everywhere:
 | `PipelineState`, `BlendMode{NONE, ALPHA, PREMULTIPLIED, ADDITIVE_PREMULTIPLIED, SCREEN_PREMULTIPLIED, MULTIPLY_PREMULTIPLIED}`, `StencilState`, `RenderTargetFormat`, `targetFormatFor`, `ObjectRender::endLoadDynamic/beginDraw(const PipelineState&)` | C++ | P1 p1-render | P5 (effect blends) | P1 §3.1.1–3.1.2 |
 | `SokolPipelineCache::get/releaseShader/clear/size` | C++ | P1 p1-render | P5 C2 | P1 §3.1.3 |
 | `FramebufferDesc`, `createFramebuffer(desc)`, `getSampleCount`; `CameraRender::setColorActions/setDepthStencilActions/applyScissorTopLeft/applyViewportTopLeft`; `SystemRender::getFeatures` | C++ | P1 p1-render | P3 (`SetGeometryFeathering` from MSAA), P5 | P1 §3.1.4–3.1.5 |
-| `createDynamicTexture(label, w, h, ColorFormat, TextureFilter)` (RGBA8/R8, stream update) | C++ | P1 wave-0 commit | P1 p1-vector (Lottie), P5 | P1 §3.0 item 2 |
-| `HtmlUITexture{Kind STATIC/DYNAMIC/RENDER_TARGET/EXTERNAL, render, ownedRender, ownedTarget, width, height, dead, lastUpdateFrame}` | C++ | P1 wave-0 commit | P1, P2 (callback textures), P5 | P1 §3.0 item 1 |
+| `TextureRender::createDynamicTexture(label, w, h, ColorFormat, TextureFilter)` (RGBA8/R8, stream update; `updateTexture` rejects a wrong size); test harness `readTexturePixels` (RGBA8/R8) | C++ | P1 wave-0 commit | P1 p1-vector (Lottie), P5 | P1 §3.0 item 2 |
+| `HtmlUITexture{Kind STATIC/DYNAMIC/RENDER_TARGET/EXTERNAL, render, ownedRender, ownedTarget, width, height, dead, lastUpdateFrame}` + destructor, `createDynamic`, `update`/`canUpdate` (one update per frame) (`engine/core/htmlui/HtmlUITexture.h`) | C++ | P1 wave-0 commit | P1, P2 (callback textures), P5 | P1 §3.0 item 1 |
 | `RmlRenderer` (P0: required methods, `SetTransform`, `beginFrame/endFrame`, `drawComposite`, `toTargetScissor`, `hasFrame`, live counters, `getTextureRender`, `getGpuHandles`; P1: every optional method, `getCurrentTransform/getCurrentScissor/isClipMaskEnabled/getStencilRef`) | C++ | P0 p0-render, rewritten by P1 p1-render | P2 H7 (`LoadTexture` suffix/virtual files), P3 (opacity filter), P5 C2/C4 (bit-0 handle branches) | P0 §3.5.2, P1 §3.2, §3.3.3 |
 | `RmlFilterContext` (`primary/secondary/tertiary`, `swap`, `blit`, `blurInPlace`, `getScissor`, `getLayerSize`, `drawFullscreen`) | C++ | P1 p1-render | P5 C3 | P1 §3.3.3 |
 | Bit-0 handle rule for `CompileShader/CompileFilter` handles | convention | P1 p1-render | P5 §3.7 | P1 §3.3.3 |
-| `HtmlUIRenderStats{passes, drawCalls, pipelineApplies, pipelineCacheMisses, …}`, `UIDocumentSystem::getRenderStats` | C++ | P1 p1-render | P5 (`EffectStats::pipelinesCreated`), editor stats | P1 §3.2.8 |
+| `HtmlUIRenderStats{passes, drawCalls, pipelineApplies, pipelineCacheMisses, …}` (`engine/core/htmlui/HtmlUIRenderStats.h`, wave 0), `UIDocumentSystem::getRenderStats` | C++ | P1 p1-render | P5 (`EffectStats::pipelinesCreated`), editor stats | P1 §3.2.8 |
 | `HtmlUIContext` (P0: `create/destroy/loadDocument/update/processMouse*/isPointerOverContent/render/composite/releaseGpuResources/getTarget/getRenderer/getPixelRatio`; P1: `RmlRenderTarget`, `setPreferredSampleCount/getSampleCount`, `setWheelScale`, text input handler) | C++ | P0 p0-ecs + p0-render; P1 | P2 H1b (`loadDocument` → `DocumentLoader::load`), P5 C5/C6 (`render` hook before `Context::Render`, pointer hooks) | P0 §3.5.3, P1 §3.1.4, §3.5, §3.6 |
 | `UIDocumentSystem::renderOffscreen(const Rect&)` (end of `RenderSystem::drawFramePasses` and in `drawView` for views without editor overlays; idempotent per sokol frame), `drawComposite(camera, cameraTransform, colorPip, flipY)` | C++ | P0 p0-render; P1 p1-render | — | P0 §3.5.5, P1 §3.5 |
 
@@ -97,13 +97,19 @@ Conventions that apply everywhere:
 | + `interactive, renderMode (UIDocumentRenderMode SCREEN/TEXTURE), textureWidth, textureHeight, inputSurface, pixelRatio, onLoad, onUnload` | component fields | P1 wave-0 / p1-editor | P4 (`create_ui_document`, document JSON), P5 | P1 §3.8.1 |
 | Catalog `kUIDocumentProperties` (`filename`, `sortOrder`, `enabled` getter, + P1 fields), `UpdateFlags_UIDocument_Reload` (bit 37), name `UIDocumentComponent` (C++ type, `Catalog::getComponentName`) / `uidocument` (YAML, MCP) / "UI Document" (display), `ComponentType::UIDocumentComponent` | editor registration | P0 p0-ecs; P1 p1-editor | P4 | P0 §3.7.5, P1 §3.8.2 |
 | `UIDocumentSystem` (P0: `update`, `loadDocumentNow`, `isDocumentLoaded`, `getElementById`, `getDocumentBody`, `setReferenceSize`, `isAllLoaded`, `setDebuggerVisible`, `getContext`) | C++ | P0 p0-ecs | P1, P2, P4 | P0 §3.7.2 |
-| `UIDocumentSystem::getDocumentFiles(Entity)`, `reloadDocument`, `reloadStyleSheets`, `reloadTexture`, `getDocumentMessages`, `getDocument(Entity)`, `getLoadCount(Entity)`, `reloadChangedFiles(files) -> std::vector<Reloaded{entity, stylesheetOnly}>` (shared stamps) | C++ | P1 p1-editor | P2 H2, P4 (`w4::syncHtmlUi`, inspector), P5 (`EffectRegistry::onProjectFileChanged`) | P1 §3.8.6 |
+| `UIDocumentSystem::getDocumentFiles(Entity)`, `reloadDocument`, `reloadStyleSheets`, `reloadTexture`, `getDocumentMessages` (`HtmlUIMessage{level, text, file, line}`), `getDocument(Entity)` (defined by wave 0), `getLoadCount(Entity)`, `reloadChangedFiles(files) -> std::vector<Reloaded{entity, stylesheetOnly}>` (shared stamps) | C++ | P1 p1-editor | P2 H2, P4 (`w4::syncHtmlUi`, inspector), P5 (`EffectRegistry::onProjectFileChanged`) | P1 §3.8.6 |
 | `UIDocumentSystem::getCompiledDocument(Entity)`, `getDiagnostics(Entity)` | C++ | P2 p2-html (H1b) | P4 inspector, MCP | P2 §3.16 |
 | `UIDocumentSystem::getDataModelNames(Entity)`, `pushDataModel(lua_State*, Entity, name)` | C++ | P1 p1-lua | P4 | P1 §3.9.5 |
+| `UIDocumentSystem::setPreferredSampleCount(int)/getPreferredSampleCount()` (exported entry to the internal `HtmlUIContext::setPreferredSampleCount`) | C++ | P1 p1-render (declared, stubbed by wave 0) | P1 p1-editor (project setting, `Generator.cpp`) | P1 §3.0 item 4, §3.8.8 |
+| `UIDocumentSystem::getTargetTexture(Entity)` (behind `UIDocument::getTargetTexture`) | C++ | P1 p1-rtt (declared, stubbed by wave 0) | P1 p1-lua (Lua binding) | P1 §3.0 item 4, §3.12.2 |
+| `UIDocumentSystem::scriptDocumentReloaded(Entity, oldToNew)` (private hook of the full reload) | C++ | P1 p1-lua (declared, stubbed by wave 0) | P1 p1-editor | P1 §3.0 item 4, §3.8.6 |
+| Per-package state `HtmlUIRenderState/InputState/ScriptState/ReloadState/TextureState` (namespace scope, friends of `UIDocumentSystem`) and their `UIDocumentSystem{Render,Input,Script,Reload,Texture}.cpp` | C++ | P1 wave-0 commit (files), each P1 package (contents) | — | P1 §3.0 |
 | `UIDocumentSystem::setDebuggerVisible -> bool`, `isDebuggerVisible`; option `JASPERENGINE_HTMLUI_DEBUGGER` | C++/CMake | P0 (plumbing), P1 p1-editor | — | P1 §3.8.7 |
 | `UIDocument` (`engine/core/object/ui/`): P0 `setFilename/getFilename/load(filename)->bool/reload/isLoaded/show/hide/setVisible/isVisible/setSortOrder/getSortOrder/getElementById/getBody`; P1 `querySelector(All)`, `createElement`, `createTextNode`, `getTitle/setTitle`, `addEventListener`, `createDataModel/getDataModel/removeDataModel`, `getTargetTexture`, static debugger; P2 `getDiagnostics`, `setColorScheme`, `setReducedMotion`; P5 static `setEffectTime/getEffectTime` | C++ | P0 p0-ecs, P1 p1-lua, P2 p2-html (H4), P5 | P4, P5 | P0 §3.7.4, P1 §3.9.1, P2 §3.12.4, P5 §3.12 |
 | `UIElement` (`engine/core/object/ui/UIElement.h`, handle `UIElementHandle`): P0 members kept, P1 DOM-named API (§3.9.1), Lottie control; P5 `getEffects()` | C++ | P0 p0-ecs, P1 p1-lua/p1-vector, P5 | P2 H5, P3 FixtureRunner, P4 | P0 §3.7.4, P1 §3.9.1 |
 | `UIEvent`, `UIValue`, `UIDataModel`, `UIRect` (`engine/core/object/ui/`) | C++ | P1 p1-lua | P2, P4 | P1 §3.9.1 |
+| `UIElementInternal.h`: `UIElementHandle` (moved from `UIElement.cpp`), `UIElementAccess::get(UIElement) -> Rml::Element*` / `wrap(Rml::Element*)`; `HtmlUIScriptAccess` (friend of `UIEvent`/`UIDataModel`, p1-lua) | C++ (internal) | P1 wave-0 commit; p1-lua extends the handle | P1 p1-anim, p1-vector, P2 H5, P3 FixtureRunner, P4 inspector | P1 §3.0 |
+| `HTMLUI_P1_STUB: <owner>` markers (wave-0 stubs; none left after phase 1) | convention | P1 wave-0 commit | each P1 package | P1 §3.0 |
 
 ## 7. Input and platform
 
@@ -122,7 +128,7 @@ Conventions that apply everywhere:
 | `Util::isHtmlFile/isCssFile`, `FileType::HTML/CSS`, `HtmlCssLexer::lexLine`, `notifyHtmlUIFileSaved`, `HtmlUIWatcher` | editor | P1 p1-editor | — | P1 §3.8.4–3.8.6 |
 | `HtmlUIDependencies::collectHtmlUIReferences`, `Exporter::checkHtmlUIReferences` | engine/editor | P1 p1-editor | P2 (dependencies merged via H2; H14 runs `checkDocument` for `.html` in the export check) | P1 §3.8.6, §3.8.8, P2 §3.16 |
 | `EntityCreationType::UI_DOCUMENT`, MCP `create_entity type=ui_document` | editor/MCP | P1 p1-editor | P4 | P1 §3.8.4 |
-| Project setting `htmlUiMsaaSamples` | editor | P1 p1-editor | — | P1 §3.8.8 |
+| Project setting `htmlUiMsaaSamples` (applied through `UIDocumentSystem::setPreferredSampleCount`) | editor | P1 p1-editor | — | P1 §3.8.8 |
 | `AppSettings::htmlUiAutoImport`, `htmlUiVerboseDiagnostics`; CLI `import-ui`; Inspector remote-resources panel | editor | P2 p2-importers | P4 | P2 §3.13 |
 | `w4::syncHtmlUi`, `McpAutoSync` UI tracking, `external_changes.ui_reloaded` | editor/MCP | P4 p4-checks | P5 (`.frag` trigger) | P4 §3.5 |
 

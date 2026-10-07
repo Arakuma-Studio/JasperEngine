@@ -1726,6 +1726,27 @@
 		48544D4C000000000000028D /* Geometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000028B /* Geometry.cpp */; };
 		48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000290 /* librmlui-ios.a */; };
 		48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000291 /* librmlui-macos.a */; };
+		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
+		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AB /* HtmlUIRenderStats.h */; };
+		48544D4C00000000000002AE /* HtmlUITexture.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AD /* HtmlUITexture.h */; };
+		48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AF /* HtmlUITexture.cpp */; };
+		48544D4C00000000000002B1 /* HtmlUITexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AF /* HtmlUITexture.cpp */; };
+		48544D4C00000000000002B3 /* UIDataModel.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002B2 /* UIDataModel.h */; };
+		48544D4C00000000000002B5 /* UIElementInternal.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002B4 /* UIElementInternal.h */; };
+		48544D4C00000000000002B7 /* UIEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002B6 /* UIEvent.h */; };
+		48544D4C00000000000002B9 /* UIValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002B8 /* UIValue.h */; };
+		48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
+		48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
+		48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
+		48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
+		48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */; };
+		48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */; };
+		48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */; };
+		48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -3830,6 +3851,20 @@
 		48544D4C000000000000028B /* Geometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Geometry.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000290 /* librmlui-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
+		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002AB /* HtmlUIRenderStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIRenderStats.h; sourceTree = "<group>"; };
+		48544D4C00000000000002AD /* HtmlUITexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUITexture.h; sourceTree = "<group>"; };
+		48544D4C00000000000002AF /* HtmlUITexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUITexture.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002B2 /* UIDataModel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDataModel.h; sourceTree = "<group>"; };
+		48544D4C00000000000002B4 /* UIElementInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElementInternal.h; sourceTree = "<group>"; };
+		48544D4C00000000000002B6 /* UIEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEvent.h; sourceTree = "<group>"; };
+		48544D4C00000000000002B8 /* UIValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIValue.h; sourceTree = "<group>"; };
+		48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemInput.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemReload.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemRender.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemScript.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemTexture.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -5194,6 +5229,11 @@
 				71ABBD21277A31E6001CE3AF /* UISystem.h */,
 				48544D4C0000000000000036 /* UIDocumentSystem.h */,
 				48544D4C0000000000000038 /* UIDocumentSystem.cpp */,
+				48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */,
+				48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */,
+				48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */,
+				48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */,
+				48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -6196,6 +6236,10 @@
 				48544D4C000000000000003D /* UIDocument.cpp */,
 				48544D4C0000000000000040 /* UIElement.h */,
 				48544D4C0000000000000042 /* UIElement.cpp */,
+				48544D4C00000000000002B2 /* UIDataModel.h */,
+				48544D4C00000000000002B4 /* UIElementInternal.h */,
+				48544D4C00000000000002B6 /* UIEvent.h */,
+				48544D4C00000000000002B8 /* UIValue.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -6630,6 +6674,11 @@
 			children = (
 				48544D4C0000000000000001 /* HtmlUI.h */,
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
+				48544D4C00000000000002A6 /* HtmlUIClock.h */,
+				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				48544D4C00000000000002AB /* HtmlUIRenderStats.h */,
+				48544D4C00000000000002AD /* HtmlUITexture.h */,
+				48544D4C00000000000002AF /* HtmlUITexture.cpp */,
 				48544D4C0000000000000006 /* HtmlUIContext.h */,
 				48544D4C0000000000000008 /* HtmlUIContext.cpp */,
 				48544D4C000000000000000B /* HtmlUIContextRender.cpp */,
@@ -7113,6 +7162,9 @@
 				71E824862A9C238900C8E6F2 /* Joint2DComponent.h in Headers */,
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
+				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */,
+				48544D4C00000000000002AE /* HtmlUITexture.h in Headers */,
 				48544D4C0000000000000007 /* HtmlUIContext.h in Headers */,
 				48544D4C000000000000000F /* RmlFile.h in Headers */,
 				48544D4C0000000000000014 /* RmlFontEngine.h in Headers */,
@@ -7125,6 +7177,10 @@
 				48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */,
 				48544D4C000000000000003C /* UIDocument.h in Headers */,
 				48544D4C0000000000000041 /* UIElement.h in Headers */,
+				48544D4C00000000000002B3 /* UIDataModel.h in Headers */,
+				48544D4C00000000000002B5 /* UIElementInternal.h in Headers */,
+				48544D4C00000000000002B7 /* UIEvent.h in Headers */,
+				48544D4C00000000000002B9 /* UIValue.h in Headers */,
 				48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -8621,6 +8677,8 @@
 				713D82B6259D307F00567F9F /* SokolTexture.cpp in Sources */,
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
+				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */,
 				48544D4C0000000000000009 /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */,
 				48544D4C0000000000000011 /* RmlFile.cpp in Sources */,
@@ -8632,6 +8690,11 @@
 				48544D4C000000000000002F /* GlyphAtlas.cpp in Sources */,
 				48544D4C0000000000000034 /* TextShaper.cpp in Sources */,
 				48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */,
+				48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */,
+				48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */,
+				48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */,
+				48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003E /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000043 /* UIElement.cpp in Sources */,
 			);
@@ -8832,6 +8895,8 @@
 				7162FD5E25963AE10075B97D /* ExternalBuffer.cpp in Sources */,
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
+				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				48544D4C00000000000002B1 /* HtmlUITexture.cpp in Sources */,
 				48544D4C000000000000000A /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */,
 				48544D4C0000000000000012 /* RmlFile.cpp in Sources */,
@@ -8843,6 +8908,11 @@
 				48544D4C0000000000000030 /* GlyphAtlas.cpp in Sources */,
 				48544D4C0000000000000035 /* TextShaper.cpp in Sources */,
 				48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */,
+				48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */,
+				48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */,
+				48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */,
+				48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003F /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000044 /* UIElement.cpp in Sources */,
 			);

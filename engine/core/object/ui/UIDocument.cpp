@@ -78,3 +78,7 @@ UIElement UIDocument::getElementById(const std::string& id) const{
 UIElement UIDocument::getBody() const{
     return scene->getSystem<UIDocumentSystem>()->getDocumentBody(entity);
 }
+
+Framebuffer* UIDocument::getTargetTexture() const{
+    return scene->getSystem<UIDocumentSystem>()->getTargetTexture(entity);
+}

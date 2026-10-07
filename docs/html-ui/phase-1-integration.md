@@ -140,7 +140,11 @@ branches (wave 0). These files hold declarations, and three small implementation
 packages call: the RGBA8 dynamic texture, the `HtmlUITexture` struct and the UI clock
 (`HtmlUIClock`). Each package then **defines** its own declarations in files it owns. A
 declared but undefined non-virtual member compiles and links as long as nobody calls it, so
-every worktree builds from the start.
+every worktree builds from the start. Where a package calls a declaration of a package that
+merges **after** it (or would block on it while working in parallel), wave 0 defines a
+minimal stub marked `// HTMLUI_P1_STUB: <owner>`; the owner replaces it and removes the
+marker (the list is at the end of this section; `grep -rn HTMLUI_P1_STUB engine` must be
+empty when phase 1 is merged).
 
 Phase 0 already created most of these files as working code (its skeletons became real
 implementations in waves 2–3): `UIDocumentComponent.h`, `UIDocumentSystem.{h,cpp}`,
@@ -150,15 +154,19 @@ creates a second copy or renames a phase-0 member. Phase-0 members stay (phase-0
 them); phase-1 members are added next to them.
 
 **Per-package state, no shared private members.** `UIDocumentSystem` gets one opaque state
-object per package:
+object per package. The structs are declared at namespace scope (so a package can define
+its struct `JASPERENGINE_INTERNAL` when it holds hidden types such as `HtmlUIContext`, as
+phase 0's `UIDocumentContext` does) and are friends of `UIDocumentSystem`:
 
 ```cpp
-// engine/core/subsystem/UIDocumentSystem.h (wave 0 additions, private section)
+// engine/core/subsystem/UIDocumentSystem.h (wave 0)
 struct HtmlUIRenderState;   // p1-render  (UIDocumentSystemRender.cpp)
 struct HtmlUIInputState;    // p1-input   (UIDocumentSystemInput.cpp)
 struct HtmlUIScriptState;   // p1-lua     (UIDocumentSystemScript.cpp)
 struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
 struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
+// private section of UIDocumentSystem, one block per package:
+friend struct HtmlUIRenderState; /* … one friend line per state … */
 std::shared_ptr<HtmlUIRenderState>  renderState;   // shared_ptr: deleter bound at creation,
 std::shared_ptr<HtmlUIInputState>   inputState;    // so ~UIDocumentSystem (phase-0 .cpp)
 std::shared_ptr<HtmlUIScriptState>  scriptState;   // never needs the complete types
@@ -167,21 +175,32 @@ std::shared_ptr<HtmlUITextureState> textureState;
 ```
 
 Each package creates its state lazily in its own `.cpp` (`if (!inputState) inputState =
-std::make_shared<HtmlUIInputState>();`) and defines the struct there. The phase-0
-`UIDocumentSystem.cpp` changes only by the one-line calls listed per package.
+std::make_shared<HtmlUIInputState>();`) and defines the struct there. The five `.cpp` files
+exist from wave 0 (already listed in `engine/CMakeLists.txt` and the Xcode project), some
+holding only the stubs below; the public declarations and the private blocks of
+`UIDocumentSystem.h` are grouped per package (`// --- p1-input ---`), and a package adds its
+own private helpers inside its block, so parallel additions do not touch the same lines. The
+phase-0 `UIDocumentSystem.cpp` changes only by the one-line calls listed per package.
 
 **Public C++ API without RmlUi types.** Headers outside `engine/core/htmlui/` and outside
 `*Internal.h` files never include RmlUi headers, because DESIGN principle 3 keeps RmlUi
 swappable. Handles hold a `std::shared_ptr` to an internal struct defined in a `.cpp` or
-`*Internal.h`.
+`*Internal.h`. Engine code that needs the RmlUi element behind a `UIElement` (p1-anim targets,
+phase-2 hooks, phase-4 inspectors) includes `engine/core/object/ui/UIElementInternal.h`
+(wave 0): it defines phase 0's `UIElementHandle { Rml::ObserverPtr<Rml::Element> element; }`
+(moved there from `UIElement.cpp`; p1-lua adds the detached-pool token to it) and
+`UIElementAccess::get(const UIElement&) -> Rml::Element*` /
+`UIElementAccess::wrap(Rml::Element*) -> UIElement` (a friend of `UIElement`). `UIEvent` and
+`UIDataModel` make `struct HtmlUIScriptAccess` (p1-lua, `HtmlUIScriptInternal.h`) a friend,
+so p1-lua creates and reads their state without another header change.
 
-Wave-0 files, with the exact contents the coordinator commits:
+Wave-0 files, with the contents the coordinator commits:
 
-1. **`engine/core/htmlui/HtmlUITexture.h`** — what every `Rml::TextureHandle` points to in
+1. **`engine/core/htmlui/HtmlUITexture.{h,cpp}`** — what every `Rml::TextureHandle` points to in
    phase 1:
    ```cpp
    namespace jasperengine {
-   struct HtmlUITexture {
+   struct JASPERENGINE_API HtmlUITexture {
        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
        Kind kind = Kind::STATIC;
        TextureRender* render = nullptr;            // sampled texture
@@ -190,6 +209,13 @@ Wave-0 files, with the exact contents the coordinator commits:
        int width = 0, height = 0;
        bool dead = false;                          // GPU object dropped by view loss (phase-0 releaseGpuResources)
        uint64_t lastUpdateFrame = UINT64_MAX;      // DYNAMIC: one sg_update_image per frame
+       ~HtmlUITexture();                           // destroys ownedRender's GPU texture unless dead; non-copyable
+       // DYNAMIC helpers (wave 0): TextureRender::createDynamicTexture below; nullptr (logged) on failure
+       static std::unique_ptr<HtmlUITexture> createDynamic(const std::string& label, int width, int height,
+                                                           ColorFormat format = ColorFormat::RGBA,
+                                                           TextureFilter filter = TextureFilter::LINEAR);
+       bool update(const void* data, size_t size); // false (nothing uploaded) if this frame already updated it
+       bool canUpdate() const;                     // DYNAMIC, alive, not yet updated this frame (SystemRender::getFrameCount)
    };
    }
    ```
@@ -197,32 +223,61 @@ Wave-0 files, with the exact contents the coordinator commits:
    - Every UI texture holds premultiplied RGBA8 (or R8 coverage); every upload path
      premultiplies (phase-0 `LoadTexture` on the CPU, ThorVG `ABGR8888`, font pages), so the
      shader never premultiplies.
-   - `RmlRenderer::ReleaseTexture` deletes the struct, which destroys whatever it owns.
+   - `RmlRenderer::ReleaseTexture` deletes the struct, which destroys whatever it owns (a
+     `dead` texture without GPU calls: view loss already destroyed it).
    - `EXTERNAL` points at a texture owned by someone else, for example a `Framebuffer` a
      script passes in.
    - Phase 0's internal `RmlTexture { TextureRender render; width; height; dead }`
      (`phase-0-foundation.md` §3.5.2) is migrated to this struct by p1-render, keeping the
-     view-loss behaviour (`dead` handles are freed without GPU calls).
+     view-loss behaviour (`dead` handles are freed without GPU calls). Until that migration
+     lands, the phase-0 renderer does not understand an `HtmlUITexture` handle, so drawing a
+     DYNAMIC texture through RmlUi (p1-vector's Lottie goldens) needs `p1-render` merged.
 2. **`engine/core/render/TextureRender.h` / `engine/renders/sokol/SokolTexture.{h,cpp}`** —
    an RGBA8 dynamic texture. These are new overloads; the old RGBA32F path
    (`SokolTexture.cpp:331-366`, used for bones) is untouched:
    ```cpp
-   bool createDynamicTexture(const std::string& label, int width, int height,
-                             ColorFormat format, TextureFilter filter);   // RGBA → SG_PIXELFORMAT_RGBA8,
-                                                                         // RED → R8; usage.stream_update,
-                                                                         // CLAMP_TO_EDGE, given min/mag filter
+   bool TextureRender::createDynamicTexture(const std::string& label, int width, int height,
+                                            ColorFormat format, TextureFilter filter);
+       // RGBA → SG_PIXELFORMAT_RGBA8, RED → R8 (anything else, or a size ≤ 0: logged, false);
+       // usage.stream_update, CLAMP_TO_EDGE, no mipmaps, the given min/mag filter (a mipmap
+       // filter samples with its base filter)
    ```
    `updateTexture(const void*, size_t)` stays the update call (one update per frame, as
-   sokol requires).
+   sokol requires); for these textures it rejects, with an error, a size other than
+   width × height × 4 (or 1), which sokol would otherwise over-read. Test builds
+   (`JASPERENGINE_TEXTURE_READBACK`) give Vulkan sampled images `TRANSFER_SRC` so tests read
+   dynamic textures back (`readTexturePixels`, harness `Readback.h`).
 3. **`engine/core/component/UIDocumentComponent.h`** — the full phase-1 field list (§3.8.1).
    Fields that already exist from phase 0 keep their names; the new ones are appended.
 4. **`engine/core/subsystem/UIDocumentSystem.h`** — the state pointers above, plus the
-   public method declarations listed in §3.5, §3.6, §3.8.6, §3.9.5 and §3.12.
+   public method declarations listed in §3.5, §3.6, §3.8.6, §3.8.7, §3.9.5 and §3.12, and:
+   - `PointerPhase`, `HtmlUIMessageLevel { Info, Warning, Error }` and
+     `HtmlUIMessage { level, text, file, line }` at namespace scope;
+   - `HtmlUIRenderStats` (§3.2.8) in its own RmlUi-free header
+     `engine/core/htmlui/HtmlUIRenderStats.h`, which `UIDocumentSystem.h` includes;
+   - `static void setPreferredSampleCount(int)` / `static int getPreferredSampleCount()`
+     (p1-render): the exported entry to `HtmlUIContext::setPreferredSampleCount`, which is
+     `JASPERENGINE_INTERNAL` and so cannot be called by the editor (shared engine) or by
+     generated game code (no RmlUi include path) (§3.8.8);
+   - `Framebuffer* getTargetTexture(Entity) const` (p1-rtt): `UIDocument::getTargetTexture`
+     is defined once in wave 0 as a call to it, so p1-rtt touches only its own file;
+   - private, p1-lua block: `void scriptDocumentReloaded(Entity, const
+     std::unordered_map<Rml::Element*, Rml::Element*>& oldToNew)` — the hook p1-editor's full
+     reload calls (§3.8.6 step 4) after the new document loaded, while the old one is still
+     alive (RmlUi destroys unloaded documents at the next context update). `oldToNew` maps
+     the old document and its id-ed elements to their counterparts; p1-lua moves those
+     elements' listeners (its `HtmlUIScriptState::onDocumentReloaded`) and warns about the
+     dropped ones.
+   - `setDebuggerVisible` returns `bool` from wave 0 on (§3.8.7).
 5. **`engine/core/object/ui/UIValue.h`, `UIEvent.h`, `UIDataModel.h`** (new) and the
    phase-0 **`engine/core/object/ui/UIElement.h`, `UIDocument.h`** (extended) — the public API
-   declarations of §3.9, verbatim. They sit next to phase 0's `UIDocument`/`UIElement`, so the
-   C++ script API snapshot needs no new include directory and no public header includes
-   RmlUi (phase 0 §3.1).
+   declarations of §3.9, verbatim except: `UIEvent`'s state is `std::shared_ptr<HtmlUIEventState>`
+   (`Scene.h` already has an `enum class UIEventState`, which `struct UIEventState` would
+   collide with); `UIValue`'s private storage is `type`, `boolValue`, `numberValue`,
+   `stringValue`, `items` (array elements or object values) and `itemKeys` (object keys,
+   insertion order), which p1-lua may change (it owns `UIValue`). They sit next to phase 0's
+   `UIDocument`/`UIElement`, so the C++ script API snapshot needs no new include directory and
+   no public header includes RmlUi (phase 0 §3.1). Plus `UIElementInternal.h` (above).
 6. **`engine/core/htmlui/HtmlUIClock.{h,cpp}`** — the UI clock, implemented in wave 0 because
    p1-input, p1-vector, p1-anim and p1-render all read it:
    ```cpp
@@ -235,7 +290,7 @@ Wave-0 files, with the exact contents the coordinator commits:
    class JASPERENGINE_API HtmlUIClock {
    public:
        static double now();                                    // fixed time if set, else the accumulated time
-       static void advance(double unscaledSeconds);            // once per engine frame (below)
+       static void advance(double unscaledSeconds);            // once per engine frame (below); no-op while fixed
        static void setFixedTime(std::optional<double> seconds);// tests, goldens, tools; nullopt = run
        static std::optional<double> getFixedTime();
        static void reset();                                    // tests: time 0, no fixed time
@@ -245,13 +300,50 @@ Wave-0 files, with the exact contents the coordinator commits:
    - `Engine::systemDraw` calls `HtmlUIClock::advance(dt)` once per frame, before the scene
      updates, with the frame's delta **before** `timeScale` (the fixed delta when
      `setFixedDeltatime` is set, else the measured delta capped by `maxDeltatime`) and 0 for
-     frames during which a host holds the simulation.
-   - The editor in edit mode (no `Engine::systemDraw` update) advances it with its own frame
-     time from `App::engineRender`, so the Scene view runs CSS transitions and keyframes.
+     frames during which a host holds the simulation or the app is paused (`systemPause`):
+     the frames that run no scene update.
+   - While a fixed time is set, `advance` does nothing; clearing it
+     (`setFixedTime(std::nullopt)`) resumes the running time **from the fixed value**, so
+     `now()` never jumps on release. Negative or non-finite deltas and fixed times are
+     ignored (the fixed time with a `[HTML UI]` warning).
+   - The editor needs no hook of its own: in edit mode `App::engineRender` draws the Scene
+     view (and the Game view pass) through `Engine::systemDraw`, which updates the stopped
+     scene and advances the clock, so the Scene view runs CSS transitions and keyframes. The
+     clock only stands still while the editor does not redraw; keeping the view redrawing
+     while a document animates is p1-editor's (§3.8.6). (An extra advance from
+     `App::engineRender` would count edit-mode time twice.)
    - `RmlSystem::GetElapsedTime()` returns `HtmlUIClock::now()` (one-line change to the
-     phase-0 file, which used `Engine::getSystemTime()`).
+     phase-0 file, which used `Engine::getSystemTime()`). RmlUi's double-click detection reads
+     the same clock: two clicks with no frame between them (fixed or held time) count as a
+     double click.
 
-The wave-0 commit must build (`tools/build.sh linux`) and keep all phase-0 tests green.
+**Wave-0 stubs** (`// HTMLUI_P1_STUB: <owner>`; every other new declaration is left
+undefined for its owner):
+
+| File | Function | Owner | Stub behaviour | Why it is needed early |
+|---|---|---|---|---|
+| `UIDocumentSystem.cpp` (phase-0 file) | `bool UIDocumentSystem::setDebuggerVisible(bool)` | p1-editor | phase-0 behaviour, returns `true` (phase 0 always compiles the debugger in) | return type changed in the header |
+| `UIDocumentSystem.cpp` | `bool UIDocumentSystem::isDebuggerVisible() const` | p1-editor | returns this scene's requested state | p1-lua's static `UIDocument::isDebuggerVisible` |
+| `UIDocumentSystemReload.cpp` | `void UIDocumentSystem::reloadDocument(Entity, bool)` | p1-editor | `needReload = true` + `loadDocumentNow` (nothing preserved) | p1-lua (`createDataModel` reload, `UIDocument::reload`) merges before p1-editor |
+| `UIDocumentSystemScript.cpp` | `void UIDocumentSystem::scriptDocumentReloaded(Entity, const std::unordered_map<Rml::Element*, Rml::Element*>&)` | p1-lua | nothing (listeners are not moved) | p1-editor's reload calls it before p1-lua lands in its worktree |
+| `UIDocumentSystemRender.cpp` | `static void setPreferredSampleCount(int)`, `static int getPreferredSampleCount()` | p1-render | stores/returns the value (default 4) | p1-editor's project setting and `Generator.cpp` init line |
+| `UIDocumentSystemTexture.cpp` | `Framebuffer* UIDocumentSystem::getTargetTexture(Entity) const` | p1-rtt | `nullptr` | p1-lua binds `UIDocument::getTargetTexture`; p1-rtt merges last |
+
+Defined for real in wave 0 (not stubs): `UIDocumentSystem::getDocument(Entity)` in
+`UIDocumentSystemReload.cpp` (a lookup in phase 0's `documents` map; p1-lua and p1-anim reach
+documents through it before p1-editor lands; p1-rtt keeps texture-mode documents reachable
+through it), `UIDocument::getTargetTexture()` (`UIDocument.cpp`, forwards to the system),
+`UIElementAccess`, `HtmlUIClock`, `HtmlUITexture` and the dynamic texture.
+
+Known cross-package calls that are **not** stubbed, because the caller merges after the
+callee and can merge `html-ui` first: p1-lua's `UIEvent` key fields use p1-input's
+`RmlKeyMap` (DOM `key`/`code`, §3.6.2); p1-vector's Lottie drawing needs p1-render's
+`HtmlUITexture` migration (item 1); p1-anim's element integration needs p1-lua's `UIElement`
+and its Lua class; p1-editor's listener re-attachment test needs p1-lua's real
+`scriptDocumentReloaded`.
+
+The wave-0 commit must build (`tools/build.sh linux`, web, android) and keep all phase-0
+tests green.
 
 ---
 
@@ -1220,8 +1312,11 @@ Full reload with state preservation:
   (630-690), it does not skip while playing. An edit-mode change also sets
   `needUpdateRender` so the Scene view redraws.
 - **Scene view in edit mode.** Phase 0 already calls `UIDocumentSystem::update(0)` next to
-  every edit-mode `UISystem::update(0)` (phase 0 §3.7.5 A1); the editor advances the UI clock
-  in edit mode (§3.0 item 6).
+  every edit-mode `UISystem::update(0)` (phase 0 §3.7.5 A1); edit-mode frames run through
+  `Engine::systemDraw`, which advances the UI clock (§3.0 item 6). The Scene view redraws only
+  when `sceneNeedsRender` says so (`App::engineRender`), so p1-editor keeps it redrawing while
+  a document of the scene runs a transition or animation (the RmlUi context asks for the next
+  update), and stops when it does not.
   - `SceneRender2D::update` (825) draws the selected document's canvas rectangle as an
     outline, like other 2D gizmos.
   - Documents are not pickable in the Scene view; they are selected in the Hierarchy.
@@ -1277,8 +1372,12 @@ the Lua tree (`isLuaExportFile`, 706-716). That is harmless; the runtime reads t
 **MSAA project setting.** `htmlUiMsaaSamples` (1/2/4/8, default 4) is stored with the other
 project settings in `Project`. It is shown in the Project Settings window and settable
 through MCP `set_project_settings`. Exports write it as
-`HtmlUIContext::setPreferredSampleCount(n)` into the generated init code (`Generator.cpp`);
-the editor applies it directly when a project opens or the setting changes.
+`UIDocumentSystem::setPreferredSampleCount(n)` into the generated init code (`Generator.cpp`);
+the editor applies it with the same call when a project opens or the setting changes. (Not
+`HtmlUIContext::setPreferredSampleCount` directly: that class is `JASPERENGINE_INTERNAL`,
+hidden from the editor's shared engine, and its header needs RmlUi's include path, which
+generated game code does not have; the `UIDocumentSystem` statics forward to it, §3.0
+item 4.)
 
 ---
 
@@ -1317,7 +1416,7 @@ public:
     float getDeltaX() const; float getDeltaY() const;
     std::string getData() const;                  // textinput / IME
     UIValue getDetail() const;                    // custom events (dispatchEvent)
-private: std::shared_ptr<struct UIEventState> state;
+private: std::shared_ptr<HtmlUIEventState> state;   // not UIEventState: Scene.h has an enum of that name
 };
 ```
 `engine/core/object/ui/UIElement.h` (phase 0's class, extended; every phase-0 member stays:
@@ -1460,7 +1559,7 @@ static void setDebuggerVisible(bool); static bool isDebuggerVisible();
 - **Play stop.** The Lua state is never recreated between plays (`Project.cpp:7195`,
   7663-7719). Documents are destroyed with their scenes, which releases every listener and
   data-model ref. A test checks that `liveLuaRefs()` is 0 after stop.
-- **Events.** A `UIEvent` handle wraps a `UIEventState` that is invalidated when
+- **Events.** A `UIEvent` handle wraps a `HtmlUIEventState` that is invalidated when
   `ProcessEvent` returns.
 
 #### 3.9.3 Events: names and fields
@@ -1868,7 +1967,9 @@ reloading it, with state preservation.
   upright.
 - `Framebuffer::create()` bumps its version, so consumers rebind
   (`Texture::isFramebufferOutdated`).
-- `UIDocument::getTargetTexture()` returns it (Lua `doc:getTargetTexture()`).
+- `UIDocument::getTargetTexture()` returns it (Lua `doc:getTargetTexture()`): wave 0 defines it
+  as `UIDocumentSystem::getTargetTexture(entity)`, which p1-rtt defines in
+  `UIDocumentSystemTexture.cpp` (replacing the wave-0 stub).
 - Texture documents are never composited into the camera pass.
 
 #### 3.12.3 World-space input
@@ -2007,6 +2108,11 @@ Each package merges `html-ui` into its branch before finishing (BRIEF).
 Worktrees: `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branch
 `hui/<slug>`.
 
+Wave 0 already created `UIDocumentSystem{Render,Input,Script,Reload,Texture}.cpp` (listed in
+CMake and Xcode, some holding `HTMLUI_P1_STUB`s, §3.0); "New" below means the package owns
+the file and writes its content. Every package removes the stubs it owns and checks
+`grep -rn "HTMLUI_P1_STUB: <slug>" engine` is empty before it finishes.
+
 ---
 
 ### p1-render — renderer completeness
@@ -2119,8 +2225,9 @@ android. Windows, macOS and iOS: §5.4 rules.
   adds its own line).
 - `editor/util/ProjectUtils.cpp` (`getEntityClassInfo`), `PropertyCmd`
   (`isNonStructuralProperty`), deferred by phase 0.
-- `editor/App.cpp` (`App::engineRender`): `HtmlUIClock::advance(frame time)` in edit mode
-  (§3.0 item 6).
+- `editor/App.cpp` (`App::engineRender`): keep the Scene view redrawing while a document
+  animates (§3.8.6). No clock call: edit-mode frames advance the UI clock through
+  `Engine::systemDraw` (§3.0 item 6).
 - `engine/tests/htmlui/CMakeLists.txt`: the editor sources compiled into the test target
   (`EditorLogicTests`, §5.1).
 - `RmlFile.cpp`, `RmlFontEngine.cpp` (`reloadFontFile`, dependency log).
@@ -2243,8 +2350,8 @@ section).
 - `UIDocumentSystemInput.cpp`: one `dispatchWorldPointer` call per pointer method.
 - `RmlRenderer` (render-to-`Framebuffer` entry point using the `Unp` variant that p1-render
   ships).
-- `UIDocument.cpp`: `getTargetTexture`.
-- `engine/CMakeLists.txt` sources, Xcode project.
+- `engine/CMakeLists.txt` sources, Xcode project. (`UIDocument::getTargetTexture` is
+  already defined by wave 0; p1-rtt defines `UIDocumentSystem::getTargetTexture`.)
 
 **Dependencies:**
 - Font effects: wave 0.

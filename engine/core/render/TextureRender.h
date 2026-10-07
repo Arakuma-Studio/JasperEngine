@@ -39,7 +39,13 @@ namespace jasperengine {
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
                 ColorFormat colorFormat = ColorFormat::RGBA);
 
+        // RGBA32F, NEAREST (bone matrices)
         bool createDynamicTexture(const std::string& label, int width, int height);
+        // RGBA -> RGBA8, RED -> R8; stream update, CLAMP_TO_EDGE, no mipmaps, the given min/mag
+        // filter. updateTexture then takes exactly width * height * 4 (or 1) bytes, rows top first
+        bool createDynamicTexture(const std::string& label, int width, int height,
+                                  ColorFormat format, TextureFilter filter);
+        // at most once per frame (sokol); the next draw that samples the texture sees the data
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();

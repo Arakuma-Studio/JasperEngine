@@ -122,7 +122,11 @@ What works:
 - Selectors: type, `#id`, `.class`, descendant/child/sibling combinators, attribute
   selectors, `:hover`, `:active`, `:first-child`, `:nth-child()`, `:not()`.
 - `var()` custom properties, `@media` (width/height of the canvas, orientation),
-  `@keyframes` + `animation`, transitions as above.
+  `@keyframes` + `animation`, transitions as above. They run on the **UI clock**: the
+  engine's frame time before the time scale, so a pause menu animates while
+  `Engine.timeScale = 0` freezes the game; a fixed frame delta (`play` with `fixed_fps`)
+  makes them deterministic, and they stand still while the simulation is held
+  (`auto_pause`).
 - Pointer input: mouse buttons, mouse move and the first touch, so `:hover`/`:active` work in
   play mode and in exported games. A press or release over an element of a document is the
   document's: the game's `onMouseDown`/`onMouseUp`/`onMouseMove` (and the component UI under
