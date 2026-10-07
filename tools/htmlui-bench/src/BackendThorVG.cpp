@@ -86,8 +86,21 @@ public:
         if (!picture || !added) return false;
         auto paint = const_cast<tvg::Paint*>(picture->paint(tvg::Accessor::id(id.c_str())));
         if (!paint || paint->type() != tvg::Type::Shape) return false;
-        static_cast<tvg::Shape*>(paint)->fill(uint8_t(rgba >> 24), uint8_t(rgba >> 16), uint8_t(rgba >> 8), uint8_t(rgba));
-        // Only the changed shape is re-prepared: that is the retained-scene benefit.
+        auto shape = static_cast<tvg::Shape*>(paint);
+        uint8_t alpha = 0;
+        shape->fill(nullptr, nullptr, nullptr, &alpha);
+        bool hadFill = alpha > 0 || shape->fill() != nullptr;
+        shape->fill(uint8_t(rgba >> 24), uint8_t(rgba >> 16), uint8_t(rgba >> 8), uint8_t(rgba));
+        // The software renderer builds a shape's fill spans only when it prepares the geometry
+        // with a visible fill, so a colour change alone does not draw anything on a shape that
+        // had no fill (every stroke-only icon path): invalidate its geometry too.
+        if (!hadFill) shape->transform(shape->transform());
+        // Picture::update skips the whole picture unless the picture itself is dirty, so a
+        // change marked on an inner shape is never seen. Toggling the opacity is the cheapest
+        // public way to dirty it: the other shapes only get a colour update (no re-raster),
+        // the changed shape is re-prepared. That is the retained-scene benefit.
+        picture->opacity(254);
+        picture->opacity(255);
         return draw();
     }
 
