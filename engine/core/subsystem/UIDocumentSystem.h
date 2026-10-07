@@ -9,7 +9,6 @@
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
 
-#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -22,6 +21,7 @@ namespace jasperengine{
 
     class HtmlUIContext;
     class UIElement;
+    struct UIDocumentContext;
 
     // The HTML/CSS documents of a scene (UIDocumentComponent): one RmlUi context, created
     // the first time the scene has a document, drawn offscreen and composited in front of
@@ -63,11 +63,28 @@ namespace jasperengine{
         HtmlUIContext* getContext() const;   // internal/tests
 
     private:
-        std::unique_ptr<HtmlUIContext> context;
+        // HtmlUI::acquire and the context, the first time the scene has a document
+        bool ensureContext();
+        // unloads every document, then drops the GPU objects, the RmlUi context and RmlUi
+        void destroyContext();
+        // context dimensions: the reference size where set, else the canvas
+        void getLayoutSize(int& width, int& height) const;
+        // load/unload, z-index and visibility of one component's document
+        void applyComponent(Entity entity, UIDocumentComponent& document);
+        void unloadEntityDocument(Entity entity);
+        bool hasVisibleDocument() const;
+        // canvas coordinates to context coordinates
+        void toContext(float& x, float& y) const;
+
+        // owned. The HtmlUIContext, through a type only UIDocumentSystem.cpp defines: a field
+        // naming the hidden HtmlUIContext makes GCC warn (-Wattributes) wherever HtmlUIContext.h
+        // is included before this header
+        UIDocumentContext* context = nullptr;
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
         bool pointerCaptured = false;   // a consumed down is followed by a consumed up
+        bool debuggerVisible = false;   // asked before the context existed
     };
 
 }

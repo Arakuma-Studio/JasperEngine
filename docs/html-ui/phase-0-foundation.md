@@ -1328,7 +1328,10 @@ namespace jasperengine{
         HtmlUIContext* getContext() const;   // internal/tests
 
     private:
-        std::unique_ptr<HtmlUIContext> context;
+        // owned (p0-ecs): a field naming the hidden HtmlUIContext makes GCC warn that this class
+        // has a less visible field (-Wattributes) wherever HtmlUIContext.h is included first,
+        // so it points to UIDocumentContext, an HtmlUIContext subclass defined in the .cpp
+        UIDocumentContext* context = nullptr;
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
@@ -1477,7 +1480,7 @@ UpdateFlags: `editor/Catalog.h:16-61` add `UpdateFlags_UIDocument_Reload` (next 
 |---|---|---|
 | C1 | `editor/Catalog.h:116-118` | append `UIDocumentComponent` to `enum class ComponentType` (at the end). |
 | C2 | `editor/Catalog.cpp` | `kUIDocumentProperties[]`: `filename` (`PropertyType::String`, `UpdateFlags_UIDocument_Reload`), `sortOrder` (`Int`, none); resolve + enumerate functions; row in `kFastComponentResolvers` (`:3068-3121`). |
-| C3 | `Catalog.cpp:3253-3367` `computeComponentName` | `"UIDocument"` (YAML key `uidocument`). |
+| C3 | `Catalog.cpp:3253-3367` `computeComponentName` | `"UIDocumentComponent"` (YAML/MCP key `uidocument`). Corrected by p0-ecs: this name is the C++ type name too, `Factory` generates `scene->findComponent<` + name + `>` with it, so it must be the struct name like every other row. |
 | C4 | `Catalog.cpp:3490-3600` `getComponentId` | case (the default returns 0 = MeshComponent's bit). |
 | C5 | `Catalog.cpp:3602-3712` `getComponentType` | name -> type. |
 | C6 | `Catalog.cpp:3755-3916` `findComponents` | detect the component. |
@@ -1491,8 +1494,8 @@ UpdateFlags: `editor/Catalog.h:16-61` add `UpdateFlags_UIDocument_Reload` (next 
 | M1 | `editor/mcp/McpRefs.cpp:375`, `:417`, `editor/mcp/tools/ComponentTools.cpp:801` | the "last component type" sentinel `ReflectionProbeComponent` -> `UIDocumentComponent`. |
 | M2 | `editor/mcp/tools/ScriptTools.cpp:114-122` `isTextFile` | add `.html`, `.htm`, `.css`, `.rml`, `.rcss` (used by `write_file`/`read_file`, `AssetTools.cpp:965-967`); regenerate `docs/mcp/TOOLS.md` with `tools/mcp/gen_tool_docs.py` if a tool description lists extensions. |
 | A1 | `editor/render/SceneRender.cpp:737-740`, `editor/App.cpp:2652-2654`, `:2869-2871`, `:2928-2930` | `->getSystem<UIDocumentSystem>()->update(0);` after each `UISystem` `update(0)` (edit-mode refresh). |
-| A2 | `editor/App.cpp:2496-2499` | `if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;` (keep redrawing while documents/shaders load). |
-| A3 | `editor/Project.cpp:1510`, `:1601`, `:4603` | `->getSystem<UIDocumentSystem>()->setReferenceSize(...)` next to each `setAnchorReferenceSize`. |
+| A2 | `editor/App.cpp:2496-2499` | `if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;` (keep redrawing while documents/shaders load), only when the Game view draws that scene (`gameWindow->wantsEditPass(sp.id) \|\| gameWindow->hostsScene(sp.id)`): `isAllLoaded` waits for a rendered frame, which the Scene view never makes in phase 0, so without the gate a selected scene with a document would redraw forever (p0-ecs). |
+| A3 | `editor/Project.cpp:1510`, `:1601`, `:4603` | `->getSystem<UIDocumentSystem>()->setReferenceSize(...)` next to each `setAnchorReferenceSize`, and `clearReferenceSize()` next to the play-start `clearAnchorReferenceSize` (`:3054`). |
 | A4 | `editor/shader/ShaderVariantCollector.cpp`, `editor/Project.cpp:~2841`, `editor/window/dialog/ExportWindow.cpp:1236-1242` | HTML UI shader keys (owned by p0-render, 3.4.2). |
 
 The MCP `filename` property gets path validation/normalisation for free
@@ -2018,7 +2021,9 @@ filtering), do not add per-backend goldens.
 ### 5.3 MCP end-to-end tests
 
 `tools/mcp/tests/test_html_ui_component.py` (p0-ecs; non-visual):
-- `add_component` `UIDocument` with `{"filename": "ui/basic.html", "sortOrder": 2}` on a
+- `add_component` `UIDocument` with `{"filename": "assets/ui/basic.html", "sortOrder": 2}` (MCP
+  paths are project-relative; the fixture's assets are in `assets/`, the component stores
+  the asset-relative `ui/basic.html`) on a
   new entity; `get_entity` returns both values and `enabled: true`;
   `list_component_types` lists `UIDocument` with its properties.
 - `set_properties` `filename` to a path outside the project -> MCP error (path validation).

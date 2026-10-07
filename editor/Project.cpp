@@ -35,6 +35,7 @@
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -1509,6 +1510,7 @@ editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* s
 
     pauseEngineScene(scene, true);
     scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
+    scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
     switch (type) {
         case SceneType::SCENE_3D:
@@ -1600,6 +1602,7 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
         }
 
         sceneProject.scene->getSystem<UISystem>()->setAnchorReferenceSize(width, height);
+        sceneProject.scene->getSystem<UIDocumentSystem>()->setReferenceSize(width, height);
 
         if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
             static_cast<SceneRender2D*>(sceneProject.sceneRender)->setCanvasFrameSize(width, height);
@@ -3059,6 +3062,7 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
 
     entry.runtime->scene->getSystem<UISystem>()->clearAnchorReferenceSize();
+    entry.runtime->scene->getSystem<UIDocumentSystem>()->clearReferenceSize();
     pauseEngineScene(entry.runtime->scene, false);
 
     entry.initialized = true;
@@ -4608,6 +4612,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
+        sceneProject->scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot
         ObjectManager::forgetScene(sceneProject->scene);

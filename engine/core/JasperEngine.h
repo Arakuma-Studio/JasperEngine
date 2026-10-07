@@ -87,6 +87,7 @@
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/RectTransformComponent.h"
+#include "component/UIDocumentComponent.h"
 
 #include "ecs/ComponentArray.h"
 #include "ecs/ComponentManager.h"
@@ -156,6 +157,8 @@
 #include "object/ui/InputField.h"
 #include "object/ui/Text.h"
 #include "object/ui/RectTransform.h"
+#include "object/ui/UIDocument.h"
+#include "object/ui/UIElement.h"
 
 #include "pool/ShaderPool.h"
 #include "pool/SoundPool.h"
@@ -192,6 +195,7 @@
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include "texture/Framebuffer.h"
 #include "texture/Material.h"

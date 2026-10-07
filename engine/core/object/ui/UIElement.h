@@ -10,6 +10,11 @@
 #include <memory>
 #include <string>
 
+// RmlUi stays out of the engine API (swappable core): forward declarations only
+namespace Rml {
+    class Element;
+}
+
 namespace jasperengine{
 
     struct UIElementHandle;   // defined in UIElement.cpp: holds Rml::ObserverPtr<Rml::Element>
@@ -44,6 +49,10 @@ namespace jasperengine{
 
     private:
         friend class UIDocumentSystem;
+        // a weak reference to element (invalid UIElement for nullptr)
+        static UIElement wrap(Rml::Element* element);
+        Rml::Element* get() const;   // nullptr once invalid
+
         std::shared_ptr<UIElementHandle> handle;
     };
 

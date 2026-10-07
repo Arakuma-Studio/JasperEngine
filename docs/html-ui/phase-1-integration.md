@@ -1036,8 +1036,8 @@ Phase 0 registered the type minimally. p1-editor completes every row of the rese
 - Phase 0 already added the resolve/enumerate functions, the `kFastComponentResolvers` row,
   `computeComponentName`, the display name "UI Document", `getComponentId`,
   `getComponentType("uidocument")`, `findComponents`, `copyComponent` and the `ProjectUtils`
-  add/remove cases (phase-0 §3.7.5 C1–C8, P1). p1-editor extends them for the new fields and
-  adds the icon `ICON_FA_FILE_CODE` (after 3481).
+  add/remove cases (phase-0 §3.7.5 C1–C8, P1), and the component icon `ICON_FA_FILE_CODE`
+  (`getComponentIcon`). p1-editor extends them for the new fields.
 - `updateEntity` (before 4414): on `UpdateFlags_UIDocument_Reload` set `needReload = true`
   for `filename`/`renderMode`/`texture*`/`pixelRatio`, and re-apply the order for
   `sortOrder`.
