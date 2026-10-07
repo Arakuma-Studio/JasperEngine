@@ -15,6 +15,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "util/StringUtils.h"
+#include "util/Utf16Combiner.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -37,6 +39,7 @@
 #include "sokol_time.h"
 
 #include <algorithm>
+#include <functional>
 
 using namespace jasperengine;
 
@@ -1152,6 +1155,9 @@ void Engine::systemDraw(){
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
+    // the input of this frame is over: no low surrogate will follow a pending high one
+    flushCharInput();
+
     drawSemaphore.acquire();
 
     // async uploads of the last frame, while the scenes that queued them still exist
@@ -1373,19 +1379,122 @@ bool Engine::transformCoordPos(float& x, float& y){
     return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
 }
 
+// ---- input. Order per event (phase-1 spec §3.6.1): HTML UI documents, top scene layer first
+// (the first scene whose document consumes stops the document walk); then the component UI of
+// every scene, except that a scene whose document took a press does not give it to its
+// component UI; then the game, unless the UI consumed it and ignoreEventsHandledByUI is set.
+
+namespace {
+
+    // character input one unit at a time (systemCharInput) to code points
+    Utf16Combiner charInputCombiner;
+
+    // a document set the cursor on the last pointer move (systemMouseMove)
+    bool documentCursorSet = false;
+
+    std::string toUtf8(const std::vector<uint32_t>& codepoints){
+        std::string out;
+        for (uint32_t codepoint : codepoints){
+            if (codepoint < 0x80){
+                out += (char)codepoint;
+            }else if (codepoint < 0x800){
+                out += (char)(0xC0 | (codepoint >> 6));
+                out += (char)(0x80 | (codepoint & 0x3F));
+            }else if (codepoint < 0x10000){
+                out += (char)(0xE0 | (codepoint >> 12));
+                out += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+                out += (char)(0x80 | (codepoint & 0x3F));
+            }else{
+                out += (char)(0xF0 | (codepoint >> 18));
+                out += (char)(0x80 | ((codepoint >> 12) & 0x3F));
+                out += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+                out += (char)(0x80 | (codepoint & 0x3F));
+            }
+        }
+        return out;
+    }
+
+    // the documents of the scenes that take document events, top layer first
+    std::vector<UIDocumentSystem*> documentSystemsTopFirst(const std::vector<Scene*>& scenes){
+        std::vector<UIDocumentSystem*> systems;
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if (canSendDocumentEvents(*it))
+                systems.push_back((*it)->getSystem<UIDocumentSystem>().get());
+        }
+        return systems;
+    }
+
+    // offers an event to the documents, top layer first; the scene whose document consumed it, or null
+    Scene* dispatchToDocuments(const std::vector<Scene*>& scenes, const std::function<bool(UIDocumentSystem*)>& event){
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if (!canSendDocumentEvents(*it))
+                continue;
+            if (event((*it)->getSystem<UIDocumentSystem>().get()))
+                return *it;
+        }
+        return nullptr;
+    }
+
+    // A release reaches the documents of every scene not turned off, even one a loading scene
+    // covers, so nothing stays pressed. Above the scene that consumes it, documents get it only
+    // when they hold the pointer.
+    bool dispatchReleaseToDocuments(const std::vector<Scene*>& scenes, int pointer, int button, bool touch,
+                                    const std::function<bool(UIDocumentSystem*)>& event){
+        bool consumed = false;
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if ((*it)->getEnableUIEvents() == UIEventState::DISABLED)
+                continue;
+            UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>().get();
+            if (consumed && !documents->hasPointerCapture(pointer, button, touch))
+                continue;
+            if (event(documents))
+                consumed = true;
+        }
+        return consumed;
+    }
+
+    // the game's and the component UI's character input: one wchar_t unit per call, as before
+    // documents existed (two surrogates where wchar_t is 16 bits)
+    void sendCharacterToGame(uint32_t codepoint, bool toComponentUI, bool toGame, const std::vector<Scene*>& scenes){
+        std::vector<wchar_t> units;
+        if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
+            const uint32_t value = codepoint - 0x10000u;
+            units.push_back((wchar_t)(0xD800u + (value >> 10)));
+            units.push_back((wchar_t)(0xDC00u + (value & 0x3FFu)));
+        }else{
+            units.push_back((wchar_t)codepoint);
+        }
+
+        for (wchar_t unit : units){
+            if (toGame)
+                Engine::onCharInput.call(unit);
+            if (toComponentUI){
+                for (Scene* scene : scenes){
+                    if (canSendUIEvents(scene))
+                        scene->getSystem<UISystem>()->eventOnCharInput(unit);
+                }
+            }
+        }
+    }
+
+}
+
 void Engine::systemTouchStart(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
-            // documents are in front of the component UI: one they consume does not reach it
-            if (pointer == 0 && canSendDocumentEvents(scene))
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerDown(D_MOUSE_BUTTON_1, x, y, 0)){
-                    uiEventReceived = true;
-                    continue;
-                }
-            if (canSendUIEvents(scene))
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        // documents are in front of the component UI: one they consume does not reach it
+        Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerDown(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true);
+        });
+        if (documentScene)
+            uiEventReceived = true;
+
+        for (Scene* scene : scenes){
+            if (scene != documentScene && canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                     uiEventReceived = true;
         }
@@ -1407,11 +1516,15 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
-            // a covered scene still gets the release, like the component UI
-            if (pointer == 0 && scene->getEnableUIEvents() != UIEventState::DISABLED)
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerUp(D_MOUSE_BUTTON_1, x, y, 0))
-                    uiEventReceived = true;
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        if (dispatchReleaseToDocuments(scenes, pointer, D_MOUSE_BUTTON_1, true, [&](UIDocumentSystem* documents){
+                return documents->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true);
+            }))
+            uiEventReceived = true;
+
+        for (Scene* scene : scenes){
+            // a covered scene still gets the release
             if (scene->canReceiveUIEvents())
                 if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                     uiEventReceived = true;
@@ -1434,10 +1547,15 @@ void Engine::systemTouchMove(int pointer, float x, float y){
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
-            if (pointer == 0 && canSendDocumentEvents(scene))
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerMove(x, y, 0))
-                    uiEventReceived = true;
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        // only the document a finger started on tracks it, so every scene is offered the move
+        for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
+            if (documents->eventOnPointerMove(pointer, x, y, Input::getModifiers(), true))
+                uiEventReceived = true;
+        }
+
+        for (Scene* scene : scenes){
             if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
@@ -1456,9 +1574,8 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
-    Input::clearTouches();
     for (const Touch& touch : cancelled)
-        Engine::onTouchCancel.call(touch.pointer, touch.position.x, touch.position.y);
+        systemTouchCancel(touch.pointer);
 }
 
 void Engine::systemTouchCancel(int pointer){
@@ -1468,7 +1585,16 @@ void Engine::systemTouchCancel(int pointer){
         return;
     Vector2 pos = Input::getTouchPosition(pointer);
     Input::removeTouch(pointer);
-    Engine::onTouchCancel.call(pointer, pos.x, pos.y);
+
+    // the documents that tracked it let go of it without a click
+    bool consumed = false;
+    for (Scene* scene : getScenesSnapshot()){
+        if (scene->getSystem<UIDocumentSystem>()->eventOnTouchCancel(pointer))
+            consumed = true;
+    }
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onTouchCancel.call(pointer, pos.x, pos.y);
 }
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
@@ -1479,14 +1605,17 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
-            // documents are in front of the component UI: one they consume does not reach it
-            if (canSendDocumentEvents(scene))
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerDown(button, x, y, mods)){
-                    uiEventReceived = true;
-                    continue;
-                }
-            if (canSendUIEvents(scene))
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        // documents are in front of the component UI: one they consume does not reach it
+        Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnPointerDown(0, button, x, y, mods, false);
+        });
+        if (documentScene)
+            uiEventReceived = true;
+
+        for (Scene* scene : scenes){
+            if (scene != documentScene && canSendUIEvents(scene))
                 if (button == D_MOUSE_BUTTON_1)
                     if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                         uiEventReceived = true;
@@ -1510,11 +1639,15 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        if (dispatchReleaseToDocuments(scenes, 0, button, false, [&](UIDocumentSystem* documents){
+                return documents->eventOnPointerUp(0, button, x, y, mods, false);
+            }))
+            uiEventReceived = true;
+
+        for (Scene* scene : scenes){
             // a covered scene still gets the release, like the component UI
-            if (scene->getEnableUIEvents() != UIEventState::DISABLED)
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerUp(button, x, y, mods))
-                    uiEventReceived = true;
             if (scene->canReceiveUIEvents())
                 if (button == D_MOUSE_BUTTON_1)
                     if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
@@ -1539,13 +1672,37 @@ void Engine::systemMouseMove(float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (Scene* scene : getScenesSnapshot()){
-            if (canSendDocumentEvents(scene))
-                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerMove(x, y, mods))
-                    uiEventReceived = true;
+        const std::vector<Scene*> scenes = getScenesSnapshot();
+
+        // Below the document the pointer is over, documents lose their hover (unless they hold
+        // a press), as elements under an opaque one do in a browser
+        UIDocumentSystem* cursorDocuments = nullptr;
+        for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
+            if (cursorDocuments && !documents->hasPointerCapture(0, D_MOUSE_BUTTON_1, false)){
+                documents->eventOnMouseLeave();
+                continue;
+            }
+            if (documents->eventOnPointerMove(0, x, y, mods, false)){
+                if (!cursorDocuments)
+                    cursorDocuments = documents;
+                uiEventReceived = true;
+            }
+        }
+
+        for (Scene* scene : scenes){
             if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
+        }
+
+        // the component UI sets its cursor on every move; a document in front of it wins
+        if (cursorDocuments){
+            Engine::setMouseCursor(cursorDocuments->getPointerCursor());
+            documentCursorSet = true;
+        }else if (documentCursorSet){
+            documentCursorSet = false;
+            if (mouseCursorType != CursorType::ARROW && !std::any_of(scenes.begin(), scenes.end(), canSendUIEvents))
+                Engine::setMouseCursor(CursorType::ARROW);
         }
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
@@ -1565,16 +1722,25 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
     Input::setMouseScroll(xoffset, yoffset);
     if (mods != 0)
         Input::setModifiers(mods);
-    Engine::onMouseScroll.call(xoffset, yoffset, mods);
+
+    const bool consumed = dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+        return documents->eventOnWheel(xoffset, yoffset, mods);
+    }) != nullptr;
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onMouseScroll.call(xoffset, yoffset, mods);
 }
 
 void Engine::systemMouseEnter(){
     Input::addMouseEntered();
+    // documents hover again with the next move
     Engine::onMouseEnter.call();
 }
 
 void Engine::systemMouseLeave(){
     Input::releaseMouseEntered();
+    for (Scene* scene : getScenesSnapshot())
+        scene->getSystem<UIDocumentSystem>()->eventOnMouseLeave();
     Engine::onMouseLeave.call();
 }
 
@@ -1582,27 +1748,131 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     Input::addKeyPressed(key);
     if (mods != 0)
         Input::setModifiers(mods);
-    Engine::onKeyDown.call(key, repeat, mods);
 
-    for (Scene* scene : getScenesSnapshot()){
-        if (canSendUIEvents(scene))
-            scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+
+    // the focused document first: a text field takes the keys it types with
+    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+        return documents->eventOnKeyDown(key, repeat, mods);
+    }) != nullptr;
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onKeyDown.call(key, repeat, mods);
+
+    if (!consumed){
+        for (Scene* scene : scenes){
+            if (canSendUIEvents(scene))
+                scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
+        }
     }
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
-    Engine::onKeyUp.call(key, repeat, mods);
+
+    // every document hears the release; the one that took the press consumes it
+    bool consumed = false;
+    for (Scene* scene : getScenesSnapshot()){
+        if (scene->getSystem<UIDocumentSystem>()->eventOnKeyUp(key, mods))
+            consumed = true;
+    }
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onKeyUp.call(key, repeat, mods);
 }
 
 void Engine::systemCharInput(wchar_t codepoint){
-    onCharInput.call(codepoint);
+    const std::vector<Scene*> scenes = getScenesSnapshot();
 
-    for (Scene* scene : getScenesSnapshot()){
-        if (canSendUIEvents(scene))
-            scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
+    std::vector<uint32_t> codepoints;
+    charInputCombiner.push((uint32_t)codepoint, codepoints);
+
+    bool consumed;
+    if (!codepoints.empty()){
+        const std::string utf8 = toUtf8(codepoints);
+        consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnTextInput(utf8);
+        }) != nullptr;
+    }else{
+        // half of a pair: it goes where its other half will
+        consumed = wantsTextComposition();
     }
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        onCharInput.call(codepoint);
+
+    if (!consumed){
+        for (Scene* scene : scenes){
+            if (canSendUIEvents(scene))
+                scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
+        }
+    }
+}
+
+void Engine::flushCharInput(){
+    std::vector<uint32_t> codepoints;
+    charInputCombiner.flush(codepoints);
+    if (codepoints.empty())
+        return;
+
+    // a high surrogate whose low one never came
+    const std::string utf8 = toUtf8(codepoints);
+    dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+        return documents->eventOnTextInput(utf8);
+    });
+}
+
+void Engine::systemTextInput(const std::string& utf8){
+    if (utf8.empty())
+        return;
+
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+
+    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+        return documents->eventOnTextInput(utf8);
+    }) != nullptr;
+
+    if (ignoreEventsHandledByUI && consumed)
+        return;
+
+    bool hadInvalid = false;
+    for (uint32_t codepoint : StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid))
+        sendCharacterToGame(codepoint, !consumed, true, scenes);
+}
+
+void Engine::systemImeComposition(const std::string& utf8, int cursorCodepoints){
+    dispatchToDocuments(getScenesSnapshot(), [&](UIDocumentSystem* documents){
+        return documents->eventOnImeComposition(utf8, cursorCodepoints);
+    });
+}
+
+void Engine::systemImeCancel(){
+    for (Scene* scene : getScenesSnapshot())
+        scene->getSystem<UIDocumentSystem>()->eventOnImeCancel();
+}
+
+bool Engine::wantsTextComposition(){
+    for (Scene* scene : getScenesSnapshot()){
+        if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
+            return true;
+    }
+    return false;
+}
+
+void Engine::setTextInputArea(const Rect& canvasRect){
+    const float canvasWidth = (float)Engine::getCanvasWidth();
+    const float canvasHeight = (float)Engine::getCanvasHeight();
+    if (!viewLoaded || canvasWidth <= 0 || canvasHeight <= 0)
+        return;
+
+    // the inverse of transformCoordPos: canvas to the platform's screen pixels
+    const float scaleX = viewRect.getWidth() / canvasWidth;
+    const float scaleY = viewRect.getHeight() / canvasHeight;
+    System::instance().setTextInputArea(viewRect.getX() + canvasRect.getX() * scaleX,
+                                        viewRect.getY() + canvasRect.getY() * scaleY,
+                                        canvasRect.getWidth() * scaleX,
+                                        canvasRect.getHeight() * scaleY);
 }
 
 void Engine::systemGamepadConnect(int gamepad, const std::string& name){

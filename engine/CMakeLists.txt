@@ -333,6 +333,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             user32
             gdi32
             shell32
+            imm32 # IME composition for HTML UI text fields (WinInputRouter)
         )
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
@@ -455,6 +456,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             list(APPEND PLATFORM_SOURCE
                 ${JASPERENGINE_ROOT}/platform/mac/MacInputRouter.mm
+                ${JASPERENGINE_ROOT}/platform/mac/MacTextInputClient.mm
                 ${JASPERENGINE_ROOT}/platform/mac/MacViewMetal.mm
                 ${PLATFORM_ROOT}/macos/EngineView.h
                 ${PLATFORM_ROOT}/macos/EngineView.mm
@@ -506,6 +508,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
+                ${PLATFORM_ROOT}/MacTextInputClient.mm
                 ${PLATFORM_ROOT}/main.mm
                 ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
             )
@@ -561,6 +564,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/AppDelegate.m
             ${PLATFORM_ROOT}/ios/EngineView.h
             ${PLATFORM_ROOT}/ios/EngineView.mm
+            ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
             ${PLATFORM_ROOT}/ios/ViewController.h
             ${PLATFORM_ROOT}/ios/ViewController.m
             ${PLATFORM_ROOT}/ios/AdMobAdapter.h
@@ -799,6 +803,9 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
+    core/htmlui/HtmlUIContextInput.cpp
+    core/htmlui/RmlKeyMap.cpp
+    core/htmlui/RmlTextInputHandler.cpp
     core/htmlui/anim/AnimAnimation.cpp
     core/htmlui/anim/AnimCommon.cpp
     core/htmlui/anim/AnimEasing.cpp

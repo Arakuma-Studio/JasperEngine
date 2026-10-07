@@ -72,6 +72,41 @@ extern "C" {
 	    }
     }
 
+    // ---- the hidden IME textarea (jasper_ime_create) and the clipboard
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_text_input(const char* text) {
+        if (text && text[0])
+            jasperengine::Engine::systemTextInput(text);
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_ime_composition(const char* text, int cursor) {
+        jasperengine::Engine::systemImeComposition(text ? text : "", cursor);
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_ime_cancel() {
+        jasperengine::Engine::systemImeCancel();
+    }
+
+    // a paste event: the text becomes what getClipboardText returns, and goes in as text
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_paste(const char* text) {
+        JasperEngineWeb::rememberClipboardText(text ? text : "");
+        if (text && text[0])
+            jasperengine::Engine::systemTextInput(text);
+    }
+
+    // a soft keyboard key that came only as an input event (Android Chrome sends keyCode 229)
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_soft_key(int key) {
+        jasperengine::Engine::systemKeyDown(key, false, 0);
+        if (key == D_KEY_BACKSPACE) jasperengine::Engine::systemCharInput('\b');
+        if (key == D_KEY_ENTER) jasperengine::Engine::systemCharInput('\r');
+        jasperengine::Engine::systemKeyUp(key, false, 0);
+    }
+
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_started_callback() {
         jasperengine::Engine::systemPause();
@@ -92,6 +127,153 @@ extern "C" {
 }
 
 
+
+// A hidden <textarea id="jasper-ime"> receives the text of HTML UI documents: focused while a
+// document text field has focus (it opens the mobile keyboard), placed at the caret so the
+// IME candidate window follows it. Its value is cleared after each committed input.
+EM_JS(void, jasper_ime_create, (), {
+    if (document.getElementById("jasper-ime")) return;
+    var ta = document.createElement("textarea");
+    ta.id = "jasper-ime";
+    ta.setAttribute("autocomplete", "off");
+    ta.setAttribute("autocorrect", "off");
+    ta.setAttribute("autocapitalize", "off");
+    ta.setAttribute("spellcheck", "false");
+    ta.setAttribute("aria-hidden", "true");
+    ta.tabIndex = -1;
+    // 16px keeps iOS from zooming in on focus
+    ta.style.cssText = "position:fixed;left:0;top:0;width:1px;height:16px;padding:0;border:0;margin:0;" +
+        "opacity:0;resize:none;overflow:hidden;outline:none;font-size:16px;caret-color:transparent;" +
+        "pointer-events:none;white-space:pre;z-index:0;";
+    document.body.appendChild(ta);
+
+    var state = { composing: false, softKey: false };
+    Module.jasperIme = state;
+    // ccall copies strings onto the 4 MB stack
+    var MAX_TEXT = 262144;
+    var clip = function(text) { return text.length > MAX_TEXT ? text.substring(0, MAX_TEXT) : text; };
+    var codepoints = function(text) { return Array.from(text).length; };
+
+    ta.addEventListener("compositionstart", function(e) {
+        state.composing = true;
+        ccall("jasper_web_ime_composition", null, ["string", "number"], ["", 0]);
+    });
+    ta.addEventListener("compositionupdate", function(e) {
+        var data = e.data || "";
+        // the caret is at the end of the composition (browsers do not report it)
+        ccall("jasper_web_ime_composition", null, ["string", "number"], [clip(data), codepoints(data)]);
+    });
+    ta.addEventListener("compositionend", function(e) {
+        state.composing = false;
+        var data = e.data || "";
+        if (data.length > 0) ccall("jasper_web_text_input", null, ["string"], [clip(data)]);
+        else ccall("jasper_web_ime_cancel", null, [], []);
+        ta.value = "";
+    });
+    ta.addEventListener("beforeinput", function(e) {
+        if (state.composing || e.isComposing || !state.softKey) return;
+        // keys a soft keyboard sends without a key code of their own
+        if (e.inputType === "deleteContentBackward") ccall("jasper_web_soft_key", null, ["number"], [259]);
+        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") ccall("jasper_web_soft_key", null, ["number"], [257]);
+    });
+    ta.addEventListener("input", function(e) {
+        if (state.composing || e.isComposing) return;
+        if (e.inputType === "insertText" && e.data) ccall("jasper_web_text_input", null, ["string"], [clip(e.data)]);
+        ta.value = "";
+    });
+    // one listener for the textarea and the page: whatever has focus, the paste is the game's
+    document.addEventListener("paste", function(e) {
+        if (!e.clipboardData) return;
+        var text = e.clipboardData.getData("text/plain") || "";
+        if (document.activeElement === ta || document.activeElement === document.body || document.activeElement === Module.canvas) {
+            e.preventDefault();
+            ccall("jasper_web_paste", null, ["string"], [clip(text)]);
+        }
+    }, true);
+});
+
+EM_JS(void, jasper_ime_focus, (int focus), {
+    var ta = document.getElementById("jasper-ime");
+    if (!ta) return;
+    if (focus) {
+        if (document.activeElement !== ta) ta.focus({ preventScroll: true });
+    } else if (document.activeElement === ta) {
+        if (Module.jasperIme) Module.jasperIme.composing = false;
+        ta.value = "";
+        ta.blur();
+    }
+});
+
+EM_JS(int, jasper_ime_is_focused, (), {
+    var ta = document.getElementById("jasper-ime");
+    return (ta && document.activeElement === ta) ? 1 : 0;
+});
+
+EM_JS(void, jasper_ime_set_soft_key, (int soft), {
+    if (Module.jasperIme) Module.jasperIme.softKey = soft !== 0;
+});
+
+// x, y, height in canvas pixels (the space of the mouse events)
+EM_JS(void, jasper_ime_set_area, (float x, float y, float height), {
+    var ta = document.getElementById("jasper-ime");
+    var canvas = Module.canvas;
+    if (!ta || !canvas) return;
+    var rect = canvas.getBoundingClientRect();
+    var sx = canvas.width > 0 ? rect.width / canvas.width : 1;
+    var sy = canvas.height > 0 ? rect.height / canvas.height : 1;
+    ta.style.left = (rect.left + x * sx) + "px";
+    ta.style.top = (rect.top + y * sy) + "px";
+    ta.style.height = Math.max(1, height * sy) + "px";
+});
+
+// navigator.clipboard needs a user activation (a key or a click is one) and a secure context;
+// the fallback copies through a selected textarea
+EM_JS(void, jasper_clipboard_write, (const char* utf8), {
+    var text = UTF8ToString(utf8);
+    var fallback = function() {
+        var active = document.activeElement;
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand("copy"); } catch (err) {}
+        document.body.removeChild(area);
+        if (active && active.focus) active.focus({ preventScroll: true });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(fallback);
+    } else {
+        fallback();
+    }
+});
+
+void JasperEngineWeb::rememberClipboardText(const std::string& text){
+    static_cast<JasperEngineWeb&>(jasperengine::System::instance()).clipboardText = text;
+}
+
+void JasperEngineWeb::setClipboardText(const std::string& utf8){
+    clipboardText = utf8;
+    jasper_clipboard_write(utf8.c_str());
+}
+
+std::string JasperEngineWeb::getClipboardText(){
+    // the browser clipboard is asynchronous: the text of the last copy or paste event
+    return clipboardText;
+}
+
+void JasperEngineWeb::setTextInputArea(float x, float y, float width, float height){
+    jasper_ime_set_area(x, y, height);
+}
+
+void JasperEngineWeb::showVirtualKeyboard(std::wstring text){
+    jasper_ime_focus(1);
+}
+
+void JasperEngineWeb::hideVirtualKeyboard(){
+    jasper_ime_focus(0);
+}
 
 JasperEngineWeb::JasperEngineWeb(){
 
@@ -165,6 +347,8 @@ int JasperEngineWeb::init(int argc, char **argv){
 	);
 
     jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb());
+
+    jasper_ime_create();
 
     sampleCount = 4;
 
@@ -273,6 +457,16 @@ void JasperEngineWeb::setMouseCursor(jasperengine::CursorType type){
         cursor = "all-scroll";
     }else if (type == jasperengine::CursorType::NOT_ALLOWED){
         cursor = "not-allowed";
+    }else if (type == jasperengine::CursorType::WAIT){
+        cursor = "wait";
+    }else if (type == jasperengine::CursorType::PROGRESS){
+        cursor = "progress";
+    }else if (type == jasperengine::CursorType::HELP){
+        cursor = "help";
+    }else if (type == jasperengine::CursorType::GRAB){
+        cursor = "grab";
+    }else if (type == jasperengine::CursorType::GRABBING){
+        cursor = "grabbing";
     }else{
         cursor = "auto";
     }
@@ -510,17 +704,46 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
     if ((!strcmp(key,"Enter"))||(*key=='\r')) skey=4;
     if ((!strcmp(key,"Escape"))||(*key=='\x1b')) skey=8;
 
+    // keys of an IME composition (229) belong to it; a soft keyboard sends them for every key
+    // and its text comes through the IME textarea
+    if (eventType == EMSCRIPTEN_EVENT_KEYDOWN)
+        jasper_ime_set_soft_key(e->keyCode == 229);
+    if ((eventType == EMSCRIPTEN_EVENT_KEYDOWN || eventType == EMSCRIPTEN_EVENT_KEYUP) && e->keyCode == 229)
+        return 0;
+
+    // Ctrl/Cmd+V while a document text field has focus is left to the browser, whose paste
+    // event brings the text: RmlUi would ask for the clipboard synchronously, which the
+    // asynchronous browser clipboard cannot answer
+    static bool pasteKeyDown = false;
+    if (code == D_KEY_V && (e->ctrlKey || e->metaKey)){
+        if (eventType == EMSCRIPTEN_EVENT_KEYDOWN && jasperengine::Engine::wantsTextComposition()){
+            pasteKeyDown = true;
+            return 0;
+        }
+        if (eventType == EMSCRIPTEN_EVENT_KEYUP && pasteKeyDown){
+            pasteKeyDown = false;
+            return 0;
+        }
+    }
+
     if (eventType == EMSCRIPTEN_EVENT_KEYDOWN){
         jasperengine::Engine::systemKeyDown(code, e->repeat, modifiers);
         if (skey==1) jasperengine::Engine::systemCharInput('\t');
         if (skey==2) jasperengine::Engine::systemCharInput('\b');
         if (skey==4) jasperengine::Engine::systemCharInput('\r');
         if (skey==8) jasperengine::Engine::systemCharInput('\x1b');
+        // Tab would move the page focus off the IME textarea; documents move their own focus
+        if (skey==1 && jasper_ime_is_focused())
+            return 1;
 
     }else if (eventType == EMSCRIPTEN_EVENT_KEYUP){
         jasperengine::Engine::systemKeyUp(code, e->repeat, modifiers);
 
     }else if (eventType == EMSCRIPTEN_EVENT_KEYPRESS){
+        // the IME textarea's input events bring this text
+        if (jasper_ime_is_focused())
+            return 0;
+
         wchar_t cp = toCodepoint(std::string(e->key));
         if (cp == 0) cp = e->which;
         if (cp == 0) cp = e->keyCode;
@@ -563,6 +786,11 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
     jasperengine::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && e->buttons != 0){
         jasperengine::Engine::systemMouseDown(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
+        // a press on a document text field: the textarea keeps the focus the press would move
+        if (jasperengine::Engine::wantsTextComposition()){
+            jasper_ime_focus(1);
+            return 1;
+        }
     }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEUP){
         jasperengine::Engine::systemMouseUp(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
@@ -624,6 +852,10 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
                 if (!src->isChanged) continue;
                 jasperengine::Engine::systemTouchEnd((int)src->identifier, src->targetX, src->targetY);
             }
+            // touchend is a user activation, touchstart is not: the mobile keyboard opens
+            // only for a focus made here
+            if (jasperengine::Engine::wantsTextComposition())
+                jasper_ime_focus(1);
             break;
         case EMSCRIPTEN_EVENT_TOUCHCANCEL: {
             bool anyHeld = false;

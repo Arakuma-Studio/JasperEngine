@@ -360,6 +360,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("RESIZE_NESW", CursorType::RESIZE_NESW)
         .addVariable("RESIZE_ALL", CursorType::RESIZE_ALL)
         .addVariable("NOT_ALLOWED", CursorType::NOT_ALLOWED)
+        .addVariable("WAIT", CursorType::WAIT)
+        .addVariable("PROGRESS", CursorType::PROGRESS)
+        .addVariable("HELP", CursorType::HELP)
+        .addVariable("GRAB", CursorType::GRAB)
+        .addVariable("GRABBING", CursorType::GRABBING)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1339,6 +1344,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getScreenHeight", [] () { return System::instance().getScreenHeight(); })
         .addStaticFunction("showVirtualKeyboard", [] (std::wstring text) { System::instance().showVirtualKeyboard(text); })
         .addStaticFunction("hideVirtualKeyboard", [] () { System::instance().hideVirtualKeyboard(); })
+        .addStaticFunction("setClipboardText", [] (const std::string& text) { System::instance().setClipboardText(text); })
+        .addStaticFunction("getClipboardText", [] () { return System::instance().getClipboardText(); })
         .addStaticFunction("isTouchDevice", [] () { return System::instance().isTouchDevice(); })
         .addStaticFunction("isFullscreen", [] () { return System::instance().isFullscreen(); })
         .addStaticFunction("requestFullscreen", [] () { System::instance().requestFullscreen(); })

@@ -19,6 +19,9 @@ public:
     virtual void showVirtualKeyboard(std::wstring text) override;
     virtual void hideVirtualKeyboard() override;
 
+    virtual void setClipboardText(const std::string& utf8) override;
+    virtual std::string getClipboardText() override;
+
     virtual void quit() override;
 
     virtual std::string getUserDataPath() override;
