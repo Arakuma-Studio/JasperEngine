@@ -207,12 +207,12 @@ HtmlUIDataModelRecord* HtmlUIScriptState::createModel(Entity owner, const std::s
     auto placeholder = std::find(placeholders.begin(), placeholders.end(), name);
     if (placeholder != placeholders.end()){
         placeholders.erase(placeholder);
-        if (HtmlUIContext* context = system->getContext())
+        if (HtmlUIContext* context = system->modelContext(owner))
             context->getRmlContext()->RemoveDataModel(name);
     }
 
     // a model made before the first load is bound when the context is created
-    if (HtmlUIContext* context = system->getContext()){
+    if (HtmlUIContext* context = system->modelContext(owner)){
         created->attach(context->getRmlContext());
     }
     return created;
@@ -453,7 +453,9 @@ void UIDocumentSystem::scriptContextCreated(){
 
     if (scriptState){
         for (auto& pair : scriptState->models){
-            pair.second->attach(rmlContext);
+            // p1-rtt: a texture document's models stay in its own context
+            if (modelContext(pair.second->owner) == getContext())
+                pair.second->attach(rmlContext);
         }
     }
 }
@@ -477,8 +479,10 @@ void UIDocumentSystem::scriptContextDestroying(){
     }
 }
 
-void UIDocumentSystem::scriptDocumentLoading(const std::string& filename){
-    Rml::Context* rmlContext = getContext() ? getContext()->getRmlContext() : nullptr;
+void UIDocumentSystem::scriptDocumentLoading(const std::string& filename, HtmlUIContext* target){
+    if (!target)
+        target = getContext();
+    Rml::Context* rmlContext = target ? target->getRmlContext() : nullptr;
     Rml::String text;
     if (!rmlContext || !Rml::GetFileInterface() || !Rml::GetFileInterface()->LoadFile(filename, text))
         return;

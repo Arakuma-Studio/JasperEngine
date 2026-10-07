@@ -218,7 +218,9 @@ namespace jasperengine{
         void scriptLoadDocuments();                 // load(): every enabled document, so a script's init can query them
         void scriptContextCreated();                // ensureContext(): data models into the new context, DOM change events
         void scriptContextDestroying();             // destroyContext(), first: detached pools, RmlUi side of the data models
-        void scriptDocumentLoading(const std::string& filename);   // applyComponent, before a load: placeholder data models
+        // applyComponent, before a load: placeholder data models (in target, p1-rtt's texture
+        // contexts; the screen context when null)
+        void scriptDocumentLoading(const std::string& filename, HtmlUIContext* target = nullptr);
         void scriptDocumentLoaded(Entity entity);   // applyComponent, after a load: onLoad (fired after the context update)
         void scriptDocumentUnloading(Entity entity, Rml::ElementDocument* document);   // unloadEntityDocument: pool, onUnload
         void scriptComponentRemoved(Entity entity); // onComponentRemoved: the data models the document created
@@ -238,6 +240,16 @@ namespace jasperengine{
         void textureRenderOffscreen();               // renderOffscreen(): each texture context into its target
         bool textureAllRendered() const;             // isAllLoaded(): every shown texture document drawn once
         void textureDestroyAll();                    // destroyContext(): before RmlUi is released
+        std::vector<HtmlUIContext*> getTextureContexts() const;   // renderOffscreen(): statistics
+        // the context data models of owner live in (its texture context, else the screen one; p1-lua)
+        HtmlUIContext* modelContext(Entity owner) const;
+        // p1-input's calls: keys/text/IME go to the context that took the last press (a texture
+        // document's, or the screen's when it has a shown document); null = no document's
+        HtmlUIContext* keyContext() const;
+        void textureFocusScreen();                   // the screen context took a press
+        bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
+        bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
+        void textureMouseLeave();
     };
 
 }

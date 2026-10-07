@@ -6,10 +6,13 @@
 //
 // A TEXTURE-mode document lives in its own HtmlUIContext ("tex:<scene>:<entity>"): its
 // layout size is textureWidth x textureHeight divided by its pixel ratio (CSS px), and it
-// renders at that ratio into a textureWidth x textureHeight target. The document stays in
+// renders at that ratio into its own RmlRenderTarget (MSAA, stencil, layers like the screen
+// context), then one un-premultiplying pass (HTMLUI_POST Unp) copies it into the
+// textureWidth x textureHeight target texture. The document stays in
 // UIDocumentSystem::documents like a screen document, so every element API (getDocument,
-// getElementById, UIDocument) reaches it; only loading, unloading, updating and rendering go
-// through the hooks below.
+// getElementById, UIDocument, Lua) reaches it; only loading, unloading, updating, rendering
+// and input go through the hooks below. Data models created by a texture document's scripts
+// live in its context.
 
 #include "UIDocumentSystem.h"
 
@@ -19,13 +22,19 @@
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/RmlKeyMap.h"
+#include "htmlui/RmlRenderer.h"
+#include "htmlui/RmlTextInputHandler.h"
 #include "htmlui/UIWorldRaycast.h"
 #include "object/Camera.h"
+#include "object/ui/HtmlUIEventListener.h"
+#include "object/ui/HtmlUIScriptInternal.h"
+#include "render/CameraRender.h"
+#include "render/SystemRender.h"
 #include "texture/Framebuffer.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
-#include <RmlUi/Core/Input.h>
 
 #include <algorithm>
 #include <cmath>
@@ -45,7 +54,8 @@ namespace jasperengine{
         int width = 0, height = 0;   // texture pixels
         float ratio = 1.0f;          // CSS px -> texture px
         bool hovered = false;        // the last pointer event was over it
-        bool rendered = false;       // its target holds a frame
+        bool rendered = false;       // its target holds the current frame (or was cleared while hidden)
+        bool showing = false;        // the target holds a frame of the shown document
         Vector2 lastUV;              // where a captured pointer was last over the surface
     };
 
@@ -56,7 +66,8 @@ namespace jasperengine{
         // removal) destroys only the GPU texture; when it comes back the same Framebuffer is
         // created again and its version bump makes the consumers rebind.
         std::unordered_map<Entity, std::unique_ptr<Framebuffer>> targets;
-        std::unordered_map<int, Entity> captured;   // pointer id -> document that took the down
+        // pointers whose down a texture document took: touch pointer ids, mouse buttons as -1 - button
+        std::unordered_map<int, Entity> captured;
         Entity focus = NULL_ENTITY;                 // document that took the last pointer-down
 
         Framebuffer* targetFor(Entity entity){
@@ -83,28 +94,18 @@ namespace {
 
     constexpr int maxTextureSize = 8192;
 
-    // engine modifier bits (Input.h) to RmlUi's
-    int toRmlModifiers(int mods){
-        int result = 0;
-        if (mods & D_MODIFIER_SHIFT) result |= Rml::Input::KM_SHIFT;
-        if (mods & D_MODIFIER_CONTROL) result |= Rml::Input::KM_CTRL;
-        if (mods & D_MODIFIER_ALT) result |= Rml::Input::KM_ALT;
-        if (mods & D_MODIFIER_SUPER) result |= Rml::Input::KM_META;
-        if (mods & D_MODIFIER_CAPS_LOCK) result |= Rml::Input::KM_CAPSLOCK;
-        if (mods & D_MODIFIER_NUM_LOCK) result |= Rml::Input::KM_NUMLOCK;
-        return result;
-    }
-
-    // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); touches press the primary
-    int toRmlButton(int button, bool touch){
-        if (touch)
-            return 0;
+    // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); -1 for the others
+    int toRmlButton(int button){
         switch (button){
             case D_MOUSE_BUTTON_LEFT: return 0;
             case D_MOUSE_BUTTON_RIGHT: return 1;
             case D_MOUSE_BUTTON_MIDDLE: return 2;
             default: return -1;
         }
+    }
+
+    int captureKey(int pointer, int button, bool touch){
+        return touch ? pointer : -1 - button;
     }
 
     // the size a component asks for: texture pixels and the CSS px -> texture px ratio
@@ -122,12 +123,52 @@ namespace {
         return document && document->IsVisible();
     }
 
+    // (re)creates the target texture at the size: RGBA8, 1 sample, no depth, LINEAR, CLAMP
+    bool ensureTarget(Framebuffer& target, int width, int height, Entity entity){
+        if (target.isCreated() && (int)target.getWidth() == width && (int)target.getHeight() == height)
+            return true;
+
+        FramebufferDesc desc;
+        desc.width = width;
+        desc.height = height;
+        desc.color = ColorFormat::RGBA;
+        desc.depth = DepthStencilFormat::NONE;
+        desc.sampleCount = 1;
+        desc.minFilter = TextureFilter::LINEAR;
+        desc.magFilter = TextureFilter::LINEAR;
+        desc.wrapU = TextureWrap::CLAMP_TO_EDGE;
+        desc.wrapV = TextureWrap::CLAMP_TO_EDGE;
+        desc.label = "htmlui-texture-" + std::to_string((unsigned int)entity);
+        if (!target.create(desc)){
+            Log::error("[HTML UI] could not create the %d x %d target texture of a texture-mode document", width, height);
+            return false;
+        }
+        return true;
+    }
+
+    // a target without a document frame: transparent
+    void clearTarget(Framebuffer& target){
+        CameraRender pass;
+        pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        pass.startRenderPass(&target.getRender());
+        pass.endRenderPass();
+    }
+
 }
 
 HtmlUITextureState& UIDocumentSystem::getTextureState(){
     if (!textureState)
         textureState = std::make_shared<HtmlUITextureState>();
     return *textureState;
+}
+
+HtmlUIContext* UIDocumentSystem::modelContext(Entity owner) const{
+    if (textureState){
+        auto it = textureState->entries.find(owner);
+        if (it != textureState->entries.end())
+            return it->second.context.get();
+    }
+    return getContext();
 }
 
 Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDocumentComponent& document){
@@ -148,6 +189,15 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
             state.entries.erase(entity);
             return nullptr;
         }
+        // p1-lua: DOM change events, and the data models this document's scripts made
+        Rml::Context* rmlContext = entry.context->getRmlContext();
+        HtmlUIEventNames::installChangeSynthesizer(rmlContext);
+        if (scriptState){
+            for (auto& pair : scriptState->models){
+                if (pair.second->owner == entity)
+                    pair.second->attach(rmlContext);
+            }
+        }
     }
     entry.width = width;
     entry.height = height;
@@ -157,6 +207,8 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
     if (!entry.target)
         entry.target = state.targetFor(entity);
 
+    // placeholders for the data models its scripts did not make yet, in its own context
+    scriptDocumentLoading(document.filename, entry.context.get());
     return entry.context->loadDocument(document.filename);
 }
 
@@ -171,6 +223,7 @@ bool UIDocumentSystem::textureUnloadDocument(Entity entity){
 
     auto doc = documents.find(entity);
     if (doc != documents.end()){
+        scriptDocumentUnloading(entity, doc->second);
         entry.context->unloadDocument(doc->second);
         documents.erase(doc);
     }
@@ -192,11 +245,28 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
     auto it = textureState->entries.find(entity);
     if (it == textureState->entries.end())
         return;
+    HtmlUITextureDocument& entry = it->second;
+
+    // the RmlUi side of what lives in this context goes before it
+    Rml::Context* rmlContext = entry.context->getRmlContext();
+    const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
+    const bool toScreen = component && component->renderMode == UIDocumentRenderMode::SCREEN;
+    if (scriptState){
+        for (auto& pair : scriptState->models){
+            if (pair.second->context == rmlContext){
+                pair.second->detach();
+                // a document that switched to SCREEN takes its models along
+                if (toScreen && getContext())
+                    pair.second->attach(getContext()->getRmlContext());
+            }
+        }
+    }
+    HtmlUIElementRegistry::freeContext(rmlContext);
 
     // the target object stays (consumers may still point at it), its GPU texture goes
-    if (it->second.target)
-        it->second.target->destroy();
-    it->second.context.reset();
+    if (entry.target)
+        entry.target->destroy();
+    entry.context.reset();
     textureState->forget(entity);
     textureState->entries.erase(it);
 }
@@ -205,17 +275,19 @@ void UIDocumentSystem::textureDestroyAll(){
     if (!textureState)
         return;
 
-    for (auto& pair : textureState->entries){
-        auto doc = documents.find(pair.first);
+    std::vector<Entity> entities;
+    for (const auto& pair : textureState->entries){
+        entities.push_back(pair.first);
+    }
+    for (Entity entity : entities){
+        auto doc = documents.find(entity);
         if (doc != documents.end()){
-            pair.second.context->unloadDocument(doc->second);
+            HtmlUIElementRegistry::freeDocument(doc->second);
+            textureState->entries[entity].context->unloadDocument(doc->second);
             documents.erase(doc);
         }
-        if (pair.second.target)
-            pair.second.target->destroy();
-        pair.second.context.reset();
+        textureRemoveEntity(entity);
     }
-    textureState->entries.clear();
     textureState->captured.clear();
     textureState->focus = NULL_ENTITY;
 }
@@ -241,6 +313,7 @@ void UIDocumentSystem::textureUpdate(){
             }
         }
 
+        entry.context->getTextInputHandler().flushKeyboard();
         entry.context->update();
     }
 }
@@ -249,20 +322,48 @@ void UIDocumentSystem::textureRenderOffscreen(){
     if (!textureState)
         return;
 
+    const uint64_t frame = SystemRender::getFrameCount();
     for (auto& pair : textureState->entries){
         HtmlUITextureDocument& entry = pair.second;
-        auto doc = documents.find(pair.first);
-        if (doc == documents.end() || !isShown(doc->second))
+        if (!entry.target)
             continue;
+
+        auto doc = documents.find(pair.first);
+        const bool shown = doc != documents.end() && isShown(doc->second);
+        const bool resized = !entry.target->isCreated() || (int)entry.target->getWidth() != entry.width ||
+                             (int)entry.target->getHeight() != entry.height;
+        if (!ensureTarget(*entry.target, entry.width, entry.height, pair.first)){
+            entry.rendered = false;
+            continue;
+        }
+
+        if (!shown){
+            // hidden: the texture shows nothing
+            if (entry.showing || resized){
+                clearTarget(*entry.target);
+                entry.showing = false;
+            }
+            entry.rendered = true;
+            continue;
+        }
 
         // the context's own pixel ratio and font raster scale: texture pixels per CSS px
-        if (!entry.context->render(Rect(0, 0, (float)entry.width, (float)entry.height)))
+        if (!entry.context->render(Rect(0, 0, (float)entry.width, (float)entry.height))){
+            // nothing drawn yet (shaders compiling): a transparent texture until then
+            if (resized)
+                clearTarget(*entry.target);
             continue;
+        }
 
-        // HTMLUI_P1_PENDING (p1-render merge): un-premultiplying copy of the context's layer 0
-        // into entry.target with the HTMLUI_POST Unp variant (RmlRenderer render-to-Framebuffer
-        // entry point)
-        entry.rendered = true;
+        // a new frame (or a new target): the straight-alpha copy; else the texture still holds it
+        RmlRenderer& renderer = entry.context->getRenderer();
+        RmlRenderTarget* source = entry.context->getRenderTarget();
+        if (!source || (!renderer.hasFrame(frame) && !resized && entry.showing))
+            continue;
+        if (renderer.drawUnpremultiplied(*source, entry.target->getRender(), entry.width, entry.height)){
+            entry.rendered = true;
+            entry.showing = true;
+        }
     }
 }
 
@@ -276,6 +377,16 @@ bool UIDocumentSystem::textureAllRendered() const{
             return false;
     }
     return true;
+}
+
+std::vector<HtmlUIContext*> UIDocumentSystem::getTextureContexts() const{
+    std::vector<HtmlUIContext*> contexts;
+    if (textureState){
+        for (const auto& pair : textureState->entries){
+            contexts.push_back(pair.second.context.get());
+        }
+    }
+    return contexts;
 }
 
 Framebuffer* UIDocumentSystem::getTargetTexture(Entity entity) const{
@@ -298,14 +409,75 @@ Entity UIDocumentSystem::getTextureFocus() const{
     return textureState ? textureState->focus : NULL_ENTITY;
 }
 
+HtmlUIContext* UIDocumentSystem::keyContext() const{
+    if (textureState && textureState->focus != NULL_ENTITY){
+        auto it = textureState->entries.find(textureState->focus);
+        auto doc = documents.find(textureState->focus);
+        const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(textureState->focus);
+        if (it != textureState->entries.end() && doc != documents.end() && isShown(doc->second) && component && component->interactive)
+            return it->second.context.get();
+        // focus on a document that went or hid: nobody's (the screen gets keys again after a press)
+        return nullptr;
+    }
+    return hasVisibleDocument() ? getContext() : nullptr;
+}
+
+void UIDocumentSystem::textureFocusScreen(){
+    if (textureState)
+        textureState->focus = NULL_ENTITY;
+}
+
+bool UIDocumentSystem::isWorldPointerCaptured(int pointer, int button, bool touch) const{
+    if (!textureState || textureState->captured.empty())
+        return false;
+    if (touch)
+        return textureState->captured.count(pointer) > 0;
+    // a mouse move has no button: any captured button keeps the mouse
+    if (button < 0){
+        for (const auto& pair : textureState->captured){
+            if (pair.first < 0)
+                return true;
+        }
+        return false;
+    }
+    return textureState->captured.count(captureKey(pointer, button, false)) > 0;
+}
+
+bool UIDocumentSystem::dispatchWorldWheel(float dx, float dy, int mods){
+    if (!textureState)
+        return false;
+
+    // the hovered texture document under the mouse
+    for (auto& pair : textureState->entries){
+        HtmlUITextureDocument& entry = pair.second;
+        if (!entry.hovered)
+            continue;
+        const bool notScrolled = entry.context->processMouseWheel(Rml::Vector2f(dx, dy), RmlKeyMap::toRmlModifiers(mods));
+        return !notScrolled || entry.context->isPointerOverContent();
+    }
+    return false;
+}
+
+void UIDocumentSystem::textureMouseLeave(){
+    if (!textureState)
+        return;
+
+    for (auto& pair : textureState->entries){
+        if (pair.second.hovered){
+            pair.second.context->processMouseLeave();
+            pair.second.hovered = false;
+        }
+    }
+}
+
 bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch){
     if (!textureState || textureState->entries.empty())
         return false;
     HtmlUITextureState& state = *textureState;
 
-    const int rmlMods = toRmlModifiers(mods);
-    const int rmlButton = toRmlButton(button, touch);
-    if ((phase == PointerPhase::DOWN || phase == PointerPhase::UP) && rmlButton < 0)
+    const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
+    const int rmlButton = touch ? 0 : toRmlButton(button);
+    if (!touch && (phase == PointerPhase::DOWN || phase == PointerPhase::UP) && rmlButton < 0)
         return false;
 
     // the ray of the scene camera through the canvas point
@@ -323,24 +495,47 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
         return Rml::Vector2f(uv.x * dimensions.x, uv.y * dimensions.y);
     };
 
-    // sends the event; true when the document consumed it
+    // sends the event; true when the document consumed it (§3.6.2 rules: the hovered element
+    // blocks, a release after a taken press is taken)
     auto send = [&](HtmlUITextureDocument& entry, Vector2 uv) -> bool {
         HtmlUIContext& context = *entry.context;
-        bool consumed = context.processMouseMove(toDocument(entry, uv), rmlMods);
-        if (phase == PointerPhase::DOWN){
-            consumed = context.processMouseButtonDown(rmlButton, rmlMods);
-        }else if (phase == PointerPhase::UP){
-            consumed = context.processMouseButtonUp(rmlButton, rmlMods) || consumed;
-        }else if (phase == PointerPhase::CANCEL){
-            context.processMouseLeave();
-            consumed = false;
+        const Rml::Vector2f point = toDocument(entry, uv);
+        bool consumed = false;
+        if (touch){
+            switch (phase){
+                case PointerPhase::DOWN: consumed = context.processTouchStart(pointer, point, rmlMods); break;
+                case PointerPhase::MOVE: consumed = context.processTouchMove(pointer, point, rmlMods); break;
+                case PointerPhase::UP: consumed = context.processTouchEnd(pointer, point, rmlMods); break;
+                case PointerPhase::CANCEL: context.processTouchCancel(pointer); break;
+            }
+        }else{
+            consumed = context.processMouseMove(point, rmlMods);
+            if (phase == PointerPhase::DOWN){
+                consumed = context.processMouseButtonDown(rmlButton, rmlMods);
+            }else if (phase == PointerPhase::UP){
+                consumed = context.processMouseButtonUp(rmlButton, rmlMods) || consumed;
+            }else if (phase == PointerPhase::CANCEL){
+                context.processMouseLeave();
+                consumed = false;
+            }
         }
-        entry.hovered = (phase != PointerPhase::CANCEL);
+        entry.hovered = (phase != PointerPhase::CANCEL) && !(touch && phase == PointerPhase::UP);
         return consumed;
     };
 
     // a captured pointer: its document gets everything until the release, uv clamped
-    auto capturedIt = state.captured.find(pointer);
+    const int key = captureKey(pointer, button, touch);
+    auto capturedIt = state.captured.end();
+    if (touch || phase == PointerPhase::DOWN || phase == PointerPhase::UP){
+        capturedIt = state.captured.find(key);
+    }else{
+        for (auto it = state.captured.begin(); it != state.captured.end(); ++it){
+            if (it->first < 0){
+                capturedIt = it;
+                break;
+            }
+        }
+    }
     if (capturedIt != state.captured.end()){
         const Entity entity = capturedIt->second;
         auto entryIt = state.entries.find(entity);
@@ -363,14 +558,22 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
 
         send(entry, uv);
         if (phase == PointerPhase::UP || phase == PointerPhase::CANCEL)
-            state.captured.erase(pointer);
+            state.captured.erase(capturedIt);
         return true;
+    }
+    if (phase == PointerPhase::CANCEL){
+        // a pointer nobody captured: drop a touch a document may still track
+        for (auto& pair : state.entries){
+            if (touch && pair.second.context->hasTouch(pointer))
+                pair.second.context->processTouchCancel(pointer);
+        }
+        return false;
     }
 
     // every interactive, shown document whose surface the ray hits, nearest first
     struct Candidate { Entity entity; HtmlUITextureDocument* entry; UIWorldHit hit; };
     std::vector<Candidate> candidates;
-    if (hasCamera && phase != PointerPhase::CANCEL){
+    if (hasCamera){
         for (auto& pair : state.entries){
             const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(pair.first);
             auto doc = documents.find(pair.first);
@@ -398,6 +601,9 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
             receiver = candidate.entity;
             break;
         }
+        // a touch it did not take is not its touch
+        if (touch && phase == PointerPhase::DOWN)
+            candidate.entry->context->processTouchCancel(pointer);
     }
 
     // documents the pointer left
@@ -409,10 +615,14 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
     }
 
     if (phase == PointerPhase::DOWN){
-        // keys follow the last press: this document, or (none consumed) the screen or the game
+        // keys follow the last press: this document, or (none consumed) the game
         state.focus = receiver;
-        if (receiver != NULL_ENTITY)
-            state.captured[pointer] = receiver;
+        if (receiver != NULL_ENTITY){
+            state.captured[key] = receiver;
+            // a press on a text field (re)opens the virtual keyboard
+            if (hasFocusedTextInput())
+                state.entries[receiver].context->getTextInputHandler().requestKeyboard();
+        }
     }
 
     return receiver != NULL_ENTITY;

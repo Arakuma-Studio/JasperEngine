@@ -137,7 +137,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
-            scriptDocumentLoading(document.filename);
+            if (document.renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = (document.renderMode == UIDocumentRenderMode::TEXTURE) ? textureLoadDocument(entity, document) : context->loadDocument(document.filename);
             if (loadedDocument){
@@ -236,7 +236,7 @@ bool UIDocumentSystem::hasVisibleDocument() const{
 
     for (const auto& pair : documents){
         const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(pair.first);
-        if (document && document->appliedVisible)
+        if (document && document->appliedVisible && !getTextureContext(pair.first))
             return true;
     }
     return false;
