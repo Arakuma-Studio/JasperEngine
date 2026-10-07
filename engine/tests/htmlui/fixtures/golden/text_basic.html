@@ -1,0 +1,44 @@
+<html>
+<head>
+    <title>text basic</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* the built-in font through the generic family (base.css: sans-serif, white) */
+        #s12 { left: 10px; top: 10px; font-size: 12px; }
+        #s16 { left: 10px; top: 30px; font-size: 16px; color: #ff6060; }
+        #s24 { left: 10px; top: 55px; font-size: 24px; color: #60ff60; }
+        #s48 { left: 10px; top: 90px; font-size: 48px; color: #6080ff; }
+        #colors { left: 10px; top: 160px; font-size: 24px; }
+        #red { color: #ff0000; }
+        #green { color: #00ff00; }
+        #blue { color: #4040ff; }
+        #underline { left: 10px; top: 200px; font-size: 24px; color: #ffff00; text-decoration: underline; }
+        #lines { left: 10px; top: 240px; width: 300px; font-size: 16px; line-height: 40px; background-color: #303030; }
+        .aligned { left: 330px; width: 300px; height: 26px; font-size: 20px; background-color: #303030; }
+        #left { top: 10px; text-align: left; }
+        #center { top: 40px; text-align: center; }
+        #right { top: 70px; text-align: right; }
+        .spacing { left: 330px; font-size: 20px; }
+        #tight { top: 105px; }
+        #spaced { top: 135px; letter-spacing: 6px; }
+        #para { left: 330px; top: 170px; width: 300px; font-size: 16px; line-height: 22px; color: #e0e0e0; background-color: #303030; }
+    </style>
+</head>
+<body>
+    <div id="s12" class="abs">Roboto 12 px: The quick brown fox</div>
+    <div id="s16" class="abs">Roboto 16 px: The quick brown fox</div>
+    <div id="s24" class="abs">Roboto 24 px: jumps over</div>
+    <div id="s48" class="abs">48 px Hxg</div>
+    <!-- the spaces inside the spans: RmlUi drops whitespace-only text between elements -->
+    <div id="colors" class="abs"><span id="red">Red </span><span id="green">Green </span><span id="blue">Blue</span></div>
+    <div id="underline" class="abs">Underlined text</div>
+    <div id="lines" class="abs">Line height one<br/>Line height two</div>
+    <div id="left" class="abs aligned">Left</div>
+    <div id="center" class="abs aligned">Center</div>
+    <div id="right" class="abs aligned">Right</div>
+    <div id="tight" class="abs spacing">Spacing</div>
+    <div id="spaced" class="abs spacing">Spacing</div>
+    <div id="para" class="abs">A wrapped paragraph in a box 300 pixels wide: the words flow onto the next line when they reach the right edge, line after line, like in a browser.</div>
+</body>
+</html>

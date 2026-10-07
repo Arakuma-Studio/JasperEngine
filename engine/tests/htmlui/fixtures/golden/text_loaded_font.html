@@ -1,0 +1,24 @@
+<html>
+<head>
+    <title>text loaded font</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* Roboto Bold and Italic are loaded by the test with HtmlUI::loadFontFace (family
+           Roboto from the files); the built-in Roboto Regular stays the normal face */
+        .line { left: 10px; font-family: Roboto; font-size: 48px; }
+        #regular { top: 10px; }
+        #bold { top: 80px; font-weight: bold; }
+        #italic { top: 150px; font-style: italic; }
+        #sample { top: 230px; font-size: 24px; }
+        #sample-bold { font-weight: bold; color: #ffc040; }
+        #sample-italic { font-style: italic; color: #40c0ff; }
+    </style>
+</head>
+<body>
+    <div id="regular" class="abs line">IIIIII Regular</div>
+    <div id="bold" class="abs line">IIIIII Bold</div>
+    <div id="italic" class="abs line">IIIIII Italic</div>
+    <div id="sample" class="abs line">Mixed: <span id="sample-bold">bold</span> and <span id="sample-italic">italic</span> words</div>
+</body>
+</html>
