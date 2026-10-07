@@ -18,4 +18,12 @@
     #define JASPERENGINE_API
 #endif
 
+// Kept out of the shared engine's dynamic symbol table: internal types built on third-party
+// C++ code, such as the RmlUi interfaces in core/htmlui (only the engine itself uses them)
+#if !defined(_WIN32) && (defined(__GNUC__) || defined(__clang__))
+    #define JASPERENGINE_INTERNAL __attribute__((visibility("hidden")))
+#else
+    #define JASPERENGINE_INTERNAL
+#endif
+
 #endif // JASPERENGINE_EXPORT_H

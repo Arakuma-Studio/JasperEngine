@@ -1,0 +1,4 @@
+/* Phase-0 stand-in for the user-agent stylesheet (RmlUi has none: every element is
+   inline). Phase 2 replaces it with the compatibility layer's stylesheet. */
+body, div, p, h1, h2, h3, section, header, footer, ul, li, button { display: block; }
+body { font-family: sans-serif; font-size: 16px; color: #ffffff; }

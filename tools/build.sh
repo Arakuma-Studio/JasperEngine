@@ -5,10 +5,15 @@
 #   tools/build.sh linux [--clean]     editor + engine sample project (Release)
 #   tools/build.sh web [--clean]       engine sample project for Emscripten
 #   tools/build.sh android [--clean]   engine sample project APK (debug)
+#   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
 # SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism.
+# GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan).
+# htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
+# HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
+# JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -17,7 +22,7 @@ EDITOR_TARGET=jasperengine-editor
 ENGINE_TARGET=jasperengine-project
 
 usage() {
-    sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -38,12 +43,15 @@ for arg in "$@"; do
 done
 
 case "$TARGET" in
-    linux|web|android) ;;
+    linux|web|android|htmlui-tests) ;;
     *) usage ;;
 esac
 
-IMAGE="jasperengine/${TARGET}-build"
-OUT="build/$TARGET"
+# The tests run in the linux image, next to the linux build output
+IMAGE_TARGET="$TARGET"
+[[ "$TARGET" == htmlui-tests ]] && IMAGE_TARGET=linux
+IMAGE="jasperengine/${IMAGE_TARGET}-build"
+OUT="build/$IMAGE_TARGET"
 CACHE="build/.cache"
 # The main checkout, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
@@ -51,16 +59,31 @@ JOBS_FLAG=""
 [[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
 
 # Rebuilding an unchanged image is a no-op thanks to the layer cache.
-docker build -q -t "$IMAGE" -f "$ROOT/docker/$TARGET.Dockerfile" "$ROOT/docker" >/dev/null
+docker build -q -t "$IMAGE" -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker" >/dev/null
+
+HTMLUI_BACKEND="${HTMLUI_BACKEND:-glcore}"
+LINUX_BACKEND="${GRAPHIC_BACKEND:-glcore}"
+if [[ "$TARGET" == htmlui-tests && "$HTMLUI_BACKEND" != glcore && "$HTMLUI_BACKEND" != vulkan ]]; then
+    echo "HTMLUI_BACKEND must be glcore or vulkan" >&2; exit 1
+fi
+if [[ "$TARGET" == linux && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan ]]; then
+    echo "GRAPHIC_BACKEND must be glcore or vulkan for linux" >&2; exit 1
+fi
+
+# What --clean removes: the whole output of the target, or only this test build
+CLEAN_DIR="$OUT"
+[[ "$TARGET" == htmlui-tests ]] && CLEAN_DIR="$OUT/htmlui-tests-$HTMLUI_BACKEND"
 
 if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
-    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE" rm -rf "$OUT"
+    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE" rm -rf "$CLEAN_DIR"
 fi
 mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
+ENV_FLAGS=()
+[[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
 
 run() {
     docker run --rm "${TTY_FLAGS[@]}" \
@@ -71,6 +94,7 @@ run() {
         -e HOME="/src/$CACHE/home" \
         -e CCACHE_DIR=/ccache \
         -e GRADLE_USER_HOME="/src/$CACHE/gradle" \
+        "${ENV_FLAGS[@]}" \
         "$IMAGE" "$@"
 }
 
@@ -84,11 +108,18 @@ CCACHE_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=c
 case "$TARGET" in
 linux)
     BT="${BUILD_TYPE:-Release}"
+    # glcore keeps the historical paths; vulkan builds next to it
+    EDITOR_DIR="editor"
+    BACKEND_FLAGS=""
+    if [[ "$LINUX_BACKEND" == vulkan ]]; then
+        EDITOR_DIR="editor-vulkan"
+        BACKEND_FLAGS="-DGRAPHIC_BACKEND=vulkan"
+    fi
     run bash -euo pipefail -c "
-        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT \
-            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
-        cmake --build $OUT/editor --target $EDITOR_TARGET $JOBS_FLAG
-        cmake --install $OUT/editor --strip
+        cmake -S . -B $OUT/$EDITOR_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $BACKEND_FLAGS \
+            -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
+        cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
+        cmake --install $OUT/$EDITOR_DIR --strip
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
         cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG
@@ -100,6 +131,21 @@ web)
     run bash -euo pipefail -c "
         emcmake cmake -S engine -B $OUT -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
         cmake --build $OUT --target $ENGINE_TARGET $JOBS_FLAG
+    "
+    ;;
+htmlui-tests)
+    BT="${BUILD_TYPE:-Release}"
+    TESTS_DIR="$OUT/htmlui-tests-$HTMLUI_BACKEND"
+    VK_ENV=""
+    [[ "$HTMLUI_BACKEND" == vulkan ]] && VK_ENV="VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+    run bash -euo pipefail -c "
+        cmake -S engine -B $TESTS_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT \
+            -DJASPERENGINE_HTMLUI_TESTS=ON -DGRAPHIC_BACKEND=$HTMLUI_BACKEND $CCACHE_FLAGS
+        cmake --build $TESTS_DIR --target jasperengine-htmlui-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' \
+            $TESTS_DIR/tests/htmlui/jasperengine-htmlui-tests ${HTMLUI_TEST_ARGS:-}
     "
     ;;
 android)

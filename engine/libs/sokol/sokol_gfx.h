@@ -7014,7 +7014,7 @@ typedef struct {
 #define _SG_VK_MAX_UB_DESCRIPTORSET_SLOTS (2 * SG_MAX_UNIFORMBLOCK_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_ENTRIES (SG_MAX_VIEW_BINDSLOTS + SG_MAX_SAMPLER_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_SLOTS (128)
-#define _SG_VK_MAX_DESCRIPTOR_DATA_SIZE (256) // FIXME: llvmpipe needs 280 bytes, do we need to care about that?
+#define _SG_VK_MAX_DESCRIPTOR_DATA_SIZE (320) // JasperEngine: was 256; lavapipe before Mesa 24 (Ubuntu 22.04, the Docker test image) needs 280 bytes
 
 typedef enum {
     _SG_VK_MEMTYPE_STORAGE_BUFFER,

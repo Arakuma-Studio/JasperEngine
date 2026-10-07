@@ -109,7 +109,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         if (physicalDevice == VK_NULL_HANDLE || device == VK_NULL_HANDLE ||
             queue == VK_NULL_HANDLE || image == VK_NULL_HANDLE ||
             vkQueueWaitIdle(queue) != VK_SUCCESS) {
-            Out::error("Engine failure: Vulkan framebuffer readback is unavailable");
+            editor::Out::error("Engine failure: Vulkan framebuffer readback is unavailable");
             return false;
         }
 
@@ -119,7 +119,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         if (vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
-            Out::error("Engine failure: Could not create Vulkan readback buffer");
+            editor::Out::error("Engine failure: Could not create Vulkan readback buffer");
             return false;
         }
 
@@ -139,7 +139,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         }
         if (memoryType == UINT32_MAX) {
             cleanupVulkan();
-            Out::error("Engine failure: No host-visible Vulkan readback memory");
+            editor::Out::error("Engine failure: No host-visible Vulkan readback memory");
             return false;
         }
 
@@ -150,7 +150,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         if (vkAllocateMemory(device, &memoryInfo, nullptr, &stagingMemory) != VK_SUCCESS ||
             vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not allocate Vulkan readback memory");
+            editor::Out::error("Engine failure: Could not allocate Vulkan readback memory");
             return false;
         }
 
@@ -160,7 +160,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         poolInfo.queueFamilyIndex = environment.vulkan.queue_family_index;
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not create Vulkan readback command pool");
+            editor::Out::error("Engine failure: Could not create Vulkan readback command pool");
             return false;
         }
 
@@ -172,7 +172,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         commandInfo.commandBufferCount = 1;
         if (vkAllocateCommandBuffers(device, &commandInfo, &commandBuffer) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not allocate Vulkan readback command buffer");
+            editor::Out::error("Engine failure: Could not allocate Vulkan readback command buffer");
             return false;
         }
 
@@ -181,7 +181,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not begin Vulkan readback command buffer");
+            editor::Out::error("Engine failure: Could not begin Vulkan readback command buffer");
             return false;
         }
 
@@ -216,7 +216,7 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTexture);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not end Vulkan readback command buffer");
+            editor::Out::error("Engine failure: Could not end Vulkan readback command buffer");
             return false;
         }
 
@@ -227,14 +227,14 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         if (vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS ||
             vkQueueWaitIdle(queue) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Vulkan framebuffer readback failed");
+            editor::Out::error("Engine failure: Vulkan framebuffer readback failed");
             return false;
         }
 
         void* mapped = nullptr;
         if (vkMapMemory(device, stagingMemory, 0, dataSize, 0, &mapped) != VK_SUCCESS) {
             cleanupVulkan();
-            Out::error("Engine failure: Could not map Vulkan readback memory");
+            editor::Out::error("Engine failure: Could not map Vulkan readback memory");
             return false;
         }
         pixels = new uint8_t[static_cast<size_t>(dataSize)];

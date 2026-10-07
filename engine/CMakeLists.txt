@@ -12,6 +12,9 @@ option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
 option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
+# googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
+# the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
+option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -660,6 +663,7 @@ include_directories(core/shader)
 include_directories(core/subsystem)
 include_directories(core/texture)
 include_directories(core/util)
+include_directories(core/htmlui)
 
 include_directories(renders)
 
@@ -704,6 +708,7 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+add_subdirectory(libs/rmlui)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
@@ -738,9 +743,17 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer ${JASPERENGINE_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer rmlui ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
+
+if(JASPERENGINE_HTMLUI_TESTS)
+    if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        message(FATAL_ERROR "JASPERENGINE_HTMLUI_TESTS needs the standalone engine build (cmake -S engine): the editor's shared engine hides the RmlUi symbols the tests use")
+    endif()
+    # the tests read render targets back (engine/tests/htmlui/harness/Readback.cpp)
+    add_definitions(-DJASPERENGINE_TEXTURE_READBACK)
+endif()
 
 if(DEFINED NO_LUA_INIT)
     add_definitions("-DNO_LUA_INIT=${NO_LUA_INIT}")
@@ -777,6 +790,13 @@ set(JASPERENGINE_SRCS
     core/buffer/IndexBuffer.cpp
     core/buffer/InterleavedBuffer.cpp
     core/ecs/ComponentManager.cpp
+    core/htmlui/HtmlUI.cpp
+    core/htmlui/HtmlUIContext.cpp
+    core/htmlui/HtmlUIContextRender.cpp
+    core/htmlui/RmlFile.cpp
+    core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlRenderer.cpp
+    core/htmlui/RmlSystem.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
@@ -829,6 +849,8 @@ set(JASPERENGINE_SRCS
     core/object/ui/Text.cpp
     core/object/ui/InputField.cpp
     core/object/ui/RectTransform.cpp
+    core/object/ui/UIDocument.cpp
+    core/object/ui/UIElement.cpp
     core/pool/FontPool.cpp
     core/pool/ShaderPool.cpp
     core/pool/SoundPool.cpp
@@ -872,6 +894,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UIDocumentSystem.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
     core/texture/Texture.cpp
@@ -881,8 +904,12 @@ set(JASPERENGINE_SRCS
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/FontFace.cpp
+    core/util/FontRegistry.cpp
+    core/util/GlyphAtlas.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
+    core/util/TextShaper.cpp
     core/util/UniqueToken.cpp
     core/util/XMLUtils.cpp
 )
@@ -943,7 +970,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer rmlui
     ${JASPERENGINE_PHYSICS_LIBS}
 )
 
@@ -986,6 +1013,11 @@ set_target_properties(tinygltf PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON
 )
+# Same for RmlUi: Rml::String and Rml::Vector are std types crossing into engine code
+set_target_properties(rmlui PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+)
 
 set_target_properties(
     jasperengine
@@ -1008,6 +1040,13 @@ if(JASPERENGINE_SHARED)
         PUBLIC
         JASPERENGINE_SHARED
     )
+    # RmlUi is built with hidden visibility, but the std templates it instantiates over its
+    # own enums keep default visibility; nothing of librmlui.a belongs in the dynamic symbol
+    # table. GNU ld and lld only: MSVC exports dllexport symbols alone, and ld64 has no
+    # equivalent flag (those weak std instantiations stay visible in the macOS dylib)
+    if(NOT APPLE AND NOT MSVC)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
+    endif()
 endif()
 
 # =============================================================
@@ -1116,3 +1155,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(${PROJECT_ROOT}/ProjectBuild.cmake OPTIONAL)
 
 endif() # End standalone executable build
+
+if(JASPERENGINE_HTMLUI_TESTS)
+    add_subdirectory(tests/htmlui)
+endif()
