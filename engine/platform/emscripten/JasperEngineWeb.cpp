@@ -132,79 +132,80 @@ extern "C" {
 // document text field has focus (it opens the mobile keyboard), placed at the caret so the
 // IME candidate window follows it. Its value is cleared after each committed input.
 EM_JS(void, jasper_ime_create, (), {
-    if (document.getElementById('jasper-ime')) return;
-    var ta = document.createElement('textarea');
-    ta.id = 'jasper-ime';
-    ta.setAttribute('autocomplete', 'off');
-    ta.setAttribute('autocorrect', 'off');
-    ta.setAttribute('autocapitalize', 'off');
-    ta.setAttribute('spellcheck', 'false');
-    ta.setAttribute('aria-hidden', 'true');
+    if (document.getElementById("jasper-ime")) return;
+    var ta = document.createElement("textarea");
+    ta.id = "jasper-ime";
+    ta.setAttribute("autocomplete", "off");
+    ta.setAttribute("autocorrect", "off");
+    ta.setAttribute("autocapitalize", "off");
+    ta.setAttribute("spellcheck", "false");
+    ta.setAttribute("aria-hidden", "true");
     ta.tabIndex = -1;
     // 16px keeps iOS from zooming in on focus
-    ta.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:16px;padding:0;border:0;margin:0;' +
-        'opacity:0;resize:none;overflow:hidden;outline:none;font-size:16px;caret-color:transparent;' +
-        'pointer-events:none;white-space:pre;z-index:0;';
+    ta.style.cssText = "position:fixed;left:0;top:0;width:1px;height:16px;padding:0;border:0;margin:0;" +
+        "opacity:0;resize:none;overflow:hidden;outline:none;font-size:16px;caret-color:transparent;" +
+        "pointer-events:none;white-space:pre;z-index:0;";
     document.body.appendChild(ta);
 
     var state = { composing: false, softKey: false };
     Module.jasperIme = state;
-    var MAX_TEXT = 1048576;
+    // ccall copies strings onto the 4 MB stack
+    var MAX_TEXT = 262144;
     var clip = function(text) { return text.length > MAX_TEXT ? text.substring(0, MAX_TEXT) : text; };
     var codepoints = function(text) { return Array.from(text).length; };
 
-    ta.addEventListener('compositionstart', function(e) {
+    ta.addEventListener("compositionstart", function(e) {
         state.composing = true;
-        ccall('jasper_web_ime_composition', null, ['string', 'number'], ['', 0]);
+        ccall("jasper_web_ime_composition", null, ["string", "number"], ["", 0]);
     });
-    ta.addEventListener('compositionupdate', function(e) {
-        var data = e.data || '';
+    ta.addEventListener("compositionupdate", function(e) {
+        var data = e.data || "";
         // the caret is at the end of the composition (browsers do not report it)
-        ccall('jasper_web_ime_composition', null, ['string', 'number'], [clip(data), codepoints(data)]);
+        ccall("jasper_web_ime_composition", null, ["string", "number"], [clip(data), codepoints(data)]);
     });
-    ta.addEventListener('compositionend', function(e) {
+    ta.addEventListener("compositionend", function(e) {
         state.composing = false;
-        var data = e.data || '';
-        if (data.length > 0) ccall('jasper_web_text_input', null, ['string'], [clip(data)]);
-        else ccall('jasper_web_ime_cancel', null, [], []);
-        ta.value = '';
+        var data = e.data || "";
+        if (data.length > 0) ccall("jasper_web_text_input", null, ["string"], [clip(data)]);
+        else ccall("jasper_web_ime_cancel", null, [], []);
+        ta.value = "";
     });
-    ta.addEventListener('beforeinput', function(e) {
+    ta.addEventListener("beforeinput", function(e) {
         if (state.composing || e.isComposing || !state.softKey) return;
         // keys a soft keyboard sends without a key code of their own
-        if (e.inputType === 'deleteContentBackward') ccall('jasper_web_soft_key', null, ['number'], [259]);
-        else if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') ccall('jasper_web_soft_key', null, ['number'], [257]);
+        if (e.inputType === "deleteContentBackward") ccall("jasper_web_soft_key", null, ["number"], [259]);
+        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") ccall("jasper_web_soft_key", null, ["number"], [257]);
     });
-    ta.addEventListener('input', function(e) {
+    ta.addEventListener("input", function(e) {
         if (state.composing || e.isComposing) return;
-        if (e.inputType === 'insertText' && e.data) ccall('jasper_web_text_input', null, ['string'], [clip(e.data)]);
-        ta.value = '';
+        if (e.inputType === "insertText" && e.data) ccall("jasper_web_text_input", null, ["string"], [clip(e.data)]);
+        ta.value = "";
     });
     // one listener for the textarea and the page: whatever has focus, the paste is the game's
-    document.addEventListener('paste', function(e) {
+    document.addEventListener("paste", function(e) {
         if (!e.clipboardData) return;
-        var text = e.clipboardData.getData('text/plain') || '';
+        var text = e.clipboardData.getData("text/plain") || "";
         if (document.activeElement === ta || document.activeElement === document.body || document.activeElement === Module.canvas) {
             e.preventDefault();
-            ccall('jasper_web_paste', null, ['string'], [clip(text)]);
+            ccall("jasper_web_paste", null, ["string"], [clip(text)]);
         }
     }, true);
 });
 
 EM_JS(void, jasper_ime_focus, (int focus), {
-    var ta = document.getElementById('jasper-ime');
+    var ta = document.getElementById("jasper-ime");
     if (!ta) return;
     if (focus) {
         if (document.activeElement !== ta) ta.focus({ preventScroll: true });
     } else if (document.activeElement === ta) {
         if (Module.jasperIme) Module.jasperIme.composing = false;
-        ta.value = '';
+        ta.value = "";
         ta.blur();
     }
 });
 
 EM_JS(int, jasper_ime_is_focused, (), {
-    var ta = document.getElementById('jasper-ime');
+    var ta = document.getElementById("jasper-ime");
     return (ta && document.activeElement === ta) ? 1 : 0;
 });
 
@@ -214,15 +215,15 @@ EM_JS(void, jasper_ime_set_soft_key, (int soft), {
 
 // x, y, height in canvas pixels (the space of the mouse events)
 EM_JS(void, jasper_ime_set_area, (float x, float y, float height), {
-    var ta = document.getElementById('jasper-ime');
+    var ta = document.getElementById("jasper-ime");
     var canvas = Module.canvas;
     if (!ta || !canvas) return;
     var rect = canvas.getBoundingClientRect();
     var sx = canvas.width > 0 ? rect.width / canvas.width : 1;
     var sy = canvas.height > 0 ? rect.height / canvas.height : 1;
-    ta.style.left = (rect.left + x * sx) + 'px';
-    ta.style.top = (rect.top + y * sy) + 'px';
-    ta.style.height = Math.max(1, height * sy) + 'px';
+    ta.style.left = (rect.left + x * sx) + "px";
+    ta.style.top = (rect.top + y * sy) + "px";
+    ta.style.height = Math.max(1, height * sy) + "px";
 });
 
 // navigator.clipboard needs a user activation (a key or a click is one) and a secure context;
@@ -231,13 +232,13 @@ EM_JS(void, jasper_clipboard_write, (const char* utf8), {
     var text = UTF8ToString(utf8);
     var fallback = function() {
         var active = document.activeElement;
-        var area = document.createElement('textarea');
+        var area = document.createElement("textarea");
         area.value = text;
-        area.setAttribute('readonly', '');
-        area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+        area.setAttribute("readonly", "");
+        area.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
         document.body.appendChild(area);
         area.select();
-        try { document.execCommand('copy'); } catch (err) {}
+        try { document.execCommand("copy"); } catch (err) {}
         document.body.removeChild(area);
         if (active && active.focus) active.focus({ preventScroll: true });
     };
