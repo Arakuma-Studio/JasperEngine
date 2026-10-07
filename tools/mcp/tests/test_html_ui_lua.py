@@ -197,3 +197,169 @@ async def test_lua_refs_released_after_stop(ed: Editor):
 
     errors = [e for e in await html_ui_errors(ed) if "silver" not in e]
     ed.check(not errors, f"errors: {errors}")
+
+
+# ================================================================================================
+# p1-anim section: the anime table (docs/html-ui/phase-1-integration.md §3.11)
+# ================================================================================================
+
+ANIME_DOC = "assets/ui/anime.html"
+ANIME_HTML = """<html>
+<head>
+    <title>anime</title>
+    <style>
+        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
+        div { display: block; }
+        #box { position: absolute; left: 40px; top: 40px; width: 100px; height: 100px; background-color: #ff0000; }
+        .dot { position: absolute; top: 300px; width: 40px; height: 40px; background-color: #0000ff; }
+        #d1 { left: 40px; } #d2 { left: 140px; } #d3 { left: 240px; }
+    </style>
+</head>
+<body>
+    <div id="box"></div>
+    <div id="d1" class="dot"></div>
+    <div id="d2" class="dot"></div>
+    <div id="d3" class="dot"></div>
+</body>
+</html>
+"""
+
+
+async def anime_shoot(ed: Editor, label: str, scene=None) -> Shot:
+    args = {"view": "game", "max_width": 1280}
+    if scene is not None:
+        args["scene"] = scene
+    shot = await ed.call_raw("screenshot", args)
+    ed.check(not shot.is_error and shot.images, f"{label}: no screenshot: {shot.text[:300]}")
+    png = shot.images[0][0]
+    (ed.scratch.root / f"html-ui-lua-{label}.png").write_bytes(png)
+    return Shot(png, shot.value)
+
+
+async def anime_lua(ed: Editor, code: str, edit=False):
+    args = {"code": code}
+    if edit:
+        args["allow_edit_mode"] = True
+    return (await ed.call("eval_lua", **args))["values"]
+
+
+async def anime_errors(ed: Editor) -> list[str]:
+    entries = await ed.console_since(types=["error"], limit=1000)
+    return [e.get("message", "") for e in entries if "[HTML UI]" in e.get("message", "")]
+
+ANIME_RED = (255, 0, 0)
+
+
+async def test_anime_setup(ed: Editor):
+    """A UI scene with a document for the anime checks."""
+    await ed.console_since(None, limit=1)
+    made = await ed.call("create_scene", name="HtmlUiAnime", type="UI")
+    S["anime_scene"] = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=S["anime_scene"], settings={"background_color": [0.118, 0.118, 0.118, 1.0]})
+    await ed.call("write_file", path=ANIME_DOC, content=ANIME_HTML)
+    ent = await ed.call("create_entity", scene=S["anime_scene"], type="empty", name="AnimeDoc")
+    await ed.call("add_component", scene=S["anime_scene"], entity=ent["entity_id"], component="UIDocument",
+                  values={"uidocument": {"filename": ANIME_DOC}})
+    shot = await anime_shoot(ed, "anime-start", S["anime_scene"])
+    ed.check(near(shot.px(90, 90), ANIME_RED), f"the box before animating: {shot.px(90, 90)}")
+    S["anime_bg"] = shot.px(900, 500)
+
+
+async def test_anime_translate_and_stagger(ed: Editor):
+    """anime.animate on translateX moves the box (pixels and utils.get); a staggered opacity."""
+    await ed.call("play", action="start", scene=S["anime_scene"])
+    try:
+        await anime_lua(ed, "box = anime.animate('#box', { translateX = 400, duration = 400, ease = 'outQuad' })")
+        r = await ed.call_raw("wait", {"until": "box.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the translateX animation completes: {r.text[:300]}")
+        ed.check_eq(await anime_lua(ed, "return anime.utils.get('#box', 'translateX')"), ["400px"], "translateX at the end")
+        shot = await anime_shoot(ed, "anime-moved")
+        ed.check(near(shot.px(490, 90), ANIME_RED), f"the box moved by 400px: {shot.px(490, 90)}")
+        ed.check(near(shot.px(90, 90), S["anime_bg"], 6), f"its old place is empty: {shot.px(90, 90)}")
+        # the element API sees the transform
+        rect = await anime_lua(ed, """
+            local r = object('AnimeDoc', 'UIDocument'):getElementById('box'):getBoundingClientRect()
+            return r.left, r.top, r.width, r.height
+        """)
+        ed.check_eq(rect, [440, 40, 100, 100], "getBoundingClientRect after translateX 400")
+
+        # UIElement handles as targets, a UIDocument as the selector root, and function values
+        # receiving the elements
+        values = await anime_lua(ed, """
+            local doc = object('AnimeDoc', 'UIDocument')
+            local d2 = doc:getElementById('d2')
+            handle = anime.animate(d2, { translateY = 50, duration = 100, ease = 'linear' })
+            local scoped = anime.animate('.dot', { opacity = 1, duration = 0, root = doc })
+            anime.animate({ doc:getElementById('d1'), doc:getElementById('d3') },
+                          { translateX = function(el, i, total) return el.id == 'd1' and 10 or total end, duration = 0 })
+            return #handle.targets, handle.targets[1] == d2, #scoped.targets
+        """)
+        ed.check_eq(values, [1, True, 3], "element handles, root and function values")
+        r = await ed.call_raw("wait", {"until": "handle.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the handle animation completes: {r.text[:300]}")
+        await ed.call("wait", frames=2)
+        rects = await anime_lua(ed, """
+            local doc = object('AnimeDoc', 'UIDocument')
+            return doc:getElementById('d1'):getBoundingClientRect().left, doc:getElementById('d2'):getBoundingClientRect().top,
+                   doc:getElementById('d3'):getBoundingClientRect().left
+        """)
+        ed.check_eq(rects, [50, 350, 242], "the elements moved")
+
+        await anime_lua(ed, "dots = anime.animate('.dot', { opacity = 0, delay = anime.stagger(100), duration = 200, ease = 'linear' })")
+        ed.check_eq(await anime_lua(ed, "return dots.duration, #dots.targets, dots.targets[1].id, dots.targets[3].id"),
+                    [400, 3, "d1", "d3"], "three staggered UIElement targets from the selector")
+        r = await ed.call_raw("wait", {"until": "dots.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the staggered animation completes: {r.text[:300]}")
+        shot = await anime_shoot(ed, "anime-faded")
+        for x in (60, 160, 260):
+            ed.check(near(shot.px(x, 320), S["anime_bg"], 8), f"dot at {x} faded out: {shot.px(x, 320)}")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_anime_timeline_labels_and_clocks(ed: Editor):
+    """A timeline with labels and calls on a plain table; clock = 'game' freezes with the game,
+    the default UI clock does not; play stop cancels what is left and frees the callbacks."""
+    await ed.call("play", action="start", scene=S["anime_scene"])
+    try:
+        values = await anime_lua(ed, """
+            t = { v = 0 }
+            log = {}
+            tl = anime.createTimeline({ defaults = { duration = 200, ease = 'linear' } })
+            tl:add(t, { v = 100 })
+              :label('mid')
+              :add(t, { v = 0 }, 'mid+=100')
+              :call(function() log[#log + 1] = 'called' end, 'mid')
+            return tl.labels.mid, tl.duration
+        """)
+        ed.check_eq(values, [200, 500], "label and duration")
+        r = await ed.call_raw("wait", {"until": "tl.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the timeline completes: {r.text[:300]}")
+        ed.check_eq(await anime_lua(ed, "return t.v, log[1]"), [0, "called"], "timeline end state")
+
+        await anime_lua(ed, """
+            Engine.timeScale = 0
+            game = { v = 0 }; ui = { v = 0 }
+            ga = anime.animate(game, { v = 100, duration = 300, ease = 'linear', clock = 'game' })
+            ua = anime.animate(ui, { v = 100, duration = 300, ease = 'linear' })
+        """)
+        r = await ed.call_raw("wait", {"until": "ua.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the UI-clock animation runs at time scale 0: {r.text[:300]}")
+        ed.check_eq(await anime_lua(ed, "return game.v"), [0], "the game-clock animation is frozen")
+        await anime_lua(ed, "Engine.timeScale = 1")
+        r = await ed.call_raw("wait", {"until": "ga.completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the game-clock animation runs again: {r.text[:300]}")
+
+        bad = await ed.call_raw("eval_lua", {"code": "anime.createTimer({ clock = 'wall' })"})
+        ed.check("clock must be" in bad.text, f"an invalid clock is an error: {bad.text[:300]}")
+
+        await anime_lua(ed, "forever = anime.animate(t, { v = 1, loop = true, alternate = true, onUpdate = function() end })")
+    finally:
+        await ed.call("play", action="stop")
+        await anime_lua(ed, "Engine.timeScale = 1", edit=True)
+
+    # the Lua state outlives the play: the handle is still there, cancelled
+    ed.check_eq(await anime_lua(ed, "return forever.cancelled, forever.paused", edit=True), [True, True],
+                "play stop cancelled the endless animation")
+    errors = await anime_errors(ed)
+    ed.check(not errors, f"[HTML UI] errors: {errors}")

@@ -480,6 +480,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerUtilClasses(L);
     registerThreadClasses(L);
     registerHtmlUIClasses(L);
+    registerHtmlUIAnimeClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }

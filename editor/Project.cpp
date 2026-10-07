@@ -36,6 +36,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -7719,6 +7720,9 @@ void editor::Project::stop(uint32_t sceneId) {
                 std::scoped_lock lock(playSessionMutex);
                 runtimeScenes = session->runtimeScenes;
             }
+
+            // anime: every animation of the play, and its script callbacks, before the scripts go
+            AnimEngine::instance().reset();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {
