@@ -17,10 +17,13 @@
 #include "object/ui/UIElementInternal.h"
 
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/Core.h>
+#include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 
 #include <algorithm>
+#include <cctype>
 
 using namespace jasperengine;
 
@@ -199,6 +202,14 @@ HtmlUIDataModelRecord* HtmlUIScriptState::createModel(Entity owner, const std::s
 
     HtmlUIDataModelRecord* created = record.get();
     models[name] = std::move(record);
+
+    // a placeholder of this name gives way (its document reloads: reloadUsersOf)
+    auto placeholder = std::find(placeholders.begin(), placeholders.end(), name);
+    if (placeholder != placeholders.end()){
+        placeholders.erase(placeholder);
+        if (HtmlUIContext* context = system->getContext())
+            context->getRmlContext()->RemoveDataModel(name);
+    }
 
     // a model made before the first load is bound when the context is created
     if (HtmlUIContext* context = system->getContext()){
@@ -462,6 +473,39 @@ void UIDocumentSystem::scriptContextDestroying(){
         }
         // their RmlUi side goes now, while the context still exists
         scriptState->removedDuringEvents.clear();
+        scriptState->placeholders.clear();
+    }
+}
+
+void UIDocumentSystem::scriptDocumentLoading(const std::string& filename){
+    Rml::Context* rmlContext = getContext() ? getContext()->getRmlContext() : nullptr;
+    Rml::String text;
+    if (!rmlContext || !Rml::GetFileInterface() || !Rml::GetFileInterface()->LoadFile(filename, text))
+        return;
+
+    // data-model="name" (RmlUi binds it while parsing; an unknown name is an error there)
+    static const std::string attribute = "data-model";
+    for (size_t at = text.find(attribute); at != std::string::npos; at = text.find(attribute, at + attribute.size())){
+        size_t i = at + attribute.size();
+        while (i < text.size() && std::isspace((unsigned char)text[i])) i++;
+        if (i >= text.size() || text[i] != '=')
+            continue;
+        i++;
+        while (i < text.size() && std::isspace((unsigned char)text[i])) i++;
+        if (i >= text.size() || (text[i] != '"' && text[i] != '\''))
+            continue;
+        const char quote = text[i];
+        const size_t end = text.find(quote, i + 1);
+        if (end == std::string::npos)
+            continue;
+        const std::string name = text.substr(i + 1, end - i - 1);
+        if (name.empty() || rmlContext->GetDataModels().count(name))
+            continue;
+        HtmlUIScriptState& script = getScriptState();
+        if (script.findModel(name))
+            continue;
+        rmlContext->CreateDataModel(name, nullptr, true);
+        script.placeholders.push_back(name);
     }
 }
 

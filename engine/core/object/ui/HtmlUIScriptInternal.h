@@ -142,6 +142,10 @@ namespace jasperengine{
         std::vector<Notification> notifications;   // onUnload/onLoad, fired after the context update
         // removed while one of their data-event callbacks ran: destroyed after the update
         std::vector<std::unique_ptr<HtmlUIDataModelRecord>> removedDuringEvents;
+        // empty RmlUi models (missing variables allowed) for the data-model names a document
+        // uses before a script created them (edit mode, a scene's load before init): the document
+        // loads without errors; createDataModel replaces the placeholder and reloads it
+        std::vector<std::string> placeholders;
         static uint64_t nextChangeId;   // UIDataModel::onChange ids, process-wide
 
         // a new model (top-level keys of initial, an OBJECT, fixed from now on); nullptr and

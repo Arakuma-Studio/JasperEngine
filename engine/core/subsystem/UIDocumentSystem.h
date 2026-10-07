@@ -200,6 +200,7 @@ namespace jasperengine{
         void scriptLoadDocuments();                 // load(): every enabled document, so a script's init can query them
         void scriptContextCreated();                // ensureContext(): data models into the new context, DOM change events
         void scriptContextDestroying();             // destroyContext(), first: detached pools, RmlUi side of the data models
+        void scriptDocumentLoading(const std::string& filename);   // applyComponent, before a load: placeholder data models
         void scriptDocumentLoaded(Entity entity);   // applyComponent, after a load: onLoad (fired after the context update)
         void scriptDocumentUnloading(Entity entity, Rml::ElementDocument* document);   // unloadEntityDocument: pool, onUnload
         void scriptComponentRemoved(Entity entity); // onComponentRemoved: the data models the document created

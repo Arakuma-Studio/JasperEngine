@@ -159,6 +159,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
+            scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = context->loadDocument(document.filename);
             if (loadedDocument){

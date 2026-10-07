@@ -186,11 +186,11 @@ TEST_F(ScriptDataModelTest, LuaErrors){
 TEST_F(ScriptDataModelTest, CreateAfterLoadReloadsTheDocument){
     ASSERT_TRUE(document->load("p1/script_model.html"));
     update();
-    // RmlUi could not bind data-model="shop"
-    EXPECT_GT(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
-    TestSystem::get().clearLogs();
+    // no model yet: an empty placeholder binds data-model="shop" without errors
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
     UIElement before = document->getElementById("gold");
     ASSERT_TRUE(before.isValid());
+    EXPECT_EQ(before.getTextContent(), "");
 
     ASSERT_EQ(lua(createShop), "");
     update();
