@@ -18,6 +18,7 @@ target_compile_options(gtest PRIVATE -w)
 file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/harness/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/anime/*.cpp
 )
 
 add_executable(jasperengine-htmlui-tests

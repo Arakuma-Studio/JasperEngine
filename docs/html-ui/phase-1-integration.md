@@ -2049,8 +2049,8 @@ Ported from Anime.js 4.5.0 (`/tmp/htmlui-src/anime/src`, MIT):
 | `AnimSpring.{h,cpp}` | Port of `Spring` (`easings/spring/index.js`): parameters `mass, stiffness, damping, velocity` or `bounce, duration`; `solve`, `compute` (settling duration via rest threshold .0005, rest 200 ms, step .02), `onComplete` at the perceived duration. |
 | `AnimValue.{h,cpp}` | Value decomposition: numbers with units, relative `+= -= *=`, colours (`#rgb[a]`, `#rrggbb[aa]`, `rgb()/rgba()/hsl()/hsla()`) interpolated per channel in non-premultiplied 0–255 RGBA as Anime does, and complex strings (numbers inside a template string). |
 | `AnimTargets.{h,cpp}` | Targets: `UIElement`, a list of elements, a selector string (resolved against every loaded document of the current scene, or the `root` param), and plain tables through a `TableTarget` adapter interface implemented in the Lua binding. |
-| `AnimProperty.{h,cpp}` | Writers. **Individual transforms** `translateX/Y/Z`, `rotate`, `rotateX/Y/Z`, `scale`, `scaleX/Y/Z`, `skew`, `skewX/Y`, `perspective` keep a per-element transform state and write one `Rml::Transform` built from `Rml::TransformPrimitive`s in Anime's order (insertion order) to `PropertyId::Transform`. `opacity` → `Rml::Property(float, Unit::NUMBER)`. Single lengths (`width height left top right bottom margin* padding* font-size border-*-width border-radius gap letter-spacing line-height`) → `Rml::Property(v, unit)`. Colours (`color background-color border-*-color image-color`) → `Rml::Property(Colourb)`. **Custom properties** (`'--glow'`, any `--name`) are interpolated as numbers, lengths or colours by their value shape and written every frame with `Element::SetProperty("--name", text)`, so `var(--name)` users (phase-5 effect parameters included) follow. Anything else → the complex-string path and `Element::SetProperty(name, string)`. Unit mismatch between from and to is resolved through `Element::ResolveLength`/computed values into px. |
-| `AnimTimer.{h,cpp}`, `AnimAnimation.{h,cpp}`, `AnimTimeline.{h,cpp}` | Playback: `duration` (default 1000 ms), `delay`, `loopDelay`, `loop` (count / `true` = infinite), `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `playbackEase`, `frameRate`, `ease` (default `out(2)`), `composition` (`replace` default, `none`, `blend` = additive sum of active numeric tweens on the same property), keyframes (value arrays; arrays of `{to, duration, ease, delay}`; percentage keyframes `{["0%"]={...}}`), `from/to` objects, function values `function(target, index, total)`. Callbacks `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`, `onLoop`, `onPause`, `onComplete`. Methods `play, pause, resume, restart, reverse, alternate, seek(ms), stretch(ms), cancel, revert, complete, then(fn)`. Properties `currentTime, progress, iterationProgress, duration, paused, began, completed, reversed, id`. Timeline: `add(targets, params[, position])`, `add(timer)`, `set(targets, props[, position])`, `call(fn[, position])`, `label(name[, position])`, `sync(animation[, position])`, `remove(...)`, `init()`; positions per `parseTimelinePosition` (numbers, `"+=100"`, `"-=100"`, `"*=2"`, `"<"`, `"<<"`, `"label"`, `"label+=50"`), `defaults`. |
+| `AnimProperty.{h,cpp}` | Writers. **Individual transforms** `translateX/Y/Z`, `rotate`, `rotateX/Y/Z`, `scale`, `scaleX/Y/Z`, `skew`, `skewX/Y`, `perspective` keep a per-element transform state (seeded from the element's inline `transform`) and write one `Rml::Transform` built from `Rml::TransformPrimitive`s in Anime 4.5's order (perspective, translate, rotate, scale, skew — `buildTransformString`; Lua tables have no insertion order anyway) to `PropertyId::Transform`, once per render pass. `opacity` → `Rml::Property(float, Unit::NUMBER)`. Single lengths (`width height left top right bottom margin* padding* font-size border-*-width border-radius gap letter-spacing line-height`) → `Rml::Property(v, unit)`. Colours (`color background-color border-*-color image-color`) → `Rml::Property(Colourb)`. **Custom properties** (`'--glow'`, any `--name`) are interpolated as numbers, lengths or colours by their value shape and written every frame with `Element::SetProperty("--name", text)`, so `var(--name)` users (phase-5 effect parameters included) follow. Anything else → the complex-string path and `Element::SetProperty(name, string)`. Unit mismatch between from and to is resolved through `Element::ResolveLength`/computed values into px. |
+| `AnimTimer.{h,cpp}`, `AnimAnimation.{h,cpp}`, `AnimTimeline.{h,cpp}` | Playback: `duration` (default 1000 ms), `delay`, `loopDelay`, `loop` (count / `true` = infinite), `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `playbackEase`, `frameRate`, `ease` (default `out(2)`), `composition` (`replace` default, `none`, `blend` = additive sum of active numeric tweens on the same property), keyframes (value arrays; arrays of `{to, duration, ease, delay}`; percentage keyframes `{["0%"]={...}}`), `from/to` objects, function values `function(target, index, total)`. Callbacks `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`, `onLoop`, `onPause`, `onComplete`. Methods `play, pause, resume, restart, reverse, alternate, seek(ms), stretch(ms), cancel, revert, complete, then(fn)` (`then` is a Lua keyword: Lua calls it `andThen(fn)`; no Promise). Properties `currentTime, progress, iterationProgress, duration, paused, began, completed, reversed, id`. Timeline: `add(targets, params[, position])`, `add(timer)`, `set(targets, props[, position])`, `call(fn[, position])`, `label(name[, position])`, `sync(animation[, position])`, `remove(...)`, `init()`; positions per `parseTimelinePosition` (numbers, `"+=100"`, `"-=100"`, `"*=2"`, `"<"`, `"<<"`, `"label"`, `"label+=50"`), `defaults`. |
 | `AnimEngine.{h,cpp}` | One process-wide engine. `tick(double uiTimeSeconds)` (the `HtmlUIClock` time) advances only when the time changed, so it is idempotent per frame. `reset()` drops everything. |
 
 Lua surface:
@@ -2062,7 +2062,17 @@ Lua surface:
 - `anime.utils`: `set`, `get`, `remove`, `random`, `randomPick`, `shuffle`, `clamp`,
   `round`, `snap`, `wrap`, `mapRange`, `lerp`, `damp`, `degToRad`, `radToDeg`,
   `roundPad`, `padStart`, `padEnd`.
-- Callbacks receive the animation object.
+- Callbacks receive the animation object. Function values receive `(target, index, total)` with
+  Anime's 0-based index (stagger `from = 2` likewise).
+- C++: `Anime::animate/createTimeline/createTimer/createSpring/stagger` (`htmlui/anim/Anime.h`) over
+  `AnimParam` trees and `AnimTargetList`s (`AnimTargets::fromElement/fromSelector`, `AnimObjectTarget`).
+- Implementation notes (recorded at implementation): a timer starts at the engine's last tick
+  time, which already gives the first frame one frame of progress, so Anime's 12 ms resume head
+  start is dropped (the reference recordings undo it too); the engine ticks every frame it is
+  given (no 240 fps grid of the engine clock; per-timer `frameRate` is kept); selectors resolve
+  against the documents of `Engine::getScene()` (or `root`); the game clock accumulates the
+  positive deltas of `Engine::getGameTime()`; reads of element values use the inline style only
+  (`Element::GetLocalProperty` includes stylesheet rules, Anime reads `element.style`).
 - **Plain table targets** animate numeric fields (`rawget`/`rawset`, numbers only; colour
   strings in tables are interpolated as colours and written back as `#rrggbbaa`).
 
@@ -2091,7 +2101,7 @@ Lua surface:
 
   Both are one-line additive hooks.
 
-**Stubs.** `engine/core/script/binding/stubs/anime.lua` holds `---@class` shapes:
+**Stubs.** The `anime` lua_CFunctions get their LuaLS signatures from `OVERRIDES` entries in `generate_lua_stubs.py` (additive block); `engine/core/script/binding/stubs/anime.lua` holds `---@class` shapes:
 `AnimeAnimationParams`, `AnimeTimelineParams`, `AnimeTimerParams`, `AnimeSpringParams`,
 `AnimeStaggerParams`, the `AnimeAnimation`/`AnimeTimeline`/`AnimeTimer` method docs, and
 the `anime` table.
@@ -2099,7 +2109,10 @@ the `anime` table.
 **Reference values.** `engine/tests/htmlui/anime/gen_reference.mjs` runs on the host with
 node (`/usr/bin/node`, v20) against `/tmp/htmlui-src/anime/src`. It writes
 `engine/tests/htmlui/anime/reference.json` (checked in), sampling every easing at 101
-points, spring durations, stagger outputs and timeline offsets.
+points, spring durations, stagger outputs and timeline offsets, value decomposition, utils, and
+frame-by-frame recordings of animations, timers and timelines on plain objects driven by Anime's
+own engine with a fake clock (values, callbacks in order, state), which `AnimeReferenceTests`
+replays through `AnimEngine::tickMilliseconds`.
 
 ---
 

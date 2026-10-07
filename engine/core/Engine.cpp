@@ -14,6 +14,7 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
 #include "component/ButtonComponent.h"
@@ -1341,6 +1342,8 @@ void Engine::systemViewDestroyed(){
 void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
+    // anime's Lua references go while the Lua state still exists
+    AnimEngine::instance().reset();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

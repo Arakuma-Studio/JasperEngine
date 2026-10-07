@@ -394,6 +394,83 @@ document passes, draws and pipeline switches of the last frame.
 Unsupported names are reported, not ignored: an unknown filter or `decorator: shader(...)`
 logs an `[HTML UI]` warning naming it and draws nothing for it.
 
+## Animation
+
+A global Lua table `anime` mirrors [Anime.js v4](https://animejs.com/documentation/) (ported
+from 4.5.0, checked against reference values generated from the real library). C++ gets the
+same API through `Anime` (`#include "htmlui/anim/Anime.h"`).
+
+```lua
+-- targets: a CSS selector (every loaded document of the current scene), a UIElement, a plain
+-- table, or a list of them
+anime.animate("#title", { translateY = { from = -40 }, opacity = { from = 0 }, duration = 600,
+                          ease = "outElastic(1, .6)" })
+anime.animate(".card", { scale = 1.1, delay = anime.stagger(80, { from = "center" }), loop = true, alternate = true })
+
+local tl = anime.createTimeline({ defaults = { duration = 300, ease = "outQuad" } })
+tl:add("#panel", { x = 200 })
+  :label("open")
+  :add(".item", { opacity = { from = 0 } }, "open-=100")
+  :call(function(timeline) print("opened") end, "+=50")
+
+local stats = { hp = 100, color = "#ff0000" }          -- plain tables: number and colour fields
+anime.animate(stats, { hp = 0, color = "#00ff00", duration = 2000, modifier = anime.utils.round(0),
+                       onUpdate = function(a) hpLabel.textContent = tostring(stats.hp) end })
+```
+
+- **Functions**: `animate(targets, params)`, `createTimeline(params)`, `createTimer(params)`,
+  `createSpring(params)` (alias `spring`), `stagger(value | {from, to}, params)`,
+  `cubicBezier(x1, y1, x2, y2)`, `steps(n[, fromStart])`, `linear(...)`, `irregular(n, r)`,
+  `anime.eases.<name>`, `anime.utils.*`.
+- **Parameters**: `duration` (ms, default 1000), `delay`, `loop` (count or `true`), `loopDelay`,
+  `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `playbackEase`,
+  `frameRate`, `ease` (default `"out(2)"`), `composition` (`"replace"` default, `"none"`,
+  `"blend"`: additive), `modifier` (number -> number), `keyframes` (arrays, `{ {x=..}, ..}` with
+  durations, or percentages `{ ["0%"] = {..}, ["50%"] = {..} }`), `id`, `root` (a UIElement or
+  UIDocument scoping the selectors), `clock`.
+- **Values**: numbers, `"10px"`/`"2em"`/`"45deg"`/`"1turn"`, relative `"+=10"`/`"-=10"`/`"*=2"`,
+  colours (`#rgb[a]`, `#rrggbb[aa]`, `rgb()/rgba()/hsl()/hsla()`), strings with numbers
+  (`"0 0 4px #000"`), `{from, to}`, `[from, to]`, keyframe arrays, `{to, from, duration, delay,
+  ease, modifier}`, `var(--name)`, and function values `function(target, index, total)`.
+  **Indices are 0-based, as in Anime** (stagger `from = 2` is the third target).
+- **Properties of elements**: individual transforms (`translateX/Y/Z`, `x/y/z`, `rotate`,
+  `rotateX/Y/Z`, `scale`, `scaleX/Y/Z`, `skew`, `skewX/Y`, `perspective`, composed in Anime's
+  order: perspective, translate, rotate, scale, skew; an inline `transform` is the starting
+  point), any CSS property (camelCase or kebab-case; `opacity`, lengths and colours are typed
+  writes), custom properties (`["--glow"] = "8px"`, so `var(--glow)` users follow),
+  `scrollTop`/`scrollLeft`/`textContent`/`innerHTML`, and attributes. Transform and opacity
+  never trigger a layout. Elements that disappear are skipped; an animation whose targets are
+  all gone is cancelled without callbacks.
+- **Callbacks** (receive the animation): `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`,
+  `onLoop`, `onPause`, `onComplete`; `anim:andThen(fn)` is Anime's `then()` (`then` is a Lua
+  keyword). Errors in callbacks go to the Console with the traceback.
+- **Control and state**: `play pause resume restart reverse alternate seek(ms) stretch(ms) cancel
+  revert complete reset refresh`, each returning the object; `currentTime`, `progress`,
+  `iterationProgress`, `currentIteration`, `reversed`, `speed` (settable), `duration`, `paused`,
+  `began`, `completed`, `cancelled`, `id`; timelines add `add set call label sync remove` and
+  `labels`. Positions: ms, `"+=100"`, `"-=100"`, `"*=2"`, `"<"` (end of the previous child),
+  `"<<"` (its start), `"<+=50"`, `"label"`, `"label+=50"`, or a stagger.
+- **Easings**: `linear`, `none`, `in`, `out`, `inOut`, `outIn` (power, default 1.68, `in(3)`),
+  and `in/out/inOut/outIn` + `Quad Cubic Quart Quint Sine Expo Circ Bounce Back Elastic`
+  (`outBack(1.7)`, `outElastic(1, .3)`), as strings or `anime.eases.<name>`; also
+  `cubicBezier(...)`, `steps(...)`, `linear(...)`, `irregular(...)`, `spring(m, k, c, v)` as
+  strings (Anime 4.5 accepts only the functions), Lua functions `function(t) return t*t end`, and
+  springs (`ease = anime.createSpring({ bounce = .5, duration = 400 })`: the animation lasts the
+  settling time). An unknown name logs a warning and uses `linear`.
+- **utils**: `set get remove random createSeededRandom randomPick shuffle clamp round snap wrap
+  mapRange lerp damp degToRad radToDeg roundPad padStart padEnd stagger`; with fewer arguments a
+  util returns a function of the missing value (`modifier = anime.utils.round(0)`).
+- **Clock**: everything runs on the UI clock, like CSS transitions: `Engine.timeScale` does not
+  slow it (a pause menu animates while the game is frozen), `playbackRate`/`pause()` do.
+  `clock = "game"` (animations, timelines, timers; children inherit it) runs on the scaled game
+  time instead, so UI that follows gameplay freezes with the game. Any other value is an error.
+- **Lifetime**: stopping play (and engine shutdown) cancels every animation and frees the Lua
+  functions and tables they hold; handles kept in globals stay valid but cancelled.
+- **Differences from Anime.js**: string forms of `cubicBezier/steps/linear/irregular/spring`
+  accepted; `andThen` for `then` (no Promises); no SVG, draggable, scroll, layout, text, WAAPI,
+  scope or animatable modules; modifiers return numbers; a timer starts at the last frame time
+  (Anime's 12 ms head start is not needed); plain tables get colours back as `#rrggbbaa`.
+
 ## Not yet (phase 0 limits)
 
 - Standard HTML and CSS: HTML5 parsing, a user-agent stylesheet, CSS rewriting and

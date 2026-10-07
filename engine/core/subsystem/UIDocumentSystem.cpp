@@ -9,6 +9,8 @@
 #include "object/ui/UIElement.h"
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/HtmlUIClock.h"
+#include "htmlui/anim/AnimEngine.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -172,6 +174,9 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
 
 void UIDocumentSystem::update(double dt){
     (void)dt;
+
+    // anime on the UI clock, before RmlUi's update (idempotent per frame: every scene calls it)
+    AnimEngine::instance().tick(HtmlUIClock::now());
 
     // runs paused too: the editor shows documents of a stopped scene
     if (!Engine::isViewLoaded())
