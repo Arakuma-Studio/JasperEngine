@@ -1128,7 +1128,16 @@ class Bindings:
                 cls.doc = chain_doc + c.doc
             elif c.name == 'endClass':
                 if cls is not None:
-                    self.classes.append(cls)
+                    # LuaBridge re-opens a registered class (beginClass<T> again, e.g.
+                    # HtmlUIVectorLua.cpp adds the <lottie> methods to UIElement): one class
+                    reopened = next((k for k in self.classes if k.name == cls.name and k.cpp == cls.cpp), None)
+                    if reopened is not None:
+                        reopened.members.extend(cls.members)
+                        reopened.ctors.extend(cls.ctors)
+                        if not reopened.doc:
+                            reopened.doc = cls.doc
+                    else:
+                        self.classes.append(cls)
                 cls = None
             elif c.name == 'addVariable':
                 if ns is not None:
