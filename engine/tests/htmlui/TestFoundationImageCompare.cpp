@@ -200,3 +200,20 @@ TEST_F(ImageCompareTest, EmptyImageFails){
     CompareResult result = compareWithGoldenFile(golden("empty"), directory + "/output", "empty", {}, 0, 0);
     EXPECT_FALSE(result.passed);
 }
+
+TEST_F(ImageCompareTest, SubdirectoryNames){
+    // names with '/' (p1/..., compat/...) keep their directories for goldens and outputs
+    CompareResult result = compare("sub/dir/missing", makeImage(1, 2, 3));
+    EXPECT_FALSE(result.passed);
+    EXPECT_TRUE(std::filesystem::exists(directory + "/output/sub/dir/missing.actual.png"));
+
+#if !defined(SOKOL_VULKAN)
+    setenv("JASPER_HTMLUI_UPDATE_GOLDEN", "1", 1);
+    result = compare("sub/dir/update", makeImage(4, 5, 6));
+    EXPECT_TRUE(result.passed) << result.message;
+    EXPECT_TRUE(std::filesystem::exists(golden("sub/dir/update")));
+    unsetenv("JASPER_HTMLUI_UPDATE_GOLDEN");
+    result = compare("sub/dir/update", makeImage(4, 5, 6));
+    EXPECT_TRUE(result.passed) << result.message;
+#endif
+}
