@@ -1308,8 +1308,14 @@
 		48544D4C0000000000000011 /* RmlFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000010 /* RmlFile.cpp */; };
 		48544D4C0000000000000012 /* RmlFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000010 /* RmlFile.cpp */; };
 		48544D4C0000000000000014 /* RmlFontEngine.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000013 /* RmlFontEngine.h */; };
+		48544D4C0000000052540001 /* RmlFontEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540000 /* RmlFontEffects.h */; };
+		48544D4C0000000052540006 /* UIWorldRaycast.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540005 /* UIWorldRaycast.h */; };
 		48544D4C0000000000000016 /* RmlFontEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000015 /* RmlFontEngine.cpp */; };
+		48544D4C0000000052540003 /* RmlFontEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540002 /* RmlFontEffects.cpp */; };
+		48544D4C0000000052540008 /* UIWorldRaycast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540007 /* UIWorldRaycast.cpp */; };
 		48544D4C0000000000000017 /* RmlFontEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000015 /* RmlFontEngine.cpp */; };
+		48544D4C0000000052540004 /* RmlFontEffects.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540002 /* RmlFontEffects.cpp */; };
+		48544D4C0000000052540009 /* UIWorldRaycast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000052540007 /* UIWorldRaycast.cpp */; };
 		48544D4C0000000000000019 /* RmlRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000018 /* RmlRenderer.h */; };
 		48544D4C000000000000001B /* RmlRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001A /* RmlRenderer.cpp */; };
 		48544D4C000000000000001C /* RmlRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000001A /* RmlRenderer.cpp */; };
@@ -3636,7 +3642,11 @@
 		48544D4C000000000000000E /* RmlFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFile.h; sourceTree = "<group>"; };
 		48544D4C0000000000000010 /* RmlFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFile.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000013 /* RmlFontEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFontEngine.h; sourceTree = "<group>"; };
+		48544D4C0000000052540000 /* RmlFontEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFontEffects.h; sourceTree = "<group>"; };
+		48544D4C0000000052540005 /* UIWorldRaycast.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIWorldRaycast.h; sourceTree = "<group>"; };
 		48544D4C0000000000000015 /* RmlFontEngine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFontEngine.cpp; sourceTree = "<group>"; };
+		48544D4C0000000052540002 /* RmlFontEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFontEffects.cpp; sourceTree = "<group>"; };
+		48544D4C0000000052540007 /* UIWorldRaycast.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIWorldRaycast.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000018 /* RmlRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlRenderer.h; sourceTree = "<group>"; };
 		48544D4C000000000000001A /* RmlRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlRenderer.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000001D /* RmlSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlSystem.h; sourceTree = "<group>"; };
@@ -6686,6 +6696,10 @@
 				48544D4C0000000000000010 /* RmlFile.cpp */,
 				48544D4C0000000000000013 /* RmlFontEngine.h */,
 				48544D4C0000000000000015 /* RmlFontEngine.cpp */,
+				48544D4C0000000052540000 /* RmlFontEffects.h */,
+				48544D4C0000000052540002 /* RmlFontEffects.cpp */,
+				48544D4C0000000052540005 /* UIWorldRaycast.h */,
+				48544D4C0000000052540007 /* UIWorldRaycast.cpp */,
 				48544D4C0000000000000018 /* RmlRenderer.h */,
 				48544D4C000000000000001A /* RmlRenderer.cpp */,
 				48544D4C000000000000001D /* RmlSystem.h */,
@@ -7168,6 +7182,8 @@
 				48544D4C0000000000000007 /* HtmlUIContext.h in Headers */,
 				48544D4C000000000000000F /* RmlFile.h in Headers */,
 				48544D4C0000000000000014 /* RmlFontEngine.h in Headers */,
+				48544D4C0000000052540001 /* RmlFontEffects.h in Headers */,
+				48544D4C0000000052540006 /* UIWorldRaycast.h in Headers */,
 				48544D4C0000000000000019 /* RmlRenderer.h in Headers */,
 				48544D4C000000000000001E /* RmlSystem.h in Headers */,
 				48544D4C0000000000000023 /* FontFace.h in Headers */,
@@ -8683,6 +8699,8 @@
 				48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */,
 				48544D4C0000000000000011 /* RmlFile.cpp in Sources */,
 				48544D4C0000000000000016 /* RmlFontEngine.cpp in Sources */,
+				48544D4C0000000052540003 /* RmlFontEffects.cpp in Sources */,
+				48544D4C0000000052540008 /* UIWorldRaycast.cpp in Sources */,
 				48544D4C000000000000001B /* RmlRenderer.cpp in Sources */,
 				48544D4C0000000000000020 /* RmlSystem.cpp in Sources */,
 				48544D4C0000000000000025 /* FontFace.cpp in Sources */,
@@ -8901,6 +8919,8 @@
 				48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */,
 				48544D4C0000000000000012 /* RmlFile.cpp in Sources */,
 				48544D4C0000000000000017 /* RmlFontEngine.cpp in Sources */,
+				48544D4C0000000052540004 /* RmlFontEffects.cpp in Sources */,
+				48544D4C0000000052540009 /* UIWorldRaycast.cpp in Sources */,
 				48544D4C000000000000001C /* RmlRenderer.cpp in Sources */,
 				48544D4C0000000000000021 /* RmlSystem.cpp in Sources */,
 				48544D4C0000000000000026 /* FontFace.cpp in Sources */,

@@ -66,6 +66,7 @@ void UIDocumentSystem::load(){
 }
 
 void UIDocumentSystem::destroyContext(){
+    textureDestroyAll();
     documents.clear();
     delete context;
     context = nullptr;
@@ -130,6 +131,7 @@ void UIDocumentSystem::getLayoutSize(int& width, int& height) const{
 }
 
 void UIDocumentSystem::unloadEntityDocument(Entity entity){
+    if (textureUnloadDocument(entity)) return;
     auto it = documents.find(entity);
     if (it == documents.end())
         return;
@@ -156,7 +158,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
 
         if (!document.filename.empty()){
             // the context logged why
-            Rml::ElementDocument* loadedDocument = context->loadDocument(document.filename);
+            Rml::ElementDocument* loadedDocument = (document.renderMode == UIDocumentRenderMode::TEXTURE) ? textureLoadDocument(entity, document) : context->loadDocument(document.filename);
             if (loadedDocument){
                 documents[entity] = loadedDocument;
                 document.loaded = true;
@@ -215,6 +217,7 @@ void UIDocumentSystem::update(double dt){
     }
 
     context->update();
+    textureUpdate();
 }
 
 void UIDocumentSystem::draw(){
@@ -235,10 +238,12 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
         return;
 
     unloadEntityDocument(entity);
+    textureRemoveEntity(entity);
 }
 
 void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
     if (context) context->render(viewRect);
+    textureRenderOffscreen();
 }
 
 void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){
@@ -336,6 +341,7 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     applyComponent(entity, *document);
     // style and layout, so elements and their boxes can be queried right away
     context->update();
+    textureUpdate();
 
     return document->loaded;
 }
@@ -380,12 +386,12 @@ bool UIDocumentSystem::isAllLoaded() const{
             continue;
         if (document.needReload || (!document.loaded && !document.loadFailed))
             return false;
-        if (document.loaded && scene->isEntityActiveInHierarchy(components->getEntity(i)))
+        if (document.loaded && document.renderMode == UIDocumentRenderMode::SCREEN && scene->isEntityActiveInHierarchy(components->getEntity(i)))
             anyVisible = true;
     }
 
     // a shown document is loaded once it has been drawn
-    return !anyVisible || (context && context->hasRenderedFrame());
+    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered();
 }
 
 bool UIDocumentSystem::setDebuggerVisible(bool visible){

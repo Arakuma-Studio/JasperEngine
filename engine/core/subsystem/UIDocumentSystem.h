@@ -139,8 +139,17 @@ namespace jasperengine{
         bool pushDataModel(lua_State* L, Entity entity, const std::string& name);   // pushes the model's Lua proxy
 
         // --- p1-rtt (UIDocumentSystemTexture.cpp, §3.12) ---
+        // A pointer event the screen context did not consume, offered to the texture-mode
+        // documents shown on meshes: a ray from the scene camera through the canvas point,
+        // hit-tested against each interactive document's inputSurface (or own entity), nearest
+        // first, at the document point of the hit's uv. A document that took a down keeps the
+        // pointer until the up (capture). True = consumed.
         bool dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch);
         Framebuffer* getTargetTexture(Entity entity) const;        // TEXTURE mode target; nullptr otherwise
+        HtmlUIContext* getTextureContext(Entity entity) const;     // internal/tests: a texture-mode document's own context
+        // the texture-mode document that took the last pointer-down (it gets keys and text);
+        // NULL_ENTITY when that was the screen context, the game or nothing
+        Entity getTextureFocus() const;
 
     private:
         // HtmlUI::acquire and the context, the first time the scene has a document
@@ -195,6 +204,15 @@ namespace jasperengine{
 
         // --- p1-rtt ---
         std::shared_ptr<HtmlUITextureState> textureState;
+        HtmlUITextureState& getTextureState();
+        // the phase-0 code's calls: a TEXTURE-mode document gets its own context (and target)
+        Rml::ElementDocument* textureLoadDocument(Entity entity, UIDocumentComponent& document);   // applyComponent
+        bool textureUnloadDocument(Entity entity);   // unloadEntityDocument: true when it was a texture document
+        void textureRemoveEntity(Entity entity);     // onComponentRemoved: drops its context and target
+        void textureUpdate();                        // update(): size/ratio sync, Context::Update
+        void textureRenderOffscreen();               // renderOffscreen(): each texture context into its target
+        bool textureAllRendered() const;             // isAllLoaded(): every shown texture document drawn once
+        void textureDestroyAll();                    // destroyContext(): before RmlUi is released
     };
 
 }

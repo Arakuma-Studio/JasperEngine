@@ -800,6 +800,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
+    core/htmlui/UIWorldRaycast.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
