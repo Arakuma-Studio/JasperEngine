@@ -58,6 +58,15 @@ div { display: block; }
 | `filename` | string | The `.html` document. MCP takes and returns project-relative paths under the assets directory (`assets/ui/menu.html`); the scene stores the asset-relative path (`ui/menu.html`). Empty = no document. Inspector label "Source". |
 | `sortOrder` | int | Order of the scene's documents: higher draws on top (default 0). |
 | `enabled` | bool | Shown and receiving pointer input (the Inspector's checkbox). |
+| `interactive` | bool | Receives pointer, keyboard and text input (default true). Off: every event goes to the game. |
+| `renderMode` | enum | `screen` (default: drawn over the scene) or `texture` (rendered into a texture a material, `Mesh` or `Image` shows). |
+| `textureWidth`, `textureHeight` | int | Size of the texture in `texture` mode, 1..8192 (default 1024 x 1024). |
+| `inputSurface` | entity | `texture` mode: the mesh whose UVs receive the pointer; none = the document's own GameObject. |
+| `pixelRatio` | float | Document pixels per CSS pixel; 0 = automatic (the canvas-to-screen scale; 1 in `texture` mode). |
+
+The YAML key is `uidocument`; the phase-1 keys are written only when they differ from their
+defaults. `create_entity type=ui_document` makes a GameObject with a Transform and the
+component (the Hierarchy's *Create > UI > UI Document*).
 
 - One document per component. All documents of a scene share one layout context: they are
   laid out on the project canvas (`canvasWidth` x `canvasHeight`), CSS `px` = canvas pixels.
@@ -66,17 +75,19 @@ div { display: block; }
 - Drawn over the scene in the scene's main camera pass, **in front of the component UI**, in
   the Game view (edit mode and play mode) and in exported games. A scene stacked as a layer
   draws its documents over the scenes below it.
-- The **Scene view does not show documents** yet (phase 1); use `screenshot view=game`.
-- Saved with the scene (`uidocument:` with `filename`, `sortOrder`, `enabled`), copied with
-  copy/paste, duplicate and prefabs, exported with the game (every file under the assets
-  directory ships, `.html`/`.css` included).
+- The Scene view of UI and 2D scenes shows a scene's documents in place on the canvas
+  rectangle (outlined while a UI Document is selected); documents are selected in the
+  Hierarchy, not by clicking them. The Scene view of a 3D scene has no canvas: its documents
+  show in the Game view.
+- Saved with the scene, copied with copy/paste, duplicate and prefabs (with overrides),
+  exported with the game (every file under the assets directory ships, `.html`/`.css`
+  included; the export checks the references first, see "Editor workflow").
 - A missing or unreadable file logs `[HTML UI] could not load document '<path>'` to the
   Console and draws nothing; nothing crashes. Every HTML UI Console line starts with
   `[HTML UI]`: read the Console after changing a document.
-- Editing: `write_file` (or your own file tools) then load the document again: set
-  `filename` (to `""` and back), reopen the scene, or start play mode. A load always reads the
-  `.html` and `.css` files as they are on disk. Images are cached per scene: a replaced image
-  shows after the scene is reopened or in play mode. There is no automatic hot reload yet.
+- Editing: save the file (`write_file`, the code editor, any external editor): the document
+  reloads by itself within a quarter of a second, in edit mode and while playing (see "Hot
+  reload").
 
 ## Files and paths
 
@@ -86,6 +97,63 @@ div { display: block; }
   No `http(s)://` resources: everything a document uses is a project file.
 - Images: PNG, JPG (and the other formats the engine loads) and simple SVG files (drawn by the
   engine's current SVG rasterizer; full SVG comes with phase 1).
+
+## Editor workflow
+
+- **Create**: *Assets > Create > HTML Document* writes `NewDocument.html` and
+  `NewDocument.css` (a `<link>` to the stylesheet, a heading and a button) in the Project
+  window's folder; *Create > UI > UI Document* in the Hierarchy adds the GameObject. Drag the
+  `.html` onto the Inspector's **Source** field (or use its folder button: `.html`, `.htm`,
+  `.rml` inside the assets directory).
+- **Inspector**: Source with **Open** (in the code editor) and **Reload** (keeps scroll, focus
+  and form values), Sort Order, Interactive, Render Mode, Texture Width/Height and Input
+  Surface (texture mode), Pixel Ratio ("Auto" = 0), the **Messages** RmlUi logged for this
+  document (warnings and errors, with `file:line` in the tooltip when RmlUi gives one) and a
+  **Show HTML UI Debugger** button.
+- **Project window**: `.html`/`.htm`/`.rml` and `.css`/`.rcss` files have their own icons and
+  open in the code editor with HTML and CSS highlighting (`<style>` blocks and `style=""`
+  attributes highlighted as CSS) and RCSS property suggestions. `list_assets` /
+  `get_asset_info` report them as types `html` and `css`.
+- **Rename/move**: renaming or moving the `.html` updates the components that use it.
+  References *inside* HTML/CSS files are not rewritten (phase 4).
+- **RmlUi debugger**: the Game view toolbar's *HTML UI Debugger* (while playing) and the
+  Inspector button show RmlUi's element inspector and log over that scene's documents. It is
+  global: showing it in one scene hides it in the other. It is compiled into the editor, Debug
+  exports and the tests only (`JASPERENGINE_HTMLUI_DEBUGGER`); release games have no debugger.
+- **MSAA**: *Project Settings > Graphics > HTML UI MSAA* (`graphics.html_ui_msaa_samples`:
+  1, 2, 4 or 8, default 4) sets the multisampling of every document target, in the editor at
+  once and in exports.
+- **Export check**: an export lists every reference of every UI Document of its scenes
+  (`<link>`, `<img>`, `<svg src>`, `<lottie src>`, templates, `@import`, `url(...)`,
+  `@font-face`, `decorator: image()/svg()`, recursively through stylesheets) and **fails**
+  with `assets/ui/menu.html:12:18: ...` for a missing file, a path that leaves the assets
+  directory or a remote `http(s)://` URL; an absolute path is a warning. RCSS's bare
+  `@font-face { src: fonts/a.ttf; }` is opened from the assets directory, as RmlUi does.
+
+## Hot reload
+
+- The editor checks the files every document of every open scene (playing copies included)
+  depends on every 0.25 s, and at once after a save in its code editor: the document, its
+  stylesheets, templates, images, fonts, SVG and Lottie files (what the document refers to,
+  plus everything RmlUi opened while loading it). Files that did not exist yet count too:
+  creating a missing stylesheet loads it.
+- What a change does:
+
+| Changed | Effect |
+|---|---|
+| a `.css`/`.rcss` | the document's stylesheets reload in place: the DOM, element handles, listeners, scroll and focus stay |
+| an image | the image loads again the next time it draws |
+| the document, a template, an SVG, a Lottie file | the document reloads, keeping, for every element with an `id`, its scroll position, form value (text, checkbox/radio, `<select>`), and the focused element with its selection; listeners on elements with an `id` (and on the document) move to the new elements, others are dropped with one warning; `onUnload` then `onLoad` fire |
+| a font | the font is parsed again and the document reloads as above |
+
+- Edit mode reloads too (no Lua runs there); a reload is not an edit: the scene stays saved.
+- Engine entry point: `UIDocumentSystem::reloadChangedFiles(files)` with per-document file
+  stamps (modification time and size recorded at each load), so whoever calls it first does
+  the reload and a second caller (the MCP auto-sync) finds nothing to do.
+  `getDocumentFiles(entity)`, `getLoadCount(entity)` and `getDocumentMessages(entity)`
+  expose the same data; `reloadDocument(entity, preserveState)` reloads one document.
+- Give elements whose state matters an `id`, and attach listeners in `onLoad` (or to
+  elements with an `id`).
 
 ## Writing documents in phase 0 (RCSS)
 
@@ -186,7 +254,6 @@ bool hovered = menu.getElementById("play").isPseudoClassSet("hover");
   clipboard, IME (phase 1).
 - Scripting: the Lua API (`document:getElementById`, `addEventListener`, ...), data binding,
   the animation API (phase 1); `<script>` in documents (phase 2).
-- Editor: documents in the Scene view, hot reload on save, an Inspector file picker and
-  "Create > UI > UI Document", render-to-texture / world-space documents, the in-editor
-  RmlUi debugger toggle (phase 1); `check --ui` and the inspect/assert MCP tools (phase 4).
+- Editor: `check --ui` and the inspect/assert MCP tools; rewriting references inside
+  HTML/CSS on rename (phase 4).
 - SVG and Lottie on the decided libraries (LunaSVG, ThorVG) (phase 1).

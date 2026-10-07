@@ -125,7 +125,8 @@ Conventions that apply everywhere:
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
 | `isTextFile` accepts `.html .htm .css .rml .rcss` | editor | P0 p0-ecs (M2) | P4 | P0 §3.7.5 |
-| `Util::isHtmlFile/isCssFile`, `FileType::HTML/CSS`, `HtmlCssLexer::lexLine`, `notifyHtmlUIFileSaved`, `HtmlUIWatcher` | editor | P1 p1-editor | — | P1 §3.8.4–3.8.6 |
+| `Util::isHtmlFile/isCssFile`, `FileType::HTML/CSS`, `HtmlCssLexer::lexLine`, `notifyHtmlUIFileSaved`, `HtmlUIWatcher`, `Project::getHtmlUIScenes`, `HtmlUITemplates` | editor | P1 p1-editor | — | P1 §3.8.4–3.8.6, §3.8.9 |
+| `HtmlUIFileLog` (load scopes, lazy texture log, message observer), `UIDocumentSystem::getNextUpdateDelay` | engine | P1 p1-editor | P4 (auto-sync, redraw) | P1 §3.8.9 |
 | `HtmlUIDependencies::collectHtmlUIReferences`, `Exporter::checkHtmlUIReferences` | engine/editor | P1 p1-editor | P2 (dependencies merged via H2; H14 runs `checkDocument` for `.html` in the export check) | P1 §3.8.6, §3.8.8, P2 §3.16 |
 | `EntityCreationType::UI_DOCUMENT`, MCP `create_entity type=ui_document` | editor/MCP | P1 p1-editor | P4 | P1 §3.8.4 |
 | Project setting `htmlUiMsaaSamples` (applied through `UIDocumentSystem::setPreferredSampleCount`) | editor | P1 p1-editor | — | P1 §3.8.8 |
