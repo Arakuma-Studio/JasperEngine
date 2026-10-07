@@ -1,0 +1,35 @@
+SVG library benchmark: LunaSVG vs ThorVG (software renderer) vs nanosvg
+=========================================================================
+Results and decision: docs/html-ui/svg-benchmark.md. Standalone, not part of the engine build.
+
+Sources (read-only): LUNASVG_DIR=/tmp/htmlui-src/lunasvg, THORVG_DIR=/tmp/htmlui-src/thorvg,
+nanosvg and stb from engine/libs. Everything is compiled here with the same flags (-O2; -Os for
+size probes). All commands from the repository root; outputs go to build/htmlui-bench (git-ignored).
+
+1. Corpus (git, curl, python3):       tools/htmlui-bench/scripts/fetch_corpus.sh
+2. Python venv for references/compare/report:
+     python3 -m venv /tmp/htmlui-src-bench/venv
+     /tmp/htmlui-src-bench/venv/bin/pip install resvg-py==0.5.0 numpy pillow playwright
+   (playwright uses the Chromium already in ~/.cache/ms-playwright; else `playwright install chromium`)
+3. References (resvg + headless Chrome):
+     /tmp/htmlui-src-bench/venv/bin/python tools/htmlui-bench/scripts/references.py \
+         --corpus build/htmlui-bench/corpus --out build/htmlui-bench/refs
+4. Native run (builds, selftest, timings, mutation, memory, size, renders, compare, report):
+     tools/htmlui-bench/scripts/run_native.sh            # or a subset: run_native.sh build selftest
+   SHARDS/CORES control the parallel pinned processes (default 4 on CPUs 8-11). ~1.5 h.
+5. Wasm run (inside jasperengine/web-build, emscripten 6.0.10, node):
+     tools/htmlui-bench/scripts/run_wasm.sh               # build selftest time render size
+6. Report: run_native.sh report   -> tools/htmlui-bench/results/*.csv and results/tables.md
+
+svgbench (build/htmlui-bench/native/svgbench, wasm: node build/htmlui-bench/wasm/svgbench.js):
+  --selftest                         3 known SVGs x 3 libraries, expected pixels + agreement; exit 1 on failure
+  --lib luna,thorvg,nanosvg --list FILES.txt [--root DIR] [--set NAME]
+  --mode time|render|mutate|memory   --sizes 24,48,128,512,1024  --cold-sizes 24,48
+  --out results.csv  --render-dir DIR  --min-time-ms 200 (parse)  --raster-min-time-ms 100
+  --threads N (ThorVG workers)  --font-dir DIR (text)  --shard K/N
+Several libraries in one process are interleaved per file. PNGs written by svgbench and
+references.py hold PREMULTIPLIED RGBA (scripts/sheet.py composites them for viewing).
+
+Build variants: native (ThorVG with AVX2), native-noavx (-DTHORVG_AVX=OFF), native-cached
+(-DTHORVG_BENCH_CACHED_REDRAW: ThorVG redraws without invalidating, method check only),
+native-patched (ThorVG + thorvg-skip-unsupported-filters.patch), size (-DBENCH_SIZE=ON).

@@ -96,7 +96,7 @@ When phase 1 is merged:
 Every item of §1, with the tests of §5. Two RmlUi fork patches are part of phase 1, because
 phase-1 APIs need them; both are recorded in `docs/html-ui/FORK.md`:
 - `Event::PreventDefault`, for the Lua `preventDefault()`;
-- the SVG plugin rasteriser switched from LunaSVG to ThorVG (phase 0 does not vendor the SVG
+- the SVG plugin vendored with its upstream LunaSVG rasteriser (benchmark decision; phase 0 does not vendor the SVG
   plugin, D12; p1-vector vendors it, §3.10.1).
 
 Also in scope, because phase 0 deferred them to phase 1 (`phase-0-foundation.md` §2 and
@@ -1669,7 +1669,7 @@ In `engine/libs/rmlui/Source/SVG/SVGCache.cpp`, replace the LunaSVG calls (lines
 Tinting (`image-color` × `opacity`, line 370), the cache keys, `ElementSVG` (inline `<svg>`
 via `rmlui-svgdata-id`), `DecoratorSVG` and `XMLNodeHandlerSVG` are unchanged.
 
-**Fallback.** If the phase-0 benchmark chose **LunaSVG for SVG**:
+**Chosen path (phase-0 benchmark decision, `docs/html-ui/svg-benchmark.md`): LunaSVG for SVG.** This replaces the ThorVG SVG path described above; implement exactly this:
 - `SVGCache.cpp` stays upstream; p1-vector vendors LunaSVG (the version phase 0 benchmarked)
   at `engine/libs/lunasvg` and links it;
 - ThorVG is built with `THORVG_SVG_LOADER_SUPPORT` off and serves Lottie only;
@@ -2568,7 +2568,7 @@ How the unbuildable targets are kept correct:
 
 **Vector**
 - [ ] ThorVG is vendored with the configuration of §3.10.1.
-- [ ] RmlUi SVG rasterises with ThorVG (or the LunaSVG fallback is documented) — G19/G20.
+- [ ] RmlUi SVG rasterises with LunaSVG (benchmark decision), ThorVG serves Lottie only — G19/G20.
 - [ ] `<lottie>` supports all attributes of §3.10.3, `.lottie` files, the control API in C++
   and Lua, and its events. It uses one in-place RGBA8 texture per element, updated only on
   frame change (unit test) — G22.

@@ -47,7 +47,7 @@ Principles:
   ┌───────▼───────────────────────────┐
   │ RmlUi fork  (engine/libs/rmlui)   │  style, layout, events, animation, data binding
   │ + our patches (phases 1, 3, 5)    │  calc(), grid, ::before/::after, border-style, cascade,
-  │                                   │  text, animations … (phase 3); SVG on ThorVG (phase 1)
+  │                                   │  text, animations … (phase 3); SVG on LunaSVG (phase 1)
   └───────┬───────────────────────────┘
           │ RenderInterface / FontEngineInterface / SystemInterface / FileInterface
   ┌───────▼───────────────────────────┐
@@ -63,10 +63,10 @@ Principles:
 
 | Thing | Name / path |
 |---|---|
-| Third-party layout engine | RmlUi **6.3** (tag `6.3`), vendored at `engine/libs/rmlui/`: Core and Debugger (phase 0), SVG plugin (vendored and switched to ThorVG by phase 1), RmlUi's `Tests/` (phase 3, for the fork's own unit tests). Lottie and Lua plugins are not vendored. Static library, hidden visibility, no FreeType. |
+| Third-party layout engine | RmlUi **6.3** (tag `6.3`), vendored at `engine/libs/rmlui/`: Core and Debugger (phase 0), SVG plugin (vendored by phase 1, on LunaSVG as upstream), RmlUi's `Tests/` (phase 3, for the fork's own unit tests). Lottie and Lua plugins are not vendored. Static library, hidden visibility, no FreeType. |
 | Fork bookkeeping | `docs/html-ui/FORK.md`: upstream commit/tag, list of every patch (file, reason, test). Fork commits are prefixed `rmlui:`. |
 | HTML5 parser | lexbor 3.1.0 (Apache-2.0) at `engine/libs/lexbor/` (core, dom, html, ns, tag + ports; one source-offset patch). CSS is parsed by the compat layer's own CSS Syntax 3 tokenizer/parser (lexbor's CSS module lacks nesting and exact positions). |
-| Vector graphics | ThorVG (MIT, CPU renderer) at `engine/libs/thorvg/` for Lottie (the engine's own `<lottie>` element) and for SVG (RmlUi's SVG plugin and `TextureData`) unless the phase-0 benchmark decides otherwise; nanosvg is removed in phase 1. |
+| Vector graphics | Decided by the phase-0 benchmark (`docs/html-ui/svg-benchmark.md`): **LunaSVG** (MIT) at `engine/libs/lunasvg/` for SVG (RmlUi's SVG plugin and `TextureData`), because it is clearly more correct (resvg suite +12.4 points, Fluent emoji); **ThorVG** (MIT, CPU renderer) at `engine/libs/thorvg/` for Lottie only (the engine's own `<lottie>` element). nanosvg is removed in phase 1. |
 | Engine backend code | `engine/core/htmlui/` (`HtmlUI`, `RmlRenderer`, `RmlFontEngine`, `RmlSystem`, `RmlFile`, `HtmlUIContext`, `HtmlUIClock`, …), compatibility layer in `engine/core/htmlui/compat/`, effects in `engine/core/htmlui/effects/`. |
 | ECS component | `UIDocumentComponent` (`engine/core/component/UIDocumentComponent.h`), named after Unity UI Toolkit's UIDocument (the engine uses Unity names, see `docs/unity-glossary.md`). Fields: `filename` (asset-relative `.html`; the name MCP path validation keys on), `sortOrder`, `enabled` (phase 0); `interactive`, `renderMode` (`SCREEN`/`TEXTURE`), `textureWidth`/`textureHeight`, `inputSurface`, `pixelRatio`, `onLoad`/`onUnload` (phase 1). YAML/MCP name `uidocument`. |
 | ECS system | `UIDocumentSystem` (`engine/core/subsystem/UIDocumentSystem.{h,cpp}`), registered in `Scene::init` after `UISystem`. |
@@ -183,7 +183,7 @@ and keeps working; both systems coexist in the same scene.
 | Phase | Spec | Outcome |
 |---|---|---|
 | 0 | `phase-0-foundation.md` | RmlUi 6.3 (Core, Debugger) vendored and building everywhere; core render interface on sokol with one offscreen target per context; text stack split (`FontFace`/`FontRegistry`/`TextShaper`/`GlyphAtlas`) and `RmlFontEngine`; a `UIDocumentComponent` draws an HTML document in a scene with pointer input; minimal editor/MCP registration; test harness (`jasperengine-htmlui-tests`, goldens, `tools/build.sh htmlui-tests`, lavapipe in Docker); SVG library benchmark and decision; first `html-ui.md`. |
-| 1 | `phase-1-integration.md` | Full renderer (stencil clip masks, layers, filters, gradients, transforms, MSAA, pipeline cache) with the extension points phase 5 uses; complete input (keys, text, IME, wheel, touch, clipboard, cursor); editor integration (Inspector, Hierarchy, serialization, export check, hot reload with shared stamps, debugger); Lua element API + data binding; SVG (RmlUi SVG plugin vendored, on ThorVG) and Lottie via ThorVG, nanosvg removed; animation API; the UI clock; render-to-texture with world-space input; font effects, synthetic bold/italic. |
+| 1 | `phase-1-integration.md` | Full renderer (stencil clip masks, layers, filters, gradients, transforms, MSAA, pipeline cache) with the extension points phase 5 uses; complete input (keys, text, IME, wheel, touch, clipboard, cursor); editor integration (Inspector, Hierarchy, serialization, export check, hot reload with shared stamps, debugger); Lua element API + data binding; SVG (RmlUi SVG plugin vendored, on LunaSVG) and Lottie via ThorVG, nanosvg removed; animation API; the UI clock; render-to-texture with world-space input; font effects, synthetic bold/italic. |
 | 2 | `phase-2-compat.md` | lexbor HTML5 → RML with the root mapping, own CSS parser and CSS → RCSS rewriting gated by fork features, user-agent stylesheet, diagnostics with stable codes, support tables, runtime emulations, `<script type="text/lua">`, built-in Lucide icons, importers (Google Fonts, stylesheets, images, LottieFiles), `currentColor` icons, web-component mappings, Chromium reference tool. |
 | 3 | `phase-3-fork-patches.md` | RmlUi fork patches, widened to what LLM-written CSS needs: `calc()`/`min()`/`max()`/`clamp()`, CSS values (colours, units, fonts, `line-height: normal`), CSS initial values, cascade (`!important`, CSS-wide keywords, `revert`), selectors (`:root`, `:is`, `:where`, `:has`, focus pseudo-classes, Level 4), `::before`/`::after`/`::marker`/counters, border styles and radii, `outline`, group opacity and stacking, native backgrounds/masks/`object-fit`, text properties, `position: fixed`/`sticky`, box/flex parity, CSS transitions/animations parity, CSS Grid (Taffy port); flips the matching phase-2 fork features. |
 | 4 | `phase-4-agent-tooling.md` | `check --ui` (CLI and hook), `ui-support` + generated support matrix, `McpAutoSync` pick-up of UI changes, MCP tools (`inspect_ui`, `assert_ui`, `create_ui_document`, `send_input`/`import_files` extensions), example library, the reorganised guide, MCP tests. |
@@ -209,7 +209,7 @@ binding (the sections above already say them in place):
 | 7 | Phase 3 scope widened (values, cascade, selectors, text, backgrounds, positioning, box/flex parity, animations, grid) and the fork's initial values switched to CSS initial values | phase 3 §2, §3.1.2 |
 | 8 | `@property` (registered custom properties) is phase 5's, not phase 3's | phase 5 §3.11, §3.18 |
 | 9 | Effects run as decorators **and** filters, with one `ShaderType::UI_EFFECT`; phase 1 has no effect registry, only extension points | phase 5 §3.18; phase 1 §3.3.3 |
-| 10 | Fork patches outside phase 3: phase 1 (`Event::PreventDefault`, SVG plugin on ThorVG), phase 2 (SVG `currentColor` hook in the SVG plugin), phase 5 (`@property` var lookup, `-jfx-text-fill`); all recorded in `FORK.md` | phase 1 §3.14, phase 2 H8, phase 5 §3.18 |
+| 10 | Fork patches outside phase 3: phase 1 (`Event::PreventDefault`), phase 2 (SVG `currentColor` hook in the SVG plugin), phase 5 (`@property` var lookup, `-jfx-text-fill`); all recorded in `FORK.md` | phase 1 §3.14, phase 2 H8, phase 5 §3.18 |
 | 11 | One UI clock (unscaled frame time) for RmlUi, Lottie, `anime` and effects | phase 1 §3.0 |
 | 12 | Documents stay inside the camera colour pass (post-process applies to them); no compositing after post-process | phase 1 §3.5 |
 | 13 | Hot reload: engine entry point `reloadChangedFiles` (phase 1) shared by the editor watcher and `McpAutoSync` (phase 4) | phase 1 §3.8.6, phase 4 §3.5 |
@@ -257,7 +257,7 @@ Engine, for implementers (paths relative to the repo root):
   Android `AAssetManager`, Web preload.
 - Lua 5.4.7 + LuaBridge3, `engine/core/script/binding/*`; `FunctionSubscribe<>` callbacks
   accept Lua functions.
-- Vector: nanosvg is used by `TextureData.cpp` for `.svg` textures (replaced by ThorVG in
+- Vector: nanosvg is used by `TextureData.cpp` for `.svg` textures (replaced by LunaSVG in
   phase 1).
 - MCP: `editor/mcp/` (server, tools in `editor/mcp/tools/*`), checks CLI in
   `editor/util/ProjectChecks.{h,cpp}`, tests in `tools/mcp/tests/` (harness

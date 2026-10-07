@@ -1,0 +1,10 @@
+set,lib,mode,files,not_done,median_us,p25_us,p75_us
+icons,luna,in place,1866,0,46.0,32.7,66.1
+icons,thorvg,in place,1866,0,2.6,2.1,3.3
+icons,nanosvg,re-parse,1866,0,83.1,62.5,112.4
+multicolor,luna,in place,300,0,204.4,98.5,362.7
+multicolor,thorvg,in place,300,0,63.6,40.0,97.2
+multicolor,nanosvg,re-parse,300,0,1095.4,551.8,11704.7
+illustrations,luna,in place,76,5,206.1,59.3,758.4
+illustrations,thorvg,in place,73,8,9.6,5.2,29.9
+illustrations,nanosvg,re-parse,77,4,485.8,177.0,43020.7

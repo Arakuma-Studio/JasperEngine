@@ -1,0 +1,14 @@
+// ThorVG build configuration for the SVG benchmark (meson's config.h equivalent).
+#define THORVG_VERSION_STRING "@THORVG_VERSION@"
+#define THORVG_CPU_ENGINE_SUPPORT 1
+#cmakedefine THORVG_SVG_LOADER_SUPPORT 1
+#cmakedefine THORVG_PNG_LOADER_SUPPORT 1
+#cmakedefine THORVG_JPG_LOADER_SUPPORT 1
+#cmakedefine THORVG_SFNT_LOADER_SUPPORT 1
+#cmakedefine THORVG_TTF_LOADER_SUPPORT 1
+#cmakedefine THORVG_LOTTIE_LOADER_SUPPORT 1
+#cmakedefine THORVG_THREAD_SUPPORT 1
+#cmakedefine THORVG_FILE_IO_SUPPORT 1
+#cmakedefine THORVG_PARTIAL_RENDER_SUPPORT 1
+#cmakedefine THORVG_AVX_SUPPORT 1
+#define WIN32_LEAN_AND_MEAN 1

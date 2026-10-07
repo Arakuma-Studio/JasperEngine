@@ -1,0 +1,11 @@
+platform,build,bytes,delta_bytes
+native,"LunaSVG 3.5 (+plutovg, stb_image, stb_truetype)",297280,282720
+native,nanosvg,59800,45240
+native,ThorVG: SVG,285048,270488
+native,ThorVG: SVG + PNG + JPG + TTF,346488,331928
+native,ThorVG: SVG + PNG + JPG + TTF + Lottie,530808,516248
+wasm,"LunaSVG 3.5 (+plutovg, stb_image, stb_truetype)",239548,229487
+wasm,nanosvg,85512,75451
+wasm,ThorVG: SVG,220330,210269
+wasm,ThorVG: SVG + PNG + JPG + TTF,290202,280141
+wasm,ThorVG: SVG + PNG + JPG + TTF + Lottie,406950,396889

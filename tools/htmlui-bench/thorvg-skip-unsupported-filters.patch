@@ -1,0 +1,46 @@
+diff -ru a/src/loaders/svg/tvgSvgBuilder.cpp b/src/loaders/svg/tvgSvgBuilder.cpp
+--- a/src/loaders/svg/tvgSvgBuilder.cpp	2026-10-07 00:06:52.505112331 +0200
++++ b/src/loaders/svg/tvgSvgBuilder.cpp	2026-10-07 01:04:21.357258995 +0200
+@@ -454,7 +454,7 @@
+ static Paint* _applyFilter(SvgParserContext& ctx, Paint* paint, const SvgNode* node, const Box& vBox, const string& svgPath)
+ {
+     auto filterNode = node->style->filter.node;
+-    if (!filterNode || filterNode->child.count == 0) return paint;
++    if (!filterNode || filterNode->child.count == 0 || filterNode->node.filter.unsupported) return paint;
+ 
+     auto& filter = filterNode->node.filter;
+     auto scene = Scene::gen();
+diff -ru a/src/loaders/svg/tvgSvgCommon.h b/src/loaders/svg/tvgSvgCommon.h
+--- a/src/loaders/svg/tvgSvgCommon.h	2026-10-07 00:06:52.506112318 +0200
++++ b/src/loaders/svg/tvgSvgCommon.h	2026-10-07 01:04:21.355259021 +0200
+@@ -424,6 +424,7 @@
+     bool isPercentage[4];
+     bool filterUserSpace;
+     bool primitiveUserSpace;
++    bool unsupported;  //has a primitive the loader cannot render: the filter is skipped
+ };
+ 
+ struct SvgPatternNode
+diff -ru a/src/loaders/svg/tvgSvgLoader.cpp b/src/loaders/svg/tvgSvgLoader.cpp
+--- a/src/loaders/svg/tvgSvgLoader.cpp	2026-10-07 00:06:52.507112305 +0200
++++ b/src/loaders/svg/tvgSvgLoader.cpp	2026-10-07 01:04:28.770161187 +0200
+@@ -3556,6 +3556,19 @@
+         }
+         if (!empty) ctx->gradientStack.push(gradient);
+     } else {
++        //A filter primitive that is not implemented makes the whole filter unrenderable: applying
++        //only the supported ones (e.g. the blur of an inner-shadow chain) to the source graphic
++        //is worse than drawing it unfiltered. feFlood/feBlend are the no-op "BackgroundImageFix"
++        //prologue design tools emit before a plain blur.
++        if (tagName[0] == 'f' && tagName[1] == 'e' && !STR_AS(tagName, "feFlood") && !STR_AS(tagName, "feBlend")) {
++            for (auto p = ctx->stack.count; p > 0; --p) {
++                auto n = ctx->stack.data[p - 1];
++                if (n->type == SvgNodeType::Filter) {
++                    n->node.filter.unsupported = true;
++                    break;
++                }
++            }
++        }
+         if (!isIgnoreUnsupportedLogElements(tagName)) TVGLOG("SVG", "Unsupported elements used [Elements: %s]", tagName);
+     }
+ }
