@@ -12,6 +12,7 @@
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Factory.h>
 
 #include <cmath>
 
@@ -126,6 +127,13 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         Log::error("[HTML UI] could not load document '%s': no HTML UI context", path.c_str());
         return nullptr;
     }
+
+    // A load (or reload) reads the files as they are now. RmlUi caches linked stylesheets and
+    // templates by path until Rml::Shutdown, which never comes while any scene holds a
+    // document (the editor's edit-mode scenes do), so an edited .css would never show.
+    // Loaded documents keep their own merged copy of their sheets, so this only drops parsing.
+    Rml::Factory::ClearStyleSheetCache();
+    Rml::Factory::ClearTemplateCache();
 
     // loaded hidden: UIDocumentSystem shows it
     Rml::ElementDocument* document = context->LoadDocument(path);
