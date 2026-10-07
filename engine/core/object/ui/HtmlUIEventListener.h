@@ -35,8 +35,12 @@ namespace jasperengine{
         // parameters of events sent by dispatchEvent: the UIValue detail and the prevented flag
         static const char* const detailParameter;
         static const char* const preventedParameter;
-        // the context synthesizes DOM "change" (installed once per context, idempotent)
+        // the context synthesizes DOM "change" and tracks held keys (installed once per
+        // context, idempotent)
         static void installChangeSynthesizer(Rml::Context* context);
+        // event is a key down of a key already held (DOM KeyboardEvent.repeat): RmlUi has no
+        // repeat flag, the context root's capture listener sees every key down and key up first
+        static bool isRepeat(const Rml::Event* event);
     };
 
     class JASPERENGINE_INTERNAL HtmlUIEventListener final : public Rml::EventListener {

@@ -193,6 +193,9 @@ TEST_F(ScriptLuaTest, ClassListStyleDataset){
 
 TEST_F(ScriptLuaTest, DocumentApi){
     EXPECT_LUA(R"(
+        local component = doc:getUIDocumentComponent()
+        assert(component.filename == "p1/script_dom.html" and component.enabled and component.loaded)
+        component.onLoad = function() end
         assert(doc.loaded and doc:isLoaded())
         assert(doc.filename == "p1/script_dom.html")
         assert(doc.title == "script dom")
@@ -327,6 +330,9 @@ TEST_F(ScriptLuaTest, EventFields){
         assert(result.notPrevented == false)
         assert(result.detail.points == 5 and result.detail.tags[2] == "b")
         assert(doc:getElementById("i1"):dispatchEvent("unheard") == true)
+        text:addEventListener("keydown", function(e)
+            result.keys = (result.keys or "") .. e.key .. "/" .. e.code .. "/" .. tostring(e["repeat"]) .. "/" .. tostring(e.keyCode == Input.KEY_B) .. ";"
+        end)
         local kept
         list:addEventListener("keep", function(e) kept = e end)
         list:dispatchEvent("keep")
@@ -342,12 +348,16 @@ TEST_F(ScriptLuaTest, EventFields){
     context()->ProcessMouseWheel(Rml::Vector2f(1.0f, -2.0f), 0);
     document->getElementById("text").focus();
     context()->ProcessTextInput("hé");
+    context()->ProcessKeyDown(Rml::Input::KI_B, Rml::Input::KM_SHIFT);
+    context()->ProcessKeyDown(Rml::Input::KI_B, Rml::Input::KM_SHIFT);
+    context()->ProcessKeyUp(Rml::Input::KI_B, 0);
 
     EXPECT_LUA(R"(
         assert(result[1] == 2 and result[2] == 1, tostring(result[1]) .. tostring(result[2]))
         assert(result.x == 350 and result.y == 40)
         assert(result.dx == 1 and result.dy == -2)
         assert(result.data == "hé")
+        assert(result.keys == "B/KeyB/false/true;B/KeyB/true/true;", result.keys)
     )");
 }
 

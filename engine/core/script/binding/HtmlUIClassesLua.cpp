@@ -1327,10 +1327,24 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     guardClass<UIStyle>(L);
     guardClass<UIDataset>(L);
 
+    // the component of a UIDocument (UIDocument:getUIDocumentComponent())
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIDocumentComponent>("UIDocumentComponent")
+        .addProperty("filename", &UIDocumentComponent::filename, &UIDocumentComponent::filename)
+        .addProperty("sortOrder", &UIDocumentComponent::sortOrder, &UIDocumentComponent::sortOrder)
+        .addProperty("enabled", &UIDocumentComponent::enabled, &UIDocumentComponent::enabled)
+        .addProperty("interactive", &UIDocumentComponent::interactive, &UIDocumentComponent::interactive)
+        .addProperty("loaded", &UIDocumentComponent::loaded)
+        .addProperty("needReload", &UIDocumentComponent::needReload, &UIDocumentComponent::needReload)
+        .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
+        .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<UIDocument, GameObject>("UIDocument")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("filename", &UIDocument::getFilename, &UIDocument::setFilename)
+        .addFunction("getUIDocumentComponent", &UIDocument::getComponent<UIDocumentComponent>)
         .addFunction("load", &UIDocument::load)
         .addFunction("reload", &UIDocument::reload)
         .addFunction("isLoaded", &UIDocument::isLoaded)

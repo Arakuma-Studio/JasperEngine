@@ -4,6 +4,7 @@
 #include "UIEvent.h"
 #include "HtmlUIEventListener.h"
 #include "HtmlUIScriptInternal.h"
+#include "htmlui/RmlKeyMap.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Event.h>
@@ -93,24 +94,45 @@ bool UIEvent::isDefaultPrevented() const{
     return event && event->IsDefaultPrevented();
 }
 
+namespace {
+
+    // the engine key of a key event (keydown/keyup carry only the RmlUi key); -1 for other events
+    int engineKey(Rml::Event* event){
+        if (!event || !event->GetParameters().count("key_identifier"))
+            return -1;
+        return RmlKeyMap::fromRmlKey((Rml::Input::KeyIdentifier)event->GetParameter<int>("key_identifier", 0));
+    }
+
+    int engineModifiers(Rml::Event* event){
+        static const char* const names[] = {"ctrl_key", "shift_key", "alt_key", "meta_key", "caps_lock_key", "num_lock_key", "scroll_lock_key"};
+        int rmlMods = 0;
+        for (int i = 0; i < 7; i++){
+            if (event->GetParameter<int>(names[i], 0) != 0)
+                rmlMods |= (1 << i);
+        }
+        return RmlKeyMap::fromRmlModifiers(rmlMods);
+    }
+
+}
+
 std::string UIEvent::getKey() const{
-    // DOM key from p1-input's RmlKeyMap (pending its merge)
-    return std::string();
+    Rml::Event* event = liveEvent(state);
+    const int key = engineKey(event);
+    return (key >= 0) ? RmlKeyMap::domKey(key, engineModifiers(event)) : std::string();
 }
 
 std::string UIEvent::getCode() const{
-    // DOM code from p1-input's RmlKeyMap (pending its merge)
-    return std::string();
+    const int key = engineKey(liveEvent(state));
+    return (key >= 0) ? RmlKeyMap::domCode(key) : std::string();
 }
 
 int UIEvent::getKeyCode() const{
-    // engine D_KEY_* from p1-input's RmlKeyMap (pending its merge)
-    return 0;
+    const int key = engineKey(liveEvent(state));
+    return (key >= 0) ? key : 0;
 }
 
 bool UIEvent::isRepeat() const{
-    // p1-input's key down repeat flag (pending its merge)
-    return false;
+    return HtmlUIEventNames::isRepeat(liveEvent(state));
 }
 
 bool UIEvent::getCtrlKey() const{

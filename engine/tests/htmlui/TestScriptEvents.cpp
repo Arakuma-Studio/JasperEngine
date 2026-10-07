@@ -7,6 +7,8 @@
 
 #include "TestScriptCommon.h"
 
+#include "Input.h"
+
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Input.h>
 
@@ -120,6 +122,54 @@ TEST_F(ScriptEventTest, WheelAndModifiers){
     EXPECT_TRUE(shift);
     EXPECT_FALSE(alt);
     EXPECT_FALSE(meta);
+}
+
+TEST_F(ScriptEventTest, KeyFields){
+    UIElement text = document->getElementById("text");
+    struct Key { std::string key, code; int keyCode; bool repeat; std::string type; };
+    std::vector<Key> keys;
+    auto record = [&](UIEvent& event){
+        keys.push_back({event.getKey(), event.getCode(), event.getKeyCode(), event.isRepeat(), event.getType()});
+    };
+    text.addEventListener("keydown", record);
+    text.addEventListener("keyup", record);
+    text.focus();
+
+    context()->ProcessKeyDown(Rml::Input::KI_A, Rml::Input::KM_SHIFT);
+    context()->ProcessKeyDown(Rml::Input::KI_A, Rml::Input::KM_SHIFT);   // held: a repeat
+    context()->ProcessKeyUp(Rml::Input::KI_A, 0);
+    context()->ProcessKeyDown(Rml::Input::KI_A, 0);
+    context()->ProcessKeyUp(Rml::Input::KI_A, 0);
+    context()->ProcessKeyDown(Rml::Input::KI_RETURN, 0);
+    context()->ProcessKeyUp(Rml::Input::KI_RETURN, 0);
+    context()->ProcessKeyDown(Rml::Input::KI_1, Rml::Input::KM_SHIFT);
+    context()->ProcessKeyUp(Rml::Input::KI_1, Rml::Input::KM_SHIFT);
+
+    ASSERT_EQ(keys.size(), 9u);
+    EXPECT_EQ(keys[0].key, "A");
+    EXPECT_EQ(keys[0].code, "KeyA");
+    EXPECT_EQ(keys[0].keyCode, D_KEY_A);
+    EXPECT_FALSE(keys[0].repeat);
+    EXPECT_TRUE(keys[1].repeat);
+    EXPECT_EQ(keys[2].type, "keyup");
+    EXPECT_EQ(keys[2].key, "a");
+    EXPECT_FALSE(keys[2].repeat);
+    EXPECT_EQ(keys[3].key, "a");
+    EXPECT_FALSE(keys[3].repeat);
+    EXPECT_EQ(keys[5].key, "Enter");
+    EXPECT_EQ(keys[5].code, "Enter");
+    EXPECT_EQ(keys[5].keyCode, D_KEY_ENTER);
+    EXPECT_EQ(keys[7].key, "!");
+    EXPECT_EQ(keys[7].code, "Digit1");
+
+    // not a key event: defaults
+    UIElement btn = document->getElementById("btn");
+    std::string clickKey = "x";
+    int clickCode = -1;
+    btn.addEventListener("click", [&](UIEvent& event){ clickKey = event.getKey(); clickCode = event.getKeyCode(); });
+    btn.click();
+    EXPECT_EQ(clickKey, "");
+    EXPECT_EQ(clickCode, 0);
 }
 
 TEST_F(ScriptEventTest, InputChangeAndTextInput){

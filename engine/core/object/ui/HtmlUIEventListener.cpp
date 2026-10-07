@@ -54,6 +54,9 @@ namespace {
 
     uint64_t nextListenerId = 1;
 
+    // the last key down the context listeners saw, when it repeated a held key
+    const Rml::Event* repeatedKeyDown = nullptr;
+
     bool isTextControl(Rml::Element* element){
         const std::string& tag = element->GetTagName();
         if (tag == "textarea")
@@ -91,7 +94,13 @@ namespace {
                 return;
 
             const std::string& type = event.GetType();
-            if (type == "focus"){
+            if (type == "keydown"){
+                const int key = event.GetParameter<int>("key_identifier", 0);
+                repeatedKeyDown = heldKeys.count(key) ? &event : nullptr;
+                heldKeys.insert(key);
+            }else if (type == "keyup"){
+                heldKeys.erase(event.GetParameter<int>("key_identifier", 0));
+            }else if (type == "focus"){
                 if (isTextControl(target)){
                     focusValues[target] = FocusValue{target->GetObserverPtr(), controlValue(target)};
                 }
@@ -138,6 +147,7 @@ namespace {
         Rml::Context* context;
         int attachments = 0;
         std::unordered_map<Rml::Element*, FocusValue> focusValues;
+        std::unordered_set<int> heldKeys;   // RmlUi key identifiers down in this context
     };
 
 }
@@ -190,6 +200,12 @@ void HtmlUIEventNames::installChangeSynthesizer(Rml::Context* context){
     root->AddEventListener("focus", synthesizer, true);
     root->AddEventListener("blur", synthesizer, true);
     root->AddEventListener("change", synthesizer, true);
+    root->AddEventListener("keydown", synthesizer, true);
+    root->AddEventListener("keyup", synthesizer, true);
+}
+
+bool HtmlUIEventNames::isRepeat(const Rml::Event* event){
+    return event && event == repeatedKeyDown && event->GetType() == "keydown";
 }
 
 HtmlUIEventListener::HtmlUIEventListener(uint64_t id, std::string domType, std::string rmlType, bool capture, bool once, Callback callback):
