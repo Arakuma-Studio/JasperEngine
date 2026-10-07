@@ -796,6 +796,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
+    core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
