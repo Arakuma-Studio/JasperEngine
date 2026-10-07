@@ -8,3 +8,11 @@ JasperEngine is a fork of [Doriax](https://github.com/doriaxengine/doriax) by Ed
 - Doriax's copyright notice is retained in [LICENSE](LICENSE), as the MIT License requires.
 
 Bundled third-party libraries under `libs/`, `engine/libs/`, and `engine/libs/shadercompiler/libs/` keep their own licenses.
+
+Vector graphics of the HTML/CSS UI (all MIT):
+
+| Library | Version | Location | Used for |
+|---|---|---|---|
+| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`) | `engine/libs/thorvg/` (`LICENSE`) | Lottie (`<lottie>`), CPU renderer |
+| [LunaSVG](https://github.com/sammycage/lunasvg) | 3.5.0 (`cf3594d5232e`) | `engine/libs/lunasvg/` (`LICENSE`) | SVG (RmlUi's SVG plugin, `.svg` textures) |
+| [plutovg](https://github.com/sammycage/plutovg) | 1.3.3 (bundled with LunaSVG) | `engine/libs/lunasvg/plutovg/` (`LICENSE`; its rasteriser derives from FreeType's, `source/FTL.TXT`) | LunaSVG's rasteriser |
