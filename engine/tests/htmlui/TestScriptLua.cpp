@@ -73,7 +73,7 @@ TEST_F(ScriptLuaTest, ElementProperties){
         local r = btn:getBoundingClientRect()
         assert(r.x == 300 and r.y == 20 and r.width == 100 and r.height == 40)
         assert(r.left == 300 and r.top == 20 and r.right == 400 and r.bottom == 60)
-        assert(tostring(btn) == "UIElement(div#btn)")
+        assert(tostring(btn) == 'UIElement(div#btn)')
     )");
 }
 

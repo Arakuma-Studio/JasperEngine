@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UIValue.h"
+#include "HtmlUIScriptInternal.h"
 
 #include <cstdlib>
 #include <utility>
@@ -158,4 +159,18 @@ bool UIValue::operator==(const UIValue& other) const{
 
 bool UIValue::operator!=(const UIValue& other) const{
     return !(*this == other);
+}
+
+// ---- HtmlUIScriptAccess (HtmlUIScriptInternal.h) ----
+
+std::vector<UIValue>& HtmlUIScriptAccess::items(UIValue& value){
+    return value.items;
+}
+
+const std::vector<UIValue>& HtmlUIScriptAccess::items(const UIValue& value){
+    return value.items;
+}
+
+const std::vector<std::string>& HtmlUIScriptAccess::objectKeys(const UIValue& value){
+    return value.itemKeys;
 }
