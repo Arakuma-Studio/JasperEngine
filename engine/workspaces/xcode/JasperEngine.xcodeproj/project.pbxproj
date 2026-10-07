@@ -1810,6 +1810,177 @@
 		48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */; };
 		48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */; };
 		48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */; };
+		505645430000000000000034 /* graphics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000002 /* graphics.cpp */; };
+		505645430000000000000035 /* lunasvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000004 /* lunasvg.cpp */; };
+		505645430000000000000036 /* svgelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000005 /* svgelement.cpp */; };
+		505645430000000000000037 /* svggeometryelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000007 /* svggeometryelement.cpp */; };
+		505645430000000000000038 /* svglayoutstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000009 /* svglayoutstate.cpp */; };
+		505645430000000000000039 /* svgpaintelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000B /* svgpaintelement.cpp */; };
+		50564543000000000000003A /* svgparser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000D /* svgparser.cpp */; };
+		50564543000000000000003B /* svgproperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000F /* svgproperty.cpp */; };
+		50564543000000000000003C /* svgrenderstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000011 /* svgrenderstate.cpp */; };
+		50564543000000000000003D /* svgtextelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000013 /* svgtextelement.cpp */; };
+		50564543000000000000003E /* plutovg-blend.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000016 /* plutovg-blend.c */; };
+		50564543000000000000003F /* plutovg-canvas.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000017 /* plutovg-canvas.c */; };
+		505645430000000000000040 /* plutovg-font.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000018 /* plutovg-font.c */; };
+		505645430000000000000041 /* plutovg-ft-math.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000019 /* plutovg-ft-math.c */; };
+		505645430000000000000042 /* plutovg-ft-raster.c in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000001B /* plutovg-ft-raster.c */; };
+		505645430000000000000043 /* plutovg-ft-stroker.c in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000001D /* plutovg-ft-stroker.c */; };
+		505645430000000000000044 /* plutovg-matrix.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000020 /* plutovg-matrix.c */; };
+		505645430000000000000045 /* plutovg-paint.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000021 /* plutovg-paint.c */; };
+		505645430000000000000046 /* plutovg-path.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000022 /* plutovg-path.c */; };
+		505645430000000000000047 /* plutovg-rasterize.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000024 /* plutovg-rasterize.c */; };
+		505645430000000000000048 /* plutovg-surface.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000028 /* plutovg-surface.c */; };
+		50564543000000000000004D /* liblunasvg-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 505645430000000000000030 /* liblunasvg-ios.a */; };
+		505645430000000000000054 /* graphics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000002 /* graphics.cpp */; };
+		505645430000000000000055 /* lunasvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000004 /* lunasvg.cpp */; };
+		505645430000000000000056 /* svgelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000005 /* svgelement.cpp */; };
+		505645430000000000000057 /* svggeometryelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000007 /* svggeometryelement.cpp */; };
+		505645430000000000000058 /* svglayoutstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000009 /* svglayoutstate.cpp */; };
+		505645430000000000000059 /* svgpaintelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000B /* svgpaintelement.cpp */; };
+		50564543000000000000005A /* svgparser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000D /* svgparser.cpp */; };
+		50564543000000000000005B /* svgproperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000000F /* svgproperty.cpp */; };
+		50564543000000000000005C /* svgrenderstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000011 /* svgrenderstate.cpp */; };
+		50564543000000000000005D /* svgtextelement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000013 /* svgtextelement.cpp */; };
+		50564543000000000000005E /* plutovg-blend.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000016 /* plutovg-blend.c */; };
+		50564543000000000000005F /* plutovg-canvas.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000017 /* plutovg-canvas.c */; };
+		505645430000000000000060 /* plutovg-font.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000018 /* plutovg-font.c */; };
+		505645430000000000000061 /* plutovg-ft-math.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000019 /* plutovg-ft-math.c */; };
+		505645430000000000000062 /* plutovg-ft-raster.c in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000001B /* plutovg-ft-raster.c */; };
+		505645430000000000000063 /* plutovg-ft-stroker.c in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000001D /* plutovg-ft-stroker.c */; };
+		505645430000000000000064 /* plutovg-matrix.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000020 /* plutovg-matrix.c */; };
+		505645430000000000000065 /* plutovg-paint.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000021 /* plutovg-paint.c */; };
+		505645430000000000000066 /* plutovg-path.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000022 /* plutovg-path.c */; };
+		505645430000000000000067 /* plutovg-rasterize.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000024 /* plutovg-rasterize.c */; };
+		505645430000000000000068 /* plutovg-surface.c in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000028 /* plutovg-surface.c */; };
+		50564543000000000000006D /* liblunasvg-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 505645430000000000000050 /* liblunasvg-macos.a */; };
+		5056454300000000000000E7 /* tvgCompressor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000076 /* tvgCompressor.cpp */; };
+		5056454300000000000000E8 /* tvgMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007B /* tvgMath.cpp */; };
+		5056454300000000000000E9 /* tvgStr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007D /* tvgStr.cpp */; };
+		5056454300000000000000EA /* tvgAccessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007F /* tvgAccessor.cpp */; };
+		5056454300000000000000EB /* tvgAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000081 /* tvgAnimation.cpp */; };
+		5056454300000000000000EC /* tvgCanvas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000083 /* tvgCanvas.cpp */; };
+		5056454300000000000000ED /* tvgFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000085 /* tvgFill.cpp */; };
+		5056454300000000000000EE /* tvgInitializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000087 /* tvgInitializer.cpp */; };
+		5056454300000000000000EF /* tvgLoaderMgr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000089 /* tvgLoaderMgr.cpp */; };
+		5056454300000000000000F0 /* tvgPaint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008B /* tvgPaint.cpp */; };
+		5056454300000000000000F1 /* tvgPicture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008D /* tvgPicture.cpp */; };
+		5056454300000000000000F2 /* tvgRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008F /* tvgRender.cpp */; };
+		5056454300000000000000F3 /* tvgSaver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000092 /* tvgSaver.cpp */; };
+		5056454300000000000000F4 /* tvgScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000093 /* tvgScene.cpp */; };
+		5056454300000000000000F5 /* tvgShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000095 /* tvgShape.cpp */; };
+		5056454300000000000000F6 /* tvgTaskScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000097 /* tvgTaskScheduler.cpp */; };
+		5056454300000000000000F7 /* tvgText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000099 /* tvgText.cpp */; };
+		5056454300000000000000F8 /* tvgSwBlendOp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009B /* tvgSwBlendOp.cpp */; };
+		5056454300000000000000F9 /* tvgSwFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009D /* tvgSwFill.cpp */; };
+		5056454300000000000000FA /* tvgSwImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009E /* tvgSwImage.cpp */; };
+		5056454300000000000000FB /* tvgSwMemPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009F /* tvgSwMemPool.cpp */; };
+		5056454300000000000000FC /* tvgSwPostEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A0 /* tvgSwPostEffect.cpp */; };
+		5056454300000000000000FD /* tvgSwRaster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A1 /* tvgSwRaster.cpp */; };
+		5056454300000000000000FE /* tvgSwRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A6 /* tvgSwRenderer.cpp */; };
+		5056454300000000000000FF /* tvgSwRle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A8 /* tvgSwRle.cpp */; };
+		505645430000000000000100 /* tvgSwShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A9 /* tvgSwShape.cpp */; };
+		505645430000000000000101 /* tvgSwStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AA /* tvgSwStroke.cpp */; };
+		505645430000000000000102 /* tvgSwUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AB /* tvgSwUtil.cpp */; };
+		505645430000000000000103 /* tvgRawLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AC /* tvgRawLoader.cpp */; };
+		505645430000000000000104 /* tvgLottieAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AF /* tvgLottieAnimation.cpp */; };
+		505645430000000000000105 /* tvgLottieBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B0 /* tvgLottieBuilder.cpp */; };
+		505645430000000000000106 /* tvgLottieExpressions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B3 /* tvgLottieExpressions.cpp */; };
+		505645430000000000000107 /* tvgLottieInterpolator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B5 /* tvgLottieInterpolator.cpp */; };
+		505645430000000000000108 /* tvgLottieLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B7 /* tvgLottieLoader.cpp */; };
+		505645430000000000000109 /* tvgLottieModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B9 /* tvgLottieModel.cpp */; };
+		50564543000000000000010A /* tvgLottieModifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BB /* tvgLottieModifier.cpp */; };
+		50564543000000000000010B /* tvgLottieParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BD /* tvgLottieParser.cpp */; };
+		50564543000000000000010C /* tvgLottieParserHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BF /* tvgLottieParserHandler.cpp */; };
+		50564543000000000000010D /* tvgLottieProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C1 /* tvgLottieProperty.cpp */; };
+		50564543000000000000010E /* tvgLodePng.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C5 /* tvgLodePng.cpp */; };
+		50564543000000000000010F /* tvgLodePngUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C7 /* tvgLodePngUtil.cpp */; };
+		505645430000000000000110 /* tvgPngLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C8 /* tvgPngLoader.cpp */; };
+		505645430000000000000111 /* tvgJpgLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CA /* tvgJpgLoader.cpp */; };
+		505645430000000000000112 /* tvgJpgd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CC /* tvgJpgd.cpp */; };
+		505645430000000000000113 /* tvgOtfReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CE /* tvgOtfReader.cpp */; };
+		505645430000000000000114 /* tvgSfntLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D0 /* tvgSfntLoader.cpp */; };
+		505645430000000000000115 /* tvgSfntReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D2 /* tvgSfntReader.cpp */; };
+		505645430000000000000116 /* tvgTtfReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D4 /* tvgTtfReader.cpp */; };
+		50564543000000000000011B /* libthorvg-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000E3 /* libthorvg-ios.a */; };
+		505645430000000000000122 /* tvgCompressor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000076 /* tvgCompressor.cpp */; };
+		505645430000000000000123 /* tvgMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007B /* tvgMath.cpp */; };
+		505645430000000000000124 /* tvgStr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007D /* tvgStr.cpp */; };
+		505645430000000000000125 /* tvgAccessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000007F /* tvgAccessor.cpp */; };
+		505645430000000000000126 /* tvgAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000081 /* tvgAnimation.cpp */; };
+		505645430000000000000127 /* tvgCanvas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000083 /* tvgCanvas.cpp */; };
+		505645430000000000000128 /* tvgFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000085 /* tvgFill.cpp */; };
+		505645430000000000000129 /* tvgInitializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000087 /* tvgInitializer.cpp */; };
+		50564543000000000000012A /* tvgLoaderMgr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000089 /* tvgLoaderMgr.cpp */; };
+		50564543000000000000012B /* tvgPaint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008B /* tvgPaint.cpp */; };
+		50564543000000000000012C /* tvgPicture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008D /* tvgPicture.cpp */; };
+		50564543000000000000012D /* tvgRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000008F /* tvgRender.cpp */; };
+		50564543000000000000012E /* tvgSaver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000092 /* tvgSaver.cpp */; };
+		50564543000000000000012F /* tvgScene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000093 /* tvgScene.cpp */; };
+		505645430000000000000130 /* tvgShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000095 /* tvgShape.cpp */; };
+		505645430000000000000131 /* tvgTaskScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000097 /* tvgTaskScheduler.cpp */; };
+		505645430000000000000132 /* tvgText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000099 /* tvgText.cpp */; };
+		505645430000000000000133 /* tvgSwBlendOp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009B /* tvgSwBlendOp.cpp */; };
+		505645430000000000000134 /* tvgSwFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009D /* tvgSwFill.cpp */; };
+		505645430000000000000135 /* tvgSwImage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009E /* tvgSwImage.cpp */; };
+		505645430000000000000136 /* tvgSwMemPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000009F /* tvgSwMemPool.cpp */; };
+		505645430000000000000137 /* tvgSwPostEffect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A0 /* tvgSwPostEffect.cpp */; };
+		505645430000000000000138 /* tvgSwRaster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A1 /* tvgSwRaster.cpp */; };
+		505645430000000000000139 /* tvgSwRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A6 /* tvgSwRenderer.cpp */; };
+		50564543000000000000013A /* tvgSwRle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A8 /* tvgSwRle.cpp */; };
+		50564543000000000000013B /* tvgSwShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000A9 /* tvgSwShape.cpp */; };
+		50564543000000000000013C /* tvgSwStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AA /* tvgSwStroke.cpp */; };
+		50564543000000000000013D /* tvgSwUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AB /* tvgSwUtil.cpp */; };
+		50564543000000000000013E /* tvgRawLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AC /* tvgRawLoader.cpp */; };
+		50564543000000000000013F /* tvgLottieAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000AF /* tvgLottieAnimation.cpp */; };
+		505645430000000000000140 /* tvgLottieBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B0 /* tvgLottieBuilder.cpp */; };
+		505645430000000000000141 /* tvgLottieExpressions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B3 /* tvgLottieExpressions.cpp */; };
+		505645430000000000000142 /* tvgLottieInterpolator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B5 /* tvgLottieInterpolator.cpp */; };
+		505645430000000000000143 /* tvgLottieLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B7 /* tvgLottieLoader.cpp */; };
+		505645430000000000000144 /* tvgLottieModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000B9 /* tvgLottieModel.cpp */; };
+		505645430000000000000145 /* tvgLottieModifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BB /* tvgLottieModifier.cpp */; };
+		505645430000000000000146 /* tvgLottieParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BD /* tvgLottieParser.cpp */; };
+		505645430000000000000147 /* tvgLottieParserHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000BF /* tvgLottieParserHandler.cpp */; };
+		505645430000000000000148 /* tvgLottieProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C1 /* tvgLottieProperty.cpp */; };
+		505645430000000000000149 /* tvgLodePng.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C5 /* tvgLodePng.cpp */; };
+		50564543000000000000014A /* tvgLodePngUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C7 /* tvgLodePngUtil.cpp */; };
+		50564543000000000000014B /* tvgPngLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000C8 /* tvgPngLoader.cpp */; };
+		50564543000000000000014C /* tvgJpgLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CA /* tvgJpgLoader.cpp */; };
+		50564543000000000000014D /* tvgJpgd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CC /* tvgJpgd.cpp */; };
+		50564543000000000000014E /* tvgOtfReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000CE /* tvgOtfReader.cpp */; };
+		50564543000000000000014F /* tvgSfntLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D0 /* tvgSfntLoader.cpp */; };
+		505645430000000000000150 /* tvgSfntReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D2 /* tvgSfntReader.cpp */; };
+		505645430000000000000151 /* tvgTtfReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5056454300000000000000D4 /* tvgTtfReader.cpp */; };
+		505645430000000000000156 /* libthorvg-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 50564543000000000000011E /* libthorvg-macos.a */; };
+		505645430000000000000163 /* DecoratorSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000159 /* DecoratorSVG.cpp */; };
+		505645430000000000000164 /* ElementSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015B /* ElementSVG.cpp */; };
+		505645430000000000000165 /* SVGCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015C /* SVGCache.cpp */; };
+		505645430000000000000166 /* SVGPlugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015E /* SVGPlugin.cpp */; };
+		505645430000000000000167 /* XMLNodeHandlerSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000160 /* XMLNodeHandlerSVG.cpp */; };
+		505645430000000000000168 /* DecoratorSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000159 /* DecoratorSVG.cpp */; };
+		505645430000000000000169 /* ElementSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015B /* ElementSVG.cpp */; };
+		50564543000000000000016A /* SVGCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015C /* SVGCache.cpp */; };
+		50564543000000000000016B /* SVGPlugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000015E /* SVGPlugin.cpp */; };
+		50564543000000000000016C /* XMLNodeHandlerSVG.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000160 /* XMLNodeHandlerSVG.cpp */; };
+		50564543000000000000017A /* DotLottie.h in Headers */ = {isa = PBXBuildFile; fileRef = 50564543000000000000016D /* DotLottie.h */; };
+		50564543000000000000017B /* DotLottie.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000016E /* DotLottie.cpp */; };
+		50564543000000000000017C /* DotLottie.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50564543000000000000016E /* DotLottie.cpp */; };
+		50564543000000000000017D /* LottiePlayback.h in Headers */ = {isa = PBXBuildFile; fileRef = 50564543000000000000016F /* LottiePlayback.h */; };
+		50564543000000000000017E /* LottiePlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000170 /* LottiePlayback.cpp */; };
+		50564543000000000000017F /* LottiePlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000170 /* LottiePlayback.cpp */; };
+		505645430000000000000180 /* UIElementLottie.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000171 /* UIElementLottie.cpp */; };
+		505645430000000000000181 /* UIElementLottie.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000171 /* UIElementLottie.cpp */; };
+		505645430000000000000182 /* UILottieElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 505645430000000000000172 /* UILottieElement.h */; };
+		505645430000000000000183 /* UILottieElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000173 /* UILottieElement.cpp */; };
+		505645430000000000000184 /* UILottieElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000173 /* UILottieElement.cpp */; };
+		505645430000000000000185 /* LunaSVGRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 505645430000000000000174 /* LunaSVGRuntime.h */; };
+		505645430000000000000186 /* LunaSVGRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000175 /* LunaSVGRuntime.cpp */; };
+		505645430000000000000187 /* LunaSVGRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000175 /* LunaSVGRuntime.cpp */; };
+		505645430000000000000188 /* ThorVGRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 505645430000000000000176 /* ThorVGRuntime.h */; };
+		505645430000000000000189 /* ThorVGRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000177 /* ThorVGRuntime.cpp */; };
+		50564543000000000000018A /* ThorVGRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000177 /* ThorVGRuntime.cpp */; };
+		50564543000000000000018B /* HtmlUIVectorLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000178 /* HtmlUIVectorLua.cpp */; };
+		50564543000000000000018C /* HtmlUIVectorLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505645430000000000000178 /* HtmlUIVectorLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2051,6 +2222,34 @@
 			remoteGlobalIDString = 48544D4C00000000000002A3;
 			remoteInfo = "rmlui-macos";
 		};
+		50564543000000000000004E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 50564543000000000000004C;
+			remoteInfo = "lunasvg-ios";
+		};
+		50564543000000000000006E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 50564543000000000000006C;
+			remoteInfo = "lunasvg-macos";
+		};
+		50564543000000000000011C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 50564543000000000000011A;
+			remoteInfo = "thorvg-ios";
+		};
+		505645430000000000000157 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 505645430000000000000155;
+			remoteInfo = "thorvg-macos";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -2134,8 +2333,6 @@
 		17995BF63003C3A800411B78 /* JasperEngineGameController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = JasperEngineGameController.mm; sourceTree = "<group>"; };
 		17995BF93003C40000411B78 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
 		17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HybridArray.h; sourceTree = "<group>"; };
-		17BFFB722FF201F9008F5B7C /* nanosvg.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = nanosvg.h; sourceTree = "<group>"; };
-		17BFFB732FF201F9008F5B7C /* nanosvgrast.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = nanosvgrast.h; sourceTree = "<group>"; };
 		17C554F62FB903B0008804C2 /* ModelPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ModelPool.h; sourceTree = "<group>"; };
 		17C554F72FB903B0008804C2 /* ModelPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ModelPool.cpp; sourceTree = "<group>"; };
 		71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MeshLodPool.h; sourceTree = "<group>"; };
@@ -3976,6 +4173,174 @@
 		48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemRender.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemScript.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemTexture.cpp; sourceTree = "<group>"; };
+		505645430000000000000001 /* lunasvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = lunasvg.h; sourceTree = "<group>"; };
+		505645430000000000000002 /* graphics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = graphics.cpp; sourceTree = "<group>"; };
+		505645430000000000000003 /* graphics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = graphics.h; sourceTree = "<group>"; };
+		505645430000000000000004 /* lunasvg.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = lunasvg.cpp; sourceTree = "<group>"; };
+		505645430000000000000005 /* svgelement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgelement.cpp; sourceTree = "<group>"; };
+		505645430000000000000006 /* svgelement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgelement.h; sourceTree = "<group>"; };
+		505645430000000000000007 /* svggeometryelement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svggeometryelement.cpp; sourceTree = "<group>"; };
+		505645430000000000000008 /* svggeometryelement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svggeometryelement.h; sourceTree = "<group>"; };
+		505645430000000000000009 /* svglayoutstate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svglayoutstate.cpp; sourceTree = "<group>"; };
+		50564543000000000000000A /* svglayoutstate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svglayoutstate.h; sourceTree = "<group>"; };
+		50564543000000000000000B /* svgpaintelement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgpaintelement.cpp; sourceTree = "<group>"; };
+		50564543000000000000000C /* svgpaintelement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgpaintelement.h; sourceTree = "<group>"; };
+		50564543000000000000000D /* svgparser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgparser.cpp; sourceTree = "<group>"; };
+		50564543000000000000000E /* svgparserutils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgparserutils.h; sourceTree = "<group>"; };
+		50564543000000000000000F /* svgproperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgproperty.cpp; sourceTree = "<group>"; };
+		505645430000000000000010 /* svgproperty.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgproperty.h; sourceTree = "<group>"; };
+		505645430000000000000011 /* svgrenderstate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgrenderstate.cpp; sourceTree = "<group>"; };
+		505645430000000000000012 /* svgrenderstate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgrenderstate.h; sourceTree = "<group>"; };
+		505645430000000000000013 /* svgtextelement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = svgtextelement.cpp; sourceTree = "<group>"; };
+		505645430000000000000014 /* svgtextelement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = svgtextelement.h; sourceTree = "<group>"; };
+		505645430000000000000015 /* plutovg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg.h; sourceTree = "<group>"; };
+		505645430000000000000016 /* plutovg-blend.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-blend.c; sourceTree = "<group>"; };
+		505645430000000000000017 /* plutovg-canvas.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-canvas.c; sourceTree = "<group>"; };
+		505645430000000000000018 /* plutovg-font.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-font.c; sourceTree = "<group>"; };
+		505645430000000000000019 /* plutovg-ft-math.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-ft-math.c; sourceTree = "<group>"; };
+		50564543000000000000001A /* plutovg-ft-math.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-ft-math.h; sourceTree = "<group>"; };
+		50564543000000000000001B /* plutovg-ft-raster.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-ft-raster.c; sourceTree = "<group>"; };
+		50564543000000000000001C /* plutovg-ft-raster.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-ft-raster.h; sourceTree = "<group>"; };
+		50564543000000000000001D /* plutovg-ft-stroker.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-ft-stroker.c; sourceTree = "<group>"; };
+		50564543000000000000001E /* plutovg-ft-stroker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-ft-stroker.h; sourceTree = "<group>"; };
+		50564543000000000000001F /* plutovg-ft-types.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-ft-types.h; sourceTree = "<group>"; };
+		505645430000000000000020 /* plutovg-matrix.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-matrix.c; sourceTree = "<group>"; };
+		505645430000000000000021 /* plutovg-paint.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-paint.c; sourceTree = "<group>"; };
+		505645430000000000000022 /* plutovg-path.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-path.c; sourceTree = "<group>"; };
+		505645430000000000000023 /* plutovg-private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-private.h; sourceTree = "<group>"; };
+		505645430000000000000024 /* plutovg-rasterize.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-rasterize.c; sourceTree = "<group>"; };
+		505645430000000000000025 /* plutovg-stb-image-write.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-stb-image-write.h; sourceTree = "<group>"; };
+		505645430000000000000026 /* plutovg-stb-image.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-stb-image.h; sourceTree = "<group>"; };
+		505645430000000000000027 /* plutovg-stb-truetype.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-stb-truetype.h; sourceTree = "<group>"; };
+		505645430000000000000028 /* plutovg-surface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = plutovg-surface.c; sourceTree = "<group>"; };
+		505645430000000000000029 /* plutovg-utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = plutovg-utils.h; sourceTree = "<group>"; };
+		505645430000000000000030 /* liblunasvg-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "liblunasvg-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		505645430000000000000050 /* liblunasvg-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "liblunasvg-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		505645430000000000000070 /* thorvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thorvg.h; sourceTree = "<group>"; };
+		505645430000000000000071 /* config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = config.h; sourceTree = "<group>"; };
+		505645430000000000000072 /* tvgAllocator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgAllocator.h; sourceTree = "<group>"; };
+		505645430000000000000073 /* tvgArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgArray.h; sourceTree = "<group>"; };
+		505645430000000000000074 /* tvgColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgColor.h; sourceTree = "<group>"; };
+		505645430000000000000075 /* tvgCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgCommon.h; sourceTree = "<group>"; };
+		505645430000000000000076 /* tvgCompressor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgCompressor.cpp; sourceTree = "<group>"; };
+		505645430000000000000077 /* tvgCompressor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgCompressor.h; sourceTree = "<group>"; };
+		505645430000000000000078 /* tvgInlist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgInlist.h; sourceTree = "<group>"; };
+		505645430000000000000079 /* tvgLock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLock.h; sourceTree = "<group>"; };
+		50564543000000000000007A /* tvgMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgMap.h; sourceTree = "<group>"; };
+		50564543000000000000007B /* tvgMath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgMath.cpp; sourceTree = "<group>"; };
+		50564543000000000000007C /* tvgMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgMath.h; sourceTree = "<group>"; };
+		50564543000000000000007D /* tvgStr.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgStr.cpp; sourceTree = "<group>"; };
+		50564543000000000000007E /* tvgStr.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgStr.h; sourceTree = "<group>"; };
+		50564543000000000000007F /* tvgAccessor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgAccessor.cpp; sourceTree = "<group>"; };
+		505645430000000000000080 /* tvgAccessor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgAccessor.h; sourceTree = "<group>"; };
+		505645430000000000000081 /* tvgAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgAnimation.cpp; sourceTree = "<group>"; };
+		505645430000000000000082 /* tvgAnimation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgAnimation.h; sourceTree = "<group>"; };
+		505645430000000000000083 /* tvgCanvas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgCanvas.cpp; sourceTree = "<group>"; };
+		505645430000000000000084 /* tvgCanvas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgCanvas.h; sourceTree = "<group>"; };
+		505645430000000000000085 /* tvgFill.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgFill.cpp; sourceTree = "<group>"; };
+		505645430000000000000086 /* tvgFill.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgFill.h; sourceTree = "<group>"; };
+		505645430000000000000087 /* tvgInitializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgInitializer.cpp; sourceTree = "<group>"; };
+		505645430000000000000088 /* tvgLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLoader.h; sourceTree = "<group>"; };
+		505645430000000000000089 /* tvgLoaderMgr.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLoaderMgr.cpp; sourceTree = "<group>"; };
+		50564543000000000000008A /* tvgLoaderMgr.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLoaderMgr.h; sourceTree = "<group>"; };
+		50564543000000000000008B /* tvgPaint.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgPaint.cpp; sourceTree = "<group>"; };
+		50564543000000000000008C /* tvgPaint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgPaint.h; sourceTree = "<group>"; };
+		50564543000000000000008D /* tvgPicture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgPicture.cpp; sourceTree = "<group>"; };
+		50564543000000000000008E /* tvgPicture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgPicture.h; sourceTree = "<group>"; };
+		50564543000000000000008F /* tvgRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgRender.cpp; sourceTree = "<group>"; };
+		505645430000000000000090 /* tvgRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgRender.h; sourceTree = "<group>"; };
+		505645430000000000000091 /* tvgSaveModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSaveModule.h; sourceTree = "<group>"; };
+		505645430000000000000092 /* tvgSaver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSaver.cpp; sourceTree = "<group>"; };
+		505645430000000000000093 /* tvgScene.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgScene.cpp; sourceTree = "<group>"; };
+		505645430000000000000094 /* tvgScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgScene.h; sourceTree = "<group>"; };
+		505645430000000000000095 /* tvgShape.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgShape.cpp; sourceTree = "<group>"; };
+		505645430000000000000096 /* tvgShape.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgShape.h; sourceTree = "<group>"; };
+		505645430000000000000097 /* tvgTaskScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgTaskScheduler.cpp; sourceTree = "<group>"; };
+		505645430000000000000098 /* tvgTaskScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgTaskScheduler.h; sourceTree = "<group>"; };
+		505645430000000000000099 /* tvgText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgText.cpp; sourceTree = "<group>"; };
+		50564543000000000000009A /* tvgText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgText.h; sourceTree = "<group>"; };
+		50564543000000000000009B /* tvgSwBlendOp.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwBlendOp.cpp; sourceTree = "<group>"; };
+		50564543000000000000009C /* tvgSwCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwCommon.h; sourceTree = "<group>"; };
+		50564543000000000000009D /* tvgSwFill.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwFill.cpp; sourceTree = "<group>"; };
+		50564543000000000000009E /* tvgSwImage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwImage.cpp; sourceTree = "<group>"; };
+		50564543000000000000009F /* tvgSwMemPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwMemPool.cpp; sourceTree = "<group>"; };
+		5056454300000000000000A0 /* tvgSwPostEffect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwPostEffect.cpp; sourceTree = "<group>"; };
+		5056454300000000000000A1 /* tvgSwRaster.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwRaster.cpp; sourceTree = "<group>"; };
+		5056454300000000000000A2 /* tvgSwRasterAvx.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwRasterAvx.h; sourceTree = "<group>"; };
+		5056454300000000000000A3 /* tvgSwRasterC.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwRasterC.h; sourceTree = "<group>"; };
+		5056454300000000000000A4 /* tvgSwRasterNeon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwRasterNeon.h; sourceTree = "<group>"; };
+		5056454300000000000000A5 /* tvgSwRasterTexmap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwRasterTexmap.h; sourceTree = "<group>"; };
+		5056454300000000000000A6 /* tvgSwRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwRenderer.cpp; sourceTree = "<group>"; };
+		5056454300000000000000A7 /* tvgSwRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSwRenderer.h; sourceTree = "<group>"; };
+		5056454300000000000000A8 /* tvgSwRle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwRle.cpp; sourceTree = "<group>"; };
+		5056454300000000000000A9 /* tvgSwShape.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwShape.cpp; sourceTree = "<group>"; };
+		5056454300000000000000AA /* tvgSwStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwStroke.cpp; sourceTree = "<group>"; };
+		5056454300000000000000AB /* tvgSwUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSwUtil.cpp; sourceTree = "<group>"; };
+		5056454300000000000000AC /* tvgRawLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgRawLoader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000AD /* tvgRawLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgRawLoader.h; sourceTree = "<group>"; };
+		5056454300000000000000AE /* thorvg_lottie.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thorvg_lottie.h; sourceTree = "<group>"; };
+		5056454300000000000000AF /* tvgLottieAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieAnimation.cpp; sourceTree = "<group>"; };
+		5056454300000000000000B0 /* tvgLottieBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieBuilder.cpp; sourceTree = "<group>"; };
+		5056454300000000000000B1 /* tvgLottieBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieBuilder.h; sourceTree = "<group>"; };
+		5056454300000000000000B2 /* tvgLottieCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieCommon.h; sourceTree = "<group>"; };
+		5056454300000000000000B3 /* tvgLottieExpressions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieExpressions.cpp; sourceTree = "<group>"; };
+		5056454300000000000000B4 /* tvgLottieExpressions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieExpressions.h; sourceTree = "<group>"; };
+		5056454300000000000000B5 /* tvgLottieInterpolator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieInterpolator.cpp; sourceTree = "<group>"; };
+		5056454300000000000000B6 /* tvgLottieInterpolator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieInterpolator.h; sourceTree = "<group>"; };
+		5056454300000000000000B7 /* tvgLottieLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieLoader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000B8 /* tvgLottieLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieLoader.h; sourceTree = "<group>"; };
+		5056454300000000000000B9 /* tvgLottieModel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieModel.cpp; sourceTree = "<group>"; };
+		5056454300000000000000BA /* tvgLottieModel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieModel.h; sourceTree = "<group>"; };
+		5056454300000000000000BB /* tvgLottieModifier.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieModifier.cpp; sourceTree = "<group>"; };
+		5056454300000000000000BC /* tvgLottieModifier.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieModifier.h; sourceTree = "<group>"; };
+		5056454300000000000000BD /* tvgLottieParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieParser.cpp; sourceTree = "<group>"; };
+		5056454300000000000000BE /* tvgLottieParser.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieParser.h; sourceTree = "<group>"; };
+		5056454300000000000000BF /* tvgLottieParserHandler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieParserHandler.cpp; sourceTree = "<group>"; };
+		5056454300000000000000C0 /* tvgLottieParserHandler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieParserHandler.h; sourceTree = "<group>"; };
+		5056454300000000000000C1 /* tvgLottieProperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLottieProperty.cpp; sourceTree = "<group>"; };
+		5056454300000000000000C2 /* tvgLottieProperty.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieProperty.h; sourceTree = "<group>"; };
+		5056454300000000000000C3 /* tvgLottieRenderPooler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieRenderPooler.h; sourceTree = "<group>"; };
+		5056454300000000000000C4 /* tvgLottieTween.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLottieTween.h; sourceTree = "<group>"; };
+		5056454300000000000000C5 /* tvgLodePng.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLodePng.cpp; sourceTree = "<group>"; };
+		5056454300000000000000C6 /* tvgLodePng.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgLodePng.h; sourceTree = "<group>"; };
+		5056454300000000000000C7 /* tvgLodePngUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgLodePngUtil.cpp; sourceTree = "<group>"; };
+		5056454300000000000000C8 /* tvgPngLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgPngLoader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000C9 /* tvgPngLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgPngLoader.h; sourceTree = "<group>"; };
+		5056454300000000000000CA /* tvgJpgLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgJpgLoader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000CB /* tvgJpgLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgJpgLoader.h; sourceTree = "<group>"; };
+		5056454300000000000000CC /* tvgJpgd.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgJpgd.cpp; sourceTree = "<group>"; };
+		5056454300000000000000CD /* tvgJpgd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgJpgd.h; sourceTree = "<group>"; };
+		5056454300000000000000CE /* tvgOtfReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgOtfReader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000CF /* tvgOtfReader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgOtfReader.h; sourceTree = "<group>"; };
+		5056454300000000000000D0 /* tvgSfntLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSfntLoader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000D1 /* tvgSfntLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSfntLoader.h; sourceTree = "<group>"; };
+		5056454300000000000000D2 /* tvgSfntReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgSfntReader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000D3 /* tvgSfntReader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgSfntReader.h; sourceTree = "<group>"; };
+		5056454300000000000000D4 /* tvgTtfReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tvgTtfReader.cpp; sourceTree = "<group>"; };
+		5056454300000000000000D5 /* tvgTtfReader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tvgTtfReader.h; sourceTree = "<group>"; };
+		5056454300000000000000E3 /* libthorvg-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libthorvg-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		50564543000000000000011E /* libthorvg-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libthorvg-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		505645430000000000000159 /* DecoratorSVG.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorSVG.cpp; sourceTree = "<group>"; };
+		50564543000000000000015A /* DecoratorSVG.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DecoratorSVG.h; sourceTree = "<group>"; };
+		50564543000000000000015B /* ElementSVG.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementSVG.cpp; sourceTree = "<group>"; };
+		50564543000000000000015C /* SVGCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SVGCache.cpp; sourceTree = "<group>"; };
+		50564543000000000000015D /* SVGCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SVGCache.h; sourceTree = "<group>"; };
+		50564543000000000000015E /* SVGPlugin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SVGPlugin.cpp; sourceTree = "<group>"; };
+		50564543000000000000015F /* SVGPlugin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SVGPlugin.h; sourceTree = "<group>"; };
+		505645430000000000000160 /* XMLNodeHandlerSVG.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerSVG.cpp; sourceTree = "<group>"; };
+		505645430000000000000161 /* XMLNodeHandlerSVG.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = XMLNodeHandlerSVG.h; sourceTree = "<group>"; };
+		50564543000000000000016D /* DotLottie.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DotLottie.h; sourceTree = "<group>"; };
+		50564543000000000000016E /* DotLottie.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DotLottie.cpp; sourceTree = "<group>"; };
+		50564543000000000000016F /* LottiePlayback.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LottiePlayback.h; sourceTree = "<group>"; };
+		505645430000000000000170 /* LottiePlayback.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LottiePlayback.cpp; sourceTree = "<group>"; };
+		505645430000000000000171 /* UIElementLottie.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElementLottie.cpp; sourceTree = "<group>"; };
+		505645430000000000000172 /* UILottieElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UILottieElement.h; sourceTree = "<group>"; };
+		505645430000000000000173 /* UILottieElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UILottieElement.cpp; sourceTree = "<group>"; };
+		505645430000000000000174 /* LunaSVGRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LunaSVGRuntime.h; sourceTree = "<group>"; };
+		505645430000000000000175 /* LunaSVGRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LunaSVGRuntime.cpp; sourceTree = "<group>"; };
+		505645430000000000000176 /* ThorVGRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThorVGRuntime.h; sourceTree = "<group>"; };
+		505645430000000000000177 /* ThorVGRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ThorVGRuntime.cpp; sourceTree = "<group>"; };
+		505645430000000000000178 /* HtmlUIVectorLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIVectorLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4027,6 +4392,8 @@
 			files = (
 				71A800092AD9A001007C91BA /* libharfbuzz-ios.a in Frameworks */,
 				48544D4C0000000000000292 /* librmlui-ios.a in Frameworks */,
+				50564543000000000000011B /* libthorvg-ios.a in Frameworks */,
+				50564543000000000000004D /* liblunasvg-ios.a in Frameworks */,
 				71A800292AD9A002007C91BA /* libsheenbidi-ios.a in Frameworks */,
 				71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */,
 				7DC000072E7A0100C91BA0C0 /* libshadercompiler-ios.a in Frameworks */,
@@ -4080,6 +4447,8 @@
 			files = (
 				71A8000A2AD9A001007C91BA /* libharfbuzz-macos.a in Frameworks */,
 				48544D4C0000000000000293 /* librmlui-macos.a in Frameworks */,
+				505645430000000000000156 /* libthorvg-macos.a in Frameworks */,
+				50564543000000000000006D /* liblunasvg-macos.a in Frameworks */,
 				71A8002A2AD9A002007C91BA /* libsheenbidi-macos.a in Frameworks */,
 				71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */,
 				7DC000112E7A0100C91BA0C0 /* libshadercompiler-macos.a in Frameworks */,
@@ -4246,6 +4615,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		505645430000000000000033 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000053 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5056454300000000000000E6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000121 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -4264,15 +4661,6 @@
 			path = manager;
 			sourceTree = "<group>";
 		};
-		17BFFB742FF201F9008F5B7C /* nanosvg */ = {
-			isa = PBXGroup;
-			children = (
-				17BFFB722FF201F9008F5B7C /* nanosvg.h */,
-				17BFFB732FF201F9008F5B7C /* nanosvgrast.h */,
-			);
-			path = nanosvg;
-			sourceTree = "<group>";
-		};
 		7105A55B28B305B20092EA05 /* binding */ = {
 			isa = PBXGroup;
 			children = (
@@ -4287,6 +4675,7 @@
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
+				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -5036,6 +5425,10 @@
 				71A800082AD9A001007C91BA /* libharfbuzz-macos.a */,
 				48544D4C0000000000000290 /* librmlui-ios.a */,
 				48544D4C0000000000000291 /* librmlui-macos.a */,
+				50564543000000000000011E /* libthorvg-macos.a */,
+				5056454300000000000000E3 /* libthorvg-ios.a */,
+				505645430000000000000050 /* liblunasvg-macos.a */,
+				505645430000000000000030 /* liblunasvg-ios.a */,
 				71A800272AD9A002007C91BA /* libsheenbidi-ios.a */,
 				71A800282AD9A002007C91BA /* libsheenbidi-macos.a */,
 				71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */,
@@ -5132,6 +5525,10 @@
 				48544D4C000000000000002E /* GlyphAtlas.cpp */,
 				48544D4C0000000000000031 /* TextShaper.h */,
 				48544D4C0000000000000033 /* TextShaper.cpp */,
+				505645430000000000000174 /* LunaSVGRuntime.h */,
+				505645430000000000000175 /* LunaSVGRuntime.cpp */,
+				505645430000000000000176 /* ThorVGRuntime.h */,
+				505645430000000000000177 /* ThorVGRuntime.cpp */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -5412,14 +5809,15 @@
 				71F97B56262D1EF200CD6F2B /* json */,
 				71BE604125B1C55B006D6E02 /* lua */,
 				71FCE4C328E0FA31003C5217 /* luabridge3 */,
+				50564543000000000000002F /* lunasvg */,
 				71C00532D2E7A0100C91BA00 /* meshoptimizer */,
-				17BFFB742FF201F9008F5B7C /* nanosvg */,
 				48544D4C000000000000028F /* rmlui */,
 				7DC000152E7A0100C91BA0C0 /* shadercompiler */,
 				71A8002B2AD9A002007C91BA /* sheenbidi */,
 				7162FC9725962A0E0075B97D /* sokol */,
 				717AD7BA290B5DF2007D7DB5 /* soloud */,
 				71BE61B925B1DA3E006D6E02 /* stb */,
+				5056454300000000000000E2 /* thorvg */,
 				71F97B1D262D1E2B00CD6F2B /* tinygltf */,
 				71E36BB125D599C000EFEED4 /* tinyobjloader */,
 				71393ED328F8EF200074442E /* tinyxml2 */,
@@ -6857,6 +7255,7 @@
 				48544D4C00000000000002D7 /* RmlTextInputHandler.h */,
 				48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */,
 				414E494D4500000000000047 /* anim */,
+				505645430000000000000179 /* vector */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -7093,8 +7492,333 @@
 				48544D4C000000000000023E /* Elements */,
 				48544D4C0000000000000272 /* Layout */,
 				48544D4C000000000000028E /* Debugger */,
+				505645430000000000000162 /* SVG */,
 			);
 			path = rmlui;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002A /* include */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000001 /* lunasvg.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002B /* source */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000002 /* graphics.cpp */,
+				505645430000000000000003 /* graphics.h */,
+				505645430000000000000004 /* lunasvg.cpp */,
+				505645430000000000000005 /* svgelement.cpp */,
+				505645430000000000000006 /* svgelement.h */,
+				505645430000000000000007 /* svggeometryelement.cpp */,
+				505645430000000000000008 /* svggeometryelement.h */,
+				505645430000000000000009 /* svglayoutstate.cpp */,
+				50564543000000000000000A /* svglayoutstate.h */,
+				50564543000000000000000B /* svgpaintelement.cpp */,
+				50564543000000000000000C /* svgpaintelement.h */,
+				50564543000000000000000D /* svgparser.cpp */,
+				50564543000000000000000E /* svgparserutils.h */,
+				50564543000000000000000F /* svgproperty.cpp */,
+				505645430000000000000010 /* svgproperty.h */,
+				505645430000000000000011 /* svgrenderstate.cpp */,
+				505645430000000000000012 /* svgrenderstate.h */,
+				505645430000000000000013 /* svgtextelement.cpp */,
+				505645430000000000000014 /* svgtextelement.h */,
+			);
+			path = source;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002C /* include */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000015 /* plutovg.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002D /* source */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000016 /* plutovg-blend.c */,
+				505645430000000000000017 /* plutovg-canvas.c */,
+				505645430000000000000018 /* plutovg-font.c */,
+				505645430000000000000019 /* plutovg-ft-math.c */,
+				50564543000000000000001A /* plutovg-ft-math.h */,
+				50564543000000000000001B /* plutovg-ft-raster.c */,
+				50564543000000000000001C /* plutovg-ft-raster.h */,
+				50564543000000000000001D /* plutovg-ft-stroker.c */,
+				50564543000000000000001E /* plutovg-ft-stroker.h */,
+				50564543000000000000001F /* plutovg-ft-types.h */,
+				505645430000000000000020 /* plutovg-matrix.c */,
+				505645430000000000000021 /* plutovg-paint.c */,
+				505645430000000000000022 /* plutovg-path.c */,
+				505645430000000000000023 /* plutovg-private.h */,
+				505645430000000000000024 /* plutovg-rasterize.c */,
+				505645430000000000000025 /* plutovg-stb-image-write.h */,
+				505645430000000000000026 /* plutovg-stb-image.h */,
+				505645430000000000000027 /* plutovg-stb-truetype.h */,
+				505645430000000000000028 /* plutovg-surface.c */,
+				505645430000000000000029 /* plutovg-utils.h */,
+			);
+			path = source;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002E /* plutovg */ = {
+			isa = PBXGroup;
+			children = (
+				50564543000000000000002C /* include */,
+				50564543000000000000002D /* source */,
+			);
+			path = plutovg;
+			sourceTree = "<group>";
+		};
+		50564543000000000000002F /* lunasvg */ = {
+			isa = PBXGroup;
+			children = (
+				50564543000000000000002A /* include */,
+				50564543000000000000002B /* source */,
+				50564543000000000000002E /* plutovg */,
+			);
+			path = lunasvg;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000D6 /* cpu_engine */ = {
+			isa = PBXGroup;
+			children = (
+				50564543000000000000009B /* tvgSwBlendOp.cpp */,
+				50564543000000000000009C /* tvgSwCommon.h */,
+				50564543000000000000009D /* tvgSwFill.cpp */,
+				50564543000000000000009E /* tvgSwImage.cpp */,
+				50564543000000000000009F /* tvgSwMemPool.cpp */,
+				5056454300000000000000A0 /* tvgSwPostEffect.cpp */,
+				5056454300000000000000A1 /* tvgSwRaster.cpp */,
+				5056454300000000000000A2 /* tvgSwRasterAvx.h */,
+				5056454300000000000000A3 /* tvgSwRasterC.h */,
+				5056454300000000000000A4 /* tvgSwRasterNeon.h */,
+				5056454300000000000000A5 /* tvgSwRasterTexmap.h */,
+				5056454300000000000000A6 /* tvgSwRenderer.cpp */,
+				5056454300000000000000A7 /* tvgSwRenderer.h */,
+				5056454300000000000000A8 /* tvgSwRle.cpp */,
+				5056454300000000000000A9 /* tvgSwShape.cpp */,
+				5056454300000000000000AA /* tvgSwStroke.cpp */,
+				5056454300000000000000AB /* tvgSwUtil.cpp */,
+			);
+			path = cpu_engine;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000D7 /* renderer */ = {
+			isa = PBXGroup;
+			children = (
+				50564543000000000000007F /* tvgAccessor.cpp */,
+				505645430000000000000080 /* tvgAccessor.h */,
+				505645430000000000000081 /* tvgAnimation.cpp */,
+				505645430000000000000082 /* tvgAnimation.h */,
+				505645430000000000000083 /* tvgCanvas.cpp */,
+				505645430000000000000084 /* tvgCanvas.h */,
+				505645430000000000000085 /* tvgFill.cpp */,
+				505645430000000000000086 /* tvgFill.h */,
+				505645430000000000000087 /* tvgInitializer.cpp */,
+				505645430000000000000088 /* tvgLoader.h */,
+				505645430000000000000089 /* tvgLoaderMgr.cpp */,
+				50564543000000000000008A /* tvgLoaderMgr.h */,
+				50564543000000000000008B /* tvgPaint.cpp */,
+				50564543000000000000008C /* tvgPaint.h */,
+				50564543000000000000008D /* tvgPicture.cpp */,
+				50564543000000000000008E /* tvgPicture.h */,
+				50564543000000000000008F /* tvgRender.cpp */,
+				505645430000000000000090 /* tvgRender.h */,
+				505645430000000000000091 /* tvgSaveModule.h */,
+				505645430000000000000092 /* tvgSaver.cpp */,
+				505645430000000000000093 /* tvgScene.cpp */,
+				505645430000000000000094 /* tvgScene.h */,
+				505645430000000000000095 /* tvgShape.cpp */,
+				505645430000000000000096 /* tvgShape.h */,
+				505645430000000000000097 /* tvgTaskScheduler.cpp */,
+				505645430000000000000098 /* tvgTaskScheduler.h */,
+				505645430000000000000099 /* tvgText.cpp */,
+				50564543000000000000009A /* tvgText.h */,
+				5056454300000000000000D6 /* cpu_engine */,
+			);
+			path = renderer;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000D8 /* jpg */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000CA /* tvgJpgLoader.cpp */,
+				5056454300000000000000CB /* tvgJpgLoader.h */,
+				5056454300000000000000CC /* tvgJpgd.cpp */,
+				5056454300000000000000CD /* tvgJpgd.h */,
+			);
+			path = jpg;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000D9 /* lottie */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000AE /* thorvg_lottie.h */,
+				5056454300000000000000AF /* tvgLottieAnimation.cpp */,
+				5056454300000000000000B0 /* tvgLottieBuilder.cpp */,
+				5056454300000000000000B1 /* tvgLottieBuilder.h */,
+				5056454300000000000000B2 /* tvgLottieCommon.h */,
+				5056454300000000000000B3 /* tvgLottieExpressions.cpp */,
+				5056454300000000000000B4 /* tvgLottieExpressions.h */,
+				5056454300000000000000B5 /* tvgLottieInterpolator.cpp */,
+				5056454300000000000000B6 /* tvgLottieInterpolator.h */,
+				5056454300000000000000B7 /* tvgLottieLoader.cpp */,
+				5056454300000000000000B8 /* tvgLottieLoader.h */,
+				5056454300000000000000B9 /* tvgLottieModel.cpp */,
+				5056454300000000000000BA /* tvgLottieModel.h */,
+				5056454300000000000000BB /* tvgLottieModifier.cpp */,
+				5056454300000000000000BC /* tvgLottieModifier.h */,
+				5056454300000000000000BD /* tvgLottieParser.cpp */,
+				5056454300000000000000BE /* tvgLottieParser.h */,
+				5056454300000000000000BF /* tvgLottieParserHandler.cpp */,
+				5056454300000000000000C0 /* tvgLottieParserHandler.h */,
+				5056454300000000000000C1 /* tvgLottieProperty.cpp */,
+				5056454300000000000000C2 /* tvgLottieProperty.h */,
+				5056454300000000000000C3 /* tvgLottieRenderPooler.h */,
+				5056454300000000000000C4 /* tvgLottieTween.h */,
+			);
+			path = lottie;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DA /* png */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000C5 /* tvgLodePng.cpp */,
+				5056454300000000000000C6 /* tvgLodePng.h */,
+				5056454300000000000000C7 /* tvgLodePngUtil.cpp */,
+				5056454300000000000000C8 /* tvgPngLoader.cpp */,
+				5056454300000000000000C9 /* tvgPngLoader.h */,
+			);
+			path = png;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DB /* raw */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000AC /* tvgRawLoader.cpp */,
+				5056454300000000000000AD /* tvgRawLoader.h */,
+			);
+			path = raw;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DC /* sfnt */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000CE /* tvgOtfReader.cpp */,
+				5056454300000000000000CF /* tvgOtfReader.h */,
+				5056454300000000000000D0 /* tvgSfntLoader.cpp */,
+				5056454300000000000000D1 /* tvgSfntLoader.h */,
+				5056454300000000000000D2 /* tvgSfntReader.cpp */,
+				5056454300000000000000D3 /* tvgSfntReader.h */,
+				5056454300000000000000D4 /* tvgTtfReader.cpp */,
+				5056454300000000000000D5 /* tvgTtfReader.h */,
+			);
+			path = sfnt;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DD /* loaders */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000D8 /* jpg */,
+				5056454300000000000000D9 /* lottie */,
+				5056454300000000000000DA /* png */,
+				5056454300000000000000DB /* raw */,
+				5056454300000000000000DC /* sfnt */,
+			);
+			path = loaders;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DE /* common */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000072 /* tvgAllocator.h */,
+				505645430000000000000073 /* tvgArray.h */,
+				505645430000000000000074 /* tvgColor.h */,
+				505645430000000000000075 /* tvgCommon.h */,
+				505645430000000000000076 /* tvgCompressor.cpp */,
+				505645430000000000000077 /* tvgCompressor.h */,
+				505645430000000000000078 /* tvgInlist.h */,
+				505645430000000000000079 /* tvgLock.h */,
+				50564543000000000000007A /* tvgMap.h */,
+				50564543000000000000007B /* tvgMath.cpp */,
+				50564543000000000000007C /* tvgMath.h */,
+				50564543000000000000007D /* tvgStr.cpp */,
+				50564543000000000000007E /* tvgStr.h */,
+			);
+			path = common;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000DF /* src */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000DE /* common */,
+				5056454300000000000000DD /* loaders */,
+				5056454300000000000000D7 /* renderer */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000E0 /* inc */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000070 /* thorvg.h */,
+			);
+			path = inc;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000E1 /* config */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000071 /* config.h */,
+			);
+			path = config;
+			sourceTree = "<group>";
+		};
+		5056454300000000000000E2 /* thorvg */ = {
+			isa = PBXGroup;
+			children = (
+				5056454300000000000000E1 /* config */,
+				5056454300000000000000E0 /* inc */,
+				5056454300000000000000DF /* src */,
+			);
+			path = thorvg;
+			sourceTree = "<group>";
+		};
+		505645430000000000000162 /* SVG */ = {
+			isa = PBXGroup;
+			children = (
+				505645430000000000000159 /* DecoratorSVG.cpp */,
+				50564543000000000000015A /* DecoratorSVG.h */,
+				50564543000000000000015B /* ElementSVG.cpp */,
+				50564543000000000000015C /* SVGCache.cpp */,
+				50564543000000000000015D /* SVGCache.h */,
+				50564543000000000000015E /* SVGPlugin.cpp */,
+				50564543000000000000015F /* SVGPlugin.h */,
+				505645430000000000000160 /* XMLNodeHandlerSVG.cpp */,
+				505645430000000000000161 /* XMLNodeHandlerSVG.h */,
+			);
+			name = SVG;
+			path = Source/SVG;
+			sourceTree = "<group>";
+		};
+		505645430000000000000179 /* vector */ = {
+			isa = PBXGroup;
+			children = (
+				50564543000000000000016D /* DotLottie.h */,
+				50564543000000000000016E /* DotLottie.cpp */,
+				50564543000000000000016F /* LottiePlayback.h */,
+				505645430000000000000170 /* LottiePlayback.cpp */,
+				505645430000000000000171 /* UIElementLottie.cpp */,
+				505645430000000000000172 /* UILottieElement.h */,
+				505645430000000000000173 /* UILottieElement.cpp */,
+			);
+			path = vector;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -7363,6 +8087,11 @@
 				48544D4C00000000000002B7 /* UIEvent.h in Headers */,
 				48544D4C00000000000002B9 /* UIValue.h in Headers */,
 				48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */,
+				50564543000000000000017A /* DotLottie.h in Headers */,
+				50564543000000000000017D /* LottiePlayback.h in Headers */,
+				505645430000000000000182 /* UILottieElement.h in Headers */,
+				505645430000000000000185 /* LunaSVGRuntime.h in Headers */,
+				505645430000000000000188 /* ThorVGRuntime.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7598,6 +8327,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		505645430000000000000031 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000051 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5056454300000000000000E4 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		50564543000000000000011F /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -7715,6 +8472,8 @@
 			dependencies = (
 				71A8001B2AD9A001007C91BA /* PBXTargetDependency */,
 				48544D4C000000000000029C /* PBXTargetDependency */,
+				50564543000000000000011D /* PBXTargetDependency */,
+				50564543000000000000004F /* PBXTargetDependency */,
 				71A8003E2AD9A002007C91BA /* PBXTargetDependency */,
 				71C004B2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7DC000062E7A0100C91BA0C0 /* PBXTargetDependency */,
@@ -7799,6 +8558,8 @@
 			dependencies = (
 				71A8001D2AD9A001007C91BA /* PBXTargetDependency */,
 				48544D4C00000000000002A5 /* PBXTargetDependency */,
+				505645430000000000000158 /* PBXTargetDependency */,
+				50564543000000000000006F /* PBXTargetDependency */,
 				71A800402AD9A002007C91BA /* PBXTargetDependency */,
 				71C004C2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7DC000102E7A0100C91BA0C0 /* PBXTargetDependency */,
@@ -8176,6 +8937,74 @@
 			productReference = 48544D4C0000000000000291 /* librmlui-macos.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		50564543000000000000004C /* lunasvg-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 50564543000000000000004B /* Build configuration list for PBXNativeTarget "lunasvg-ios" */;
+			buildPhases = (
+				505645430000000000000031 /* Headers */,
+				505645430000000000000032 /* Sources */,
+				505645430000000000000033 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "lunasvg-ios";
+			productName = "lunasvg-ios";
+			productReference = 505645430000000000000030 /* liblunasvg-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		50564543000000000000006C /* lunasvg-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 50564543000000000000006B /* Build configuration list for PBXNativeTarget "lunasvg-macos" */;
+			buildPhases = (
+				505645430000000000000051 /* Headers */,
+				505645430000000000000052 /* Sources */,
+				505645430000000000000053 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "lunasvg-macos";
+			productName = "lunasvg-macos";
+			productReference = 505645430000000000000050 /* liblunasvg-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		50564543000000000000011A /* thorvg-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 505645430000000000000119 /* Build configuration list for PBXNativeTarget "thorvg-ios" */;
+			buildPhases = (
+				5056454300000000000000E4 /* Headers */,
+				5056454300000000000000E5 /* Sources */,
+				5056454300000000000000E6 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "thorvg-ios";
+			productName = "thorvg-ios";
+			productReference = 5056454300000000000000E3 /* libthorvg-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		505645430000000000000155 /* thorvg-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 505645430000000000000154 /* Build configuration list for PBXNativeTarget "thorvg-macos" */;
+			buildPhases = (
+				50564543000000000000011F /* Headers */,
+				505645430000000000000120 /* Sources */,
+				505645430000000000000121 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "thorvg-macos";
+			productName = "thorvg-macos";
+			productReference = 50564543000000000000011E /* libthorvg-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -8185,6 +9014,18 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					505645430000000000000155 = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					50564543000000000000011A = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					50564543000000000000006C = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					50564543000000000000004C = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
 					48544D4C000000000000029A = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
@@ -8307,6 +9148,10 @@
 				71A8000C2AD9A001007C91BA /* harfbuzz-ios */,
 				48544D4C00000000000002A3 /* rmlui-macos */,
 				48544D4C000000000000029A /* rmlui-ios */,
+				505645430000000000000155 /* thorvg-macos */,
+				50564543000000000000011A /* thorvg-ios */,
+				50564543000000000000006C /* lunasvg-macos */,
+				50564543000000000000004C /* lunasvg-ios */,
 				71A800302AD9A002007C91BA /* sheenbidi-macos */,
 				71A8002F2AD9A002007C91BA /* sheenbidi-ios */,
 				71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */,
@@ -8902,6 +9747,13 @@
 				50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */,
 				50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */,
 				50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */,
+				50564543000000000000017B /* DotLottie.cpp in Sources */,
+				50564543000000000000017E /* LottiePlayback.cpp in Sources */,
+				505645430000000000000180 /* UIElementLottie.cpp in Sources */,
+				505645430000000000000183 /* UILottieElement.cpp in Sources */,
+				505645430000000000000186 /* LunaSVGRuntime.cpp in Sources */,
+				505645430000000000000189 /* ThorVGRuntime.cpp in Sources */,
+				50564543000000000000018B /* HtmlUIVectorLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9145,6 +9997,13 @@
 				50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */,
 				50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */,
 				50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */,
+				50564543000000000000017C /* DotLottie.cpp in Sources */,
+				50564543000000000000017F /* LottiePlayback.cpp in Sources */,
+				505645430000000000000181 /* UIElementLottie.cpp in Sources */,
+				505645430000000000000184 /* UILottieElement.cpp in Sources */,
+				505645430000000000000187 /* LunaSVGRuntime.cpp in Sources */,
+				50564543000000000000018A /* ThorVGRuntime.cpp in Sources */,
+				50564543000000000000018C /* HtmlUIVectorLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9779,6 +10638,11 @@
 				48544D4C0000000000000286 /* ElementInfo.cpp in Sources */,
 				48544D4C0000000000000289 /* ElementLog.cpp in Sources */,
 				48544D4C000000000000028C /* Geometry.cpp in Sources */,
+				505645430000000000000163 /* DecoratorSVG.cpp in Sources */,
+				505645430000000000000164 /* ElementSVG.cpp in Sources */,
+				505645430000000000000165 /* SVGCache.cpp in Sources */,
+				505645430000000000000166 /* SVGPlugin.cpp in Sources */,
+				505645430000000000000167 /* XMLNodeHandlerSVG.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9979,6 +10843,177 @@
 				48544D4C0000000000000287 /* ElementInfo.cpp in Sources */,
 				48544D4C000000000000028A /* ElementLog.cpp in Sources */,
 				48544D4C000000000000028D /* Geometry.cpp in Sources */,
+				505645430000000000000168 /* DecoratorSVG.cpp in Sources */,
+				505645430000000000000169 /* ElementSVG.cpp in Sources */,
+				50564543000000000000016A /* SVGCache.cpp in Sources */,
+				50564543000000000000016B /* SVGPlugin.cpp in Sources */,
+				50564543000000000000016C /* XMLNodeHandlerSVG.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000032 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				505645430000000000000034 /* graphics.cpp in Sources */,
+				505645430000000000000035 /* lunasvg.cpp in Sources */,
+				505645430000000000000036 /* svgelement.cpp in Sources */,
+				505645430000000000000037 /* svggeometryelement.cpp in Sources */,
+				505645430000000000000038 /* svglayoutstate.cpp in Sources */,
+				505645430000000000000039 /* svgpaintelement.cpp in Sources */,
+				50564543000000000000003A /* svgparser.cpp in Sources */,
+				50564543000000000000003B /* svgproperty.cpp in Sources */,
+				50564543000000000000003C /* svgrenderstate.cpp in Sources */,
+				50564543000000000000003D /* svgtextelement.cpp in Sources */,
+				50564543000000000000003E /* plutovg-blend.c in Sources */,
+				50564543000000000000003F /* plutovg-canvas.c in Sources */,
+				505645430000000000000040 /* plutovg-font.c in Sources */,
+				505645430000000000000041 /* plutovg-ft-math.c in Sources */,
+				505645430000000000000042 /* plutovg-ft-raster.c in Sources */,
+				505645430000000000000043 /* plutovg-ft-stroker.c in Sources */,
+				505645430000000000000044 /* plutovg-matrix.c in Sources */,
+				505645430000000000000045 /* plutovg-paint.c in Sources */,
+				505645430000000000000046 /* plutovg-path.c in Sources */,
+				505645430000000000000047 /* plutovg-rasterize.c in Sources */,
+				505645430000000000000048 /* plutovg-surface.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000052 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				505645430000000000000054 /* graphics.cpp in Sources */,
+				505645430000000000000055 /* lunasvg.cpp in Sources */,
+				505645430000000000000056 /* svgelement.cpp in Sources */,
+				505645430000000000000057 /* svggeometryelement.cpp in Sources */,
+				505645430000000000000058 /* svglayoutstate.cpp in Sources */,
+				505645430000000000000059 /* svgpaintelement.cpp in Sources */,
+				50564543000000000000005A /* svgparser.cpp in Sources */,
+				50564543000000000000005B /* svgproperty.cpp in Sources */,
+				50564543000000000000005C /* svgrenderstate.cpp in Sources */,
+				50564543000000000000005D /* svgtextelement.cpp in Sources */,
+				50564543000000000000005E /* plutovg-blend.c in Sources */,
+				50564543000000000000005F /* plutovg-canvas.c in Sources */,
+				505645430000000000000060 /* plutovg-font.c in Sources */,
+				505645430000000000000061 /* plutovg-ft-math.c in Sources */,
+				505645430000000000000062 /* plutovg-ft-raster.c in Sources */,
+				505645430000000000000063 /* plutovg-ft-stroker.c in Sources */,
+				505645430000000000000064 /* plutovg-matrix.c in Sources */,
+				505645430000000000000065 /* plutovg-paint.c in Sources */,
+				505645430000000000000066 /* plutovg-path.c in Sources */,
+				505645430000000000000067 /* plutovg-rasterize.c in Sources */,
+				505645430000000000000068 /* plutovg-surface.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5056454300000000000000E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5056454300000000000000E7 /* tvgCompressor.cpp in Sources */,
+				5056454300000000000000E8 /* tvgMath.cpp in Sources */,
+				5056454300000000000000E9 /* tvgStr.cpp in Sources */,
+				5056454300000000000000EA /* tvgAccessor.cpp in Sources */,
+				5056454300000000000000EB /* tvgAnimation.cpp in Sources */,
+				5056454300000000000000EC /* tvgCanvas.cpp in Sources */,
+				5056454300000000000000ED /* tvgFill.cpp in Sources */,
+				5056454300000000000000EE /* tvgInitializer.cpp in Sources */,
+				5056454300000000000000EF /* tvgLoaderMgr.cpp in Sources */,
+				5056454300000000000000F0 /* tvgPaint.cpp in Sources */,
+				5056454300000000000000F1 /* tvgPicture.cpp in Sources */,
+				5056454300000000000000F2 /* tvgRender.cpp in Sources */,
+				5056454300000000000000F3 /* tvgSaver.cpp in Sources */,
+				5056454300000000000000F4 /* tvgScene.cpp in Sources */,
+				5056454300000000000000F5 /* tvgShape.cpp in Sources */,
+				5056454300000000000000F6 /* tvgTaskScheduler.cpp in Sources */,
+				5056454300000000000000F7 /* tvgText.cpp in Sources */,
+				5056454300000000000000F8 /* tvgSwBlendOp.cpp in Sources */,
+				5056454300000000000000F9 /* tvgSwFill.cpp in Sources */,
+				5056454300000000000000FA /* tvgSwImage.cpp in Sources */,
+				5056454300000000000000FB /* tvgSwMemPool.cpp in Sources */,
+				5056454300000000000000FC /* tvgSwPostEffect.cpp in Sources */,
+				5056454300000000000000FD /* tvgSwRaster.cpp in Sources */,
+				5056454300000000000000FE /* tvgSwRenderer.cpp in Sources */,
+				5056454300000000000000FF /* tvgSwRle.cpp in Sources */,
+				505645430000000000000100 /* tvgSwShape.cpp in Sources */,
+				505645430000000000000101 /* tvgSwStroke.cpp in Sources */,
+				505645430000000000000102 /* tvgSwUtil.cpp in Sources */,
+				505645430000000000000103 /* tvgRawLoader.cpp in Sources */,
+				505645430000000000000104 /* tvgLottieAnimation.cpp in Sources */,
+				505645430000000000000105 /* tvgLottieBuilder.cpp in Sources */,
+				505645430000000000000106 /* tvgLottieExpressions.cpp in Sources */,
+				505645430000000000000107 /* tvgLottieInterpolator.cpp in Sources */,
+				505645430000000000000108 /* tvgLottieLoader.cpp in Sources */,
+				505645430000000000000109 /* tvgLottieModel.cpp in Sources */,
+				50564543000000000000010A /* tvgLottieModifier.cpp in Sources */,
+				50564543000000000000010B /* tvgLottieParser.cpp in Sources */,
+				50564543000000000000010C /* tvgLottieParserHandler.cpp in Sources */,
+				50564543000000000000010D /* tvgLottieProperty.cpp in Sources */,
+				50564543000000000000010E /* tvgLodePng.cpp in Sources */,
+				50564543000000000000010F /* tvgLodePngUtil.cpp in Sources */,
+				505645430000000000000110 /* tvgPngLoader.cpp in Sources */,
+				505645430000000000000111 /* tvgJpgLoader.cpp in Sources */,
+				505645430000000000000112 /* tvgJpgd.cpp in Sources */,
+				505645430000000000000113 /* tvgOtfReader.cpp in Sources */,
+				505645430000000000000114 /* tvgSfntLoader.cpp in Sources */,
+				505645430000000000000115 /* tvgSfntReader.cpp in Sources */,
+				505645430000000000000116 /* tvgTtfReader.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		505645430000000000000120 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				505645430000000000000122 /* tvgCompressor.cpp in Sources */,
+				505645430000000000000123 /* tvgMath.cpp in Sources */,
+				505645430000000000000124 /* tvgStr.cpp in Sources */,
+				505645430000000000000125 /* tvgAccessor.cpp in Sources */,
+				505645430000000000000126 /* tvgAnimation.cpp in Sources */,
+				505645430000000000000127 /* tvgCanvas.cpp in Sources */,
+				505645430000000000000128 /* tvgFill.cpp in Sources */,
+				505645430000000000000129 /* tvgInitializer.cpp in Sources */,
+				50564543000000000000012A /* tvgLoaderMgr.cpp in Sources */,
+				50564543000000000000012B /* tvgPaint.cpp in Sources */,
+				50564543000000000000012C /* tvgPicture.cpp in Sources */,
+				50564543000000000000012D /* tvgRender.cpp in Sources */,
+				50564543000000000000012E /* tvgSaver.cpp in Sources */,
+				50564543000000000000012F /* tvgScene.cpp in Sources */,
+				505645430000000000000130 /* tvgShape.cpp in Sources */,
+				505645430000000000000131 /* tvgTaskScheduler.cpp in Sources */,
+				505645430000000000000132 /* tvgText.cpp in Sources */,
+				505645430000000000000133 /* tvgSwBlendOp.cpp in Sources */,
+				505645430000000000000134 /* tvgSwFill.cpp in Sources */,
+				505645430000000000000135 /* tvgSwImage.cpp in Sources */,
+				505645430000000000000136 /* tvgSwMemPool.cpp in Sources */,
+				505645430000000000000137 /* tvgSwPostEffect.cpp in Sources */,
+				505645430000000000000138 /* tvgSwRaster.cpp in Sources */,
+				505645430000000000000139 /* tvgSwRenderer.cpp in Sources */,
+				50564543000000000000013A /* tvgSwRle.cpp in Sources */,
+				50564543000000000000013B /* tvgSwShape.cpp in Sources */,
+				50564543000000000000013C /* tvgSwStroke.cpp in Sources */,
+				50564543000000000000013D /* tvgSwUtil.cpp in Sources */,
+				50564543000000000000013E /* tvgRawLoader.cpp in Sources */,
+				50564543000000000000013F /* tvgLottieAnimation.cpp in Sources */,
+				505645430000000000000140 /* tvgLottieBuilder.cpp in Sources */,
+				505645430000000000000141 /* tvgLottieExpressions.cpp in Sources */,
+				505645430000000000000142 /* tvgLottieInterpolator.cpp in Sources */,
+				505645430000000000000143 /* tvgLottieLoader.cpp in Sources */,
+				505645430000000000000144 /* tvgLottieModel.cpp in Sources */,
+				505645430000000000000145 /* tvgLottieModifier.cpp in Sources */,
+				505645430000000000000146 /* tvgLottieParser.cpp in Sources */,
+				505645430000000000000147 /* tvgLottieParserHandler.cpp in Sources */,
+				505645430000000000000148 /* tvgLottieProperty.cpp in Sources */,
+				505645430000000000000149 /* tvgLodePng.cpp in Sources */,
+				50564543000000000000014A /* tvgLodePngUtil.cpp in Sources */,
+				50564543000000000000014B /* tvgPngLoader.cpp in Sources */,
+				50564543000000000000014C /* tvgJpgLoader.cpp in Sources */,
+				50564543000000000000014D /* tvgJpgd.cpp in Sources */,
+				50564543000000000000014E /* tvgOtfReader.cpp in Sources */,
+				50564543000000000000014F /* tvgSfntLoader.cpp in Sources */,
+				505645430000000000000150 /* tvgSfntReader.cpp in Sources */,
+				505645430000000000000151 /* tvgTtfReader.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -10154,6 +11189,26 @@
 			isa = PBXTargetDependency;
 			target = 48544D4C00000000000002A3 /* rmlui-macos */;
 			targetProxy = 48544D4C00000000000002A4 /* PBXContainerItemProxy */;
+		};
+		50564543000000000000004F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 50564543000000000000004C /* lunasvg-ios */;
+			targetProxy = 50564543000000000000004E /* PBXContainerItemProxy */;
+		};
+		50564543000000000000006F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 50564543000000000000006C /* lunasvg-macos */;
+			targetProxy = 50564543000000000000006E /* PBXContainerItemProxy */;
+		};
+		50564543000000000000011D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 50564543000000000000011A /* thorvg-ios */;
+			targetProxy = 50564543000000000000011C /* PBXContainerItemProxy */;
+		};
+		505645430000000000000158 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 505645430000000000000155 /* thorvg-macos */;
+			targetProxy = 505645430000000000000157 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -10367,6 +11422,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -10377,6 +11435,9 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10403,6 +11464,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -10413,6 +11477,9 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10595,6 +11662,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -10604,6 +11674,9 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10638,6 +11711,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -10647,6 +11723,9 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10687,6 +11766,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -10696,6 +11778,9 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10733,6 +11818,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -10742,6 +11830,9 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10777,6 +11868,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -10787,6 +11881,9 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -10816,6 +11913,9 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					TVG_STATIC,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -10826,6 +11926,9 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
 					"$(SRCROOT)/../../core/htmlui",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/meshoptimizer",
@@ -11623,11 +12726,16 @@
 					RMLUI_STATIC_LIB,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+					RMLUI_SVG_PLUGIN,
+					LUNASVG_BUILD_STATIC,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -11647,11 +12755,16 @@
 					RMLUI_STATIC_LIB,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+					RMLUI_SVG_PLUGIN,
+					LUNASVG_BUILD_STATIC,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -11676,11 +12789,16 @@
 					RMLUI_STATIC_LIB,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+					RMLUI_SVG_PLUGIN,
+					LUNASVG_BUILD_STATIC,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -11702,11 +12820,294 @@
 					RMLUI_STATIC_LIB,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
+					RMLUI_SVG_PLUGIN,
+					LUNASVG_BUILD_STATIC,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/rmlui/Include";
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/rmlui/Include",
+					"$(SRCROOT)/../../libs/lunasvg/include",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		505645430000000000000049 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					LUNASVG_BUILD,
+					PLUTOVG_BUILD,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
+					LUNASVG_DISABLE_LOAD_SYSTEM_FONTS,
+					LUNASVG_DISABLE_EXTERNAL_RESOURCES,
+					PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/lunasvg/source",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		50564543000000000000004A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					LUNASVG_BUILD,
+					PLUTOVG_BUILD,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
+					LUNASVG_DISABLE_LOAD_SYSTEM_FONTS,
+					LUNASVG_DISABLE_EXTERNAL_RESOURCES,
+					PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/lunasvg/source",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		505645430000000000000069 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					LUNASVG_BUILD,
+					PLUTOVG_BUILD,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
+					LUNASVG_DISABLE_LOAD_SYSTEM_FONTS,
+					LUNASVG_DISABLE_EXTERNAL_RESOURCES,
+					PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/lunasvg/source",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		50564543000000000000006A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					LUNASVG_BUILD,
+					PLUTOVG_BUILD,
+					LUNASVG_BUILD_STATIC,
+					PLUTOVG_BUILD_STATIC,
+					LUNASVG_DISABLE_LOAD_SYSTEM_FONTS,
+					LUNASVG_DISABLE_EXTERNAL_RESOURCES,
+					PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/lunasvg/include",
+					"$(SRCROOT)/../../libs/lunasvg/source",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
+					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		505645430000000000000117 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					TVG_STATIC,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/thorvg/config",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/common",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer/cpu_engine",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/raw",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/png",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		505645430000000000000118 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					TVG_STATIC,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/thorvg/config",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/common",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer/cpu_engine",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/raw",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/png",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		505645430000000000000152 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					TVG_STATIC,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/thorvg/config",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/common",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer/cpu_engine",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/raw",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/png",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		505645430000000000000153 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					TVG_STATIC,
+				);
+				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/thorvg/config",
+					"$(SRCROOT)/../../libs/thorvg/inc",
+					"$(SRCROOT)/../../libs/thorvg/src/common",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer",
+					"$(SRCROOT)/../../libs/thorvg/src/renderer/cpu_engine",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/raw",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/lottie",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/png",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
+					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -12010,6 +13411,42 @@
 			buildConfigurations = (
 				48544D4C00000000000002A0 /* Debug */,
 				48544D4C00000000000002A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		50564543000000000000004B /* Build configuration list for PBXNativeTarget "lunasvg-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				505645430000000000000049 /* Debug */,
+				50564543000000000000004A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		50564543000000000000006B /* Build configuration list for PBXNativeTarget "lunasvg-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				505645430000000000000069 /* Debug */,
+				50564543000000000000006A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		505645430000000000000119 /* Build configuration list for PBXNativeTarget "thorvg-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				505645430000000000000117 /* Debug */,
+				505645430000000000000118 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		505645430000000000000154 /* Build configuration list for PBXNativeTarget "thorvg-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				505645430000000000000152 /* Debug */,
+				505645430000000000000153 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

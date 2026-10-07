@@ -12,10 +12,7 @@
 #include <string>
 #include <vector>
 #include "stb_image.h"
-#define NANOSVG_IMPLEMENTATION
-#include "nanosvg.h"
-#define NANOSVGRAST_IMPLEMENTATION
-#include "nanosvgrast.h"
+#include "LunaSVGRuntime.h"
 #include "Log.h"
 #include "Texture.h"
 
@@ -232,57 +229,23 @@ bool TextureData::loadSvgTexture(Data* filedata) {
         return false;
     }
 
-    // A non-positive or non-finite scale falls back to the SVG's intrinsic size.
-    float scale = svgScale;
-    if (!(scale > 0.0f) || !std::isfinite(scale)) {
-        scale = 1.0f;
-    }
-
-    std::vector<char> svgData(filedata->length() + 1);
-    memcpy(svgData.data(), filedata->getMemPtr(), filedata->length());
-    svgData[filedata->length()] = '\0';
-
-    NSVGimage* image = nsvgParse(svgData.data(), "px", 96.0f);
-    if (!image || image->width <= 0.0f || image->height <= 0.0f) {
-        if (image) {
-            nsvgDelete(image);
-        }
+    // LunaSVG (the engine's SVG rasteriser, also behind HTML UI's <svg>): intrinsic size in
+    // CSS px (96 dpi) x svgScale, rounded up and capped at 16384, straight alpha like every
+    // other engine texture. A non-positive or non-finite scale means the intrinsic size.
+    std::vector<uint8_t> pixels;
+    int rasterWidth = 0;
+    int rasterHeight = 0;
+    if (!LunaSVGRuntime::rasterize(reinterpret_cast<const char*>(filedata->getMemPtr()), filedata->length(),
+                                   svgScale, false, pixels, rasterWidth, rasterHeight)) {
         return false;
     }
 
-    // Cap the rasterized size to a GPU-friendly bound. This also prevents the
-    // int cast below from overflowing when svgScale is unreasonably large.
-    const float maxRasterDim = 16384.0f;
-    const float scaledWidth = std::ceil(image->width * scale);
-    const float scaledHeight = std::ceil(image->height * scale);
-    if (scaledWidth > maxRasterDim || scaledHeight > maxRasterDim) {
-        Log::error("SVG rasterization size too large (%.0f x %.0f) for scale %.2f", scaledWidth, scaledHeight, scale);
-        nsvgDelete(image);
-        return false;
-    }
-
-    const int rasterWidth = std::max(1, static_cast<int>(scaledWidth));
-    const int rasterHeight = std::max(1, static_cast<int>(scaledHeight));
-    const size_t rasterSize = static_cast<size_t>(rasterWidth) * static_cast<size_t>(rasterHeight) * 4;
-
+    const size_t rasterSize = pixels.size();
     unsigned char* rasterData = static_cast<unsigned char*>(malloc(rasterSize));
     if (!rasterData) {
-        nsvgDelete(image);
         return false;
     }
-    memset(rasterData, 0, rasterSize);
-
-    NSVGrasterizer* rasterizer = nsvgCreateRasterizer();
-    if (!rasterizer) {
-        free(rasterData);
-        nsvgDelete(image);
-        return false;
-    }
-
-    nsvgRasterize(rasterizer, image, 0.0f, 0.0f, scale, rasterData, rasterWidth, rasterHeight, rasterWidth * 4);
-
-    nsvgDeleteRasterizer(rasterizer);
-    nsvgDelete(image);
+    memcpy(rasterData, pixels.data(), rasterSize);
 
     data = rasterData;
     width = rasterWidth;

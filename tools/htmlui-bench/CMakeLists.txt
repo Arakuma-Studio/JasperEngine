@@ -13,13 +13,19 @@ project(htmlui_bench C CXX)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(LUNASVG_DIR "/tmp/htmlui-src/lunasvg" CACHE PATH "LunaSVG source tree")
 set(THORVG_DIR "/tmp/htmlui-src/thorvg" CACHE PATH "ThorVG source tree")
-set(NANOSVG_DIR "${REPO_ROOT}/engine/libs/nanosvg" CACHE PATH "nanosvg headers")
+# nanosvg left the engine in phase 1 (TextureData uses LunaSVG): scripts/fetch_nanosvg.sh
+# clones the commit the benchmark measured (the engine's former copy) to this default
+set(NANOSVG_DIR "/tmp/htmlui-src/nanosvg/src" CACHE PATH "nanosvg headers")
 set(STB_DIR "${REPO_ROOT}/engine/libs/stb" CACHE PATH "stb headers (stb_image_write)")
 option(BENCH_SIZE "Build the binary-size probes (-Os, gc-sections, stripped) instead of svgbench" OFF)
 option(THORVG_AVX "ThorVG AVX2 raster paths (x86-64 native only)" ON)
 option(THORVG_THREADS "ThorVG task scheduler support (svgbench still runs single-threaded unless --threads)" ON)
 set(THORVG_BENCH_NAME "thorvg" CACHE STRING "Label of the ThorVG backend in the results")
 set(THORVG_VERSION "1.2.0")
+
+if(NOT EXISTS "${NANOSVG_DIR}/nanosvg.h" OR NOT EXISTS "${NANOSVG_DIR}/nanosvgrast.h")
+    message(FATAL_ERROR "nanosvg headers not found in ${NANOSVG_DIR}: run tools/htmlui-bench/scripts/fetch_nanosvg.sh, or set NANOSVG_DIR")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

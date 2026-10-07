@@ -30,15 +30,22 @@ engine/libs/rmlui/
   Source/Core/Elements/*.{cpp,h}
   Source/Core/Layout/*.{cpp,h}
   Source/Debugger/*.{cpp,h}      (+ Source/Debugger/LICENSE.txt: the embedded Courier Prime font, OFL)
+  Include/RmlUi/SVG/ElementSVG.h  (phase 1, p1-vector)
+  Source/SVG/*.{cpp,h}           (phase 1, p1-vector: the SVG plugin, unchanged, on LunaSVG)
 ```
+
+The SVG plugin is compiled into the `rmlui` target with `RMLUI_SVG_PLUGIN` defined, so
+`Rml::Initialise` registers it as upstream does (`Source/Core/Core.cpp`); it links
+`engine/libs/lunasvg` (LunaSVG 3.5.0 + plutovg, the version the phase-0 benchmark measured). The
+engine registers its built-in fonts with LunaSVG (`engine/core/util/LunaSVGRuntime`), which is
+built without system-font discovery and without file access (`<image href>` takes `data:` URIs).
 
 ## Removed from upstream
 
 | Upstream path | Why it is not vendored |
 |---|---|
 | `Source/Core/FontEngineDefault/` | FreeType font engine. The engine's own `RmlFontEngine` (STBText stack: stb_truetype, HarfBuzz, SheenBidi) replaces it; `Core.cpp` includes it only under `RMLUI_FONT_ENGINE_FREETYPE`, which is never defined. |
-| `Source/SVG/`, `Include/RmlUi/SVG/` | SVG plugin on LunaSVG. SVG goes through the library chosen by the phase-0 benchmark (`docs/html-ui/svg-benchmark.md`). |
-| `Source/Lottie/`, `Include/RmlUi/Lottie/` | Lottie plugin on rlottie (last release 2020, a new texture per frame). Lottie goes through ThorVG. |
+| `Source/Lottie/`, `Include/RmlUi/Lottie/` | Lottie plugin on rlottie (last release 2020, a new texture per frame). The engine's own `<lottie>` element (`engine/core/htmlui/vector/`) runs on ThorVG. |
 | `Source/Lua/`, `Include/RmlUi/Lua/`, `Include/RmlUi/Lua.h` | RmlUi's Lua bindings. The engine has its own browser-shaped Lua API (`UIDocument`, `UIElement`, `UIEvent`). |
 | `Backends/` | Sample platform and renderer backends (GL, Vulkan, SDL, GLFW ...). The engine implements the interfaces on its own render abstraction (`engine/core/htmlui/`). |
 | `Samples/`, `Tests/`, `Utilities/` | Demos, upstream test suites and tooling, not part of the library. |
@@ -54,6 +61,7 @@ commit prefixed `rmlui:` and listed here.
 | ID | Commit | Files | Reason | Test |
 |---|---|---|---|---|
 | P1-1 | `bf32a608` `rmlui: Event::PreventDefault` | `Include/RmlUi/Core/Event.h`, `Source/Core/Event.cpp`, `Source/Core/EventDispatcher.{h,cpp}`, `Include/RmlUi/Core/Element.h`, `Source/Core/Element.cpp`, `Include/RmlUi/Core/Context.h`, `Source/Core/Context.cpp`, `Source/Core/Elements/WidgetTextInput.cpp` | DOM `preventDefault()` for the Lua/C++ element API (phase 1 §3.14 patch 1): `Event::PreventDefault`/`IsDefaultPrevented`; the dispatcher skips the elements' default actions of a prevented event and reports it as consumed (`DispatchEvent` returns false; new `Element::DispatchEvent(EventId, params, bool* default_prevented)`); so `Context::ProcessKeyDown/Up/TextInput` and `ProcessMouseWheel` return "consumed" (a prevented wheel does not scroll; a prevented mousedown starts no drag and no double click); the text input produced by a prevented key down is dropped until the next key down or key up; `WidgetTextInput` ignores key downs/text inputs an ancestor's capture listener prevented | `engine/tests/htmlui/TestScriptEvents.cpp` (`PreventDefaultKeepsCheckboxUnchecked`, `PreventDefaultOnKeyDown`, `PreventDefaultOnWheelStopsScrolling`) |
+| — | `e580f8d7` | `Source/SVG/**`, `Include/RmlUi/SVG/**` | `rmlui: vendor SVG plugin (6.3)`: a vendoring commit, the files are byte for byte upstream. The planned rasteriser patch (`rmlui: SVG plugin rasterises with ThorVG`, phase 1 §3.10.2) is **not made**: the phase-0 benchmark chose LunaSVG for SVG (`docs/html-ui/svg-benchmark.md`), which is the plugin's upstream rasteriser. | `TestVectorSvg.cpp` (`SvgPluginTest`), goldens `p1/svg_file`, `p1/svg_inline` |
 
 ## Updating upstream
 

@@ -99,7 +99,7 @@ no `currentColor`, no masks/patterns, broken unitless `objectBoundingBox` gradie
 | Wasm toolchain | `jasperengine/web-build` image: emscripten 6.0.10 (`d6c521a7f05449857c76bd99e396895583cf2083`), node 24.19.0; `em++ -O2 -sNODERAWFS=1 -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1` |
 | LunaSVG | 3.5.0, `cf3594d5232e075fb344365191f0ecadd1519e1e` (2026-09-17), bundled plutovg 1.3.3 |
 | ThorVG | 1.2.0, `caa5af1167d7b788a3498d69c577e9d6e284dbb7` (2026-10-07), CPU (software) engine; loaders SVG + PNG + JPG + TTF (what LunaSVG can do natively); threads compiled in, `Initializer::init(0)` unless stated; AVX2 (`-mavx2`, `THORVG_AVX_SUPPORT`) natively, plus a no-AVX build |
-| nanosvg | the engine's copy `engine/libs/nanosvg` (added in `adefb9f6`; `nanosvg.h` md5 `468808c5…`, `nanosvgrast.h` md5 `ef21471c…`) |
+| nanosvg | the engine's copy `engine/libs/nanosvg` (added in `adefb9f6`; `nanosvg.h` md5 `468808c5…`, `nanosvgrast.h` md5 `ef21471c…`) = upstream `c59ff2349dc40967bbc0d840f8be17be21e82c68`. Phase 1 removed it from the engine; `tools/htmlui-bench/scripts/fetch_nanosvg.sh` clones that commit to `/tmp/htmlui-src/nanosvg` |
 | Reference renderer | resvg 0.48.1 / tiny-skia 0.12.0 through resvg-py 0.5.0 |
 | Cross-check | Chromium 153.0.8010.12 headless (playwright 1.63.0) |
 | PNG writer | `engine/libs/stb/stb_image_write` |

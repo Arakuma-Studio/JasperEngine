@@ -7,9 +7,12 @@
 #include "RmlFile.h"
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
+#include "vector/UILottieElement.h"
 
 #include "Engine.h"
 #include "Log.h"
+#include "LunaSVGRuntime.h"
+#include "ThorVGRuntime.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
@@ -73,6 +76,13 @@ bool HtmlUI::acquire(){
         return false;
     }
 
+    // Vector graphics: Rml::Initialise already registered the SVG plugin (RMLUI_SVG_PLUGIN,
+    // LunaSVG), which needs the engine's fonts for <text>; <lottie> runs on ThorVG. RmlUi
+    // forgets element instancers at shutdown, so the lottie one is registered every time.
+    LunaSVGRuntime::ensureFonts();
+    ThorVGRuntime::acquire();
+    UILottieElement::registerInstancer();
+
     referenceCount = 1;
     subscribeViewDestroyed();
 
@@ -100,6 +110,10 @@ void HtmlUI::release(){
     debuggerContext = nullptr;
 
     Rml::Shutdown();
+
+    // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
+    UILottieElement::releaseInstancer();
+    ThorVGRuntime::release();
 
     Engine::onViewDestroyed.remove(viewDestroyedTag);
 }
