@@ -919,7 +919,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
   `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
-  `removeDataModel(name)`, `getTargetTexture()`; events `onLoad`, `onUnload`; static
+  `removeDataModel(name)`, `getTargetTexture()`, `getUIDocumentComponent()` (rw `filename`,
+  `sortOrder`, `enabled`, `interactive`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`; static
   `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `value`, `checked`,

@@ -1801,6 +1801,13 @@ Details the implementation fixed, binding for the packages that build on it:
   starts no drag), and the text input of a prevented key down is dropped until the next key
   down or key up. `UIElement::dispatchEvent` reads the prevented flag through an event
   parameter set by `UIEvent::preventDefault`.
+- **Key fields.** `keyCode = RmlKeyMap::fromRmlKey(key_identifier)`, `key = domKey(keyCode,
+  fromRmlModifiers(modifier parameters))`, `code = domCode(keyCode)` (p1-input); `repeat`: RmlUi
+  has no repeat flag, so the context root's capture listener (the one that synthesizes
+  `change`) tracks held keys and marks a key down of a held key as a repeat.
+- **`UIDocumentComponent` in Lua** (`UIDocument:getUIDocumentComponent()`): `filename`,
+  `sortOrder`, `enabled`, `interactive`, `needReload`, ro `loaded`, and the events `onLoad`,
+  `onUnload` (the script-event generator of p1-editor uses them).
 - **`data-for` indices** (`i` in `data-for="item, i : items"`) are 0-based, as RmlUi gives
   them; the guide says so.
 
