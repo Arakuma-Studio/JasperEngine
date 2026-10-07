@@ -32,6 +32,7 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::InputField, "Input Field", ICON_FA_KEYBOARD, "InputFieldComponent.h", "InputFieldComponent", "REGISTER_COMPONENT_EVENT", "InputField"},
         {S::Action, "Action", ICON_FA_PLAY, "ActionComponent.h", "ActionComponent", "REGISTER_COMPONENT_EVENT", "Action"},
         {S::AudioSource, "AudioSource", ICON_FA_VOLUME_HIGH, "AudioSourceComponent.h", "AudioSourceComponent", "REGISTER_COMPONENT_EVENT", "AudioSource"},
+        {S::UIDocument, "UI Document", ICON_FA_FILE_CODE, "UIDocumentComponent.h", "UIDocumentComponent", "REGISTER_COMPONENT_EVENT", "UIDocument"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -113,6 +114,9 @@ const std::vector<ScriptEvent>& eventList() {
         {S::AudioSource, "onStart", nullptr, "The Audio Source starts playing", {}},
         {S::AudioSource, "onPause", nullptr, "The Audio Source is paused", {}},
         {S::AudioSource, "onStop", nullptr, "The Audio Source stops", {}},
+
+        {S::UIDocument, "onLoad", nullptr, "The document has loaded (also after every hot reload)", {}},
+        {S::UIDocument, "onUnload", nullptr, "The document is about to unload", {}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},

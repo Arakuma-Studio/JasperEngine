@@ -1729,6 +1729,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A1 /* HtmlUIDependencies.h */; };
+		4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
+		4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
 		48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AB /* HtmlUIRenderStats.h */; };
 		48544D4C00000000000002AE /* HtmlUITexture.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AD /* HtmlUITexture.h */; };
 		48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002AF /* HtmlUITexture.cpp */; };
@@ -3853,6 +3856,8 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		4544495431300000000000A1 /* HtmlUIDependencies.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIDependencies.h; sourceTree = "<group>"; };
+		4544495431300000000000A3 /* HtmlUIDependencies.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIDependencies.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002AB /* HtmlUIRenderStats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIRenderStats.h; sourceTree = "<group>"; };
 		48544D4C00000000000002AD /* HtmlUITexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUITexture.h; sourceTree = "<group>"; };
 		48544D4C00000000000002AF /* HtmlUITexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUITexture.cpp; sourceTree = "<group>"; };
@@ -6676,6 +6681,8 @@
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
 				48544D4C00000000000002A6 /* HtmlUIClock.h */,
 				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				4544495431300000000000A1 /* HtmlUIDependencies.h */,
+				4544495431300000000000A3 /* HtmlUIDependencies.cpp */,
 				48544D4C00000000000002AB /* HtmlUIRenderStats.h */,
 				48544D4C00000000000002AD /* HtmlUITexture.h */,
 				48544D4C00000000000002AF /* HtmlUITexture.cpp */,
@@ -7163,6 +7170,7 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */,
 				48544D4C00000000000002AC /* HtmlUIRenderStats.h in Headers */,
 				48544D4C00000000000002AE /* HtmlUITexture.h in Headers */,
 				48544D4C0000000000000007 /* HtmlUIContext.h in Headers */,
@@ -8678,6 +8686,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */,
 				48544D4C00000000000002B0 /* HtmlUITexture.cpp in Sources */,
 				48544D4C0000000000000009 /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000C /* HtmlUIContextRender.cpp in Sources */,
@@ -8896,6 +8905,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */,
 				48544D4C00000000000002B1 /* HtmlUITexture.cpp in Sources */,
 				48544D4C000000000000000A /* HtmlUIContext.cpp in Sources */,
 				48544D4C000000000000000D /* HtmlUIContextRender.cpp in Sources */,

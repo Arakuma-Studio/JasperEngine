@@ -20,7 +20,8 @@ namespace jasperengine::editor{
         FILE_DIALOG_SHADER = 1 << 4,
         FILE_DIALOG_SCRIPT = 1 << 5,
         FILE_DIALOG_PREFAB = 1 << 6,
-        FILE_DIALOG_MATERIAL = 1 << 7
+        FILE_DIALOG_MATERIAL = 1 << 7,
+        FILE_DIALOG_HTML = 1 << 8
     };
 
     class FileDialogs{
@@ -73,6 +74,9 @@ namespace jasperengine::editor{
                 }
                 if (filterFlags & FILE_DIALOG_MATERIAL) {
                     filterItems.push_back({ "Material files", "material" });
+                }
+                if (filterFlags & FILE_DIALOG_HTML) {
+                    filterItems.push_back({ "HTML documents", "html,htm,rml" });
                 }
 
                 if (!filterItems.empty()) {

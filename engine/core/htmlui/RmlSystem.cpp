@@ -4,6 +4,7 @@
 #include "RmlSystem.h"
 
 #include "HtmlUIClock.h"
+#include "HtmlUIDependencies.h"
 #include "Engine.h"
 #include "Log.h"
 
@@ -86,6 +87,13 @@ bool RmlSystem::LogMessage(Rml::Log::Type type, const Rml::String& message){
 
     if (logListener)
         logListener(type, message);
+
+    // the Inspector's per-document messages (UIDocumentSystem::getDocumentMessages)
+    if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_ASSERT){
+        HtmlUIFileLog::recordMessage(HtmlUIFileLog::Level::Error, message);
+    }else if (type == Rml::Log::LT_WARNING){
+        HtmlUIFileLog::recordMessage(HtmlUIFileLog::Level::Warning, message);
+    }
 
     // never break into a debugger
     return true;

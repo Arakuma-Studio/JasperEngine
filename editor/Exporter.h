@@ -96,6 +96,15 @@ namespace jasperengine::editor {
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
 
+        // The UI Documents of the exported scenes, collected while loadAndSaveAllScenes() has
+        // every scene loaded, for checkHtmlUIReferences()
+        struct HtmlUIDocumentUse {
+            std::string scene;
+            std::string entity;
+            std::string filename;   // asset-relative
+        };
+        std::vector<HtmlUIDocumentUse> htmlUIDocuments;
+
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
@@ -144,6 +153,8 @@ namespace jasperengine::editor {
         bool writeNativeResourcePack(const fs::path& outputPath, bool& created);
         bool clearGenerated();
         bool loadAndSaveAllScenes();
+        // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
+        bool checkHtmlUIReferences();
         bool copyGenerated();
         bool copyAssets();
         // Runtime shader compilation builds a fork's variants from its sources, which it
@@ -173,6 +184,14 @@ namespace jasperengine::editor {
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // What the HTML/CSS of each UI Document refers to (HtmlUIDependencies): a missing
+        // file, a path outside the assets directory or a remote URL is an error with
+        // file:line:column (project-relative); an absolute path is a warning. documents =
+        // {where it is used, asset-relative filename}. False when there are errors.
+        static bool checkHtmlUIReferences(const fs::path& projectPath, const fs::path& assetsPath,
+                                          const std::vector<std::pair<std::string, std::string>>& documents,
+                                          std::vector<std::string>& errors, std::vector<std::string>& warnings);
+
         Exporter();
         ~Exporter();
 

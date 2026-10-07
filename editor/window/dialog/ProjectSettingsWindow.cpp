@@ -22,6 +22,16 @@ static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIG
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
+static const char* htmlUiMsaaNames[] = { "Off", "2x", "4x", "8x" };
+static const int htmlUiMsaaValues[] = { 1, 2, 4, 8 };
+static constexpr int htmlUiMsaaCount = 4;
+
+static int findHtmlUiMsaaIndex(int samples) {
+    for (int i = 0; i < htmlUiMsaaCount; i++) {
+        if (htmlUiMsaaValues[i] == samples) return i;
+    }
+    return 2;
+}
 static const TextureStrategy textureStrategyValues[] = { TextureStrategy::FIT, TextureStrategy::RESIZE, TextureStrategy::NONE };
 static const int textureStrategyCount = sizeof(textureStrategyValues) / sizeof(textureStrategyValues[0]);
 
@@ -125,7 +135,8 @@ static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants"},
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
+                     "html ui msaa anti-aliasing antialiasing"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
@@ -837,6 +848,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
+    m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -1284,6 +1296,10 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
+
+        drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
+            "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
+            "Devices without MSAA draw them without it.");
 
         if (beginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
             m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -1956,6 +1972,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
+    m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);

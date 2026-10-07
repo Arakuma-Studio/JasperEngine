@@ -88,6 +88,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
     if (Util::isFontFile(p)) return "font";
+    if (Util::isHtmlFile(p)) return "html";
+    if (Util::isCssFile(p)) return "css";
     if (Util::isScriptFile(p)) return "script";
     if (Util::isSceneFile(p)) return "scene";
     if (Util::isPrefabFile(p)) return "prefab";

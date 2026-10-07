@@ -18,6 +18,7 @@ namespace jasperengine::editor {
         InputField,
         Action,
         AudioSource,
+        UIDocument,
         Physics2D,
         Physics3D
     };

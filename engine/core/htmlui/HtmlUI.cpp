@@ -12,7 +12,9 @@
 #include "Log.h"
 
 #include <RmlUi/Core.h>
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
 #include <RmlUi/Debugger.h>
+#endif
 
 #include <algorithm>
 #include <vector>
@@ -25,8 +27,11 @@ namespace {
 
     int referenceCount = 0;
 
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
     bool debuggerInitialised = false;
+#endif
     HtmlUIContext* debuggerContext = nullptr;
+    bool debuggerVisible = false;
 
     std::vector<HtmlUIContext*>& registeredContexts(){
         static std::vector<HtmlUIContext*> contexts;
@@ -93,11 +98,14 @@ void HtmlUI::release(){
         Log::error("[HTML UI] %u HTML UI context(s) still alive when RmlUi shuts down", (unsigned int)registeredContexts().size());
     }
 
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
     if (debuggerInitialised){
         Rml::Debugger::Shutdown();
         debuggerInitialised = false;
     }
+#endif
     debuggerContext = nullptr;
+    debuggerVisible = false;
 
     Rml::Shutdown();
 
@@ -170,6 +178,14 @@ size_t HtmlUI::getContextCount(){
 }
 
 void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
+#ifndef JASPERENGINE_HTMLUI_DEBUGGER
+    (void)visible;
+    if (context){
+        Log::warn("[HTML UI] the RmlUi debugger is not compiled into this build (JASPERENGINE_HTMLUI_DEBUGGER)");
+    }
+    debuggerContext = nullptr;
+    debuggerVisible = false;
+#else
     Rml::Context* rmlContext = context ? context->getRmlContext() : nullptr;
 
     if (!rmlContext){
@@ -181,6 +197,7 @@ void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
             debuggerInitialised = false;
         }
         debuggerContext = nullptr;
+        debuggerVisible = false;
         return;
     }
 
@@ -200,15 +217,30 @@ void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
         if (!Rml::Debugger::Initialise(rmlContext)){
             Log::error("[HTML UI] the RmlUi debugger could not be initialised");
             debuggerContext = nullptr;
+            debuggerVisible = false;
             return;
         }
         debuggerInitialised = true;
     }
 
     debuggerContext = context;
+    debuggerVisible = visible;
     Rml::Debugger::SetVisible(visible);
+#endif
 }
 
 HtmlUIContext* HtmlUI::getDebuggerContext(){
     return debuggerContext;
+}
+
+bool HtmlUI::isDebuggerVisible(){
+    return debuggerContext && debuggerVisible;
+}
+
+bool HtmlUI::isDebuggerCompiled(){
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
+    return true;
+#else
+    return false;
+#endif
 }

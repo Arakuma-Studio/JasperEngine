@@ -66,7 +66,8 @@ namespace jasperengine::editor{
         LINE_RENDERER,
         MESH_POLYGON,
         TERRAIN,
-        REFLECTION_PROBE
+        REFLECTION_PROBE,
+        UI_DOCUMENT
     };
 
     class CreateEntityCmd: public Command{

@@ -46,6 +46,8 @@ namespace jasperengine {
         // the context the RmlUi debugger is attached to (nullptr = none)
         static void setDebuggerContext(HtmlUIContext* context, bool visible);
         static HtmlUIContext* getDebuggerContext();
+        static bool isDebuggerVisible();     // shown in getDebuggerContext()
+        static bool isDebuggerCompiled();    // JASPERENGINE_HTMLUI_DEBUGGER
     };
 
 }
