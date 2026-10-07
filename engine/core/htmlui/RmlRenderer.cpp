@@ -236,7 +236,7 @@ void RmlRenderer::ReleaseTexture(Rml::TextureHandle handle){
 
     // draws recorded earlier in this frame may still use it (a font page replaced while
     // the context renders): it goes after the replay
-    if (inFrame && !texture->dead){
+    if (inFrame){
         if (std::find(pendingReleases.begin(), pendingReleases.end(), texture) == pendingReleases.end()){
             pendingReleases.push_back(texture);
         }
@@ -470,7 +470,8 @@ bool RmlRenderer::endFrame(FramebufferRender& target, CameraRender& pass){
         }
 
         const bool textured = command.texture != nullptr;
-        if (textured && (command.texture->dead || liveTextures.count(command.texture) == 0))
+        // a texture released (or lost with the view) since the draw was recorded is skipped
+        if (textured && (liveTextures.count(command.texture) == 0 || command.texture->dead))
             continue;
 
         ObjectRender* object = textured ? &texturedObject : &colorObject;
