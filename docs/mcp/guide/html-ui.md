@@ -147,8 +147,39 @@ What works:
   `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")` (`#include "htmlui/HtmlUI.h"`; family,
   weight and style come from the file, or pass them: `loadFontFace(path, fallback, family,
   weight, italic)`). `font-weight: bold` / `font-style: italic` pick the matching face
-  (CSS weight matching); without one the regular face is used (no synthetic bold/italic yet).
+  (CSS weight matching). Without one the engine synthesizes it, as browsers do
+  (`font-synthesis`): a face 300 or more lighter than asked (the built-in Roboto Regular for
+  `bold`) is emboldened (strokes and advance grow by `max(1, font-size / 24)` px, so bold text
+  is a little wider), and an upright face asked for `italic` is slanted by 12 degrees (same
+  advance). A real Bold/Italic file looks better: load it when the design depends on it.
   `@font-face` is phase 2.
+- The text of each context is rasterized at its own pixel ratio (the screen's for screen
+  documents, `pixelRatio` for documents on meshes), so text stays sharp in both.
+
+## Text effects
+
+`font-effect` (RmlUi property, inherited) draws effects with the text, comma-separated:
+
+| Effect | Syntax | Drawn |
+|---|---|---|
+| shadow | `shadow(offset-x offset-y color)` | a copy of the glyphs, offset |
+| outline | `outline(width color)` | the glyphs grown by `width` |
+| glow | `glow(outline-width blur-width offset-x offset-y color)` | grown, then blurred, offset |
+| blur | `blur(width color)` | a blurred copy |
+
+```css
+h1   { font-size: 32px; color: #ffffff; font-effect: shadow(2px 2px #000000), outline(1px #202020); }
+.hot { font-effect: glow(2px 6px 0px 0px #40ff40); }
+```
+
+- All four draw behind the text, in the order written; the text keeps its `color`. The
+  effect's colour is multiplied by the element's `opacity`.
+- Lengths are whole CSS `px` (`2px`; the number is read, the unit is not converted).
+- Effect bitmaps are made at document resolution: on a high-DPI screen outline, glow and
+  blur edges are slightly softer than the text itself; shadows are as sharp as the text.
+- Synthetic italic slants the effects with the text.
+- Standard CSS `text-shadow` and `-webkit-text-stroke` are not read yet (later phases map
+  them): write `font-effect`.
 
 ## C++ API
 
@@ -180,8 +211,7 @@ bool hovered = menu.getElementById("play").isPseudoClassSet("hover");
   border styles, `%` radii, `!important`, `:root`, `:is`/`:where`/`:has` (phase 3).
 - Rendering: clipping to rounded corners and inside transforms, `box-shadow`, gradients,
   filters (`blur`, `drop-shadow`), `mask-image`, group `opacity` (phase 1).
-- Text: font effects (`font-effect`: shadow, outline, glow), synthetic bold and italic,
-  `@font-face` (phases 1-2).
+- Text: `@font-face`, CSS `text-shadow` (phases 2-3).
 - Input: keyboard, focus, text fields, mouse wheel, enter/leave, multi-touch, cursor shapes,
   clipboard, IME (phase 1).
 - Scripting: the Lua API (`document:getElementById`, `addEventListener`, ...), data binding,

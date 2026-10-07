@@ -2024,8 +2024,12 @@ deferred texture release of phase 0 §3.6.4 stays valid), glyphs are keyed by
 `(FontFace*, glyphIndex, rasterPixelSize)` plus the effect fingerprint, and versions bump
 the one global `GetVersion`.
 
-- **`PrepareFontEffects(face, effects)`** returns a handle to a `FontEffectSet`, cached by
-  `(face, effects fingerprint)` (`FontEffect::GetFingerprint`).
+- **`PrepareFontEffects(face, effects)`** returns a handle to an effect set
+  (`RmlFontEffects::Set`), cached by the effects' fingerprints (`FontEffect::GetFingerprint`,
+  which RmlUi's parser computes from the type and every property, colour included; the
+  instance address for an effect made without the parser). *As implemented:* the set does
+  not depend on the face (glyphs are made per face when a string is generated), so it is not
+  part of the key; sets live until `Shutdown`, because RmlUi keeps the handles.
 - **One `EffectLayer` per effect.**
   - For effects with `HasUniqueTexture()` (outline, glow, blur), the layer owns a glyph atlas
     (RGBA8, premultiplied). Each glyph is generated on demand from the `FontFace::rasterizeGlyph`
@@ -2034,6 +2038,12 @@ the one global `GetVersion`.
     ColorFormat::A8}` (`Include/RmlUi/Core/FontGlyph.h`). It is sized with
     `GetGlyphMetrics(origin, dims, glyph)` and filled with `GenerateGlyphTexture(dest, dims,
     stride, glyph)`.
+  - *As implemented:* effect glyphs are made at **document resolution** (raster scale 1,
+    keyed by the document pixel size and the effect id), whatever the context's raster scale.
+    RmlUi's effects size their work in pixels of the bitmap they are given (outline width,
+    blur radius), and `font-effect` lengths are CSS px: a bitmap at the raster scale would
+    make a 2px outline 1 CSS px thin on a 2x screen. The cost is slightly softer effect
+    edges on high-DPI targets; contexts with different scales share effect glyphs.
   - Shadow (shared texture) reuses the base atlas with the effect's origin offset.
   - Atlas pages are `CallbackTexture`s created through `GenerateTexture`, packed with phase
     0's `GlyphAtlas` (RGBA8 variant), append-only: a full page starts a new page, never a
@@ -2053,7 +2063,14 @@ the one global `GetVersion`.
 `bold`), glyphs are emboldened by dilating the coverage bitmap by `max(1, size/24)` physical
 px and the advance grows by the same amount; when italic is requested and only an upright
 face exists, quads are sheared by 12° (`x += (baseline - y) * tan 12°`, CSS
-`font-synthesis` default). Both are part of the glyph cache key.
+`font-synthesis` default). Both are part of the glyph cache key. *As implemented:* the
+strength is `max(1, size/24)` **document** px (layout does not change with the raster scale);
+the bitmap dilation is that times the raster scale, rounded, at least 1 physical px, and
+spreads right and up (FreeType's `FT_Bitmap_Embolden` direction: baseline and left edge stay).
+Every glyph of an emboldened face with a non-zero advance grows by the strength, in
+`GetStringWidth` and `GenerateString` alike. The italic shear is geometry only (the bitmap is
+the upright one), so only the bold dilation is in the glyph key; effect quads are sheared
+with the text. Synthesis applies to every face of the chain (fallback faces too).
 
 **Per-context raster scale** (deferred here by phase 0 D5): phase 0 has one global
 `setRasterScale`. With texture contexts (own pixel ratio) next to the screen context, a
@@ -2061,7 +2078,13 @@ global scale would flip every frame. `RmlFontEngine::setRasterScale(Rml::RenderM
 float)` stores the scale per render manager (one per `HtmlUIContext`); `GenerateString`
 uses the scale of the `render_manager` it is given; the glyph cache key already contains
 `rasterPixelSize`, so contexts with different scales share faces and keep separate glyphs.
-The global version bumps only when a context's scale changes.
+The global version bumps only when a context's scale changes. *As implemented:* phase 0's
+`setRasterScale(float)` stays as the default for render managers without their own scale
+(it keeps its phase-0 behaviour of dropping glyphs, and is only called by tests);
+`getRasterScale(const RenderManager&)` reads a context's scale; the per-manager scales are
+dropped by `ReleaseFontResources` (RmlUi's `ReleaseRenderManagers` goes through it, and a
+later manager may reuse an address). `GlyphAtlas` gains a `bytesPerPixel` constructor
+argument (1 = R8, 4 = RGBA8) for the effect pages.
 
 ---
 
