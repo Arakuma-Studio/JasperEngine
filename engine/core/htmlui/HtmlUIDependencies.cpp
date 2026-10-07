@@ -183,7 +183,9 @@ namespace {
         Scanner(const std::string& text, const std::string& fromFile): text(text), fromFile(fromFile), lines(text){
         }
 
-        bool add(const std::string& raw, size_t offset, HtmlUIReference::Kind kind, bool kindFromPath){
+        // rootRelative: a path RmlUi opens as it is, from the asset root (RCSS's bare
+        // @font-face src), not relative to the file that holds it
+        bool add(const std::string& raw, size_t offset, HtmlUIReference::Kind kind, bool kindFromPath, bool rootRelative = false){
             const std::string value = trim(raw);
             if (isSkipped(value))
                 return false;
@@ -194,6 +196,8 @@ namespace {
             lines.locate(offset, reference.line, reference.column);
             reference.remote = isRemote(value);
             reference.path = reference.remote ? value : stripQuery(value);
+            if (rootRelative && !reference.remote && !isAbsolutePath(reference.path) && reference.path.rfind("asset://", 0) != 0)
+                reference.path = "asset://" + reference.path;
             if (kindFromPath){
                 kind = kindFromExtension(reference.path);
                 // a template is only a template where it is linked as one
@@ -337,8 +341,8 @@ namespace {
                         continue;
                     }
 
-                    // @spritesheet { src: atlas.png; }
-                    if (name == "src" && block == "spritesheet"){
+                    // @spritesheet { src: atlas.png; } and RCSS's @font-face { src: font.ttf; }
+                    if (name == "src" && (block == "spritesheet" || block == "font-face")){
                         size_t pos = nameEnd;
                         while (pos < end && isSpace(text[pos])) pos++;
                         if (pos < end && text[pos] == ':'){
@@ -353,7 +357,10 @@ namespace {
                                     value = value.substr(1, value.size() - 2);
                                     valueOffset++;
                                 }
-                                add(value, valueOffset, HtmlUIReference::IMAGE, false);
+                                if (block == "font-face")
+                                    add(value, valueOffset, HtmlUIReference::FONT, false, true);
+                                else
+                                    add(value, valueOffset, HtmlUIReference::IMAGE, false);
                                 i = stop;
                                 continue;
                             }

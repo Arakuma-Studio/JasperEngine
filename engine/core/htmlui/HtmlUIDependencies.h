@@ -39,7 +39,9 @@ namespace jasperengine {
     // order they are found:
     // - HTML: link[href], img[src], svg[src], lottie[src], template[src]; @import and url(...)
     //   in <style> and style="";
-    // - CSS: @import, url(...), @font-face src, @spritesheet src, decorator image(...)/svg(...).
+    // - CSS: @import, url(...), @font-face src (url(), or RCSS's bare path, which RmlUi 6.3
+    //   opens from the asset root), @spritesheet src,
+    //   decorator image(...)/svg(...).
     // data: URIs, fragments (#id) and data:// / lua:// paths are not files and are skipped.
     // reader = nullptr reads through Data (the engine's asset rules: asset path, packs).
     JASPERENGINE_API std::vector<HtmlUIReference> collectHtmlUIReferences(const std::string& documentPath,

@@ -29,8 +29,9 @@ namespace {
     }
 
     // resolves "." and ".." like FileData::simplifyPath, always with '/'; ".." above the
-    // root is dropped
+    // root is dropped; an absolute path stays absolute
     std::string simplifyPath(const std::string& path){
+        const bool absolute = !path.empty() && path[0] == '/';
         std::vector<std::string> parts;
         size_t start = 0;
         while (start <= path.size()){
@@ -49,7 +50,7 @@ namespace {
             start = end + 1;
         }
 
-        std::string result;
+        std::string result = absolute ? "/" : "";
         for (size_t i = 0; i < parts.size(); i++){
             if (i > 0)
                 result += '/';

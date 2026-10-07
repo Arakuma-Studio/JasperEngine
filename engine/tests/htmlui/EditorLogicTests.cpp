@@ -478,7 +478,8 @@ namespace {
         "#b { decorator: svg( icons/b.svg ); }\n"                                    // 3
         "#c { decorator: image(sprite-name); }\n"                                    // 4
         "/* url(commented.png) */ #d { decorator: image(../../outside.png); }\n"     // 5
-        "@spritesheet sheet { src: atlas.png; icon: 0px 0px 16px 16px; }\n";         // 6
+        "@spritesheet sheet { src: atlas.png; icon: 0px 0px 16px 16px; }\n"          // 6
+        "@font-face { font-family: Y; src: y.otf; }\n";                              // 7
 
     const std::string scannedTheme = ".t {\n    background-image: url(img/t.png?v=2);\n}\n";
 
@@ -487,7 +488,7 @@ namespace {
             {"ui/doc.html", scannedDocument}, {"ui/doc.css", scannedStyleSheet}, {"ui/theme.css", scannedTheme},
             {"ui/extra.css", ""}, {"ui/img/bg.png", "x"}, {"ui/icons/a.png", "x"}, {"ui/img/logo.png", "x"},
             {"ui/icons/star.svg", "x"}, {"ui/anim/spin.json", "x"}, {"fonts/x.ttf", "x"}, {"ui/icons/b.svg", "x"},
-            {"ui/atlas.png", "x"}, {"ui/img/t.png", "x"}
+            {"ui/atlas.png", "x"}, {"y.otf", "x"}, {"ui/img/t.png", "x"}
         };
     }
 
@@ -518,6 +519,8 @@ TEST(HtmlUIDependencies, CollectsEveryReferenceWithPositions){
         {"ui/icons/b.svg", K::SVG, "ui/doc.css", 3, columnOf(c, 3, "icons/b.svg"), false, false, false},
         {"outside.png", K::IMAGE, "ui/doc.css", 5, columnOf(c, 5, "../../outside.png"), false, true, true},
         {"ui/atlas.png", K::IMAGE, "ui/doc.css", 6, columnOf(c, 6, "atlas.png"), false, false, false},
+        // RCSS's bare @font-face src: RmlUi opens it from the asset root
+        {"y.otf", K::FONT, "ui/doc.css", 7, columnOf(c, 7, "y.otf"), false, false, false},
         {"ui/img/t.png", K::IMAGE, "ui/theme.css", 2, columnOf(t, 2, "img/t.png"), false, false, false},
     });
 

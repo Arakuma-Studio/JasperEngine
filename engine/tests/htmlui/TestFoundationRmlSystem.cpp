@@ -52,6 +52,9 @@ TEST(RmlSystemTest, JoinPathAbsoluteAndUrl){
     EXPECT_EQ(join("ui/m.html", "https://example.com/a.css"), "https://example.com/a.css");
     EXPECT_EQ(join("ui/m.html", "C:/fonts/a.ttf"), "C:/fonts/a.ttf");
     EXPECT_EQ(join("ui/m.html", "d:\\fonts\\a.ttf"), "d:\\fonts\\a.ttf");
+    // a document opened by an absolute path (hot reload tests, tools) keeps its links absolute
+    EXPECT_EQ(join("/tmp/p/ui/m.html", "x.css"), "/tmp/p/ui/x.css");
+    EXPECT_EQ(join("/tmp/p/ui/m.html", "../img/x.png"), "/tmp/p/img/x.png");
 }
 
 TEST(RmlSystemTest, JoinPathPipeRestored){

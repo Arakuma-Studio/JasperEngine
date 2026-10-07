@@ -165,7 +165,7 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     UIElement box = document.getElementById("box");
     ASSERT_TRUE(box.isValid());
     Rml::Element* rmlBox = rml->GetElementById("box");
-    EXPECT_EQ(backgroundOf(rmlBox), "255, 0, 0, 255");
+    EXPECT_EQ(backgroundOf(rmlBox), "#ff0000");
 
     std::string css = reloadCss;
     css.replace(css.find("#ff0000"), 7, "#00ff00");
@@ -180,7 +180,7 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), rml);
     EXPECT_TRUE(box.isValid());
     EXPECT_EQ(rml->GetElementById("box"), rmlBox);
-    EXPECT_EQ(backgroundOf(rmlBox), "0, 255, 0, 255");
+    EXPECT_EQ(backgroundOf(rmlBox), "#00ff00");
     EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 2u);
 
     // the second caller (MCP's sync after the editor's watcher) finds the stamps current
@@ -324,7 +324,7 @@ TEST_F(UIDocumentReloadTest, MissingStyleSheetCreatedLater){
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_TRUE(reloaded[0].stylesheetOnly);
     Rml::Element* box = documentSystem(scene).getDocument(document.getEntity())->GetElementById("box");
-    EXPECT_EQ(backgroundOf(box), "0, 0, 255, 255");
+    EXPECT_EQ(backgroundOf(box), "#0000ff");
     EXPECT_EQ(errors(), 0u);
 }
 
@@ -347,11 +347,9 @@ TEST_F(UIDocumentReloadTest, ImageChangeKeepsTheDocument){
 
 TEST_F(UIDocumentReloadTest, FontChangeReloadsTheDocument){
     fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/fonts/Roboto-Bold.ttf", dir / "face.ttf");
-    write("font.html",
-          "<html><head><style>\n"
-          "@font-face { font-family: \"Face\"; src: url(face.ttf); }\n"
-          "body { display: block; font-family: Face; font-size: 20px; }\n"
-          "</style></head><body><p id=\"text\">Text</p></body></html>\n");
+    // RmlUi 6.3 opens a bare @font-face src as it is (from the asset root): an absolute path here
+    write("font.css", "@font-face { font-family: Face; src: " + path("face.ttf") + "; }\nbody { display: block; font-family: Face; font-size: 20px; }\n");
+    write("font.html", "<html><head><link type=\"text/css\" href=\"font.css\"/></head><body><p id=\"text\">Text</p></body></html>\n");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
     UIDocument document = fixture.addDocument(path("font.html"));
