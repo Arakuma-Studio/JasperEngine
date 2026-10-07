@@ -18,7 +18,7 @@ scripts. Every edit you make through tools is an undoable editor command, visibl
 watching. Build scenes with tools, write code with your own file tools, verify by playing,
 screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, Unity glossary).
+C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -193,6 +193,9 @@ R"JE(
   create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes and UI
   scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI
   camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
+- HTML/CSS UI: a uidocument component (filename = an .html under assets) draws that document
+  over its scene, in front of the component UI. Phase 0 documents are XML-well-formed HTML
+  styled with RmlUi's RCSS, not browser CSS: read jasper://docs/html-ui before writing one.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

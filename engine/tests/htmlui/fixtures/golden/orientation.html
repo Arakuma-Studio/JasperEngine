@@ -1,0 +1,20 @@
+<html>
+<head>
+    <title>orientation</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        /* one color per corner: a Y flip in the offscreen pass, the composite or the
+           readback moves them */
+        .mark { width: 100px; height: 50px; }
+        #red { left: 10px; top: 10px; background-color: #ff0000; }
+        #green { right: 10px; top: 10px; background-color: #00ff00; }
+        #blue { left: 10px; bottom: 10px; background-color: #0000ff; }
+    </style>
+</head>
+<body>
+    <div id="red" class="abs mark"/>
+    <div id="green" class="abs mark"/>
+    <div id="blue" class="abs mark"/>
+</body>
+</html>

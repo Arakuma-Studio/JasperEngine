@@ -1,0 +1,10 @@
+/* GNU ld / lld version script of the shared engine (libjasperengine.so, the editor's):
+   every symbol whose demangled name mentions RmlUi stays local. Engine code builds with
+   default visibility, so the std templates it instantiates over RmlUi types (containers of
+   Rml::Vertex, Rml::ElementDocument*, ...) and members taking RmlUi types would otherwise be
+   exported; --exclude-libs only covers librmlui.a's own objects. RmlUi is an engine detail
+   (docs/html-ui/DESIGN.md, swappable core). */
+{
+    global: *;
+    local: extern "C++" { *Rml::*; };
+};

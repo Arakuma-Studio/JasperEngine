@@ -1,0 +1,30 @@
+<html>
+<head>
+    <title>text fallback rtl</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        .line { left: 10px; font-size: 24px; }
+        #latin { top: 10px; }
+        #cyrillic { top: 45px; color: #ffc040; }
+        #greek { top: 80px; color: #40c0ff; }
+        /* RCSS: -rmlui-direction is the base direction (CSS direction comes with phase 2) */
+        #arabic { left: 330px; top: 10px; width: 300px; font-size: 24px; line-height: 36px; text-align: right;
+                  -rmlui-direction: rtl; background-color: #303030; }
+        #mixed { top: 130px; color: #c0ff80; }
+        /* unquoted list: RmlUi 6.3 rejects quoted family names (phase 2 rewrites them) */
+        #missing { top: 175px; font-family: Missing Font, sans-serif; color: #ff80c0; }
+        /* U+4E2D is in no built-in font: tofu or nothing, no crash */
+        #uncovered { top: 220px; }
+    </style>
+</head>
+<body>
+    <div id="latin" class="abs line">Latin: Hello, world</div>
+    <div id="cyrillic" class="abs line">Привет, мир</div>
+    <div id="greek" class="abs line">Γειά σου, κόσμε</div>
+    <div id="arabic" class="abs">مرحبا بالعالم، هذا نص عربي</div>
+    <div id="mixed" class="abs line">Mixed مرحبا bidi 123</div>
+    <div id="missing" class="abs line">Missing Font falls back</div>
+    <div id="uncovered" class="abs line">Uncovered: 中 end</div>
+</body>
+</html>

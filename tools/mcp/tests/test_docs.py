@@ -3,7 +3,7 @@ prompts."""
 
 from harness import Editor, ProtocolError
 
-DOCS = ["cpp-scripting", "lua-api", "physics", "prefabs", "shaders", "unity-glossary"]
+DOCS = ["cpp-scripting", "html-ui", "lua-api", "physics", "prefabs", "shaders", "unity-glossary"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:
