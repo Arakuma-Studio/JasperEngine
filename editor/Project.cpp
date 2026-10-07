@@ -2888,10 +2888,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
-    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+        for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            insertKeys(variant.first, variant.second, 0);
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d

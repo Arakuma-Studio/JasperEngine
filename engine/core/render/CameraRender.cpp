@@ -27,6 +27,14 @@ void CameraRender::setLoadActionLoad(){
     backend.setLoadActionLoad();
 }
 
+void CameraRender::setColorActions(LoadAction load, StoreAction store, Vector4 clearColor){
+    backend.setColorActions(load, store, clearColor);
+}
+
+void CameraRender::setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth, uint8_t clearStencil){
+    backend.setDepthStencilActions(load, store, clearDepth, clearStencil);
+}
+
 void CameraRender::startRenderPass(FramebufferRender* framebuffer, size_t face){
     backend.startRenderPass(framebuffer, face);
 }
@@ -45,6 +53,14 @@ void CameraRender::applyViewport(Rect rect){
 
 void CameraRender::applyScissor(Rect rect){
     backend.applyScissor(rect);
+}
+
+void CameraRender::applyScissorTopLeft(int x, int y, int width, int height){
+    backend.applyScissorTopLeft(x, y, width, height);
+}
+
+void CameraRender::applyViewportTopLeft(int x, int y, int width, int height){
+    backend.applyViewportTopLeft(x, y, width, height);
 }
 
 void CameraRender::endRenderPass(){

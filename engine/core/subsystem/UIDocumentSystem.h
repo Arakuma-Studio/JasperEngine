@@ -96,7 +96,9 @@ namespace jasperengine{
         // ---- phase 1. Declared by the wave-0 commit, defined by each package in its own .cpp ----
 
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
-        // camera-aware composite; drawComposite(PipelineType, bool) becomes a thin wrapper of it
+        // camera-aware composite: UI and orthographic cameras draw the canvas rectangle in world
+        // space (the editor's Scene view shows it in place), perspective ones fill the viewport
+        // like drawComposite(PipelineType, bool)
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to

@@ -861,6 +861,8 @@
 		718FDDF92837CA9A00AF314C /* glsl330.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF32837CA9A00AF314C /* glsl330.h */; };
 		718FDDFA2837CA9A00AF314C /* hlsl5.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF42837CA9A00AF314C /* hlsl5.h */; };
 		71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
+		503152450000000000000002 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
+		503152450000000000000003 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
 		71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		71A41CB729AC3D7C006953D3 /* SokolCmdQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */; };
 		71A800032AD9A001007C91BA /* harfbuzz.cc in Sources */ = {isa = PBXBuildFile; fileRef = 71A800012AD9A001007C91BA /* harfbuzz.cc */; };
@@ -2983,6 +2985,7 @@
 		718FDDF32837CA9A00AF314C /* glsl330.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glsl330.h; sourceTree = "<group>"; };
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
+		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
 		71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolCmdQueue.h; sourceTree = "<group>"; };
 		71A800012AD9A001007C91BA /* harfbuzz.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = harfbuzz.cc; sourceTree = "<group>"; };
 		71A800022AD9A001007C91BA /* hb.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hb.h; sourceTree = "<group>"; };
@@ -5382,6 +5385,7 @@
 				7162FC8B25962A0E0075B97D /* SokolBuffer.cpp */,
 				7162FC8E25962A0E0075B97D /* SokolBuffer.h */,
 				71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */,
+				503152450000000000000001 /* SokolPipelineCache.cpp */,
 				71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */,
 				71CC83A926B8D54800EEBB93 /* SokolFramebuffer.cpp */,
 				71CC83A826B8D54800EEBB93 /* SokolFramebuffer.h */,
@@ -8736,6 +8740,7 @@
 				A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */,
 				713D8295259D307F00567F9F /* UserSettings.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
+				503152450000000000000003 /* SokolPipelineCache.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000046 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE628F8EF9F0074442E /* XMLUtils.cpp in Sources */,
@@ -8977,6 +8982,7 @@
 				A6E16455A1CC719DB7052664 /* PrefabAsset.cpp in Sources */,
 				7162FE102596A5BE0075B97D /* SokolCamera.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
+				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000045 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE528F8EF9F0074442E /* XMLUtils.cpp in Sources */,

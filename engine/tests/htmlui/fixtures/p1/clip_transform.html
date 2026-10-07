@@ -1,0 +1,18 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G04: a rotated (15deg) and scaled overflow:hidden container clips its children
+           through the stencil, drawn with the same transform */
+        #box { left: 120px; top: 100px; width: 200px; height: 140px; overflow: hidden; background-color: #303070;
+               transform: rotate(15deg) scale(1.2); }
+        /* in normal flow: RmlUi masks a transformed box only when its content overflows */
+        #wide { margin-left: -60px; margin-top: 40px; width: 400px; height: 40px; background-color: #f08020; }
+        #tall { margin-left: 80px; margin-top: -120px; width: 40px; height: 300px; background-color: #20c0f0; }
+    </style>
+</head>
+<body>
+    <div id="box" class="abs"><div id="wide"/><div id="tall"/></div>
+</body>
+</html>

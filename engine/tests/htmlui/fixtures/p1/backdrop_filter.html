@@ -1,0 +1,24 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G11: backdrop-filter blurs what is behind the panel */
+        .stripe { top: 0px; width: 40px; height: 384px; }
+        #s1 { left: 0px; background-color: #e04040; } #s2 { left: 80px; background-color: #40e040; }
+        #s3 { left: 160px; background-color: #4040e0; } #s4 { left: 240px; background-color: #e0e040; }
+        #s5 { left: 320px; background-color: #40e0e0; } #s6 { left: 400px; background-color: #e040e0; }
+        #image { left: 300px; top: 220px; width: 120px; height: 120px; }
+        #words { left: 20px; top: 250px; width: 300px; font-size: 40px; color: #ffffff; }
+        #panel { left: 100px; top: 60px; width: 300px; height: 220px; border-radius: 20px; background-color: #ffffff40;
+                 backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body>
+    <div id="s1" class="abs stripe"/><div id="s2" class="abs stripe"/><div id="s3" class="abs stripe"/>
+    <div id="s4" class="abs stripe"/><div id="s5" class="abs stripe"/><div id="s6" class="abs stripe"/>
+    <img id="image" class="abs" src="../common/checker.png"/>
+    <div id="words" class="abs">Behind glass</div>
+    <div id="panel" class="abs"/>
+</body>
+</html>

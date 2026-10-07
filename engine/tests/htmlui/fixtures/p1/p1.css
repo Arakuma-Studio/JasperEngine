@@ -1,0 +1,4 @@
+/* Shared by the phase-1 renderer goldens (golden/p1/): a transparent body the size of the
+   512x384 context, absolutely placed boxes. RCSS syntax (what RmlUi 6.3 accepts). */
+body { position: absolute; left: 0; top: 0; width: 512px; height: 384px; margin: 0; padding: 0; }
+.abs { position: absolute; }

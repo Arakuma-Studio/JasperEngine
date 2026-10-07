@@ -262,8 +262,7 @@ TEST_F(RmlRendererGoldenTest, Many){
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
-    // 5000 boxes of 4x4 px on a 5 px grid, 125 per row: the streams grow past their
-    // initial 16384 vertices
+    // 5000 boxes of 4x4 px on a 5 px grid, 125 per row: many geometries in few buffers
     std::string rml = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"render.css\"/>"
                       "<style>#grid { position: absolute; left: 7px; top: 30px; width: 627px; display: flex; flex-wrap: wrap; }"
                       " #grid div { width: 4px; height: 4px; margin-right: 1px; margin-bottom: 1px; }</style></head><body><div id=\"grid\">";
@@ -277,7 +276,7 @@ TEST_F(RmlRendererGoldenTest, Many){
     // the document's url places it next to the fixtures, for its stylesheet links
     ASSERT_NE(test.loadFromMemory(rml, "render/many.html"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
-    EXPECT_GT(test.renderer.getVertexCapacity(), 16384u);
+    EXPECT_LT(test.renderer.getGeometryBufferCount(), 64u);
     EXPECT_GE(test.renderer.getLastFrameDrawCount(), 5000u);
 
     std::vector<uint8_t> screen;

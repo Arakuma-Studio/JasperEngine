@@ -5,6 +5,7 @@
 #define sokolobject_h
 
 #include "render/Render.h"
+#include "render/PipelineState.h"
 #include "buffer/Attribute.h"
 #include "render/BufferRender.h"
 #include "render/ShaderRender.h"
@@ -50,6 +51,11 @@ namespace jasperengine{
         sg_pipeline zprepass_rtt_pip;
 
         sg_pipeline_desc pipeline_desc;
+
+        // the dynamic path (endLoadDynamic): shader, vertex layout, index and primitive type;
+        // its pipelines belong to SokolPipelineCache
+        sg_pipeline_desc baseDesc;
+        bool dynamicLoaded;
 
         // the face state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         bool loadFaceCulling;
@@ -101,17 +107,22 @@ namespace jasperengine{
         // keeping the same per-slot layout/offset (used to swap a per-view instance
         // buffer in just before draw). Affects only the bindings, not the pipeline.
         void replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer, size_t byteOffset);
-        void setIndexBuffer(sg_buffer buffer);
+        void setIndexBuffer(sg_buffer buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void setBlendState(const BlendState& state);
         // prepassFaceCulling applies to the PIP_ZPREPASS pipelines, which must cull like the color pass
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
+        // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
+        bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere)
         bool beginDraw(PipelineType pipType, bool disableFaceCulling = false);
+        // the cached pipeline of that state (SokolPipelineCache), applied unless it is the one
+        // applied last in this pass
+        bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 

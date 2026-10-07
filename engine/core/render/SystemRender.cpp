@@ -33,6 +33,22 @@ uint64_t SystemRender::getFrameCount(){
     return committedFrames;
 }
 
+const RenderFeatures& SystemRender::getFeatures(){
+    return SokolSystem::getFeatures();
+}
+
+uint64_t SystemRender::getPipelineCacheMisses(){
+    return SokolSystem::getPipelineCacheMisses();
+}
+
+uint64_t SystemRender::getPipelineApplies(){
+    return SokolSystem::getPipelineApplies();
+}
+
+size_t SystemRender::getPipelineCacheSize(){
+    return SokolSystem::getPipelineCacheSize();
+}
+
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
 }

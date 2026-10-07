@@ -1,0 +1,33 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G09: the colour-matrix filters on the same four-colour tile */
+        .tile { top: 40px; width: 60px; height: 120px; }
+        .tile div { position: absolute; left: 0px; width: 60px; height: 30px; }
+        .tile .q1 { top: 0px; background-color: #c03020; }
+        .tile .q2 { top: 30px; background-color: #30a040; }
+        .tile .q3 { top: 60px; background-color: #2050c0; }
+        .tile .q4 { top: 90px; background-color: #808080; }
+        #brightness { left: 10px; filter: brightness(1.5); }
+        #contrast { left: 80px; filter: contrast(2); }
+        #grayscale { left: 150px; filter: grayscale(1); }
+        #hue { left: 220px; filter: hue-rotate(90deg); }
+        #invert { left: 290px; filter: invert(1); }
+        #saturate { left: 360px; filter: saturate(3); }
+        #sepia { left: 430px; filter: sepia(1); }
+        #reference { left: 10px; top: 220px; }
+    </style>
+</head>
+<body>
+    <div id="brightness" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="contrast" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="grayscale" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="hue" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="invert" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="saturate" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="sepia" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+    <div id="reference" class="abs tile"><div class="q1"/><div class="q2"/><div class="q3"/><div class="q4"/></div>
+</body>
+</html>
