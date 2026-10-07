@@ -27,32 +27,6 @@ namespace jasperengine{
 
 using namespace jasperengine;
 
-namespace {
-
-    // engine modifier bits (Input.h) to RmlUi's
-    int toRmlModifiers(int mods){
-        int result = 0;
-        if (mods & D_MODIFIER_SHIFT) result |= Rml::Input::KM_SHIFT;
-        if (mods & D_MODIFIER_CONTROL) result |= Rml::Input::KM_CTRL;
-        if (mods & D_MODIFIER_ALT) result |= Rml::Input::KM_ALT;
-        if (mods & D_MODIFIER_SUPER) result |= Rml::Input::KM_META;
-        if (mods & D_MODIFIER_CAPS_LOCK) result |= Rml::Input::KM_CAPSLOCK;
-        if (mods & D_MODIFIER_NUM_LOCK) result |= Rml::Input::KM_NUMLOCK;
-        return result;
-    }
-
-    // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); -1 for the others
-    int toRmlButton(int button){
-        switch (button){
-            case D_MOUSE_BUTTON_LEFT: return 0;
-            case D_MOUSE_BUTTON_RIGHT: return 1;
-            case D_MOUSE_BUTTON_MIDDLE: return 2;
-            default: return -1;
-        }
-    }
-
-}
-
 UIDocumentSystem::UIDocumentSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<UIDocumentComponent>());
 }
@@ -69,13 +43,13 @@ void UIDocumentSystem::load(){
 void UIDocumentSystem::destroyContext(){
     scriptContextDestroying();
     documents.clear();
+    inputState.reset();
     delete context;
     context = nullptr;
     if (acquired){
         HtmlUI::release();
         acquired = false;
     }
-    pointerCaptured = false;
 }
 
 void UIDocumentSystem::destroy(){
@@ -220,6 +194,8 @@ void UIDocumentSystem::update(double dt){
         applyComponent(components->getEntity(i), components->getComponentFromIndex(i));
     }
 
+    // control characters that came without their key down this frame, before the layout
+    updateInput();
     context->update();
     scriptUpdate();
 }
@@ -275,44 +251,17 @@ void UIDocumentSystem::toContext(float& x, float& y) const{
         y = y * (float)dimensions.y / (float)canvasHeight;
 }
 
+// phase-0 entry points: the mouse (touch = false), phase-1 methods in UIDocumentSystemInput.cpp
 bool UIDocumentSystem::eventOnPointerDown(int button, float x, float y, int mods){
-    const int rmlButton = toRmlButton(button);
-    if (rmlButton < 0 || !hasVisibleDocument())
-        return false;
-
-    const int rmlMods = toRmlModifiers(mods);
-    toContext(x, y);
-    context->processMouseMove(Rml::Vector2f(x, y), rmlMods);
-    context->processMouseButtonDown(rmlButton, rmlMods);
-
-    const bool consumed = context->isPointerOverContent();
-    pointerCaptured = consumed;
-    return consumed;
+    return eventOnPointerDown(0, button, x, y, mods, false);
 }
 
 bool UIDocumentSystem::eventOnPointerUp(int button, float x, float y, int mods){
-    const int rmlButton = toRmlButton(button);
-    // a release after a consumed press always reaches the context, so nothing stays active
-    if (rmlButton < 0 || !context || (!pointerCaptured && !hasVisibleDocument()))
-        return false;
-
-    const int rmlMods = toRmlModifiers(mods);
-    toContext(x, y);
-    context->processMouseMove(Rml::Vector2f(x, y), rmlMods);
-    const bool overContent = context->isPointerOverContent();
-    context->processMouseButtonUp(rmlButton, rmlMods);
-
-    const bool consumed = pointerCaptured || overContent;
-    pointerCaptured = false;
-    return consumed;
+    return eventOnPointerUp(0, button, x, y, mods, false);
 }
 
 bool UIDocumentSystem::eventOnPointerMove(float x, float y, int mods){
-    if (!hasVisibleDocument())
-        return false;
-
-    toContext(x, y);
-    return context->processMouseMove(Rml::Vector2f(x, y), toRmlModifiers(mods));
+    return eventOnPointerMove(0, x, y, mods, false);
 }
 
 void UIDocumentSystem::setReferenceSize(int width, int height){

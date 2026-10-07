@@ -950,6 +950,7 @@
 		71C33FBD2A315918007A5822 /* Model.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E36B5325D5994100EFEED4 /* Model.cpp */; };
 		71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */; };
 		71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */; };
+		71C5A10B2F0A11B000A1B2C0 /* MacTextInputClient.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */; };
 		71CC839526B8C4D800EEBB93 /* Light.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71CC839326B8C4D800EEBB93 /* Light.cpp */; };
 		71CC839626B8C4D800EEBB93 /* Light.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71CC839326B8C4D800EEBB93 /* Light.cpp */; };
 		71CC839726B8C4D800EEBB93 /* Light.h in Headers */ = {isa = PBXBuildFile; fileRef = 71CC839426B8C4D800EEBB93 /* Light.h */; };
@@ -1753,6 +1754,12 @@
 		48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
 		48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
 		48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
+		48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
+		48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D4 /* RmlKeyMap.cpp */; };
+		48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D4 /* RmlKeyMap.cpp */; };
+		48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */; };
+		48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */; };
 		48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
 		48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */; };
 		48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */; };
@@ -3411,6 +3418,9 @@
 		71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacViewMetal.h; sourceTree = "<group>"; };
 		71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacViewMetal.mm; sourceTree = "<group>"; };
 		71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyCodesMac.h; sourceTree = "<group>"; };
+		71C5A1082F0A11B000A1B2C0 /* MacTextInputClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacTextInputClient.h; sourceTree = "<group>"; };
+		71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacTextInputClient.mm; sourceTree = "<group>"; };
+		71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyCodesIOS.h; sourceTree = "<group>"; };
 		71CC839126B8C49B00EEBB93 /* SkyboxComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SkyboxComponent.h; sourceTree = "<group>"; };
 		71CC839226B8C49B00EEBB93 /* LightComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LightComponent.h; sourceTree = "<group>"; };
 		71CC839326B8C4D800EEBB93 /* Light.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Light.cpp; sourceTree = "<group>"; };
@@ -3884,6 +3894,12 @@
 		48544D4C00000000000002B8 /* UIValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIValue.h; sourceTree = "<group>"; };
 		48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemReload.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContextInput.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D3 /* RmlKeyMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlKeyMap.h; sourceTree = "<group>"; };
+		48544D4C00000000000002D4 /* RmlKeyMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlKeyMap.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002D7 /* RmlTextInputHandler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlTextInputHandler.h; sourceTree = "<group>"; };
+		48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlTextInputHandler.cpp; sourceTree = "<group>"; };
+		48544D4C00000000000002DB /* Utf16Combiner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Utf16Combiner.h; sourceTree = "<group>"; };
 		48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemRender.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemScript.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemTexture.cpp; sourceTree = "<group>"; };
@@ -4864,6 +4880,7 @@
 				713D8336259D407A00567F9F /* AppDelegate.m */,
 				710AD75025B733E100A7B12F /* EngineView.h */,
 				710AD75125B7343400A7B12F /* EngineView.mm */,
+				71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */,
 				713D8335259D407A00567F9F /* main.m */,
 				713D8337259D407A00567F9F /* ViewController.h */,
 				713D8334259D407A00567F9F /* ViewController.m */,
@@ -5026,6 +5043,7 @@
 				71ABBD27277A3210001CE3AF /* STBText.h */,
 				71ABBD26277A3210001CE3AF /* STBText.cpp */,
 				7128D0AD25BB18DC00965B51 /* StringUtils.h */,
+				48544D4C00000000000002DB /* Utf16Combiner.h */,
 				7128D0AC25BB18DC00965B51 /* StringUtils.cpp */,
 				71FFE3FE2A369FE90089A6C9 /* ThreadUtils.h */,
 				71ABBD3A279116E1001CE3AF /* UniqueToken.h */,
@@ -6412,6 +6430,8 @@
 				71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */,
 				71C5A1002F0A11B000A1B2C0 /* MacInputRouter.h */,
 				71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */,
+				71C5A1082F0A11B000A1B2C0 /* MacTextInputClient.h */,
+				71C5A1092F0A11B000A1B2C0 /* MacTextInputClient.mm */,
 				71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */,
 				71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */,
 			);
@@ -6714,6 +6734,7 @@
 				48544D4C0000000000000006 /* HtmlUIContext.h */,
 				48544D4C0000000000000008 /* HtmlUIContext.cpp */,
 				48544D4C000000000000000B /* HtmlUIContextRender.cpp */,
+				48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */,
 				48544D4C000000000000000E /* RmlFile.h */,
 				48544D4C0000000000000010 /* RmlFile.cpp */,
 				48544D4C0000000000000013 /* RmlFontEngine.h */,
@@ -6722,6 +6743,10 @@
 				48544D4C000000000000001A /* RmlRenderer.cpp */,
 				48544D4C000000000000001D /* RmlSystem.h */,
 				48544D4C000000000000001F /* RmlSystem.cpp */,
+				48544D4C00000000000002D3 /* RmlKeyMap.h */,
+				48544D4C00000000000002D4 /* RmlKeyMap.cpp */,
+				48544D4C00000000000002D7 /* RmlTextInputHandler.h */,
+				48544D4C00000000000002D8 /* RmlTextInputHandler.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -8723,6 +8748,9 @@
 				48544D4C0000000000000034 /* TextShaper.cpp in Sources */,
 				48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */,
 				48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */,
+				48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */,
+				48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */,
 				48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */,
@@ -8770,6 +8798,7 @@
 				710AD78625B7A1F600A7B12F /* EngineView.mm in Sources */,
 				71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */,
 				71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */,
+				71C5A10B2F0A11B000A1B2C0 /* MacTextInputClient.mm in Sources */,
 				713D8323259D3F8F00567F9F /* ViewController.m in Sources */,
 				713D8325259D3F8F00567F9F /* AppDelegate.m in Sources */,
 				17995BF83003C3A800411B78 /* JasperEngineGameController.mm in Sources */,
@@ -8947,6 +8976,9 @@
 				48544D4C0000000000000035 /* TextShaper.cpp in Sources */,
 				48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */,
 				48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */,
+				48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */,
+				48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */,
+				48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */,
 				48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */,

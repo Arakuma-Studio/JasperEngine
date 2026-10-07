@@ -283,6 +283,8 @@ namespace jasperengine {
         static Framebuffer compositeFramebuffer;
 
         static bool transformCoordPos(float& x, float& y);
+        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        static void flushCharInput();
         static void calculateCanvas();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
@@ -496,7 +498,23 @@ namespace jasperengine {
         static void systemKeyDown(int key, bool repeat, int mods);
         static void systemKeyUp(int key, bool repeat, int mods);
 
+        // One UTF-16 unit where wchar_t is 16 bits (Windows): surrogate pairs are combined
+        // before HTML UI documents see them, the game and component UI get each unit
         static void systemCharInput(wchar_t codepoint);
+        // Committed text: an IME commit, a paste, a platform string. Documents get the whole
+        // string; unless a document consumed it, each code point then goes to onCharInput and
+        // the component UI.
+        static void systemTextInput(const std::string& utf8);
+        // IME composition (preedit) start or update for the focused document text field;
+        // cursor in code points from the start of the composition, -1 selects all of it
+        static void systemImeComposition(const std::string& utf8, int cursorCodepoints);
+        // drops the current composition, restoring the text it replaced
+        static void systemImeCancel();
+        // a document text field has focus: platforms route IME composition to it
+        static bool wantsTextComposition();
+        // the caret area of the focused document text field, canvas coordinates; converted
+        // to screen pixels for System::setTextInputArea
+        static void setTextInputArea(const Rect& canvasRect);
 
         static void systemGamepadConnect(int gamepad, const std::string& name);
         static void systemGamepadDisconnect(int gamepad);

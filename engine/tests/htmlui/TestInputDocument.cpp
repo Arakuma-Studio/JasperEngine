@@ -3,7 +3,7 @@
 
 // Pointer input from the engine's system* entry points to documents: :hover/:active,
 // events consumed over document elements (not over the transparent body, not through
-// pointer-events: none), touch pointer 0, scenes with UI events off, reference sizes.
+// pointer-events: none), touch pointers, scenes with UI events off, reference sizes.
 
 #include "TestDocumentCommon.h"
 
@@ -187,12 +187,13 @@ TEST_F(DocumentInputTest, TouchPointer0){
     EXPECT_EQ(touchStarts, 1);
     EXPECT_EQ(touchEnds, 1);
 
-    // other fingers do not reach documents (multi-touch is phase 1)
+    // other fingers reach documents too (phase 1 multi-touch, TestInput.cpp)
     Engine::systemTouchStart(1, buttonX, buttonY);
-    EXPECT_FALSE(button.isPseudoClassSet("active"));
-    EXPECT_EQ(touchStarts, 2);
+    EXPECT_TRUE(button.isPseudoClassSet("active"));
+    EXPECT_EQ(touchStarts, 1);
     Engine::systemTouchEnd(1, buttonX, buttonY);
-    EXPECT_EQ(touchEnds, 2);
+    EXPECT_FALSE(button.isPseudoClassSet("active"));
+    EXPECT_EQ(touchEnds, 1);
 }
 
 TEST_F(DocumentInputTest, DisabledSceneEventsIgnored){

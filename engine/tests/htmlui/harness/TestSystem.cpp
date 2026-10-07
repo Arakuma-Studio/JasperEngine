@@ -105,3 +105,24 @@ void TestSystem::clearLogs(){
     std::lock_guard<std::mutex> lock(logMutex);
     logs.clear();
 }
+
+void TestSystem::showVirtualKeyboard(std::wstring text){
+    virtualKeyboardShows++;
+    virtualKeyboardText = text;
+}
+
+void TestSystem::hideVirtualKeyboard(){
+    virtualKeyboardHides++;
+}
+
+void TestSystem::setTextInputArea(float x, float y, float width, float height){
+    textInputArea[0] = x;
+    textInputArea[1] = y;
+    textInputArea[2] = width;
+    textInputArea[3] = height;
+    textInputAreaCalls++;
+}
+
+void TestSystem::setMouseCursor(CursorType type){
+    mouseCursor = type;
+}

@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
 #include <cstdint>
@@ -117,6 +118,10 @@ namespace jasperengine{
         bool eventOnImeComposition(const std::string& utf8, int cursor);
         void eventOnImeCancel();
         bool hasFocusedTextInput() const;
+        // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
+        bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
+        CursorType getPointerCursor() const;
 
         // --- p1-editor (UIDocumentSystemReload.cpp, §3.8.6-§3.8.7); paths are asset-relative ---
         struct Reloaded { Entity entity; bool stylesheetOnly; };
@@ -169,7 +174,6 @@ namespace jasperengine{
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
-        bool pointerCaptured = false;   // a consumed down is followed by a consumed up
         bool debuggerVisible = false;   // asked before the context existed
 
         // ---- phase 1: per-package state and private helpers (each package adds its own in its block) ----
@@ -186,6 +190,9 @@ namespace jasperengine{
 
         // --- p1-input ---
         std::shared_ptr<HtmlUIInputState> inputState;
+        HtmlUIInputState& getInputState();
+        // once per update(): control characters that came without their key down (§3.6.2)
+        void updateInput();
 
         // --- p1-lua ---
         std::shared_ptr<HtmlUIScriptState> scriptState;

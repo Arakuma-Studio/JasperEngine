@@ -12,6 +12,10 @@ namespace jasperengine {
 
     class WinInputRouter;
 
+    // UTF-16 from the wide Win32 entry points (clipboard, IME) to UTF-8.
+    // Unpaired surrogates become U+FFFD.
+    std::string winWideToUtf8(const wchar_t* text, int length);
+
     class SystemWin: public System {
     public:
 
@@ -46,6 +50,17 @@ namespace jasperengine {
         void setMouseCursor(CursorType type) override;
         void setMouseMode(MouseMode mode) override;
         void setMousePosition(float x, float y) override;
+
+        // No on-screen keyboard on the desktop; a text field losing focus
+        // also drops what the IME is still composing for it.
+        void hideVirtualKeyboard() override;
+
+        // CF_UNICODETEXT on the system clipboard, owned by the game window
+        void setClipboardText(const std::string& utf8) override;
+        std::string getClipboardText() override;
+        // Kept by the router, which places the IME windows there again when
+        // a composition starts.
+        void setTextInputArea(float x, float y, float width, float height) override;
 
         std::string getAssetPath() override;
         std::string getUserDataPath() override;
