@@ -8,8 +8,9 @@
 
 #include "math/Rect.h"
 
-#include <RmlUi/Core/TextInputHandler.h>
+#include <RmlUi/Core/Header.h>
 #include <RmlUi/Core/Types.h>
+#include <RmlUi/Core/TextInputHandler.h>
 
 #include <functional>
 #include <string>

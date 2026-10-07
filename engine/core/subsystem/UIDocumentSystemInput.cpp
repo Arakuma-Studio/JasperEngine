@@ -156,16 +156,16 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            context->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
-            consumed = context->isPointerOverContent();
+            getContext()->processTouchStart(pointer, Rml::Vector2f(cx, cy), rmlMods);
+            consumed = getContext()->isPointerOverContent();
             if (consumed) state.capturedTouches.insert(pointer);
             else state.capturedTouches.erase(pointer);
         }else{
             const int rmlButton = toRmlButton(button);
             if (rmlButton >= 0){
-                context->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
-                context->processMouseButtonDown(rmlButton, rmlMods);
-                consumed = context->isPointerOverContent();
+                getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
+                getContext()->processMouseButtonDown(rmlButton, rmlMods);
+                consumed = getContext()->isPointerOverContent();
                 if (consumed) state.capturedButtons.insert(button);
                 else state.capturedButtons.erase(button);
             }
@@ -184,23 +184,23 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
     bool consumed = captured;
 
     // a release after a consumed press always reaches the context, so nothing stays active
-    if (context && (captured || hasVisibleDocument())){
+    if (getContext() && (captured || hasVisibleDocument())){
         float cx = x, cy = y;
         toContext(cx, cy);
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            if (context->hasTouch(pointer)){
-                if (context->processTouchEnd(pointer, Rml::Vector2f(cx, cy), rmlMods))
+            if (getContext()->hasTouch(pointer)){
+                if (getContext()->processTouchEnd(pointer, Rml::Vector2f(cx, cy), rmlMods))
                     consumed = true;
             }
         }else{
             const int rmlButton = toRmlButton(button);
             if (rmlButton >= 0){
-                context->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
-                if (context->isPointerOverContent())
+                getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
+                if (getContext()->isPointerOverContent())
                     consumed = true;
-                context->processMouseButtonUp(rmlButton, rmlMods);
+                getContext()->processMouseButtonUp(rmlButton, rmlMods);
             }
         }
     }
@@ -219,12 +219,12 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
 
         if (touch){
             // fingers that started outside the documents do not hover
-            if (context->hasTouch(pointer)){
-                consumed = context->processTouchMove(pointer, Rml::Vector2f(cx, cy), rmlMods) ||
+            if (getContext()->hasTouch(pointer)){
+                consumed = getContext()->processTouchMove(pointer, Rml::Vector2f(cx, cy), rmlMods) ||
                            state.capturedTouches.count(pointer) > 0;
             }
         }else{
-            consumed = context->processMouseMove(Rml::Vector2f(cx, cy), rmlMods) || !state.capturedButtons.empty();
+            consumed = getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods) || !state.capturedButtons.empty();
         }
     }
 
@@ -235,8 +235,8 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
     HtmlUIInputState& state = getInputState();
     const bool captured = state.capturedTouches.erase(pointer) > 0;
 
-    if (context && context->hasTouch(pointer))
-        context->processTouchCancel(pointer);
+    if (getContext() && getContext()->hasTouch(pointer))
+        getContext()->processTouchCancel(pointer);
 
     return captured;
 }
@@ -246,13 +246,13 @@ bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
         return false;
 
     // false: an element scrolled or stopped the event
-    const bool notScrolled = context->processMouseWheel(Rml::Vector2f(dx, dy), RmlKeyMap::toRmlModifiers(mods));
-    return !notScrolled || context->isPointerOverContent();
+    const bool notScrolled = getContext()->processMouseWheel(Rml::Vector2f(dx, dy), RmlKeyMap::toRmlModifiers(mods));
+    return !notScrolled || getContext()->isPointerOverContent();
 }
 
 void UIDocumentSystem::eventOnMouseLeave(){
-    if (context)
-        context->processMouseLeave();
+    if (getContext())
+        getContext()->processMouseLeave();
 }
 
 bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
@@ -270,7 +270,7 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
 
     bool consumed = false;
     {
-        Rml::Context* rmlContext = context->getRmlContext();
+        Rml::Context* rmlContext = getContext()->getRmlContext();
         Rml::Element* focus = focusedElement(rmlContext);
 
         // false: propagation was stopped (a text field handling the key) or the default prevented
@@ -299,7 +299,7 @@ bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
     }
 
     if (hasVisibleDocument())
-        context->getRmlContext()->ProcessKeyUp(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
+        getContext()->getRmlContext()->ProcessKeyUp(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
 
     return consumed;
 }
@@ -326,12 +326,12 @@ bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
     }
 
     if (!text.empty()){
-        RmlTextInputHandler& handler = context->getTextInputHandler();
+        RmlTextInputHandler& handler = getContext()->getTextInputHandler();
         if (handler.isComposing()){
             // a commit while composing replaces the composition
             handler.confirmComposition(text);
         }else{
-            context->getRmlContext()->ProcessTextInput(text);
+            getContext()->getRmlContext()->ProcessTextInput(text);
         }
     }
 
@@ -342,19 +342,19 @@ bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor
     if (!hasFocusedTextInput())
         return false;
 
-    return context->getTextInputHandler().setComposition(utf8, cursor);
+    return getContext()->getTextInputHandler().setComposition(utf8, cursor);
 }
 
 void UIDocumentSystem::eventOnImeCancel(){
-    if (context)
-        context->getTextInputHandler().cancelComposition();
+    if (getContext())
+        getContext()->getTextInputHandler().cancelComposition();
 }
 
 bool UIDocumentSystem::hasFocusedTextInput() const{
     if (!hasVisibleDocument())
         return false;
 
-    return isTextControl(focusedElement(context->getRmlContext()), false);
+    return isTextControl(focusedElement(getContext()->getRmlContext()), false);
 }
 
 bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) const{
@@ -364,10 +364,10 @@ bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) co
 }
 
 CursorType UIDocumentSystem::getPointerCursor() const{
-    if (!context || !context->isPointerOverContent())
+    if (!getContext() || !getContext()->isPointerOverContent())
         return CursorType::ARROW;
 
-    Rml::Element* hover = context->getRmlContext()->GetHoverElement();
+    Rml::Element* hover = getContext()->getRmlContext()->GetHoverElement();
     if (!hover)
         return CursorType::ARROW;
 
@@ -389,7 +389,7 @@ void UIDocumentSystem::updateInput(){
             continue;
         if (!hasFocusedTextInput())
             continue;
-        Rml::Context* rmlContext = context->getRmlContext();
+        Rml::Context* rmlContext = getContext()->getRmlContext();
         const Rml::Input::KeyIdentifier rmlKey = RmlKeyMap::toRmlKey(key);
         rmlContext->ProcessKeyDown(rmlKey, 0);
         rmlContext->ProcessKeyUp(rmlKey, 0);

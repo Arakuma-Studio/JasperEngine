@@ -40,7 +40,7 @@ bool HtmlUIContext::processTouchStart(int pointer, Rml::Vector2f position, int m
     if (hasTouch(pointer))
         processTouchCancel(pointer);
 
-    context->ProcessTouchStart(makeTouch(pointer, position), modifiers);
+    context->ProcessTouchStart(Rml::TouchList{makeTouch(pointer, position)}, modifiers);
     touches.push_back(pointer);
 
     // the touched element is pressed like a primary button (Context::ProcessTouchStart)
@@ -58,7 +58,7 @@ bool HtmlUIContext::processTouchMove(int pointer, Rml::Vector2f position, int mo
     if (!context || !hasTouch(pointer))
         return false;
 
-    context->ProcessTouchMove(makeTouch(pointer, position), modifiers);
+    context->ProcessTouchMove(Rml::TouchList{makeTouch(pointer, position)}, modifiers);
 
     return isPointerOverContent();
 }
@@ -70,7 +70,7 @@ bool HtmlUIContext::processTouchEnd(int pointer, Rml::Vector2f position, int mod
     const bool overContent = isPointerOverContent();
 
     touches.erase(std::find(touches.begin(), touches.end(), pointer));
-    context->ProcessTouchEnd(makeTouch(pointer, position), modifiers);
+    context->ProcessTouchEnd(Rml::TouchList{makeTouch(pointer, position)}, modifiers);
 
     // RmlUi has one active chain: the release of any finger resets it
     activeElement.reset();
@@ -89,7 +89,7 @@ bool HtmlUIContext::processTouchCancel(int pointer){
     context->ProcessMouseLeave();
     Rml::Touch touch;
     touch.identifier = (Rml::TouchId)(intptr_t)pointer;
-    context->ProcessTouchCancel(touch);
+    context->ProcessTouchCancel(Rml::TouchList{touch});
     activeElement.reset();
 
     return false;
