@@ -273,7 +273,7 @@ Events (on the element; they do not bubble, capture listeners see them):
 | Event | When |
 |---|---|
 | `load` | the animation was read (a frame after the document loaded, so listeners added after loading get it) |
-| `error` | the file is missing or unreadable, the `.lottie` is invalid, `animation` names no animation; the event's `message` parameter (and the Console) says which |
+| `error` | the file is missing or unreadable, the `.lottie` is invalid, `animation` names no animation; `event.detail.message` in Lua (and the Console) says which |
 | `play` / `pause` | playback starts (autoplay included) / stops (`pause()`, `stop()`) |
 | `loop` | each time an iteration ends and the next begins |
 | `complete` | the last iteration ended (never with an infinite loop); playback stays on the last frame |
@@ -294,9 +294,11 @@ float frame = hero.getCurrentFrame(), frames = hero.getTotalFrames(), seconds = 
 ```
 
 ```lua
--- menu: the UIDocument of the entity (see "Scripting")
-local spinner = menu:getElementById("spinner")
+-- in init() of a script on the document's GameObject (see "Scripting")
+local doc = UIDocument(self.scene, self.entity)
+local spinner = doc:getElementById("spinner")
 spinner:addEventListener("complete", function(event) print("done") end)
+spinner:addEventListener("error", function(event) print(event.detail.message) end)
 spinner:setLoopCount(2)
 spinner:play()
 ```
