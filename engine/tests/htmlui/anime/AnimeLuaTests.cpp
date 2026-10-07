@@ -365,7 +365,8 @@ TEST_F(AnimeLuaTest, UIElementHandlesFromLua){
 
     HtmlUIClock::setFixedTime(1.2);
     AnimEngine::instance().tick(HtmlUIClock::now());
-    updateDocuments(fixture.getScene());
+    // RmlUi computes transform states when it renders: a frame (the pinned clock does not move)
+    GpuEnvironment::drawFrames(1);
     // the element API sees the transforms anime wrote
     EXPECT_NEAR(number("box:getBoundingClientRect().left"), 110, 1e-3);
     EXPECT_NEAR(number("box:getBoundingClientRect().width"), 100, 1e-3);
