@@ -6077,14 +6077,19 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     if (node["enabled"]) document.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
     // phase-1 keys are omitted at their defaults, so a missing key is the default, not the
-    // old value (paste and play-stop restore decode over an existing component)
+    // old value (paste and play-stop restore decode over an existing component); the
+    // clipboard fills a key it has no default for with an empty scalar, which is the default too
     const UIDocumentComponent defaults;
-    document.interactive = node["interactive"] ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
-    document.renderMode = node["renderMode"] ? stringToUIDocumentRenderMode(node["renderMode"].as<std::string>()) : defaults.renderMode;
-    document.textureWidth = node["textureWidth"] ? std::clamp(YamlNumbers::as<int>(node["textureWidth"]), 1, 8192) : defaults.textureWidth;
-    document.textureHeight = node["textureHeight"] ? std::clamp(YamlNumbers::as<int>(node["textureHeight"]), 1, 8192) : defaults.textureHeight;
-    document.inputSurface = node["inputSurface"] ? YamlNumbers::as<Entity>(node["inputSurface"]) : defaults.inputSurface;
-    document.pixelRatio = node["pixelRatio"] ? std::max(0.0f, decodeFinite(node["pixelRatio"], defaults.pixelRatio)) : defaults.pixelRatio;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    document.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
+    document.renderMode = given("renderMode") ? stringToUIDocumentRenderMode(node["renderMode"].as<std::string>()) : defaults.renderMode;
+    document.textureWidth = given("textureWidth") ? std::clamp(YamlNumbers::as<int>(node["textureWidth"]), 1, 8192) : defaults.textureWidth;
+    document.textureHeight = given("textureHeight") ? std::clamp(YamlNumbers::as<int>(node["textureHeight"]), 1, 8192) : defaults.textureHeight;
+    document.inputSurface = given("inputSurface") ? YamlNumbers::as<Entity>(node["inputSurface"]) : defaults.inputSurface;
+    document.pixelRatio = given("pixelRatio") ? std::max(0.0f, decodeFinite(node["pixelRatio"], defaults.pixelRatio)) : defaults.pixelRatio;
 
     if (oldDocument && (oldDocument->filename != document.filename || oldDocument->renderMode != document.renderMode ||
                         oldDocument->textureWidth != document.textureWidth || oldDocument->textureHeight != document.textureHeight ||

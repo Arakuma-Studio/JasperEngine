@@ -127,6 +127,7 @@ async def test_edit_mode_css_change(ed: Editor):
 
     # the Scene view of the UI scene redraws with it (p1-render draws documents there)
     await ed.call("select_scene", scene=S["scene"])
+    await ed.call("set_scene_camera", scene=S["scene"], center=[640, 360], zoom=2.0)
     deadline = time.monotonic() + 2.0
     while True:
         shot = await ed.call_raw("screenshot", {"view": "scene", "scene": S["scene"], "max_width": 800})

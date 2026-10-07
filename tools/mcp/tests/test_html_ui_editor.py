@@ -110,7 +110,7 @@ async def test_component_type_info(ed: Editor):
                        ("textureHeight", "int"), ("inputSurface", "entity"), ("pixelRatio", "float")):
         ed.check(name in props, f"{name} missing: {sorted(props)}")
         ed.check(kind in props[name]["type"].lower(), f"{name} type {props[name]['type']}")
-    ed.check_eq(sorted(props["renderMode"].get("values", props["renderMode"].get("enum", []))), ["screen", "texture"],
+    ed.check_eq(sorted(props["renderMode"].get("options", [])), ["screen", "texture"],
                 f"renderMode values: {props['renderMode']}")
     ed.check_eq(props["textureWidth"].get("default"), 1024)
     ed.check_eq(props["interactive"].get("default"), True)
@@ -230,9 +230,9 @@ async def test_prefab_override(ed: Editor):
 
 async def test_asset_types(ed: Editor):
     listed = await ed.call("list_assets", directory="assets/ui", type="html")
-    paths = sorted(a["path"] if isinstance(a, dict) else a for a in listed.get("assets", listed.get("files", [])))
-    ed.check(RED_DOC in str(paths) and BLUE_DOC in str(paths), f"html assets: {listed}")
-    ed.check("style.css" not in str(paths), f"a .css listed as html: {paths}")
+    ed.check(RED_DOC in str(listed) and BLUE_DOC in str(listed), f"html assets: {listed}")
+    ed.check("style.css" not in str(listed), f"a .css listed as html: {listed}")
+    ed.check(all(e["type"] == "html" for e in listed["entries"]), f"types: {listed}")
     listed = await ed.call("list_assets", directory="assets/ui", type="css")
     ed.check("style.css" in str(listed) and "red.html" not in str(listed), f"css assets: {listed}")
     info = await ed.call("get_asset_info", path=RED_DOC)
@@ -259,6 +259,8 @@ async def test_scene_view_shows_document(ed: Editor):
     await ed.call("select_scene", scene=S["scene"])
     await ed.call("set_properties", scene=S["scene"], entity=S["doc"], values={"uidocument": {"filename": RED_DOC, "enabled": True}})
     await ed.call("select_entities", scene=S["scene"], entities=[S["doc"]])
+    # the whole canvas (0,0)-(1280,720) in view
+    await ed.call("set_scene_camera", scene=S["scene"], center=[640, 360], zoom=2.0)
 
     async def red_pixels(label: str) -> int:
         shot = await ed.call_raw("screenshot", {"view": "scene", "scene": S["scene"], "max_width": 800})
