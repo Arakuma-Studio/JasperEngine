@@ -116,8 +116,8 @@ Conventions that apply everywhere:
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
 | `canSendDocumentEvents`, pointer routing (documents before `UISystem`) | engine | P0 p0-ecs | P1 | P0 §3.7.3 |
-| `Engine::systemTextInput/systemImeComposition/systemImeCancel/wantsTextComposition/setTextInputArea`; `UIDocumentSystem::eventOn*` (pointer ids, wheel, keys, text, IME); `RmlKeyMap::toRmlKey/toRmlModifiers` | C++ | P1 p1-input | P1 p1-rtt (`dispatchWorldPointer`), P4 `send_input` | P1 §3.6 |
-| `System::setClipboardText/getClipboardText/setTextInputArea/setMouseCursor(MouseCursor)` | C++ | P1 p1-input | P3 (`cursor` lists) | P1 §3.6.3 |
+| `Engine::systemTextInput/systemImeComposition/systemImeCancel/wantsTextComposition/setTextInputArea`; `UIDocumentSystem::eventOn*` (pointer ids, wheel, keys, text, IME), `hasPointerCapture`, `getPointerCursor`; `RmlKeyMap::toRmlKey/fromRmlKey/toRmlModifiers/fromRmlModifiers/domKey/domCode`; `HtmlUIContext::processTouch*/processMouseWheel/setWheelScale/getTextInputHandler`, `RmlTextInputHandler::setCanvasMapper` | C++ | P1 p1-input | P1 p1-lua (`UIEvent` key/code/keyCode), P1 p1-rtt (`dispatchWorldPointer`, texture-context caret mapper), P4 `send_input` | P1 §3.6 |
+| `System::setClipboardText/getClipboardText/setTextInputArea`; `System::setMouseCursor(CursorType)` with `CursorType` extended by `WAIT PROGRESS HELP GRAB GRABBING` and `using MouseCursor = CursorType`; `RmlSystem::cursorFromCss` | C++ | P1 p1-input | P3 (`cursor` lists) | P1 §3.6.3 |
 | MCP `send_input` actions `text`, `ime`, `ime_commit`, `ime_cancel`, `mouse_leave`, `mouse_enter` | MCP | P1 p1-input | P4 (`target`/`to_target` extension) | P1 §3.6.4 |
 
 ## 8. Editor, export, hot reload

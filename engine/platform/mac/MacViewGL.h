@@ -8,7 +8,7 @@
 
 // The OpenGL drawable, for GRAPHIC_BACKEND=glcore. MTKView has no GL surface,
 // which is the one thing the two paths cannot share; input is not part of it
-// and goes through the same MacInputRouter.
+// and goes through the same MacInputRouter and MacTextInputClient.
 @interface MacViewGL : NSOpenGLView <NSTextInputClient>
 
 // 0 disables vsync, 1 syncs to the vertical retrace

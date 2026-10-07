@@ -49,6 +49,10 @@ struct JniData{
     jmethodID loadInterstitialAd;
     jmethodID isInterstitialAdLoaded;
     jmethodID showInterstitialAd;
+
+    // null when the activity does not provide them (the System base clipboard is used)
+    jmethodID setClipboardText;
+    jmethodID getClipboardText;
 };
 
 class NativeEngine {
@@ -112,6 +116,7 @@ public:
 
     static NativeEngine *getInstance();
     JNIEnv* getJniEnv();
+    JavaVM* getJavaVM();
     GameActivity* getActivity();
     JniData& getJniData();
 

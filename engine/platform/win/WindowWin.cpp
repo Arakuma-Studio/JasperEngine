@@ -415,6 +415,13 @@ void WindowWin::setMouseCursor(CursorType type) {
         case CursorType::RESIZE_NESW:   name = IDC_SIZENESW; break;
         case CursorType::RESIZE_ALL:    name = IDC_SIZEALL; break;
         case CursorType::NOT_ALLOWED:   name = IDC_NO; break;
+        case CursorType::WAIT:          name = IDC_WAIT; break;
+        case CursorType::PROGRESS:      name = IDC_APPSTARTING; break;
+        case CursorType::HELP:          name = IDC_HELP; break;
+        // Win32 has no open or closed hand among its system cursors, so grab
+        // shows the link hand and grabbing the four-way move arrows.
+        case CursorType::GRAB:          name = IDC_HAND; break;
+        case CursorType::GRABBING:      name = IDC_SIZEALL; break;
     }
 
     HCURSOR cursor = LoadCursorW(nullptr, wideCursorId(name));

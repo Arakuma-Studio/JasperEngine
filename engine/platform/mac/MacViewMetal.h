@@ -7,7 +7,8 @@
 #import <MetalKit/MetalKit.h>
 
 // The Metal drawable for macOS games. It holds no input handling of its own:
-// every event goes to MacInputRouter, shared with the OpenGL view.
+// every event goes to MacInputRouter and text to MacTextInputClient, shared with
+// the OpenGL and Vulkan views.
 @interface MacViewMetal : MTKView <NSTextInputClient>
 
 @end

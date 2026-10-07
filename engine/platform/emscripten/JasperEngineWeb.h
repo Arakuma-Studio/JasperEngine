@@ -86,6 +86,17 @@ public:
     virtual void setWindowTitle(const std::string& title) override;
     virtual void quit() override;
 
+    virtual void showVirtualKeyboard(std::wstring text) override;
+    virtual void hideVirtualKeyboard() override;
+
+    // async browser clipboard: writes go to navigator.clipboard, reads return the text of the
+    // last copy or paste event
+    virtual void setClipboardText(const std::string& utf8) override;
+    virtual std::string getClipboardText() override;
+    virtual void setTextInputArea(float x, float y, float width, float height) override;
+    // the paste event handler
+    static void rememberClipboardText(const std::string& text);
+
     virtual void setMouseCursor(jasperengine::CursorType type) override;
     virtual void setMouseMode(jasperengine::MouseMode mode) override;
 

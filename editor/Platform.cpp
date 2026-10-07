@@ -5,6 +5,7 @@
 #include "Out.h"
 #include "Backend.h"
 #include "EditorHost.h"
+#include "imgui.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -73,6 +74,22 @@ sg_swapchain editor::Platform::getSokolSwapchain(){
 
 bool editor::Platform::isTouchDevice(){
     return project->isSimulateTouch();
+}
+
+void editor::Platform::setClipboardText(const std::string& utf8){
+    if (ImGui::GetCurrentContext()){
+        ImGui::SetClipboardText(utf8.c_str());
+    }else{
+        System::setClipboardText(utf8);
+    }
+}
+
+std::string editor::Platform::getClipboardText(){
+    if (ImGui::GetCurrentContext()){
+        const char* text = ImGui::GetClipboardText();
+        return text ? std::string(text) : std::string();
+    }
+    return System::getClipboardText();
 }
 
 void editor::Platform::setMouseMode(MouseMode mode){

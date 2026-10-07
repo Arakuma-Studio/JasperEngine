@@ -127,12 +127,62 @@ What works:
   `Engine.timeScale = 0` freezes the game; a fixed frame delta (`play` with `fixed_fps`)
   makes them deterministic, and they stand still while the simulation is held
   (`auto_pause`).
-- Pointer input: mouse buttons, mouse move and the first touch, so `:hover`/`:active` work in
-  play mode and in exported games. A press or release over an element of a document is the
-  document's: the game's `onMouseDown`/`onMouseUp`/`onMouseMove` (and the component UI under
-  it) do not get it when `ignoreEventsHandledByUI` is on (the default). Over the transparent
-  `body` the game gets the event. Give a full-screen wrapper `pointer-events: none` to make
-  it click-through (its children can set `pointer-events: auto`).
+- Input: see "Input" below.
+
+## Input
+
+Documents get the mouse (buttons, move, wheel, enter/leave), multi-touch, the keyboard, text
+(IME included) and the clipboard, in play mode, in exported games and through MCP
+`send_input`. They are offered every event **before** the component UI and the game, top
+scene layer first.
+
+**What a document consumes.** A consumed event does not reach the component UI under the
+document nor, while `Engine.ignoreEventsHandledByUI` is on (the default), the game's
+callbacks (`onMouseDown`, `onKeyDown`, `onCharInput`, `onMouseScroll`, `onTouchStart`, ...).
+- Pointer (press, release, move, touch): consumed when the element under the pointer is an
+  element of a document, or a document (`body`) that paints a background (a colour with
+  alpha above 0, or a decorator), as a browser page over a canvas would. A transparent
+  `body` lets the pointer through to the game. An element with `pointer-events: none` is
+  skipped by the hit test, so a full-screen wrapper with it is click-through (its children
+  can set `pointer-events: auto`). A release (and the moves of a drag) belongs to whoever got
+  the press.
+- Wheel: consumed when it scrolls an element (`overflow: auto/scroll`) or the pointer is
+  over content as above. One wheel step scrolls 80 px.
+- Keys: consumed when the focused element handles the key (a script stops its propagation
+  or prevents its default), or when a text field (`<input>` of a text type, `<textarea>`,
+  `<select>`) has focus and the key is not Escape or F1-F25. The release of a consumed key
+  is consumed too. Keys go to the documents before the game.
+- Text and IME: consumed while a text field has focus. Control characters (`\b`, `\r`,
+  `\t`, Escape) are never inserted as text; one that arrives without its key (the Android
+  soft backspace) acts as that key.
+- Multi-touch: every finger has its own pointer id; each pressed element gets `:active`.
+  RmlUi has one pressed (active) element chain per document context, so lifting any finger
+  clears `:active` on all of them, and only the last pressed element can be clicked.
+
+**Text fields.** Focusing a text field opens the virtual keyboard (Android, iOS, Web) and
+places the IME candidate window at the caret (Windows, macOS, Linux, Web). IME composition
+shows inside the field on Windows, macOS, iOS, Android and Web; on Linux the input method
+(IBus, fcitx through XIM) draws its own preedit window and the field receives the committed
+text, and in the editor's Game view composed text arrives committed (ImGui exposes no
+composition). Copy, cut, paste and select all: Ctrl+C/X/V/A (Cmd on macOS and iOS).
+
+**Clipboard.** `System.setClipboardText(text)` / `System.getClipboardText()` (Lua, and
+`System::instance()` in C++) use the system clipboard on Linux (X11 `CLIPBOARD`), Windows,
+macOS, iOS, Android and in the editor. On Web the browser clipboard is asynchronous:
+writes go to `navigator.clipboard` (a key or click must have started them), and
+`getClipboardText` returns the text of the last copy or `paste` event; Ctrl/Cmd+V in a
+document text field is left to the browser, whose paste event inserts the text.
+
+**Cursor.** The CSS `cursor` of the element under the pointer becomes the mouse cursor:
+`default`, `pointer`, `text`, `crosshair`, `move`, `not-allowed`, `wait`, `progress`, `help`,
+`grab`, `grabbing` and the `*-resize` family (the first one of a list the engine knows;
+others show the arrow). Lua: `Engine.mouseCursor = CursorType.GRAB` sets it for the game.
+
+**MCP `send_input`.** `text` sends the whole UTF-8 string as one input. `ime` (`text`,
+`cursor` in code points, -1 selects the composition) updates the composition of the
+focused field, `ime_commit` (`text`) commits it, `ime_cancel` drops it. `mouse_leave` and
+`mouse_enter` move the pointer out of and back into the game. Wheel offsets follow GLFW:
+`dy > 0` scrolls up, `dx > 0` scrolls left.
 
 ## Fonts and text
 
@@ -182,8 +232,6 @@ bool hovered = menu.getElementById("play").isPseudoClassSet("hover");
   filters (`blur`, `drop-shadow`), `mask-image`, group `opacity` (phase 1).
 - Text: font effects (`font-effect`: shadow, outline, glow), synthetic bold and italic,
   `@font-face` (phases 1-2).
-- Input: keyboard, focus, text fields, mouse wheel, enter/leave, multi-touch, cursor shapes,
-  clipboard, IME (phase 1).
 - Scripting: the Lua API (`document:getElementById`, `addEventListener`, ...), data binding,
   the animation API (phase 1); `<script>` in documents (phase 2).
 - Editor: documents in the Scene view, hot reload on save, an Inspector file picker and

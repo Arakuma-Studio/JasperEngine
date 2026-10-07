@@ -14,6 +14,8 @@
 
 #include "Input.h"
 
+#include <vector>
+
 namespace jasperengine {
 
     // Win32 input-message translation. The editor and a game cannot share a
@@ -32,10 +34,43 @@ namespace jasperengine {
         // which reports no motion of its own while captured.
         void setMousePosition(double x, double y);
 
+        // Caret area of the focused HTML UI text field, in client pixels.
+        // Places the IME composition and candidate windows now, and again
+        // whenever a composition starts.
+        void setTextInputArea(float x, float y, float width, float height);
+
+        // Drops whatever the IME is still composing, for a text field that
+        // lost focus after the engine already dropped its own copy. Nothing
+        // about that composition reaches the engine afterwards.
+        void cancelComposition();
+
     private:
+        void applyTextInputArea(HWND window);
+        void handleComposition(HWND window, LPARAM lParam);
+        void trackMouseLeave(HWND window);
+        void reportMouseLeave();
+
         // The engine keeps seeing a continuous position while captured
         double mousePosX = 0.0;
         double mousePosY = 0.0;
+
+        // TME_LEAVE is armed and the engine was told the pointer is inside
+        bool mouseInside = false;
+
+        // A composition string is shown in the document and was not committed
+        bool compositionOpen = false;
+        // Inside cancelComposition: IME messages it sends are not routed
+        bool cancellingComposition = false;
+
+        bool hasTextInputArea = false;
+        float textInputX = 0.0f;
+        float textInputY = 0.0f;
+        float textInputWidth = 0.0f;
+        float textInputHeight = 0.0f;
+
+        // Touch pointers between WM_POINTERDOWN and WM_POINTERUP, so a lost
+        // capture cancels only fingers the engine knows about
+        std::vector<int> activeTouches;
     };
 
 }
