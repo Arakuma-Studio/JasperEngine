@@ -310,7 +310,9 @@ namespace {
                     collectUI(*ui);
                 }
                 // an HTML UI document draws untextured and textured geometry (RmlRenderer)
-                if (registry->findComponent<UIDocumentComponent>(entity)){
+                // (asked first: an editor built without the document component's registration
+                // must not throw while it saves)
+                if (registry->isComponentRegistered<UIDocumentComponent>() && registry->findComponent<UIDocumentComponent>(entity)){
                     insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
                     insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
                 }

@@ -2885,7 +2885,7 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
     // HTML UI documents draw untextured and textured geometry (RmlRenderer)
-    if (scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
+    if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
         insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
     }

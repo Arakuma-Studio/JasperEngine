@@ -234,6 +234,12 @@ namespace jasperengine {
             return componentManager.getComponentFromIndex<T>(index);
         }
 
+        // whether the registry has the component type (the component getters throw otherwise)
+        template<typename T>
+        bool isComponentRegistered() const{
+            return componentManager.isRegistered<T>();
+        }
+
         template<typename T>
         ComponentId getComponentId() const{
             return componentManager.getComponentId<T>();

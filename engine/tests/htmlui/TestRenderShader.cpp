@@ -5,6 +5,7 @@
 // RmlRenderer looks up by name, and the shader pool knows the type's names. CPU only.
 
 #include "pool/ShaderPool.h"
+#include "registry/EntityRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
 
 #include <gtest/gtest.h>
@@ -119,4 +120,17 @@ TEST(HtmlUIShaderTest, ShaderPoolNames){
 
     // appended after POSTPROCESS: the stored enum values of every earlier type are unchanged
     EXPECT_EQ((int)ShaderType::HTMLUI, (int)ShaderType::POSTPROCESS + 1);
+}
+
+namespace {
+    struct NeverRegisteredComponent { int value = 0; };
+}
+
+// the editor's HTMLUI shader-key collection asks the registry before it looks the document
+// component up (ShaderVariantCollector, Project::collectSceneShaderKeys)
+TEST(HtmlUIShaderTest, ComponentRegistrationQuery){
+    EntityRegistry registry;
+    EXPECT_TRUE(registry.isComponentRegistered<Transform>());
+    EXPECT_TRUE(registry.isComponentRegistered<UIComponent>());
+    EXPECT_FALSE(registry.isComponentRegistered<NeverRegisteredComponent>());
 }
