@@ -64,8 +64,9 @@ def md_table(header, rows):
 
 
 def timing(raw):
-    """platform -> rows of the time CSVs (native: time/noavx/threads/cached, wasm: wasm-time)."""
-    data = {"native": [], "wasm": []}
+    """platform -> rows of the time CSVs (native: time/noavx/threads/cached, wasm: wasm-time,
+    native-patched: LunaSVG and the filter-patched ThorVG interleaved in one process)."""
+    data = {"native": [], "wasm": [], "native-patched": read(os.path.join(raw, "patched-*.csv"))}
     for prefix in ["time", "noavx", "threads", "cached"]:
         data["native"] += read(os.path.join(raw, f"{prefix}-*.csv"))
     data["wasm"] = read(os.path.join(raw, "wasm-time-*.csv"))
@@ -367,6 +368,9 @@ def main():
     if data["wasm"]:
         d_wasm = summarize_timing("wasm", data["wasm"], args.results, md)
         ratios("wasm", d_wasm, args.results, md, others=("thorvg", "nanosvg"))
+    if data["native-patched"]:
+        d_p = summarize_timing("native-patched", data["native-patched"], args.results, md)
+        ratios("native-patched", d_p, args.results, md, others=("thorvg-patched",))
     mutation(args.raw, args.results, md)
     memory(args.raw, args.results, md)
     binary_size(args.raw, args.results, md)

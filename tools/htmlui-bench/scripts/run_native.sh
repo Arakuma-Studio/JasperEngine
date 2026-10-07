@@ -4,7 +4,7 @@
 #
 #   tools/htmlui-bench/scripts/run_native.sh [phase ...]
 #
-# Phases (default: all, in this order): build selftest time noavx threads cached mutate memory
+# Phases (default: all, in this order): build selftest time noavx threads cached patched mutate memory
 # size render compare report. Environment: SHARDS (parallel time processes, default 4), CORES
 # (CPUs to pin them to, default "8 9 10 11"), PY (python with numpy/pillow, default the venv
 # /tmp/htmlui-src-bench/venv). Needs the corpus (fetch_corpus.sh) and, for compare, the
@@ -24,7 +24,7 @@ SHARDS="${SHARDS:-4}"
 read -r -a CORES <<< "${CORES:-8 9 10 11}"
 JOBS="${JOBS:-3}"
 PHASES=("$@")
-[ ${#PHASES[@]} -eq 0 ] && PHASES=(build selftest time noavx threads cached mutate memory size render compare report)
+[ ${#PHASES[@]} -eq 0 ] && PHASES=(build selftest time noavx threads cached patched mutate memory size render compare report)
 mkdir -p "$RAW" "$RENDERS"
 
 SIZES_ALL=24,48,128,512,1024
@@ -121,6 +121,19 @@ if want cached; then
         sharded "$B/native-cached/svgbench" "$RAW/cached-$set" --lib thorvg --list "$C/$set.txt" \
             --root "$C/sets/$set" --set "$set" --sizes 24,48 --cold-sizes "" \
             --mode time --min-time-ms 20 --raster-min-time-ms 50
+    done
+fi
+
+if want patched; then
+    record_env patched
+    # LunaSVG vs ThorVG with the filter patch, interleaved in one process (the patched binary
+    # links the same LunaSVG): separates ThorVG's raster speed from the cost of the blur
+    # filters it executes and LunaSVG ignores.
+    for set in multicolor illustrations; do
+        echo "== time $set (ThorVG with the filter patch)"
+        sharded "$B/native-patched/svgbench" "$RAW/patched-$set" --lib luna,thorvg --list "$C/$set.txt" \
+            --root "$C/sets/$set" --set "$set" --sizes "${SET_SIZES[$set]}" --cold-sizes "${SET_COLD[$set]}" \
+            --mode time --min-time-ms 200 --raster-min-time-ms 100
     done
 fi
 
