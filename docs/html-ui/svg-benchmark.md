@@ -3,9 +3,10 @@
 Phase 0, work package p0-svg-bench (`docs/html-ui/phase-0-foundation.md` 3.9). This document
 gives the decision for phase 1, then the evidence: environment, corpus, method, results
 (native x86-64 and WebAssembly), the feature matrix and how to reproduce everything. The
-bench lives in `tools/htmlui-bench/` (README there); the summary CSVs behind every table are
-in `tools/htmlui-bench/results/`. `results/tables.md` holds all generated tables, including the
-ones not repeated here.
+bench lives in `tools/htmlui-bench/` (README there). The summary CSVs behind every table are
+in `tools/htmlui-bench/results/`, and the raw per-file CSVs are in `build/htmlui-bench/raw/`
+(not committed). `results/tables.md` holds all generated tables, including the ones not
+repeated here.
 
 ## 1. Decision
 
@@ -21,10 +22,19 @@ or visibly wrong ThorVG renders in the icon/multicolor sets that LunaSVG gets ri
 |---|---|---|
 | (a) speed | LunaSVG is **slower**: ThorVG / LunaSVG time per Lucide icon is 0.45 at 24 px and 0.52 at 48 px (rasterization), 0.66 / 0.69 with parsing included, 0.69 / 0.71 for load + first render. ThorVG is about 2x faster at rasterizing icons and about 1.5x faster with parsing included. Same picture without AVX2 (0.47 / 0.53) and in wasm (0.57 / 0.63). | no |
 | (b1) resvg suite | LunaSVG **70.6 %** (666/943) vs ThorVG **58.2 %** (549/943) in the five decisive categories: **+12.4 points**. | **yes** |
-| (b2) visibly wrong renders | Lucide: none for either library. Fluent emoji (multicolor): **95 of 300** visibly wrong in ThorVG at 128 px (35 at 48 px) that LunaSVG renders acceptably, 0 the other way round (images in 5.3). | **yes** |
+| (b2) visibly wrong renders | Lucide: none for either library. Fluent emoji (multicolor): **95 of 300** visibly wrong in ThorVG at 128 px (35 at 48 px) that LunaSVG renders acceptably, 0 the other way round at 128 px (2 at 48 px). The list is in `tools/htmlui-bench/results/multicolor_thorvg_visibly_wrong.csv`, with images in 5.3. | **yes** |
 
-Clause (b) holds on both counts, so by the rule SVG goes to LunaSVG. The reasons in plain
-terms:
+**The decision was triggered by the correctness criterion, not by speed.** Both parts of it
+fire: (b1) the resvg suite, LunaSVG 70.6 % vs ThorVG 58.2 % on the five decisive categories
+(+12.4 points, threshold +10); and (b2) 95 Fluent emoji at 128 px that ThorVG renders visibly
+wrong and LunaSVG renders acceptably. The speed criterion (a) points the other way: ThorVG is
+the faster rasterizer (LunaSVG would need a ratio >= 1.5; it is 0.45 / 0.52).
+
+On the narrowest reading of "typical workload" (Lucide icons only), the two libraries are
+equally correct (0 visibly wrong each, MAD 0.22 vs 0.23 at 48 px) and ThorVG is about 2x
+faster. Under that reading the rule would pick ThorVG. The spec (3.9.4) defines "clearly
+more correct" through the resvg suite and the icon/multicolor sets together, and both of
+those fire. The reasons in plain terms:
 
 - **What ThorVG gets wrong is common in UI SVGs.** Its SVG loader drops CSS `<style>`
   selectors beyond simple class/type rules (universal, ID, attribute selectors, CSS rules
@@ -52,7 +62,8 @@ What this costs, and what it does not:
   (48 px) to rasterize and 6 µs to parse. Icons are rasterized once per size into a texture
   and cached, so a screen with 100 icons costs about 4 ms once, then nothing.
 - **Binary size: two vector libraries ship.** ThorVG is in for Lottie anyway; LunaSVG adds
-  about **TBD-NATIVE KiB** native and **224 KiB** of wasm (5.6).
+  about **276 KiB** native and **224 KiB** of wasm (5.6); compiling ThorVG's own SVG loader
+  out saves part of that back.
 - **Retained-scene mutation** works in both. LunaSVG uses `Element::setAttribute` (the same
   attribute names as the SVG source). ThorVG exposes `Picture::paint(id)` → `Shape::fill`, and
   only for paint properties ThorVG models (5.5).
@@ -63,9 +74,10 @@ What this costs, and what it does not:
 What would change the decision: ThorVG closing the CSS selector/colour, nested `<svg>`,
 `clip-rule`, marker and filter gaps. The filter part alone is a small loader change:
 `tools/htmlui-bench/thorvg-skip-unsupported-filters.patch` (16 changed lines) skips a filter
-whose primitives ThorVG cannot render. With it, ThorVG's multicolor results match or beat
-LunaSVG's (33 vs 37 visibly wrong at 128 px, mean difference 1.68 vs 1.97) and clause (b2)
-disappears. But the resvg-suite gap (b1) is unchanged by it (58.2 %), so the decision stands.
+whose primitives ThorVG cannot render. With it, ThorVG's multicolor results are on par with
+LunaSVG's: 33 vs 37 visibly wrong at 128 px (MAD 1.68 vs 1.97), 57 vs 53 at 48 px. Clause (b2)
+then leaves 0 cases at 128 px and 4 at 48 px, all the missing-inner-shadow kind LunaSVG also
+has. But the resvg-suite gap (b1) is unchanged by the patch (58.2 %), so the decision stands.
 If ThorVG's loader catches up, rerun `run_native.sh render compare report` against the new
 ThorVG and revisit.
 
@@ -127,10 +139,11 @@ separately (section 6). The conformance set is used unmodified.
   - LunaSVG: `Bitmap::clear` + `Document::render(bitmap, Matrix::scaled)`.
   - ThorVG: `Picture::transform(identity)`, then `update`, `draw(clear)`, `sync`. ThorVG keeps
     each shape's outline and spans from the previous frame, so redrawing an unchanged picture
-    only composites (1.3 to 3.7 µs at 48 px, the "6.7 µs" of the spec's probe). Marking the
-    transform dirty forces every shape to be re-transformed, re-stroked and re-rasterized.
-    That approximates the first draw: forced redraw 13–34 µs vs load + first draw minus parse 15–46
-    µs on the five icons checked. The cached redraw is reported as `thorvg-cached` (5.1).
+    only composites (Lucide median 0.94 µs at 24 px, 1.78 µs at 48 px; the "6.7 µs" of the
+    spec's probe). Marking the transform dirty forces every shape to be re-transformed,
+    re-stroked and re-rasterized. That approximates the first draw: on the five icons checked,
+    the forced redraw took 13–34 µs and load + first draw minus parse took 15–46 µs. The cached
+    redraw is reported as `thorvg-cached` (5.1).
   - nanosvg: `nsvgRasterize`, which clears the target itself.
 - `readback`: conversion to RGBA8 premultiplied (what the engine uploads), timed separately.
   LunaSVG gives ARGB32 premultiplied (BGRA bytes), so this is a swizzle. ThorVG renders
@@ -171,7 +184,11 @@ of the native icon run and reached 30–90 later. In particular:
   were overwritten by the rerun; only these medians survive). Use the 512/1024 px icon
   numbers as upper bounds.
 - The filter-patch timing run (`native-patched`) ran at load about 90; its 512/1024 px
-  columns are not usable in absolute terms.
+  columns are not usable in absolute terms. The no-AVX2 (`thorvg-noavx`), 4-thread
+  (`thorvg-mt4`) and cached-redraw runs ran at load 40–90 in separate processes, after the main
+  run. Their small-size values are consistent (no-AVX2 Lucide 14.7 vs 14.5 µs at 24 px). Their
+  millisecond-scale values are not comparable with the main columns (for example no-AVX2
+  illustrations at 1024 px).
 
 The decision uses only 24/48 px, where both passes agree within 2 %. Wasm ran at load about
 35.
@@ -245,7 +262,188 @@ suite), so the selftest now uses percentages, which all three handle.
 
 ## 5. Results
 
-TIMING-RESULTS
+All numbers come from the final runs. The generated tables
+(`tools/htmlui-bench/results/tables.md`) contain every set, size and metric, including p25/p75
+for each cell; the ones below are the subset the decision and phase 1 need. Times are medians
+of per-file medians in µs, with [p25–p75] across files where given.
+
+### 5.1 Speed, native x86-64 (single-threaded, -O2, ThorVG with AVX2)
+
+**Lucide icons (1866 files): the typical workload**
+
+| | 24 px | 48 px | 128 px | 512 px* | 1024 px* |
+|---|---|---|---|---|---|
+| LunaSVG rasterize | 31.7 [22.5–44.8] | 38.3 [27.8–53.9] | 73.4 [50.5–106] | 289 | 925 |
+| ThorVG rasterize | **14.5** [11.0–18.7] | **20.0** [15.4–25.8] | **39.7** [29.4–54.0] | 224 | 678 |
+| ThorVG without AVX2 | 14.7 | 20.3 | 42.8 | 268 | 893 |
+| nanosvg rasterize | 24.4 [17.2–40.4] | 57.3 [43.3–73.7] | 272 | 16 885 | 55 169 |
+| ThorVG / LunaSVG per file, median [p25–p75] | **0.452** [0.38–0.53] | **0.515** [0.44–0.60] | 0.553 | 0.770 | 0.743 |
+
+\* Inflated by the host load (3.4). The first pass at lower load measured 760 / 603 / 18 339 µs
+at 1024 px.
+
+| | parse | load + first render 24 px | load + first render 48 px | readback 48 px |
+|---|---|---|---|---|
+| LunaSVG | **6.2** | 39.3 | 46.9 | 3.2 (BGRA → RGBA swizzle) |
+| ThorVG | 10.3 | **26.7** | **32.3** | 0.1 (copy) |
+| nanosvg | 7.3 | 35.2 | 67.6 | 6.1 (premultiply) |
+| ThorVG / LunaSVG per file | 1.67 | **0.687** | **0.706** | |
+
+With parsing included (per-file parse + rasterize), ThorVG / LunaSVG is **0.660** at 24 px and
+**0.688** at 48 px; without AVX2 it is 0.671 / 0.692. In every Lucide case, the three ways of
+summarising (median per-file ratio, ratio of set medians, median ratio of per-file minimums)
+agree within 3 %. LunaSVG parses faster (1.7x); ThorVG rasterizes faster (2.2x at 24 px,
+1.9x at 48 px) and wins overall.
+
+**Other sets** (ThorVG / LunaSVG rasterization per file, median; the full tables are in
+`tables.md`):
+
+| set | 24 px | 48 px | 128 px | 512 px | 1024 px | parse |
+|---|---|---|---|---|---|---|
+| multicolor (Fluent emoji) | 0.458 | 0.633 | 1.060 | 1.978 | 2.275 | 1.55 |
+| multicolor, ThorVG with the filter patch (same process as LunaSVG) | 0.427 | 0.584 | 0.880 | (1.24)** | (1.57)** | 1.48 |
+| illustrations | 0.487 | 0.495 | 0.575 | 0.651 | 0.792 | 1.30 |
+| huge (7 files) | | | | 0.721 | 0.888 | 1.11 |
+
+On multicolor at 128 px and above, ThorVG is slower because it executes the emoji's Gaussian
+blurs (pure-blur filters stay active even with the patch), while LunaSVG skips all filters.
+That is a difference in work done, not raster speed. \*\* Taken at load about 90 (3.4).
+
+**ThorVG variants** (Lucide, rasterize, µs):
+
+| variant | 24 px | 48 px | note |
+|---|---|---|---|
+| single-threaded, forced full redraw (the main column) | 14.5 | 20.0 | |
+| unchanged picture redrawn (`thorvg-cached`) | 0.94 | 1.78 | only compositing of cached spans; this is what the spec's probe measured |
+| 4 worker threads (`Initializer::init(4)`) | 38.0 | 45.9 | slower at every size and set on this loaded host (illustrations 512 px: 5.0 ms vs 1.4 ms). Thread hand-off costs more than it saves for UI-sized documents. Not re-measured on an idle host. With threads, `Picture::load` returns before parsing ends, so its "parse" column (6.0 µs) is not comparable |
+
+### 5.2 Speed, WebAssembly (node 24, single-threaded, ThorVG without AVX2/threads)
+
+| Lucide | 24 px | 48 px | 128 px | 512 px | 1024 px | parse | load + first render 48 px |
+|---|---|---|---|---|---|---|---|
+| LunaSVG | 35.4 | 42.7 | 78.5 | 358 | 999 | 7.4 | 51.1 |
+| ThorVG | **20.4** | **26.9** | **50.6** | 276 | 814 | 10.4 | **39.2** |
+| nanosvg | 37.7 | 71.0 | 279 | 3 274 | 13 055 | 7.5 | 79.1 |
+| ThorVG / LunaSVG per file | 0.572 | 0.633 | 0.647 | 0.757 | 0.776 | 1.43 | 0.784 |
+
+With parsing included: 0.731 (24 px) / 0.759 (48 px). Illustrations: ThorVG / LunaSVG 0.515 at
+24 px, 0.573 at 48 px, 0.795 at 1024 px. Wasm costs 10–40 % over native for both libraries; the
+ranking is unchanged. Wasm renders are byte-identical to native for LunaSVG and ThorVG (3.5).
+
+### 5.3 Correctness
+
+**Icons and multicolor vs resvg** (all metrics in 3.5; "Chrome" rows compare against
+headless Chrome):
+
+| set | px | ref | LunaSVG pass / visibly wrong / MAD | ThorVG | ThorVG + filter patch | nanosvg |
+|---|---|---|---|---|---|---|
+| icons | 24 | resvg | 4.6 % / 0 / 0.53 | 4.0 % / 0 / 0.54 | 4.0 % / 0 / 0.54 | 1.3 % / 371 / 0.83 |
+| icons | 48 | resvg | 49.2 % / 0 / 0.22 | 48.4 % / 0 / 0.23 | same | 13.8 % / 0 / 0.35 |
+| icons | 48 | Chrome | 35.5 % / 0 / 0.26 | 32.9 % / 0 / 0.27 | same | 4.8 % / 0 / 0.38 |
+| icons | 128 | resvg | 14.0 % / 0 / 0.18 | 13.7 % / 0 / 0.18 | same | 10.5 % / 0 / 0.23 |
+| multicolor | 48 | resvg | 9.7 % / 53 / 2.30 | 11.7 % / **86** / 3.79 | 11.7 % / 57 / 2.19 | 0.3 % / 60 / 3.00 |
+| multicolor | 128 | resvg | 20.3 % / 37 / 1.97 | 35.7 % / **132** / 4.73 | 38.0 % / 33 / 1.68 | 15.3 % / 41 / 2.30 |
+| illustrations | 512 | resvg | 39.2 % / 17 / 4.06 | 41.8 % / 13 / 3.51 | same | 25.3 % / 33 / 15.41 |
+
+(Chrome vs resvg itself, for scale: icons 48 px pass 17.1 %, 0 visibly wrong; multicolor
+48 px 46 visibly wrong. They disagree on the emoji filters too.)
+
+- **Lucide icons:** LunaSVG and ThorVG are equivalent: 0 visibly wrong at any size, MAD 0.22
+  vs 0.23 at 48 px, edge-pixel (AA) MAD 2.68 vs 2.76 at 48 px and 3.42 vs 3.45 at 24 px.
+  nanosvg's 371 "visibly wrong" icons at 24 px are lighter antialiasing on thin features (for
+  example the dots of `app-window-mac` come out gray), not wrong geometry. At 48 px it has
+  none.
+- **Fluent emoji:** stock ThorVG is visibly wrong on 95 emoji at 128 px (35 at 48 px) that
+  LunaSVG renders acceptably; the reverse happens 0 times at 128 px (2 at 48 px). All 130
+  cases are listed in `tools/htmlui-bench/results/multicolor_thorvg_visibly_wrong.csv`.
+  Sample: `results/images/multicolor-thorvg-filters.png` (columns: Chrome, resvg, LunaSVG,
+  ThorVG, ThorVG + patch, nanosvg).
+
+![ThorVG filter failures on Fluent emoji](../../tools/htmlui-bench/results/images/multicolor-thorvg-filters.png)
+
+  The cause is in ThorVG's SVG loader: unknown filter primitives are dropped, and the
+  remaining `feGaussianBlur` is applied to the source graphic. With
+  `thorvg-skip-unsupported-filters.patch` ThorVG has 33 visibly wrong at 128 px vs LunaSVG 37.
+  The remaining failures of both are the missing inner shadows (filters LunaSVG never
+  renders).
+- **Icon set sample** (every 150th Lucide icon at 48 px; Chrome, resvg, LunaSVG, ThorVG,
+  nanosvg): `results/images/icons-48.png`.
+
+**resvg test suite** (1719 tests at 300 px wide, vs the suite's own reference PNGs):
+
+| library | structure | shapes | painting | paint-servers | masking | **decisive 5** | text | filters | all |
+|---|---|---|---|---|---|---|---|---|---|
+| LunaSVG | 56.2 % | 94.0 % | 68.0 % | 79.1 % | 72.0 % | **70.6 %** (666/943) | 13.2 % | 17.6 % | 45.7 % |
+| ThorVG | 48.8 % | 88.0 % | 49.0 % | 67.3 % | 57.0 % | **58.2 %** (549/943) | 6.6 % | 27.0 % | 39.6 % |
+| ThorVG + filter patch | same as ThorVG | | | | | 58.2 % | | 27.0 % | 39.6 % |
+| nanosvg | 28.7 % | 79.7 % | 32.0 % | 39.2 % | 7.5 % | 36.6 % (345/943) | 9.0 % | 9.3 % | 24.2 % |
+
+LunaSVG − ThorVG on the decisive categories: **+12.4 points** (pass criterion of the spec).
+Under the "not visibly wrong" criterion: 77.5 % vs 67.0 %, +10.5. With a looser pass (< 5 % of
+pixels off by > 16): 77.4 % vs 71.0 %, +6.4. Excluding the 63 marker tests: +8.3.
+
+In the decisive categories, 182 tests pass in LunaSVG and fail in ThorVG; 65 go the other way.
+I looked at samples of both groups; the failures are real rendering differences, not
+antialiasing.
+`results/images/conformance-thorvg-failures.png` shows ThorVG's: CSS colours, CSS selectors,
+nested `<svg>`, `clip-rule`, `mask-type`, markers, `paint-order`, a self-recursive clip.
+`results/images/conformance-luna-failures.png` shows LunaSVG's: mask colour interpolation,
+mask on a child, radial focal radius, stop offsets, `isolation`, `mix-blend-mode`.
+
+![ThorVG failures in the resvg suite](../../tools/htmlui-bench/results/images/conformance-thorvg-failures.png)
+![LunaSVG failures in the resvg suite](../../tools/htmlui-bench/results/images/conformance-luna-failures.png)
+
+### 5.4 Memory (native, one process per library and set, first render at 512 px)
+
+| set | LunaSVG heap after parse / after render (median, max KiB) | ThorVG | nanosvg | peak RSS LunaSVG / ThorVG / nanosvg (MiB) |
+|---|---|---|---|---|
+| icons | 1.3 / 1.7 (max 10) | 0.8 / **94** (max 296) | 1.4 / 1.4 | 6.0 / 6.4 / 5.9 |
+| multicolor | 44.5 / 44.9 (max 404) | 30.9 / **483** (max 3 989) | 9.4 / 9.5 | 7.2 / 11.5 / 6.5 |
+| illustrations | 21.4 / 23.0 (max 3 169) | 16.8 / **532** (max 80 333) | 5.1 / 5.1 | 27.9 / 39.2 / 13.7 |
+| huge | 1 165 / 1 181 (max 4 242) | 884 / **7 094** (max 80 347) | 330 / 330 | 12.5 / 42.8 / 12.3 |
+
+The parsed documents are small for all three. ThorVG keeps each shape's outline and spans
+after rendering (the cache that makes its redraws cheap). Once drawn at 512 px, a retained
+ThorVG picture costs 6–55x more heap than a LunaSVG document (median: icons 94 vs 1.7 KiB,
+huge 7.1 vs 1.2 MiB). LunaSVG keeps only the
+document; the engine keeps the rasterized texture either way.
+
+### 5.5 Retained scene: mutation (fill of one element by id, re-render at 48 px, native)
+
+| set | LunaSVG `setAttribute` | ThorVG `Picture::paint(id)` → `Shape::fill` | nanosvg (edit text + re-parse) |
+|---|---|---|---|
+| icons (1866) | 46.0 µs | **2.6 µs** | 83.1 µs |
+| multicolor (300) | 204 µs | **63.6 µs** | 1 095 µs |
+| illustrations | 206 µs (76 of 81; 5 without a target) | **9.6 µs** (73; 8 not found or failed) | 486 µs |
+
+- **Both modify a loaded document without re-parsing; nanosvg cannot.** nanosvg's parsed
+  `NSVGshape` (with `id` and `fill`) could be patched in place for flat colours, but it has no
+  API for that.
+- **LunaSVG re-renders the whole document.** ThorVG re-rasterizes only the changed shape.
+- **Using ThorVG's retained scene correctly takes two non-obvious steps.** Measured and
+  verified: all three produce the same red area on 1715 of 1866 icons (within 10 %), with no
+  case where ThorVG shows nothing.
+  1. `Picture::update` skips a picture that is not itself dirty, so a change marked only on an
+     inner shape is never drawn. The bench toggles the picture's opacity, the cheapest public
+     way to dirty it.
+  2. The software renderer builds fill spans only when it prepares geometry, so giving a fill
+     to a shape that had none (every stroke-only icon path) also needs a geometry
+     invalidation.
+
+### 5.6 Binary size (stripped, `-Os`, gc-sections; delta over the same program without SVG)
+
+| library | native x86-64 | wasm (`em++ -Os`) |
+|---|---|---|
+| LunaSVG 3.5 + plutovg (includes stb_image and stb_truetype) | 276 KiB | 224 KiB |
+| ThorVG: SVG only | 264 KiB | 205 KiB |
+| ThorVG: SVG + PNG + JPG + TTF (feature parity with LunaSVG) | 324 KiB | 274 KiB |
+| ThorVG: SVG + PNG + JPG + TTF + Lottie | 504 KiB | 388 KiB |
+| nanosvg | 44 KiB | 74 KiB |
+
+With the decision, the engine ships ThorVG (for Lottie) plus LunaSVG: +276 KiB native and
++224 KiB wasm on top of ThorVG. Compiling ThorVG's SVG loader out recovers part of that; its
+objects are about 84 KiB before gc-sections (`tvgSvg*.o`, `tvgXmlParser.o` at `-Os`; the
+exact linked saving was not measured).
 
 ## 6. Feature matrix
 

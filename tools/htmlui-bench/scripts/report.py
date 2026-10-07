@@ -50,6 +50,13 @@ def fmt(x, digits=1):
     return f"{x:.{digits}f}"
 
 
+def num(x, digits=3):
+    """Plain number for the CSV files (no thousands separators)."""
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return ""
+    return f"{x:.{digits}f}"
+
+
 def write_csv(path, header, rows):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -93,9 +100,9 @@ def summarize_timing(platform, rows, results, md):
         med = [v[0] for v in files.values()]
         mins = [v[1] for v in files.values()]
         p95s = [v[2] for v in files.values()]
-        out.append([platform, s, lib, metric, size, len(files), fails[(s, lib, metric, size)], fmt(q(med, 50), 3),
-                    fmt(q(med, 25), 3), fmt(q(med, 75), 3), fmt(q(med, 95), 3), fmt(float(np.mean(med)), 3),
-                    fmt(q(mins, 50), 3), fmt(float(np.median(np.array(p95s) / np.maximum(med, 1e-9))), 3)])
+        out.append([platform, s, lib, metric, size, len(files), fails[(s, lib, metric, size)], num(q(med, 50)),
+                    num(q(med, 25)), num(q(med, 75)), num(q(med, 95)), num(float(np.mean(med))),
+                    num(q(mins, 50)), num(float(np.median(np.array(p95s) / np.maximum(med, 1e-9))))])
     out.sort(key=lambda r: (SET_ORDER.index(r[1]) if r[1] in SET_ORDER else 9, r[3], r[4], lib_key(r[2])))
     write_csv(os.path.join(results, f"timing_{platform}.csv"),
               ["platform", "set", "lib", "metric", "size", "files", "failed", "median_us", "p25_us", "p75_us", "p95_us",
@@ -194,11 +201,12 @@ def mutation(raw, results, md):
     for (s, lib), v in sorted(agg.items(), key=lambda kv: (SET_ORDER.index(kv[0][0]), lib_key(kv[0][1]))):
         st = status[(s, lib)]
         mode = "in place" if st["in_place"] else "re-parse"
-        out.append([s, lib, mode, len(v), sum(st.values()) - len(v), fmt(q(v, 50)), fmt(q(v, 25)), fmt(q(v, 75))])
+        out.append([s, lib, mode, len(v), sum(st.values()) - len(v), num(q(v, 50), 1), num(q(v, 25), 1), num(q(v, 75), 1)])
     write_csv(os.path.join(results, "mutation.csv"),
               ["set", "lib", "mode", "files", "not_done", "median_us", "p25_us", "p75_us"], out)
     md.append("\n**Mutation: set the fill of one element by id and re-render at 48 px, median µs per file**\n\n")
-    md.append(md_table(["set", "library", "how", "files", "not found/failed", "median µs", "p25", "p75"], out))
+    md.append(md_table(["set", "library", "how", "files", "not found/failed", "median µs", "p25", "p75"],
+                       [r[:5] + [fmt(float(x)) for x in r[5:]] for r in out]))
 
 
 def memory(raw, results, md):
@@ -216,17 +224,18 @@ def memory(raw, results, md):
         for lib in sorted({k[1] for k in agg if k[0] == s}, key=lib_key):
             p = agg.get((s, lib, "heap_parse_bytes"), [])
             rr = agg.get((s, lib, "heap_render_bytes"), [])
-            out.append([s, lib, len(p), fmt(q(p, 50) / 1024, 1), fmt(max(p) / 1024 if p else float("nan"), 0),
-                        fmt(q(rr, 50) / 1024, 1), fmt(max(rr) / 1024 if rr else float("nan"), 0),
-                        fmt(rss.get((s, lib, "rss_peak_kb"), float("nan")) / 1024, 1),
-                        fmt((rss.get((s, lib, "rss_peak_kb"), float("nan")) - rss.get((s, lib, "rss_start_kb"), float("nan"))) / 1024, 1)])
+            out.append([s, lib, len(p), num(q(p, 50) / 1024, 1), num(max(p) / 1024 if p else float("nan"), 0),
+                        num(q(rr, 50) / 1024, 1), num(max(rr) / 1024 if rr else float("nan"), 0),
+                        num(rss.get((s, lib, "rss_peak_kb"), float("nan")) / 1024, 1),
+                        num((rss.get((s, lib, "rss_peak_kb"), float("nan")) - rss.get((s, lib, "rss_start_kb"), float("nan"))) / 1024, 1)])
     write_csv(os.path.join(results, "memory.csv"),
               ["set", "lib", "files", "heap_after_parse_median_kib", "heap_after_parse_max_kib",
                "heap_after_render_median_kib", "heap_after_render_max_kib", "peak_rss_mib", "peak_rss_growth_mib"], out)
     md.append("\n**Memory: retained heap per document after parse and after the first 512 px render (KiB), "
               "peak RSS of the process (MiB)**\n\n")
     md.append(md_table(["set", "library", "files", "after parse median", "after parse max", "after render median",
-                        "after render max", "peak RSS", "RSS growth"], out))
+                        "after render max", "peak RSS", "RSS growth"],
+                       [r[:3] + [fmt(float(x)) if x else "-" for x in r[3:]] for r in out]))
 
 
 def binary_size(raw, results, md):
