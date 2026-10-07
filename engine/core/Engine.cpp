@@ -12,6 +12,7 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -1363,6 +1364,12 @@ static bool canSendUIEvents(Scene* scene){
     return scene->canReceiveUIEvents() && !SceneManager::isCoveredByLoading(scene);
 }
 
+// documents are an explicit request for input: they receive it unless the scene turns
+// UI events off (UIEventState::DISABLED) or a loading scene covers it
+static bool canSendDocumentEvents(Scene* scene){
+    return scene->getEnableUIEvents() != UIEventState::DISABLED && !SceneManager::isCoveredByLoading(scene);
+}
+
 bool Engine::transformCoordPos(float& x, float& y){
 
     x = (x - viewRect.getX()) / viewRect.getWidth();
@@ -1383,6 +1390,12 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            // documents are in front of the component UI: one they consume does not reach it
+            if (pointer == 0 && canSendDocumentEvents(scene))
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerDown(D_MOUSE_BUTTON_1, x, y, 0)){
+                    uiEventReceived = true;
+                    continue;
+                }
             if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                     uiEventReceived = true;
@@ -1406,6 +1419,10 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            // a covered scene still gets the release, like the component UI
+            if (pointer == 0 && scene->getEnableUIEvents() != UIEventState::DISABLED)
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerUp(D_MOUSE_BUTTON_1, x, y, 0))
+                    uiEventReceived = true;
             if (scene->canReceiveUIEvents())
                 if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                     uiEventReceived = true;
@@ -1429,6 +1446,9 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            if (pointer == 0 && canSendDocumentEvents(scene))
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerMove(x, y, 0))
+                    uiEventReceived = true;
             if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
@@ -1471,6 +1491,12 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            // documents are in front of the component UI: one they consume does not reach it
+            if (canSendDocumentEvents(scene))
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerDown(button, x, y, mods)){
+                    uiEventReceived = true;
+                    continue;
+                }
             if (canSendUIEvents(scene))
                 if (button == D_MOUSE_BUTTON_1)
                     if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
@@ -1496,6 +1522,10 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            // a covered scene still gets the release, like the component UI
+            if (scene->getEnableUIEvents() != UIEventState::DISABLED)
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerUp(button, x, y, mods))
+                    uiEventReceived = true;
             if (scene->canReceiveUIEvents())
                 if (button == D_MOUSE_BUTTON_1)
                     if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
@@ -1521,6 +1551,9 @@ void Engine::systemMouseMove(float x, float y, int mods){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
+            if (canSendDocumentEvents(scene))
+                if (scene->getSystem<UIDocumentSystem>()->eventOnPointerMove(x, y, mods))
+                    uiEventReceived = true;
             if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;

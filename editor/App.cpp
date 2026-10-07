@@ -37,6 +37,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -2497,6 +2498,8 @@ void editor::App::engineRender(){
             // isAllLoaded skips empty UIs, and an image builds its geometry only once its texture loads
             auto us = sp.scene->getSystem<UISystem>();
             if (us && us->hasPendingImages()) active = true;
+            // HTML documents (and their shaders) loading, until one frame shows them
+            if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             gaugeAnimating = sp.sceneRender->getUILayer()->isCameraGaugeAnimating();
             if (thumbnailsPending) active = true;
@@ -2651,6 +2654,7 @@ void editor::App::engineRender(){
                     }
                     childScene->scene->getSystem<MeshSystem>()->update(0);
                     childScene->scene->getSystem<UISystem>()->update(0);
+                    childScene->scene->getSystem<UIDocumentSystem>()->update(0);
                     childScene->scene->getSystem<RenderSystem>()->update(0);
                     childScene->needUpdateRender = false;
                 }
@@ -2868,6 +2872,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         if (!childScene->expandedInline) {
             childScene->scene->getSystem<MeshSystem>()->update(0);
             childScene->scene->getSystem<UISystem>()->update(0);
+            childScene->scene->getSystem<UIDocumentSystem>()->update(0);
             childScene->scene->getSystem<RenderSystem>()->update(0);
         }
         layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, (float)canvasWidth, (float)canvasHeight});
@@ -2927,6 +2932,7 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     for (Scene* childScene : childLayers) {
         childScene->getSystem<MeshSystem>()->update(0);
         childScene->getSystem<UISystem>()->update(0);
+        childScene->getSystem<UIDocumentSystem>()->update(0);
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();

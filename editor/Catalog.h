@@ -56,6 +56,8 @@ namespace jasperengine::editor{
         UpdateFlags_Terrain_Foliage     = (uint64_t)1 << 35,
         // shaderUniforms of Mesh/UI/Points/Lines/Sky (no shader reload)
         UpdateFlags_Shader_Uniforms     = (uint64_t)1 << 36,
+        // a UIDocument's file changed: load it again
+        UpdateFlags_UIDocument_Reload   = (uint64_t)1 << 37,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -115,7 +117,8 @@ namespace jasperengine::editor{
         ShadowCaster2DComponent,
         // Keep new component types at the end: their ordinal is used as the bit
         // position in Prefab's in-memory component override mask.
-        ReflectionProbeComponent
+        ReflectionProbeComponent,
+        UIDocumentComponent
     };
 
     enum class PropertyType{

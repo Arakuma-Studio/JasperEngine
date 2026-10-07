@@ -6,6 +6,7 @@
 
 #include "Export.h"
 
+#include <RmlUi/Core/ObserverPtr.h>
 #include <RmlUi/Core/Types.h>
 
 #include "math/Rect.h"
@@ -18,6 +19,7 @@
 
 namespace Rml {
     class Context;
+    class Element;
     class ElementDocument;
 }
 
@@ -74,6 +76,8 @@ namespace jasperengine {
         float densityRatio = 1.0f;
         bool renderedThisFrame = false;
         bool renderedOnce = false;
+        // the element a primary button press started on, until the release (RmlUi keeps it private)
+        Rml::ObserverPtr<Rml::Element> activeElement;
     };
 
 }

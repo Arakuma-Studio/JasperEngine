@@ -3824,6 +3824,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::ReflectionProbeComponent, true)] = encodeReflectionProbeComponent(probe);
     }
 
+    if (signature.test(registry->getComponentId<UIDocumentComponent>())) {
+        const UIDocumentComponent& document = registry->getComponent<UIDocumentComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::UIDocumentComponent, true)] = encodeUIDocumentComponent(document);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -4264,6 +4269,19 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::ReflectionProbeComponent, existing, &probe);
             registry->getComponent<ReflectionProbeComponent>(entity) = std::move(probe);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::UIDocumentComponent, true);
+    if (compNode[compName]) {
+        UIDocumentComponent* existing = registry->findComponent<UIDocumentComponent>(entity);
+        UIDocumentComponent document = decodeUIDocumentComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<UIDocumentComponent>())){
+            registry->addComponent<UIDocumentComponent>(entity, std::move(document));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
+            registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -6005,6 +6023,36 @@ YAML::Node editor::Stream::encodeReflectionProbeComponent(const ReflectionProbeC
     node["texture"] = encodeTexture(probe.texture);
 
     return node;
+}
+
+YAML::Node editor::Stream::encodeUIDocumentComponent(const UIDocumentComponent& document) {
+    YAML::Node node;
+    node["enabled"] = document.enabled;
+
+    // written when empty too: decoding over a component with a file must clear it
+    node["filename"] = document.filename;
+    node["sortOrder"] = document.sortOrder;
+
+    return node;
+}
+
+UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument) {
+    // the old one's runtime state (its loaded document) stays while the file is the same
+    UIDocumentComponent document;
+
+    if (oldDocument) {
+        document = *oldDocument;
+    }
+
+    if (node["filename"]) document.filename = node["filename"].IsNull() ? std::string() : node["filename"].as<std::string>();
+    if (node["sortOrder"]) document.sortOrder = YamlNumbers::as<int>(node["sortOrder"]);
+    if (node["enabled"]) document.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (oldDocument && oldDocument->filename != document.filename) {
+        document.needReload = true;
+    }
+
+    return document;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

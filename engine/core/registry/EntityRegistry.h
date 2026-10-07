@@ -20,6 +20,7 @@
 #include "component/FogComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"

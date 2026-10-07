@@ -8974,6 +8974,19 @@ void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, ScenePro
     endTable();
 }
 
+void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    RowSettings sourceSettings;
+    sourceSettings.help = "HTML file shown over the scene, relative to the assets folder (e.g. ui/menu.html).";
+
+    RowSettings sortSettings;
+    sortSettings.help = "Documents with a higher sort order draw on top of the scene's other documents.";
+
+    beginTable(cpType, getLabelSize("Sort Order"));
+    propertyRow(RowPropertyType::String, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
+    propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
+    endTable();
+}
+
 void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ReflectionProbeComponent& probe = sceneProject->scene->getComponent<ReflectionProbeComponent>(entities[0]);
 
@@ -14014,6 +14027,8 @@ void editor::InspectorWindow::show(){
                     drawMirrorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ReflectionProbeComponent){
                     drawReflectionProbeComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::UIDocumentComponent){
+                    drawUIDocumentComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

@@ -276,6 +276,16 @@ void prepare<ReflectionProbeComponent>(ReflectionProbeComponent& probe, Entity, 
 }
 
 template<>
+void prepare<UIDocumentComponent>(UIDocumentComponent& document, Entity, CloneContext&) {
+    // the copy loads its own document
+    document.needReload = true;
+    document.loaded = false;
+    document.loadFailed = false;
+    document.appliedSortOrder = 0;
+    document.appliedVisible = false;
+}
+
+template<>
 void prepare<ModelComponent>(ModelComponent& model, Entity, CloneContext& ctx) {
     // the parsed file data is shared (read only, kept alive by the copy too)
     model.skeleton = ctx.remap(model.skeleton);
@@ -571,6 +581,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<UIDocumentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 

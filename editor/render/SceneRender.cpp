@@ -736,6 +736,7 @@ void editor::SceneRender::updateRenderSystem(){
     // Meshes and UIs are created in update, without this can affect worldAABB
     scene->getSystem<MeshSystem>()->update(0);
     scene->getSystem<UISystem>()->update(0);
+    scene->getSystem<UIDocumentSystem>()->update(0);
     // to avoid gizmos delays
     scene->getSystem<RenderSystem>()->update(0);
 }

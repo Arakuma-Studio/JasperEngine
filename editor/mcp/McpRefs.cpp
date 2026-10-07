@@ -372,7 +372,7 @@ Json McpRefs::sceneJson(Project* project, const SceneProject& scene) {
 
 std::vector<std::string> McpRefs::componentTypeNames() {
     std::vector<std::string> names;
-    const int last = static_cast<int>(ComponentType::ReflectionProbeComponent);
+    const int last = static_cast<int>(ComponentType::UIDocumentComponent);
     for (int i = 0; i <= last; i++) {
         std::string name = lower(Catalog::getComponentName(static_cast<ComponentType>(i), true));
         if (name.empty()) continue;
@@ -414,7 +414,7 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             }
         }
         // Unity's display names ("Rigidbody 2D", "Audio Source")
-        const int last = static_cast<int>(ComponentType::ReflectionProbeComponent);
+        const int last = static_cast<int>(ComponentType::UIDocumentComponent);
         for (int i = 0; i <= last; i++) {
             std::string display;
             for (char c : lower(Catalog::getComponentDisplayName(static_cast<ComponentType>(i)))) {

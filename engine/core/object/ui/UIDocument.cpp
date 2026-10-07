@@ -8,78 +8,73 @@
 using namespace jasperengine;
 
 UIDocument::UIDocument(Scene* scene): GameObject(scene){
-    // HTMLUI_SKELETON: p0-ecs
+    addComponent<UIDocumentComponent>();
 }
 
 UIDocument::UIDocument(Scene* scene, Entity entity): GameObject(scene, entity){
-    // HTMLUI_SKELETON: p0-ecs
 }
 
 UIDocument::~UIDocument(){
-    // HTMLUI_SKELETON: p0-ecs
 }
 
 void UIDocument::setFilename(const std::string& filename){
-    // HTMLUI_SKELETON: p0-ecs
-    (void)filename;
+    UIDocumentComponent& document = getComponent<UIDocumentComponent>();
+
+    // the same file again only retries a load that failed (reload() reloads a loaded one)
+    if (document.filename != filename || document.loadFailed){
+        document.filename = filename;
+        document.needReload = true;
+    }
 }
 
 const std::string& UIDocument::getFilename() const{
-    // HTMLUI_SKELETON: p0-ecs
-    static const std::string empty;
-    return empty;
+    return getComponent<UIDocumentComponent>().filename;
 }
 
 bool UIDocument::load(const std::string& filename){
-    // HTMLUI_SKELETON: p0-ecs
-    (void)filename;
-    return false;
+    UIDocumentComponent& document = getComponent<UIDocumentComponent>();
+    document.filename = filename;
+    document.needReload = true;
+
+    return scene->getSystem<UIDocumentSystem>()->loadDocumentNow(entity);
 }
 
 void UIDocument::reload(){
-    // HTMLUI_SKELETON: p0-ecs
+    getComponent<UIDocumentComponent>().needReload = true;
 }
 
 bool UIDocument::isLoaded() const{
-    // HTMLUI_SKELETON: p0-ecs
-    return false;
+    return getComponent<UIDocumentComponent>().loaded;
 }
 
 void UIDocument::show(){
-    // HTMLUI_SKELETON: p0-ecs
+    setVisible(true);
 }
 
 void UIDocument::hide(){
-    // HTMLUI_SKELETON: p0-ecs
+    setVisible(false);
 }
 
 void UIDocument::setVisible(bool visible){
-    // HTMLUI_SKELETON: p0-ecs
-    (void)visible;
+    getComponent<UIDocumentComponent>().enabled = visible;
 }
 
 bool UIDocument::isVisible() const{
-    // HTMLUI_SKELETON: p0-ecs
-    return false;
+    return getComponent<UIDocumentComponent>().enabled;
 }
 
 void UIDocument::setSortOrder(int sortOrder){
-    // HTMLUI_SKELETON: p0-ecs
-    (void)sortOrder;
+    getComponent<UIDocumentComponent>().sortOrder = sortOrder;
 }
 
 int UIDocument::getSortOrder() const{
-    // HTMLUI_SKELETON: p0-ecs
-    return 0;
+    return getComponent<UIDocumentComponent>().sortOrder;
 }
 
 UIElement UIDocument::getElementById(const std::string& id) const{
-    // HTMLUI_SKELETON: p0-ecs
-    (void)id;
-    return UIElement();
+    return scene->getSystem<UIDocumentSystem>()->getElementById(entity, id);
 }
 
 UIElement UIDocument::getBody() const{
-    // HTMLUI_SKELETON: p0-ecs
-    return UIElement();
+    return scene->getSystem<UIDocumentSystem>()->getDocumentBody(entity);
 }
