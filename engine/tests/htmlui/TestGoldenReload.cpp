@@ -1,14 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A reloaded document reads its files as they are on disk now, while RmlUi stays
-// initialised (another document of the scene, like the editor's open scenes, keeps it
-// alive): RmlUi caches linked stylesheets by path until Rml::Shutdown, so before the fix an
-// edited .css never showed until every document of every scene was gone.
+// Reloads through the full path. A reloaded document reads its files as they are on disk
+// now, while RmlUi stays initialised (another document of the scene, like the editor's open
+// scenes, keeps it alive): RmlUi caches linked stylesheets by path until Rml::Shutdown, so
+// before the fix an edited .css never showed until every document of every scene was gone.
+// A scene reload leaves no GPU object of the documents behind.
 
 #include "TestGoldenCommon.h"
 
 #include "HtmlUI.h"
+#include "HtmlUIContext.h"
+#include "RmlRenderer.h"
+#include "subsystem/UIDocumentSystem.h"
+
+#include "sokol_gfx.h"
 
 #include <filesystem>
 #include <fstream>
@@ -34,6 +40,14 @@ namespace {
     std::string reloadCss(const std::string& color){
         return "body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }\n"
                "#box { position: absolute; left: 200px; top: 100px; width: 240px; height: 160px; background-color: " + color + "; }\n";
+    }
+
+    bool isBufferValid(uint32_t id){
+        return sg_query_buffer_state(sg_buffer{id}) == SG_RESOURCESTATE_VALID;
+    }
+
+    bool isImageValid(uint32_t id){
+        return sg_query_image_state(sg_image{id}) == SG_RESOURCESTATE_VALID;
     }
 
     void writeFile(const std::string& path, const std::string& text){
@@ -85,4 +99,35 @@ TEST_F(FullPathGoldenTest, ReloadReadsEditedStyleSheet){
     // the other document kept its own styles through it all
     EXPECT_TRUE(third.is(60, 35, 255, 0, 0));
     EXPECT_TRUE(HtmlUI::isInitialized());
+}
+
+TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
+    // twice the same scene: images, an SVG and text (font pages), drawn, then the scene goes
+    // (as a scene reload drops it before loading it again)
+    for (int round = 0; round < 2; round++){
+        std::vector<uint32_t> buffers, images;
+        {
+            SceneFixture fixture;
+            fixture.addDocument("render/images.html");
+            fixture.addDocument("golden/text_basic.html", 1);
+            ASSERT_TRUE(fixture.waitUntilLoaded());
+
+            HtmlUIContext* context = fixture.getScene().getSystem<UIDocumentSystem>()->getContext();
+            ASSERT_NE(context, nullptr);
+            RmlRenderer& renderer = context->getRenderer();
+            EXPECT_GT(renderer.getLiveGeometryCount(), 0u);
+            EXPECT_GE(renderer.getLiveTextureCount(), 4u);   // checker, alpha50, icon, a font page
+            renderer.getGpuHandles(buffers, images);
+            EXPECT_EQ(buffers.size(), 4u) << "round " << round;
+            EXPECT_GE(images.size(), 5u) << "round " << round;   // + the placeholder
+            for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
+            for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));
+            ASSERT_NE(context->getTarget(), nullptr);
+        }
+
+        EXPECT_FALSE(HtmlUI::isInitialized()) << "round " << round;
+        EXPECT_EQ(HtmlUI::getContextCount(), 0u);
+        for (uint32_t id : buffers) EXPECT_FALSE(isBufferValid(id)) << "round " << round << " buffer " << id;
+        for (uint32_t id : images) EXPECT_FALSE(isImageValid(id)) << "round " << round << " image " << id;
+    }
 }
