@@ -507,13 +507,13 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         }
 
         if (settings.showStats) {
-            drawStats(areaMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y));
+            drawStats(areaMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y), sceneProject);
         }
     }
     ImGui::EndChild();
 }
 
-void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax) {
+void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject) {
     const Engine::FrameStats& frameStats = Engine::getFrameStats();
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
@@ -525,7 +525,6 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax) {
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
-    const SceneProject* sceneProject = project->getScene(sceneId);
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
         const HtmlUIRenderStats& ui = documents->getRenderStats();
