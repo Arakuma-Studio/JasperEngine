@@ -423,6 +423,10 @@ TEST_F(RmlRendererP1GoldenTest, LayersNested){
     const uint8_t* child = probe.at(240, 190);
     EXPECT_GT(child[0], child[1] + 0x30);
     EXPECT_LT(child[0], 0xf0);
+    // inside the blurred box but outside the faded one: the panel's darkened backdrop (a layer
+    // reused in the frame shows nothing of its earlier content)
+    EXPECT_LT(probe.at(150, 110)[1], 0xb0);
+    EXPECT_GT(probe.at(150, 110)[1], 0x60);
     // the backdrop's temp layer, the blur's and the opacity's, with passes for each
     EXPECT_GE(test.renderer.getStats().layersPushed, 3u);
     EXPECT_GT(test.renderer.getStats().passes, 4u);
