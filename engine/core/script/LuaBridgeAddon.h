@@ -9,6 +9,7 @@
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
 #include "texture/Material.h"
+#include "component/UIDocumentComponent.h"
 
 using namespace jasperengine;
 
@@ -89,6 +90,7 @@ namespace luabridge
     template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
+    template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
 
     template <>
     struct Stack <Touch>
