@@ -427,6 +427,7 @@ TEST_F(AnimeReferenceTest, Recordings){
     // gen_reference.mjs's clock: 1000 at Anime's import (its engine's start), +10000 before
     // each recording, +dt per frame; the engine's clock starts at 0
     double now = 0;
+    size_t compared = 0, callbacksCompared = 0;
     AnimEngine& engine = AnimEngine::instance();
     for (const json& c : reference()["recordings"]){
         const std::string name = c["name"].get<std::string>();
@@ -517,6 +518,7 @@ TEST_F(AnimeReferenceTest, Recordings){
             for (auto t = expected["values"].begin(); t != expected["values"].end(); ++t){
                 for (auto v = t.value().begin(); v != t.value().end(); ++v){
                     AnimRawValue actual = targets[t.key()]->get(v.key());
+                    compared++;
                     bool same;
                     if (v.value().is_string()){
                         same = actual.isString() && sameText(actual.text, v.value().get<std::string>());
@@ -529,6 +531,7 @@ TEST_F(AnimeReferenceTest, Recordings){
             }
             std::vector<std::string> expectedLog;
             for (const json& entry : expected["callbacks"]) expectedLog.push_back(entry.get<std::string>());
+            callbacksCompared += expectedLog.size();
             if (recorder.log != expectedLog && mismatchCount++ < 12){
                 mismatches << "frame " << frame << " callbacks:\n  got      ";
                 for (const std::string& s : recorder.log) mismatches << s << " ";
@@ -556,4 +559,7 @@ TEST_F(AnimeReferenceTest, Recordings){
             objects[id]->cancel();
         EXPECT_EQ(mismatchCount, 0) << mismatches.str();
     }
+    // the recordings really compared something
+    EXPECT_GT(compared, 2000u);
+    EXPECT_GT(callbacksCompared, 3000u);
 }
