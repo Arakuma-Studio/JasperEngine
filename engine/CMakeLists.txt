@@ -674,7 +674,6 @@ include_directories(SYSTEM libs/json)
 include_directories(SYSTEM libs/sokol)
 include_directories(SYSTEM libs/lua)
 include_directories(SYSTEM libs/stb)
-include_directories(SYSTEM libs/nanosvg)
 include_directories(SYSTEM libs/soloud/include)
 include_directories(SYSTEM libs/tinyobjloader)
 include_directories(SYSTEM libs/tinygltf)
@@ -708,6 +707,8 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+add_subdirectory(libs/lunasvg)
+add_subdirectory(libs/thorvg)
 add_subdirectory(libs/rmlui)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
@@ -743,7 +744,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer rmlui ${JASPERENGINE_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -799,6 +800,10 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
+    core/htmlui/vector/DotLottie.cpp
+    core/htmlui/vector/LottiePlayback.cpp
+    core/htmlui/vector/UIElementLottie.cpp
+    core/htmlui/vector/UILottieElement.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
@@ -883,6 +888,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/MathClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
+    core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
@@ -914,9 +920,11 @@ set(JASPERENGINE_SRCS
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
+    core/util/LunaSVGRuntime.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/TextShaper.cpp
+    core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/XMLUtils.cpp
 )
@@ -977,7 +985,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer rmlui
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui
     ${JASPERENGINE_PHYSICS_LIBS}
 )
 
@@ -1053,6 +1061,8 @@ if(JASPERENGINE_SHARED)
     # equivalent flag (those weak std instantiations stay visible in the macOS dylib)
     if(NOT APPLE AND NOT MSVC)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
+        # the vector libraries (hidden visibility too): LunaSVG/plutovg for SVG, ThorVG for Lottie
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
         # and what engine code instantiates over RmlUi types (see the script; ELF only)
         if(NOT WIN32)
             target_link_options(jasperengine PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")

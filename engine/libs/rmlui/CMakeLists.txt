@@ -1,11 +1,13 @@
 # RmlUi 6.3 - https://github.com/mikke89/RmlUi (tag 6.3, ba95ffe8bfb6370efb2cdcca927eaad4710c5413)
-# Core and Debugger only. The font engine is the engine's own (engine/core/htmlui/RmlFontEngine),
-# so there is no FreeType; see docs/html-ui/FORK.md for the vendored subset and patches.
+# Core, Debugger and the SVG plugin. The font engine is the engine's own
+# (engine/core/htmlui/RmlFontEngine), so there is no FreeType; see docs/html-ui/FORK.md for the
+# vendored subset and patches.
 file(GLOB RMLUI_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/Elements/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/Layout/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Debugger/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/SVG/*.cpp
 )
 
 add_library(
@@ -33,7 +35,11 @@ target_compile_definitions(
 
     RMLUI_VERSION="6.3"
     RMLUI_NO_FILE_INTERFACE_DEFAULT   # a missing RmlFile is an error, never a silent fopen
+    RMLUI_SVG_PLUGIN                  # Rml::Initialise registers the SVG plugin (<svg>, decorator: svg())
 )
+
+# The SVG plugin rasterises with LunaSVG, as upstream (docs/html-ui/svg-benchmark.md)
+target_link_libraries(rmlui PRIVATE lunasvg)
 
 target_compile_features(rmlui PUBLIC cxx_std_17)
 
