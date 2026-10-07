@@ -392,6 +392,63 @@ shop.onChange("gold", [](const UIValue& value){ });
 `setStyleProperty` (false and a warning when RmlUi rejects the value), `removeStyleProperty`,
 `getBoundingBox()` (canvas pixels) and `isPseudoClassSet("hover")`.
 
+## Documents on meshes
+
+A document can render into a texture instead of over the screen, and that texture can go on
+a mesh (a screen in the 3D world, a computer terminal) or in an `Image`. Pointer input on the
+mesh reaches the document.
+
+| Component field | Meaning |
+|---|---|
+| `renderMode` | `SCREEN` (default) or `TEXTURE` |
+| `textureWidth`, `textureHeight` | texture size in pixels (default 1024 x 1024, at most 8192) |
+| `pixelRatio` | texture pixels per CSS px (0 = 1). The document is laid out at `textureWidth / pixelRatio` x `textureHeight / pixelRatio` CSS px: a 1024 x 512 texture at ratio 2 is a 512 x 256 px page drawn sharp at 2x |
+| `inputSurface` | the entity whose mesh is hit-tested for pointer input; none = the document's own entity |
+| `interactive` | false: the document gets no input |
+
+```lua
+function Terminal:init()
+    self.screen = Primitive(self.scene)
+    self.screen:createWall(1.6, 0.9)
+    local doc = UIDocument(self.scene, self.entity)
+    local c = doc:getUIDocumentComponent()
+    c.renderMode = UIDocumentRenderMode.TEXTURE
+    c.textureWidth, c.textureHeight, c.pixelRatio = 1280, 720, 2
+    c.inputSurface = self.screen.entity
+    c.needReload = true                          -- a mode change applies at the next load
+    doc.onLoad = function()
+        if c.renderMode == UIDocumentRenderMode.TEXTURE then
+            self.screen:setTexture(doc:getTargetTexture())   -- Mesh, Primitive, or Image:setTexture
+        end
+    end
+end
+```
+
+- `getTargetTexture()` (Lua and C++ `UIDocument`) returns a `Framebuffer`: RGBA8,
+  **straight alpha** (what `Image` and mesh materials expect), top-left origin (a wall,
+  plane or sprite shows it upright), linear filtering. It is `nil`/`nullptr` for a SCREEN
+  document. The object stays the same while the component exists: give it to a mesh once.
+  Size and ratio changes apply at once (the texture is recreated, consumers follow).
+- The texture is redrawn only when the document changed. A hidden document (`hide()`,
+  disabled component or entity) leaves a transparent texture. The document is not drawn
+  over the screen.
+- Each TEXTURE document has its own layout context: its own size, its own `@media` view,
+  its own focus. Everything else is the same: Lua element API, data models, events,
+  animations, fonts (text is rasterized at the document's `pixelRatio`).
+- Pointer input: a click that no screen document took is cast as a ray from the scene's
+  camera; the nearest TEXTURE document whose surface it hits gets it at the hit's texture
+  coordinate. The usual rules apply: over an element (or a body with a background) the
+  document takes the event and the game does not get it; over a transparent body it passes
+  on (to a document further back, then to the game). A press keeps the pointer until the
+  release, even when it leaves the surface (drags). Touch works the same way per finger.
+  Wheel goes to the document under the mouse. Keys, text and IME go to the document that
+  took the last press (screen or world); a press elsewhere takes them away.
+- The hit test reads the mesh's CPU geometry (primitives, sprites, imported models) with its
+  texture coordinates; it ignores other objects between the camera and the surface, and
+  skinned or morph-target meshes are tested in their bind pose. Screen documents are drawn
+  over the 3D world and get pointer events first.
+- The mouse cursor shape (`cursor`) follows screen documents only.
+
 ## Rendering features and limits
 
 Each scene's screen-space documents draw together into one offscreen target, which the

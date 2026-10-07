@@ -2203,6 +2203,26 @@ consume it, because screen-space UI is drawn over the 3D world.
 - Keys and text go to the context that holds focus: the context that received the last
   pointer-down, screen or texture.
 
+*As implemented (p1-rtt, after p1-input merged):* a captured world pointer must bypass the
+screen context, so each `eventOnPointer*` has two calls: `if (isWorldPointerCaptured(...))
+return dispatchWorldPointer(...)` at the top and the offer after the screen declined (a
+consumed screen down clears the texture focus, `textureFocusScreen`). Captures are per touch
+id and per mouse button (a mouse move is captured while any button is). `hasPointerCapture`
+includes world captures, so the engine's up routing reaches the scene. The key, text and IME
+methods and `hasFocusedTextInput` use `keyContext()` (the focused texture document's context,
+else the screen context) instead of the screen context. Wheel goes to the hovered texture
+document when the screen did not take it, and mouse leave reaches texture documents. Touch
+uses `HtmlUIContext::processTouch*` with the real ids; the consume rule is p1-input's
+`isPointerOverContent`. The target fill is p1-render's `RmlRenderer::drawUnpremultiplied`
+into an RGBA8, 1-sample, depth-less `Framebuffer` (`FramebufferDesc`), done only when the
+context drew a new frame (or the texture was recreated); a hidden document leaves the texture
+cleared to transparent. Texture contexts add to `getRenderStats`. Data models created by a
+texture document's scripts live in its context (`modelContext(owner)`; p1-lua's
+`createModel`, `scriptContextCreated` and `scriptDocumentLoading(filename, target)` take it
+into account), and its context gets the DOM change-event synthesizer. Lua binds
+`UIDocumentRenderMode` and the component's `renderMode`, `textureWidth`, `textureHeight`,
+`inputSurface`, `pixelRatio`.
+
 ---
 
 ### 3.13 Font effects (p1-rtt)
