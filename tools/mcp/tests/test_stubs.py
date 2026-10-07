@@ -303,7 +303,6 @@ async def test_files_written(ed: Editor):
     for e in db:
         args = e["arguments"]
         ed.check_eq(e["directory"], proj.resolve().as_posix(), "compile command directory")
-        ed.check(any(a.startswith("-std=c++") for a in args), f"no -std in {args}")
         ed.check(f"-std=c++{std}" in args, f"-std of the project (C++{std}) in {args[:3]}")
         ed.check(f"{proj.resolve().as_posix()}/.jasperengine/engine-api/core" in args, "engine-api/core include dir")
         ed.check("-DJASPERENGINE_PHYSICS_2D" in args and "-DJASPERENGINE_EDITOR_PLUGIN" in args, "definitions")
@@ -608,13 +607,8 @@ async def test_luals_new_lua_script_template(ed: Editor):
 
 async def test_clangd_cpp_templates_parse(ed: Editor):
     await wait_tooling(ed)
-    eid = None
     made = await ed.call("create_entity", name="StubCppHost", type="box")
-    for key in ("entity_id", "id"):
-        if isinstance(made, dict) and key in made:
-            eid = made[key]
-    if eid is None:
-        eid = made.get("entity", {}).get("id")
+    eid = made["entity_id"]
     script = await ed.call("create_script", kind="cpp_script", name="StubScriptCheck")
     sub = await ed.call("create_script", kind="cpp_subclass", name="StubSubclassCheck", entity=eid)
     files = [ed.project / script["path"], ed.project / script["header_path"],

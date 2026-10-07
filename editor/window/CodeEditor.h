@@ -102,7 +102,6 @@ namespace jasperengine::editor {
         CodeEditor(Project* project);
         ~CodeEditor();
 
-        std::vector<fs::path> getOpenPaths() const;
         bool isFocused() const;
         void closeAll();
 

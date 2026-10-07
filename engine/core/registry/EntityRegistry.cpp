@@ -185,18 +185,13 @@ void EntityRegistry::changeTransformChildren(Entity entity){
         newParent = removedTransform->parent;
     }
 
-    // Find all entities with Transform components that have this entity as parent
     auto transformArray = getComponentArray<Transform>();
-    if (transformArray) {
-        for (size_t i = 0; i < transformArray->size(); i++) {
-            Transform* childTransform = transformArray->findComponentFromIndex(i);
-            if (childTransform && childTransform->parent == entity) {
-                // Set the parent to the grandparent (parent of removed entity)
-                childTransform->parent = newParent;
-                // Mark for update since hierarchy changed
-                childTransform->needUpdate = true;
-                childTransform->needUpdateChildVisibility = true;
-            }
+    for (size_t i = 0; i < transformArray->size(); i++) {
+        Transform& childTransform = transformArray->getComponentFromIndex(i);
+        if (childTransform.parent == entity) {
+            childTransform.parent = newParent;
+            childTransform.needUpdate = true;
+            childTransform.needUpdateChildVisibility = true;
         }
     }
 }
@@ -543,9 +538,7 @@ void EntityRegistry::moveChildToIndex(Entity entity, size_t index){
             size_t length = lastChildIndex - entityIndex + 1;
 
             if (index > entityIndex){
-                if (index > 0){ // Prevent underflow
-                    index--;
-                }
+                index--;
             }
 
             if (length == 1){

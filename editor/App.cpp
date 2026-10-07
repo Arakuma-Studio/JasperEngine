@@ -3589,10 +3589,6 @@ editor::PlayInput* editor::App::getPlayInput() const{
     return playInput;
 }
 
-editor::MainToolbar* editor::App::getMainToolbar() const{
-    return mainToolbar;
-}
-
 editor::GameWindow* editor::App::getGameWindow() const{
     return gameWindow;
 }

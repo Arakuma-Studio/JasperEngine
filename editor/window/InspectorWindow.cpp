@@ -1041,7 +1041,7 @@ void editor::InspectorWindow::drawImageWithBorderAndRounding(Texture* texture, c
 }
 
 
-void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1053,8 +1053,8 @@ void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::s
 
     const std::string slotId = id + "#" + std::to_string(slot);
 
-    auto markTextDirty = [sceneProject, componentType](Entity entity){
-        if (componentType == ComponentType::TextComponent){
+    auto markTextDirty = [sceneProject, cpType](Entity entity){
+        if (cpType == ComponentType::TextComponent){
             sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
             sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
         }
@@ -1072,7 +1072,7 @@ void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::s
 
                 if (isFont) {
                     if (!hasFontDrag.count(slotId)){
-                        hasFontDrag[slotId] = true;
+                        hasFontDrag.insert(slotId);
                         for (Entity& entity : entities){
                             FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
                             if (!valueRef)
@@ -1116,7 +1116,7 @@ void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::s
         }
         ImGui::EndDragDropTarget();
     }else{
-        if (hasFontDrag.count(slotId) && hasFontDrag[slotId]){
+        if (hasFontDrag.count(slotId)){
             for (Entity& entity : entities){
                 FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
                 if (!valueRef)
@@ -1249,7 +1249,7 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
     ImGui::PopID();
     ImGui::EndGroup();
 
-    dragDropResourcesFont(cpType, id, slot, sceneProject, entities, cpType);
+    dragDropResourcesFont(cpType, id, slot, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
@@ -1504,7 +1504,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
     ImGui::EndPopup();
 }
 
-void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1524,19 +1524,19 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
 
                 if (Util::isImageFile(droppedRelativePath)) {
                     if (!hasTextureDrag.count(id)){
-                        hasTextureDrag[id] = true;
+                        hasTextureDrag.insert(id);
                         for (Entity& entity : entities){
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             originalTex[id][entity] = Texture(*valueRef);
                             if (*valueRef != Texture(droppedRelativePath)){
                                 *valueRef = Texture(droppedRelativePath);
-                                if (componentType == ComponentType::MeshComponent){
+                                if (cpType == ComponentType::MeshComponent){
                                     unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
                                     for (unsigned int i = 0; i < numSubmeshes; i++){
                                         sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
                                     }
                                 }
-                                if (componentType == ComponentType::UIComponent){
+                                if (cpType == ComponentType::UIComponent){
                                     sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                                 }
                             }
@@ -1548,7 +1548,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[id][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, componentType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType);
                                 continue;
                             }
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
@@ -1582,18 +1582,18 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
         }
         ImGui::EndDragDropTarget();
     }else{
-        if (hasTextureDrag.count(id) && hasTextureDrag[id]){
+        if (hasTextureDrag.count(id)){
             for (Entity& entity : entities){
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[id][entity]){
                     *valueRef = originalTex[id][entity];
-                    if (componentType == ComponentType::MeshComponent){
+                    if (cpType == ComponentType::MeshComponent){
                         unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
                         for (unsigned int i = 0; i < numSubmeshes; i++){
                             sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
                         }
                     }
-                    if (componentType == ComponentType::UIComponent){
+                    if (cpType == ComponentType::UIComponent){
                         sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
                     }
                 }
@@ -1605,13 +1605,13 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
     }
 }
 
-void editor::InspectorWindow::dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
+void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, int faceIndex){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
     }
 
-    const std::string dragId = id + "##cube_face_" + std::to_string(faceIndex);
+    const std::string dragId = faceIndex < 0 ? id + "##cube_single" : id + "##cube_face_" + std::to_string(faceIndex);
 
     const ImRect rect(rectMin, rectMax);
     if (ImGui::BeginDragDropTargetCustom(rect, ImGui::GetID(dragId.c_str()))){
@@ -1623,27 +1623,20 @@ void editor::InspectorWindow::dragDropResourcesTextureCubeFace(ComponentType cpT
 
                 if (Util::isImageFile(droppedRelativePath)) {
                     if (!hasTextureDrag.count(dragId)){
-                        hasTextureDrag[dragId] = true;
+                        hasTextureDrag.insert(dragId);
                         for (const Entity& entity : entities){
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             originalTex[dragId][entity] = Texture(*valueRef);
 
                             Texture updated = Texture(*valueRef);
-                            updated.setCubePath(faceIndex, droppedRelativePath);
+                            if (faceIndex < 0){
+                                updated.setCubeMap(droppedRelativePath);
+                            }else{
+                                updated.setCubePath(faceIndex, droppedRelativePath);
+                            }
                             if (*valueRef != updated){
                                 *valueRef = updated;
-                                if (componentType == ComponentType::MeshComponent){
-                                    unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                                    for (unsigned int i = 0; i < numSubmeshes; i++){
-                                        sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                                    }
-                                }
-                                if (componentType == ComponentType::UIComponent){
-                                    sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                                }
-                                if (componentType == ComponentType::SkyboxComponent){
-                                    sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
-                                }
+                                markTextureUpdate(sceneProject->scene, entity, cpType);
                             }
                         }
                     }
@@ -1653,12 +1646,16 @@ void editor::InspectorWindow::dragDropResourcesTextureCubeFace(ComponentType cpT
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[dragId][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, componentType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType);
                                 continue;
                             }
 
                             Texture updated = Texture(*valueRef);
-                            updated.setCubePath(faceIndex, droppedRelativePath);
+                            if (faceIndex < 0){
+                                updated.setCubeMap(droppedRelativePath);
+                            }else{
+                                updated.setCubePath(faceIndex, droppedRelativePath);
+                            }
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, updated);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
@@ -1679,123 +1676,12 @@ void editor::InspectorWindow::dragDropResourcesTextureCubeFace(ComponentType cpT
         }
         ImGui::EndDragDropTarget();
     }else{
-        if (hasTextureDrag.count(dragId) && hasTextureDrag[dragId]){
+        if (hasTextureDrag.count(dragId)){
             for (const Entity& entity : entities){
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[dragId][entity]){
                     *valueRef = originalTex[dragId][entity];
-                    if (componentType == ComponentType::MeshComponent){
-                        unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                        for (unsigned int i = 0; i < numSubmeshes; i++){
-                            sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                        }
-                    }
-                    if (componentType == ComponentType::UIComponent){
-                        sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                    }
-                    if (componentType == ComponentType::SkyboxComponent){
-                        sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
-                    }
-                }
-            }
-
-            hasTextureDrag.erase(dragId);
-            originalTex.erase(dragId);
-        }
-    }
-}
-
-void editor::InspectorWindow::dragDropResourcesTextureCubeSingleFile(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType){
-    // Block DnD while playing for non-script components
-    if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
-        return;
-    }
-
-    const std::string dragId = id + "##cube_single";
-
-    const ImRect rect(rectMin, rectMax);
-    if (ImGui::BeginDragDropTargetCustom(rect, ImGui::GetID(dragId.c_str()))){
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
-            std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
-            if (!receivedStrings.empty()){
-                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
-                const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
-
-                if (Util::isImageFile(droppedRelativePath)) {
-                    if (!hasTextureDrag.count(dragId)){
-                        hasTextureDrag[dragId] = true;
-                        for (const Entity& entity : entities){
-                            Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
-                            originalTex[dragId][entity] = Texture(*valueRef);
-
-                            Texture updated = Texture(*valueRef);
-                            updated.setCubeMap(droppedRelativePath);
-                            if (*valueRef != updated){
-                                *valueRef = updated;
-                                if (componentType == ComponentType::MeshComponent){
-                                    unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                                    for (unsigned int i = 0; i < numSubmeshes; i++){
-                                        sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                                    }
-                                }
-                                if (componentType == ComponentType::UIComponent){
-                                    sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                                }
-                                if (componentType == ComponentType::SkyboxComponent){
-                                    sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if (payload->IsDelivery()){
-                        for (const Entity& entity : entities){
-                            Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
-                            *valueRef = originalTex[dragId][entity];
-                            if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, componentType);
-                                continue;
-                            }
-
-                            Texture updated = Texture(*valueRef);
-                            updated.setCubeMap(droppedRelativePath);
-                            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, updated);
-                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
-                                finishProperty = true;
-                            }
-                        }
-
-                        if (!insideAssets){
-                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
-                        }
-
-                        ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
-                        hasTextureDrag.erase(dragId);
-                        originalTex.erase(dragId);
-                    }
-                }
-            }
-        }
-        ImGui::EndDragDropTarget();
-    }else{
-        if (hasTextureDrag.count(dragId) && hasTextureDrag[dragId]){
-            for (const Entity& entity : entities){
-                Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
-                if (*valueRef != originalTex[dragId][entity]){
-                    *valueRef = originalTex[dragId][entity];
-                    if (componentType == ComponentType::MeshComponent){
-                        unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                        for (unsigned int i = 0; i < numSubmeshes; i++){
-                            sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                        }
-                    }
-                    if (componentType == ComponentType::UIComponent){
-                        sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                    }
-                    if (componentType == ComponentType::SkyboxComponent){
-                        sceneProject->scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
-                    }
+                    markTextureUpdate(sceneProject->scene, entity, cpType);
                 }
             }
 
@@ -2573,7 +2459,6 @@ void editor::InspectorWindow::updateMeshShape(MeshComponent& meshComp, MeshSyste
 void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, Texture* texture, Texture* thumbTexture, const ImVec2& size){
     float availWidth = ImGui::GetContentRegionAvail().x;
 
-    // Calculate display size based on input parameter or default to texture size
     float displayWidth = (size.x > 0) ? size.x : thumbTexture->getWidth();
     float displayHeight = (size.y > 0) ? size.y : thumbTexture->getHeight();
 
@@ -2586,40 +2471,28 @@ void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, 
         displayWidth = displayHeight * aspectRatio;
     }
 
-    // Calculate position to center the image
     float xPos = (availWidth - displayWidth) * 0.5f;
-    // Set cursor position to create centering effect
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + xPos);
 
-    // Store the cursor position before drawing the image
     ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-    // Draw the image with the calculated size
     Widgets::image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(displayWidth, displayHeight));
 
-    // Get draw list for custom rendering
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-    // Define line color
-    ImU32 line_color = IM_COL32(255, 0, 0, 255); // Red color
+    ImU32 line_color = IM_COL32(255, 0, 0, 255);
 
-    // Get the original texture and thumbnail dimensions
     float origWidth = static_cast<float>(texture->getWidth());
     float origHeight = static_cast<float>(texture->getHeight());
-    float thumbWidth = static_cast<float>(thumbTexture->getWidth());
-    float thumbHeight = static_cast<float>(thumbTexture->getHeight());
 
-    // Calculate scale factors between original texture and display size
     float scaleX = displayWidth / origWidth;
     float scaleY = displayHeight / origHeight;
 
-    // Scale the margin values by the appropriate scale factor
     float scaledLeftMargin = img.patchMarginLeft * scaleX;
     float scaledRightMargin = img.patchMarginRight * scaleX;
     float scaledTopMargin = img.patchMarginTop * scaleY;
     float scaledBottomMargin = img.patchMarginBottom * scaleY;
 
-    // Draw left margin line
     float leftX = cursor.x + scaledLeftMargin;
     draw_list->AddLine(
         ImVec2(leftX, cursor.y),
@@ -2627,7 +2500,6 @@ void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, 
         line_color, 1.0f
     );
 
-    // Draw right margin line
     float rightX = cursor.x + displayWidth - scaledRightMargin;
     draw_list->AddLine(
         ImVec2(rightX, cursor.y),
@@ -2635,7 +2507,6 @@ void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, 
         line_color, 1.0f
     );
 
-    // Draw top margin line
     float topY = cursor.y + scaledTopMargin;
     draw_list->AddLine(
         ImVec2(cursor.x, topY),
@@ -2643,7 +2514,6 @@ void editor::InspectorWindow::drawNinePatchesPreview(const ImageComponent& img, 
         line_color, 1.0f
     );
 
-    // Draw bottom margin line
     float bottomY = cursor.y + displayHeight - scaledBottomMargin;
     draw_list->AddLine(
         ImVec2(cursor.x, bottomY),
@@ -4464,7 +4334,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::PopID();
         ImGui::EndGroup();
 
-        dragDropResourcesTexture(cpType, id, sceneProject, entities, cpType);
+        dragDropResourcesTexture(cpType, id, sceneProject, entities);
 
     }else if (type == RowPropertyType::TextureCube){
         Texture* value = nullptr;
@@ -4620,7 +4490,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             dragMax.x = std::max(dragMax.x, ImGui::GetItemRectMax().x);
             dragMax.y = std::max(dragMax.y, ImGui::GetItemRectMax().y);
 
-            dragDropResourcesTextureCubeSingleFile(cpType, id, dragMin, dragMax, sceneProject, entities, cpType);
+            dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities);
 
             if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::Text("Selected file must be within the assets directory.");
@@ -4735,7 +4605,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 dragMax.x = std::max(dragMax.x, ImGui::GetItemRectMax().x);
                 dragMax.y = std::max(dragMax.y, ImGui::GetItemRectMax().y);
 
-                dragDropResourcesTextureCubeFace(cpType, id, faceIndex, dragMin, dragMax, sceneProject, entities, cpType);
+                dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities, static_cast<int>(faceIndex));
 
                 // Error popup modal
                 if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {

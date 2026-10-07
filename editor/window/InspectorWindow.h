@@ -110,11 +110,11 @@ namespace jasperengine::editor{
         MeshPreviewRender shapePreviewRender;
 
         // for drag and drop textures
-        std::map<std::string, bool> hasTextureDrag;
+        std::set<std::string> hasTextureDrag;
         std::map<std::string, std::map<Entity, Texture>> originalTex;
 
         // for drag and drop fonts, keyed by property id and slot
-        std::map<std::string, bool> hasFontDrag;
+        std::set<std::string> hasFontDrag;
         std::map<std::string, std::map<Entity, FontArray>> originalFont;
 
         std::map<std::string, bool> materialButtonGroups;
@@ -245,18 +245,17 @@ namespace jasperengine::editor{
 
         Texture* findThumbnail(const std::string& path);
         void drawImageWithBorderAndRounding(Texture* texture, const ImVec2& size, float rounding = 4.0f, ImU32 border_col = IM_COL32(0, 0, 0, 255), float border_thickness = 1.0f, bool flipY = false);
-        void dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType);
+        void dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities);
         void setFontSlot(ComponentType cpType, const std::string& id, size_t slot, const std::string& path, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         // one slot of a font property: file name frame, file picker, clear button and drag-drop.
         // width covers the buttons too, -1 fills the table cell; extraButton adds one more
         void drawFontSlot(ComponentType cpType, const std::string& id, size_t slot, bool dif, const FontArray& value, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged, float width = -1.0f, const std::function<void(const ImVec2&)>& extraButton = nullptr);
         // fallback slots of a font property, opened by the Font row
         void drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
-        void dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType);
+        void dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities);
         void applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
-        void dragDropResourcesTextureCubeSingleFile(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
-        void dragDropResourcesTextureCubeFace(ComponentType cpType, const std::string& id, size_t faceIndex, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType componentType);
+        void dragDropResourcesTextureCube(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, int faceIndex = -1);
 
         // popupId: opened by the header's right click or its kebab button
         void handleComponentMenu(const char* popupId, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType cpType, bool isPrefab, bool& headerOpen, bool readOnly);

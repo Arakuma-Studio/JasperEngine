@@ -8,7 +8,7 @@ Tests run in order and share one editor.
 import struct
 import zlib
 
-from harness import Editor, ToolError, find_key, skip
+from harness import Editor, skip
 
 TIMEOUT = 900
 
@@ -17,7 +17,7 @@ TIMEOUT = 900
 
 
 def decode_png(data: bytes):
-    """(width, height, rows of RGB tuples) for the 8-bit RGB/RGBA PNGs the editor writes."""
+    """(width, height, channels, byte rows) for the 8-bit RGB/RGBA PNGs the editor writes."""
     assert data.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
     pos = 8
     width = height = 0
@@ -59,28 +59,16 @@ def decode_png(data: bytes):
                 line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
         rows.append(line)
         prev = line
-    return width, height, rows
-
-
-def distinct_colours(data: bytes, step: int = 7) -> int:
-    width, height, rows = decode_png(data)
-    seen = set()
-    for y in range(0, height, step):
-        row = rows[y]
-        for x in range(0, width, step):
-            seen.add(bytes(row[x * 3:x * 3 + 3]))
-            if len(seen) > 64:
-                return len(seen)
-    return len(seen)
+    return width, height, channels, rows
 
 
 def check_image(ed: Editor, result, label: str, min_colours: int = 8):
     ed.check(result.images, f"{label}: no image in the result: {result.text[:300]}")
     data, mime = result.images[0]
     ed.check_eq(mime, "image/png", f"{label}: mime type")
-    w, h, _ = decode_png(data)
+    w, h, channels, rows = decode_png(data)
     ed.check(w > 16 and h > 16, f"{label}: tiny image {w}x{h}")
-    colours = distinct_colours(data)
+    colours = len({bytes(row[x:x + 3]) for row in rows[::7] for x in range(0, w * channels, 7 * channels)})
     ed.check(colours >= min_colours, f"{label}: only {colours} colour(s): blank render? {result.text[:300]}")
     return data
 
@@ -88,10 +76,6 @@ def check_image(ed: Editor, result, label: str, min_colours: int = 8):
 async def game_state(ed: Editor):
     v = await ed.call("eval_lua", code="return script('Game').state")
     return v["values"][0]
-
-
-async def ensure_stopped(ed: Editor):
-    await ed.call("play", action="stop")
 
 
 # -- console -----------------------------------------------------------------
@@ -113,6 +97,9 @@ async def test_console_cursor_and_filters(ed: Editor):
     for e in new["entries"]:
         ed.check({"id", "type", "message", "time"} <= set(e), f"entry fields: {e}")
         ed.check(e["id"] > cursor, "entry older than the cursor")
+    text_cursor = await ed.call("read_console", since=str(cursor), limit=len(new["entries"]))
+    ed.check_eq(text_cursor["entries"], new["entries"], "string and integer cursors return the same entries")
+    await ed.check_error("read_console", since="not-a-cursor", contains="since")
 
     errors = await ed.call("read_console", since=cursor, types=["error"])
     ed.check(errors["entries"] and all(e["type"] == "error" for e in errors["entries"]), f"type filter: {errors}")
@@ -396,7 +383,7 @@ async def test_restart_and_job_mode(ed: Editor):
         ed.check(st["status"] in ("running", "succeeded"), f"job: {st}")
     restarted = await ed.call("play", action="restart")
     ed.check_eq(restarted["state"], "playing", f"restart: {restarted}")
-    await ensure_stopped(ed)
+    await ed.call("play", action="stop")
 
 
 # -- crashes -------------------------------------------------------------------
@@ -425,12 +412,7 @@ async def test_crash_is_reported(ed: Editor):
 
 async def test_lua_script_error_file(ed: Editor):
     """A real script file whose onUpdate errors: play starts, then the crash stops it."""
-    tool = None
-    for name in ("attach_script",):
-        if ed.has_tool(name):
-            tool = name
-    if not tool:
-        skip("no attach_script tool")
+    ed.require_tools("attach_script")
     (ed.project / "scripts" / "Crasher.lua").write_text(
         "local Crasher = { properties = {} }\n"
         "function Crasher:init() RegisterEngineEvent(self, 'onUpdate') self.frames = 0 end\n"
@@ -439,13 +421,7 @@ async def test_lua_script_error_file(ed: Editor):
         "  if self.frames > 30 then local x = nil; return x.field end\n"
         "end\n"
         "return Crasher\n")
-    try:
-        await ed.call(tool, entity="Plane", path="scripts/Crasher.lua")
-    except ToolError:
-        try:  # the legacy tool's arguments
-            await ed.call(tool, entity_name="Plane", type="lua", class_name="Crasher", path="scripts/Crasher.lua")
-        except ToolError as e:
-            skip(f"attach_script failed: {e.message[:200]}")
+    await ed.call("attach_script", entity="Plane", path="scripts/Crasher.lua")
     started = await ed.call("play", action="start")
     ed.check_eq(started["state"], "playing", "starts")
     r = await ed.call_raw("wait", {"seconds": 10})
@@ -459,18 +435,11 @@ async def test_cpp_build_failure_reported(ed: Editor):
     import os
     if not os.environ.get("JASPER_SLOW_TESTS"):
         skip("set JASPER_SLOW_TESTS=1 to build C++ scripts")
-    if not ed.has_tool("create_script"):
-        skip("no create_script tool")
+    ed.require_tools("create_script")
     user = ed.project / ".jasperengine" / "user"
     user.mkdir(parents=True, exist_ok=True)
     (user / "build.yaml").write_text("build:\n  build_jobs: 2\n")
-    try:
-        await ed.call("create_script", kind="cpp_script", name="Broken", entity="Game", scene="Main Scene")
-    except ToolError as first:
-        try:  # the legacy tool's arguments
-            await ed.call("create_script", entity_name="Game", type="cpp_script_class", class_name="Broken")
-        except ToolError:
-            skip(f"create_script failed: {first.message[:200]}")
+    await ed.call("create_script", kind="cpp_script", name="Broken", entity="Game", scene="Main Scene")
     for cpp in (ed.project / "scripts").glob("Broken*.cpp"):
         cpp.write_text(cpp.read_text() + "\nthis is not C++;\n")
     r = await ed.call_raw("play", {"action": "start", "scene": "Main Scene", "timeout_seconds": 900}, timeout=960)
@@ -483,10 +452,8 @@ async def test_cpp_build_failure_reported(ed: Editor):
 
 async def test_scene_camera_3d(ed: Editor):
     """A 3D scene: position/target, orbit and distance of the Scene view camera (last: it changes the open scenes)."""
-    try:
-        await ed.call(ed.first_tool("create_scene"), name="Cam3D", type="3d")
-    except ToolError as e:
-        skip(f"create_scene failed: {e.message[:200]}")
+    ed.require_tools("create_scene")
+    await ed.call("create_scene", name="Cam3D", type="3D")
     cam = await ed.call("set_scene_camera", scene="Cam3D", position=[0, 5, 10], target=[0, 0, 0])
     ed.check_eq(cam["camera"]["mode"], "3d", "mode")
     ed.check(abs(cam["camera"]["distance"] - (125 ** 0.5)) < 0.05, f"distance: {cam['camera']}")

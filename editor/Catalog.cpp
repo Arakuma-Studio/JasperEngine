@@ -3742,18 +3742,6 @@ Signature editor::Catalog::componentTypeToSignature(const EntityRegistry* regist
     return signature;
 }
 
-Signature editor::Catalog::componentMaskToSignature(const EntityRegistry* registry, uint64_t mask) {
-    Signature signature;
-    for (int i = 0; i < 64; ++i) {
-        if ((mask >> i) & 1) {
-            auto compType = static_cast<ComponentType>(i);
-            ComponentId cid = getComponentId(registry, compType);
-            signature.set(cid, true);
-        }
-    }
-    return signature;
-}
-
 editor::PropertyType editor::Catalog::scriptPropertyTypeToPropertyType(ScriptPropertyType scriptType) {
     switch (scriptType) {
         case jasperengine::ScriptPropertyType::Bool: return editor::PropertyType::Bool;

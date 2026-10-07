@@ -53,7 +53,6 @@ namespace jasperengine::editor {
         void releaseAll();
 
         void setPointerInjected(bool injected) { pointerInjected = injected; }
-        bool isPointerInjected() const { return pointerInjected; }
     };
 
 }

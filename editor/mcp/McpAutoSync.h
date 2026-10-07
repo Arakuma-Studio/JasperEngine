@@ -51,17 +51,13 @@ namespace jasperengine::editor::mcp {
     public:
         static McpAutoSync& get();
 
-        // Every editor frame: (re)takes the baseline when the open project changes, so edits
-        // made before the first call are still found.
-        void tick(McpContext& ctx);
-
         // When the MCP server starts (before the startup project loads): files of the
         // `--project` project changed after this, while it was loading, are reported by the
         // first call instead of being taken into the baseline unseen.
         void serverStarted();
 
-        // Takes the baseline now if the project changed since the last frame (syncFiles, before
-        // it compares the project with its snapshot)
+        // Called every editor frame and before syncFiles: takes the baseline when the open
+        // project changes, so edits made before the first call are still found.
         void prepare(McpContext& ctx);
 
         // Before a top-level tools/call. Calls `run(report)` (report: external_changes, or

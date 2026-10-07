@@ -243,9 +243,7 @@ void SokolObject::addStorageBuffer(int slot, ShaderStageType stage, BufferRender
     if (slot != -1){
         sg_view sbufview = buffer->backend.getView();
 
-        if (stage == ShaderStageType::VERTEX){
-            bind.views[SOKOL_STORAGEBUFFER_VIEW_SLOT_OFFSET + slot] = sbufview;
-        }else if (stage == ShaderStageType::FRAGMENT){
+        if (stage == ShaderStageType::VERTEX || stage == ShaderStageType::FRAGMENT){
             bind.views[SOKOL_STORAGEBUFFER_VIEW_SLOT_OFFSET + slot] = sbufview;
         }
     }
@@ -255,10 +253,7 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     if (slot.first != -1){
         sg_view texview = texture->backend.getView();
         sg_sampler sampler = texture->backend.getSampler();
-        if (stage == ShaderStageType::VERTEX){
-            bind.views[slot.first] = texview;
-            bind.samplers[slot.second] = sampler;
-        }else if (stage == ShaderStageType::FRAGMENT){
+        if (stage == ShaderStageType::VERTEX || stage == ShaderStageType::FRAGMENT){
             bind.views[slot.first] = texview;
             bind.samplers[slot.second] = sampler;
         }

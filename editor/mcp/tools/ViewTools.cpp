@@ -22,6 +22,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "util/Base64.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -58,29 +59,6 @@ namespace jasperengine::editor::mcp {
 namespace {
 
 using Clock = std::chrono::steady_clock;
-
-std::string base64Encode(const std::vector<uint8_t>& data) {
-    static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((data.size() + 2) / 3) * 4);
-    size_t i = 0;
-    for (; i + 2 < data.size(); i += 3) {
-        const uint32_t n = (uint32_t(data[i]) << 16) | (uint32_t(data[i + 1]) << 8) | data[i + 2];
-        out += table[(n >> 18) & 63];
-        out += table[(n >> 12) & 63];
-        out += table[(n >> 6) & 63];
-        out += table[n & 63];
-    }
-    if (i < data.size()) {
-        uint32_t n = uint32_t(data[i]) << 16;
-        if (i + 1 < data.size()) n |= uint32_t(data[i + 1]) << 8;
-        out += table[(n >> 18) & 63];
-        out += table[(n >> 12) & 63];
-        out += i + 1 < data.size() ? table[(n >> 6) & 63] : '=';
-        out += '=';
-    }
-    return out;
-}
 
 bool sceneContentLoaded(SceneProject* sp) {
     if (!sp || !sp->scene) return false;
@@ -306,7 +284,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         info["saved_to"] = target.generic_string();
     }
 
-    result.image.data = base64Encode(png);
+    result.image.data = Base64::encode(png.data(), png.size());
     result.image.mimeType = "image/png";
     result.info = std::move(info);
     job->finish(std::move(result));
@@ -566,7 +544,6 @@ void captureScene(const CaptureJobPtr& job) {
 }
 
 #if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
-#define W3_EDITOR_CAPTURE 1
 
 // Filled by an ImGui draw callback while the backend renders the frame: at that point the
 // window's framebuffer holds the whole editor UI and nothing has been presented yet
@@ -602,7 +579,7 @@ void editorReadbackCallback(const ImDrawList*, const ImDrawCmd* cmd) {
 #endif
 
 void captureEditor(const CaptureJobPtr& job) {
-#ifdef W3_EDITOR_CAPTURE
+#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
     // Kept alive by the waits below; the callback only runs inside this frame's render
     auto readback = std::make_shared<EditorReadback>();
     auto attempts = std::make_shared<int>(0);

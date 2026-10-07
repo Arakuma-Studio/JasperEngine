@@ -71,10 +71,9 @@ void McpCall::fail(const std::string& message, Json structured) {
 
 void McpCall::reply(ToolResult result) {
     if (isCompleted.exchange(true)) return;
-    finalResult = std::move(result);
     if (finalizer) {
         try {
-            finalizer(finalResult);
+            finalizer(result);
         } catch (...) {
         }
         finalizer = nullptr;
@@ -82,7 +81,7 @@ void McpCall::reply(ToolResult result) {
     if (completion) {
         Completion done = std::move(completion);
         completion = nullptr;
-        done(*this, finalResult);
+        done(*this, result);
     }
 }
 

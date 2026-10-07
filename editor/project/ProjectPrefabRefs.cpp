@@ -279,12 +279,6 @@ Entity editor::Project::makePrefabReference(uint32_t sceneId, Entity instanceRoo
     return id;
 }
 
-Entity editor::Project::resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId, const std::filesystem::path& level) {
-    const std::unordered_map<Entity, Entity> map = getPrefabReferenceMap(sceneId, instanceRoot, level);
-    auto it = map.find(prefabId);
-    return it != map.end() ? it->second : NULL_ENTITY;
-}
-
 bool editor::Project::remapReferencesToPrefab(uint32_t sceneId, Entity instanceRoot, EntityRegistry* registry, Entity entity, ComponentType type,
         const std::vector<std::string>& properties, const std::filesystem::path& level) {
     if (!registry || !registry->isEntityCreated(entity)) {

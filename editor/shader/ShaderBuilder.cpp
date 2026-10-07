@@ -111,8 +111,8 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     std::unique_lock<std::mutex> lock(cacheMutex);
 
     // Check if already in cache
-    if (shaderDataCache.count(shaderKey)){
-        return ShaderBuildResult(shaderDataCache[shaderKey], ResourceLoadState::Finished);
+    if (auto cached = shaderDataCache.find(shaderKey); cached != shaderDataCache.end()){
+        return ShaderBuildResult(cached->second, ResourceLoadState::Finished);
     }
 
     // Try disk cache (<cache>/jasperengine/shaders/<version>/<basename>.sdat). Forked shaders
@@ -124,7 +124,7 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     const bool isCustom = ShaderPool::getCustomIdFromKey(shaderKey) != 0;
     if (project) {
         lock.unlock();
-        const std::filesystem::path cachePath = getShaderCachePath(shaderKey, project);
+        const std::filesystem::path cachePath = getShaderCachePath(shaderKey);
         const bool fresh = !isCustom || !isCustomCacheStale(shaderKey, project, cachePath);
         if (fresh) {
             ShaderData diskData;
@@ -140,8 +140,8 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     }
 
     // Check if already building
-    if (pendingBuilds.count(shaderKey)) {
-        auto& future = pendingBuilds[shaderKey];
+    if (auto pending = pendingBuilds.find(shaderKey); pending != pendingBuilds.end()) {
+        auto& future = pending->second;
         if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             // Build finished, move to cache
             try {
@@ -200,7 +200,7 @@ void editor::ShaderBuilder::buildMissingShaders(const std::set<ShaderKey>& shade
     }
 
     for (const ShaderKey& shaderKey : shaderKeys) {
-        const std::filesystem::path cachePath = getShaderCachePath(shaderKey, project);
+        const std::filesystem::path cachePath = getShaderCachePath(shaderKey);
         const bool isCustom = ShaderPool::getCustomIdFromKey(shaderKey) != 0;
         const bool fresh = !isCustom || !isCustomCacheStale(shaderKey, project, cachePath);
 
@@ -317,11 +317,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     return compileShader(shaderKey, project, ShaderPool::getShaderBackend(), trackProgress, true);
 }
 
-std::filesystem::path editor::ShaderBuilder::getShaderCachePath(ShaderKey shaderKey, Project* project) {
-    if (!project) {
-        return {};
-    }
-
+std::filesystem::path editor::ShaderBuilder::getShaderCachePath(ShaderKey shaderKey) {
     ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
     uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
     uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
@@ -336,10 +332,7 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
         return false;
     }
 
-    const std::filesystem::path cachePath = getShaderCachePath(shaderKey, project);
-    if (cachePath.empty()) {
-        return false;
-    }
+    const std::filesystem::path cachePath = getShaderCachePath(shaderKey);
 
     std::error_code ec;
     std::filesystem::create_directories(cachePath.parent_path(), ec);

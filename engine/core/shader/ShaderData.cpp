@@ -389,8 +389,7 @@ std::pair<int, int> ShaderData::getTextureIndexByName(const std::string& texstr)
 
 void ShaderData::releaseSourceData(){
     for (int i = 0; i < stages.size(); i++){
-        if (stages[i].bytecode.data)
-            delete[] stages[i].bytecode.data;
+        delete[] stages[i].bytecode.data;
         stages[i].bytecode.data = NULL;
         stages[i].bytecode.size = 0;
         stages[i].source.clear();

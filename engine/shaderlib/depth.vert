@@ -55,7 +55,7 @@ vec4 getPosition(mat4 boneTransform){
     vec3 pos = a_position;
 
     pos = getMorphPosition(pos);
-    pos = getSkinPosition(pos, getBoneTransform());
+    pos = getSkinPosition(pos, boneTransform);
     #ifdef HAS_TERRAIN
         pos = getTerrainPosition(pos, depthParams.modelMatrix);
     #endif

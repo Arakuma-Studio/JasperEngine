@@ -63,13 +63,6 @@ namespace fs = std::filesystem;
 
 namespace w4 {
 
-bool readFile(const fs::path& path, std::string& content) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-    content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    return true;
-}
-
 bool writeFile(const fs::path& path, const std::string& content) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) return false;
@@ -80,10 +73,7 @@ bool writeFile(const fs::path& path, const std::string& content) {
 
 std::string projectRelative(Project* project, const fs::path& absolute) {
     if (!project) return absolute.generic_string();
-    const fs::path rel = absolute.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
-    if (rel.empty() || *rel.begin() == "..") return absolute.generic_string();
-    if (rel == ".") return "";
-    return rel.generic_string();
+    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
 }
 
 std::string extensionOf(const fs::path& path) {
@@ -104,11 +94,6 @@ std::string assetType(const fs::path& path) {
     if (Util::isMaterialFile(p)) return "material";
     if (Util::isShaderFile(p)) return "shader";
     return "other";
-}
-
-bool isSkippedDir(const fs::path& dir) {
-    const std::string name = dir.filename().string();
-    return name.empty() || name[0] == '.' || name == "build";
 }
 
 bool isTextFile(const fs::path& path) {
@@ -164,8 +149,7 @@ bool WriteFilesCmd::execute() {
             Previous prev;
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
-            if (prev.existed && !readFile(item.path, prev.content)) {
-                lastError = "Can't read " + item.path.generic_string();
+            if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
                 return false;
             }
             previous.push_back(std::move(prev));
@@ -183,13 +167,11 @@ bool WriteFilesCmd::execute() {
             }
             fs::create_directories(parent, ec);
             if (ec) {
-                lastError = "Can't create " + parent.generic_string() + ": " + ec.message();
                 return false;
             }
             createdDirs.push_back(missing);
         }
         if (!writeFile(item.path, item.content)) {
-            lastError = "Can't write " + item.path.generic_string();
             return false;
         }
     }
@@ -232,17 +214,6 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
     return true;
 }
 
-// ------------------------------------------------------------------ Lua syntax
-
-LuaSyntax checkLuaSyntax(const std::string& code, const std::string& chunkName) {
-    const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, chunkName);
-    LuaSyntax result;
-    result.ok = syntax.ok;
-    result.line = syntax.line;
-    result.message = syntax.message;
-    return result;
-}
-
 // ------------------------------------------------------------------ syncFiles
 
 namespace {
@@ -264,7 +235,7 @@ std::map<std::string, FileStamp> scanProject(Project* project) {
     for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         if (it->is_directory(ec)) {
-            if (isSkippedDir(it->path())) it.disable_recursion_pending();
+            if (ProjectChecks::isSkippedDir(it->path())) it.disable_recursion_pending();
             continue;
         }
         const std::string name = it->path().filename().string();
@@ -502,8 +473,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
                     }
                     if (entry.type == ScriptType::LUA && checkedLua.insert(file).second) {
                         std::string code;
-                        if (readFile(file, code)) {
-                            LuaSyntax syntax = checkLuaSyntax(code, projectRelative(project, file));
+                        if (ProjectChecks::readFile(file, code)) {
+                            ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, file));
                             if (!syntax.ok) {
                                 problems.push_back({{"path", projectRelative(project, file)}, {"line", syntax.line},
                                                     {"message", "Lua syntax error: " + syntax.message +
@@ -543,8 +514,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         if (!Util::isLuaFile(path.string()) || checkedLua.count(path)) continue;
         std::string code;
         std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || !readFile(path, code)) continue;
-        LuaSyntax syntax = checkLuaSyntax(code, projectRelative(project, path));
+        if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, code)) continue;
+        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, path));
         if (!syntax.ok) {
             problems.push_back({{"path", projectRelative(project, path)}, {"line", syntax.line},
                                 {"message", "Lua syntax error: " + syntax.message}});
@@ -880,8 +851,8 @@ bool attachEntry(const CallPtr& call, SceneProject* sceneProject, Entity entity,
 Json lintFile(Project* project, const fs::path& file) {
     Json problems = Json::array();
     std::string code;
-    if (Util::isLuaFile(file.string()) && readFile(file, code)) {
-        LuaSyntax syntax = checkLuaSyntax(code, projectRelative(project, file));
+    if (Util::isLuaFile(file.string()) && ProjectChecks::readFile(file, code)) {
+        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, file));
         if (!syntax.ok) {
             problems.push_back({{"path", projectRelative(project, file)}, {"line", syntax.line}, {"message", syntax.message}});
         }
@@ -958,8 +929,8 @@ void createScriptTool(const CallPtr& call) {
         const fs::path tmpSource = scratch / source.filename();
         ScriptCreateDialog::writeTemplateFiles(target.scene ? target.scene->scene : nullptr, target.entity,
                                                tmpHeader, tmpSource, name, creation);
-        if (!lua) readFile(tmpHeader, headerText);
-        readFile(tmpSource, sourceText);
+        if (!lua) ProjectChecks::readFile(tmpHeader, headerText);
+        ProjectChecks::readFile(tmpSource, sourceText);
         fs::remove_all(scratch, ec);
     }
     if (sourceText.empty()) {
@@ -992,7 +963,7 @@ void createScriptTool(const CallPtr& call) {
     if (!lua) data["header_path"] = projectRelative(project, header);
     Json problems = Json::array();
     if (lua) {
-        LuaSyntax syntax = checkLuaSyntax(sourceText, projectRelative(project, source));
+        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(sourceText, projectRelative(project, source));
         if (!syntax.ok) problems.push_back({{"path", projectRelative(project, source)}, {"line", syntax.line}, {"message", syntax.message}});
     } else {
         const auto found = ScriptParser::findScriptClassNameFromString(headerText);
@@ -1307,7 +1278,7 @@ void checkScriptTool(const CallPtr& call) {
             call->fail(error);
             return;
         }
-        if (!readFile(file, code)) {
+        if (!ProjectChecks::readFile(file, code)) {
             call->fail("Can't read " + args["path"].get<std::string>() + ".");
             return;
         }

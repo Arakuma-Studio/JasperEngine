@@ -34,40 +34,44 @@ void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs
     fs::rename(oldThumbnail, newThumbnail, ec);
 }
 
+void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
+    if (fs::exists(sourceFs)) {
+        bool isDir = fs::is_directory(sourceFs);
+        // Resolve the thumbnail path before the rename, while the source still exists.
+        fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
+        fs::rename(sourceFs, destFs);
+        if (project) {
+            moveThumbnail(oldThumbnail, destFs);
+            std::string extension = sourceFs.extension().string();
+            if (isDir || Util::isMaterialFile(extension)) {
+                project->remapMaterialFilePath(sourceFs, destFs);
+            }
+            if (isDir || Util::isSceneFile(extension)) {
+                project->remapSceneFilePath(sourceFs, destFs);
+            }
+            // either name: a file renamed to or from .prefab starts or stops being one
+            if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
+                project->remapPrefabFilePath(sourceFs, destFs);
+            }
+            if (isDir || Util::isScriptFile(extension)) {
+                project->remapScriptFilePath(sourceFs, destFs);
+            }
+            if (isDir || Util::isAssetFile(extension)) {
+                project->remapAssetFilePath(sourceFs, destFs);
+            }
+            if (isDir || Util::isShaderFile(extension)) {
+                project->remapShaderFilePath(sourceFs, destFs);
+                project->invalidateCustomShaders();
+            }
+        }
+    }
+}
+
 bool editor::RenameFileCmd::execute(){
     fs::path sourceFs = directory / oldFilename;
     fs::path destFs = directory / newFilename;
     try {
-        if (fs::exists(sourceFs)) {
-            bool isDir = fs::is_directory(sourceFs);
-            // Resolve the thumbnail path before the rename, while the source still exists.
-            fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-            fs::rename(sourceFs, destFs);
-            if (project) {
-                moveThumbnail(oldThumbnail, destFs);
-                std::string extension = sourceFs.extension().string();
-                if (isDir || Util::isMaterialFile(extension)) {
-                    project->remapMaterialFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isSceneFile(extension)) {
-                    project->remapSceneFilePath(sourceFs, destFs);
-                }
-                // either name: a file renamed to or from .prefab starts or stops being one
-                if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
-                    project->remapPrefabFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isScriptFile(extension)) {
-                    project->remapScriptFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isAssetFile(extension)) {
-                    project->remapAssetFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isShaderFile(extension)) {
-                    project->remapShaderFilePath(sourceFs, destFs);
-                    project->invalidateCustomShaders();
-                }
-            }
-        }
+        renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {
         printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
         return false;
@@ -80,36 +84,7 @@ void editor::RenameFileCmd::undo(){
     fs::path sourceFs = directory / newFilename;
     fs::path destFs = directory / oldFilename;
     try {
-        if (fs::exists(sourceFs)) {
-            bool isDir = fs::is_directory(sourceFs);
-            // Resolve the thumbnail path before the rename, while the source still exists.
-            fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-            fs::rename(sourceFs, destFs);
-            if (project) {
-                moveThumbnail(oldThumbnail, destFs);
-                std::string extension = sourceFs.extension().string();
-                if (isDir || Util::isMaterialFile(extension)) {
-                    project->remapMaterialFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isSceneFile(extension)) {
-                    project->remapSceneFilePath(sourceFs, destFs);
-                }
-                // either name: a file renamed to or from .prefab starts or stops being one
-                if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
-                    project->remapPrefabFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isScriptFile(extension)) {
-                    project->remapScriptFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isAssetFile(extension)) {
-                    project->remapAssetFilePath(sourceFs, destFs);
-                }
-                if (isDir || Util::isShaderFile(extension)) {
-                    project->remapShaderFilePath(sourceFs, destFs);
-                    project->invalidateCustomShaders();
-                }
-            }
-        }
+        renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {
         printf("Error: Undo renaming %s: %s\n", sourceFs.string().c_str(), e.what());
     }

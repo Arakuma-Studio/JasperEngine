@@ -8,7 +8,7 @@ Speaks the same command line as the editor:
 stdio by default; with --http-port it serves Streamable HTTP on 127.0.0.1:N/mcp instead.
 With --headless and no DISPLAY it spawns `Xvfb -displayfd` like the editor and kills it at exit.
 Writes chatter to stderr (never stdout), and a few tools mimic the editor's:
-editor_status, create_entity, list_scene_entities, undo/redo, batch, screenshot, read_console.
+editor_status, create_entity, find_entities, undo/redo, batch, screenshot, read_console.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ import subprocess
 import sys
 import zlib
 from pathlib import Path
-from typing import Any
 
 from mcp import types
 from mcp.server.mcpserver import MCPServer
@@ -81,12 +80,11 @@ def start_xvfb() -> str | None:
 
 
 class State:
-    def __init__(self, args: argparse.Namespace):
-        self.args = args
+    def __init__(self):
         self.next_id = 100
         self.entities: dict[int, dict] = {1: {"id": 1, "name": "Main Camera", "type": "camera", "position": [0, 0, 0]}}
-        self.undo: list[tuple[str, Any]] = []
-        self.redo: list[tuple[str, Any]] = []
+        self.undo: list[list[int]] = []
+        self.redo: list[list[dict]] = []
         self.console: list[dict] = [{"id": 1, "type": "info", "message": "Fake editor started"}]
 
     def say(self, kind: str, message: str) -> None:
@@ -94,7 +92,7 @@ class State:
 
 
 def build(args: argparse.Namespace) -> MCPServer:
-    st = State(args)
+    st = State()
     server = MCPServer("jasperengine-editor-fake", instructions=INSTRUCTIONS, version="0.0-fake")
 
     def project_dir() -> str | None:
@@ -105,14 +103,16 @@ def build(args: argparse.Namespace) -> MCPServer:
     def editor_status() -> dict:
         settings = Path("settings.yaml")
         return {
+            "pid": os.getpid(),
             "project": project_dir(), "cwd": os.getcwd(), "home": os.environ.get("HOME"),
             "display": os.environ.get("DISPLAY"), "libgl_software": os.environ.get("LIBGL_ALWAYS_SOFTWARE"),
             "settings_yaml": settings.read_text() if settings.exists() else None,
             "playing": False, "argv": sys.argv[1:],
         }
 
-    def create(name: str, type: str = "object", parent_id: int | None = None,
-               position: dict | list | None = None, scene_id: int | None = None) -> dict:
+    @server.tool(description="Create a GameObject.")
+    def create_entity(name: str, type: str = "object", parent_id: int | None = None,
+                      position: dict | list | None = None, scene_id: int | None = None) -> dict:
         if type not in TYPES:
             raise ToolError(f"Unsupported GameObject type {type!r}. Valid types: {', '.join(TYPES)}")
         if parent_id is not None and parent_id not in st.entities:
@@ -126,25 +126,17 @@ def build(args: argparse.Namespace) -> MCPServer:
         st.say("info", f"Created {name}")
         return {"scene_id": scene_id or 1, "entity_id": eid, "path": name}
 
-    @server.tool(description="Create a GameObject (legacy shape: scene_id?, name, type, parent_id?, position).")
-    def create_entity(name: str, type: str = "object", parent_id: int | None = None,
-                      position: dict | None = None, scene_id: int | None = None) -> dict:
-        return create(name, type, parent_id, position, scene_id)
-
     @server.tool(description="List GameObjects of a scene.")
-    def list_scene_entities(scene_id: int | None = None) -> dict:
-        return {"scene_id": scene_id or 1, "entities": list(st.entities.values())}
+    def find_entities(scene_id: int | None = None, limit: int = 1000) -> dict:
+        return {"scene_id": scene_id or 1, "entities": list(st.entities.values())[:limit]}
 
-    def do_undo() -> str:
+    @server.tool(description="Undo the last editor command.")
+    def undo(scope: str = "scene", scene_id: int | None = None) -> str:
         if not st.undo:
             raise ToolError("Nothing to undo in scene history.")
         ids = st.undo.pop()
         st.redo.append([st.entities.pop(eid) for eid in ids])
         return "Undid last scene command."
-
-    @server.tool(description="Undo the last editor command.")
-    def undo(scope: str = "scene", scene_id: int | None = None) -> str:
-        return do_undo()
 
     @server.tool(description="Redo the last undone editor command.")
     def redo(scope: str = "scene", scene_id: int | None = None) -> str:
@@ -158,7 +150,7 @@ def build(args: argparse.Namespace) -> MCPServer:
 
     @server.tool(description="Run several tool calls in one round trip: calls=[{tool, arguments}].")
     def batch(calls: list[dict], undo_group: bool = False, stop_on_error: bool = True) -> dict:
-        impl = {"create_entity": create, "list_scene_entities": list_scene_entities, "undo": do_undo,
+        impl = {"create_entity": create_entity, "find_entities": find_entities, "undo": undo,
                 "editor_status": editor_status}
         results = []
         depth = len(st.undo)

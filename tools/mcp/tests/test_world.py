@@ -6,7 +6,7 @@ Rigidbody 2D and a capsule collider), a UI panel with a button and text, and scu
 every edit is checked and undone. Runs on a scratch copy of the TappyPlane fixture.
 """
 
-from harness import Editor, ToolError, find_key
+from harness import Editor, ToolError
 
 WORLD_TOOLS = (
     "sculpt_terrain", "sample_terrain", "edit_colliders", "set_joint", "edit_tilemap", "get_tilemap",
@@ -34,63 +34,19 @@ def approx(a, b, tol=0.02):
     return abs(float(a) - float(b)) <= tol * max(1.0, abs(float(b)))
 
 
-async def undo(ed: Editor, scene, steps: int = 1):
-    return await ed.call(ed.first_tool("undo", "undo_editor"), scene=scene, steps=steps)
-
-
-async def redo(ed: Editor, scene):
-    return await ed.call(ed.first_tool("redo", "redo_editor"), scene=scene)
-
-
 async def new_scene(ed: Editor, kind: str, name: str):
-    """A new scene of `kind` (2d, 3d, ui), selected; returns its id. The legacy create_scene asks
-    about unsaved changes (and closes the previous untitled scene): answer "no" (discard)."""
-    if kind in SCENES:
-        return SCENES[kind]
-    ed.require_tools("create_scene", "editor_status")
-    await ed.call("create_scene", name=name, type=kind)
-    for _ in range(50):
-        status = await ed.call("editor_status")
-        if status.get("dialog"):
-            await ed.call("respond_dialog", choice="no")
-            continue
-        selected = [sc for sc in status["scenes"] if sc.get("selected")]
-        if selected and selected[0]["name"].startswith(name):
-            sid = selected[0]["id"]
-            SCENES[kind] = sid
-            return sid
-    ed.fail(f"create_scene did not make a selected scene named {name!r}: {status!r}")
-
-
-def _component_names(value) -> set:
-    """Component names in a get_entity result, lower case, without 'component'."""
-    names = set()
-
-    def norm(s):
-        s = str(s).lower().replace(" ", "")
-        return s[:-9] if s.endswith("component") else s
-
-    def walk(v, under=False):
-        if isinstance(v, dict):
-            for k, x in v.items():
-                if k == "components":
-                    if isinstance(x, dict):
-                        names.update(norm(n) for n in x.keys())
-                    walk(x, True)
-                elif under and k in ("name", "short_name", "type", "component") and isinstance(x, str):
-                    names.add(norm(x))
-                else:
-                    walk(x, under and k not in ("properties",))
-        elif isinstance(v, list):
-            for x in v:
-                walk(x, under)
-
-    walk(value)
-    return names
+    """Create and select the shared scene for this kind; return its id."""
+    if kind not in SCENES:
+        made = await ed.call("create_scene", name=name, type=kind)
+        scene = made["scene"]
+        ed.check(scene["selected"] and scene["name"].startswith(name), f"new scene is not selected: {scene!r}")
+        SCENES[kind] = scene["id"]
+    return SCENES[kind]
 
 
 async def components(ed: Editor, scene, entity) -> set:
-    return _component_names(await ed.call("get_entity", scene=scene, entity=entity))
+    result = await ed.call("get_entity", scene=scene, entity=entity, detail="summary")
+    return set(result["components"])
 
 
 async def exists(ed: Editor, scene, entity) -> bool:
@@ -146,7 +102,7 @@ async def test_tilemap_from_ascii(ed: Editor):
                                 {"op": "fill", "tile": "brick", "from": [0, 4], "to": [2, 4]}])
     ed.check_eq(edited["tiles"], 10 + 2 + 3)
     ed.check_eq(edited["erased"], 2)
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     back = await ed.call("get_tilemap", scene=sid, entity=level["id"])
     ed.check_eq(back["tiles"], 14, "undo restores the painted tiles")
     ed.check_eq(back["grid"]["lines"], ["....bb....", ".c......c.", "gggggggggg"], "get_tilemap names cells by their rects")
@@ -162,9 +118,9 @@ async def test_tilemap_from_ascii(ed: Editor):
     ed.check_eq(still["tiles"], 14, "failed edits change nothing")
 
     # undoing the creating call removes the tilemap; redo brings it back
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     ed.check(not await exists(ed, sid, level["id"]), "undo of the creating call removes the Tilemap")
-    await redo(ed, sid)
+    await ed.call("redo", scene=sid)
     again = await ed.call("get_tilemap", scene=sid, entity=level["id"])
     ed.check_eq(again["tiles"], 14, "redo restores the whole level")
 
@@ -191,7 +147,7 @@ async def test_player_sprite_animation_and_body(ed: Editor):
                             frame_ms=[100, 200], loop=False)
     ed.check_eq(retimed["created"], False)
     ed.check_eq(retimed["frame_ms"], [100, 200])
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     err = await ed.call("set_sprite_animation", scene=sid, sprite=player["id"], frames=[7], expect_error=True)
     ed.check_in("frames", err)
 
@@ -224,11 +180,11 @@ async def test_player_sprite_animation_and_body(ed: Editor):
     ed.check_in("out of range", err)
 
     # undo three collider calls: the Rigidbody 2D is gone, the sprite stays
-    await undo(ed, sid, steps=3)
+    await ed.call("undo", scene=sid, steps=3)
     comps = await components(ed, sid, player["id"])
     ed.check("rigidbody2d" not in comps, f"undo removed the Rigidbody 2D: {comps}")
     ed.check_in("sprite", comps)
-    await redo(ed, sid)
+    await ed.call("redo", scene=sid)
     ed.check_in("rigidbody2d", await components(ed, sid, player["id"]))
 
     # a static ground body + a revolute joint between the two
@@ -242,7 +198,7 @@ async def test_player_sprite_animation_and_body(ed: Editor):
     edited = await ed.call("set_joint", scene=sid, joint=joint["joint"]["id"], type="distance", rope=True)
     ed.check_eq(edited["created"], False)
     ed.check_eq(edited["type"], "distance")
-    await undo(ed, sid, steps=2)
+    await ed.call("undo", scene=sid, steps=2)
     ed.check(not await exists(ed, sid, joint["joint"]["id"]), "undo removes the joint")
 
 
@@ -251,14 +207,14 @@ async def test_shape_points(ed: Editor):
     sid = await new_scene(ed, "2d", "Platformer")
     ed.require_tools("create_entity")
     made = await ed.call("create_entity", name="Hill", type="mesh_polygon")
-    hill = find_key(made, "entity_id", "id")
+    hill = made["entity_id"]
     r = await ed.call("set_shape_points", scene=sid, entity=hill, points=[[0, 0], [100, 0], [100, 50], [50, 80], [0, 50]],
                       color=[0.2, 0.6, 0.2])
     ed.check_eq(r["component"], "mesh_polygon")
     ed.check_eq(r["count"], 5)
     circle = await ed.call("set_shape_points", scene=sid, entity=hill, circle={"radius": 40, "segments": 12})
     ed.check_eq(circle["count"], 12)
-    await undo(ed, sid, steps=2)
+    await ed.call("undo", scene=sid, steps=2)
     err = await ed.call("set_shape_points", scene=sid, entity=hill, points=[[0, 0]], expect_error=True)
     ed.check_in("3 points", err)
 
@@ -306,13 +262,13 @@ async def test_ui_panel_with_button(ed: Editor):
     ed.check_eq(hint["anchor_offsets"], [8, 8, -8, -8])
     ed.check_eq(hint["size"][0], 300 - 16, "stretch fills the parent's width minus the margins")
     ed.check(hint["size"][1] < 200 - 16 + 1, f"and its height minus the margins: {hint}")
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
 
     err = await ed.call("create_ui", scene=sid, root={"type": "panel", "children": [{"type": "slider"}]}, expect_error=True)
     ed.check_in("button", err, "bad type lists the valid ones")
     ed.check(not await exists(ed, sid, "Panel"), "a failed create_ui leaves nothing behind")
 
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     ed.check(not await exists(ed, sid, root["id"]), "one undo removes the whole UI tree")
     ed.check(not await exists(ed, sid, resume["id"]), "including the children")
 
@@ -324,7 +280,7 @@ async def test_terrain_sculpt(ed: Editor):
     ed.require_tools("sculpt_terrain", "sample_terrain", "create_entity")
     sid = await new_scene(ed, "3d", "World")
     made = await ed.call("create_entity", name="Ground", type="terrain")
-    terrain = find_key(made, "entity_id", "id")
+    terrain = made["entity_id"]
 
     # raise a hill at the centre: the height map is created (flat, middle level) by the stroke
     hill = await ed.call("sculpt_terrain", scene=sid, entity=terrain, strokes=[
@@ -346,10 +302,10 @@ async def test_terrain_sculpt(ed: Editor):
     ])
     flat = await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]])
     ed.check(flat["samples"][0]["normalized"] < centre["normalized"], "flatten lowered the peak")
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     again = await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]])
     ed.check(approx(again["samples"][0]["normalized"], centre["normalized"], 0.01), "undo restores the hill")
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     gone = await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]])
     ed.check(gone["samples"][0]["normalized"] < centre["normalized"] - 0.2, "undo of the first stroke removes the hill")
 
@@ -365,7 +321,7 @@ async def test_terrain_maps(ed: Editor):
     ed.require_tools("set_terrain_maps", "sample_terrain", "create_entity")
     sid = await new_scene(ed, "3d", "World")
     made = await ed.call("create_entity", name="Maps", type="terrain")
-    terrain = find_key(made, "entity_id", "id")
+    terrain = made["entity_id"]
     # a generated height map, a constant blend map and two layer textures: one undo step
     out = await ed.call("set_terrain_maps", scene=sid, entity=terrain,
                         heightmap={"generate": "fractal_noise", "resolution": 64, "seed": 7, "amplitude": 0.3},
@@ -379,7 +335,7 @@ async def test_terrain_maps(ed: Editor):
     ed.check_eq(out["info"]["surface_layers"], 2)
     grid = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=5)
     ed.check(grid["grid"]["max"] > grid["grid"]["min"], f"noise has relief: {grid['grid']}")
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     info = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=0)
     ed.check(info["info"]["surface_layers"] == 0 and not info["info"]["blend_maps"], f"undo clears it: {info['info']}")
     # an existing image as the height map; errors name the bad field
@@ -397,7 +353,7 @@ async def test_keyframe_animation(ed: Editor):
     ed.require_tools("edit_animation", "get_animation", "preview_animation", "create_entity")
     sid = await new_scene(ed, "3d", "World")
     made = await ed.call("create_entity", name="Lift", type="box")
-    box = find_key(made, "entity_id", "id")
+    box = made["entity_id"]
     anim = await ed.call("edit_animation", scene=sid, target=box, name="Bob", loop=True, autoplay=True, tracks=[
         {"channel": "position", "keys": [{"time": 0, "value": [0, 0, 0], "ease": "sine_in_out"}, {"time": 1, "value": [0, 2, 0]},
                                          {"time": 2, "value": [0, 0, 0]}]},
@@ -441,9 +397,9 @@ async def test_keyframe_animation(ed: Editor):
     removed = await ed.call("edit_animation", scene=sid, animation=bob["id"], remove_actions=[2])
     ed.check_eq(len(removed["actions"]), 2)
     ed.check(not await exists(ed, sid, tween), "removed tween GameObject deleted")
-    await undo(ed, sid)
+    await ed.call("undo", scene=sid)
     ed.check(await exists(ed, sid, tween), "undo brings the tween back")
-    await undo(ed, sid, steps=2)
+    await ed.call("undo", scene=sid, steps=2)
     ed.check(not await exists(ed, sid, bob["id"]), "undo of the creating call removes the animation")
     err = await ed.call("edit_animation", scene=sid, target=box, tracks=[{"channel": "position", "keys": [{"time": 0, "value": [1, 2]}]}],
                         expect_error=True)
@@ -467,7 +423,7 @@ async def test_particles(ed: Editor):
     ed.check_eq(tweak["rate"], 7)
     ed.check_eq(tweak["life"], [1, 3])
     ed.check_eq(tweak["bursts"], 1, "overrides without a preset keep the other settings")
-    await undo(ed, sid, steps=3)
+    await ed.call("undo", scene=sid, steps=3)
     ed.check(not await exists(ed, sid, fire["emitter"]["id"]), "undo removes the effect")
 
 
@@ -475,7 +431,7 @@ async def test_3d_bodies_and_joint(ed: Editor):
     ed.require_tools("edit_colliders", "set_joint", "create_entity")
     sid = await new_scene(ed, "3d", "World")
     made = await ed.call("create_entity", name="Crate", type="box")
-    crate = find_key(made, "entity_id", "id")
+    crate = made["entity_id"]
     body = await ed.call("edit_colliders", scene=sid, entity=crate, body_type="dynamic",
                          add=[{"shape": "box"}, {"shape": "sphere", "radius": 0.25, "center": [0, 1, 0], "density": 500}],
                          body={"gravityFactor": 0.5})
@@ -486,7 +442,7 @@ async def test_3d_bodies_and_joint(ed: Editor):
     ed.check_eq(ball["center"], [0, 1, 0])
     ed.check(approx(ball["radius"], 0.25) and approx(ball["density"], 500))
     made = await ed.call("create_entity", name="Post", type="box")
-    post = find_key(made, "entity_id", "id")
+    post = made["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=post, add=[{"shape": "box"}])
     hinge = await ed.call("set_joint", scene=sid, body_a=post, body_b=crate, type="hinge", anchor=[0, 0.5, 0], axis=[0, 0, 1],
                           limits=[-45, 45], properties={"twistMinAngle": -30})
@@ -498,11 +454,11 @@ async def test_3d_bodies_and_joint(ed: Editor):
 
     # heightfield collision on a terrain
     made = await ed.call("create_entity", name="Hills", type="terrain")
-    hills = find_key(made, "entity_id", "id")
+    hills = made["entity_id"]
     field = await ed.call("edit_colliders", scene=sid, entity=hills, add=[{"shape": "heightfield", "samples_size": 128}])
     ed.check_eq(field["colliders"][0]["shape"], "heightfield")
     ed.check_eq(field["colliders"][0]["samples_size"], 128)
-    await undo(ed, sid, steps=7)
+    await ed.call("undo", scene=sid, steps=7)
     ed.check(not await exists(ed, sid, crate), "undo removes the crate")
 
 

@@ -74,12 +74,6 @@ SceneProject* McpRefs::runtimeScene(Project* project, SceneProject* scene) {
     return scene;
 }
 
-uint32_t McpRefs::runtimeSceneId(Project* project, uint32_t sceneId) {
-    if (!project) return sceneId;
-    const uint32_t runtimeId = project->getPlayRuntimeSceneId(sceneId);
-    return runtimeId != NULL_PROJECT_SCENE ? runtimeId : sceneId;
-}
-
 std::string McpRefs::componentName(ComponentType type) {
     return lower(Catalog::getComponentName(type, true));
 }
@@ -181,16 +175,6 @@ Json McpRefs::entityJson(SceneProject* scene, Entity entity) {
     if (scene && scene->scene) {
         out["name"] = scene->scene->getEntityName(entity);
         out["path"] = entityPath(scene, entity);
-    }
-    return out;
-}
-
-Json McpRefs::entityJson(SceneProject* scene, Entity entity, const std::unordered_map<Entity, std::string>& paths) {
-    Json out = {{"id", entity}};
-    if (scene && scene->scene) {
-        out["name"] = scene->scene->getEntityName(entity);
-        auto it = paths.find(entity);
-        out["path"] = it != paths.end() ? it->second : entityPath(scene, entity);
     }
     return out;
 }
@@ -336,13 +320,12 @@ bool McpRefs::resolveEntities(SceneProject* scene, const Json& refs, std::vector
     return true;
 }
 
-bool McpRefs::resolveEntityArgs(SceneProject* scene, const Json& args, std::vector<Entity>& out, std::string& error,
-                                const char* manyKey, const char* oneKey) {
-    auto many = args.find(manyKey);
+bool McpRefs::resolveEntityArgs(SceneProject* scene, const Json& args, std::vector<Entity>& out, std::string& error) {
+    auto many = args.find("entities");
     if (many != args.end() && !many->is_null()) return resolveEntities(scene, *many, out, error);
-    auto one = args.find(oneKey);
+    auto one = args.find("entity");
     if (one != args.end() && !one->is_null()) return resolveEntities(scene, *one, out, error);
-    error = std::string("Pass ") + oneKey + " (one GameObject) or " + manyKey + " (an array of them).";
+    error = "Pass entity (one GameObject) or entities (an array of them).";
     return false;
 }
 
@@ -399,9 +382,8 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
         }
         static const std::map<std::string, std::string> aliases = {
             {"spriterenderer", "sprite"}, {"meshrenderer", "mesh"}, {"meshfilter", "mesh"},
-            {"linerenderer", "linerenderer"}, {"light2d", "light2d"}, {"particlesystem", "particlesystem"},
             {"rigidbody3d", "rigidbody"}, {"collider", "rigidbody"}, {"collider2d", "rigidbody2d"},
-            {"recttransform", "recttransform"}, {"canvasrenderer", "ui"}, {"skybox", "skybox"},
+            {"canvasrenderer", "ui"},
             {"sky", "skybox"}, {"audio", "audiosource"}, {"sound", "audiosource"}, {"scripts", "script"},
             {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}
         };

@@ -382,7 +382,6 @@ namespace jasperengine::editor{
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
         PlayInput* getPlayInput() const;
-        MainToolbar* getMainToolbar() const;
         void resetLayout();
 
         // Window settings methods. Sizes are physical pixels, converted between

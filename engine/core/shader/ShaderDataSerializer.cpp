@@ -38,27 +38,18 @@ bool setErr(std::string* err, const std::string& msg) {
     return false;
 }
 
-struct ByteWriter {
-    std::vector<unsigned char>& bytes;
-
-    unsigned int write(unsigned char* src, unsigned int count) {
-        bytes.insert(bytes.end(), src, src + count);
-        return count;
-    }
-};
-
 // Little-endian write helpers (portable across architectures)
-void writeU32(ByteWriter& out, uint32_t v) {
+void writeU32(std::vector<unsigned char>& out, uint32_t v) {
     uint8_t buf[4] = {
         static_cast<uint8_t>(v),
         static_cast<uint8_t>(v >> 8),
         static_cast<uint8_t>(v >> 16),
         static_cast<uint8_t>(v >> 24)
     };
-    out.write(buf, 4);
+    out.insert(out.end(), buf, buf + 4);
 }
 
-void writeU64(ByteWriter& out, uint64_t v) {
+void writeU64(std::vector<unsigned char>& out, uint64_t v) {
     uint8_t buf[8] = {
         static_cast<uint8_t>(v),
         static_cast<uint8_t>(v >> 8),
@@ -69,31 +60,31 @@ void writeU64(ByteWriter& out, uint64_t v) {
         static_cast<uint8_t>(v >> 48),
         static_cast<uint8_t>(v >> 56)
     };
-    out.write(buf, 8);
+    out.insert(out.end(), buf, buf + 8);
 }
 
-void writeI32(ByteWriter& out, int32_t v) {
+void writeI32(std::vector<unsigned char>& out, int32_t v) {
     writeU32(out, static_cast<uint32_t>(v));
 }
 
-void writeU8(ByteWriter& out, uint8_t v) {
-    out.write(&v, sizeof(v));
+void writeU8(std::vector<unsigned char>& out, uint8_t v) {
+    out.push_back(v);
 }
 
-void writeBool(ByteWriter& out, bool v) {
+void writeBool(std::vector<unsigned char>& out, bool v) {
     uint8_t b = v ? 1 : 0;
     writeU8(out, b);
 }
 
-void writeString(ByteWriter& out, const std::string& s) {
+void writeString(std::vector<unsigned char>& out, const std::string& s) {
     uint32_t len = static_cast<uint32_t>(s.size());
     writeU32(out, len);
     if (len > 0) {
-        out.write((unsigned char*)s.data(), len);
+        out.insert(out.end(), s.data(), s.data() + len);
     }
 }
 
-void writeShaderData(ByteWriter& out, uint64_t shaderKey, const ShaderData& shaderData) {
+void writeShaderData(std::vector<unsigned char>& out, uint64_t shaderKey, const ShaderData& shaderData) {
     writeU32(out, SDAT_MAGIC);
     writeU32(out, SDAT_VERSION);
     writeU64(out, shaderKey);
@@ -112,7 +103,7 @@ void writeShaderData(ByteWriter& out, uint64_t shaderKey, const ShaderData& shad
         // Bytecode is only present for SPIRV (Vulkan); source-based languages write 0
         if (stage.bytecode.data && stage.bytecode.size > 0) {
             writeU32(out, stage.bytecode.size);
-            out.write(stage.bytecode.data, stage.bytecode.size);
+            out.insert(out.end(), stage.bytecode.data, stage.bytecode.data + stage.bytecode.size);
         } else {
             writeU32(out, 0);
         }
@@ -682,8 +673,7 @@ bool ShaderDataSerializer::writeToFile(const std::string& filepath, uint64_t sha
 bool ShaderDataSerializer::writeToBytes(std::vector<unsigned char>& outBytes, uint64_t shaderKey, const ShaderData& shaderData, std::string* err) {
     (void)err;
     outBytes.clear();
-    ByteWriter writer{outBytes};
-    writeShaderData(writer, shaderKey, shaderData);
+    writeShaderData(outBytes, shaderKey, shaderData);
     return true;
 }
 

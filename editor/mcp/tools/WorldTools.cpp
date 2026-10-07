@@ -27,7 +27,6 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
-#include "command/type/PropertyCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -359,16 +358,6 @@ template<typename T>
 void addProp(MultiPropertyCmd& multi, const Target& target, Entity entity, ComponentType component,
              const std::string& name, const T& value) {
     multi.addPropertyCmd<T>(target.project, target.sceneId(), entity, component, name, value);
-}
-
-// Children of an entity (Transform.parent), in scene order
-std::vector<Entity> childrenOf(SceneProject* scene, Entity parent) {
-    std::vector<Entity> out;
-    for (Entity entity : scene->entities) {
-        Transform* transform = scene->scene->findComponent<Transform>(entity);
-        if (transform && transform->parent == parent) out.push_back(entity);
-    }
-    return out;
 }
 
 // Image size from the file header (PNG/JPG/TGA/BMP...); false for SVG and unreadable files

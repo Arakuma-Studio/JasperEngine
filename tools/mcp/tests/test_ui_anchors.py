@@ -17,7 +17,7 @@ TappyPlane fixture (canvas 1280 x 720).
 import struct
 import zlib
 
-from harness import Editor, find_key
+from harness import Editor, ToolError
 
 SCENES = {}
 
@@ -127,20 +127,13 @@ def color_boxes(png: bytes) -> dict:
 
 
 async def new_scene(ed: Editor, kind: str, name: str):
-    """A new scene of `kind` (2d, 3d, ui), selected; returns its id."""
-    if name in SCENES:
-        return SCENES[name]
-    await ed.call("create_scene", name=name, type=kind)
-    for _ in range(50):
-        status = await ed.call("editor_status")
-        if status.get("dialog"):
-            await ed.call("respond_dialog", choice="no")
-            continue
-        selected = [sc for sc in status["scenes"] if sc.get("selected")]
-        if selected and selected[0]["name"].startswith(name):
-            SCENES[name] = selected[0]["id"]
-            return SCENES[name]
-    ed.fail(f"create_scene did not make a selected scene named {name!r}: {status!r}")
+    """Create and select the named shared scene; return its id."""
+    if name not in SCENES:
+        made = await ed.call("create_scene", name=name, type=kind)
+        scene = made["scene"]
+        ed.check(scene["selected"] and scene["name"].startswith(name), f"new scene is not selected: {scene!r}")
+        SCENES[name] = scene["id"]
+    return SCENES[name]
 
 
 def image_node(name, color, layout):
@@ -179,20 +172,15 @@ async def placements(ed: Editor, sid, label: str) -> dict:
     return out
 
 
-def expected() -> dict:
-    return {name: rect for name, _, _, rect in ROOTS + [c for _, _, children in GROUPS for c in children]}
-
-
 def close(a, b, tol=4) -> bool:
     return a is not None and all(abs(x - y) <= tol for x, y in zip(a, b))
 
 
 async def check_board(ed: Editor, sid, label: str):
     got = await placements(ed, sid, label)
-    want = expected()
+    want = {name: rect for name, _, _, rect in ROOTS + [c for _, _, children in GROUPS for c in children]}
     wrong = {n: (got.get(n), r) for n, r in want.items() if not close(got.get(n), r)}
     ed.check(not wrong, f"{label}: misplaced elements (measured, expected): {wrong}")
-    return got
 
 
 # -- placement -------------------------------------------------------------------------------
@@ -284,7 +272,7 @@ async def _exists(ed: Editor, sid, entity) -> bool:
     try:
         await ed.call("get_entity", scene=sid, entity=entity)
         return True
-    except Exception:
+    except ToolError:
         return False
 
 
@@ -314,7 +302,7 @@ async def test_layout_group_in_2d_scene_warns(ed: Editor):
 async def test_3d_collider_friction_goes_to_body(ed: Editor):
     sid = await new_scene(ed, "3d", "Bodies3D")
     made = await ed.call("create_entity", scene=sid, name="Ball", type="sphere")
-    ball = find_key(made, "entity_id", "id")
+    ball = made["entity_id"]
     r = await ed.call_raw("edit_colliders", {"scene": sid, "entity": ball, "body_type": "dynamic",
                                              "add": [{"shape": "sphere", "friction": 0.8, "restitution": 0.4}]})
     ed.check(not r.is_error, f"3D friction on a collider: {r.text}")
@@ -336,6 +324,6 @@ async def test_3d_collider_friction_goes_to_body(ed: Editor):
     ed.check_in("restitution", err)
 
     # one undo step: the collider edit and the body friction go together
-    await ed.call(ed.first_tool("undo", "undo_editor"), scene=sid, steps=1)
+    await ed.call("undo", scene=sid, steps=1)
     got = await ed.call("get_entity", scene=sid, entity=ball, components=["rigidbody"], properties=["restitution"])
     ed.check(abs(float(got["components"]["rigidbody"]["restitution"]) - 0.4) < 1e-4, f"undo: {got}")

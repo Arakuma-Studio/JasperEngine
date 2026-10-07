@@ -26,8 +26,6 @@ editor::ToolsLayer::ToolsLayer(bool use2DGizmos){
     anchorGizmoEnabled = false;
 
     scene->setCamera(camera);
-
-    gizmoScale = 1.0f;
 }
 
 editor::ToolsLayer::~ToolsLayer(){
@@ -104,8 +102,6 @@ void editor::ToolsLayer::updateCamera(const LayerView& layerView){
 }
 
 void editor::ToolsLayer::updateGizmo(Camera* sceneCam, Vector3& position, Quaternion& rotation, float scale, OBB obb, Ray& mouseRay, bool mouseClicked, Vector4& anchorData, Rect& anchorArea){
-    gizmoScale = scale;
-
     if (gizmoSelected == GizmoSelected::TRANSLATE){
         tGizmo->setPosition(position);
         tGizmo->setRotation(rotation);

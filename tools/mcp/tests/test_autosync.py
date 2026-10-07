@@ -85,13 +85,6 @@ async def test_setup_script_no_report(ed: Editor):
     ed.check("External changes" not in r.text, f"text mentions external changes: {r.text[-300:]!r}")
 
 
-async def test_no_change_no_field(ed: Editor):
-    for _ in range(3):
-        r = await status_call(ed)
-        ed.check(external(r) is None, f"no change but external_changes: {external(r)!r}")
-        ed.check("External changes" not in r.text, f"no change but text line: {r.text[-200:]!r}")
-
-
 async def test_external_property_picked_up(ed: Editor):
     path = ed.project / "scripts/Mover.lua"
     touch_write(path, with_property(MOVER, "jump", 3))

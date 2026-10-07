@@ -329,7 +329,6 @@ TextureLoadResult Texture::load() {
 
     if (framebuffer) {
         result.state = ResourceLoadState::Finished;
-        result.data = nullptr; // Or however you want to signal framebuffer
         return result;
     }
 
@@ -342,7 +341,7 @@ TextureLoadResult Texture::load() {
         }
     }
 
-    if (data && hasTexturePixels(data, numFaces)) {
+    if (hasTexturePixels(data, numFaces)) {
         result.state = ResourceLoadState::Finished;
         result.data = data;
         return result;

@@ -65,7 +65,6 @@ McpTransportStdio::~McpTransportStdio() {
 
 void McpTransportStdio::start() {
     session = server.createSession("stdio");
-    session->notify = [this](const Json& message) { send(message); };
     open = true;
     inputOpen = true;
     writer = std::thread([this]() { writeLoop(); });
@@ -162,9 +161,8 @@ void McpTransportStdio::readLoop() {
             scanned = 0;
         } else if (pending.size() > MAX_LINE_BYTES) {
             std::fprintf(stderr, "[mcp] dropping a stdin line longer than %zu bytes\n", MAX_LINE_BYTES);
-            auto reply = std::make_shared<StdioReply>(this);
-            reply->respond(McpServer::makeError(nullptr, -32700, "Parse error: message longer than " +
-                                                std::to_string(MAX_LINE_BYTES / (1024 * 1024)) + " MB."));
+            send(McpServer::makeError(nullptr, -32700, "Parse error: message longer than " +
+                                      std::to_string(MAX_LINE_BYTES / (1024 * 1024)) + " MB."));
             pending.clear();
             scanned = 0;
             discarding = true;

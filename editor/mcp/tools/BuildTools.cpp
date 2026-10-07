@@ -410,7 +410,6 @@ struct BuildRun {
     size_t warningCount = 0;
     std::ofstream logFile;
     fs::path logPath;
-    std::string lastError;                // last [error] line, for the failure message
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -441,7 +440,6 @@ void consumeLog(BuildRun& run, const LogEntry& entry) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         run.job->log(prefix + line);
         if (run.logFile) run.logFile << prefix << line << "\n";
-        if (entry.type == LogType::Error) run.lastError = line;
         Diagnostic d;
         if (parseDiagnostic(line, d)) {
             if (d.severity == "error") run.errorCount++;
@@ -1307,7 +1305,6 @@ struct PlayerRun {
     pid_t pid = -1;
     int fd = -1;
     std::string output;              // everything read (capped, tail kept)
-    size_t droppedBytes = 0;
     bool exited = false;
     int status = 0;
     bool terminating = false;
@@ -1348,7 +1345,6 @@ void readPlayerOutput(PlayerRun& run) {
             if (run.output.size() > MAX_PLAYER_OUTPUT) {
                 const size_t drop = run.output.size() - MAX_PLAYER_OUTPUT / 2;
                 run.output.erase(0, drop);
-                run.droppedBytes += drop;
             }
             continue;
         }

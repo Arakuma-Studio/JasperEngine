@@ -7,17 +7,14 @@ added/removed GameObject) -> variant and variant of a variant (apply targets alo
 add to / remove from a prefab -> undo of each step -> save and reload.
 
 Tests share one editor (a scratch copy of the TappyPlane fixture) and run in order; state
-built by earlier tests is kept in S. GameObjects are made and edited through the scene tools
-(legacy names and argument shapes today; the helpers below adapt to the W1 shapes by schema).
+built by earlier tests is kept in S.
 """
 
 import asyncio
-import json
-from pathlib import Path
 
 import yaml
 
-from harness import Editor, ToolError, skip
+from harness import Editor
 
 TIMEOUT = 900
 
@@ -32,47 +29,18 @@ LEGACY_REMOVED = ("create_prefab_from_entity", "import_prefab_instance", "add_en
 
 
 # ---------------------------------------------------------------------------
-# Scene-tool adapters (legacy names/shapes now; W1's McpRefs shapes when they land)
-
-
-def _props(ed: Editor, tool: str) -> dict:
-    t = ed.tool(tool)
-    return ((t.input_schema or {}).get("properties") or {}) if t else {}
-
-
-async def _refs(ed: Editor, tool: str, scene=None, entity=None, extra: dict | None = None) -> dict:
-    p = _props(ed, tool)
-    a = {}
-    if scene is not None:
-        a["scene" if "scene" in p else "scene_id"] = scene
-    if entity is not None:
-        if "entity" in p:
-            a["entity"] = entity
-        else:
-            # id-only (legacy) tools: resolve a name path with get_prefab_info (McpRefs paths)
-            if isinstance(entity, str):
-                entity = (await ed.call("get_prefab_info", scene=scene if scene is not None else SCENE,
-                                        entity=entity, usage=False))["entity"]["id"]
-            a["entity_id"] = entity
-    a.update(extra or {})
-    return a
+# Scene helpers
 
 
 async def make_object(ed: Editor, name: str, kind: str = "box", parent=None, scene=SCENE, position=None) -> int:
-    tool = ed.first_tool("create_entity")
-    p = _props(ed, tool)
-    a = await _refs(ed, tool, scene=scene, extra={"name": name, "type": kind})
+    args = {"scene": scene, "name": name, "type": kind}
     if parent is not None:
-        if "parent" not in p and isinstance(parent, str):
-            parent = (await ed.call("get_prefab_info", scene=scene, entity=parent, usage=False))["entity"]["id"]
-        a["parent" if "parent" in p else "parent_id"] = parent
+        args["parent"] = parent
     if position is not None:
-        a["position"] = position if "parent" in p else {"x": position[0], "y": position[1], "z": position[2]}
-    made = await ed.call(tool, a)
-    eid = made.get("entity_id", made.get("id")) if isinstance(made, dict) else None
-    if eid is None and isinstance(made, dict) and isinstance(made.get("entity"), dict):
-        eid = made["entity"].get("id")
-    ed.check(eid is not None, f"{tool} returned no id: {made!r}")
+        args["position"] = position
+    made = await ed.call("create_entity", args)
+    eid = made["entity_id"]
+    ed.check(eid is not None, f"create_entity returned no id: {made!r}")
     return eid
 
 
@@ -82,33 +50,12 @@ async def set_vec3(ed: Editor, entity, component: str, prop: str, value, scene=S
 
 async def get_vec3(ed: Editor, entity, component: str, prop: str, scene=SCENE) -> list:
     v = await ed.call("get_entity", scene=scene, entity=entity, components=[component], properties=[prop])
-    comps = {k.lower(): c for k, c in v["components"].items()}
-    val = comps[component.lower()][prop]
-    if isinstance(val, dict):
-        val = [val["x"], val["y"], val["z"]]
+    val = v["components"][component.lower()][prop]
     return [round(float(x), 4) for x in val]
 
 
-async def rename(ed: Editor, entity, name: str, scene=SCENE):
-    tool = ed.first_tool("rename_entity", "set_entity_name")
-    p = _props(ed, tool)
-    return await ed.call(tool, await _refs(ed, tool, scene=scene, entity=entity,
-                                     extra={("new_name" if "new_name" in p else "name"): name}))
-
-
 async def delete(ed: Editor, entity, scene=SCENE):
-    tool = ed.first_tool("delete_entity", "delete_entities")
-    return await ed.call(tool, await _refs(ed, tool, scene=scene, entity=entity))
-
-
-async def add_component(ed: Editor, entity, component: str, scene=SCENE):
-    tool = ed.first_tool("add_component")
-    return await ed.call(tool, await _refs(ed, tool, scene=scene, entity=entity, extra={"component": component}))
-
-
-async def save_scene(ed: Editor, scene=SCENE):
-    tool = ed.first_tool("save_scene")
-    return await ed.call(tool, await _refs(ed, tool, scene=scene))
+    return await ed.call("delete_entities", scene=scene, entity=entity)
 
 
 async def undo(ed: Editor, scene=SCENE, steps: int = 1):
@@ -131,10 +78,6 @@ async def overrides(ed: Editor, entity, scene=SCENE, **kw) -> list:
     return (await info(ed, entity, scene=scene, usage=False, **kw))["overrides"]
 
 
-def kinds(entries: list) -> list:
-    return sorted(e["kind"] for e in entries)
-
-
 def find_override(entries: list, kind: str, **match):
     for e in entries:
         if e["kind"] != kind:
@@ -142,8 +85,6 @@ def find_override(entries: list, kind: str, **match):
         ok = True
         for k, v in match.items():
             got = e.get(k)
-            if isinstance(got, dict) and "path" in got and not isinstance(v, dict):
-                got = got["path"]
             if isinstance(v, (list, tuple)):
                 ok = ok and set(v) <= set(got or [])
             else:
@@ -184,7 +125,8 @@ async def test_tools_registered(ed: Editor):
     ed.check(not missing, f"prefab tools missing: {missing}")
     stale = [n for n in LEGACY_REMOVED if n in names]
     ed.check(not stale, f"superseded legacy prefab tools still registered: {stale}")
-    ed.check("scene_id" not in _props(ed, "set_standalone_prefab"), "set_standalone_prefab still has the legacy schema")
+    ed.check("scene_id" not in ed.tool("set_standalone_prefab").input_schema["properties"],
+             "set_standalone_prefab still has the legacy schema")
 
 
 async def test_create_prefab(ed: Editor):
@@ -254,7 +196,7 @@ async def test_instantiate_prefab(ed: Editor):
 
 
 async def test_property_override_apply_revert(ed: Editor):
-    a, b, b_lid = S["crate"], S["b"], S["b_lid"]
+    b, b_lid = S["b"], S["b_lid"]
     a_lid = S["lid"]
     await set_vec3(ed, b_lid, "Transform", "scale", [2, 2, 2])
     ov = await overrides(ed, b, values=True)
@@ -299,22 +241,21 @@ async def test_property_override_apply_revert(ed: Editor):
 
 
 async def test_other_override_kinds(ed: Editor):
-    a, b, b_lid = S["crate"], S["b"], S["b_lid"]
+    b, b_lid = S["b"], S["b_lid"]
     # state (name), added component, added GameObject, removed GameObject
-    await rename(ed, b_lid, "Lid Renamed")
-    await add_component(ed, b_lid, "AudioSourceComponent")
+    await ed.call("rename_entity", scene=SCENE, entity=b_lid, name="Lid Renamed")
+    await ed.call("add_component", scene=SCENE, entity=b_lid, component="AudioSourceComponent")
     flag = await make_object(ed, "Flag", "box", parent=b)
     ov = await overrides(ed, b)
     ed.check(find_override(ov, "state", state=["name"]), f"name state override missing: {ov}")
     added_comp = [e for e in ov if e["kind"] == "added_component"]
     ed.check(added_comp, f"added component missing: {ov}")
-    ed.check(find_override(ov, "added_gameobject", entity=flag) or find_override(ov, "added_gameobject"),
-             f"added GameObject missing: {ov}")
+    ed.check(find_override(ov, "added_gameobject"), f"added GameObject missing: {ov}")
 
     # revert all of one GameObject's overrides in one call (state + added component)
     await ed.call("prefab_overrides", action="revert", scene=SCENE, entity=b_lid)
     ov = await overrides(ed, b)
-    ed.check_eq(kinds(ov), ["added_gameobject"], "reverting the Lid's overrides")
+    ed.check_eq([e["kind"] for e in ov], ["added_gameobject"], "reverting the Lid's overrides")
     ed.check_eq((await info(ed, b_lid))["entity"]["name"], "Lid", "name not reverted")
 
     # apply the added GameObject: Crate (and instance A) get a Flag
@@ -343,7 +284,7 @@ async def test_other_override_kinds(ed: Editor):
 
     # revert all / apply all
     await set_vec3(ed, S["b_lid"], "Transform", "position", [0, 3, 0])
-    await rename(ed, S["b_lid"], "Top")
+    await ed.call("rename_entity", scene=SCENE, entity=S["b_lid"], name="Top")
     r = await ed.call("prefab_overrides", action="revert", scene=SCENE, entity=b, all=True)
     ed.check_eq(r["remaining"], 0)
     await undo(ed)
@@ -407,7 +348,7 @@ async def test_variants(ed: Editor):
 
 
 async def test_prefab_mode(ed: Editor):
-    a, a_lid = S["crate"], S["lid"]
+    a_lid = S["lid"]
     # A overrides its Lid's position; a fresh instance D does not
     await set_vec3(ed, a_lid, "Transform", "position", [0, 7, 0])
     d = (await ed.call("instantiate_prefab", scene=SCENE, prefab="prefabs/Crate.prefab", position=[0, 0, 5], name="Crate D"))["instance"]["id"]
@@ -553,10 +494,9 @@ async def test_standalone(ed: Editor):
 
 
 async def test_save_and_reload(ed: Editor):
-    b = S["b"]
     b_lid = (await info(ed, "Crate B/Lid"))["entity"]["id"]
     await set_vec3(ed, b_lid, "Transform", "scale", [6, 6, 6])
-    await save_scene(ed)
+    await ed.call("save_scene", scene=SCENE)
     async with Editor(project=ed.project) as ed2:
         i = await ed2.call("get_prefab_info", scene=SCENE, entity="Crate B")
         ed2.check_eq(i["prefab"]["path"], "prefabs/Crate Variant.prefab", "reloaded instance prefab")

@@ -168,18 +168,7 @@ bool TextureData::operator == ( const TextureData& v ) const{
 }
 
 bool TextureData::operator != ( const TextureData& v ) const{
-    return (
-        v.width != width ||
-        v.height != height ||
-        v.originalWidth != originalWidth ||
-        v.originalHeight != originalHeight ||
-        v.size != size ||
-        v.color_format != color_format ||
-        v.channels != channels ||
-        v.data != data ||
-        v.transparent != transparent ||
-        v.dataOwned != dataOwned
-    );
+    return !(*this == v);
 }
 
 bool TextureData::loadTexture(Data* filedata) {
@@ -348,7 +337,7 @@ bool TextureData::loadTextureFromFile(const char* filename) {
 bool TextureData::loadTextureFromMemory(unsigned char* data, unsigned int dataLength){
     Data filedata;
 
-    int res = filedata.open(data, dataLength, false, false);
+    filedata.open(data, dataLength, false, false);
 
     bool result = loadTexture(&filedata);
 
@@ -719,24 +708,21 @@ void TextureData::flipVertical(){
     int bufsize = width * channels;
     
     unsigned char* tb1 = new unsigned char[bufsize];
-    unsigned char* tb2 = new unsigned char[bufsize];
     
     int row_cnt;
     long off1 = 0;
     long off2 = 0;
     
-    for (row_cnt=0;row_cnt<(height+1)/2;row_cnt++) {
+    for (row_cnt=0;row_cnt<height/2;row_cnt++) {
         off1=row_cnt*bufsize;
         off2=((height-1)-row_cnt)*bufsize;
         
         memcpy(tb1,(unsigned char*)data+off1,bufsize);
-        memcpy(tb2,(unsigned char*)data+off2,bufsize);
-        memcpy((unsigned char*)data+off1,tb2,bufsize);
+        memcpy((unsigned char*)data+off1,(unsigned char*)data+off2,bufsize);
         memcpy((unsigned char*)data+off2,tb1,bufsize);
     }
     
     delete [] tb1;
-    delete [] tb2;
     
 }
 
@@ -802,8 +788,5 @@ int TextureData::getMinNearestPowerOfTwo(){
 
 void TextureData::cleanupTexture(void* data){
     TextureData* texData = (TextureData*)data;
-    if (texData->data){
-        stbi_image_free(texData->data);
-        texData->data = NULL;
-    }
+    texData->releaseImageData();
 }

@@ -4,7 +4,6 @@
 #include "ComponentValuesCmd.h"
 
 #include "Stream.h"
-#include "Out.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -36,9 +35,8 @@ namespace {
     };
 
     void keepKey(YAML::Node& value, const YAML::Node& current, const char* key) {
-        const YAML::Node& constCurrent = current;
-        if (constCurrent[key]) {
-            value[key] = YAML::Clone(constCurrent[key]);
+        if (current[key]) {
+            value[key] = YAML::Clone(current[key]);
         } else {
             value.remove(key);
         }
@@ -164,10 +162,6 @@ namespace {
     bool hasComponent(Scene* scene, Entity entity, editor::ComponentType type) {
         return scene->isEntityCreated(entity) &&
             scene->getSignature(entity).test(editor::Catalog::getComponentId(scene, type));
-    }
-
-    std::string displayName(editor::ComponentType type) {
-        return editor::Catalog::getComponentDisplayName(type);
     }
 
     struct ModelValue {
@@ -339,11 +333,11 @@ bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t scene
         return fail("Copy a component first");
     }
     if (clip->type != type) {
-        return fail("The copied component is a " + displayName(clip->type));
+        return fail("The copied component is a " + Catalog::getComponentDisplayName(clip->type));
     }
     for (Entity entity : entities) {
         if (!hasComponent(sceneProject->scene, entity, type)) {
-            return fail("Not every selected GameObject has a " + displayName(type));
+            return fail("Not every selected GameObject has a " + Catalog::getComponentDisplayName(type));
         }
     }
     if (type == ComponentType::ModelComponent && readModelValue(clip->value).filename.empty()) {
@@ -366,14 +360,14 @@ bool editor::ComponentValuesCmd::canPasteAsNew(Project* project, uint32_t sceneI
         return fail("Copy a component first");
     }
     if (!ComponentAddDialog::isListed(clip->type)) {
-        return fail("A " + displayName(clip->type) + " cannot be added");
+        return fail("A " + Catalog::getComponentDisplayName(clip->type) + " cannot be added");
     }
     for (Entity entity : entities) {
         if (!sceneProject->scene->isEntityCreated(entity)) {
             return fail("No GameObject selected");
         }
         if (hasComponent(sceneProject->scene, entity, clip->type)) {
-            return fail("A selected GameObject already has a " + displayName(clip->type));
+            return fail("A selected GameObject already has a " + Catalog::getComponentDisplayName(clip->type));
         }
     }
     return true;
@@ -394,7 +388,7 @@ bool editor::ComponentValuesCmd::canReset(Project* project, uint32_t sceneId, co
     }
     for (Entity entity : entities) {
         if (!hasComponent(sceneProject->scene, entity, type)) {
-            return fail("Not every selected GameObject has a " + displayName(type));
+            return fail("Not every selected GameObject has a " + Catalog::getComponentDisplayName(type));
         }
     }
     if (type == ComponentType::ModelComponent) {

@@ -32,9 +32,7 @@ STBText::~STBText() {
     faces.clear();
     facePointers.clear();
 
-    if (textureData){
-        delete textureData;
-    }
+    delete textureData;
 }
 
 uint64_t STBText::glyphKey(unsigned int face, uint32_t glyphIndex){
@@ -287,9 +285,7 @@ const STBText::FontGlyph* STBText::getGlyphForCodepoint(uint32_t codepoint){
 void STBText::refreshTextureData(){
     unsigned int textureSize = atlasWidth * atlasHeight * sizeof(unsigned char);
 
-    if (textureData){
-        delete textureData;
-    }
+    delete textureData;
     textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlas->getPixels().data());
 }
 

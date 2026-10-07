@@ -287,7 +287,7 @@ in a scratch copy of a project under Xvfb:
 ```sh
 tools/mcp/run-tests.sh                 # every tools/mcp/tests/test_*.py
 tools/mcp/run-tests.sh -k batch -j 4   # filter by name, run 4 files at a time
-tools/mcp/run-tests.sh --fake          # check the harness itself against a fake server
+tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py  # protocol checks against a fake server
 ```
 
 The harness API and conventions are described in the docstrings of `tools/mcp/harness.py`

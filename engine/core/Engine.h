@@ -284,7 +284,7 @@ namespace jasperengine {
 
         static bool transformCoordPos(float& x, float& y);
         static void calculateCanvas();
-        static void includeScene(size_t index, Scene* scene);
+        static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
         static std::vector<Scene*> getScenesSnapshot();

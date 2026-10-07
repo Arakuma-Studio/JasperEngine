@@ -1,7 +1,9 @@
 """W4 docs: jasper://guide and jasper://docs/* resources, the project resources, engine API search,
 prompts."""
 
-from harness import Editor, ProtocolError
+from mcp.shared.exceptions import MCPError
+
+from harness import Editor
 
 DOCS = ["cpp-scripting", "html-ui", "lua-api", "physics", "prefabs", "shaders", "unity-glossary"]
 
@@ -19,7 +21,7 @@ async def test_resources_listed(ed: Editor):
     for uri in ("jasper://guide", "jasper://docs", "jasper://project/AGENTS.md"):
         ed.check_in(uri, uris, "resource listed")
     templates = await ed.session.list_resource_templates()
-    ed.check(any(getattr(t, "uri_template", getattr(t, "uriTemplate", None)) == "jasper://project/{+path}" for t in getattr(templates, "resource_templates", None) or templates.resourceTemplates), "project file template")
+    ed.check(any(t.uri_template == "jasper://project/{+path}" for t in templates.resource_templates), "project file template")
 
 
 async def test_read_docs(ed: Editor):
@@ -41,9 +43,10 @@ async def test_read_docs(ed: Editor):
     ed.check(any(h["doc"].startswith("jasper://docs/lua-api/") for h in hits["docs"]), f"doc hits point at sections: {hits['docs']!r}")
     try:
         await ed.session.read_resource("jasper://docs/nope")
-        ed.fail("reading a missing doc should fail")
-    except Exception as e:  # McpError
+    except MCPError as e:
         ed.check("lua-api" in str(e), f"missing doc error lists the documents: {e}")
+    else:
+        ed.fail("reading a missing doc should fail")
 
 
 async def test_project_resources(ed: Editor):
@@ -56,9 +59,10 @@ async def test_project_resources(ed: Editor):
     ed.check("GameController" in lua, "project file template")
     try:
         await ed.session.read_resource("jasper://project/../etc/passwd")
-        ed.fail("escaping the project must fail")
-    except Exception:
+    except MCPError:
         pass
+    else:
+        ed.fail("escaping the project must fail")
 
 
 async def test_search_engine_api(ed: Editor):

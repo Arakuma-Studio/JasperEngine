@@ -152,13 +152,6 @@ ConsoleWindow* Out::getConsoleWindow() {
     return consoleWindow;
 }
 
-std::string Out::getRecentLog(size_t maxEntries, bool onlyProblems) {
-    if (ConsoleWindow* window = getConsoleWindow()) {
-        return window->getRecentLogText(maxEntries, onlyProblems);
-    }
-    return {};
-}
-
 std::vector<LogEntry> Out::getLogsSince(uint64_t afterId, size_t max, bool onlyProblems) {
     std::vector<LogEntry> result;
     std::lock_guard<std::mutex> lock(logBufferMutex);
@@ -170,18 +163,6 @@ std::vector<LogEntry> Out::getLogsSince(uint64_t afterId, size_t max, bool onlyP
         result.push_back(*it);
         if (max > 0 && result.size() >= max) break;
     }
-    return result;
-}
-
-std::vector<LogEntry> Out::getRecentLogs(size_t max, bool onlyProblems) {
-    std::vector<LogEntry> result;
-    std::lock_guard<std::mutex> lock(logBufferMutex);
-    for (auto it = logBuffer.rbegin(); it != logBuffer.rend(); ++it) {
-        if (onlyProblems && !isProblem(it->type)) continue;
-        result.push_back(*it);
-        if (max > 0 && result.size() >= max) break;
-    }
-    std::reverse(result.begin(), result.end());
     return result;
 }
 

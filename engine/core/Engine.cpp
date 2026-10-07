@@ -168,7 +168,7 @@ void Engine::setScene(Scene* scene){
     // includeScene() runs scene->load(), which can re-enter the scene list, so it stays
     // outside sceneListMutex. Same reasoning in addSceneLayer and executeSceneOnce.
     if (scene)
-        includeScene(0, scene);
+        includeScene(scene);
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -189,7 +189,6 @@ void Engine::addSceneLayer(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    size_t index = 0;
     bool linked = false;
 
     {
@@ -198,13 +197,12 @@ void Engine::addSceneLayer(Scene* scene){
         auto it = std::find(scenes.begin(), scenes.end(), scene);
         if (scene && (it == scenes.end())) {
             scenes.push_back(scene);
-            index = scenes.size()-1;
             linked = true;
         }
     }
 
     if (linked)
-        includeScene(index, scene);
+        includeScene(scene);
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -214,7 +212,6 @@ void Engine::executeSceneOnce(Scene* scene) {
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    size_t index = 0;
     bool linked = false;
 
     {
@@ -226,14 +223,13 @@ void Engine::executeSceneOnce(Scene* scene) {
             auto it = std::find(scenes.begin(), scenes.end(), scene);
             if (it == scenes.end()) {
                 scenes.push_back(scene);
-                index = scenes.size()-1;
                 linked = true;
             }
         }
     }
 
     if (linked)
-        includeScene(index, scene);
+        includeScene(scene);
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -376,7 +372,7 @@ void Engine::pauseGameEvents(bool pause) {
     onGamepadAxisMove.setEnabled(!pause);
 }
 
-void Engine::includeScene(size_t index, Scene* scene){
+void Engine::includeScene(Scene* scene){
     if (viewLoaded){
         scene->load();
         scene->updateCameraSize();
@@ -1170,20 +1166,6 @@ void Engine::systemDraw(){
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
-        // a duplicated scene advances its systems more than once per frame
-        static bool warnedDuplicatedScene = false;
-        if (!warnedDuplicatedScene) {
-            for (size_t i = 0; i < scenes.size() && !warnedDuplicatedScene; i++) {
-                for (size_t j = i + 1; j < scenes.size(); j++) {
-                    if (scenes[i] == scenes[j]) {
-                        Log::warn("Scene %p is registered more than once - it will run faster than real time", (void*)scenes[i]);
-                        warnedDuplicatedScene = true;
-                        break;
-                    }
-                }
-            }
-        }
-
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;

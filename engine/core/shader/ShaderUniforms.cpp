@@ -141,7 +141,7 @@ void CustomUniformBlock::writeResolution(float width, float height){
 }
 
 void CustomUniformBlock::writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value){
-    if (!ShaderUniforms::isEditable(uniform))
+    if (uniform.arrayCount > 1)
         return;
 
     float components[4] = {value.x, value.y, value.z, value.w};

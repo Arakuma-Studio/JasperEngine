@@ -7,9 +7,8 @@ saves it, and reopens it in a second editor to check what was saved.
 
 import math
 import shutil
-import uuid
 
-from harness import Editor, find_key
+from harness import Editor
 
 TIMEOUT = 900
 
@@ -217,7 +216,7 @@ async def test_child_scenes_and_main_camera(ed: Editor):
 
 
 async def test_scene_settings(ed: Editor):
-    sid = await lab(ed)
+    await lab(ed)
     got = await ed.call("get_scene_settings", detail=True)
     settings, schema = got["settings"], got["schema"]
     for name in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "ssao_enabled",
@@ -321,10 +320,9 @@ async def test_create_every_kind(ed: Editor):
         if kind not in ("empty", "bare"):
             ed.check(out["components"], f"{kind}: no components: {out}")
         made.append(out["entity_id"])
-    ed.check_in("label", [c.lower() for c in [n for n in await tree_names(ed)]])
+    ed.check_in("label", [name.lower() for name in await tree_names(ed)])
     await ed.check_error("create_entity", type="definitely_not", contains="cube")
-    # multi delete, one undo restores them all (a few: undoing the delete of a camera together
-    # with other GameObjects corrupts the scene's Transform order, an editor bug outside MCP)
+    # Multi delete, one undo restores them all.
     some = made[:4]
     rest = made[4:]
     await ed.call("delete_entities", entities=some)
@@ -465,7 +463,7 @@ async def test_selection(ed: Editor):
 
 
 async def test_copy_paste_entities(ed: Editor):
-    sid = await lab(ed)
+    await lab(ed)
     a = await create(ed, "cube", name="CopyMe", position=[3, 0, 0])
     await create(ed, "empty", name="CopyKid", parent=a)
     target = await create(ed, "empty", name="PasteHere")
@@ -869,7 +867,7 @@ async def test_prefab_restructure_block(ed: Editor):
     ed.require_tools("create_prefab")
     await lab(ed)
     root = await create(ed, "cube", name="PrefabRoot")
-    kid = await create(ed, "empty", name="PrefabKid", parent=root)
+    await create(ed, "empty", name="PrefabKid", parent=root)
     other = await create(ed, "empty", name="Elsewhere")
     await ed.call("create_prefab", entity=root, path="prefabs/W1Block.prefab")
     got = await ed.call("get_entity", entity="PrefabRoot/PrefabKid", detail="summary")
@@ -889,29 +887,27 @@ async def test_empty_project_flow():
     """A new empty project: build a small 3D scene from scratch, save it, then reopen the project
     in a second editor and check that everything was saved."""
     first = Editor(create=True, keep=True, label="w1-empty")
-    project = None
     try:
         async with first as ed:
             project = ed.project
             scene = (await ed.call("create_scene", name="World", type="3D", path="scenes/World"))["scene"]["id"]
-            ground = await ed.call("create_entity", scene=scene, type="plane", name="Ground", scale=[10, 1, 10],
-                                   values={"mesh": {"submeshes[0].material.baseColorFactor": [0.2, 0.6, 0.2, 1]}})
-            props = await ed.call("create_entity", scene=scene, type="empty", name="Props")
+            await ed.call("create_entity", scene=scene, type="plane", name="Ground", scale=[10, 1, 10],
+                          values={"mesh": {"submeshes[0].material.baseColorFactor": [0.2, 0.6, 0.2, 1]}})
+            await ed.call("create_entity", scene=scene, type="empty", name="Props")
             crate = await ed.call("create_entity", scene=scene, type="cube", name="Crate", parent="Props",
                                   position=[0, 0.5, 0], components=["rigidbody"],
                                   values={"rigidbody": {"type": "dynamic"},
                                           "mesh": {"submeshes[0].material": {"baseColorFactor": "#c08040", "roughnessFactor": 0.3}}})
             await ed.call("duplicate_entities", scene=scene, entity="Props/Crate")
-            cam = await ed.call("create_entity", scene=scene, type="camera", name="Main Camera", position=[0, 3, 8],
-                                rotation={"euler": [-15, 0, 0]})
+            await ed.call("create_entity", scene=scene, type="camera", name="Main Camera", position=[0, 3, 8],
+                          rotation={"euler": [-15, 0, 0]})
             await ed.call("set_main_camera", scene=scene, entity="Main Camera")
             await ed.call("create_entity", scene=scene, type="point_light", name="Lamp", position=[2, 3, 0],
                           values={"light": {"intensity": 3, "color": [1, 0.9, 0.7]}})
             await ed.call("set_scene_settings", scene=scene, settings={"background_color": [0.1, 0.1, 0.2, 1], "shadows_quality": "high"})
             await ed.call("set_entity_state", scene=scene, entity="Lamp", tag="Player")
             await ed.call("save_scene", scene=scene)
-            ids = {"ground": ground["entity_id"], "crate": crate["entity_id"], "cam": cam["entity_id"],
-                   "props": props["entity_id"]}
+            crate_id = crate["entity_id"]
         ed2 = Editor(project=project, label="w1-empty-reopen")
         async with ed2 as ed:
             opened = await ed.call("open_scene", scene="scenes/World.scene")
@@ -925,7 +921,7 @@ async def test_empty_project_flow():
             ed.check_eq([c["name"] for c in props_node["children"]], ["Crate", "Crate 2"], "children and duplicate saved")
             crate = await ed.call("get_entity", scene=sid, entity="Props/Crate", components=["rigidbody", "mesh", "transform"],
                                   properties=["type", "submeshes[0].material", "position"])
-            ed.check_eq(crate["id"], ids["crate"], "entity ids are stable across save/load")
+            ed.check_eq(crate["id"], crate_id, "entity ids are stable across save/load")
             ed.check_eq(crate["components"]["rigidbody"]["type"], "dynamic")
             check_close(ed, crate["components"]["transform"]["position"], [0, 0.5, 0])
             mat = crate["components"]["mesh"]["submeshes[0].material"]

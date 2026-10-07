@@ -95,9 +95,6 @@ struct NativeWindow {
 
 struct Gamepad {
     int fd = -1;
-    bool connected = false;
-    std::string path;
-    std::string name;
     std::array<unsigned char, ABS_CNT> axisMap{};
     std::array<unsigned short, KEY_MAX - BTN_MISC + 1> buttonMap{};
     std::array<unsigned char, GAMEPAD_BUTTON_COUNT> buttons{};
@@ -2061,8 +2058,8 @@ bool readGamepadGuid(int id, std::string& guid) {
 
 void disconnectGamepad(int id) {
     Gamepad& gamepad = backend->gamepads[id];
-    if (!gamepad.connected) return;
-    if (gamepad.fd >= 0) close(gamepad.fd);
+    if (gamepad.fd < 0) return;
+    close(gamepad.fd);
     gamepad = Gamepad();
     Engine::systemGamepadDisconnect(id);
 }
@@ -2073,14 +2070,11 @@ void connectGamepad(int id, const char* path) {
     if (fd < 0) return;
     gamepad = Gamepad();
     gamepad.fd = fd;
-    gamepad.connected = true;
-    gamepad.path = path;
     gamepad.axes[4] = gamepad.axes[5] = -1.0f;
     ioctl(fd, JSIOCGAXMAP, gamepad.axisMap.data());
     ioctl(fd, JSIOCGBTNMAP, gamepad.buttonMap.data());
     char name[128] = "Gamepad";
     if (ioctl(fd, JSIOCGNAME(sizeof(name)), name) >= 0) name[sizeof(name) - 1] = '\0';
-    gamepad.name = name;
 
     // The joystick device sends the current state of every control on open, so
     // the mapped values settle on the first poll
@@ -2088,7 +2082,7 @@ void connectGamepad(int id, const char* path) {
     gamepad.mapped = readGamepadGuid(id, guid) &&
                      editor::findGamepadMapping(guid, gamepad.mapping);
 
-    Engine::systemGamepadConnect(id, gamepad.name);
+    Engine::systemGamepadConnect(id, name);
 }
 
 void scanGamepads(double now) {
@@ -2101,7 +2095,7 @@ void scanGamepads(double now) {
             const char* number = path + std::strlen(path);
             while (number > path && number[-1] >= '0' && number[-1] <= '9') --number;
             const int id = std::atoi(number);
-            if (id >= 0 && id < GAMEPAD_COUNT && !backend->gamepads[id].connected)
+            if (id >= 0 && id < GAMEPAD_COUNT && backend->gamepads[id].fd < 0)
                 connectGamepad(id, path);
         }
     }
@@ -2151,7 +2145,7 @@ void pollGamepads() {
     const Gamepad* first = nullptr;
     for (int id = 0; id < GAMEPAD_COUNT; ++id) {
         Gamepad& gamepad = backend->gamepads[id];
-        if (!gamepad.connected) continue;
+        if (gamepad.fd < 0) continue;
         js_event event{};
         for (;;) {
             const ssize_t count = read(gamepad.fd, &event, sizeof(event));
@@ -2188,8 +2182,8 @@ void pollGamepads() {
                 disconnectGamepad(id);
             break;
         }
-        if (gamepad.connected && gamepad.mapped) applyGamepadMapping(id, gamepad);
-        if (gamepad.connected && !first) first = &gamepad;
+        if (gamepad.fd >= 0 && gamepad.mapped) applyGamepadMapping(id, gamepad);
+        if (gamepad.fd >= 0 && !first) first = &gamepad;
     }
     updateImGuiGamepad(first);
 }
@@ -2773,7 +2767,7 @@ void shutdownX11() {
     if (!backend) return;
     shutdownNativeMenu();
     for (int i = 0; i < GAMEPAD_COUNT; ++i)
-        if (backend->gamepads[i].connected) disconnectGamepad(i);
+        disconnectGamepad(i);
     WindowLinux::destroy();
     for (Cursor cursor : backend->mouseCursors)
         if (cursor != None) XFreeCursor(backend->display, cursor);

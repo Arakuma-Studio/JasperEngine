@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <memory>
-
 namespace jasperengine::editor {
     class App;
     class Project;
@@ -29,7 +27,6 @@ namespace jasperengine::editor::mcp {
     class McpContext {
     public:
         McpContext(App& app, McpServer& server);
-        ~McpContext();
 
         App& app() const { return appRef; }
         Project* project() const;

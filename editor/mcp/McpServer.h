@@ -52,12 +52,6 @@ namespace jasperengine::editor::mcp {
         std::string clientName;
         std::string clientVersion;
         std::string protocolVersion;
-        bool initialized = false;
-        std::string logLevel = "warning";
-        std::chrono::steady_clock::time_point created = std::chrono::steady_clock::now();
-        // Notifications not tied to a request (logging). Null when the transport has no
-        // channel for them (HTTP without a GET stream).
-        std::function<void(const Json&)> notify;
     };
     using SessionPtr = std::shared_ptr<McpSession>;
 
@@ -116,7 +110,6 @@ namespace jasperengine::editor::mcp {
         void tick();
 
         bool isStarted() const { return started; }
-        App& app() { return *appPtr; }
         McpContext& context() { return *ctx; }
         McpRegistry& registry() { return reg; }
         McpJobs& jobs() { return jobList; }
@@ -157,7 +150,6 @@ namespace jasperengine::editor::mcp {
         };
         void addDeferred(Deferred deferred);
         bool hasDeferred(const McpCall* call) const;
-        size_t pendingCount() const;
 
         // A short description of the dialog blocking edits (empty if none)
         std::string blockingDialogMessage() const;

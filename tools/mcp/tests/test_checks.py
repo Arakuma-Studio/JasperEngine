@@ -8,7 +8,6 @@ host compiler; they run when cmake and a C++ compiler are on PATH (about a minut
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -36,10 +35,6 @@ GOOD_UTILS_LUA = "local M = {}\nfunction M.twice(x) return x * 2 end\nreturn M\n
 
 
 # ---------------------------------------------------------------------------- helpers
-
-def editor_bin() -> list[str]:
-    return harness.editor_command()
-
 
 def fail(message: str) -> None:
     raise TestFailure(message)
@@ -76,7 +71,7 @@ def scratch_project(source: Path | None = None):
 
 def run_check(project: Path, *args: str, cwd: Path | None = None, stdin: str | None = None,
               timeout: float = 120) -> subprocess.CompletedProcess:
-    cmd = editor_bin() + ["check", "--project", str(project), *args]
+    cmd = harness.editor_command() + ["check", "--project", str(project), *args]
     return subprocess.run(cmd, cwd=str(cwd or project), input=stdin if stdin is not None else "",
                           capture_output=True, text=True, timeout=timeout)
 
@@ -137,10 +132,10 @@ def has_cpp_toolchain() -> bool:
 # ---------------------------------------------------------------------------- CLI: usage
 
 async def test_cli_usage():
-    r = subprocess.run(editor_bin() + ["check"], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(harness.editor_command() + ["check"], capture_output=True, text=True, timeout=60)
     check_eq(r.returncode, 2, f"no --project is a usage error: {r.stderr}")
     check("--project" in r.stderr, f"says what is missing: {r.stderr}")
-    r = subprocess.run(editor_bin() + ["check", "--help"], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(harness.editor_command() + ["check", "--help"], capture_output=True, text=True, timeout=60)
     check_eq(r.returncode, 0, "--help")
     for option in ("--lua", "--shaders", "--cpp", "--all", "--files", "--format", "--quiet", "--hook"):
         check(option in r.stdout, f"--help documents {option}: {r.stdout}")
@@ -153,7 +148,7 @@ async def test_cli_usage():
         check_eq(r.returncode, 2, f"missing project: {r.stderr}")
         r = run_check(project / "project.yaml", "--lua", cwd=project)
         check_eq(r.returncode, 0, f"project.yaml is accepted as --project: {r.stdout}{r.stderr}")
-    r = subprocess.run(editor_bin() + ["--help"], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(harness.editor_command() + ["--help"], capture_output=True, text=True, timeout=60)
     check(" check " in r.stdout, f"the main help lists check: {r.stdout}")
 
 
@@ -359,17 +354,19 @@ async def test_check_script_findings_match_cli(ed: Editor):
     for rel, text in cases.items():
         write(ed.project, rel, text)
     mcp = []
+    results = {}
     for rel in cases:
         r = await ed.call("check_script", path=rel)
         ed.check(isinstance(r.get("findings"), list), f"check_script returns findings: {r!r}")
         ed.check_eq(r["ok"], not r["findings"], f"ok iff no findings: {r!r}")
         mcp += r["findings"]
-    good = await ed.call("check_script", path="scripts/Good.lua")
+        results[rel] = r
+    good = results["scripts/Good.lua"]
     ed.check_eq([p["name"] for p in good["properties"]], ["speed", "tint"], "properties of a clean script")
-    boom = await ed.call("check_script", path="scripts/Boom.lua")
+    boom = results["scripts/Boom.lua"]
     ed.check_eq(boom["errors"], [{"line": 2, "message": "runtime error at load: boom"}], "errors carry the load error")
     # the editor survives a property default it can't read (it used to abort)
-    bad = await ed.call("check_script", path="scripts/BadDefault.lua")
+    bad = results["scripts/BadDefault.lua"]
     ed.check_eq(bad["ok"], False, f"bad default: {bad!r}")
     await ed.check_alive()
 

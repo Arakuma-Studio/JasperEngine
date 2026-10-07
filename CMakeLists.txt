@@ -726,7 +726,7 @@ function(configure_jasperengine_editor_target target_name)
 
     if(WIN32)
         # dbghelp resolves the crash-report backtrace; ws2_32 is the MCP HTTP server's Winsock.
-        target_link_libraries(${target_name} PRIVATE shell32 dbghelp ws2_32)
+        target_link_libraries(${target_name} PRIVATE dbghelp ws2_32)
     else()
         # -rdynamic names the editor's own frames in the crash backtrace, at about 10 MB of
         # symbol table. A Release build stays lean and is resolved with addr2line instead.
@@ -744,11 +744,6 @@ function(configure_jasperengine_editor_target target_name)
 
     if(X11_FOUND)
         target_compile_definitions(${target_name} PRIVATE JASPERENGINE_HAS_X11_CLIPBOARD)
-        target_link_libraries(${target_name} PRIVATE X11::X11)
-    endif()
-
-    if(APPLE)
-        target_link_libraries(${target_name} PRIVATE "-framework AppKit")
     endif()
 
     set_target_properties(

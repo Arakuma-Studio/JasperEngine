@@ -1002,10 +1002,6 @@ public:
     void undo() override{
         apply(beforeSnapshot, true);
     }
-
-    bool mergeWith(editor::Command* otherCommand) override{
-        return false;
-    }
 };
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
@@ -1198,10 +1194,6 @@ public:
         sceneProject->isModified = wasModified;
     }
 
-    bool mergeWith(editor::Command* otherCommand) override{
-        return false;
-    }
-
     bool affectsStructure() const override{
         return createHostCmd != nullptr;
     }
@@ -1264,10 +1256,6 @@ public:
         }
         instmesh->needUpdateInstances = true;
         sceneProject->isModified = wasModified;
-    }
-
-    bool mergeWith(editor::Command* otherCommand) override{
-        return false;
     }
 
     bool affectsStructure() const override{

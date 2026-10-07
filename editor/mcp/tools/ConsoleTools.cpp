@@ -94,7 +94,6 @@ ConsoleResult queryConsole(const ConsoleQuery& query) {
     const std::string needle = lowerCopy(query.contains);
 
     auto matches = [&](const LogEntry& entry) {
-        if (!query.includeNoise && isNoiseLog(entry)) return false;
         if (query.onlyProblems && !isProblemLog(entry)) return false;
         if (!query.types.empty() &&
             std::find(query.types.begin(), query.types.end(), entry.type) == query.types.end()) {
@@ -179,11 +178,12 @@ void readConsoleTool(const CallPtr& call) {
 
     if (args.contains("since") && !args["since"].is_null()) {
         const Json& since = args["since"];
+        const auto* cursor = since.get_ptr<const std::string*>();
         if (since.is_number_integer() && since.get<long long>() >= 0) {
             query.since = since.get<uint64_t>();
-        } else if (since.is_string() && !since.get<std::string>().empty() &&
-                   std::all_of(since.get<std::string>().begin(), since.get<std::string>().end(), ::isdigit)) {
-            query.since = std::stoull(since.get<std::string>());
+        } else if (cursor && !cursor->empty() &&
+                   std::all_of(cursor->begin(), cursor->end(), [](unsigned char c) { return std::isdigit(c); })) {
+            query.since = std::stoull(*cursor);
         } else {
             call->fail("since must be a cursor: the next_cursor (a non-negative integer) of an earlier read_console, "
                        "or 0 for everything kept.");

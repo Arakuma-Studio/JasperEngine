@@ -230,7 +230,7 @@ class Scratch:
     stderr_log: Path
 
     @classmethod
-    def make(cls, project: str | Path | None = None, create: bool = False, name: str = "Scratch",
+    def make(cls, project: str | Path | None = None, create: bool = False,
              prefix: str = "jasper-mcp-") -> "Scratch":
         root = Path(tempfile.mkdtemp(prefix=prefix))
         home = root / "home"
@@ -417,7 +417,7 @@ class Editor:
             http = await self._stack.enter_async_context(create_mcp_http_client(headers=headers))
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
-            self.scratch = Scratch.make(self.project_src, create=self.create, name=self.name)
+            self.scratch = Scratch.make(self.project_src, create=self.create)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -441,7 +441,7 @@ class Editor:
         except Exception as e:  # noqa: BLE001 - the editor died or wrote garbage
             raise HarnessError(f"initialize failed: {e!r}\n" + self._tail_block()) from e
         self.instructions = self.session.instructions or ""
-        await self.refresh_tools()
+        await self.tools()
 
     async def close(self) -> None:
         if self._stack:
@@ -463,7 +463,8 @@ class Editor:
 
     # -- tools -------------------------------------------------------------
 
-    async def refresh_tools(self) -> list[Any]:
+    async def tools(self) -> list[Any]:
+        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema)."""
         tools: list[Any] = []
         cursor = None
         while True:
@@ -475,10 +476,6 @@ class Editor:
                 break
         self.tool_list = tools
         return tools
-
-    async def tools(self) -> list[Any]:
-        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema)."""
-        return await self.refresh_tools()
 
     @property
     def tool_names(self) -> set[str]:
@@ -498,14 +495,6 @@ class Editor:
         missing = [n for n in names if not self.has_tool(n)]
         if missing:
             skip("tool(s) not available yet: " + ", ".join(missing))
-
-    def first_tool(self, *names: str) -> str:
-        """The first of `names` the server has, else skip (e.g. new name, then legacy name)."""
-        for n in names:
-            if self.has_tool(n):
-                return n
-        skip("none of these tools is available yet: " + ", ".join(names))
-        return ""
 
     async def call_raw(self, tool: str, args: dict | None = None, *, timeout: float | None = None,
                        progress=None) -> CallResult:
@@ -544,18 +533,17 @@ class Editor:
         norm = [c if isinstance(c, dict) else {"tool": c[0], "arguments": c[1]} for c in calls]
         return await self.call("batch", calls=norm, undo_group=undo_group, stop_on_error=stop_on_error)
 
-    async def screenshot(self, view: str = "game", path: str | Path | None = None, tool: str | None = None,
-                         **args: Any) -> bytes:
+    async def screenshot(self, view: str = "game", path: str | Path | None = None, **args: Any) -> bytes:
         """Call the screenshot tool and save its first image to `path` (default scratch/<view>.png).
 
         Returns the image bytes. Fails the test when the result holds no image.
         """
-        tool = tool or self.first_tool("screenshot", "capture_view", "take_screenshot")
-        r = await self.call_raw(tool, {"view": view, **args})
+        self.require_tools("screenshot")
+        r = await self.call_raw("screenshot", {"view": view, **args})
         if r.is_error:
-            raise ToolError(tool, r.text, r)
+            raise ToolError("screenshot", r.text, r)
         if not r.images:
-            self.fail(f"{tool} returned no image content: {r.text[:300]}")
+            self.fail(f"screenshot returned no image content: {r.text[:300]}")
         data, mime = r.images[0]
         if path is None:
             base = self.scratch.root if self.scratch else Path(tempfile.gettempdir())
@@ -563,35 +551,22 @@ class Editor:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_bytes(data)
         if mime == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
-            self.fail(f"{tool} said image/png but the data is not a PNG")
+            self.fail("screenshot said image/png but the data is not a PNG")
         return data
 
-    async def console_since(self, since: Any = "last", *, tool: str | None = None, **args: Any) -> list[dict]:
+    async def console_since(self, since: Any = "last", **args: Any) -> list[dict]:
         """Console entries newer than `since` (a cursor). "last" (default) continues from the previous
         console_since() call, None reads from the start. Returns a list of entries (dicts with at least
         `message`); remembers the returned cursor."""
-        tool = tool or self.first_tool("read_console", "console_read", "get_console", "read_output_log")
+        self.require_tools("read_console")
         if since == "last":
             since = self._console_cursor
         a = dict(args)
         if since is not None:
             a["since"] = since
-        v = await self.call(tool, a)
-        entries: list[dict] = []
-        if isinstance(v, dict):
-            entries = v.get("entries") or v.get("messages") or v.get("lines") or []
-            for key in ("next_cursor", "cursor", "next", "last_id"):
-                if key in v:
-                    self._console_cursor = v[key]
-                    break
-            else:
-                if entries and isinstance(entries[-1], dict) and "id" in entries[-1]:
-                    self._console_cursor = entries[-1]["id"]
-        elif isinstance(v, list):
-            entries = v
-        elif isinstance(v, str):
-            entries = [{"message": line} for line in v.splitlines() if line.strip()]
-        return [e if isinstance(e, dict) else {"message": str(e)} for e in entries]
+        result = await self.call("read_console", a)
+        self._console_cursor = result["next_cursor"]
+        return result["entries"]
 
     async def ping(self) -> None:
         await self.session.send_ping()
@@ -690,7 +665,7 @@ class RawEditor:
         self._new = asyncio.Event()
 
     async def __aenter__(self) -> "RawEditor":
-        self.scratch = Scratch.make(self.project_src, create=self.create, name=self.name)
+        self.scratch = Scratch.make(self.project_src, create=self.create)
         display = None
         if self.xvfb_mode == "harness":
             self._xvfb = Xvfb()

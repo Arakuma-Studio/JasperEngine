@@ -68,19 +68,11 @@ namespace fs = std::filesystem;
 
 namespace w4 {
 
-std::vector<ShaderUse> shaderForksUsingFiles(Project* project, const std::vector<std::string>& files) {
-    std::vector<ShaderUse> result;
-    for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, files)) {
-        result.push_back({use.base, use.shaderType});
-    }
-    return result;
-}
-
 namespace {
 
 // Compiles the forks on a worker thread (ProjectChecks::runShaderCheck); `done` gets, on the main
 // thread, the results [{shader, type, ok, errors, log}] and the findings of them all
-void checkShadersWithFindings(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results, Json findings)> done) {
+void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::ShaderUse> forks, std::function<void(Json results, Json findings)> done) {
     Project* project = call->ctx().project();
     // Drops cached builds and source snapshots so both the check and the scene use the files on disk
     ProjectChecks::invalidateShaderCaches(project);
@@ -92,10 +84,9 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ShaderUse> forks,
         std::atomic<bool> finished{false};
     };
     auto job = std::make_shared<Job>();
-    for (const ShaderUse& fork : forks) {
-        ProjectChecks::ShaderUse use{fork.base, fork.shaderType};
-        job->keys.push_back(ProjectChecks::prepareShaderCheck(project, use));
-        job->forks.push_back(use);
+    job->forks = std::move(forks);
+    for (ProjectChecks::ShaderUse& fork : job->forks) {
+        job->keys.push_back(ProjectChecks::prepareShaderCheck(project, fork));
     }
     std::thread([job, project]() {
         for (size_t i = 0; i < job->forks.size(); i++) {
@@ -117,7 +108,7 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ShaderUse> forks,
 
 } // namespace
 
-void checkShadersAsync(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results)> done) {
+void checkShadersAsync(const CallPtr& call, std::vector<ProjectChecks::ShaderUse> forks, std::function<void(Json results)> done) {
     checkShadersWithFindings(call, std::move(forks), [done](Json results, Json) { done(std::move(results)); });
 }
 
@@ -379,7 +370,7 @@ Json gltfSummary(const Json& gltf) {
 Json modelInfo(const fs::path& file, std::string& error) {
     const std::string ext = extensionOf(file);
     std::string content;
-    if (!readFile(file, content)) {
+    if (!ProjectChecks::readFile(file, content)) {
         error = "Can't read the file.";
         return nullptr;
     }
@@ -680,7 +671,7 @@ void listAssetsTool(const CallPtr& call) {
     };
     if (recursive) {
         for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
-            if (it->is_directory(ec) && isSkippedDir(it->path())) {
+            if (it->is_directory(ec) && ProjectChecks::isSkippedDir(it->path())) {
                 it.disable_recursion_pending();
                 continue;
             }
@@ -690,7 +681,7 @@ void listAssetsTool(const CallPtr& call) {
         }
     } else {
         for (const fs::directory_entry& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
-            if (entry.is_directory(ec) && isSkippedDir(entry.path())) continue;
+            if (entry.is_directory(ec) && ProjectChecks::isSkippedDir(entry.path())) continue;
             const std::string name = entry.path().filename().string();
             if (!name.empty() && name[0] == '.') continue;
             consider(entry);
@@ -777,17 +768,17 @@ void getAssetInfoTool(const CallPtr& call) {
         }
     } else if (kind == "shader") {
         std::string source;
-        readFile(file, source);
+        ProjectChecks::readFile(file, source);
         data["includes"] = ShaderVariantCompiler::getIncludeKeys(source);
         Json forks = Json::array();
-        for (const ShaderUse& use : shaderForksUsingFiles(project, {rel})) forks.push_back(use.base);
+        for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {rel})) forks.push_back(use.base);
         data["forks"] = forks;
     } else if (kind == "script") {
         std::string source;
-        readFile(file, source);
+        ProjectChecks::readFile(file, source);
         data["lines"] = std::count(source.begin(), source.end(), '\n') + 1;
         if (Util::isLuaFile(rel)) {
-            LuaSyntax syntax = checkLuaSyntax(source, rel);
+            ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(source, rel);
             data["syntax_ok"] = syntax.ok;
             if (!syntax.ok) data["syntax_error"] = {{"line", syntax.line}, {"message", syntax.message}};
         }
@@ -883,7 +874,7 @@ void readFileTool(const CallPtr& call) {
         return;
     }
     std::string content;
-    if (!readFile(file, content)) {
+    if (!ProjectChecks::readFile(file, content)) {
         call->fail("Can't read " + rel + ".");
         return;
     }
@@ -980,7 +971,7 @@ void writeFileTool(const CallPtr& call) {
             call->fail(rel + " does not exist; create it with content.");
             return;
         }
-        readFile(file, content);
+        ProjectChecks::readFile(file, content);
         std::string error;
         if (!applyEdits(args["edits"], content, error)) {
             call->fail(error);
@@ -1023,7 +1014,7 @@ void writeFileTool(const CallPtr& call) {
                  {"lines", std::count(content.begin(), content.end(), '\n') + (content.empty() || content.back() == '\n' ? 0 : 1)}};
     std::string text = (exists ? "Wrote " : "Created ") + rel + " (" + std::to_string(content.size()) + " bytes; undo with scope project).";
     if (Util::isLuaFile(rel)) {
-        LuaSyntax syntax = checkLuaSyntax(content, rel);
+        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(content, rel);
         data["syntax_ok"] = syntax.ok;
         if (!syntax.ok) {
             data["errors"] = Json::array({{{"line", syntax.line}, {"message", syntax.message}}});
@@ -1033,7 +1024,7 @@ void writeFileTool(const CallPtr& call) {
         text += " C++: run compile_scripts to check it.";
     }
     if (Util::isShaderFile(rel)) {
-        std::vector<ShaderUse> forks = shaderForksUsingFiles(project, {rel});
+        std::vector<ProjectChecks::ShaderUse> forks = ProjectChecks::shaderForksUsingFiles(project, {rel});
         if (!forks.empty() && args.value("check", true)) {
             checkShadersAsync(call, forks, [call, data, text](Json results) mutable {
                 bool ok = true;
@@ -1766,7 +1757,7 @@ void setShaderUniformTool(const CallPtr& call) {
 void checkShaderTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    std::vector<ShaderUse> forks;
+    std::vector<ProjectChecks::ShaderUse> forks;
     if (args.contains("shader") && args["shader"].is_string()) {
         std::string base = args["shader"].get<std::string>();
         for (const char* ext : {".vert", ".frag"}) {
@@ -1790,14 +1781,14 @@ void checkShaderTool(const CallPtr& call) {
             }
             type = static_cast<int>(it->second);
         } else {
-            for (const ShaderUse& use : shaderForksUsingFiles(project, {paths.vert})) {
+            for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {paths.vert})) {
                 if (use.base == base) type = use.shaderType;
             }
         }
         forks.push_back({base, type});
     } else {
         // every fork in use
-        forks = shaderForksUsingFiles(project, {"x.glsl"});
+        forks = ProjectChecks::shaderForksUsingFiles(project, {"x.glsl"});
         if (forks.empty()) {
             call->ok("No custom shader is used by the loaded scenes.", Json{{"results", Json::array()}, {"failed", 0}, {"findings", Json::array()}});
             return;
@@ -2125,14 +2116,14 @@ void searchFilesTool(const CallPtr& call) {
 
     std::vector<fs::path> files;
     const fs::path scopeRel = fs::path(projectRelative(project, scope));
-    const bool scopeSkipped = scope != root && (isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
+    const bool scopeSkipped = scope != root && (ProjectChecks::isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
     if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
         for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
              it.increment(ec)) {
             const fs::path& path = it->path();
             const std::string name = path.filename().string();
             if (it->is_directory(ec)) {
-                if (isSkippedDir(path)) it.disable_recursion_pending();
+                if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
             }
             if (name.empty() || name[0] == '.' || !it->is_regular_file(ec) || !isTextFile(path)) continue;
@@ -2158,7 +2149,7 @@ void searchFilesTool(const CallPtr& call) {
         }
         if (fs::file_size(file, ec) > maxFileSize || ec) continue;
         std::string content;
-        if (!readFile(file, content)) continue;
+        if (!ProjectChecks::readFile(file, content)) continue;
         if (content.find('\0') != std::string::npos) continue;   // binary
         searched++;
         std::vector<std::string> lines;

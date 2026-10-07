@@ -36,7 +36,6 @@ namespace jasperengine::editor{
         std::string modelPath;
         bool hasMergeStaticMeshesOverride = false;
         bool mergeStaticMeshesOverride = false;
-        bool mergeStaticMeshesChanged = false;
 
         bool wasModified;
         PrefabEditUndo prefabUndo;
