@@ -35,7 +35,6 @@
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
-#include "component/UIDocumentComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -48,6 +47,7 @@
 #include "util/Util.h"
 
 #include "texture/Texture.h"
+#include "component/UIDocumentComponent.h"
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
