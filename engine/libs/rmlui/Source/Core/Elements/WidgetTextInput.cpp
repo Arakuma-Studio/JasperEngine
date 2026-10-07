@@ -523,6 +523,10 @@ void WidgetTextInput::ProcessEvent(Event& event)
 	{
 	case EventId::Keydown:
 	{
+		// a capture listener of an ancestor prevented the key's action
+		if (event.IsDefaultPrevented())
+			break;
+
 		Input::KeyIdentifier key_identifier = (Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
 		bool numlock = event.GetParameter<int>("num_lock_key", 0) > 0;
 		bool shift = event.GetParameter<int>("shift_key", 0) > 0;
@@ -645,6 +649,9 @@ void WidgetTextInput::ProcessEvent(Event& event)
 
 	case EventId::Textinput:
 	{
+		if (event.IsDefaultPrevented())
+			break;
+
 		// Only process the text if no modifier keys are pressed.
 		if (event.GetParameter<int>("ctrl_key", 0) == 0 && event.GetParameter<int>("alt_key", 0) == 0 && event.GetParameter<int>("meta_key", 0) == 0)
 		{

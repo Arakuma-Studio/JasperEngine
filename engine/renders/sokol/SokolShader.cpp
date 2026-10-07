@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolShader.h"
+#include "SokolPipelineCache.h"
 
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -315,6 +316,9 @@ bool SokolShader::createShader(ShaderData& shaderData){
 }
 
 void SokolShader::destroyShader(){
+    // the dynamic pipelines made with it first (they reference the shader)
+    SokolPipelineCache::releaseShader(shader);
+
     if (shader.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_shader(shader);

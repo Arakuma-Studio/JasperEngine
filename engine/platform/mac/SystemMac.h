@@ -41,6 +41,14 @@ namespace jasperengine {
         void setMouseMode(MouseMode mode) override;
         void setMousePosition(float x, float y) override;
 
+        // NSPasteboard's general pasteboard, plain text
+        void setClipboardText(const std::string& utf8) override;
+        std::string getClipboardText() override;
+        // There is no virtual keyboard on macOS: the text area places the IME
+        // candidate window, and hiding ends a composition the engine dropped
+        void setTextInputArea(float x, float y, float width, float height) override;
+        void hideVirtualKeyboard() override;
+
         std::string getAssetPath() override;
         std::string getUserDataPath() override;
         std::string getCachePath() override;

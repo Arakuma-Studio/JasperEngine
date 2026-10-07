@@ -333,6 +333,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             user32
             gdi32
             shell32
+            imm32 # IME composition for HTML UI text fields (WinInputRouter)
         )
 
         if(GRAPHIC_BACKEND STREQUAL "vulkan")
@@ -455,6 +456,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             list(APPEND PLATFORM_SOURCE
                 ${JASPERENGINE_ROOT}/platform/mac/MacInputRouter.mm
+                ${JASPERENGINE_ROOT}/platform/mac/MacTextInputClient.mm
                 ${JASPERENGINE_ROOT}/platform/mac/MacViewMetal.mm
                 ${PLATFORM_ROOT}/macos/EngineView.h
                 ${PLATFORM_ROOT}/macos/EngineView.mm
@@ -506,6 +508,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
+                ${PLATFORM_ROOT}/MacTextInputClient.mm
                 ${PLATFORM_ROOT}/main.mm
                 ${JASPERENGINE_ROOT}/platform/apple/JasperEngineGameController.mm
             )
@@ -561,6 +564,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/AppDelegate.m
             ${PLATFORM_ROOT}/ios/EngineView.h
             ${PLATFORM_ROOT}/ios/EngineView.mm
+            ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
             ${PLATFORM_ROOT}/ios/ViewController.h
             ${PLATFORM_ROOT}/ios/ViewController.m
             ${PLATFORM_ROOT}/ios/AdMobAdapter.h
@@ -800,6 +804,22 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
+    core/htmlui/HtmlUIContextInput.cpp
+    core/htmlui/RmlKeyMap.cpp
+    core/htmlui/RmlTextInputHandler.cpp
+    core/htmlui/anim/AnimAnimation.cpp
+    core/htmlui/anim/AnimCommon.cpp
+    core/htmlui/anim/AnimEasing.cpp
+    core/htmlui/anim/AnimEngine.cpp
+    core/htmlui/anim/AnimParams.cpp
+    core/htmlui/anim/AnimProperty.cpp
+    core/htmlui/anim/AnimSpring.cpp
+    core/htmlui/anim/AnimTargets.cpp
+    core/htmlui/anim/AnimTimeline.cpp
+    core/htmlui/anim/AnimTimer.cpp
+    core/htmlui/anim/AnimUtils.cpp
+    core/htmlui/anim/AnimValue.cpp
+    core/htmlui/anim/Anime.cpp
     core/htmlui/vector/DotLottie.cpp
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
@@ -858,6 +878,11 @@ set(JASPERENGINE_SRCS
     core/object/ui/RectTransform.cpp
     core/object/ui/UIDocument.cpp
     core/object/ui/UIElement.cpp
+    core/object/ui/UIEvent.cpp
+    core/object/ui/UIDataModel.cpp
+    core/object/ui/UIValue.cpp
+    core/object/ui/HtmlUIEventListener.cpp
+    core/object/ui/HtmlUIValueDefinition.cpp
     core/pool/FontPool.cpp
     core/pool/ShaderPool.cpp
     core/pool/SoundPool.cpp
@@ -890,6 +915,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/UtilClassesLua.cpp
+    core/script/binding/HtmlUIClassesLua.cpp
+    core/script/binding/HtmlUIAnimeLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
@@ -953,6 +980,7 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolSystem.cpp
     renders/sokol/SokolCamera.cpp
     renders/sokol/SokolObject.cpp
+    renders/sokol/SokolPipelineCache.cpp
     renders/sokol/SokolShader.cpp
     renders/sokol/SokolCmdQueue.cpp
     renders/sokol/SokolFramebuffer.cpp

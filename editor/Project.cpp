@@ -36,6 +36,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -2887,10 +2888,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
-    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+        for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            insertKeys(variant.first, variant.second, 0);
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -7719,6 +7720,9 @@ void editor::Project::stop(uint32_t sceneId) {
                 std::scoped_lock lock(playSessionMutex);
                 runtimeScenes = session->runtimeScenes;
             }
+
+            // anime: every animation of the play, and its script callbacks, before the scripts go
+            AnimEngine::instance().reset();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

@@ -498,10 +498,12 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat){
+            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
+    }else if (resolve){
+        img_desc.usage.resolve_attachment = true;
     }else{
         img_desc.usage.color_attachment = true;
     }
@@ -525,23 +527,32 @@ bool SokolTexture::createFramebufferTexture(
     }
 
     //if not set Sokol gets default from sg_desc.context.sample_count
-    img_desc.sample_count = 1;
+    img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
 
     if (depth){
-        img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
-        img_desc.label = "framebuffer-depth-image";
+        img_desc.pixel_format = depthStencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
+        img_desc.label = depthStencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
         img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
-        img_desc.label = "framebuffer-color-image";
+        img_desc.label = (img_desc.sample_count > 1) ? "framebuffer-msaa-color-image" : (resolve ? "framebuffer-resolve-image" : "framebuffer-color-image");
     }
+
+    // multisampled and depth-stencil attachments are only rendered to (an MSAA image is
+    // sampled through its resolve image)
+    const bool sampled = img_desc.sample_count == 1 && !(depth && depthStencil);
 
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(img_desc);
-        sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
+        if (sampled)
+            sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
     }else{
         image = sg_make_image(img_desc);
-        sampler = sg_make_sampler(sampler_desc);
+        if (sampled)
+            sampler = sg_make_sampler(sampler_desc);
     }
+
+    if (!sampled)
+        return image.id != SG_INVALID_ID;
 
     createTextureView(img_desc.label);
 

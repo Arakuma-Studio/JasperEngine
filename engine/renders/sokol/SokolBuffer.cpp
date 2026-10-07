@@ -77,6 +77,13 @@ void SokolBuffer::updateBuffer(unsigned int size, void* data){
     }
 }
 
+// main thread: the offset is needed right away
+int SokolBuffer::appendBuffer(unsigned int size, const void* data){
+    if (buffer.id == SG_INVALID_ID || !data || size == 0 || Engine::isAsyncThread())
+        return -1;
+    return sg_append_buffer(buffer, {data, (size_t)size});
+}
+
 void SokolBuffer::destroyBuffer(){
     if (view.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){

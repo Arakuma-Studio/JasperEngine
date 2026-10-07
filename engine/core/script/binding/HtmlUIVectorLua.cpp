@@ -3,10 +3,11 @@
 
 // The <lottie> control of UIElement (p1-vector). Re-opens the UIElement class that
 // registerHtmlUIClasses (p1-lua) binds and adds the Lottie methods; LuaBridge allows adding
-// members to a registered class. Like every UIElement method, a dead handle raises
-// "UIElement: element no longer exists ..." (the error is raised before any C++ object with a
-// destructor is alive: Lua is compiled as C and luaL_error longjmps); another element logs an
-// error and does nothing.
+// members to a registered class, and the dead-handle guard p1-lua puts on UIElement's
+// metatable covers them too. Like every UIElement member, a dead handle raises
+// kHtmlUIDeadElementMessage (checked again here, before any C++ object with a destructor is
+// alive: Lua is compiled as C and luaL_error longjmps); another element logs an error and does
+// nothing.
 
 #include "LuaBinding.h"
 
@@ -15,6 +16,7 @@
 #include "LuaBridge.h"
 
 #include "object/ui/UIElement.h"
+#include "object/ui/HtmlUIScriptInternal.h"
 
 using namespace jasperengine;
 
@@ -22,7 +24,7 @@ namespace {
 
     void checkElement(const UIElement* self, lua_State* L){
         if (!self || !self->isValid())
-            luaL_error(L, "UIElement: element no longer exists (its document was unloaded or it was removed)");
+            luaL_error(L, "%s", kHtmlUIDeadElementMessage);
     }
 
 }

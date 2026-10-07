@@ -238,7 +238,14 @@ void processEvents() {
         XEvent event{};
         XNextEvent(display, &event);
 
+        // the input method sees key events first (composition)
+        if (inputRouter.filterEvent(event))
+            continue;
+
         if (inputRouter.handleEvent(event))
+            continue;
+
+        if (WindowLinux::handleSelectionEvent(event))
             continue;
 
         if (WindowLinux::isCloseEvent(event)) {
@@ -255,10 +262,12 @@ void processEvents() {
                 // Match the other backends: a captured pointer is released when
                 // the window loses focus so it can never be trapped.
                 WindowLinux::releasePointerGrab();
+                inputRouter.setFocus(false);
                 break;
             case FocusIn:
                 if (WindowLinux::isRelativeMouse())
                     WindowLinux::setMouseMode(MouseMode::CAPTURED);
+                inputRouter.setFocus(true);
                 break;
             default:
                 break;
@@ -305,6 +314,7 @@ int JasperEngineLinux::init(int argc, char **argv) {
         return -1;
     }
     WindowLinux::show();
+    inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
 
     if (!createContext()) {
         destroyContext();
@@ -347,6 +357,7 @@ int JasperEngineLinux::init(int argc, char **argv) {
 
     gamepads.shutdown();
     destroyContext();
+    inputRouter.closeInputMethod();
     WindowLinux::destroy();
     return 0;
 }

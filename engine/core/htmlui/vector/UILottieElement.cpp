@@ -7,6 +7,8 @@
 #include "HtmlUITexture.h"
 #include "Log.h"
 #include "render/SystemRender.h"
+#include "object/ui/HtmlUIEventListener.h"
+#include "object/ui/UIValue.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
@@ -434,8 +436,14 @@ void UILottieElement::dispatchPending(){
     events.swap(pendingEvents);
     for (const PendingEvent& event : events){
         Rml::Dictionary parameters;
-        if (!event.message.empty())
+        // the script API's event.detail (p1-lua): { message = ... } for errors
+        UIValue detail;
+        if (!event.message.empty()){
             parameters["message"] = event.message;
+            detail = UIValue::object();
+            detail["message"] = UIValue(event.message);
+            parameters[HtmlUIEventNames::detailParameter] = (void*)&detail;
+        }
         // media-element events: they do not bubble (capture listeners still see them)
         DispatchEvent(event.type, parameters, false, false);
     }

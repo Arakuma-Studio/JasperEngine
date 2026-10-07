@@ -83,6 +83,16 @@ bool Event::IsImmediatePropagating() const
 	return !interrupted_immediate;
 }
 
+void Event::PreventDefault()
+{
+	default_prevented = true;
+}
+
+bool Event::IsDefaultPrevented() const
+{
+	return default_prevented;
+}
+
 bool Event::IsInterruptible() const
 {
 	return interruptible;

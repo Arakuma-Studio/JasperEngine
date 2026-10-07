@@ -11,6 +11,9 @@
 // XLookupKeysym and XLookupString are declared here, not in Xlib.h
 #include <X11/Xutil.h>
 
+#include <clocale>
+#include <string>
+
 using namespace jasperengine;
 
 void LinuxInputRouter::setMousePosition(double x, double y) {
@@ -40,19 +43,130 @@ void LinuxInputRouter::handleKey(XKeyEvent& event, bool pressed) {
 
     if (!pressed) return;
 
-    // XLookupString returns ISO Latin-1, so each byte is already the codepoint.
-    // That holds because a game never calls setlocale, leaving LC_CTYPE at "C";
-    // non-Latin-1 text would need an XIM/XIC and Xutf8LookupString, the way the
-    // editor backend does it, plus a UTF-8 decode here.
-    char text[32];
-    KeySym ignored = 0;
-    const int length = XLookupString(&event, text, sizeof(text), &ignored, nullptr);
-    for (int i = 0; i < length; ++i) {
-        const unsigned char codepoint = static_cast<unsigned char>(text[i]);
-        if (codepoint >= 32 || codepoint == '\t' || codepoint == '\b' ||
-            codepoint == '\r' || codepoint == 0x1b)
-            Engine::systemCharInput(codepoint);
+    // The input method's UTF-8 text (XIM, as the editor backend); without one, XLookupString
+    // in the "C" locale gives Latin-1, where each byte is the code point
+    std::string text;
+    if (inputContext) {
+        char buffer[256];
+        KeySym ignored = 0;
+        Status status = 0;
+        int length = Xutf8LookupString(inputContext, &event, buffer, sizeof(buffer), &ignored, &status);
+        if (status == XBufferOverflow) {
+            std::string large(static_cast<size_t>(length), '\0');
+            length = Xutf8LookupString(inputContext, &event, &large[0], length, &ignored, &status);
+            if (status == XLookupChars || status == XLookupBoth) text.assign(large.data(), static_cast<size_t>(length));
+        } else if (status == XLookupChars || status == XLookupBoth) {
+            text.assign(buffer, static_cast<size_t>(length));
+        }
+    } else {
+        char buffer[32];
+        KeySym ignored = 0;
+        const int length = XLookupString(&event, buffer, sizeof(buffer), &ignored, nullptr);
+        for (int i = 0; i < length; ++i) {
+            const unsigned char codepoint = static_cast<unsigned char>(buffer[i]);
+            if (codepoint < 0x80) {
+                text += static_cast<char>(codepoint);
+            } else {
+                text += static_cast<char>(0xC0 | (codepoint >> 6));
+                text += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+        }
     }
+
+    // other control characters (Ctrl+letter) are no text
+    std::string filtered;
+    for (unsigned char c : text) {
+        if (c >= 32 || c == '\t' || c == '\b' || c == '\r' || c == 0x1b)
+            filtered += static_cast<char>(c);
+    }
+    if (!filtered.empty()) Engine::systemTextInput(filtered);
+}
+
+void LinuxInputRouter::openInputMethod(Display* display, Window window) {
+    closeInputMethod();
+    if (!display || !window) return;
+
+    // XIM needs the user's locale (a game starts in "C") and XMODIFIERS (@im=ibus...)
+    if (!std::setlocale(LC_CTYPE, "") || !XSupportsLocale())
+        std::setlocale(LC_CTYPE, "C");
+    XSetLocaleModifiers("");
+
+    inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
+    if (!inputMethod) return;
+
+    XIMStyles* styles = nullptr;
+    if (XGetIMValues(inputMethod, XNQueryInputStyle, &styles, nullptr) != nullptr) styles = nullptr;
+    auto offers = [styles](XIMStyle style) {
+        if (!styles) return style == (XIMPreeditNothing | XIMStatusNothing);
+        for (unsigned short i = 0; i < styles->count_styles; ++i)
+            if (styles->supported_styles[i] == style) return true;
+        return false;
+    };
+
+    // over-the-spot first, so the input method's window follows the caret (setTextInputArea)
+    if (offers(XIMPreeditPosition | XIMStatusNothing)) {
+        XPoint spot{0, 0};
+        XVaNestedList preedit = XVaCreateNestedList(0, XNSpotLocation, &spot, nullptr);
+        inputContext = XCreateIC(inputMethod,
+                                 XNInputStyle, XIMPreeditPosition | XIMStatusNothing,
+                                 XNClientWindow, window, XNFocusWindow, window,
+                                 XNPreeditAttributes, preedit, nullptr);
+        XFree(preedit);
+        spotLocation = inputContext != nullptr;
+    }
+    if (!inputContext && offers(XIMPreeditNothing | XIMStatusNothing)) {
+        inputContext = XCreateIC(inputMethod,
+                                 XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+                                 XNClientWindow, window, XNFocusWindow, window, nullptr);
+    }
+    if (!inputContext && offers(XIMPreeditNone | XIMStatusNone)) {
+        inputContext = XCreateIC(inputMethod,
+                                 XNInputStyle, XIMPreeditNone | XIMStatusNone,
+                                 XNClientWindow, window, XNFocusWindow, window, nullptr);
+    }
+    if (styles) XFree(styles);
+
+    if (!inputContext) {
+        XCloseIM(inputMethod);
+        inputMethod = nullptr;
+        return;
+    }
+
+    // the input method may need events the window does not select yet
+    long filterMask = 0;
+    if (XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr) == nullptr && filterMask != 0) {
+        XWindowAttributes attributes{};
+        XGetWindowAttributes(display, window, &attributes);
+        XSelectInput(display, window, attributes.your_event_mask | filterMask);
+    }
+    XSetICFocus(inputContext);
+}
+
+void LinuxInputRouter::closeInputMethod() {
+    if (inputContext) XDestroyIC(inputContext);
+    if (inputMethod) XCloseIM(inputMethod);
+    inputContext = nullptr;
+    inputMethod = nullptr;
+    spotLocation = false;
+}
+
+bool LinuxInputRouter::filterEvent(XEvent& event) {
+    return inputContext && XFilterEvent(&event, None);
+}
+
+void LinuxInputRouter::setFocus(bool focused) {
+    if (!inputContext) return;
+    if (focused) XSetICFocus(inputContext);
+    else XUnsetICFocus(inputContext);
+}
+
+void LinuxInputRouter::setTextInputArea(int x, int y, int height) {
+    if (!inputContext || !spotLocation) return;
+    // the spot is the baseline of the text: the bottom of the caret
+    XPoint spot{static_cast<short>(x), static_cast<short>(y + height)};
+    XVaNestedList preedit = XVaCreateNestedList(0, XNSpotLocation, &spot, nullptr);
+    XSetICValues(inputContext, XNPreeditAttributes, preedit, nullptr);
+    XFree(preedit);
 }
 
 bool LinuxInputRouter::handleEvent(XEvent& event) {
@@ -101,10 +215,11 @@ bool LinuxInputRouter::handleEvent(XEvent& event) {
             const int mods = linuxKeyModifiers(event.xbutton.state);
             const unsigned int button = event.xbutton.button;
 
-            // X11 reports the wheel as buttons 4-7
+            // X11 reports the wheel as buttons 4-7; the engine follows GLFW: positive y is
+            // up, positive x is left (button 6)
             if (button >= Button4 && button <= 7) {
                 if (!pressed) return true;
-                const float x = (button == 6) ? -1.0f : (button == 7) ? 1.0f : 0.0f;
+                const float x = (button == 6) ? 1.0f : (button == 7) ? -1.0f : 0.0f;
                 const float y = (button == Button4) ? 1.0f
                               : (button == Button5) ? -1.0f : 0.0f;
                 Engine::systemMouseScroll(x, y, mods);

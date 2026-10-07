@@ -5,7 +5,8 @@
 // image-color tint, decorator: svg()), G20 svg_inline (gradients, strokes, dashes, <text>),
 // G22a-c lottie_frames (a .json Lottie at t = 0, 0.5 and 1.0 s next to a .lottie at its
 // "loop" marker, tinted and letterboxed copies). 512x384, UI clock pinned. Each test also
-// probes the pixels its fixture defines, so a golden cannot pin a wrong image.
+// probes the pixels its fixture defines, so a golden cannot pin a wrong image. 4x MSAA, like
+// the other phase-1 goldens.
 
 #include "TestRenderCommon.h"
 
@@ -62,7 +63,7 @@ namespace {
 // G19
 TEST_F(VectorGoldenTest, SvgFile){
     JASPER_REQUIRE_GPU();
-    RenderTestContext test(512, 384);
+    RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
     ASSERT_NE(test.load("p1/vector/svg_file.html"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
@@ -100,7 +101,7 @@ TEST_F(VectorGoldenTest, SvgFile){
 // G20
 TEST_F(VectorGoldenTest, SvgInline){
     JASPER_REQUIRE_GPU();
-    RenderTestContext test(512, 384);
+    RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
     ASSERT_NE(test.load("p1/vector/svg_inline.html"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
@@ -133,12 +134,10 @@ TEST_F(VectorGoldenTest, SvgInline){
     EXPECT_TRUE(result.passed) << result.message;
 }
 
-// G22a-c. Needs the phase-1 RmlRenderer (p1-render), which draws HtmlUITexture handles:
-// the phase-0 renderer reads every handle as its own texture struct. HTMLUI_P1_PENDING: enabled
-// when p1-render has merged.
-TEST_F(VectorGoldenTest, DISABLED_LottieFrames){
+// G22a-c, drawn through the phase-1 RmlRenderer's HtmlUITexture handles
+TEST_F(VectorGoldenTest, LottieFrames){
     JASPER_REQUIRE_GPU();
-    RenderTestContext test(512, 384);
+    RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
     Rml::ElementDocument* document = test.load("p1/vector/lottie_frames.html");
     ASSERT_NE(document, nullptr);

@@ -55,7 +55,9 @@ namespace jasperengine{
         BLIT,       // fullscreen upscale of the fixed-resolution scene color
         // keep appending: the ShaderKey stores this enum and validates cached .sdat
         POSTPROCESS, // fullscreen user post-process pass
-        HTMLUI      // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
+        HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
+        HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
+        HTMLUI_POST      // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
     };
 
     enum class AttributeType{

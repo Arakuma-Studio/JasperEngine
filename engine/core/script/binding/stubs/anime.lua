@@ -1,0 +1,154 @@
+---@meta _
+-- Hand-written shapes of the anime API's parameter tables (phase-1 p1-anim), appended to the
+-- generated stubs (engine/core/script/binding/HtmlUIAnimeLua.cpp). Times are milliseconds.
+
+---A CSS selector (every loaded document of the current scene, or `root`), a UIElement, a plain
+---table (its number and colour fields), an anime object, or a list of them
+---@alias AnimeTargets string|UIElement|table|AnimeTimer|(string|UIElement|table)[]
+
+---A time (ms), "+=100" / "-=100" / "*=2" (relative to the end), "<" (end of the previous
+---child), "<<" (its start), "<+=50", a label, "label+=50", or a stagger
+---@alias AnimeTimelinePosition number|string|AnimeStagger
+
+---An easing name ("linear", "out(2)", "inOutQuad", "outElastic(1, .6)", "cubicBezier(.2,0,.2,1)",
+---"steps(4)", "linear(0, 0.5 25%, 1)", "spring(1, 80, 10, 0)"), an AnimeEase, a spring, or fun(t)
+---@alias AnimeEaseValue string|AnimeEase|AnimeSpring|fun(t: number): number
+
+---A function value: fun(target, index, total) (index 0-based, as Anime)
+---@alias AnimeFunctionValue fun(target: any, index: integer, total: integer): any
+
+---@class AnimeTimerParams
+---@field id? number|string
+---@field duration? number # default 1000 (animations), endless (timers)
+---@field delay? number|AnimeFunctionValue|AnimeStagger
+---@field loop? integer|boolean # repetitions; true: endless
+---@field loopDelay? number
+---@field alternate? boolean
+---@field reversed? boolean
+---@field autoplay? boolean # default true
+---@field playbackRate? number
+---@field frameRate? number
+---@field playbackEase? AnimeEaseValue
+---@field clock? "ui"|"game" # "game": runs on the scaled game time (freezes with Engine.timeScale = 0)
+---@field onBegin? fun(self: AnimeTimer)
+---@field onBeforeUpdate? fun(self: AnimeTimer)
+---@field onUpdate? fun(self: AnimeTimer)
+---@field onRender? fun(self: AnimeTimer)
+---@field onLoop? fun(self: AnimeTimer)
+---@field onPause? fun(self: AnimeTimer)
+---@field onComplete? fun(self: AnimeTimer)
+
+---Property values: a value, [from, to], keyframes, {to, from, duration, delay, ease, modifier,
+---composition}, or a function value. Properties: individual transforms (translateX/Y/Z or x/y/z,
+---rotate, rotateX/Y/Z, scale, scaleX/Y/Z, skew, skewX/Y, perspective), CSS properties
+---(camelCase or kebab-case), custom properties ("--name"), attributes, table fields
+---@class AnimeAnimationParams : AnimeTimerParams
+---@field ease? AnimeEaseValue # default "out(2)"
+---@field composition? "replace"|"none"|"blend"
+---@field modifier? fun(value: number): number
+---@field keyframes? table[]|table<string, table>
+---@field root? UIElement|UIDocument # the scope of selector targets
+---@field [string] any
+
+---@class AnimeTimelineParams : AnimeTimerParams
+---@field defaults? AnimeAnimationParams # inherited by the children
+---@field composition? boolean # default true
+
+---@class AnimeSpringParams
+---@field mass? number
+---@field stiffness? number
+---@field damping? number
+---@field velocity? number
+---@field bounce? number # -1..1, with duration: a perceived spring
+---@field duration? number # perceived duration (ms)
+---@field onComplete? fun(animation: AnimeAnimation)
+
+---@class AnimeStaggerParams
+---@field start? number|string
+---@field from? "first"|"center"|"last"|"random"|integer|number[]
+---@field reversed? boolean
+---@field ease? AnimeEaseValue
+---@field grid? boolean|integer[] # true: positions; {cols, rows(, depth)}
+---@field axis? "x"|"y"|"z"
+---@field total? integer
+---@field use? string|AnimeFunctionValue
+---@field modifier? fun(value: number): number
+---@field jitter? number|number[]
+---@field seed? boolean|integer
+
+---anime.eases: Anime's eases (the powers, Back and Elastic take parameters: eases.outElastic(1, .6))
+---@class AnimeEases
+---@field linear AnimeEase
+---@field none AnimeEase
+---@field in AnimeEase
+---@field inQuad AnimeEase
+---@field inCubic AnimeEase
+---@field inQuart AnimeEase
+---@field inQuint AnimeEase
+---@field inSine AnimeEase
+---@field inExpo AnimeEase
+---@field inCirc AnimeEase
+---@field inBounce AnimeEase
+---@field inBack AnimeEase
+---@field inElastic AnimeEase
+---@field out AnimeEase
+---@field outQuad AnimeEase
+---@field outCubic AnimeEase
+---@field outQuart AnimeEase
+---@field outQuint AnimeEase
+---@field outSine AnimeEase
+---@field outExpo AnimeEase
+---@field outCirc AnimeEase
+---@field outBounce AnimeEase
+---@field outBack AnimeEase
+---@field outElastic AnimeEase
+---@field inOut AnimeEase
+---@field inOutQuad AnimeEase
+---@field inOutCubic AnimeEase
+---@field inOutQuart AnimeEase
+---@field inOutQuint AnimeEase
+---@field inOutSine AnimeEase
+---@field inOutExpo AnimeEase
+---@field inOutCirc AnimeEase
+---@field inOutBounce AnimeEase
+---@field inOutBack AnimeEase
+---@field inOutElastic AnimeEase
+---@field outIn AnimeEase
+---@field outInQuad AnimeEase
+---@field outInCubic AnimeEase
+---@field outInQuart AnimeEase
+---@field outInQuint AnimeEase
+---@field outInSine AnimeEase
+---@field outInExpo AnimeEase
+---@field outInCirc AnimeEase
+---@field outInBounce AnimeEase
+---@field outInBack AnimeEase
+---@field outInElastic AnimeEase
+
+---anime.utils (called with fewer arguments, a util returns a function of the missing value:
+---modifier = anime.utils.round(0))
+---@class AnimeUtils
+---@field set fun(targets: AnimeTargets, props: AnimeAnimationParams): AnimeAnimation
+---@field get fun(targets: AnimeTargets, property: string, unit?: string|false): number|string|nil
+---@field remove fun(targets: AnimeTargets, animation?: AnimeTimer|string, property?: string): AnimeTargets
+---@field random fun(min?: number, max?: number, decimals?: integer): number
+---@field createSeededRandom fun(seed?: number, min?: number, max?: number, decimals?: integer): fun(min?: number, max?: number, decimals?: integer): number
+---@field randomPick fun(items: any[]|string): any
+---@field shuffle fun(items: any[]): any[]
+---@field clamp fun(value: number, min?: number, max?: number): number|fun(value: number): number
+---@field round fun(value: number, decimals?: integer): number|fun(value: number): number
+---@field snap fun(value: number, increment?: number|number[]): number|fun(value: number): number
+---@field wrap fun(value: number, min?: number, max?: number): number|fun(value: number): number
+---@field mapRange fun(value: number, inLow?: number, inHigh?: number, outLow?: number, outHigh?: number): number|fun(value: number): number
+---@field lerp fun(start: number, finish: number, factor?: number): number|fun(factor: number): number
+---@field damp fun(start: number, finish: number, deltaTime: number, factor?: number): number|fun(factor: number): number
+---@field degToRad fun(degrees: number): number
+---@field radToDeg fun(radians: number): number
+---@field roundPad fun(value: number, decimals?: integer): string|fun(value: number): string
+---@field padStart fun(value: number|string, length?: integer, pad?: string): string|fun(value: number|string): string
+---@field padEnd fun(value: number|string, length?: integer, pad?: string): string|fun(value: number|string): string
+---@field stagger fun(value: number|string|number[]|string[], params?: AnimeStaggerParams): AnimeStagger
+
+---@class anime
+---@field eases AnimeEases
+---@field utils AnimeUtils
