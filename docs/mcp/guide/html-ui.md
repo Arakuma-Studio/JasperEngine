@@ -201,28 +201,165 @@ focused field, `ime_commit` (`text`) commits it, `ime_cancel` drops it. `mouse_l
   (CSS weight matching); without one the regular face is used (no synthetic bold/italic yet).
   `@font-face` is phase 2.
 
-## C++ API
+## Scripting
 
-`UIDocument` (a GameObject; `#include "JasperEngine.h"`) and `UIElement` (a weak handle: it
-turns invalid when its element or document goes, and every method then does nothing):
+Lua scripts (and C++ scripts) reach a document through `UIDocument`, a GameObject wrapper:
+`UIDocument(self.scene, self.entity)` in a script on the document's GameObject, or a script
+property of type `UIDocument`. Elements are `UIElement`s with **browser names and semantics**:
 
-```cpp
-UIDocument menu(scene);                     // adds a UIDocumentComponent
-menu.load("ui/menu.html");                  // loads now (false if it failed); setFilename loads at the next update
-menu.setSortOrder(10);
-menu.hide(); menu.show();                   // = enabled
-UIElement title = menu.getElementById("title");
-title.setTextContent("Paused");
-title.setClass("highlight", true);
-title.setStyleProperty("color", "#ffcc00"); // false (and a warning) if the value is rejected
-Rect box = title.getBoundingBox();          // canvas pixels, top-left origin
-bool hovered = menu.getElementById("play").isPseudoClassSet("hover");
+```lua
+---@class Menu : ScriptInstance
+local Menu = { properties = {} }
+
+function Menu:init()
+    local doc = UIDocument(self.scene, self.entity)
+    -- data models first: a document that uses one reloads to bind it (handles from before are invalid)
+    self.shop = doc:createDataModel("shop", {
+        gold = 10,
+        items = { {name = "Sword", price = 5}, {name = "Shield", price = 8} },
+        buy = function(event, index) print("buy", index) end,   -- data-event-click="buy(i)"
+    })
+    local play = doc:getElementById("play")
+    play:addEventListener("click", function(event)
+        play.classList:add("pressed")
+        play.textContent = "Loading..."
+        self.shop.gold = self.shop.gold - 1        -- {{ gold }} updates
+    end)
+end
+
+return Menu
 ```
 
-`UIElement` also has `getId`, `getTagName`, `getTextContent`, `getInnerHTML`/`setInnerHTML`
-(RML markup), `hasAttribute`/`getAttribute`/`setAttribute`/`removeAttribute`, `hasClass`,
-`removeStyleProperty`. There is no Lua API and no event listener API yet (phase 1): poll
-`isPseudoClassSet("active")` or use the game's own input events.
+Documents load with their scene, so `init` can query elements. `doc.onLoad` (an event:
+`doc.onLoad = function() ... end` or `RegisterEvent(self, doc.onLoad, "method")`) runs after
+every later load and reload, `onUnload` before every unload; the usual pattern binds listeners
+in one method called from `init` and registered on `onLoad`. A document that uses a data
+model no script created yet (edit mode, or before `init`) shows its `{{ }}` empty. When play
+stops, everything the scripts made in documents goes (listeners, data models, DOM changes) and
+the documents load again as they are on disk.
+
+### Element API (Lua; C++ has the same names as get/set methods)
+
+| Group | Members |
+|---|---|
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (array), `doc.body`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc.title`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc:show()/hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc.onLoad/onUnload`, `UIDocument.setDebuggerVisible(bool)` |
+| Identity / tree | `id`, `tagName` (lower case), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
+| Mutation | `appendChild(el)`, `insertBefore(el, ref)` (ref nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
+| Content | `textContent` (text, never parsed), `innerHTML` (markup; RML in phase 1) |
+| Attributes | `getAttribute(name)` (nil when absent), `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes()` |
+| Classes / style / data | `classList:add(...)/remove(...)/toggle(name[, force])/contains(name)`; `style.backgroundColor` or `style["background-color"]` (read: computed value as CSS text; write: inline style, `""`/nil removes), `style:getPropertyValue/setProperty/removeProperty`; `dataset.userName` = `data-user-name` |
+| Forms | `value`, `checked`, `disabled` |
+| Focus / interaction | `focus()`, `blur()`, `click()` |
+| Scroll / geometry | `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`, `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])`, `getBoundingClientRect()` (`x y width height top left right bottom`, document px, through the transforms of the last drawn frame) |
+| Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
+
+Queries that find nothing return `nil`. Adding the same function for the same type and
+phase twice is ignored, as in the DOM.
+
+### Events
+
+| DOM name | What fires it |
+|---|---|
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `keydown`, `keyup`, `focus`, `blur`, `scroll`, `resize`, `load`, `unload`, `submit`, `animationend`, `transitionend`, `dragstart`, `drag`, `dragend`, `dragover`, `dragdrop`, `textinput` | the same RmlUi event |
+| `wheel` | the mouse wheel (`deltaX`, `deltaY`: steps, positive down/right) |
+| `input` | every edit of a text field, and every toggle |
+| `change` | a text field on blur when its value changed since it got focus; checkboxes, radios, selects and ranges when they change |
+| any other name | custom events sent by `dispatchEvent` |
+
+`mouseenter`, `mouseleave`, `pointer*`, `touch*`, `contextmenu`, `beforeinput` and
+`composition*` never reach documents: `addEventListener` logs a warning listing the
+supported events. A listener gets a `UIEvent`: `type`, `target`, `currentTarget`,
+`eventPhase` (1 capture, 2 target, 3 bubble), `button` (DOM numbering: 0 left, 1 middle,
+2 right), `clientX`/`clientY` (document px), `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`,
+`altKey`, `metaKey`, `key`, `code`, `keyCode`, `repeat` (`event["repeat"]` in Lua), `data`
+(text of `textinput`), `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`,
+and `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid
+only while the listener runs. `preventDefault()` skips the element's own action (a checkbox
+does not toggle, a prevented `keydown` types nothing, a prevented `wheel` does not scroll)
+and marks the input as used by the UI (the game does not get it). An error in a listener is
+logged with its traceback; the other listeners still run.
+
+### Data binding
+
+RmlUi's data binding, driven from a Lua table (or C++ `UIValue`s):
+
+```html
+<div data-model="shop">
+    <p>Gold: {{ gold }}</p>
+    <div data-for="item, i : items" data-event-click="buy(i)">{{ item.name }}: {{ item.price }}</div>
+    <input type="text" data-value="playerName"/>
+    <input type="checkbox" data-checked="music"/>
+</div>
+```
+
+```lua
+local shop = doc:createDataModel("shop", { gold = 10, items = {}, playerName = "", music = true,
+                                           buy = function(event, i) print("row", i) end })
+shop.gold = 20                                   -- the document updates on the next frame
+table.insert(shop.items, {name = "Bow", price = 3})
+shop.items[1].price = 7                          -- nested tables are proxies too; #, pairs, ipairs work
+shop:onChange("playerName", function(value) print("typed", value) end)   -- after a data-value write
+```
+
+- The returned value is a **proxy**: reading gives the model's current data (written by the
+  document too: `data-value`, `data-checked`), assigning updates the document. Functions in
+  the table become `data-event-*` callbacks `fn(event, args...)`.
+- The top-level keys are fixed when the model is created: assigning a new one is an error.
+  Nested tables can change freely. Tables with keys 1..n are arrays (an empty table is an
+  empty array). Only nil, booleans, numbers, strings and tables are stored.
+- The `i` of `data-for="item, i : items"` is **0-based** (RmlUi); Lua indices are 1-based
+  (`shop.items[i + 1]`).
+- Proxy methods: `onChange(name, fn)` (returns an id), `removeOnChange(id)`, `dirty(name)`,
+  `dirtyAll()`, `get(path)`/`set(path, value)` (`"items[0].name"`, 0-based), `getName()`,
+  `isValid()`. These names cannot be data keys.
+- Create data models first in `init`: a document already loaded that uses the model
+  (`data-model="shop"`) reloads to bind it, which invalidates element handles from before.
+- A model belongs to the document that created it: it survives reloads and is removed with
+  `removeDataModel`, with the component, or when the scene ends. Any use of a removed model's
+  proxy raises `data model 'shop' was removed`.
+
+### Lifetimes
+
+- Element handles are weak. Once the element is removed for good or its document unloads
+  (`doc:load(other)`, the scene ends), `el:isValid()` is false and any other use raises
+  `UIElement: element no longer exists (its document was unloaded or it was removed)` in Lua
+  (C++ logs it once per method and returns a default).
+- Elements made by `createElement`/`createTextNode`, removed by `removeChild`/`remove`/
+  `replaceChild` or made by `cloneNode` are **detached**: they live while a handle of them (or
+  of an element inside them) exists, and can be inserted again. They are freed at the end of
+  the frame in which the last handle went (Lua: after the garbage collector took it), and with
+  their document.
+- Listeners and data-model callbacks hold their Lua functions until their element, model or
+  scene goes. `UIDocument.getLiveLuaRefCount()` (diagnostics) is 0 after play stops.
+- A reload that keeps state (hot reload, `doc:reload()`, a late `createDataModel`) moves the
+  listeners of elements with an `id` (and of the document) to the new elements; listeners of
+  elements without an id are dropped with one warning: give the element an id or add the
+  listener again in `onLoad`.
+
+### C++
+
+The same API in C++ (`#include "JasperEngine.h"`); events take `std::function`s and return
+ids, data models are `UIDataModel` handles over `UIValue` trees:
+
+```cpp
+UIDocument menu(scene, entity);
+UIElement play = menu.getElementById("play");
+uint64_t id = play.addEventListener("click", [](UIEvent& event){ event.getTarget().addClass("pressed"); });
+play.removeEventListener(id);
+
+UIValue initial = UIValue::object();
+initial["gold"] = 10;
+initial["items"] = UIValue::array();
+UIDataModel shop = menu.createDataModel("shop", initial);
+shop.set("items[0]", UIValue::object());   // paths are 0-based
+shop.set("gold", 20);
+shop.bindEvent("buy", [](UIEvent& event, const std::vector<UIValue>& args){ /* args[0] = i */ });
+shop.onChange("gold", [](const UIValue& value){ });
+```
+
+`UIElement` also keeps the phase-0 helpers `setClass(name, bool)`, `hasClass`,
+`setStyleProperty` (false and a warning when RmlUi rejects the value), `removeStyleProperty`,
+`getBoundingBox()` (canvas pixels) and `isPseudoClassSet("hover")`.
 
 ## Rendering features and limits
 
@@ -264,8 +401,7 @@ logs an `[HTML UI]` warning naming it and draws nothing for it.
   border styles, `%` radii, `!important`, `:root`, `:is`/`:where`/`:has` (phase 3).
 - Text: font effects (`font-effect`: shadow, outline, glow), synthetic bold and italic,
   `@font-face` (phases 1-2).
-- Scripting: the Lua API (`document:getElementById`, `addEventListener`, ...), data binding,
-  the animation API (phase 1); `<script>` in documents (phase 2).
+- Scripting: `<script type="text/lua">` in documents (phase 2).
 - Editor: hot reload on save, an Inspector file picker and
   "Create > UI > UI Document", render-to-texture / world-space documents, the in-editor
   RmlUi debugger toggle (phase 1); `check --ui` and the inspect/assert MCP tools (phase 4).

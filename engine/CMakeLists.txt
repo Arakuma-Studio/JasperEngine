@@ -860,6 +860,11 @@ set(JASPERENGINE_SRCS
     core/object/ui/RectTransform.cpp
     core/object/ui/UIDocument.cpp
     core/object/ui/UIElement.cpp
+    core/object/ui/UIEvent.cpp
+    core/object/ui/UIDataModel.cpp
+    core/object/ui/UIValue.cpp
+    core/object/ui/HtmlUIEventListener.cpp
+    core/object/ui/HtmlUIValueDefinition.cpp
     core/pool/FontPool.cpp
     core/pool/ShaderPool.cpp
     core/pool/SoundPool.cpp
@@ -891,6 +896,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/UtilClassesLua.cpp
+    core/script/binding/HtmlUIClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp

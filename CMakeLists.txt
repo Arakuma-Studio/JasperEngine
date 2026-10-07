@@ -367,6 +367,8 @@ set(API_SUGGESTIONS_HEADER "${GENERATED_DIR}/engine_api_suggestions.h")
 set(GENERATE_API_SCRIPT "${CMAKE_SOURCE_DIR}/generate_api_suggestions.py")
 
 file(GLOB BINDING_FILES CONFIGURE_DEPENDS "${BINDING_DIR}/*.cpp")
+# hand-written LuaLS fragments appended to the generated stubs (parameter-table shapes ...)
+file(GLOB BINDING_STUB_FRAGMENTS CONFIGURE_DEPENDS "${BINDING_DIR}/stubs/*.lua")
 file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS "${ENGINE_CORE_DIR}/*.h")
 
 add_custom_command(
@@ -389,7 +391,7 @@ add_custom_command(
     OUTPUT ${LUA_STUBS_HEADER}
     COMMAND ${Python3_EXECUTABLE} ${GENERATE_LUA_STUBS_SCRIPT}
             ${BINDING_DIR} ${ENGINE_CORE_DIR} ${LUA_STUBS_HEADER} --out-dir ${LUA_STUBS_DIR}
-    DEPENDS ${GENERATE_LUA_STUBS_SCRIPT} ${BINDING_FILES} ${ENGINE_HEADERS}
+    DEPENDS ${GENERATE_LUA_STUBS_SCRIPT} ${BINDING_FILES} ${BINDING_STUB_FRAGMENTS} ${ENGINE_HEADERS}
     COMMENT "Generating Lua API stubs (engine_lua_stubs.h) from Lua bindings and C++ headers"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

@@ -1340,6 +1340,18 @@
 		48544D4C0000000000000041 /* UIElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000040 /* UIElement.h */; };
 		48544D4C0000000000000043 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
 		48544D4C0000000000000044 /* UIElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000042 /* UIElement.cpp */; };
+		50314C550000000000000005 /* UIEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000004 /* UIEvent.cpp */; };
+		50314C550000000000000006 /* UIEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000004 /* UIEvent.cpp */; };
+		50314C550000000000000008 /* UIDataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000007 /* UIDataModel.cpp */; };
+		50314C550000000000000009 /* UIDataModel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000007 /* UIDataModel.cpp */; };
+		50314C55000000000000000B /* UIValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000A /* UIValue.cpp */; };
+		50314C55000000000000000C /* UIValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000A /* UIValue.cpp */; };
+		50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000D /* HtmlUIEventListener.cpp */; };
+		50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C55000000000000000D /* HtmlUIEventListener.cpp */; };
+		50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
+		50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
+		50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
+		50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
 		48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000045 /* UIDocumentComponent.h */; };
 		48544D4C0000000000000049 /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
 		48544D4C000000000000004A /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
@@ -3668,6 +3680,16 @@
 		48544D4C000000000000003D /* UIDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocument.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000040 /* UIElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElement.h; sourceTree = "<group>"; };
 		48544D4C0000000000000042 /* UIElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElement.cpp; sourceTree = "<group>"; };
+		50314C550000000000000001 /* HtmlUIScriptInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIScriptInternal.h; sourceTree = "<group>"; };
+		50314C550000000000000002 /* HtmlUIEventListener.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIEventListener.h; sourceTree = "<group>"; };
+		50314C550000000000000003 /* HtmlUIValueDefinition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIValueDefinition.h; sourceTree = "<group>"; };
+		50314C550000000000000004 /* UIEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIEvent.cpp; sourceTree = "<group>"; };
+		50314C550000000000000007 /* UIDataModel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDataModel.cpp; sourceTree = "<group>"; };
+		50314C55000000000000000A /* UIValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIValue.cpp; sourceTree = "<group>"; };
+		50314C55000000000000000D /* HtmlUIEventListener.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIEventListener.cpp; sourceTree = "<group>"; };
+		50314C550000000000000010 /* HtmlUIValueDefinition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIValueDefinition.cpp; sourceTree = "<group>"; };
+		50314C550000000000000013 /* HtmlUIClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClassesLua.h; sourceTree = "<group>"; };
+		50314C550000000000000014 /* HtmlUIClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClassesLua.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000045 /* UIDocumentComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentComponent.h; sourceTree = "<group>"; };
 		48544D4C0000000000000048 /* BaseXMLParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BaseXMLParser.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000004B /* Box.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Box.cpp; sourceTree = "<group>"; };
@@ -4192,6 +4214,8 @@
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
+				50314C550000000000000013 /* HtmlUIClassesLua.h */,
+				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -6258,6 +6282,14 @@
 				48544D4C000000000000003D /* UIDocument.cpp */,
 				48544D4C0000000000000040 /* UIElement.h */,
 				48544D4C0000000000000042 /* UIElement.cpp */,
+				50314C550000000000000001 /* HtmlUIScriptInternal.h */,
+				50314C550000000000000002 /* HtmlUIEventListener.h */,
+				50314C550000000000000003 /* HtmlUIValueDefinition.h */,
+				50314C550000000000000004 /* UIEvent.cpp */,
+				50314C550000000000000007 /* UIDataModel.cpp */,
+				50314C55000000000000000A /* UIValue.cpp */,
+				50314C55000000000000000D /* HtmlUIEventListener.cpp */,
+				50314C550000000000000010 /* HtmlUIValueDefinition.cpp */,
 				48544D4C00000000000002B2 /* UIDataModel.h */,
 				48544D4C00000000000002B4 /* UIElementInternal.h */,
 				48544D4C00000000000002B6 /* UIEvent.h */,
@@ -8730,6 +8762,12 @@
 				48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003E /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000043 /* UIElement.cpp in Sources */,
+				50314C550000000000000005 /* UIEvent.cpp in Sources */,
+				50314C550000000000000008 /* UIDataModel.cpp in Sources */,
+				50314C55000000000000000B /* UIValue.cpp in Sources */,
+				50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */,
+				50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */,
+				50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8953,6 +8991,12 @@
 				48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */,
 				48544D4C000000000000003F /* UIDocument.cpp in Sources */,
 				48544D4C0000000000000044 /* UIElement.cpp in Sources */,
+				50314C550000000000000006 /* UIEvent.cpp in Sources */,
+				50314C550000000000000009 /* UIDataModel.cpp in Sources */,
+				50314C55000000000000000C /* UIValue.cpp in Sources */,
+				50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */,
+				50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */,
+				50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
