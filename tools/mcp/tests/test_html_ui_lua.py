@@ -404,10 +404,12 @@ function LottieScript:init()
     for _, name in ipairs({ "load", "play", "pause", "loop", "complete" }) do
         anim:addEventListener(name, function(event) lottieEvents[#lottieEvents + 1] = event.type end)
     end
-    -- load-time events come a frame after the document loaded: init's listeners get them
+    -- the document loaded (in the editor, before play): its load/error events are past;
+    -- a new src loads again and fires them
     doc:getElementById("broken"):addEventListener("error", function(event)
         lottieError = event.detail and event.detail.message
     end)
+    doc:getElementById("broken"):setAttribute("src", "lottie/missing2.json")
 end
 
 return LottieScript
@@ -447,8 +449,8 @@ async def test_lottie_control_and_events(ed: Editor):
             return lottieError, lottieEvents[1], anim:isPlaying(), anim:getTotalFrames(), anim:getDuration(),
                    anim:getCurrentFrame()
         """)
-        ed.check("could not read 'ui/lottie/missing.json'" in str(values[0]), f"event.detail.message: {values[0]}")
-        ed.check_eq(values[1:], ["load", False, 60, 2, 0], "loaded, paused on the first frame")
+        ed.check("could not read 'ui/lottie/missing2.json'" in str(values[0]), f"event.detail.message: {values[0]}")
+        ed.check_eq(values[1:], [None, False, 60, 2, 0], "loaded (no event since play started), paused on the first frame")
 
         # play, then pause: the frame stands still while paused
         await anime_lua(ed, "object('LottieDoc', 'UIDocument'):getElementById('anim'):play()")
@@ -496,7 +498,7 @@ async def test_lottie_control_and_events(ed: Editor):
             for _, name in ipairs(lottieEvents) do count[name] = (count[name] or 0) + 1 end
             return anim:isPlaying(), anim:getCurrentFrame(), count.load, count.play, count.pause, count.complete
         """)
-        ed.check_eq(values, [False, 59, 1, 2, 1, 1], "complete on the last frame; event counts")
+        ed.check_eq(values, [False, 59, None, 2, 1, 1], "complete on the last frame; event counts")
 
         # another element: an error in the Console, nothing raised
         await ed.console_since(None, limit=1)
