@@ -245,15 +245,17 @@ TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     EXPECT_EQ(start, 1);
     EXPECT_EQ(end, 3);
 
-    EXPECT_EQ(loads, 2);
-    EXPECT_EQ(unloads, 1);
     EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 2u);
     EXPECT_TRUE(component.loaded);
     EXPECT_FALSE(component.needReload);
 
-    // the next update does not load it again
+    // onUnload and onLoad fire at the end of the next update (p1-lua's notifications), and
+    // that update does not load the document again
     updateDocuments(scene);
     EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), newDocument);
+    EXPECT_EQ(loads, 2);
+    EXPECT_EQ(unloads, 1);
+    updateDocuments(scene);
     EXPECT_EQ(loads, 2);
 
     EXPECT_EQ(errors(), 0u);

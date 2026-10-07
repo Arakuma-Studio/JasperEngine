@@ -121,7 +121,12 @@ async def test_project_with_document(ed: Editor):
 
 async def test_source_export_ships_everything(ed: Editor):
     out = ed.scratch.root / "export-html-ui"
+    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 8})
     raw, r = await export_source(ed, out)
+    # the HTML UI MSAA project setting reaches the game's init code
+    inits = [p for p in out.rglob("*.cpp") if "UIDocumentSystem::setPreferredSampleCount(8);" in p.read_text(errors="ignore")]
+    ed.check(inits, "no UIDocumentSystem::setPreferredSampleCount(8) in the exported sources")
+    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 4})
     ed.check_eq(r["status"], "succeeded", f"{raw.text[:2000]}")
     assets = out / "project" / "assets"
     for rel in SHIPPED:

@@ -106,7 +106,7 @@ async def lua(ed: Editor, code: str):
 
 
 async def has_element_api(ed: Editor) -> bool:
-    values = (await ed.call("eval_lua", code="return UIDocument ~= nil and UIDocument.getElementById ~= nil",
+    values = (await ed.call("eval_lua", code="return UIDocument ~= nil",
                             allow_edit_mode=True))["values"]
     return values == [True]
 

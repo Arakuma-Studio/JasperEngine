@@ -36,6 +36,19 @@ RED_HTML = """<html>
 
 BLUE_HTML = RED_HTML.replace("#ff0000", "#0000ff").replace("<title>red</title>", "<title>blue</title>")
 
+ROT_DOC = "assets/ui/rotated.html"
+ROT_HTML = """<html>
+<head>
+    <style>
+        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
+        #sq { display: block; position: absolute; left: 440px; top: 160px; width: 400px; height: 400px;
+              background-color: #ff0000; transform: rotate(17deg); }
+    </style>
+</head>
+<body><div id="sq"></div></body>
+</html>
+"""
+
 RED_DOC = "assets/ui/red.html"
 BLUE_DOC = "assets/ui/blue.html"
 RED = (255, 0, 0)
@@ -250,7 +263,29 @@ async def test_msaa_setting(ed: Editor):
     ed.check_in("1, 2, 4 or 8", msg)
     text = (ed.project / "project.yaml").read_text()
     ed.check("htmlUiMsaaSamples: 2" in text, "saved to project.yaml")
-    await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": 4})
+
+    # end to end: a rotated square's edges are smoothed with 4 samples, stepped with 1
+    await ed.call("write_file", path=ROT_DOC, content=ROT_HTML)
+    made = await ed.call("create_scene", name="HtmlUiMsaa", type="UI")
+    scene = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=scene, settings={"background_color": [0.0, 0.0, 0.0, 1.0]})
+    ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Rotated")
+    await ed.call("set_properties", scene=scene, entity=ent["entity_id"], values={"uidocument": {"filename": ROT_DOC}})
+
+    async def edge_pixels(samples: int) -> int:
+        await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": samples})
+        shot = await ed.call_raw("screenshot", {"view": "game", "scene": scene, "max_width": 1280})
+        png = shot.images[0][0]
+        (ed.scratch.root / f"html-ui-editor-msaa-{samples}.png").write_bytes(png)
+        from htmlui_pixels import decode_png
+        w, h, ch, rows = decode_png(png)
+        # partly covered pixels: red between 40 and 215 with no green/blue
+        return sum(1 for y in range(h) for x in range(w)
+                   if 40 < rows[y][x * ch] < 215 and rows[y][x * ch + 1] < 30 and rows[y][x * ch + 2] < 30)
+
+    stepped = await edge_pixels(1)
+    smooth = await edge_pixels(4)
+    ed.check(smooth > stepped * 2 + 50, f"MSAA 4 smooths the edges: {smooth} partly covered pixels, {stepped} with 1 sample")
 
 
 async def test_scene_view_shows_document(ed: Editor):
