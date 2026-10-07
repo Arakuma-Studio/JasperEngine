@@ -247,6 +247,8 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
         return;
     HtmlUITextureDocument& entry = it->second;
 
+    // unloaded documents are destroyed by the next update: now, while their data models exist
+    entry.context->update();
     // the RmlUi side of what lives in this context goes before it
     Rml::Context* rmlContext = entry.context->getRmlContext();
     const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);

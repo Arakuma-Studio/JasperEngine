@@ -21,6 +21,7 @@
 #include "texture/Framebuffer.h"
 
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/EventListener.h>
@@ -561,4 +562,65 @@ TEST_F(TextureTargetTest, NoLeaksOverReloads){
     EXPECT_EQ(system.getTextureContext(document.getEntity()), context);
     EXPECT_EQ(context->getRenderer().getLiveTextureCount(), textures);
     EXPECT_EQ(context->getRenderer().getLiveGeometryCount(), geometry);
+}
+
+TEST_F(TextureModeTest, KeysTextAndDataModels){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("p1/texture_form.html", surface.getEntity());
+    // a screen document too: keys go to whichever took the last press
+    UIDocument screen = fixture->addDocument("p1/texture_input.html");
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    const Entity entity = document.getEntity();
+    // the screen document is out of the way until its press below
+    screen.hide();
+    GpuEnvironment::drawFrames(1);
+
+    // the data model placeholder lives in the texture context: no error, empty binding
+    Rml::Element* bound = element(entity, "bound");
+    ASSERT_NE(bound, nullptr);
+
+    // a press on the text field through the engine's pointer path (p1-input -> world)
+    const Vector2 field = project(scene(), Vector3(-0.5f, 0.75f, 0));   // uv (0.25, 0.125): #name
+    EXPECT_TRUE(system().eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    EXPECT_TRUE(system().hasPointerCapture(0, D_MOUSE_BUTTON_LEFT, false));
+    EXPECT_TRUE(system().eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    EXPECT_FALSE(system().hasPointerCapture(0, D_MOUSE_BUTTON_LEFT, false));
+    EXPECT_EQ(system().getTextureFocus(), entity);
+    EXPECT_TRUE(system().hasFocusedTextInput());
+
+    // text and keys reach the texture document's field
+    EXPECT_TRUE(system().eventOnTextInput("h\xc3\xa9llo"));
+    GpuEnvironment::drawFrames(1);
+    Rml::Element* name = element(entity, "name");
+    ASSERT_NE(name, nullptr);
+    EXPECT_EQ(name->GetAttribute<Rml::String>("value", ""), "h\xc3\xa9llo");
+    EXPECT_TRUE(system().eventOnKeyDown(D_KEY_BACKSPACE, false, 0));
+    EXPECT_TRUE(system().eventOnKeyUp(D_KEY_BACKSPACE, 0));
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(name->GetAttribute<Rml::String>("value", ""), "h\xc3\xa9ll");
+    // Escape is never a text field's
+    EXPECT_FALSE(system().eventOnKeyDown(D_KEY_ESCAPE, false, 0));
+
+    // a press on the screen document's #tl takes the keys back to the screen context
+    screen.show();
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(system().eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, 10, 10, 0, false));
+    EXPECT_TRUE(system().eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, 10, 10, 0, false));
+    EXPECT_EQ(system().getTextureFocus(), NULL_ENTITY);
+    EXPECT_FALSE(system().hasFocusedTextInput());
+    EXPECT_FALSE(system().eventOnTextInput("x"));
+    EXPECT_EQ(name->GetAttribute<Rml::String>("value", ""), "h\xc3\xa9ll");
+    screen.hide();
+
+    // a data model made by the document's script binds in its own context
+    UIValue initial = UIValue::object();
+    initial["label"] = "Bound";
+    UIDataModel model = document.createDataModel("form", initial);
+    EXPECT_TRUE(model.isValid());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    bound = element(entity, "bound");
+    ASSERT_NE(bound, nullptr);
+    EXPECT_EQ(bound->GetInnerRML(), "Bound");
+    EXPECT_EQ(system().getContext()->getRmlContext()->GetDataModels().count("form"), 0u);
+    EXPECT_EQ(system().getTextureContext(entity)->getRmlContext()->GetDataModels().count("form"), 1u);
 }
