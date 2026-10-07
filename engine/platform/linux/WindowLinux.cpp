@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <time.h>
 
 using namespace jasperengine;
 
@@ -19,7 +20,7 @@ namespace {
     constexpr long NET_WM_STATE_ADD = 1;
 
     constexpr int CURSOR_TYPE_COUNT =
-        static_cast<int>(CursorType::NOT_ALLOWED) + 1;
+        static_cast<int>(CursorType::GRABBING) + 1;
 
     Display* gDisplay = nullptr;
     bool gOwnsDisplay = false;
@@ -37,6 +38,13 @@ namespace {
     Atom gWmStateMaximizedHorz = None;
     Atom gNetWmName = None;
     Atom gUtf8String = None;
+    Atom gClipboard = None;
+    Atom gTargets = None;
+    Atom gText = None;
+    Atom gClipboardProperty = None;
+
+    std::string gClipboardText;
+    bool gOwnsClipboard = false;
 
     std::function<void(int, int)> gResizeCallback;
     int gWidth = 0;
@@ -67,6 +75,10 @@ namespace {
         gWmStateMaximizedHorz = XInternAtom(gDisplay, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
         gNetWmName = XInternAtom(gDisplay, "_NET_WM_NAME", False);
         gUtf8String = XInternAtom(gDisplay, "UTF8_STRING", False);
+        gClipboard = XInternAtom(gDisplay, "CLIPBOARD", False);
+        gTargets = XInternAtom(gDisplay, "TARGETS", False);
+        gText = XInternAtom(gDisplay, "TEXT", False);
+        gClipboardProperty = XInternAtom(gDisplay, "JASPERENGINE_CLIPBOARD", False);
     }
 
     // A 1x1 transparent pixmap is the portable way to hide the X cursor
@@ -123,6 +135,12 @@ namespace {
             case CursorType::RESIZE_NESW:   return XC_bottom_left_corner;
             case CursorType::RESIZE_ALL:    return XC_fleur;
             case CursorType::NOT_ALLOWED:   return XC_X_cursor;
+            // the core cursor font has no arrow-with-watch nor closed hand
+            case CursorType::WAIT:          return XC_watch;
+            case CursorType::PROGRESS:      return XC_watch;
+            case CursorType::HELP:          return XC_question_arrow;
+            case CursorType::GRAB:          return XC_hand1;
+            case CursorType::GRABBING:      return XC_fleur;
         }
         return XC_left_ptr;
     }
@@ -233,6 +251,8 @@ void WindowLinux::destroy() {
     gCursorHidden = false;
     gCurrentCursor = None;
     gFullscreen = false;
+    gOwnsClipboard = false;
+    gClipboardText.clear();
 }
 
 Display* WindowLinux::display() { return gDisplay; }
@@ -371,6 +391,102 @@ bool WindowLinux::isCloseEvent(const XEvent& event) {
     return event.type == ClientMessage &&
            event.xclient.message_type == gWmProtocols &&
            static_cast<Atom>(event.xclient.data.l[0]) == gWmDeleteWindow;
+}
+
+void WindowLinux::setClipboardText(const std::string& utf8) {
+    gClipboardText = utf8;
+    if (!gDisplay || !gWindow) return;
+    XSetSelectionOwner(gDisplay, gClipboard, gWindow, CurrentTime);
+    gOwnsClipboard = XGetSelectionOwner(gDisplay, gClipboard) == gWindow;
+    XFlush(gDisplay);
+}
+
+std::string WindowLinux::getClipboardText() {
+    if (!gDisplay || !gWindow) return gClipboardText;
+    if (gOwnsClipboard || XGetSelectionOwner(gDisplay, gClipboard) == gWindow)
+        return gClipboardText;
+    if (XGetSelectionOwner(gDisplay, gClipboard) == None)
+        return std::string();
+
+    const Atom targets[] = {gUtf8String, XA_STRING};
+    for (Atom target : targets) {
+        XDeleteProperty(gDisplay, gWindow, gClipboardProperty);
+        XConvertSelection(gDisplay, gClipboard, target, gClipboardProperty, gWindow, CurrentTime);
+        XFlush(gDisplay);
+
+        // the owner answers with SelectionNotify; other events stay queued for the game loop
+        XEvent event{};
+        bool answered = false;
+        for (int waited = 0; waited < 200 && !answered; ++waited) {
+            if (XCheckTypedWindowEvent(gDisplay, gWindow, SelectionNotify, &event)) {
+                answered = true;
+                break;
+            }
+            timespec pause{0, 1000000}; // 1 ms
+            nanosleep(&pause, nullptr);
+        }
+        if (!answered) return std::string();
+        if (event.xselection.property == None) continue; // target refused: try the next one
+
+        Atom actualType = None;
+        int format = 0;
+        unsigned long count = 0;
+        unsigned long remaining = 0;
+        unsigned char* value = nullptr;
+        // INCR transfers (very large selections) are not supported: they read as empty
+        const int status = XGetWindowProperty(gDisplay, gWindow, gClipboardProperty, 0, 0x1000000, True,
+                                              AnyPropertyType, &actualType, &format, &count, &remaining, &value);
+        std::string text;
+        if (status == Success && value && format == 8 && actualType != XInternAtom(gDisplay, "INCR", False))
+            text.assign(reinterpret_cast<const char*>(value), count);
+        if (value) XFree(value);
+        return text;
+    }
+    return std::string();
+}
+
+bool WindowLinux::handleSelectionEvent(XEvent& event) {
+    if (!gDisplay || !gWindow) return false;
+
+    if (event.type == SelectionClear) {
+        if (event.xselectionclear.selection == gClipboard) gOwnsClipboard = false;
+        return event.xselectionclear.window == gWindow;
+    }
+    if (event.type != SelectionRequest) return false;
+
+    XSelectionRequestEvent& request = event.xselectionrequest;
+    if (request.owner != gWindow) return false;
+
+    XSelectionEvent reply{};
+    reply.type = SelectionNotify;
+    reply.display = request.display;
+    reply.requestor = request.requestor;
+    reply.selection = request.selection;
+    reply.target = request.target;
+    reply.time = request.time;
+    // obsolete clients pass no property: the target names it
+    const Atom property = (request.property != None) ? request.property : request.target;
+    reply.property = None;
+
+    if (request.selection == gClipboard && gOwnsClipboard) {
+        if (request.target == gTargets) {
+            const Atom supported[] = {gTargets, gUtf8String, XA_STRING, gText};
+            XChangeProperty(gDisplay, request.requestor, property, XA_ATOM, 32, PropModeReplace,
+                            reinterpret_cast<const unsigned char*>(supported), 4);
+            reply.property = property;
+        } else if (request.target == gUtf8String || request.target == XA_STRING || request.target == gText) {
+            // UTF-8 bytes for all three: the usual practice of X toolkits for STRING
+            const Atom type = (request.target == gText) ? gUtf8String : request.target;
+            XChangeProperty(gDisplay, request.requestor, property, type, 8, PropModeReplace,
+                            reinterpret_cast<const unsigned char*>(gClipboardText.data()),
+                            static_cast<int>(gClipboardText.size()));
+            reply.property = property;
+        }
+    }
+
+    XSendEvent(gDisplay, request.requestor, False, NoEventMask, reinterpret_cast<XEvent*>(&reply));
+    XFlush(gDisplay);
+    return true;
 }
 
 Cursor WindowLinux::invisibleCursor() {

@@ -77,6 +77,13 @@ namespace jasperengine {
         // True for that message and for the window manager's own close request
         static bool isCloseEvent(const XEvent& event);
 
+        // The CLIPBOARD selection (games; the editor has its own). Setting it takes ownership;
+        // reading asks the owner for UTF8_STRING (then STRING) and waits up to 200 ms.
+        static void setClipboardText(const std::string& utf8);
+        static std::string getClipboardText();
+        // SelectionRequest / SelectionClear for the selection we own; true when handled
+        static bool handleSelectionEvent(XEvent& event);
+
         static Cursor invisibleCursor();
         static void setMouseCursor(CursorType type);
         static void setMouseMode(MouseMode mode);

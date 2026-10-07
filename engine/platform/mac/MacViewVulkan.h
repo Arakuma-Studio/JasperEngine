@@ -9,7 +9,7 @@
 
 // The Vulkan drawable, for GRAPHIC_BACKEND=vulkan. A Vulkan surface on macOS is
 // always a CAMetalLayer, so this is a view backed by one; input is not part of it
-// and goes through the same MacInputRouter.
+// and goes through the same MacInputRouter and MacTextInputClient.
 @interface MacViewVulkan : NSView <NSTextInputClient>
 
 // The layer the surface presents into

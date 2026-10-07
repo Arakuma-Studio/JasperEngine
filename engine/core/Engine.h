@@ -283,6 +283,8 @@ namespace jasperengine {
         static Framebuffer compositeFramebuffer;
 
         static bool transformCoordPos(float& x, float& y);
+        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        static void flushCharInput();
         static void calculateCanvas();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are

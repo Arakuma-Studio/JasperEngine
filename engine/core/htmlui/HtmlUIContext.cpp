@@ -5,7 +5,9 @@
 
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
+#include "RmlTextInputHandler.h"
 
+#include "Engine.h"
 #include "Log.h"
 
 #include <RmlUi/Core/Context.h>
@@ -27,18 +29,32 @@ namespace {
         return document && document->GetParentNode();
     }
 
-    // an element inside a document body: not the context root, not a document itself
+    // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, and
+    // either an element inside a document or a document that paints its background (a
+    // background colour with alpha, or a decorator), as a browser canvas would. A transparent
+    // document lets the pointer through to the game.
     bool isContent(Rml::Context* context, Rml::Element* element){
         if (!element || element == context->GetRootElement())
             return false;
-        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element))
-            return false;
+        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element)){
+            const Rml::Style::ComputedValues& values = element->GetComputedValues();
+            if (values.background_color().alpha == 0 && !values.has_decorator())
+                return false;
+        }
         return isAttached(element);
     }
 
+#if defined(__EMSCRIPTEN__)
+    // the Web layer reports about 4 engine units per wheel notch (JasperEngineWeb wheel_callback)
+    constexpr float defaultWheelScale = 0.25f;
+#else
+    constexpr float defaultWheelScale = 1.0f;
+#endif
+
 }
 
-HtmlUIContext::HtmlUIContext(const std::string& name): name(name), renderer(new RmlRenderer()){
+HtmlUIContext::HtmlUIContext(const std::string& name): name(name), renderer(new RmlRenderer()),
+    textInputHandler(new RmlTextInputHandler()), wheelScale(defaultWheelScale){
 }
 
 HtmlUIContext::~HtmlUIContext(){
@@ -55,11 +71,18 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     }
 
     // the renderer is this context's own (Rml::SetRenderInterface is never called)
-    context = Rml::CreateContext(name, dimensions, renderer.get());
+    context = Rml::CreateContext(name, dimensions, renderer.get(), textInputHandler.get());
     if (!context){
         Log::error("[HTML UI] could not create context '%s'", name.c_str());
         return false;
     }
+    textInputHandler->setContext(context);
+    // the caret area: context pixels to canvas pixels (texture contexts set their own mapper)
+    textInputHandler->setCanvasMapper([this](const Rect& area){
+        const float scaleX = (dimensions.x > 0) ? (float)Engine::getCanvasWidth() / (float)dimensions.x : 1.0f;
+        const float scaleY = (dimensions.y > 0) ? (float)Engine::getCanvasHeight() / (float)dimensions.y : 1.0f;
+        return Rect(area.getX() * scaleX, area.getY() * scaleY, area.getWidth() * scaleX, area.getHeight() * scaleY);
+    });
 
     this->dimensions = dimensions;
     densityRatio = context->GetDensityIndependentPixelRatio();
@@ -78,6 +101,7 @@ void HtmlUIContext::destroy(){
     }
     context->UnloadAllDocuments();
     activeElement.reset();
+    touches.clear();
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
     Rml::RemoveContext(name);

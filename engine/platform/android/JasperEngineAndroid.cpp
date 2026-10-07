@@ -7,7 +7,10 @@
 #include <android/log.h>
 #include <stdarg.h>
 #include <android/asset_manager.h>
+#include <vector>
 #include "NativeEngine.h"
+#include "Log.h"
+#include "util/StringUtils.h"
 
 static int android_read(void* cookie, char* buf, int size) {
     return AAsset_read((AAsset*)cookie, buf, size);
@@ -25,6 +28,102 @@ static int android_close(void* cookie) {
     AAsset_close((AAsset*)cookie);
     return 0;
 }
+
+namespace {
+
+// The calling thread's JNIEnv. The game thread stays attached (NativeEngine::getJniEnv);
+// any other thread is attached for the lifetime of this object only.
+class ScopedJniEnv {
+public:
+    explicit ScopedJniEnv(JavaVM* vm): vm(vm) {
+        jint result = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (result == JNI_EDETACHED) {
+            if (vm->AttachCurrentThread(&env, NULL) == JNI_OK) {
+                attached = true;
+            } else {
+                env = NULL;
+            }
+        } else if (result != JNI_OK) {
+            env = NULL;
+        }
+    }
+
+    ~ScopedJniEnv() {
+        if (attached)
+            vm->DetachCurrentThread();
+    }
+
+    ScopedJniEnv(const ScopedJniEnv&) = delete;
+    ScopedJniEnv& operator=(const ScopedJniEnv&) = delete;
+
+    JNIEnv* get() const { return env; }
+
+private:
+    JavaVM* vm;
+    JNIEnv* env = NULL;
+    bool attached = false;
+};
+
+// Logs and clears a pending Java exception; true when there was one
+bool clearJavaException(JNIEnv* env, const char* what) {
+    if (!env->ExceptionCheck())
+        return false;
+    env->ExceptionDescribe();
+    env->ExceptionClear();
+    jasperengine::Log::error("Java exception in %s", what);
+    return true;
+}
+
+// NewStringUTF takes modified UTF-8, where characters outside the BMP are two encoded
+// surrogates, so UTF-8 goes through UTF-16 and NewString instead
+jstring newJavaString(JNIEnv* env, const std::string& utf8) {
+    bool hadInvalid = false;
+    std::vector<uint32_t> codepoints = jasperengine::StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid);
+
+    std::vector<jchar> utf16;
+    utf16.reserve(codepoints.size());
+    for (uint32_t cp : codepoints) {
+        if (cp >= 0x10000u) {
+            cp -= 0x10000u;
+            utf16.push_back(static_cast<jchar>(0xD800u + (cp >> 10)));
+            utf16.push_back(static_cast<jchar>(0xDC00u + (cp & 0x3FFu)));
+        } else {
+            utf16.push_back(static_cast<jchar>(cp));
+        }
+    }
+
+    static const jchar empty = 0;
+    return env->NewString(utf16.empty() ? &empty : utf16.data(), static_cast<jsize>(utf16.size()));
+}
+
+// UTF-16 of a Java string to UTF-8; a lone surrogate becomes U+FFFD
+std::string javaStringToUtf8(JNIEnv* env, jstring str) {
+    std::string out;
+    if (!str)
+        return out;
+
+    jsize length = env->GetStringLength(str);
+    const jchar* chars = env->GetStringChars(str, NULL);
+    if (!chars)
+        return out;
+
+    out.reserve(length);
+    for (jsize i = 0; i < length; i++) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800u && cp <= 0xDBFFu && i + 1 < length &&
+                chars[i + 1] >= 0xDC00u && chars[i + 1] <= 0xDFFFu) {
+            cp = 0x10000u + ((cp - 0xD800u) << 10) + (chars[i + 1] - 0xDC00u);
+            i++;
+        }
+        // wchar_t is 32 bits on Android; toUTF8 replaces surrogates with U+FFFD
+        out += jasperengine::StringUtils::toUTF8(static_cast<wchar_t>(cp));
+    }
+
+    env->ReleaseStringChars(str, chars);
+    return out;
+}
+
+} // namespace
 
 int JasperEngineAndroid::getScreenWidth(){
     return NativeEngine::getInstance()->getSurfWidth();
@@ -44,6 +143,52 @@ void JasperEngineAndroid::showVirtualKeyboard(std::wstring text){
 
 void JasperEngineAndroid::hideVirtualKeyboard(){
     NativeEngine::getInstance()->hideSoftInput();
+}
+
+void JasperEngineAndroid::setClipboardText(const std::string& utf8){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine || !nativeEngine->getJniData().setClipboardText){
+        System::setClipboardText(utf8);
+        return;
+    }
+
+    JniData& jniData = nativeEngine->getJniData();
+    ScopedJniEnv scopedEnv(nativeEngine->getJavaVM());
+    JNIEnv* env = scopedEnv.get();
+    if (!env)
+        return;
+
+    jstring strText = newJavaString(env, utf8);
+    if (!strText){
+        clearJavaException(env, "setClipboardText");
+        return;
+    }
+    env->CallVoidMethod(jniData.gameActivityObjRef, jniData.setClipboardText, strText);
+    clearJavaException(env, "setClipboardText");
+    env->DeleteLocalRef(strText);
+}
+
+std::string JasperEngineAndroid::getClipboardText(){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine || !nativeEngine->getJniData().getClipboardText){
+        return System::getClipboardText();
+    }
+
+    JniData& jniData = nativeEngine->getJniData();
+    ScopedJniEnv scopedEnv(nativeEngine->getJavaVM());
+    JNIEnv* env = scopedEnv.get();
+    if (!env)
+        return "";
+
+    jstring rv = (jstring)env->CallObjectMethod(jniData.gameActivityObjRef, jniData.getClipboardText);
+    std::string value;
+    if (!clearJavaException(env, "getClipboardText")){
+        value = javaStringToUtf8(env, rv);
+        clearJavaException(env, "getClipboardText");
+    }
+    if (rv)
+        env->DeleteLocalRef(rv);
+    return value;
 }
 
 void JasperEngineAndroid::quit(){

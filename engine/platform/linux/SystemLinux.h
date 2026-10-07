@@ -43,6 +43,10 @@ namespace jasperengine {
         void setWindowTitle(const std::string& title) override;
         void quit() override;
 
+        void setClipboardText(const std::string& utf8) override;
+        std::string getClipboardText() override;
+        void setTextInputArea(float x, float y, float width, float height) override;
+
         void setMouseCursor(CursorType type) override;
         void setMouseMode(MouseMode mode) override;
         void setMousePosition(float x, float y) override;

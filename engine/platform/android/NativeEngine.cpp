@@ -12,9 +12,10 @@
 #include <android/window.h>
 #include <linux/input-event-codes.h>
 #include <swappy/swappyGL.h>
+#include <algorithm>
 #include <cstring>
-#include <codecvt>
-#include <locale>
+#include <string>
+#include <vector>
 #include <assert.h>
 #include <math.h>
 
@@ -22,6 +23,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Log.h"
+#include "util/StringUtils.h"
 
 #define MAX_GL_ERRORS 200
 
@@ -283,6 +285,298 @@ static NativeEngineSavedState appState = {false};
 
 static std::wstring textInputBuffer;
 
+// HTML UI document text fields (Engine::wantsTextComposition), in code points: imeText is the
+// field's text as the engine has it, composition included; imeCaret is where the engine's
+// caret is taken to be when nothing is composed; [imeCompStart, imeCompEnd) is the engine's
+// composition (empty when none) and imeCompCursor its cursor.
+static std::u32string imeText;
+static size_t imeCaret = 0;
+static size_t imeCompStart = 0;
+static size_t imeCompEnd = 0;
+static int imeCompCursor = -1;
+
+// GameTextInput text is Java's modified UTF-8 (NUL as C0 80, characters outside the BMP as
+// two encoded surrogates) and its spans count UTF-16 units. Decodes to UTF-16 units; plain
+// 4-byte UTF-8 is accepted too and malformed bytes become U+FFFD.
+static std::u16string decodeModifiedUtf8(const char* text, int32_t length) {
+    std::u16string out;
+    if (!text || length <= 0)
+        return out;
+
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(text);
+    const size_t size = strnlen(text, (size_t)length);
+    out.reserve(size);
+
+    auto isCont = [&](size_t i) { return (bytes[i] & 0xC0) == 0x80; };
+
+    size_t i = 0;
+    while (i < size) {
+        unsigned char b0 = bytes[i];
+        if (b0 < 0x80) {
+            out.push_back(b0);
+            i += 1;
+        } else if ((b0 & 0xE0) == 0xC0 && i + 1 < size && isCont(i + 1)) {
+            out.push_back((char16_t)(((b0 & 0x1F) << 6) | (bytes[i + 1] & 0x3F)));
+            i += 2;
+        } else if ((b0 & 0xF0) == 0xE0 && i + 2 < size && isCont(i + 1) && isCont(i + 2)) {
+            out.push_back((char16_t)(((b0 & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F)));
+            i += 3;
+        } else if ((b0 & 0xF8) == 0xF0 && i + 3 < size && isCont(i + 1) && isCont(i + 2) && isCont(i + 3)) {
+            uint32_t cp = ((uint32_t)(b0 & 0x07) << 18) | ((uint32_t)(bytes[i + 1] & 0x3F) << 12) |
+                          ((uint32_t)(bytes[i + 2] & 0x3F) << 6) | (uint32_t)(bytes[i + 3] & 0x3F);
+            if (cp >= 0x10000 && cp <= 0x10FFFF) {
+                cp -= 0x10000;
+                out.push_back((char16_t)(0xD800 + (cp >> 10)));
+                out.push_back((char16_t)(0xDC00 + (cp & 0x3FF)));
+            } else {
+                out.push_back(0xFFFD);
+            }
+            i += 4;
+        } else {
+            out.push_back(0xFFFD);
+            i += 1;
+        }
+    }
+    return out;
+}
+
+// Code points of UTF-16 units. unitToCodepoint has units.size() + 1 entries: the code point
+// index at each unit (the second unit of a pair maps past it). Lone surrogates become U+FFFD.
+static void utf16ToCodepoints(const std::u16string& units, std::u32string& text, std::vector<size_t>& unitToCodepoint) {
+    text.clear();
+    text.reserve(units.size());
+    unitToCodepoint.assign(units.size() + 1, 0);
+
+    size_t i = 0;
+    while (i < units.size()) {
+        unitToCodepoint[i] = text.size();
+        char32_t unit = units[i];
+        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < units.size() &&
+                units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
+            text.push_back(0x10000 + ((unit - 0xD800) << 10) + (units[i + 1] - 0xDC00));
+            unitToCodepoint[i + 1] = text.size();
+            i += 2;
+        } else {
+            text.push_back((unit >= 0xD800 && unit <= 0xDFFF) ? 0xFFFD : unit);
+            i += 1;
+        }
+    }
+    unitToCodepoint[units.size()] = text.size();
+}
+
+// Code points of a wide string. wchar_t is 32 bits on Android, but surrogate pairs that
+// arrive as two units are combined too.
+static std::u32string wideToCodepoints(const std::wstring& text) {
+    std::u32string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); i++) {
+        uint32_t cp = (uint32_t)text[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < text.size() &&
+                (uint32_t)text[i + 1] >= 0xDC00 && (uint32_t)text[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + ((uint32_t)text[i + 1] - 0xDC00);
+            i++;
+        } else if ((cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
+            cp = 0xFFFD;
+        }
+        out.push_back(cp);
+    }
+    return out;
+}
+
+// Java modified UTF-8 of code points, what GameTextInput hands to NewStringUTF;
+// utf16Length receives the length in UTF-16 units
+static std::string codepointsToModifiedUtf8(const std::u32string& text, int32_t& utf16Length) {
+    std::string out;
+    utf16Length = 0;
+
+    auto put3 = [&out](uint32_t unit) {
+        out.push_back((char)(0xE0 | (unit >> 12)));
+        out.push_back((char)(0x80 | ((unit >> 6) & 0x3F)));
+        out.push_back((char)(0x80 | (unit & 0x3F)));
+    };
+
+    for (char32_t c : text) {
+        uint32_t cp = c;
+        if (cp != 0 && cp < 0x80) {
+            out.push_back((char)cp);
+        } else if (cp < 0x800) {
+            out.push_back((char)(0xC0 | (cp >> 6)));
+            out.push_back((char)(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x10000) {
+            put3(cp);
+        } else {
+            cp -= 0x10000;
+            put3(0xD800 + (cp >> 10));
+            put3(0xDC00 + (cp & 0x3FF));
+            utf16Length++;
+        }
+        utf16Length++;
+    }
+    return out;
+}
+
+static std::string codepointsToUtf8(const std::u32string& text, size_t start, size_t end) {
+    std::string out;
+    for (size_t i = start; i < end && i < text.size(); i++) {
+        // wchar_t is 32 bits on Android
+        out += jasperengine::StringUtils::toUTF8((wchar_t)text[i]);
+    }
+    return out;
+}
+
+// The document diff starts over from this text, with the caret at caret and nothing composed
+static void resetDocumentTextInput(const std::u32string& text, size_t caret) {
+    imeText = text;
+    imeCaret = std::min(caret, text.size());
+    imeCompStart = imeCompEnd = 0;
+    imeCompCursor = -1;
+}
+
+static void sendTextInputKey(int key) {
+    jasperengine::Engine::systemKeyDown(key, false, 0);
+    jasperengine::Engine::systemKeyUp(key, false, 0);
+}
+
+// Edits the IME makes away from the caret (a suggestion replacing a word) first move the
+// engine's caret there, one code point per arrow key
+static void moveTextInputCaret(size_t target) {
+    while (imeCaret < target) {
+        sendTextInputKey(D_KEY_RIGHT);
+        imeCaret++;
+    }
+    while (imeCaret > target) {
+        sendTextInputKey(D_KEY_LEFT);
+        imeCaret--;
+    }
+}
+
+// The GameTextInput state, for a focused HTML UI document text field. Text outside the
+// composing region is diffed against what the engine has: removals become backspaces,
+// additions systemTextInput. The composing region is the engine's IME composition; when it
+// ends, the text that replaced it is committed (a text input while composing confirms the
+// composition), or the composition is cancelled when nothing replaced it. A region the IME
+// puts over text the engine already has (Gboard re-selecting a word) is not a composition
+// for the engine: later edits in it are plain text edits.
+static void updateDocumentTextInput(const std::u16string& units, const GameTextInputState* state) {
+    std::u32string text;
+    std::vector<size_t> unitToCodepoint;
+    utf16ToCodepoints(units, text, unitToCodepoint);
+
+    const int32_t unitCount = (int32_t)units.size();
+    auto codepointAt = [&](int32_t unit) {
+        return unitToCodepoint[std::max(0, std::min(unit, unitCount))];
+    };
+
+    // the composing region in code points, none when undefined (-1) or empty
+    size_t compStart = 0;
+    size_t compEnd = 0;
+    int32_t regionStart = state->composingRegion.start;
+    int32_t regionEnd = state->composingRegion.end;
+    if (regionStart >= 0 && regionEnd >= 0 && regionStart != regionEnd) {
+        compStart = codepointAt(std::min(regionStart, regionEnd));
+        compEnd = codepointAt(std::max(regionStart, regionEnd));
+    }
+    const bool hasComp = compEnd > compStart;
+
+    // the IME's caret: the end of its selection
+    const int32_t selectionStart = state->selection.start;
+    const int32_t selectionEnd = state->selection.end;
+    const size_t caret = (selectionEnd >= 0) ? codepointAt(selectionEnd) : text.size();
+    const bool caretCollapsed = selectionEnd >= 0 && selectionStart == selectionEnd;
+    const int compCursor = hasComp ? (int)(std::max(compStart, std::min(caret, compEnd)) - compStart) : -1;
+
+    if (imeCompEnd > imeCompStart) {
+        // the engine is composing: is the text around its composition unchanged?
+        const size_t tail = imeText.size() - imeCompEnd;
+        const bool anchored = text.size() >= imeCompStart + tail &&
+                              text.compare(0, imeCompStart, imeText, 0, imeCompStart) == 0 &&
+                              text.compare(text.size() - tail, tail, imeText, imeCompEnd, tail) == 0;
+        const size_t replacedEnd = text.size() - tail;
+
+        if (anchored && hasComp && compStart == imeCompStart && compEnd == replacedEnd) {
+            // the same composition, updated
+            if (text.compare(compStart, compEnd - compStart, imeText, imeCompStart, imeCompEnd - imeCompStart) != 0 ||
+                    compCursor != imeCompCursor) {
+                jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
+            }
+            imeText = text;
+            imeCompEnd = compEnd;
+            imeCompCursor = compCursor;
+            return;
+        }
+
+        if (anchored) {
+            // the composition ended: what replaced it is committed, except a new composition
+            // at its end, which follows the commit
+            const bool nextComp = hasComp && compStart >= imeCompStart && compEnd == replacedEnd;
+            const size_t commitEnd = nextComp ? compStart : replacedEnd;
+
+            if (commitEnd > imeCompStart) {
+                jasperengine::Engine::systemTextInput(codepointsToUtf8(text, imeCompStart, commitEnd));
+            } else {
+                jasperengine::Engine::systemImeCancel();
+            }
+            imeText = text;
+            imeCaret = commitEnd;
+            imeCompStart = imeCompEnd = 0;
+            imeCompCursor = -1;
+
+            if (nextComp) {
+                jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
+                imeCompStart = compStart;
+                imeCompEnd = compEnd;
+                imeCompCursor = compCursor;
+                return;
+            }
+        } else {
+            // text outside the composition changed too: drop the composition, then diff the rest
+            jasperengine::Engine::systemImeCancel();
+            imeText.erase(imeCompStart, imeCompEnd - imeCompStart);
+            imeCaret = imeCompStart;
+            imeCompStart = imeCompEnd = 0;
+            imeCompCursor = -1;
+        }
+    }
+
+    // one edit, taken as close to the caret as the text allows: the common prefix stops at
+    // the caret, backspaces remove before it
+    const size_t common = std::min(imeText.size(), text.size());
+    size_t prefix = 0;
+    while (prefix < std::min(common, imeCaret) && imeText[prefix] == text[prefix])
+        prefix++;
+    size_t suffix = 0;
+    while (suffix < common - prefix && imeText[imeText.size() - 1 - suffix] == text[text.size() - 1 - suffix])
+        suffix++;
+    const size_t removedEnd = imeText.size() - suffix;
+    const size_t insertedEnd = text.size() - suffix;
+
+    if (removedEnd > prefix || insertedEnd > prefix) {
+        moveTextInputCaret(removedEnd);
+        for (size_t i = prefix; i < removedEnd; i++)
+            sendTextInputKey(D_KEY_BACKSPACE);
+        imeCaret = prefix;
+
+        // a composing region at the end of the new text is composed, the rest committed
+        const bool newComp = hasComp && compStart >= prefix && compEnd == insertedEnd;
+        const size_t commitEnd = newComp ? compStart : insertedEnd;
+        if (commitEnd > prefix)
+            jasperengine::Engine::systemTextInput(codepointsToUtf8(text, prefix, commitEnd));
+        imeCaret = commitEnd;
+
+        if (newComp) {
+            jasperengine::Engine::systemImeComposition(codepointsToUtf8(text, compStart, compEnd), compCursor);
+            imeCompStart = compStart;
+            imeCompEnd = compEnd;
+            imeCompCursor = compCursor;
+        }
+    }
+    imeText = text;
+
+    // the IME moved its caret (cursor keys on the keyboard, a swipe on the space bar)
+    if (imeCompEnd == imeCompStart && caretCollapsed)
+        moveTextInputCaret(caret);
+}
+
 
 NativeEngine::NativeEngine(struct android_app *app) {
     mApp = app;
@@ -300,6 +594,10 @@ NativeEngine::NativeEngine(struct android_app *app) {
 
     app->motionEventFilter = all_motion_filter;
     app->keyEventFilter = all_key_filter;
+
+    // only X and Y are copied into motion events unless an axis is enabled
+    GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_VSCROLL);
+    GameActivityPointerAxes_enableAxis(AMOTION_EVENT_AXIS_HSCROLL);
 
     // Flags to control how the IME behaves.
     // https://developer.android.com/reference/android/text/InputType
@@ -354,6 +652,10 @@ JniData& NativeEngine::getJniData(){
     return mJniData;
 }
 
+JavaVM* NativeEngine::getJavaVM(){
+    return mApp->activity->vm;
+}
+
 JNIEnv* NativeEngine::getJniEnv() {
     if (!mJniEnv) {
         if (0 != mApp->activity->vm->AttachCurrentThread(&mJniEnv, NULL)) {
@@ -376,14 +678,19 @@ int NativeEngine::getSurfHeight(){
 void NativeEngine::showSoftInput(std::wstring text){
     textInputBuffer = text;
 
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> convert;
-    std::string strInputBuffer = convert.to_bytes(textInputBuffer);
+    // GameTextInput takes Java modified UTF-8 and counts the selection in UTF-16 units
+    std::u32string codepoints = wideToCodepoints(text);
+    int32_t utf16Length = 0;
+    std::string strInputBuffer = codepointsToModifiedUtf8(codepoints, utf16Length);
+
+    // a document text field starts from its value, caret at the end
+    resetDocumentTextInput(codepoints, codepoints.size());
 
     GameTextInputState inputState{};
     inputState.text_UTF8 = strInputBuffer.data();
     inputState.text_length = strInputBuffer.length();
-    inputState.selection.start = strInputBuffer.length();
-    inputState.selection.end = strInputBuffer.length();
+    inputState.selection.start = utf16Length;
+    inputState.selection.end = utf16Length;
     inputState.composingRegion.start = -1;
     inputState.composingRegion.end = -1;
 
@@ -443,8 +750,17 @@ void NativeEngine::gameLoop() {
             GameActivity_getTextInputState(mApp->activity, [](void *context, const GameTextInputState *state) {
                 if (!context || !state) return;
 
-                std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> convert;
-                std::wstring utf16Text = convert.from_bytes(state->text_UTF8);
+                std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
+
+                if (jasperengine::Engine::wantsTextComposition()) {
+                    updateDocumentTextInput(units, state);
+                    // the component InputField diff stays in step
+                    textInputBuffer.assign(units.begin(), units.end());
+                    return;
+                }
+
+                // component InputField: UTF-16 units, '\b' per removed unit
+                std::wstring utf16Text(units.begin(), units.end());
 
                 while (textInputBuffer.length() > utf16Text.length()){
                     textInputBuffer.pop_back();
@@ -463,6 +779,13 @@ void NativeEngine::gameLoop() {
                     jasperengine::Engine::systemCharInput(utf16Text[i]);
                 }
                 textInputBuffer = utf16Text;
+
+                // the document diff stays in step, for a document field focused later
+                std::u32string text;
+                std::vector<size_t> unitToCodepoint;
+                utf16ToCodepoints(units, text, unitToCodepoint);
+                int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
+                resetDocumentTextInput(text, (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
 
             }, this);
             mApp->textInputState = 0;
@@ -510,6 +833,20 @@ void NativeEngine::setupJNI(){
     mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
     mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
     mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
+
+    // an activity without them (an older MainActivity) keeps the base in-process clipboard
+    mJniData.setClipboardText = env->GetMethodID(mJniData.gameActivityClsRef, "setClipboardText", "(Ljava/lang/String;)V");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.setClipboardText = NULL;
+    }
+    mJniData.getClipboardText = env->GetMethodID(mJniData.gameActivityClsRef, "getClipboardText", "()Ljava/lang/String;");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.getClipboardText = NULL;
+    }
+    if (!mJniData.setClipboardText || !mJniData.getClipboardText)
+        jasperengine::Log::warn("NativeEngine: activity has no clipboard methods, using an in-process clipboard");
 }
 
 bool NativeEngine::initDisplay() {
@@ -888,6 +1225,39 @@ void NativeEngine::handleGameActivityInput(){
 
             if ((motionEvent->source & AINPUT_SOURCE_JOYSTICK) == AINPUT_SOURCE_JOYSTICK) {
                 handleGamepadMotion(motionEvent);
+                continue;
+            }
+
+            int pointerAction = motionEvent->action & AMOTION_EVENT_ACTION_MASK;
+
+            // mouse wheel and touchpad scrolling. VSCROLL is positive up, as the engine's y;
+            // HSCROLL is positive right, the engine's x is positive left.
+            if (pointerAction == AMOTION_EVENT_ACTION_SCROLL) {
+                if (motionEvent->pointerCount > 0) {
+                    float vscroll = GameActivityPointerAxes_getAxisValue(&motionEvent->pointers[0], AMOTION_EVENT_AXIS_VSCROLL);
+                    float hscroll = GameActivityPointerAxes_getAxisValue(&motionEvent->pointers[0], AMOTION_EVENT_AXIS_HSCROLL);
+                    if (vscroll != 0.0f || hscroll != 0.0f)
+                        jasperengine::Engine::systemMouseScroll(-hscroll, vscroll, getJasperEngineModifiers(motionEvent->metaState));
+                }
+                continue;
+            }
+
+            // a mouse moving with no button down. Pressed buttons arrive as DOWN/MOVE/UP and
+            // stay on the touch path below.
+            if (pointerAction == AMOTION_EVENT_ACTION_HOVER_MOVE ||
+                    pointerAction == AMOTION_EVENT_ACTION_HOVER_ENTER ||
+                    pointerAction == AMOTION_EVENT_ACTION_HOVER_EXIT) {
+                if ((motionEvent->source & AINPUT_SOURCE_MOUSE) == AINPUT_SOURCE_MOUSE && motionEvent->pointerCount > 0) {
+                    if (pointerAction == AMOTION_EVENT_ACTION_HOVER_EXIT) {
+                        jasperengine::Engine::systemMouseLeave();
+                    } else {
+                        if (pointerAction == AMOTION_EVENT_ACTION_HOVER_ENTER)
+                            jasperengine::Engine::systemMouseEnter();
+                        float hoverX = GameActivityPointerAxes_getX(&motionEvent->pointers[0]);
+                        float hoverY = GameActivityPointerAxes_getY(&motionEvent->pointers[0]);
+                        jasperengine::Engine::systemMouseMove(hoverX, hoverY, getJasperEngineModifiers(motionEvent->metaState));
+                    }
+                }
                 continue;
             }
 

@@ -522,7 +522,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -542,6 +542,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/WindowMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/SystemMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacTextInputClient.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/main.mm\n";
     content += "        )\n";
     content += "        list(APPEND PLATFORM_LIBS \"-framework Cocoa\" \"-framework QuartzCore\" \"-framework GameController\")\n";
