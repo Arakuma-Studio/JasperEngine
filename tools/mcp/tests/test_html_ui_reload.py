@@ -121,6 +121,7 @@ async def test_setup(ed: Editor):
     ent = await ed.call("create_entity", scene=S["scene"], type="ui_document", name="Menu")
     S["menu"] = ent["entity_id"]
     await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": DOC}})
+    await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiReload")
     await wait_for_color(ed, "setup", P_BOX, RED)
 
 
@@ -148,7 +149,7 @@ async def test_edit_mode_css_change(ed: Editor):
     info = await ed.call("list_scenes")
     for scene in info.get("scenes", []):
         if scene.get("id") == S["scene"]:
-            ed.check(not scene.get("modified", False) or scene.get("path") is None, f"scene marked modified by a reload: {scene}")
+            ed.check(not scene.get("modified", False), f"scene marked modified by a reload: {scene}")
 
 
 async def test_play_mode_css_change_keeps_dom(ed: Editor):
