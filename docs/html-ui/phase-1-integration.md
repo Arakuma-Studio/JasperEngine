@@ -1955,6 +1955,19 @@ needs its own size, target and input space.
 Switching `renderMode` at runtime (`needReload`) moves the document between contexts by
 reloading it, with state preservation.
 
+*As implemented (p1-rtt):* the context's layout size is `textureWidth/pixelRatio ×
+textureHeight/pixelRatio` CSS px, rendered at `pixelRatio` (its dp ratio and font raster
+scale) into a `textureWidth × textureHeight` target, which is what the input mapping below
+("divided by the dp ratio") implies. The document stays in `UIDocumentSystem::documents`, so
+`getDocument`/`getElementById`/`UIDocument` reach it like a screen document; the phase-0
+`UIDocumentSystem.cpp` gains one-line calls (`textureLoadDocument` in `applyComponent`,
+`textureUnloadDocument`, `textureRemoveEntity`, `textureUpdate`, `textureRenderOffscreen`,
+`textureAllRendered` in `isAllLoaded`, `textureDestroyAll` in `destroyContext`). Size and
+ratio changes follow the component without a reload. `getTargetTexture` returns one
+`Framebuffer` per entity that lives as long as the system (consumers keep the pointer); a
+document that goes destroys only its GPU texture, and the same object is created again (its
+version bump rebinds consumers).
+
 #### 3.12.2 Target texture
 - Each texture context renders through `RmlRenderer` into its own `RmlRenderTarget`, with
   the same MSAA and stencil as screen documents.
@@ -2510,7 +2523,8 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
   cancelled silently.
 - `reset()` frees every Lua ref.
 
-**RTT and font effects** (`TextureModeTests.cpp`, `FontEffectTests.cpp`)
+**RTT and font effects** (`TestTextureMode.cpp`, `TestFontEffects.cpp`: the repository's
+`Test*.cpp` naming; the font goldens are in `TestGoldenFontEffects.cpp`)
 - `raycastMeshUV`:
   - plane primitive centre → (0.5, 0.5);
   - corners within 1e-4;
@@ -2552,7 +2566,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 | G23 | `opacity_text.html` | text with `opacity:.5` over a gradient (premultiplied correctness) |
 | G24 | `many_elements.html` | 500 small rounded buttons. Asserts pipeline applies ≤ 10 and passes = 1 (performance golden). |
 | G25 | `texture_mode` | a TEXTURE document read back from its target texture (straight alpha) |
-| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text |
+| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text (plus `p1/font_synthesis`: synthetic bold/italic of Roboto Regular) |
 
 G01–G20 and G22–G24 (G21 was dropped with the phase-1 effect registry) must pass on **glcore and vulkan** against the same images. A difference beyond the
 tolerance on one backend is a bug to fix, not a tolerance to raise.
