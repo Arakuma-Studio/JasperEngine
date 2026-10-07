@@ -12,9 +12,14 @@ Runs on a scratch copy of the fixture project (canvas 1280 x 720). Coordinates a
 pixels; screenshots map them with canvas_rect_in_image.
 """
 
+import sys
+from pathlib import Path
+
 from harness import Editor
 
-from test_html_ui_basic import Shot, near
+# the PNG decoding and canvas probes of the phase-0 test
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_html_ui_basic import Shot, decode_png, near  # noqa: E402
 
 TIMEOUT = 1200
 
@@ -155,11 +160,16 @@ async def test_gallery_in_game_view(ed: Editor):
 async def test_scene_view_shows_document(ed: Editor):
     """The Scene view of a UI scene draws the document's canvas in world space."""
     await ed.call("set_scene_camera", scene=S["scene"])
-    shot = await shoot(ed, "scene", view="scene")
-    greens = sum(1 for y in range(0, shot.h, 2) for x in range(0, shot.w, 2)
-                 if near(tuple(shot.rows[y][x * shot.ch:x * shot.ch + 3]), (0, 255, 0), 8))
-    magentas = sum(1 for y in range(0, shot.h, 2) for x in range(0, shot.w, 2)
-                   if near(tuple(shot.rows[y][x * shot.ch:x * shot.ch + 3]), (255, 0, 255), 8))
+    shot = await ed.call_raw("screenshot", {"view": "scene", "max_width": 1280, "scene": S["scene"]})
+    ed.check(not shot.is_error and shot.images, f"scene view: no screenshot: {shot.text[:300]}")
+    png = shot.images[0][0]
+    (ed.scratch.root / "html-ui-render-scene.png").write_bytes(png)
+    w, h, ch, rows = decode_png(png)
+
+    def count(color):
+        return sum(1 for y in range(0, h, 2) for x in range(0, w, 2) if near(tuple(rows[y][x * ch:x * ch + 3]), color, 8))
+
+    greens, magentas = count((0, 255, 0)), count((255, 0, 255))
     ed.check(greens > 20, f"the drop-shadow box (pure green) is in the Scene view: {greens} sampled pixels")
     ed.check(magentas > 20, f"the clipped box (magenta) is in the Scene view: {magentas} sampled pixels")
 
@@ -169,23 +179,16 @@ async def test_shaders_cross_compile(ed: Editor):
     await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiRender")
     # ShaderKey: type << 32 | properties; HTMLUI = 15, HTMLUI_GRADIENT = 16, HTMLUI_POST = 17
     keys = [(15 << 32) | 0, (15 << 32) | 1, (16 << 32) | 0] + [(17 << 32) | (1 << bit) for bit in range(6)]
-    info = await ed.call("get_build_info", include_shaders=True)
-    listed = " ".join(str(k) for k in info.get("shaders", info.get("shader_keys", [])))
     out = ed.scratch.root / "htmlui-shaders"
     r = await ed.call("generate_shaders", output_dir=str(out), backends="all", format="binary",
                       shaders=[hex(k) for k in keys], timeout_seconds=900)
     ed.check_eq(r["status"], "succeeded", f"generate_shaders: {r}")
     files = [p.name for p in out.rglob("*") if p.is_file()]
-    for stem in ["htmlui_Tex", "htmluigradient"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp")]:
-        found = [f for f in files if f.startswith(stem + "_") or f.startswith(stem + ".")]
-        ed.check(len(found) >= 1, f"{stem}: no generated file in {sorted(files)[:40]}")
-    backends = r.get("backends", [])
-    per_variant = {}
-    for f in files:
-        if f.startswith("htmluipost_Blr"):
-            per_variant.setdefault("blur", []).append(f)
-    ed.check(len(per_variant.get("blur", [])) >= max(2, len(backends)),
-             f"the blur variant for every API ({backends}): {per_variant}")
+    # every variant for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 (macOS, iOS) and SPIR-V
+    languages = ("glsl410", "glsl300es", "hlsl5", "msl21macos", "msl21ios", "spirv10")
+    stems = ["htmlui", "htmlui_Tex", "htmluigradient"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp")]
+    for stem in stems:
+        for language in languages:
+            ed.check(f"{stem}_{language}.sdat" in files, f"{stem}_{language}.sdat not generated: {sorted(files)}")
     errors = await html_ui_messages(ed, "error")
     ed.check(not errors, f"[HTML UI] errors: {errors}")
-    S["listed"] = listed
