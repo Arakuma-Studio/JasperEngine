@@ -108,8 +108,9 @@ What works:
 - Box model: `width`/`height` (px, %, em), `min-*`/`max-*`, `margin`, `padding`, `border`
   widths and colors per side, `border-radius`, `box-sizing`, `background-color`,
   `position: absolute/relative` with `left/top/right/bottom/inset`, `z-index`, `overflow:
-  hidden/auto/scroll` (rectangular clipping), `visibility`, `opacity` (multiplies each
-  element's colors; not a group).
+  hidden/auto/scroll` (clipping, rounded and transformed too: see "Rendering features and
+  limits"), `visibility`, `opacity` (multiplies each element's colors; not a group:
+  `filter: opacity()` is).
 - Flexbox: `display: flex`, `flex-direction`, `flex-wrap`, `justify-content`, `align-items`,
   `align-content`, `align-self`, `flex` and `flex-grow/shrink/basis`, `gap` (no `order`).
 - Transforms: `transform` (`translate`, `rotate`, `scale`, `skew`, `perspective`,
@@ -173,20 +174,51 @@ bool hovered = menu.getElementById("play").isPseudoClassSet("hover");
 `removeStyleProperty`. There is no Lua API and no event listener API yet (phase 1): poll
 `isPseudoClassSet("active")` or use the game's own input events.
 
+## Rendering features and limits
+
+Each scene's screen-space documents draw together into one offscreen target, which the
+camera composites in front of the component UI (post-process applies to it, like component
+UI). Under a UI or 2D camera the target covers the canvas rectangle in world space, so the
+editor's Scene view of a UI or 2D scene shows documents in place while you pan and zoom;
+under a 3D camera it fills the Game view (3D Scene views do not show it).
+
+What draws (RCSS syntax, phase 1):
+
+| Feature | Write | Notes |
+|---|---|---|
+| Rounded clipping | `overflow: hidden; border-radius: 16px;` | children are clipped to the rounded box (stencil); nested clips intersect |
+| Clipping inside transforms | `overflow: hidden; transform: rotate(10deg);` | children in normal flow that overflow are clipped to the transformed box |
+| Gradients | `decorator: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)` and the `repeating-` forms; at most **16 color stops** (the rest are dropped with a warning) |
+| Filters | `filter: blur(4px) grayscale(1) opacity(0.5);` | `opacity`, `blur`, `drop-shadow(#000 4px 4px 6px)`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property |
+| Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
+| Box shadows | `box-shadow: #00000080 4px 6px 12px 2px, #ff0 0 0 0 3px inset;` | color first, then offset x/y, blur, spread, `inset`; a blurred shadow is clipped to outside the box before it is blurred, so give it an offset or a spread (a zero-offset, zero-spread blurred shadow shows nothing) |
+| Masks | `mask-image: linear-gradient(90deg, #000f, #0000);` or `mask-image: image(mask.png);` | the content's alpha is multiplied by the mask's |
+
+Anti-aliasing: the target is multisampled (4x by default). The project setting "HTML UI
+MSAA samples" (1, 2, 4 or 8; `UIDocumentSystem::setPreferredSampleCount` from C++) changes
+it; devices that cannot multisample fall back to 1.
+
+Cost: a document without filters, masks or shadows is one offscreen pass, and a static
+document uploads nothing per frame. Every `filter`, `backdrop-filter`, `mask-image` and
+blurred `box-shadow` adds offscreen passes (a blur, 4 to 6; a backdrop blur, a few more), so
+keep them to the elements that need them. The Game view statistics overlay shows the
+document passes, draws and pipeline switches of the last frame.
+
+Unsupported names are reported, not ignored: an unknown filter or `decorator: shader(...)`
+logs an `[HTML UI]` warning naming it and draws nothing for it.
+
 ## Not yet (phase 0 limits)
 
 - Standard HTML and CSS: HTML5 parsing, a user-agent stylesheet, CSS rewriting and
   diagnostics with `file:line:column` (phase 2); `calc()`, grid, `::before`/`::after`,
   border styles, `%` radii, `!important`, `:root`, `:is`/`:where`/`:has` (phase 3).
-- Rendering: clipping to rounded corners and inside transforms, `box-shadow`, gradients,
-  filters (`blur`, `drop-shadow`), `mask-image`, group `opacity` (phase 1).
 - Text: font effects (`font-effect`: shadow, outline, glow), synthetic bold and italic,
   `@font-face` (phases 1-2).
 - Input: keyboard, focus, text fields, mouse wheel, enter/leave, multi-touch, cursor shapes,
   clipboard, IME (phase 1).
 - Scripting: the Lua API (`document:getElementById`, `addEventListener`, ...), data binding,
   the animation API (phase 1); `<script>` in documents (phase 2).
-- Editor: documents in the Scene view, hot reload on save, an Inspector file picker and
+- Editor: hot reload on save, an Inspector file picker and
   "Create > UI > UI Document", render-to-texture / world-space documents, the in-editor
   RmlUi debugger toggle (phase 1); `check --ui` and the inspect/assert MCP tools (phase 4).
 - SVG and Lottie on the decided libraries (LunaSVG, ThorVG) (phase 1).

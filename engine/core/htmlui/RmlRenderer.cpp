@@ -881,6 +881,10 @@ PipelineState RmlRenderer::postTargetState(BlendMode blend) const{
 void RmlRenderer::endPass(){
     if (activeKind == TargetKind::NONE)
         return;
+    // sokol's GL backend resolves MSAA with glBlitFramebuffer at the end of the pass, and the
+    // blit honours the scissor box: the whole target is resolved only with a full scissor
+    if (activeFramebuffer && activeFramebuffer->getRender().getSampleCount() > 1)
+        applyPassScissor(fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight()));
     pass.endRenderPass();
     activeKind = TargetKind::NONE;
     activeIndex = -1;
