@@ -8,9 +8,11 @@
 | Build | static, hidden visibility, `RMLUI_STATIC_LIB` (public), `RMLUI_NO_FILE_INTERFACE_DEFAULT`, no FreeType |
 
 The build files are ours: `engine/libs/rmlui/CMakeLists.txt` (desktop, Web, Android, every
-export through `engine/CMakeLists.txt`) and the `rmlui-ios` / `rmlui-macos` targets of
-`engine/workspaces/xcode/JasperEngine.xcodeproj`. Both compile every `.cpp` of the vendored
-subset, so adding or removing upstream files only needs the Xcode file list updated.
+export through `engine/CMakeLists.txt`), `engine/libs/rmlui/hidden-symbols.map` (the version
+script that keeps every `Rml::` symbol out of the editor's shared engine, GNU ld/lld) and the
+`rmlui-ios` / `rmlui-macos` targets of `engine/workspaces/xcode/JasperEngine.xcodeproj`. The
+CMake and Xcode targets compile every `.cpp` of the vendored subset, so adding or removing
+upstream files only needs the Xcode file list updated.
 
 ## Vendored subset
 
@@ -46,7 +48,7 @@ engine/libs/rmlui/
 
 ## Patches
 
-Every change to files under `engine/libs/rmlui` other than `CMakeLists.txt` is a separate
+Every change to files under `engine/libs/rmlui` other than our build files above is a separate
 commit prefixed `rmlui:` and listed here.
 
 | ID | Commit | Files | Reason | Test |
