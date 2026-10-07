@@ -14,6 +14,9 @@ using namespace jasperengine;
     NSTrackingArea* _trackingArea;
     CGPoint _mousePoint;
     BOOL _hasMousePoint;
+    // Keys whose down went to the input method's composition instead of the engine,
+    // so their up is held back too
+    bool _imeKeys[D_KEY_LAST + 1];
 }
 
 - (instancetype)initWithView:(NSView*)view {
@@ -76,10 +79,23 @@ using namespace jasperengine;
     return _mousePoint;
 }
 
+// The view's NSTextInputClient holds marked text: an IME composition or a dead key
+- (BOOL)isComposing {
+    NSView* view = _view;
+    return [view conformsToProtocol:@protocol(NSTextInputClient)] &&
+           [(id<NSTextInputClient>)view hasMarkedText];
+}
+
 - (void)keyDown:(NSEvent*)event {
     const int key = macKeyFromCode([event keyCode]);
-    if (key != D_KEY_UNKNOWN)
-        Engine::systemKeyDown(key, [event isARepeat], macKeyModifiers([event modifierFlags]));
+    if (key != D_KEY_UNKNOWN) {
+        // While a document text field shows a composition, the keys typed into it
+        // (Return confirming, Backspace editing, Escape cancelling) are the input
+        // method's, as Windows reports them as VK_PROCESSKEY; the document only gets
+        // the composition and the commit. Everything else is reported as always.
+        if (Engine::wantsTextComposition() && [self isComposing]) _imeKeys[key] = true;
+        else Engine::systemKeyDown(key, [event isARepeat], macKeyModifiers([event modifierFlags]));
+    }
 
     // Feeds the text input manager, which calls back into the view's
     // NSTextInputClient methods for IME and dead keys
@@ -88,8 +104,13 @@ using namespace jasperengine;
 
 - (void)keyUp:(NSEvent*)event {
     const int key = macKeyFromCode([event keyCode]);
-    if (key != D_KEY_UNKNOWN)
-        Engine::systemKeyUp(key, [event isARepeat], macKeyModifiers([event modifierFlags]));
+    if (key == D_KEY_UNKNOWN) return;
+
+    if (_imeKeys[key]) {
+        _imeKeys[key] = false;
+        return;
+    }
+    Engine::systemKeyUp(key, [event isARepeat], macKeyModifiers([event modifierFlags]));
 }
 
 - (void)flagsChanged:(NSEvent*)event {
@@ -143,18 +164,9 @@ using namespace jasperengine;
     Engine::systemMouseLeave();
 }
 
-- (void)insertText:(id)string {
-    NSString* characters = [string isKindOfClass:[NSAttributedString class]]
-        ? [(NSAttributedString*)string string] : (NSString*)string;
-    const NSUInteger length = [characters length];
-    for (NSUInteger i = 0; i < length; i++) {
-        const unichar codepoint = [characters characterAtIndex:i];
-        if ((codepoint & 0xff00) == 0xf700) continue; // function-key private range
-        Engine::systemCharInput(codepoint);
-    }
-}
-
-// Keys the input manager reports as editing commands instead of characters
+// Keys the input manager reports as editing commands instead of characters. The
+// component UI edits with these; a document text field already had the key down,
+// and the engine drops the character for it.
 - (void)doCommandBySelector:(SEL)selector {
     if (selector == @selector(deleteBackward:)) Engine::systemCharInput('\b');
     else if (selector == @selector(insertNewline:)) Engine::systemCharInput('\r');

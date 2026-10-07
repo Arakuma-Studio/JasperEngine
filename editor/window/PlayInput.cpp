@@ -7,6 +7,8 @@
 #include "Engine.h"
 #include "Input.h"
 
+#include "imgui_internal.h"
+
 #include <algorithm>
 
 using namespace jasperengine;
@@ -55,6 +57,31 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
         }
     }
 
+    // enter/leave follow the real pointer, not an agent's
+    if (!pointerInjected) {
+        updateMouseInside(sceneId, hovered);
+    }
+
+    // the game's cursor (component UI, documents, Engine.mouseCursor) over the game image
+    if (hovered && Engine::getMouseMode() == MouseMode::NORMAL) {
+        switch (Engine::getMouseCursor()) {
+            case CursorType::IBEAM: ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput); break;
+            case CursorType::POINTING_HAND: ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); break;
+            case CursorType::RESIZE_EW: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW); break;
+            case CursorType::RESIZE_NS: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS); break;
+            case CursorType::RESIZE_NWSE: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE); break;
+            case CursorType::RESIZE_NESW: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW); break;
+            case CursorType::RESIZE_ALL:
+            case CursorType::GRABBING: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll); break;
+            case CursorType::GRAB: ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); break;
+            case CursorType::NOT_ALLOWED: ImGui::SetMouseCursor(ImGuiMouseCursor_NotAllowed); break;
+            case CursorType::WAIT: ImGui::SetMouseCursor(ImGuiMouseCursor_Wait); break;
+            case CursorType::PROGRESS: ImGui::SetMouseCursor(ImGuiMouseCursor_Progress); break;
+            // ImGui has neither a crosshair nor a help cursor
+            default: break;
+        }
+    }
+
     if (forwardMouse) {
         float x = (io.MousePos.x - canvasMin.x) * scale.x;
         float y = (io.MousePos.y - canvasMin.y) * scale.y;
@@ -87,8 +114,9 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
         } else {
             Engine::systemMouseMove(x, y, mods);
 
-            if (io.MouseWheel != 0) {
-                Engine::systemMouseScroll(0, io.MouseWheel, mods);
+            // ImGui and the engine share GLFW's signs: y > 0 up, x > 0 left
+            if (io.MouseWheel != 0 || io.MouseWheelH != 0) {
+                Engine::systemMouseScroll(io.MouseWheelH, io.MouseWheel, mods);
             }
 
             for (int i = 0; i < 5; i++) {
@@ -119,7 +147,22 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     return forwardMouse || hovered;
 }
 
+void editor::PlayInput::updateMouseInside(uint32_t sceneId, bool inside) {
+    if (inside && (!mouseInside || mouseInsideSceneId != sceneId)) {
+        mouseInside = true;
+        mouseInsideSceneId = sceneId;
+        Engine::systemMouseEnter();
+    } else if (!inside && mouseInside && mouseInsideSceneId == sceneId) {
+        mouseInside = false;
+        Engine::systemMouseLeave();
+    }
+}
+
 void editor::PlayInput::release(uint32_t sceneId) {
+    if (mouseInside && mouseInsideSceneId == sceneId) {
+        mouseInside = false;
+        Engine::systemMouseLeave();
+    }
     const int mods = currentMods();
     if (keysSceneId == sceneId) releaseKeys(mods);
     if (mouseSceneId == sceneId) releaseMouseButtons(mods);
@@ -130,11 +173,32 @@ void editor::PlayInput::releaseAll() {
     releaseMouseButtons(0);
 }
 
-void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
-    for (int i = 0; i < io.InputQueueCharacters.Size; i++){
-        Engine::systemCharInput(static_cast<wchar_t>(io.InputQueueCharacters[i]));
+void editor::PlayInput::forwardCharacters(ImGuiIO& io){
+    // ImGui's queue holds 16-bit characters (IMGUI_USE_WCHAR32 is off), where a character
+    // beyond the BMP is already U+FFFD; the trail of this frame's input events keeps the
+    // whole code point. Where wchar_t is 16 bits it goes as a surrogate pair, which
+    // Engine::systemCharInput combines.
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    if (charactersFrame != g.FrameCount){
+        charactersFrame = g.FrameCount;
+        for (const ImGuiInputEvent& event : g.InputEventsTrail){
+            if (event.Type != ImGuiInputEventType_Text)
+                continue;
+            const unsigned int codepoint = event.Text.Char;
+            if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
+                const unsigned int value = codepoint - 0x10000;
+                Engine::systemCharInput(static_cast<wchar_t>(0xD800 + (value >> 10)));
+                Engine::systemCharInput(static_cast<wchar_t>(0xDC00 + (value & 0x3FF)));
+            }else{
+                Engine::systemCharInput(static_cast<wchar_t>(codepoint));
+            }
+        }
     }
     io.InputQueueCharacters.resize(0);
+}
+
+void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
+    forwardCharacters(io);
 
     auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
         if (ImGui::IsKeyPressed(imguiKey, false)){

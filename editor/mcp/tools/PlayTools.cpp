@@ -2271,10 +2271,53 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             error = "text event needs text";
             return false;
         }
+        // the whole string at once: documents get it as one text input, the game and the
+        // component UI each code point (surrogate pairs where wchar_t is 16 bits)
         add([text]() {
-            for (uint32_t cp : decodeUtf8(text)) Engine::systemCharInput(static_cast<wchar_t>(cp));
+            Engine::systemTextInput(text);
             return std::string();
         }, gapFrames, 0, "text");
+        return true;
+    }
+
+    // IME composition of the focused HTML UI text field (cursor in code points, -1 selects it)
+    if (type == "ime") {
+        const std::string text = event.value("text", "");
+        const int cursor = event.contains("cursor") && event["cursor"].is_number_integer()
+            ? event["cursor"].get<int>() : static_cast<int>(decodeUtf8(text).size());
+        add([text, cursor]() {
+            Engine::systemImeComposition(text, cursor);
+            return std::string();
+        }, gapFrames, 0, "ime");
+        return true;
+    }
+
+    if (type == "ime_commit") {
+        const std::string text = event.value("text", "");
+        add([text]() {
+            if (text.empty()) Engine::systemImeCancel();
+            else Engine::systemTextInput(text);
+            return std::string();
+        }, gapFrames, 0, "ime commit");
+        return true;
+    }
+
+    if (type == "ime_cancel") {
+        add([]() {
+            Engine::systemImeCancel();
+            return std::string();
+        }, gapFrames, 0, "ime cancel");
+        return true;
+    }
+
+    if (type == "mouse_leave" || type == "mouse_enter") {
+        const bool leave = type == "mouse_leave";
+        add([c, leave]() {
+            markPointerInjected(*c);
+            if (leave) Engine::systemMouseLeave();
+            else Engine::systemMouseEnter();
+            return std::string();
+        }, gapFrames, 0, type);
         return true;
     }
 
@@ -2544,7 +2587,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
-    error = "type must be key, text, mouse, touch, gamepad, wait or release_all";
+    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, wait or release_all";
     return false;
 }
 
@@ -3168,7 +3211,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Inject input into the running game across frames (no focus needed). events run in order, each "
             "{type, ...}; first action listed = default:\nkey: key (space, a, 0, left, f1, kp_0...), action "
-            "press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text\nmouse: action "
+            "press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8, one input)\n"
+            "ime: text, cursor (code points; -1 selects) = composition; ime_commit: text; ime_cancel\n"
+            "mouse_leave, mouse_enter: the pointer leaves/enters the game\nmouse: action "
             "click|double_click|down|up|move|drag|scroll, x, y (click/down/up: default the pointer's position), "
             "button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\ngamepad: "
             "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "

@@ -3,8 +3,10 @@
 
 #include "SystemMac.h"
 #include "WindowMac.h"
+#include "MacTextInputClient.h"
 
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 
 #if defined(SOKOL_METAL)
 #import <MetalKit/MetalKit.h>
@@ -128,6 +130,34 @@ void SystemMac::setMouseMode(MouseMode mode) {
 
 void SystemMac::setMousePosition(float x, float y) {
     WindowMac::setMousePosition(x, y);
+}
+
+// The engine runs on the main thread here (the frame timer is on the main run
+// loop), so the AppKit calls below need no dispatch.
+void SystemMac::setClipboardText(const std::string& utf8) {
+    NSString* text = [[NSString alloc] initWithBytes:utf8.data()
+                                              length:utf8.size()
+                                            encoding:NSUTF8StringEncoding];
+    if (!text) return;
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard setString:text forType:NSPasteboardTypeString];
+}
+
+std::string SystemMac::getClipboardText() {
+    NSString* text = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+    const char* utf8 = [text UTF8String];
+    return utf8 ? std::string(utf8) : std::string();
+}
+
+// Engine pixels are the content view's backing pixels, as the mouse reports them
+void SystemMac::setTextInputArea(float x, float y, float width, float height) {
+    macSetTextInputArea((__bridge NSView*)WindowMac::contentView(), x, y, width, height);
+}
+
+void SystemMac::hideVirtualKeyboard() {
+    macDiscardMarkedText((__bridge NSView*)WindowMac::contentView());
 }
 
 // The bundle lookup covers an exported game, which ships its assets next to the

@@ -81,6 +81,18 @@ void System::hideVirtualKeyboard(){
 
 }
 
+void System::setClipboardText(const std::string& utf8){
+    clipboardText = utf8;
+}
+
+std::string System::getClipboardText(){
+    return clipboardText;
+}
+
+void System::setTextInputArea(float x, float y, float width, float height){
+
+}
+
 bool System::isFullscreen(){
     return false;
 }

@@ -962,14 +962,14 @@ Changes to existing functions:
 |---|---|
 | `systemMouseDown`/`Up` (1465/1490) | Documents first, for buttons 0-2 (`D_MOUSE_BUTTON_1..3` map to RmlUi buttons 0, 1, 2). Then `UISystem` (button 1 only, unchanged). Then the game, with `uiEventReceived` covering both systems. |
 | `systemMouseMove` (1516) | Documents, then `UISystem`, then the game. |
-| `systemMouseScroll` (1542) | Now reaches documents: `ProcessMouseWheel(Vector2f(-xoffset, -yoffset) × wheelScale, mods)`. The engine sends positive y = up (GLFW convention); RmlUi wants positive = down/right. RmlUi multiplies the delta by `UNIT_SCROLL_LENGTH × dp ratio` (`Source/Core/Context.cpp:827-828`). `wheelScale` comes from `HtmlUIContext::setWheelScale(float)`, default 1, so one platform wheel step is one RmlUi scroll unit. The game's `onMouseScroll` runs only if the document did not consume it. |
+| `systemMouseScroll` (1542) | Now reaches documents: `ProcessMouseWheel(Vector2f(-xoffset, -yoffset) × wheelScale, mods)`. The engine sends positive y = up and positive x = **left** (GLFW convention); RmlUi wants positive = down/right. *(p1-input: the Linux router (button 6 = left) and the Windows `WM_MOUSEHWHEEL` path sent positive x = right; both now follow GLFW like Web, macOS, Android and ImGui's `MouseWheelH`.)* RmlUi multiplies the delta by `UNIT_SCROLL_LENGTH × dp ratio` (`Source/Core/Context.cpp:827-828`). `wheelScale` comes from `HtmlUIContext::setWheelScale(float)`, default 1, so one platform wheel step is one RmlUi scroll unit. The game's `onMouseScroll` runs only if the document did not consume it. |
 | `systemMouseEnter`/`Leave` (1549/1554) | Leave → `ProcessMouseLeave()` on every context. Enter → nothing; the next move re-activates. |
-| `systemKeyDown` (1559) | New order: **documents → game `onKeyDown` → `UISystem`**. The game is skipped when a document consumed the key and `ignoreEventsHandledByUI`. |
+| `systemKeyDown` (1559) | New order: **documents → game `onKeyDown` → `UISystem`**. The game is skipped when a document consumed the key and `ignoreEventsHandledByUI`; `UISystem` is skipped whenever a document consumed it (a key typed into a document field must not also type into a component `InputField`). |
 | `systemKeyUp` (1571) | Reaches documents. Consumed iff the matching key down was consumed (per-key bitset in `HtmlUIInputState`), so the game never sees an up without a down. |
-| `systemCharInput` (1577) | On platforms where `sizeof(wchar_t) == 2`, combines surrogates: a pending high surrogate waits for the low one; a lone surrogate becomes U+FFFD. The result goes to documents as UTF-8. The game's `onCharInput` and `UISystem::eventOnCharInput` still receive each `wchar_t` unit as today. |
+| `systemCharInput` (1577) | Combines surrogates (`engine/core/util/Utf16Combiner.h`; on every platform, as surrogates are never code points): a pending high surrogate waits for the low one; a lone surrogate becomes U+FFFD, and a high one still pending when `systemDraw` starts is flushed as U+FFFD. The result goes to documents as UTF-8. The game's `onCharInput` (unless consumed and `ignoreEventsHandledByUI`) and `UISystem::eventOnCharInput` (unless consumed) still receive each `wchar_t` unit; a lone high unit counts as consumed when a document text field has focus. |
 | `systemTextInput` (new) | Documents get the whole string. Then, unless consumed, each code point goes to `onCharInput` and `UISystem` (two surrogate units on 16-bit `wchar_t`). |
 | `systemTouchStart/Move/End` (1380/1426/1403) | Documents get `ProcessTouchStart/Move/End({Touch{pointer, pos}}, mods)` with the real pointer id. |
-| `systemTouchCancel` (1448/1455) | Now reaches documents (`ProcessTouchCancel`). |
+| `systemTouchCancel` (1448/1455) | Now reaches documents (`ProcessTouchCancel`, after a `ProcessMouseLeave` so the cancel never clicks). The game's `onTouchCancel` is skipped for a finger a document had taken. |
 
 Document dispatch rules:
 - Scenes are walked **top layer first** (reverse of `getScenesSnapshot()`, `Engine.cpp:182`),
@@ -977,6 +977,13 @@ Document dispatch rules:
   §3.7.3); the first scene whose document consumes stops the document walk.
 - `UISystem` keeps its current all-scenes behaviour, plus phase 0's rule that a pointer-down
   consumed by a scene's document is not given to that scene's `UISystem`.
+- *(p1-input)* Releases (mouse up, touch end) go to the documents of every scene not turned
+  off (phase 0's looser gate), top first; once one consumed it, the scenes below get it only
+  if they hold that pointer (`hasPointerCapture`). Moves: below the scene whose document took
+  the move, documents get `ProcessMouseLeave` (their hover clears) unless they hold a press.
+  Key ups go to every scene (each consumes only the ups of its own consumed downs).
+- *(p1-input)* Cursor: `UISystem` sets the cursor on every move, so `systemMouseMove` applies
+  the hovered document element's cursor (`UIDocumentSystem::getPointerCursor`) after it.
 - Modifiers go to RmlUi on every call, including pointer events, through
   `RmlKeyMap::toRmlModifiers` (replacing phase 0's inline mapping).
 
@@ -995,7 +1002,12 @@ bool eventOnTextInput(const std::string& utf8);
 bool eventOnImeComposition(const std::string& utf8, int cursor);
 void eventOnImeCancel();
 bool hasFocusedTextInput() const;
+// p1-input additions: the document holds this pointer since its down (touch: pointer id;
+// mouse: button); the CSS cursor under the pointer (ARROW when not over content)
+bool hasPointerCapture(int pointer, int button, bool touch) const;
+CursorType getPointerCursor() const;
 ```
+Mouse events use pointer 0 with `touch = false`; their capture is keyed by button.
 These replace the phase-0 pointer methods; phase 0's signatures become thin wrappers, and
 phase 0's `HtmlUIContext::processMouse*` helpers gain pointer ids and touch variants (phase 5
 adds its pointer calls there, §3.3.3).
@@ -1019,18 +1031,22 @@ after the screen context declined the event.
 - **Wheel:** consumed iff `ProcessMouseWheel` returns false, or the hover element is
   blocking.
 - **Key down/up:** consumed iff
-  - the focus element is not the document/root and `ProcessKeyDown` returned false
-    (propagation stopped or `preventDefault`, §3.14); or
   - the focus element is a text control (`input` of a text type, `textarea`, `select`) and
-    the key is not one of Escape and F1–F25.
+    the key is not one of Escape and F1–F25 — this rule alone decides for text controls,
+    because RmlUi's text widget stops the propagation of every key it sees
+    (`WidgetTextInput::ProcessEvent`), so `ProcessKeyDown` returns false for Escape too; or
+  - otherwise, the focus element is not the document/root and `ProcessKeyDown` returned false
+    (propagation stopped or `preventDefault`, §3.14).
 - **Text and IME:** consumed iff a text control has focus.
 
 **Control characters.** `\b`, `\r`, `\n`, `\t` and `0x1B` arriving as text are not inserted.
 Several platforms send them as characters (Linux `XLookupString`, Windows `WM_CHAR`,
 Android BACK → `\b`, editor `PlayInput` lines 166-221).
 - If no matching key down (BACKSPACE, ENTER, TAB, ESCAPE) reached documents in the same
-  frame, a synthetic key down/up is sent instead.
-- Otherwise the character is dropped.
+  frame, a synthetic key down/up is sent instead, at the next `UIDocumentSystem::update`
+  (frame end), and only while a text field has focus.
+- Otherwise the character is dropped. Matching is counted per key in both orders (the editor
+  sends the character before its key down).
 - This keeps Android's soft-keyboard backspace working without double deletes on desktop.
 
 **Key map.** `engine/core/htmlui/RmlKeyMap.{h,cpp}`:
@@ -1046,10 +1062,20 @@ Android BACK → `\b`, editor `PlayInput` lines 166-221).
   `KM_CTRL`, because RmlUi's text widget reads only `ctrl_key` for copy/cut/paste/select-all
   (`WidgetTextInput.cpp:529-618`).
 - It also provides the DOM `key`/`code` strings for `UIEvent` (§3.9.3), from the D_KEY plus
-  shift state.
+  shift state: `int fromRmlKey(KeyIdentifier)` (keydown events carry only the RmlUi key; the
+  table is one-to-one apart from `KI_UNKNOWN`), `std::string domCode(int dKey)`,
+  `std::string domKey(int dKey, int dMods)` (shift, and caps lock for letters), and
+  `int fromRmlModifiers(int)`. `setAppleModifiers(bool)`/`isAppleModifiers()` is the
+  injectable Cmd→Ctrl flag. p1-lua: `keyCode = fromRmlKey(key_identifier)`,
+  `key = domKey(keyCode, fromRmlModifiers(modifier params))`, `code = domCode(keyCode)`.
 
 **Focus → virtual keyboard and IME.** `engine/core/htmlui/RmlTextInputHandler.{h,cpp}`, an
-`Rml::TextInputHandler` installed on every context (passed to `Rml::CreateContext`):
+`Rml::TextInputHandler` installed on every context (passed to `Rml::CreateContext`; one per
+`HtmlUIContext`, which owns it, with `setCanvasMapper` for the context → canvas mapping of
+the caret area: texture contexts (p1-rtt) set their own). The touch, wheel and handler
+accessors of `HtmlUIContext` (`processTouchStart/Move/End/Cancel`, `hasTouch`,
+`processMouseWheel`, `setWheelScale` (default 1, 0.25 on Web), `getTextInputHandler`) live
+in the new `engine/core/htmlui/HtmlUIContextInput.cpp` (p1-input):
 - `OnActivate(ctx)`: remember the context, then
   `System::instance().showVirtualKeyboard(utf8ToWString(current value))`.
 - `OnDeactivate` / `OnDestroy`: cancel any composition, then `hideVirtualKeyboard()`.
@@ -1072,13 +1098,21 @@ Android BACK → `\b`, editor `PlayInput` lines 166-221).
 virtual void setClipboardText(const std::string& utf8);
 virtual std::string getClipboardText();
 virtual void setTextInputArea(float x, float y, float width, float height); // screen pixels, top-left origin
-enum class MouseCursor { ARROW, POINTER, TEXT, CROSSHAIR, MOVE, NOT_ALLOWED, WAIT, PROGRESS,
-                         RESIZE_EW, RESIZE_NS, RESIZE_NWSE, RESIZE_NESW, HELP, GRAB, GRABBING };
-virtual void setMouseCursor(MouseCursor cursor);   // base: no-op (mobile, headless)
 ```
+*(p1-input)* The engine already had a cursor API on every platform: `enum class CursorType`
+(`ARROW, IBEAM, CROSSHAIR, POINTING_HAND, RESIZE_EW, RESIZE_NS, RESIZE_NWSE, RESIZE_NESW,
+RESIZE_ALL, NOT_ALLOWED`), `System::setMouseCursor(CursorType)` implemented by the Linux,
+Windows, macOS, Apple and Web layers, `Engine::setMouseCursor/getMouseCursor` and Lua
+`Engine.mouseCursor`/`CursorType`. A second enum would duplicate it, so `CursorType` gains
+`WAIT, PROGRESS, HELP, GRAB, GRABBING` (appended) and `using MouseCursor = CursorType;` keeps
+the planned name (`POINTER` = `POINTING_HAND`, `TEXT` = `IBEAM`, `MOVE` = `RESIZE_ALL`).
+`RmlSystem::SetMouseCursor` goes through `Engine::setMouseCursor`, so the editor Game view
+and `Engine::getMouseCursor` see it too; `RmlSystem::cursorFromCss` maps names (first known
+keyword of a comma list).
 - `setMouseCursor`: Linux X11 `XCreateFontCursor` + `XDefineCursor`; Windows `LoadCursor` +
   `SetCursor` (kept across `WM_SETCURSOR`); macOS `NSCursor`; Web `canvas.style.cursor`;
-  editor Game view `ImGui::SetMouseCursor`; Android/iOS no-op. CSS names map as `default` →
+  editor Game view `ImGui::SetMouseCursor` (`PlayInput` applies `Engine::getMouseCursor()`
+  while the pointer is over the game image); Android/iOS no-op. CSS names map as `default` →
   ARROW, `pointer` → POINTER, `text` → TEXT, `ew-resize`/`col-resize` → RESIZE_EW, …;
   unknown names → ARROW. Phase 3 passes the first supported keyword of a CSS cursor list.
 - The base implementation keeps an in-process clipboard string, so headless tests work.
@@ -1094,8 +1128,11 @@ virtual void setMouseCursor(MouseCursor cursor);   // base: no-op (mobile, headl
   `getClipboardText` with `ImGui::SetClipboardText` / `ImGui::GetClipboardText`. These are
   backed by the editor's X11, Win32 and NSPasteboard implementations
   (`editor/backend/BackendLinux.cpp:2197/2275`, `imgui_impl_win32`, `imgui_impl_osx`).
-- ImGui characters are 16-bit (`IMGUI_USE_WCHAR32` is off, `libs/imgui/imconfig.h:70`), so
-  astral characters arrive as surrogates and are combined by `systemCharInput` (§3.6.1).
+- ImGui characters are 16-bit (`IMGUI_USE_WCHAR32` is off, `libs/imgui/imconfig.h:70`).
+  *(p1-input: ImGui does not keep surrogates there; it turns an astral character into U+FFFD
+  in `InputQueueCharacters`. `PlayInput` therefore reads this frame's text events from
+  `ImGuiContext::InputEventsTrail`, which holds the whole code point, and sends it to
+  `systemCharInput` as one unit (two surrogates where `wchar_t` is 16 bits).)*
 
 MCP `send_input` (`editor/mcp/tools/PlayTools.cpp`):
 - `text` sends the whole UTF-8 string through `Engine::systemTextInput`. Today line 2279
@@ -1121,7 +1158,7 @@ None of the platforms uses sokol_app; each has its own windowing (research §4).
 | **macOS** (`engine/platform/mac/`) | `NSPasteboard.generalPasteboard`, `clearContents` / `setString:forType:NSPasteboardTypeString` / `stringForType:`. | New `MacTextInputClient.{h,mm}` holds the `NSTextInputClient` logic shared by `MacViewMetal`, `MacViewGL` and `MacViewVulkan`, replacing the stubs at `MacViewMetal.mm:65-75`, `MacViewGL.mm:86-96` and `MacViewVulkan.mm:87-97`: `setMarkedText:selectedRange:replacementRange:` → `systemImeComposition(utf8, selectedRange.location)`; `unmarkText` → commit the marked text; `insertText:` → `systemTextInput(utf8)` with the whole string (replacing the UTF-16 unit loop at `MacInputRouter.mm:146`); `hasMarkedText`/`markedRange`/`selectedRange`; `firstRectForCharacterRange:` → the last `setTextInputArea`, via `convertRectToScreen:`; on deactivate `[[view inputContext] discardMarkedText]`. | none | — |
 | **iOS** (`engine/platform/apple/ios/`) | `UIPasteboard.generalPasteboard.string`. | `EngineView` (MTKView `<UIKeyInput>`, `ios/EngineView.h:6`) owns a hidden `UITextField` (alpha 0.01, 1×1, moved to the text-input area). It keeps the sentinel text `" "` so backspace on empty is detected. Delegate `textField:shouldChangeCharactersInRange:replacementString:`: deleting the sentinel → `systemKeyDown/Up(D_KEY_BACKSPACE)` + `systemCharInput('\b')`; otherwise, when `markedTextRange == nil`, → `systemTextInput`. `UITextFieldTextDidChangeNotification`: if `markedTextRange != nil` → `systemImeComposition(markedText)`, else commit the pending composition. This is the hidden-text-field approach SDL uses on iOS. `UIKeyInput` on `EngineView` is removed; component `InputField` gets the same text through `systemTextInput` → `onCharInput`/`UISystem`. | `showVirtualKeyboard` (`JasperEngineApple.mm:161`) → `[textField becomeFirstResponder]`; `hideVirtualKeyboard` (167) → `resignFirstResponder`. | `pressesBegan/pressesEnded` (iOS 13.4+ `UIKey.keyCode` HID usage → D_KEY table in a new `KeyCodesIOS.h`, modifiers from `UIKey.modifierFlags`) → `systemKeyDown/Up`. iOS today has no key events. |
 | **Android** (`engine/platform/android/` + `java/.../MainActivity.java`) | `MainActivity` gets `public void setClipboardText(String)` (posts to the UI thread with `runOnUiThread`, `ClipboardManager.setPrimaryClip(ClipData.newPlainText)`) and `public String getClipboardText()`. `JasperEngineAndroid` calls them over JNI (`AttachCurrentThread` on the game thread, cached `jmethodID`s). | In the `GameTextInputState` diff (`NativeEngine.cpp:442-469`), while `Engine::wantsTextComposition()`: text outside the composing region (`composingRegion.start/end`) is diffed against the previous committed text. Removals → `systemKeyDown/Up(D_KEY_BACKSPACE)` per removed code point; additions → `systemTextInput`; the composing span → `systemImeComposition(span, cursor - start)`, or `systemImeCancel` when the region becomes empty without a commit. Otherwise the legacy unit diff is unchanged, for component `InputField`. Diff in code points, not `wchar_t` units. | Unchanged (`showSoftInput`, `NativeEngine.cpp:376`). | `AMOTION_EVENT_ACTION_SCROLL` (`AXIS_VSCROLL/HSCROLL`) → `systemMouseScroll`. `AINPUT_SOURCE_MOUSE` hover (`ACTION_HOVER_MOVE/ENTER/EXIT`) → `systemMouseMove` / `systemMouseEnter` / `systemMouseLeave`. Both in `handleGameActivityInput` (828). |
-| **Web** (`engine/platform/emscripten/`) | `setClipboardText` → `navigator.clipboard.writeText` (`EM_JS`; keydown is a user activation), falling back to a hidden textarea + `document.execCommand('copy')`. Paste: a `paste` listener on the IME textarea and on `document` → `systemTextInput(clipboardData.getData('text/plain'))`. Ctrl/Cmd+V keydown is **not** sent to documents on Web, because RmlUi would ask synchronously for the clipboard, which the async browser clipboard cannot answer. `getClipboardText` returns the text of the last `paste` event. | A hidden `<textarea id="jasper-ime">` is created on startup (`EM_JS`), positioned by `setTextInputArea` (canvas-relative CSS px), and focused on `showVirtualKeyboard`, blurred on hide. `compositionstart/update` → `systemImeComposition(e.data)`; `compositionend` → `systemTextInput(e.data)`; `input` with `inputType == 'insertText'` and not composing → `systemTextInput(e.data)`. The textarea value is cleared after each event. While it is focused, the existing `keypress` → `systemCharInput` path (`JasperEngineWeb.cpp:523-529`) is skipped so text is not inserted twice; keydown/keyup keep working. | Focusing the textarea opens the mobile keyboard. | — |
+| **Web** (`engine/platform/emscripten/`) | `setClipboardText` → `navigator.clipboard.writeText` (`EM_JS`; keydown is a user activation), falling back to a hidden textarea + `document.execCommand('copy')`. Paste: a `paste` listener on the IME textarea and on `document` → `systemTextInput(clipboardData.getData('text/plain'))`. Ctrl/Cmd+V keydown is **not** sent to documents on Web, because RmlUi would ask synchronously for the clipboard, which the async browser clipboard cannot answer. `getClipboardText` returns the text of the last `paste` event. | A hidden `<textarea id="jasper-ime">` is created on startup (`EM_JS`), positioned by `setTextInputArea` (canvas-relative CSS px), and focused on `showVirtualKeyboard`, blurred on hide. `compositionstart/update` → `systemImeComposition(e.data)` (cursor at the end of the composition: browsers do not report it); `compositionend` → `systemTextInput(e.data)` (`systemImeCancel` when empty); keydown/keyup with `keyCode` 229 (composition, Android soft keyboard) are not sent, and the soft keyboard's `beforeinput` `deleteContentBackward`/`insertLineBreak` become BACKSPACE/ENTER; `input` with `inputType == 'insertText'` and not composing → `systemTextInput(e.data)`. The textarea value is cleared after each event. While it is focused, the existing `keypress` → `systemCharInput` path (`JasperEngineWeb.cpp:523-529`) is skipped so text is not inserted twice; keydown/keyup keep working. | Focusing the textarea opens the mobile keyboard. | — |
 
 `setTextInputArea` takes screen pixels. `Engine::setTextInputArea` converts canvas → screen
 with `viewRect` (the inverse of `transformCoordPos`).
