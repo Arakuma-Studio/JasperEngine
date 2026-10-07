@@ -24,6 +24,7 @@ namespace jasperengine{
 
         bool createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage);
         void updateBuffer(unsigned int size, void* data);
+        int appendBuffer(unsigned int size, const void* data);
         void destroyBuffer();
         bool isCreated();
         BufferUsage getCreatedUsage() const;

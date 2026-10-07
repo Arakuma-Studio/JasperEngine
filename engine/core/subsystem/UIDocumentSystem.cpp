@@ -237,14 +237,6 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
     unloadEntityDocument(entity);
 }
 
-void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
-    if (context) context->render(viewRect);
-}
-
-void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){
-    if (context) context->composite(colorPipeline, flipY);
-}
-
 bool UIDocumentSystem::hasVisibleDocument() const{
     if (!context)
         return false;

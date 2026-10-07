@@ -20,6 +20,7 @@ Framebuffer::Framebuffer(){
         this->colorFormats[i] = ColorFormat::RGBA;
     }
     this->version = 0;
+    this->hasDesc = false;
 }
 
 Framebuffer::~Framebuffer(){
@@ -31,12 +32,30 @@ Framebuffer::Framebuffer(const Framebuffer& rhs) = default;
 Framebuffer& Framebuffer::operator=(const Framebuffer& rhs) = default;
 
 void Framebuffer::create(){
-    if (numColorAttachments > 1){
+    if (hasDesc){
+        render.createFramebuffer(desc);
+    }else if (numColorAttachments > 1){
         render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats);
     }else{
         render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false);
     }
     version++;
+}
+
+bool Framebuffer::create(const FramebufferDesc& desc){
+    this->desc = desc;
+    this->hasDesc = true;
+    this->width = (unsigned int)(desc.width > 0 ? desc.width : 0);
+    this->height = (unsigned int)(desc.height > 0 ? desc.height : 0);
+    this->minFilter = desc.minFilter;
+    this->magFilter = desc.magFilter;
+    this->wrapU = desc.wrapU;
+    this->wrapV = desc.wrapV;
+    this->numColorAttachments = 1;
+    this->colorFormats[0] = desc.color;
+    render.destroyFramebuffer();
+    create();
+    return isCreated();
 }
 
 void Framebuffer::setColorAttachments(int count, const ColorFormat* formats){

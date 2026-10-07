@@ -7,6 +7,7 @@
 #include "math/Matrix4.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolPipelineCache.h"
 #include "SokolShader.h"
 #include "Engine.h"
 
@@ -45,6 +46,8 @@ SokolObject::SokolObject(){
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
     pipeline_desc = {};
+    baseDesc = {};
+    dynamicLoaded = false;
     loadFaceCulling = false;
     loadDepthWrite = true;
     loadCullingMode = CullingMode::BACK;
@@ -146,7 +149,13 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     rtt_pip = {0};
     rtt_invert_pip = {0};
     gbuffer_pip = {0};
+    nodepth_pip = {0};
+    rtt_nodepth_pip = {0};
+    zprepass_pip = {0};
+    zprepass_rtt_pip = {0};
     pipeline_desc = {0};
+    baseDesc = {};
+    dynamicLoaded = false;
     resetPipelines();
 
     pipeline_desc.primitive_type = getPrimitiveType(primitiveType);
@@ -229,9 +238,9 @@ void SokolObject::replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer,
     }
 }
 
-void SokolObject::setIndexBuffer(sg_buffer buffer){
+void SokolObject::setIndexBuffer(sg_buffer buffer, size_t byteOffset){
     bind.index_buffer = buffer;
-    bind.index_buffer_offset = 0;
+    bind.index_buffer_offset = (int)byteOffset;
 }
 
 void SokolObject::resetIndexBuffer(){
@@ -498,6 +507,32 @@ bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enabl
     return true;
 }
 
+bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
+    baseDesc = pipeline_desc;
+    baseDesc.primitive_type = getPrimitiveType(primitiveType);
+    switch (indexType){
+    case IndexType::UINT16: baseDesc.index_type = SG_INDEXTYPE_UINT16; break;
+    case IndexType::UINT32: baseDesc.index_type = SG_INDEXTYPE_UINT32; break;
+    default: baseDesc.index_type = SG_INDEXTYPE_NONE; break;
+    }
+    baseDesc.label = "dynamic-pipeline";
+    dynamicLoaded = baseDesc.shader.id != SG_INVALID_ID;
+    return dynamicLoaded;
+}
+
+bool SokolObject::beginDraw(const PipelineState& state){
+    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
+        return false;
+
+    sg_pipeline pipeline = SokolPipelineCache::get(baseDesc, state);
+    // a failed creation is never applied (see beginDraw(PipelineType))
+    if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+        return false;
+
+    SokolPipelineCache::apply(pipeline);
+    return true;
+}
+
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
     sg_pipeline selectedPipeline = pipelineOf(pipType);
 
@@ -538,6 +573,8 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 #endif
 
     sg_apply_pipeline(selectedPipeline);
+    // the dynamic path's "applied last" no longer holds
+    SokolPipelineCache::invalidateApplied();
     return true;
 }
 
@@ -584,6 +621,9 @@ void SokolObject::destroy(){
     resetPipelines();
     bind = {};
     pipeline_desc = {};
+    // dynamic pipelines stay in SokolPipelineCache until their shader goes
+    baseDesc = {};
+    dynamicLoaded = false;
     bindSlotIndex = 0;
     blendOverride = false;
     blendState = BlendState();

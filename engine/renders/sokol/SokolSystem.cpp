@@ -6,9 +6,16 @@
 #include "System.h"
 #include "sokol_gfx.h"
 #include "SokolCmdQueue.h"
+#include "SokolPipelineCache.h"
+#include "render/SystemRender.h"
 #include "Log.h"
 
 using namespace jasperengine;
+
+namespace {
+    RenderFeatures features;
+    bool featuresQueried = false;
+}
 
 void sokol_log(const char* tag,                // e.g. 'sg'
                     uint32_t log_level,             // 0=panic, 1=error, 2=warn, 3=info
@@ -70,7 +77,33 @@ void SokolSystem::shutdown(){
     SokolCmdQueue::flush_commands();
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();
+    SokolPipelineCache::clear();
     sg_shutdown();
+    featuresQueried = false;
+    features = RenderFeatures();
+}
+
+const RenderFeatures& SokolSystem::getFeatures(){
+    if (!featuresQueried && sg_isvalid()){
+        const sg_features sgFeatures = sg_query_features();
+        features.originTopLeft = sgFeatures.origin_top_left;
+        features.msaaRGBA8 = sg_query_pixelformat(SG_PIXELFORMAT_RGBA8).msaa;
+        features.msaaDepthStencil = sg_query_pixelformat(SG_PIXELFORMAT_DEPTH_STENCIL).msaa;
+        featuresQueried = true;
+    }
+    return features;
+}
+
+uint64_t SokolSystem::getPipelineCacheMisses(){
+    return SokolPipelineCache::getMissCount();
+}
+
+uint64_t SokolSystem::getPipelineApplies(){
+    return SokolPipelineCache::getApplyCount();
+}
+
+size_t SokolSystem::getPipelineCacheSize(){
+    return SokolPipelineCache::size();
 }
 
 void SokolSystem::scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer){

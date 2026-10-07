@@ -22,6 +22,10 @@ namespace jasperengine{
 
         bool createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage);
         void updateBuffer(unsigned int size, void* data);
+        // appends after what this frame appended (sokol resets the position every frame) and
+        // returns the data's byte offset, -1 when not appended; not mixed with updateBuffer
+        // in a frame, main thread only
+        int appendBuffer(unsigned int size, const void* data);
         void destroyBuffer();
         bool isCreated();
         BufferUsage getCreatedUsage() const;

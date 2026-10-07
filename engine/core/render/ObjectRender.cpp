@@ -42,8 +42,8 @@ void ObjectRender::replaceVertexBuffer(BufferRender* original, BufferRender* rep
     backend.replaceVertexBuffer(original->backend.get().id, replacement->backend.get(), byteOffset);
 }
 
-void ObjectRender::setIndexBuffer(BufferRender* buffer){
-    backend.setIndexBuffer(buffer->backend.get());
+void ObjectRender::setIndexBuffer(BufferRender* buffer, size_t byteOffset){
+    backend.setIndexBuffer(buffer->backend.get(), byteOffset);
 }
 
 void ObjectRender::resetIndexBuffer(){
@@ -60,6 +60,15 @@ void ObjectRender::setBlendState(const BlendState& state){
 
 bool ObjectRender::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
     return backend.endLoad(pipelines, enableFaceCulling, enableDepthWrite, cullingMode, windingOrder, prepassFaceCulling);
+}
+
+bool ObjectRender::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
+    this->primitiveType = primitiveType;
+    return backend.endLoadDynamic(primitiveType, indexType);
+}
+
+bool ObjectRender::beginDraw(const PipelineState& state){
+    return backend.beginDraw(state);
 }
 
 bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling){

@@ -1,8 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// RmlRenderer: scissor conversion, geometry and texture lifetimes, deferred releases, stream
-// growth, waiting for shaders, GPU objects after a context is destroyed and after view loss.
+// RmlRenderer: scissor conversion, geometry and texture lifetimes, deferred releases, pooled
+// geometry buffers, waiting for shaders, GPU objects after a context is destroyed and after
+// view loss.
 
 #include "TestRenderCommon.h"
 
@@ -46,12 +47,11 @@ namespace {
     // draws one textured quad per frame at the texture's own size, pixel-aligned, so the
     // layer holds the texture's premultiplied texels exactly
     bool drawTexture(RenderTestContext& test, Quad& quad, Rml::TextureHandle texture){
-        CameraRender pass;
-        for (int i = 0; i < 10; i++){
+        for (int i = 0; i < 30; i++){
             beginTestFrame();
-            test.renderer.beginFrame(test.contextSize, test.targetSize);
+            test.renderer.beginFrame(test.target, test.contextSize);
             test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(0, 0), texture);
-            const bool drawn = test.renderer.endFrame(test.target, pass);
+            const bool drawn = test.renderer.endFrame();
             SystemRender::commit();
             if (drawn)
                 return true;
@@ -278,15 +278,14 @@ TEST(RmlRendererTest, ReleaseDuringFrameIsDeferred){
     ASSERT_TRUE(drawTexture(test, quad, texture));
 
     const uint32_t imageId = test.renderer.getTextureRender(texture)->backend.get().id;
-    CameraRender pass;
     beginTestFrame();
-    test.renderer.beginFrame(test.contextSize, test.targetSize);
+    test.renderer.beginFrame(test.target, test.contextSize);
     test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(0, 0), texture);
-    // released after a draw recorded it: alive until the replay is done
+    // released after a draw used it: alive until the frame is done
     test.renderer.ReleaseTexture(texture);
     EXPECT_EQ(test.renderer.getLiveTextureCount(), 1u);
     EXPECT_TRUE(isImageValid(imageId));
-    ASSERT_TRUE(test.renderer.endFrame(test.target, pass));
+    ASSERT_TRUE(test.renderer.endFrame());
     SystemRender::commit();
 
     EXPECT_EQ(test.renderer.getLiveTextureCount(), 0u);
@@ -304,15 +303,17 @@ TEST(RmlRendererTest, ReleaseDuringFrameIsDeferred){
 TEST(RmlRendererTest, WaitsForShaders){
     JASPER_REQUIRE_GPU();
 
-    // no renderer holds the HTMLUI variants now: the next get() asks the builder
-    ShaderPool::remove(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false));
-    ShaderPool::remove(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true));
+    // no renderer holds the HTML UI variants now: the next get() asks the builder
+    for (const auto& variant : ShaderPool::getHtmlUIVariants()){
+        ShaderPool::remove(variant.first, variant.second);
+    }
 
-    // a builder that reports "still compiling" for the first requests
+    // a builder that reports "still compiling" for the first requests: the 8 variants of the
+    // first frame and 4 of the second
     int requests = 0;
     ShaderPool::setShaderBuilder([&requests](ShaderKey key){
         requests++;
-        if (requests <= 4)
+        if (requests <= 12)
             return ShaderBuildResult({}, ResourceLoadState::Loading);
         ShaderData data;
         if (!ShaderVariantCompiler::compile(key, ShaderPool::getShaderBackend(), nullptr, data))
@@ -325,7 +326,7 @@ TEST(RmlRendererTest, WaitsForShaders){
         ASSERT_TRUE(test.isValid());
         ASSERT_NE(test.load("render/boxes.html"), nullptr);
 
-        // frames are dropped (no crash, nothing drawn) until both variants exist
+        // frames are dropped (no crash, nothing drawn) until every variant exists
         EXPECT_FALSE(test.renderer.isReady());
         EXPECT_FALSE(test.renderFrame());
         EXPECT_FALSE(test.renderer.isReady());
@@ -344,12 +345,13 @@ TEST(RmlRendererTest, WaitsForShaders){
     ShaderPool::setShaderBuilder(nullptr);
 }
 
-TEST(RmlRendererTest, BufferGrowth){
+TEST(RmlRendererTest, GeometryStorage){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
-    // 5000 quads: 20000 vertices, 30000 indices, past the initial 16384 vertices
+    // 5000 quads (400 KB of vertices, 120 KB of indices): drawn from the frame's transient
+    // buffers in their first frame, from shared pages afterwards
     std::vector<std::unique_ptr<Quad>> quads;
     for (int i = 0; i < 5000; i++){
         const int x = (i % 125) * 5;
@@ -358,34 +360,57 @@ TEST(RmlRendererTest, BufferGrowth){
                                     Rml::ColourbPremultiplied((uint8_t)(i % 256), (uint8_t)((i / 256) * 12), 200, 255)));
     }
 
-    CameraRender pass;
-    bool drawn = false;
-    for (int frame = 0; frame < 10 && !drawn; frame++){
+    auto drawAll = [&](){
         beginTestFrame();
-        test.renderer.beginFrame(test.contextSize, test.targetSize);
+        test.renderer.beginFrame(test.target, test.contextSize);
         for (const std::unique_ptr<Quad>& quad : quads){
             test.renderer.RenderGeometry(quad->handle, Rml::Vector2f(0, 0), 0);
         }
-        drawn = test.renderer.endFrame(test.target, pass);
+        const bool drawn = test.renderer.endFrame();
         SystemRender::commit();
+        return drawn;
+    };
+    auto probeLayer = [&](){
+        std::vector<uint8_t> layer;
+        ASSERT_TRUE(test.readLayer(layer));
+        PixelProbe probe{layer, 640};
+        // first, a middle and the last quad (index 4999: column 124, row 39)
+        EXPECT_TRUE(probe.is(1, 1, 0, 0, 200, 255, 1));
+        EXPECT_TRUE(probe.is(2 * 5 + 1, 1, 2, 0, 200, 255, 1));
+        EXPECT_TRUE(probe.is(124 * 5 + 2, 39 * 5 + 2, 4999 % 256, (4999 / 256) * 12, 200, 255, 1));
+        // the gap between quads stays empty
+        EXPECT_TRUE(probe.is(4, 4, 0, 0, 0, 0, 0));
+    };
+
+    bool drawn = false;
+    for (int frame = 0; frame < 30 && !drawn; frame++){
+        drawn = drawAll();
     }
     ASSERT_TRUE(drawn);
-    EXPECT_EQ(test.renderer.getVertexCapacity(), 32768u);
     EXPECT_EQ(test.renderer.getLastFrameDrawCount(), 5000u);
+    probeLayer();
 
-    std::vector<uint8_t> layer;
-    ASSERT_TRUE(test.readLayer(layer));
-    PixelProbe probe{layer, 640};
-    // first, a middle and the last quad (index 4999: column 124, row 39)
-    EXPECT_TRUE(probe.is(1, 1, 0, 0, 200, 255, 1));
-    EXPECT_TRUE(probe.is(2 * 5 + 1, 1, 2, 0, 200, 255, 1));
-    EXPECT_TRUE(probe.is(124 * 5 + 2, 39 * 5 + 2, 4999 % 256, (4999 / 256) * 12, 200, 255, 1));
-    // the gap between quads stays empty
-    EXPECT_TRUE(probe.is(4, 4, 0, 0, 0, 0, 0));
+    // a few dozen buffers for 10000 vertex and index ranges (sokol has a fixed buffer pool)
+    const size_t buffers = test.renderer.getGeometryBufferCount();
+    EXPECT_GT(buffers, 0u);
+    EXPECT_LT(buffers, 32u);
+    EXPECT_EQ(test.renderer.getStats().geometryLive, 5000u);
+    EXPECT_GE(test.renderer.getStats().geometryBytes, 5000u * (80u + 32u));
+
+    // persistent from now on: the same image, nothing created or uploaded again
+    const uint64_t created = test.renderer.getGpuCreateCount();
+    for (int frame = 0; frame < 3; frame++){
+        ASSERT_TRUE(drawAll());
+    }
+    EXPECT_EQ(test.renderer.getGpuCreateCount(), created);
+    EXPECT_EQ(test.renderer.getLastFrameDrawCount(), 5000u);
+    probeLayer();
 
     for (const std::unique_ptr<Quad>& quad : quads){
         test.renderer.ReleaseGeometry(quad->handle);
     }
+    EXPECT_EQ(test.renderer.getStats().geometryLive, 0u);
+    EXPECT_EQ(test.renderer.getStats().geometryBytes, 0u);
 }
 
 TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
@@ -400,7 +425,8 @@ TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
 
     std::vector<uint32_t> buffers, images;
     test.renderer.getGpuHandles(buffers, images);
-    EXPECT_EQ(buffers.size(), 4u);
+    // the composite quad's two, geometry pages and the transient buffers of the first frame
+    EXPECT_GE(buffers.size(), 6u);
     EXPECT_GE(images.size(), 4u);   // placeholder, checker, alpha50, icon
     for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
     for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));

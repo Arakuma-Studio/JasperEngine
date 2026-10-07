@@ -38,7 +38,7 @@ namespace {
 
 }
 
-HtmlUIContext::HtmlUIContext(const std::string& name): name(name), renderer(new RmlRenderer()){
+HtmlUIContext::HtmlUIContext(const std::string& name): name(name), renderer(new RmlRenderer()), renderTarget(new RmlRenderTarget()){
 }
 
 HtmlUIContext::~HtmlUIContext(){
@@ -159,6 +159,7 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
 void HtmlUIContext::update(){
     if (context)
         context->Update();
+    markUpdated();
 }
 
 bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){
