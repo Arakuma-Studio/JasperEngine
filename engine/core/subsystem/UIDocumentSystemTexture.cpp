@@ -39,8 +39,8 @@ namespace jasperengine{
     // one TEXTURE-mode document's context and target
     struct JASPERENGINE_INTERNAL HtmlUITextureDocument {
         std::unique_ptr<HtmlUIContext> context;
-        // what getTargetTexture returns: straight-alpha RGBA8, top-left origin. Kept at a stable
-        // address for as long as the system lives (Image/Mesh/materials hold the pointer)
+        // what getTargetTexture returns: straight-alpha RGBA8, top-left origin (owned by the
+        // state's targets, see there)
         Framebuffer* target = nullptr;
         int width = 0, height = 0;   // texture pixels
         float ratio = 1.0f;          // CSS px -> texture px
@@ -51,14 +51,19 @@ namespace jasperengine{
 
     struct JASPERENGINE_INTERNAL HtmlUITextureState {
         std::unordered_map<Entity, HtmlUITextureDocument> entries;
-        // every target ever handed out (see HtmlUITextureDocument::target)
-        std::vector<std::unique_ptr<Framebuffer>> targets;
+        // Every target handed out, one per entity, kept as long as the system lives: Image,
+        // Mesh and materials hold the pointer. A document that goes (view loss, mode switch,
+        // removal) destroys only the GPU texture; when it comes back the same Framebuffer is
+        // created again and its version bump makes the consumers rebind.
+        std::unordered_map<Entity, std::unique_ptr<Framebuffer>> targets;
         std::unordered_map<int, Entity> captured;   // pointer id -> document that took the down
         Entity focus = NULL_ENTITY;                 // document that took the last pointer-down
 
-        Framebuffer* newTarget(){
-            targets.emplace_back(new Framebuffer());
-            return targets.back().get();
+        Framebuffer* targetFor(Entity entity){
+            std::unique_ptr<Framebuffer>& target = targets[entity];
+            if (!target)
+                target.reset(new Framebuffer());
+            return target.get();
         }
 
         void forget(Entity entity){
@@ -150,7 +155,7 @@ Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDoc
     entry.context->setDimensions(dimensions);
     entry.context->setDensityRatio(ratio);
     if (!entry.target)
-        entry.target = state.newTarget();
+        entry.target = state.targetFor(entity);
 
     return entry.context->loadDocument(document.filename);
 }
