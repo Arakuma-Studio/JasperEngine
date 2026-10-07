@@ -77,8 +77,9 @@ TEST_F(RmlRendererP1GoldenTest, ClipRounded){
     // the corner outside the 50 px radius is clipped (the checker image would cover it)
     EXPECT_TRUE(probe.isBackground(44, 44));
     EXPECT_TRUE(probe.isBackground(236, 186));
-    // inside: the scaled checker (20 px cells from x = 20, the top-left one red)
-    EXPECT_TRUE(probe.is(90, 70, 0x40, 0x40, 0x40));
+    // inside: the scaled checker
+    EXPECT_TRUE(probe.is(90, 70, 255, 255, 255));
+    EXPECT_TRUE(probe.is(120, 70, 0x40, 0x40, 0x40));
     // the text stops at the box's right edge
     EXPECT_TRUE(probe.isBackground(250, 160));
     // the box next to it is untouched
@@ -249,10 +250,10 @@ TEST_F(RmlRendererP1GoldenTest, FilterChain){
     ASSERT_TRUE(draw(test, "filter_chain", screen));
     PixelProbe probe{screen, width};
 
-    // grayscale(#E04020) = 106, then opacity 0.7 over #1E1E1E: 0.7 * 106 + 0.3 * 30 = 83
-    EXPECT_TRUE(probe.is(80, 80, 83, 83, 83, 255, 3));
-    // the inner box: grayscale(#20A0E0) = 136 -> 104
-    EXPECT_TRUE(probe.is(160, 160, 104, 104, 104, 255, 3));
+    // grayscale(#E04020) = 96, then opacity 0.7 over #1E1E1E: 0.7 * 96 + 0.3 * 30 = 76
+    EXPECT_TRUE(probe.is(80, 80, 76, 76, 76, 255, 3));
+    // the inner box: grayscale(#20A0E0) = 137 -> 105
+    EXPECT_TRUE(probe.is(160, 160, 105, 105, 105, 255, 3));
     EXPECT_TRUE(probe.is(375, 135, 0xe0, 0x40, 0x20));
 
     expectGolden(test, "filter_chain");
@@ -268,10 +269,9 @@ TEST_F(RmlRendererP1GoldenTest, BackdropFilter){
     // outside the panel the stripes are sharp
     EXPECT_TRUE(probe.is(20, 20, 0xe0, 0x40, 0x40));
     EXPECT_TRUE(probe.isBackground(60, 20));
-    // inside, the stripe edge at x = 160 is blurred: no pure stripe colour or background
-    const uint8_t* edge = probe.at(160, 150);
-    EXPECT_GT(edge[2], 0x60);
-    EXPECT_LT(edge[2], 0xe0);
+    // inside, the blue stripe (160..200) bleeds into the gap left of it, which is sharp outside
+    EXPECT_TRUE(probe.isBackground(154, 20));
+    EXPECT_GT(probe.at(154, 150)[2], 0x60);
     // and lightened by the panel's 25 % white
     EXPECT_GT(probe.at(220, 150)[0], 0x30);
 
@@ -343,10 +343,11 @@ TEST_F(RmlRendererP1GoldenTest, BoxShadow){
     EXPECT_TRUE(probe.is(45, 135, 0xf0, 0xf0, 0xf0));
     // the spread ring around #spread
     EXPECT_TRUE(probe.is(375, 85, 0xe0, 0x20, 0x20));
+    // the blurred shadow (offset 6, 8) darkens the backdrop below #blur
+    EXPECT_LT(probe.at(286, 136)[0], 0xb0);
     // the inset shadow darkens the top-left inner edge only
-    const uint8_t* inset = probe.at(140, 260);
     EXPECT_TRUE(probe.is(140, 300, 0x40, 0x80, 0xc0, 255, 6));
-    EXPECT_LT(inset[2], 0xc0);
+    EXPECT_LT(probe.at(140, 225)[2], 0xb0);
 
     expectGolden(test, "box_shadow");
 }
@@ -422,8 +423,8 @@ TEST_F(RmlRendererP1GoldenTest, LayersNested){
     const uint8_t* child = probe.at(240, 190);
     EXPECT_GT(child[0], child[1] + 0x30);
     EXPECT_LT(child[0], 0xf0);
-    // the frame used four layers at most and several passes
-    EXPECT_GE(test.renderer.getStats().layersPushed, 4u);
+    // the backdrop's temp layer, the blur's and the opacity's, with passes for each
+    EXPECT_GE(test.renderer.getStats().layersPushed, 3u);
     EXPECT_GT(test.renderer.getStats().passes, 4u);
 
     expectGolden(test, "layers_nested");
@@ -480,7 +481,7 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     // 500 small rounded buttons: one pass, few pipeline switches
     std::string rml = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/>"
                       "<style>#grid { position: absolute; left: 6px; top: 12px; width: 500px; display: flex; flex-wrap: wrap; }"
-                      " #grid div { width: 16px; height: 12px; margin-right: 4px; margin-bottom: 3px; border-radius: 4px; border: 1px #ffffff; }"
+                      " #grid div { width: 14px; height: 10px; margin-right: 4px; margin-bottom: 3px; border-radius: 4px; border: 1px #ffffff; }"
                       "</style></head><body><div id=\"grid\">";
     for (int i = 0; i < 500; i++){
         char colour[32];
