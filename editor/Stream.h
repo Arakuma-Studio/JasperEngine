@@ -360,6 +360,9 @@ namespace jasperengine::editor {
         static YAML::Node encodeReflectionProbeComponent(const ReflectionProbeComponent& probe);
         static ReflectionProbeComponent decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe = nullptr);
 
+        static YAML::Node encodeUIDocumentComponent(const UIDocumentComponent& document);
+        static UIDocumentComponent decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument = nullptr);
+
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
 

@@ -35,6 +35,7 @@
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -47,6 +48,7 @@
 #include "util/Util.h"
 
 #include "texture/Texture.h"
+#include "component/UIDocumentComponent.h"
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
@@ -1508,6 +1510,7 @@ editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* s
 
     pauseEngineScene(scene, true);
     scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
+    scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
     switch (type) {
         case SceneType::SCENE_3D:
@@ -1599,6 +1602,7 @@ void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
         }
 
         sceneProject.scene->getSystem<UISystem>()->setAnchorReferenceSize(width, height);
+        sceneProject.scene->getSystem<UIDocumentSystem>()->setReferenceSize(width, height);
 
         if (sceneProject.sceneRender && sceneProject.sceneType != SceneType::SCENE_3D) {
             static_cast<SceneRender2D*>(sceneProject.sceneRender)->setCanvasFrameSize(width, height);
@@ -2883,6 +2887,12 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
+    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
+        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+    }
+
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing
     // (RenderSystem::loadLights2D), but scripts can spawn occluders at runtime,
@@ -3052,6 +3062,13 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
 
     entry.runtime->scene->getSystem<UISystem>()->clearAnchorReferenceSize();
+    entry.runtime->scene->getSystem<UIDocumentSystem>()->clearReferenceSize();
+    // a Play copy (a child scene, a scene loaded while playing) is only drawn by the game's
+    // frames, which never show editor overlays (SceneRender::activateGame turns them off for
+    // the played scene); with them on, its HTML UI documents would be skipped as in the Scene view
+    if (entry.ownedRuntime){
+        entry.runtime->scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+    }
     pauseEngineScene(entry.runtime->scene, false);
 
     entry.initialized = true;
@@ -4601,6 +4618,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         pauseEngineScene(sceneProject->scene, true);
         sceneProject->scene->getSystem<UISystem>()->setAnchorReferenceSize(canvasWidth, canvasHeight);
+        sceneProject->scene->getSystem<UIDocumentSystem>()->setReferenceSize(canvasWidth, canvasHeight);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot
         ObjectManager::forgetScene(sceneProject->scene);

@@ -20,6 +20,7 @@
 #include "component/FogComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -232,6 +233,12 @@ namespace jasperengine {
         template<typename T>
         T& getComponentFromIndex(size_t index) {
             return componentManager.getComponentFromIndex<T>(index);
+        }
+
+        // whether the registry has the component type (the component getters throw otherwise)
+        template<typename T>
+        bool isComponentRegistered() const{
+            return componentManager.isRegistered<T>();
         }
 
         template<typename T>

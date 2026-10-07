@@ -39,6 +39,9 @@ namespace jasperengine {
         void setIndexBuffer(BufferRender* buffer);
         void resetIndexBuffer();
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
+        // color blending of the color pipelines (PIP_DEFAULT*, PIP_RTT*) instead of their
+        // built-in straight alpha; between beginLoad and endLoad
+        void setBlendState(const BlendState& state);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on

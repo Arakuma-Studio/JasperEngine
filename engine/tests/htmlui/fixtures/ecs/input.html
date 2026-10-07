@@ -1,0 +1,20 @@
+<html>
+<head>
+    <title>ecs input</title>
+    <link type="text/css" href="../common/base.css"/>
+    <style>
+        /* a transparent full-screen body: clicks on it belong to the game */
+        body { width: 100%; height: 100%; margin: 0px; }
+        #button { position: absolute; left: 100px; top: 100px; width: 160px; height: 48px; background-color: #808080ff; }
+        #button:hover { background-color: #00ff00ff; }
+        #button:active { background-color: #0000ffff; }
+        /* a click-through wrapper with one interactive child */
+        #overlay { position: absolute; left: 300px; top: 100px; width: 200px; height: 150px; pointer-events: none; }
+        #inner { position: absolute; left: 20px; top: 20px; width: 50px; height: 50px; pointer-events: auto; background-color: #ffffffff; }
+    </style>
+</head>
+<body>
+    <div id="button"></div>
+    <div id="overlay"><div id="inner"></div></div>
+</body>
+</html>

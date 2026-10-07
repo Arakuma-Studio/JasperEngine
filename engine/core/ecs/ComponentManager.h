@@ -51,6 +51,12 @@ namespace jasperengine {
 		}
 
 	public:
+		// whether registerComponent<T>() ran (the getters throw for a type that is not)
+		template<typename T>
+		bool isRegistered() const {
+			return findEntry(componentTypeIndex<T>()) != nullptr;
+		}
+
 		template<typename T>
 		void registerComponent() {
 			const size_t index = componentTypeIndex<T>();

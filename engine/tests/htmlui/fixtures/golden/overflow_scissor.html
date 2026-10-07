@@ -1,0 +1,37 @@
+<html>
+<head>
+    <title>overflow scissor</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="golden.css"/>
+    <style>
+        #clip { left: 20px; top: 20px; width: 200px; height: 100px; overflow: hidden; background-color: #303060; }
+        /* children in normal flow: RmlUi clips what overflows the scrollable area, and an
+           absolutely placed child does not add to it */
+        #big { margin-left: -50px; margin-top: 30px; width: 300px; height: 200px; background-color: #e08020; }
+        #outer { left: 260px; top: 20px; width: 160px; height: 160px; overflow: hidden; background-color: #306030; }
+        #innerclip { margin-left: 80px; margin-top: 80px; width: 160px; height: 160px; overflow: hidden; background-color: #603030; }
+        #innerbig { margin-left: 20px; margin-top: 20px; width: 400px; height: 400px; background-color: #20c0c0; }
+        /* twelve 24 px rows in 120 px; the test scrolls it by two rows */
+        #list { left: 460px; top: 20px; width: 160px; height: 120px; overflow: hidden; background-color: #202020; }
+        .row { height: 24px; padding-left: 6px; font-size: 16px; line-height: 24px; }
+        .even { background-color: #404080; }
+        .odd { background-color: #804040; }
+        #textclip { left: 20px; top: 220px; width: 150px; height: 40px; overflow: hidden; font-size: 32px; line-height: 40px;
+                    white-space: nowrap; background-color: #305050; }
+        #textclip-inner { width: 400px; }
+        #unclipped { left: 20px; top: 300px; width: 600px; height: 40px; background-color: #808080; }
+    </style>
+</head>
+<body>
+    <div id="clip" class="abs"><div id="big"/></div>
+    <div id="outer" class="abs"><div id="innerclip"><div id="innerbig"/></div></div>
+    <div id="list" class="abs">
+        <div class="row even">Item 1</div><div class="row odd">Item 2</div><div class="row even">Item 3</div>
+        <div class="row odd">Item 4</div><div class="row even">Item 5</div><div class="row odd">Item 6</div>
+        <div class="row even">Item 7</div><div class="row odd">Item 8</div><div class="row even">Item 9</div>
+        <div class="row odd">Item 10</div><div class="row even">Item 11</div><div class="row odd">Item 12</div>
+    </div>
+    <div id="textclip" class="abs"><div id="textclip-inner">Clipped text runs past the edge</div></div>
+    <div id="unclipped" class="abs"/>
+</body>
+</html>

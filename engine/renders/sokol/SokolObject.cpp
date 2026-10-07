@@ -51,6 +51,8 @@ SokolObject::SokolObject(){
     loadWindingOrder = WindingOrder::CCW;
     loadPrepassFaceCulling = true;
     bindSlotIndex = 0;
+    blendOverride = false;
+    blendState = BlendState();
     resetPipelines();
 }
 
@@ -151,6 +153,9 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
 
     bindSlotIndex = 0;
     bufferToBindSlot.clear();
+
+    blendOverride = false;
+    blendState = BlendState();
 }
 
 void SokolObject::setShader(ShaderRender* shader){
@@ -257,7 +262,41 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
 
 // The description of one pipeline type, from the load description and face state.
 // endLoad creates each pipeline from it, and a no-culling variant only changes its cull mode.
-sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
+sg_blend_factor SokolObject::getBlendFactor(BlendFactor factor){
+    switch (factor){
+    case BlendFactor::ZERO: return SG_BLENDFACTOR_ZERO;
+    case BlendFactor::ONE: return SG_BLENDFACTOR_ONE;
+    case BlendFactor::SRC_COLOR: return SG_BLENDFACTOR_SRC_COLOR;
+    case BlendFactor::ONE_MINUS_SRC_COLOR: return SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR;
+    case BlendFactor::SRC_ALPHA: return SG_BLENDFACTOR_SRC_ALPHA;
+    case BlendFactor::ONE_MINUS_SRC_ALPHA: return SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    case BlendFactor::DST_COLOR: return SG_BLENDFACTOR_DST_COLOR;
+    case BlendFactor::ONE_MINUS_DST_COLOR: return SG_BLENDFACTOR_ONE_MINUS_DST_COLOR;
+    case BlendFactor::DST_ALPHA: return SG_BLENDFACTOR_DST_ALPHA;
+    case BlendFactor::ONE_MINUS_DST_ALPHA: return SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA;
+    }
+    return _SG_BLENDFACTOR_DEFAULT;
+}
+
+sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
+    switch (operation){
+    case BlendOperation::ADD: return SG_BLENDOP_ADD;
+    case BlendOperation::SUBTRACT: return SG_BLENDOP_SUBTRACT;
+    case BlendOperation::REVERSE_SUBTRACT: return SG_BLENDOP_REVERSE_SUBTRACT;
+    }
+    return _SG_BLENDOP_DEFAULT;
+}
+
+void SokolObject::setBlendState(const BlendState& state){
+    blendOverride = true;
+    blendState = state;
+}
+
+sg_pipeline_desc SokolObject::describePipeline(PipelineType pipType) const{
+    return makePipelineDesc(pipType);
+}
+
+sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     sg_pipeline_desc desc = pipeline_desc;
 
     // offscreen passes render with a Y-flipped projection on GL (top-left
@@ -388,6 +427,28 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
             desc.depth.write_enabled = false;
         }
         break;
+    }
+
+    // a blend state set at load replaces the color pipelines' built-in blending; the write
+    // mask stays as the pipeline type sets it, depth-only and G-buffer passes ignore it
+    if (blendOverride){
+        switch (pipType){
+        case PipelineType::PIP_DEFAULT:
+        case PipelineType::PIP_DEFAULT_NODEPTH:
+        case PipelineType::PIP_RTT:
+        case PipelineType::PIP_RTT_NODEPTH:
+        case PipelineType::PIP_RTT_INVERT:
+            desc.colors[0].blend.enabled = blendState.enabled;
+            desc.colors[0].blend.src_factor_rgb = getBlendFactor(blendState.srcFactorRGB);
+            desc.colors[0].blend.dst_factor_rgb = getBlendFactor(blendState.dstFactorRGB);
+            desc.colors[0].blend.op_rgb = getBlendOp(blendState.opRGB);
+            desc.colors[0].blend.src_factor_alpha = getBlendFactor(blendState.srcFactorAlpha);
+            desc.colors[0].blend.dst_factor_alpha = getBlendFactor(blendState.dstFactorAlpha);
+            desc.colors[0].blend.op_alpha = getBlendOp(blendState.opAlpha);
+            break;
+        default:
+            break;
+        }
     }
 
     return desc;
@@ -524,4 +585,6 @@ void SokolObject::destroy(){
     bind = {};
     pipeline_desc = {};
     bindSlotIndex = 0;
+    blendOverride = false;
+    blendState = BlendState();
 }

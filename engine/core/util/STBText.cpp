@@ -6,13 +6,10 @@
 #include <cmath>
 #include <string>
 #include "Log.h"
-#include "io/Data.h"
-#include "DefaultFont.h"
-#include "DefaultFontArabic.h"
+#include "FontFace.h"
+#include "FontRegistry.h"
+#include "GlyphAtlas.h"
 #include "StringUtils.h"
-
-#include "hb.h"
-#include "SheenBidi/SheenBidi.h"
 
 using namespace jasperengine;
 
@@ -33,6 +30,7 @@ STBText::STBText() {
 
 STBText::~STBText() {
     faces.clear();
+    facePointers.clear();
 
     delete textureData;
 }
@@ -41,227 +39,36 @@ uint64_t STBText::glyphKey(unsigned int face, uint32_t glyphIndex){
     return ((uint64_t)face << 32) | (uint64_t)glyphIndex;
 }
 
-STBText::FontFace::~FontFace(){
-    if (font)
-        hb_font_destroy(font);
-    if (face)
-        hb_face_destroy(face);
-    if (blob)
-        hb_blob_destroy(blob);
-}
-
-bool STBText::initFace(FontFace* face, unsigned int fontSize, const std::string& label){
-    //font collections (.ttc) keep the first table directory past the start of the file
-    int fontOffset = stbtt_GetFontOffsetForIndex(face->data.getMemPtr(), 0);
-    if (fontOffset < 0) {
-        fontOffset = 0;
-    }
-
-    if (!stbtt_InitFont(&face->info, face->data.getMemPtr(), fontOffset)) {
-        Log::error("Failed to initialize font: %s", label.c_str());
-        return false;
-    }
-    face->scale = stbtt_ScaleForPixelHeight(&face->info, fontSize);
-
-    face->blob = hb_blob_create((const char*)face->data.getMemPtr(), face->data.length(), HB_MEMORY_MODE_READONLY, NULL, NULL);
-    face->face = hb_face_create(face->blob, 0);
-    face->font = hb_font_create(face->face);
-
-    if (!face->font || face->face == hb_face_get_empty()){
-        Log::error("Failed to create shaper for font: %s", label.c_str());
-        return false;
-    }
-
-    //shaper stays in font units, positions are multiplied by scale when read
-    unsigned int upem = hb_face_get_upem(face->face);
-    hb_font_set_scale(face->font, (int)upem, (int)upem);
-
-    return true;
-}
-
 bool STBText::addFace(const std::string& fontpath, unsigned int fontSize){
-    std::unique_ptr<FontFace> face(new FontFace());
-
-    if (face->data.open(fontpath.c_str()) != FileErrors::FILEDATA_OK) {
-        Log::error("Font file not found: %s", fontpath.c_str());
+    std::string error;
+    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontpath, 0, &error);
+    if (!face){
+        Log::error("%s", error.c_str());
         return false;
     }
 
-    if (!initFace(face.get(), fontSize, fontpath)){
-        return false;
-    }
-
-    faces.push_back(std::move(face));
+    addFace(face, fontSize);
 
     return true;
 }
 
-bool STBText::addMemoryFace(unsigned char* data, unsigned int length, unsigned int fontSize, const std::string& label){
-    std::unique_ptr<FontFace> face(new FontFace());
+void STBText::addFace(const std::shared_ptr<FontFace>& face, unsigned int fontSize){
+    if (!face)
+        return;
 
-    if (face->data.open(data, length, false, false) != FileErrors::FILEDATA_OK) {
-        Log::error("Can't open font: %s", label.c_str());
-        return false;
-    }
-
-    if (!initFace(face.get(), fontSize, label)){
-        return false;
-    }
-
-    faces.push_back(std::move(face));
-
-    return true;
+    faces.push_back(face);
+    facePointers.push_back(face.get());
+    faceScales.push_back(face->scaleForPixelHeight((float)fontSize));
 }
 
 void STBText::addBuiltInFaces(unsigned int fontSize){
     //Roboto first, the metrics and the .notdef box come from it
-    addMemoryFace(roboto_regular_ttf, roboto_regular_ttf_len, fontSize, "built-in Roboto");
-    addMemoryFace(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, fontSize, "built-in Noto Sans Arabic");
-}
-
-unsigned int STBText::selectFace(uint32_t codepoint, unsigned int current) const{
-    //nothing to fall back to, skip the coverage lookups
-    if (faces.size() <= 1)
-        return 0;
-
-    if (current < faces.size() && stbtt_FindGlyphIndex(&faces[current]->info, (int)codepoint) != 0){
-        return current;
-    }
-
-    for (unsigned int i = 0; i < faces.size(); i++){
-        if (stbtt_FindGlyphIndex(&faces[i]->info, (int)codepoint) != 0){
-            return i;
-        }
-    }
-
-    //uncovered, the primary font draws its .notdef box
-    return 0;
-}
-
-void STBText::shapeRun(const std::vector<uint32_t>& codepoints, size_t offset, size_t length, bool rtl, unsigned int face, uint32_t script, unsigned int line, std::vector<ShapedGlyph>& shaped){
-    if (length == 0 || face >= faces.size())
-        return;
-
-    float faceScale = faces[face]->scale;
-
-    hb_buffer_t* buffer = hb_buffer_create();
-
-    hb_buffer_add_utf32(buffer, codepoints.data(), (int)codepoints.size(), (unsigned int)offset, (int)length);
-    //direction and script are already resolved for this run, only language is guessed
-    hb_buffer_set_direction(buffer, rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
-    hb_buffer_set_script(buffer, (hb_script_t)script);
-    hb_buffer_guess_segment_properties(buffer);
-
-    hb_shape(faces[face]->font, buffer, NULL, 0);
-
-    unsigned int count = 0;
-    hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &count);
-    hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
-
-    for (unsigned int i = 0; i < count; i++){
-        ShapedGlyph glyph;
-
-        glyph.face = face;
-        glyph.rtl = rtl;
-        glyph.glyphIndex = infos[i].codepoint;
-        glyph.cluster = (size_t)infos[i].cluster;
-        glyph.xOffset = positions[i].x_offset * faceScale;
-        glyph.yOffset = positions[i].y_offset * faceScale;
-        glyph.xAdvance = positions[i].x_advance * faceScale;
-        glyph.line = line;
-
-        shaped.push_back(glyph);
-    }
-
-    hb_buffer_destroy(buffer);
-}
-
-void STBText::shapeRunItems(const std::vector<uint32_t>& codepoints, size_t offset, size_t length, bool rtl, unsigned int line, std::vector<ShapedGlyph>& shaped){
-    if (length == 0)
-        return;
-
-    //shaping must not cross a font or a script, a letter only joins inside its own
-    struct Item {
-        size_t offset;
-        size_t length;
-        unsigned int face;
-        hb_script_t script;
-    };
-
-    hb_unicode_funcs_t* unicode = hb_unicode_funcs_get_default();
-
-    std::vector<Item> items;
-    size_t start = offset;
-    unsigned int face = selectFace(codepoints[offset], 0);
-    hb_script_t script = HB_SCRIPT_COMMON;
-
-    for (size_t i = offset; i < offset + length; i++){
-        unsigned int nextFace = selectFace(codepoints[i], face);
-
-        hb_script_t nextScript = script;
-        hb_script_t charScript = hb_unicode_script(unicode, codepoints[i]);
-        //punctuation, spaces and combining marks take the script around them
-        if (charScript != HB_SCRIPT_COMMON && charScript != HB_SCRIPT_INHERITED && charScript != HB_SCRIPT_UNKNOWN){
-            nextScript = charScript;
-        }
-
-        if (nextFace == face && (nextScript == script || script == HB_SCRIPT_COMMON)){
-            //a run that started on neutrals adopts the first real script it meets
-            script = nextScript;
-            continue;
-        }
-
-        items.push_back({start, i - start, face, script});
-
-        start = i;
-        face = nextFace;
-        script = nextScript;
-    }
-    items.push_back({start, offset + length - start, face, script});
-
-    //glyphs are emitted left to right, so an RTL run lays its pieces out backwards
-    for (size_t i = 0; i < items.size(); i++){
-        const Item& item = rtl ? items[items.size() - 1 - i] : items[i];
-        shapeRun(codepoints, item.offset, item.length, rtl, item.face, (uint32_t)item.script, line, shaped);
-    }
+    addFace(FontRegistry::getBuiltInLatin(), fontSize);
+    addFace(FontRegistry::getBuiltInArabic(), fontSize);
 }
 
 void STBText::shapeRange(const std::vector<uint32_t>& codepoints, size_t offset, size_t length, unsigned int line, std::vector<ShapedGlyph>& shaped){
-    if (length == 0)
-        return;
-
-    SBCodepointSequence sequence;
-    sequence.stringEncoding = SBStringEncodingUTF32;
-    sequence.stringBuffer = (void*)codepoints.data();
-    sequence.stringLength = (SBUInteger)codepoints.size();
-
-    SBAlgorithmRef algorithm = SBAlgorithmCreate(&sequence);
-    if (!algorithm){
-        shapeRunItems(codepoints, offset, length, false, line, shaped);
-        return;
-    }
-
-    //base direction comes from the first strong character
-    SBParagraphRef paragraph = SBAlgorithmCreateParagraph(algorithm, (SBUInteger)offset, (SBUInteger)length, SBLevelDefaultLTR);
-    SBLineRef bidiLine = paragraph ? SBParagraphCreateLine(paragraph, (SBUInteger)offset, SBParagraphGetLength(paragraph)) : NULL;
-
-    if (bidiLine){
-        //runs come back in visual order, left to right
-        SBUInteger runCount = SBLineGetRunCount(bidiLine);
-        const SBRun* runs = SBLineGetRunsPtr(bidiLine);
-
-        for (SBUInteger i = 0; i < runCount; i++){
-            shapeRunItems(codepoints, (size_t)runs[i].offset, (size_t)runs[i].length, (runs[i].level & 1) != 0, line, shaped);
-        }
-
-        SBLineRelease(bidiLine);
-    }else{
-        shapeRunItems(codepoints, offset, length, false, line, shaped);
-    }
-
-    if (paragraph)
-        SBParagraphRelease(paragraph);
-    SBAlgorithmRelease(algorithm);
+    TextShaper::shapeRange(facePointers, faceScales, codepoints, offset, length, line, ShapeOptions(), shaped);
 }
 
 void STBText::measureAdvances(const std::vector<uint32_t>& codepoints, size_t offset, size_t length, std::vector<float>& advances){
@@ -368,61 +175,15 @@ unsigned int STBText::shapeLines(const std::vector<uint32_t>& codepoints, unsign
 }
 
 void STBText::resetAtlas(unsigned int width, unsigned int height){
-    if (!atlasPixels.empty()){
-        retiredAtlases.push_back(std::move(atlasPixels));
+    if (atlas){
+        retiredAtlases.push_back(std::move(atlas));
     }
 
+    atlas.reset(new GlyphAtlas(width, height, atlasPadding));
     atlasWidth = width;
     atlasHeight = height;
 
-    atlasPixels.assign((size_t)atlasWidth * (size_t)atlasHeight, 0);
-    shelves.clear();
-
     atlasVersion++;
-}
-
-bool STBText::packRect(int width, int height, int& outX, int& outY){
-    outX = 0;
-    outY = 0;
-
-    if (width <= 0 || height <= 0){
-        return true;
-    }
-
-    width += atlasPadding;
-    height += atlasPadding;
-
-    //shortest shelf that still fits, to not waste the taller ones
-    Shelf* best = NULL;
-    for (Shelf& shelf : shelves){
-        if (shelf.h >= height && (shelf.x + width) <= (int)atlasWidth){
-            if (!best || shelf.h < best->h)
-                best = &shelf;
-        }
-    }
-
-    if (best){
-        outX = best->x;
-        outY = best->y;
-        best->x += width;
-
-        return true;
-    }
-
-    int shelfY = 0;
-    if (!shelves.empty()){
-        shelfY = shelves.back().y + shelves.back().h;
-    }
-
-    if (width > (int)atlasWidth || (shelfY + height) > (int)atlasHeight){
-        return false;
-    }
-
-    shelves.push_back({width, shelfY, height});
-
-    outY = shelfY;
-
-    return true;
 }
 
 bool STBText::growAtlas(){
@@ -447,21 +208,19 @@ bool STBText::growAtlas(){
 }
 
 void STBText::rasterizeGlyph(unsigned int face, uint32_t glyphIndex, FontGlyph& glyph, int x, int y){
-    stbtt_fontinfo* info = &faces[face]->info;
-    float scale = faces[face]->scale;
+    float scale = faceScales[face];
 
     int x0, y0, x1, y1;
-    stbtt_GetGlyphBitmapBox(info, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
+    stbtt_GetGlyphBitmapBox(&faces[face]->getInfo(), glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
 
     int gw = x1 - x0;
     int gh = y1 - y0;
 
-    if (gw > 0 && gh > 0){
-        stbtt_MakeGlyphBitmap(info, &atlasPixels[(size_t)y * atlasWidth + x], gw, gh, atlasWidth, scale, scale, glyphIndex);
+    std::vector<unsigned char> bitmap;
+    int bw, bh, bx, by;
+    if (faces[face]->rasterizeGlyph(glyphIndex, scale, bitmap, bw, bh, bx, by)){
+        atlas->blit(bitmap.data(), bw, bh, x, y);
     }
-
-    int advance, leftSideBearing;
-    stbtt_GetGlyphHMetrics(info, glyphIndex, &advance, &leftSideBearing);
 
     glyph.xoff = x0;
     glyph.yoff = y0;
@@ -473,7 +232,7 @@ void STBText::rasterizeGlyph(unsigned int face, uint32_t glyphIndex, FontGlyph& 
     glyph.s1 = (float)(x + gw) / atlasWidth;
     glyph.t1 = (float)(y + gh) / atlasHeight;
 
-    glyph.xadvance = advance * scale;
+    glyph.xadvance = faces[face]->getGlyphAdvance(glyphIndex, scale);
 
     atlasVersion++;
 }
@@ -490,12 +249,12 @@ const STBText::FontGlyph* STBText::getGlyph(unsigned int face, uint32_t glyphInd
     }
 
     int x0, y0, x1, y1;
-    stbtt_GetGlyphBitmapBox(&faces[face]->info, glyphIndex, faces[face]->scale, faces[face]->scale, &x0, &y0, &x1, &y1);
+    stbtt_GetGlyphBitmapBox(&faces[face]->getInfo(), glyphIndex, faceScales[face], faceScales[face], &x0, &y0, &x1, &y1);
 
     int x, y;
-    if (!packRect(x1 - x0, y1 - y0, x, y)){
+    if (!atlas->pack(x1 - x0, y1 - y0, x, y)){
         //growAtlas() repacks the cached glyphs, this one is still missing
-        if (!growAtlas() || !packRect(x1 - x0, y1 - y0, x, y)){
+        if (!growAtlas() || !atlas->pack(x1 - x0, y1 - y0, x, y)){
             Log::error("Failed to pack glyph in font atlas");
             return NULL;
         }
@@ -513,9 +272,9 @@ const STBText::FontGlyph* STBText::getGlyphForCodepoint(uint32_t codepoint){
 
     auto it = codepointMap.find(codepoint);
     if (it == codepointMap.end()){
-        unsigned int face = selectFace(codepoint, 0);
+        unsigned int face = TextShaper::selectFace(facePointers, codepoint, 0);
         //not covered by any face resolves to glyph 0, the primary .notdef box
-        uint32_t glyphIndex = (uint32_t)stbtt_FindGlyphIndex(&faces[face]->info, (int)codepoint);
+        uint32_t glyphIndex = faces[face]->getGlyphIndex(codepoint);
 
         it = codepointMap.emplace(codepoint, glyphKey(face, glyphIndex)).first;
     }
@@ -527,7 +286,7 @@ void STBText::refreshTextureData(){
     unsigned int textureSize = atlasWidth * atlasHeight * sizeof(unsigned char);
 
     delete textureData;
-    textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlasPixels.data());
+    textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlas->getPixels().data());
 }
 
 float STBText::getAscent(){
@@ -562,9 +321,13 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
 
     fontLoaded = false;
     faces.clear();
+    facePointers.clear();
+    faceScales.clear();
 
     if (!fontpath.empty() && !addFace(fontpath, fontSize)){
         faces.clear();
+        facePointers.clear();
+        faceScales.clear();
         return NULL;
     }
 
@@ -582,10 +345,11 @@ TextureData* STBText::load(const std::string& fontpath, const std::vector<std::s
     }
 
     //line metrics come from the primary font, fallbacks follow its baseline
-    int ascent, descent, lineGap;
-    stbtt_GetFontVMetrics(&faces[0]->info, &ascent, &descent, &lineGap);
+    int ascent = faces[0]->getAscender();
+    int descent = faces[0]->getDescender();
+    int lineGap = faces[0]->getLineGap();
 
-    float scale = faces[0]->scale;
+    float scale = faceScales[0];
 
     this->ascent = ascent * scale;
     this->descent = descent * scale;

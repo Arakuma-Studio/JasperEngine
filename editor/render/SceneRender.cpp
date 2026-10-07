@@ -545,6 +545,9 @@ void editor::SceneRender::activate(){
     }
 
     for (Scene* childScene : childSceneLayers) {
+        // inline child scenes show their gizmos and icons in the Scene view (a Game view
+        // pass turned them off)
+        childScene->getSystem<RenderSystem>()->setDrawEditorOverlays(true);
         Engine::addSceneLayer(childScene);
     }
 
@@ -736,6 +739,7 @@ void editor::SceneRender::updateRenderSystem(){
     // Meshes and UIs are created in update, without this can affect worldAABB
     scene->getSystem<MeshSystem>()->update(0);
     scene->getSystem<UISystem>()->update(0);
+    scene->getSystem<UIDocumentSystem>()->update(0);
     // to avoid gizmos delays
     scene->getSystem<RenderSystem>()->update(0);
 }
@@ -2209,6 +2213,9 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
     engineLayersActive = false;
     engineLayerTools = -1;
     for (Scene* childScene : childSceneLayers) {
+        // the game's layers draw as the game draws them: without the editor overlays living
+        // in them (a frame drawing them is a Scene view frame: it also skips HTML UI documents)
+        childScene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
         Engine::addSceneLayer(childScene);
     }
 }

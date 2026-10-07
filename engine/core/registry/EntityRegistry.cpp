@@ -64,6 +64,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<InstancedMeshComponent>();
     registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
+    registerComponent<UIDocumentComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

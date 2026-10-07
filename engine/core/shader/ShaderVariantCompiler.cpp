@@ -351,6 +351,10 @@ void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const
     if (prop & (1 << 3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
 }
 
+void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+}
+
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
     if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
@@ -416,6 +420,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     }else if (shaderType == ShaderType::POSTPROCESS){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "postprocess.frag";
+    }else if (shaderType == ShaderType::HTMLUI){
+        args.vert_file = "htmlui.vert";
+        args.frag_file = "htmlui.frag";
+        addHtmlUIPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }

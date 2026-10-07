@@ -1,0 +1,13 @@
+set,lib,files,heap_after_parse_median_kib,heap_after_parse_max_kib,heap_after_render_median_kib,heap_after_render_max_kib,peak_rss_mib,peak_rss_growth_mib
+icons,luna,1866,1.3,10,1.7,10,6.0,2.5
+icons,thorvg,1866,0.8,7,94.1,296,6.4,2.6
+icons,nanosvg,1866,1.4,9,1.4,17,5.9,2.4
+multicolor,luna,300,44.5,398,44.9,404,7.2,3.7
+multicolor,thorvg,300,30.9,271,482.5,3989,11.5,7.7
+multicolor,nanosvg,300,9.4,321,9.5,321,6.5,3.1
+illustrations,luna,81,21.4,3151,23.0,3169,27.9,24.4
+illustrations,thorvg,81,16.8,8129,532.0,80333,39.2,35.4
+illustrations,nanosvg,81,5.1,1637,5.1,2535,13.7,10.2
+huge,luna,7,1164.6,4125,1181.0,4242,12.5,9.0
+huge,thorvg,7,883.9,3252,7094.2,80347,42.8,39.0
+huge,nanosvg,7,329.5,2105,329.5,2105,12.3,8.8

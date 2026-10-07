@@ -466,6 +466,12 @@ namespace {
         makeFastProperty<ReflectionProbeComponent, Texture, &ReflectionProbeComponent::texture>("texture", PropertyType::Texture, UpdateFlags_Reflection_Probe_Capture),
     };
 
+    // enabled is the shared component checkbox (findEnabledGetter)
+    static const FastPropertyDescriptor kUIDocumentProperties[] = {
+        makeFastProperty<UIDocumentComponent, std::string, &UIDocumentComponent::filename>("filename", PropertyType::String, UpdateFlags_UIDocument_Reload),
+        makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::sortOrder>("sortOrder", PropertyType::Int, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kCameraProperties[] = {
         makeFastProperty<CameraComponent, CameraType, &CameraComponent::type>("type", PropertyType::Enum, UpdateFlags_Camera),
         // read by RenderSystem when the camera draws
@@ -1432,6 +1438,10 @@ namespace {
 
     PropertyData resolveReflectionProbePropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<ReflectionProbeComponent*>(comp), propertyName, kReflectionProbeProperties);
+    }
+
+    PropertyData resolveUIDocumentPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<UIDocumentComponent*>(comp), propertyName, kUIDocumentProperties);
     }
 
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
@@ -2410,6 +2420,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kReflectionProbeProperties);
     }
 
+    void enumerateUIDocumentProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kUIDocumentProperties);
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3086,6 +3100,7 @@ namespace {
         {ComponentType::FogComponent, &findComponentPtr<FogComponent>, &resolveFogPropertyFast, &enumerateFogProperties},
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
+        {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -3149,6 +3164,7 @@ namespace {
             case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
+            case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
             default: return nullptr;
         }
     }
@@ -3282,6 +3298,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "MirrorComponent";
     }else if(component == ComponentType::ReflectionProbeComponent){
         name = "ReflectionProbeComponent";
+    }else if(component == ComponentType::UIDocumentComponent){
+        name = "UIDocumentComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3421,6 +3439,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::Light2DComponent: return "Light 2D";
         case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
+        case ComponentType::UIDocumentComponent: return "UI Document";
     }
     return getComponentName(component);
 }
@@ -3479,6 +3498,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::Light2DComponent: return ICON_FA_LIGHTBULB;
         case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
+        case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3526,6 +3546,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<MirrorComponent>();
         case ComponentType::ReflectionProbeComponent:
             return registry->getComponentId<ReflectionProbeComponent>();
+        case ComponentType::UIDocumentComponent:
+            return registry->getComponentId<UIDocumentComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -3630,6 +3652,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::MirrorComponent;
     }else if(normalizedName == "reflectionprobe"){
         return ComponentType::ReflectionProbeComponent;
+    }else if(normalizedName == "uidocument"){
+        return ComponentType::UIDocumentComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -3784,6 +3808,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<ReflectionProbeComponent>(entity)){
         ret.push_back(ComponentType::ReflectionProbeComponent);
+    }
+    if (registry->findComponent<UIDocumentComponent>(entity)){
+        ret.push_back(ComponentType::UIDocumentComponent);
     }
     if (registry->findComponent<Light2DComponent>(entity)){
         ret.push_back(ComponentType::Light2DComponent);
@@ -4399,6 +4426,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             audio->needUpdate = true;
         }
     }
+    if (updateFlags & UpdateFlags_UIDocument_Reload){
+        if (UIDocumentComponent* document = registry->findComponent<UIDocumentComponent>(entity)){
+            document->needReload = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -4543,6 +4575,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::ReflectionProbeComponent: {
             YAML::Node encoded = Stream::encodeReflectionProbeComponent(sourceRegistry->getComponent<ReflectionProbeComponent>(sourceEntity));
             targetRegistry->getComponent<ReflectionProbeComponent>(targetEntity) = Stream::decodeReflectionProbeComponent(encoded);
+            break;
+        }
+
+        case ComponentType::UIDocumentComponent: {
+            // decoded over the target's own: its loaded document stays unless the file changes
+            YAML::Node encoded = Stream::encodeUIDocumentComponent(sourceRegistry->getComponent<UIDocumentComponent>(sourceEntity));
+            UIDocumentComponent& target = targetRegistry->getComponent<UIDocumentComponent>(targetEntity);
+            target = Stream::decodeUIDocumentComponent(encoded, &target);
             break;
         }
 

@@ -69,15 +69,21 @@ namespace jasperengine{
 
         size_t bindSlotIndex;
 
+        // color blending of the color pipelines when set (setBlendState)
+        bool blendOverride;
+        BlendState blendState;
+
         std::map< BufferInfo, size_t > bufferToBindSlot;
 
 
         sg_vertex_format getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized);
         sg_primitive_type getPrimitiveType(PrimitiveType primitiveType);
-        sg_cull_mode getCullMode(CullingMode cullingMode);
-        sg_face_winding getFaceWinding(WindingOrder windingOrder);
+        static sg_cull_mode getCullMode(CullingMode cullingMode);
+        static sg_face_winding getFaceWinding(WindingOrder windingOrder);
+        static sg_blend_factor getBlendFactor(BlendFactor factor);
+        static sg_blend_op getBlendOp(BlendOperation operation);
         // the description endLoad creates the pipeline of one type from
-        sg_pipeline_desc makePipelineDesc(PipelineType pipType);
+        sg_pipeline_desc makePipelineDesc(PipelineType pipType) const;
         sg_pipeline& pipelineOf(PipelineType pipType);
         void resetPipelines();
 
@@ -99,6 +105,7 @@ namespace jasperengine{
         void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
+        void setBlendState(const BlendState& state);
         // prepassFaceCulling applies to the PIP_ZPREPASS pipelines, which must cull like the color pass
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
@@ -109,6 +116,10 @@ namespace jasperengine{
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
+
+        // test/debug use: the sg_pipeline_desc endLoad creates (or created) the pipeline
+        // of that type from, with the current load description
+        sg_pipeline_desc describePipeline(PipelineType pipType) const;
 
     };
 }

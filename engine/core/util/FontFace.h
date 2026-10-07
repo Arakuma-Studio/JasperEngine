@@ -1,0 +1,101 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#ifndef FONTFACE_H
+#define FONTFACE_H
+
+#include "Export.h"
+#include "stb_truetype.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+//HarfBuzz objects, kept opaque so its headers stay out of the engine API
+struct hb_blob_t;
+struct hb_face_t;
+struct hb_font_t;
+
+namespace jasperengine {
+
+    // One font file (or collection member), shared by every size and user: STBText chains
+    // and the HTML UI font engine hold it by shared_ptr. Immutable after loading, except for
+    // HarfBuzz's lazily loaded tables (HarfBuzz is built without thread safety, HB_NO_MT:
+    // shape a face from one thread at a time, which is the main thread for both users).
+    class JASPERENGINE_API FontFace {
+    public:
+        // Read through the engine's file system (Data::open: project-relative, asset://,
+        // data://, resource packs). On failure returns nullptr and, when `error` is given,
+        // writes why ("Font file not found: <path>", "Failed to initialize font: <path>");
+        // nothing is logged here, callers log with their own prefix.
+        static std::shared_ptr<FontFace> loadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr);
+        // copy = false keeps a pointer to `data`, which must outlive the face (built-in fonts)
+        static std::shared_ptr<FontFace> loadMemory(const unsigned char* data, size_t length, int faceIndex,
+                                                    bool copy, const std::string& label, std::string* error = nullptr);
+        ~FontFace();
+
+        FontFace(const FontFace&) = delete;
+        FontFace& operator=(const FontFace&) = delete;
+
+        const std::string& getLabel() const;        // path or label
+        const std::string& getFamilyName() const;   // name table ID 16, else 1 (UTF-16BE -> UTF-8)
+        int getWeight() const;                      // OS/2 usWeightClass, 400 when absent
+        bool isItalic() const;                      // OS/2 fsSelection bit 0 (or 9, oblique), else head.macStyle bit 1
+        int getFaceIndex() const;
+
+        int getUnitsPerEm() const;
+        int getAscender() const; int getDescender() const; int getLineGap() const;   // hhea, font units (descender negative)
+        int getXHeight() const;            // OS/2 sxHeight (version >= 2), else bbox of 'x', else 0.5 * ascender
+        int getUnderlinePosition() const;  // post, negative below baseline; 0 if no post table
+        int getUnderlineThickness() const; // post; 0 if no post table
+        bool hasPostTable() const;
+
+        uint32_t getGlyphIndex(uint32_t codepoint) const;   // 0 = not covered
+        bool hasCodepoint(uint32_t codepoint) const;
+        float scaleForPixelHeight(float pixels) const;      // stbtt_ScaleForPixelHeight (STBText semantics)
+        float scaleForEmSize(float pixels) const;           // stbtt_ScaleForMappingEmToPixels (CSS font-size)
+        // Coverage bitmap (R8, rows of `width` bytes) of one glyph at a scale; offsets of its
+        // top-left corner relative to the pen on the baseline, y down. False for a glyph
+        // without ink (a space): pixels empty, size 0, offsets still set.
+        bool rasterizeGlyph(uint32_t glyphIndex, float scale, std::vector<unsigned char>& pixels,
+                            int& width, int& height, int& xoff, int& yoff) const;
+        float getGlyphAdvance(uint32_t glyphIndex, float scale) const;
+
+        const stbtt_fontinfo& getInfo() const;
+        hb_font_t* getHbFont() const;   // scale (upem, upem): positions in font units
+
+    private:
+        FontFace() = default;
+
+        bool init(int faceIndex, std::string* error);
+        void readTables();
+
+        std::vector<unsigned char> storage;     // owned bytes (files, copies)
+        const unsigned char* bytes = nullptr;   // storage.data() or the caller's memory
+        size_t length = 0;
+
+        stbtt_fontinfo info = {};
+        hb_blob_t* blob = nullptr;
+        hb_face_t* face = nullptr;
+        hb_font_t* font = nullptr;
+
+        std::string label;
+        std::string familyName;
+        int faceIndex = 0;
+        int weight = 400;
+        bool italic = false;
+        int unitsPerEm = 0;
+        int ascender = 0;
+        int descender = 0;
+        int lineGap = 0;
+        int xHeight = 0;
+        int underlinePosition = 0;
+        int underlineThickness = 0;
+        bool postTable = false;
+    };
+
+}
+
+#endif //FONTFACE_H

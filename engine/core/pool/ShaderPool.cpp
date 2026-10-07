@@ -111,6 +111,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::POSTPROCESS;
         return true;
     }
+    if (typeToken == "htmlui") {
+        shaderType = ShaderType::HTMLUI;
+        return true;
+    }
 
     return false;
 }
@@ -403,6 +407,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::SHADOW2D: return lowerCase ? "shadow2d" : "Shadow 2D";
         case ShaderType::BLIT:   return lowerCase ? "blit"   : "Blit";
         case ShaderType::POSTPROCESS: return lowerCase ? "postprocess" : "Post-process";
+        case ShaderType::HTMLUI: return lowerCase ? "htmlui" : "HTML UI";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -423,6 +428,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
         case ShaderType::BLIT:   return 0;
+        case ShaderType::HTMLUI: return 1;
         default:                 return 0;
     }
 }
@@ -490,6 +496,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Ftx" : "Font Texture";
             case 2: return shortName ? "Vc3" : "Vertex Color 3";
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
+        }
+    } else if (shaderType == ShaderType::HTMLUI) {
+        switch (bit) {
+            case 0: return shortName ? "Tex" : "Texture";
         }
     } else if (shaderType == ShaderType::POINTS) {
         switch (bit) {
@@ -1004,6 +1014,14 @@ uint32_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool v
     prop |= fontAtlasTexture ? (1 <<  1) : 0;
     prop |= vertexColorVec3  ? (1 <<  2) : 0;
     prop |= vertexColorVec4  ? (1 <<  3) : 0;
+
+    return prop;
+}
+
+uint32_t ShaderPool::getHtmlUIProperties(bool texture){
+    uint32_t prop = 0;
+
+    prop |= texture          ? (1 <<  0) : 0;
 
     return prop;
 }

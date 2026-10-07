@@ -20,8 +20,17 @@ void SystemRender::executeQueue(){
     SokolSystem::executeQueue();
 }
 
+namespace {
+    uint64_t committedFrames = 0;
+}
+
 void SystemRender::commit(){
     SokolSystem::commit();
+    committedFrames++;
+}
+
+uint64_t SystemRender::getFrameCount(){
+    return committedFrames;
 }
 
 void SystemRender::shutdown(){
