@@ -172,6 +172,10 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         }
     }
 
+    // a press on a text field (re)opens the virtual keyboard at the next update
+    if (consumed && hasFocusedTextInput())
+        getContext()->getTextInputHandler().requestKeyboard();
+
     // p1-rtt: texture-mode documents get the event here when the screen documents did not take it
     return consumed;
 }
@@ -375,6 +379,9 @@ CursorType UIDocumentSystem::getPointerCursor() const{
 }
 
 void UIDocumentSystem::updateInput(){
+    if (getContext())
+        getContext()->getTextInputHandler().flushKeyboard();
+
     if (!inputState)
         return;
     HtmlUIInputState& state = *inputState;

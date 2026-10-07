@@ -52,6 +52,14 @@ namespace jasperengine {
         bool confirmComposition(const std::string& utf8);
         void cancelComposition();
 
+        // The virtual keyboard opens after the focus change: RmlUi activates the field from
+        // inside its focus event, before Context::GetFocusElement returns it (and the
+        // component UI of other scenes may hide the keyboard later in the same press).
+        // requestKeyboard asks again for the active field (a press on a focused field reopens
+        // a keyboard the user dismissed); UIDocumentSystem::update flushes.
+        void requestKeyboard();
+        void flushKeyboard();
+
         // RmlSystem::ActivateKeyboard: the caret of the active field, context pixels
         void setCaret(Rml::Vector2f position, float lineHeight);
 
@@ -68,6 +76,7 @@ namespace jasperengine {
         Rml::TextInputContext* inputContext = nullptr;
         std::function<Rect(const Rect&)> canvasMapper;
 
+        bool keyboardPending = false;
         bool composing = false;
         int cursorPosition = -1;
         // code points of the field's value the composition occupies

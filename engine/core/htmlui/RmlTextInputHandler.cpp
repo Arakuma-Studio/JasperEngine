@@ -56,8 +56,22 @@ void RmlTextInputHandler::OnActivate(Rml::TextInputContext* inputContext){
 
     this->inputContext = inputContext;
     activeHandler = this;
+    keyboardPending = true;
+}
 
-    // the focused element is the field being activated
+void RmlTextInputHandler::requestKeyboard(){
+    if (inputContext)
+        keyboardPending = true;
+}
+
+void RmlTextInputHandler::flushKeyboard(){
+    if (!keyboardPending)
+        return;
+    keyboardPending = false;
+    if (!inputContext || activeHandler != this)
+        return;
+
+    // the focused element is the active field now
     std::string value;
     if (context){
         if (Rml::Element* focus = context->GetFocusElement())
@@ -74,6 +88,7 @@ void RmlTextInputHandler::OnDeactivate(Rml::TextInputContext* inputContext){
     if (composing)
         cancelComposition();
 
+    keyboardPending = false;
     this->inputContext = nullptr;
     if (activeHandler == this){
         activeHandler = nullptr;
@@ -86,6 +101,7 @@ void RmlTextInputHandler::OnDestroy(Rml::TextInputContext* inputContext){
         return;
 
     // the field is going away: nothing to restore in it
+    keyboardPending = false;
     composing = false;
     cursorPosition = -1;
     compositionStart = 0;

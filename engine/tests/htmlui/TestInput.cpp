@@ -147,6 +147,7 @@ namespace {
 TEST(InputKeyMap, CoversEveryKey){
     for (int key : allKeys){
         const bool unmapped = key == D_KEY_WORLD_1 || key == D_KEY_WORLD_2 || key == D_KEY_F25;
+        const bool unidentified = key == D_KEY_WORLD_1 || key == D_KEY_WORLD_2;   // layout-dependent
         const Rml::Input::KeyIdentifier rmlKey = RmlKeyMap::toRmlKey(key);
         if (unmapped){
             EXPECT_EQ(rmlKey, Rml::Input::KI_UNKNOWN) << key;
@@ -155,7 +156,7 @@ TEST(InputKeyMap, CoversEveryKey){
             EXPECT_EQ(RmlKeyMap::fromRmlKey(rmlKey), key) << key;
         }
         EXPECT_FALSE(RmlKeyMap::domCode(key).empty()) << key;
-        EXPECT_NE(RmlKeyMap::domKey(key, 0), "Unidentified") << key;
+        EXPECT_EQ(RmlKeyMap::domKey(key, 0) == "Unidentified", unidentified) << key;
     }
     EXPECT_EQ(RmlKeyMap::toRmlKey(D_KEY_UNKNOWN), Rml::Input::KI_UNKNOWN);
     EXPECT_EQ(RmlKeyMap::toRmlKey(12345), Rml::Input::KI_UNKNOWN);
@@ -563,12 +564,18 @@ TEST_F(InputTest, FocusOpensTheVirtualKeyboardAndPlacesTheCaret){
     const int hides = system.virtualKeyboardHides;
     element("name")->SetAttribute("value", "hi");
 
+    // the keyboard opens at the update after the focus change, with the field's value
     click(nameX, nameY);
+    updateDocuments(scene());
     EXPECT_EQ(system.virtualKeyboardShows, shows + 1);
     EXPECT_EQ(system.virtualKeyboardText, L"hi");
 
-    // the caret area, screen pixels (here the screen is the canvas)
+    // a press on the focused field asks again (a keyboard the user closed reopens)
+    click(nameX + 20, nameY);
     updateDocuments(scene());
+    EXPECT_EQ(system.virtualKeyboardShows, shows + 2);
+
+    // the caret area, screen pixels (here the screen is the canvas)
     EXPECT_GT(system.textInputAreaCalls, 0);
     EXPECT_GE(system.textInputArea[0], 40.0f);
     EXPECT_LE(system.textInputArea[0], 240.0f);
@@ -576,8 +583,11 @@ TEST_F(InputTest, FocusOpensTheVirtualKeyboardAndPlacesTheCaret){
     EXPECT_LE(system.textInputArea[1], 150.0f);
     EXPECT_GT(system.textInputArea[3], 0.0f);
 
+    // leaving the field hides it (the component UI hides it too on a press outside its fields)
     click(bodyX, bodyY);
-    EXPECT_EQ(system.virtualKeyboardHides, hides + 1);
+    EXPECT_GE(system.virtualKeyboardHides, hides + 1);
+    updateDocuments(scene());
+    EXPECT_EQ(system.virtualKeyboardShows, shows + 2);
 }
 
 // ---- clipboard ----
