@@ -36,8 +36,7 @@ namespace jasperengine::editor::mcp {
         // One ref or an array of refs (duplicates dropped, order kept). Empty array → error.
         static bool resolveEntities(SceneProject* scene, const Json& refs, std::vector<Entity>& out, std::string& error);
         // `entities` (array) or else `entity` (one ref) of a tool's arguments
-        static bool resolveEntityArgs(SceneProject* scene, const Json& args, std::vector<Entity>& out, std::string& error,
-                                      const char* manyKey = "entities", const char* oneKey = "entity");
+        static bool resolveEntityArgs(SceneProject* scene, const Json& args, std::vector<Entity>& out, std::string& error);
 
         // The path resolveEntity accepts for this GameObject
         static std::string entityPath(SceneProject* scene, Entity entity);
@@ -45,8 +44,6 @@ namespace jasperengine::editor::mcp {
         static std::unordered_map<Entity, std::string> entityPaths(SceneProject* scene);
         // {id, name, path}
         static Json entityJson(SceneProject* scene, Entity entity);
-        // {id, name, path} with a path from a prebuilt entityPaths() map
-        static Json entityJson(SceneProject* scene, Entity entity, const std::unordered_map<Entity, std::string>& paths);
         // {id, name, path (project-relative .scene, "" if never saved), type, opened, modified, play_state}
         static Json sceneJson(Project* project, const SceneProject& scene);
         static std::string sceneTypeName(SceneType type);
@@ -59,7 +56,6 @@ namespace jasperengine::editor::mcp {
         // Play mode: the scene the running game uses for `scene` (its Play copy for a child
         // scene that runs as a copy), else `scene` itself. Tools reading runtime state use it.
         static SceneProject* runtimeScene(Project* project, SceneProject* scene);
-        static uint32_t runtimeSceneId(Project* project, uint32_t sceneId);
 
         // Component type by Catalog name (transform, mesh, rigidbody2d, ...; a "Component"
         // suffix and any case are accepted). Unknown → error listing the valid names.

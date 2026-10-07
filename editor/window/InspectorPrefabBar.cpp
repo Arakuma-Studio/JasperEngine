@@ -54,10 +54,6 @@ namespace {
         return names;
     }
 
-    std::string prefabName(const std::filesystem::path& path) {
-        return path.stem().string();
-    }
-
     bool isNestedName(const std::string& name, const std::string& parent) {
         return name.size() > parent.size() && name.compare(0, parent.size(), parent) == 0 &&
             (name[parent.size()] == '.' || name[parent.size()] == '[');
@@ -68,7 +64,7 @@ namespace {
     // Prefab Variant" when it is a variant itself; the outer ones "Apply as Override in
     // Prefab (Variant)" (PREFABS.md 19)
     std::string applyTargetLabel(editor::Project* project, const std::vector<std::filesystem::path>& targets, size_t t, uint32_t sceneId) {
-        const std::string name = "'" + prefabName(targets[t]) + "'";
+        const std::string name = "'" + targets[t].stem().string() + "'";
         const bool variant = !project->getPrefabFileBase(targets[t]).empty();
         if (t > 0) {
             return (variant ? "Apply as Override in Prefab Variant " : "Apply as Override in Prefab ") + name;
@@ -882,6 +878,6 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
     if (!canApply && !reason.empty()) {
         ImGui::SetItemTooltip("%s", reason.c_str());
     } else {
-        ImGui::SetItemTooltip("Apply every override to Prefab '%s' (values referencing GameObjects outside it stay overrides)", prefabName(rootPath).c_str());
+        ImGui::SetItemTooltip("Apply every override to Prefab '%s' (values referencing GameObjects outside it stay overrides)", rootPath.stem().string().c_str());
     }
 }

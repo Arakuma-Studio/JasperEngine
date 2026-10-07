@@ -165,7 +165,6 @@ namespace jasperengine::editor{
         static ComponentId getComponentId(const EntityRegistry* registry, ComponentType compType);
         static ComponentType getComponentType(const std::string& componentName);
         static Signature componentTypeToSignature(const EntityRegistry* registry, ComponentType compType);
-        static Signature componentMaskToSignature(const EntityRegistry* registry, uint64_t mask);
 
         static PropertyType scriptPropertyTypeToPropertyType(ScriptPropertyType scriptType);
 

@@ -1376,15 +1376,6 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
     }
 }
 
-std::vector<fs::path> editor::CodeEditor::getOpenPaths() const{
-    std::vector<fs::path> openPaths;
-    for (const auto& [key, instance] : editors) {
-        openPaths.push_back(instance.filepath);
-    }
-
-    return openPaths;
-}
-
 bool editor::CodeEditor::isFocused() const {
     return windowFocused;
 }

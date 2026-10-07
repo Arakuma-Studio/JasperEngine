@@ -43,8 +43,7 @@ AABB::AABB(float mx, float my, float mz, float Mx, float My, float Mz )
 }
 
 AABB::~AABB() {
-    if (mCorners)
-        delete[] mCorners;
+    delete[] mCorners;
 }
 
 AABB& AABB::operator= (const AABB& rhs) {

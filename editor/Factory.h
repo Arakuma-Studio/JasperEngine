@@ -134,8 +134,6 @@ namespace jasperengine::editor{
         static std::string guardPhysicsCode(const std::string& code, const char* backendMacro);
 
     public:
-        Factory();
-
         // Registry members in build_prefab_* order (the prefab's root GameObject left out: it is
         // the root build_prefab_* is given). A nested root's children are GameObjects the prefab
         // adds to that nested instance: members like any other.

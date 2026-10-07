@@ -1,37 +1,18 @@
 """Core protocol tests (docs/mcp/DESIGN.md: transports, registry, calls, batch, legacy tools).
 
-Tests that need tools not built yet skip themselves (ed.require_tools / ed.first_tool), so this
-file passes cleanly while the server grows.
+Tests requiring tools absent from the fake server skip through ed.require_tools.
 """
 
 import re
 import uuid
 
-from harness import Editor, ProtocolError, RawEditor, ToolError, entity_id_of, find_entities, find_key
+from harness import Editor, ProtocolError, RawEditor, find_key
 
 PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
-# The tool that lists a scene's GameObjects
-LIST_TOOLS = ("find_entities",)
-UNDO_TOOLS = ("undo",)
-REDO_TOOLS = ("redo",)
-
-
-async def scene_entities(ed: Editor) -> list[dict]:
-    return find_entities(await ed.call(ed.first_tool(*LIST_TOOLS), limit=100000))
-
-
-async def has_entity(ed: Editor, entity_id) -> bool:
-    return any(entity_id_of(e) == entity_id for e in await scene_entities(ed))
-
-
-async def create_box(ed: Editor, name: str):
-    """create_entity; returns the new GameObject id."""
-    ed.require_tools("create_entity")
-    made = await ed.call("create_entity", name=name, type="box", position=[1, 2, 3])
-    eid = find_key(made, "entity_id", "id")
-    ed.check(eid is not None, f"create_entity returned no id: {made!r}")
-    return eid
+async def scene_entity_ids(ed: Editor) -> set[int]:
+    result = await ed.call("find_entities", limit=100000)
+    return {entity["id"] for entity in result["entities"]}
 
 
 # -- lifecycle --------------------------------------------------------------
@@ -123,37 +104,34 @@ async def test_bad_argument_is_tool_error(ed: Editor):
 
 
 async def test_create_entity_undo_redo(ed: Editor):
-    ed.require_tools("create_entity")
-    undo = ed.first_tool(*UNDO_TOOLS)
-    ed.first_tool(*LIST_TOOLS)
+    ed.require_tools("create_entity", "find_entities", "undo", "redo")
     name = "McpBox_" + uuid.uuid4().hex[:6]
-    eid = await create_box(ed, name)
-    ed.check(await has_entity(ed, eid), f"created GameObject {eid} ({name}) is not listed")
+    made = await ed.call("create_entity", name=name, type="box", position=[1, 2, 3])
+    eid = made["entity_id"]
+    ed.check(eid in await scene_entity_ids(ed), f"created GameObject {eid} ({name}) is not listed")
 
-    await ed.call(undo)
-    ed.check(not await has_entity(ed, eid), f"GameObject {eid} still exists after {undo}")
+    await ed.call("undo")
+    ed.check(eid not in await scene_entity_ids(ed), f"GameObject {eid} still exists after undo")
 
-    if any(ed.has_tool(t) for t in REDO_TOOLS):
-        await ed.call(ed.first_tool(*REDO_TOOLS))
-        ed.check(await has_entity(ed, eid), f"GameObject {eid} is missing after redo")
-        await ed.call(undo)
+    await ed.call("redo")
+    ed.check(eid in await scene_entity_ids(ed), f"GameObject {eid} is missing after redo")
+    await ed.call("undo")
 
 
 async def test_batch(ed: Editor):
-    ed.require_tools("batch", "create_entity")
-    ed.first_tool(*LIST_TOOLS)
+    ed.require_tools("batch", "create_entity", "find_entities", "undo")
     names = ["McpBatchA_" + uuid.uuid4().hex[:6], "McpBatchB_" + uuid.uuid4().hex[:6]]
     out = await ed.batch([("create_entity", {"name": n, "type": "box"}) for n in names], undo_group=True)
-    results = out.get("results") if isinstance(out, dict) else out
+    results = out["results"]
     ed.check(isinstance(results, list) and len(results) == 2, f"batch should return 2 results: {out!r}")
     ids = [find_key(r, "entity_id", "id") for r in results]
     ed.check(all(i is not None for i in ids), f"batch results lack ids: {out!r}")
-    listed = {entity_id_of(e) for e in await scene_entities(ed)}
+    listed = await scene_entity_ids(ed)
     ed.check(all(i in listed for i in ids), f"batch-created {ids} not all listed")
 
     # undo_group: both creations are one undo step
-    await ed.call(ed.first_tool(*UNDO_TOOLS))
-    listed = {entity_id_of(e) for e in await scene_entities(ed)}
+    await ed.call("undo")
+    listed = await scene_entity_ids(ed)
     ed.check(not any(i in listed for i in ids), f"one undo should remove the whole batch; still listed: "
                                                 f"{[i for i in ids if i in listed]}")
 
@@ -164,7 +142,7 @@ async def test_batch_stop_on_error(ed: Editor):
         {"tool": "no_such_tool_xyz", "arguments": {}},
         {"tool": "create_entity", "arguments": {"name": "NeverMade", "type": "box"}},
     ], stop_on_error=True)
-    results = out.get("results") if isinstance(out, dict) else out
+    results = out["results"]
     ed.check(isinstance(results, list) and len(results) == 1,
              f"stop_on_error should stop after the failing call: {out!r}")
 

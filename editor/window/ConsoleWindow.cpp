@@ -246,30 +246,6 @@ void ConsoleWindow::addLog(LogType type, const std::string& message) {
     }
 }
 
-std::string ConsoleWindow::getRecentLogText(size_t maxEntries, bool onlyProblems) const {
-    if (maxEntries == 0) return {};
-
-    // Walk from the newest entry backwards, collecting up to maxEntries.
-    std::vector<const LogData*> selected;
-    for (auto it = logs.rbegin(); it != logs.rend() && selected.size() < maxEntries; ++it) {
-        if (onlyProblems && it->type != LogType::Error && it->type != LogType::Warning && it->type != LogType::Build) {
-            continue;
-        }
-        selected.push_back(&(*it));
-    }
-
-    // Emit oldest-first so the text reads in chronological order.
-    std::string out;
-    for (auto it = selected.rbegin(); it != selected.rend(); ++it) {
-        out += "[";
-        out += logTypeName((*it)->type);
-        out += "] ";
-        out += (*it)->message;
-        out.push_back('\n');
-    }
-    return out;
-}
-
 bool ConsoleWindow::getLatestLog(LogType& type, std::string& message) const {
     if (logs.empty()) {
         return false;

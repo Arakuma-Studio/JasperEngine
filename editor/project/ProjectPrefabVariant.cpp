@@ -329,8 +329,7 @@ bool editor::Project::canCreatePrefabVariant(uint32_t sceneId, Entity root, std:
     if (isMissingPrefab(sceneId, root)) {
         return fail("The Prefab of this instance is missing");
     }
-    std::filesystem::path path;
-    if (!const_cast<Project*>(this)->findInstanceRootedAt(const_cast<SceneProject*>(sceneProject), root, &path)) {
+    if (!const_cast<Project*>(this)->findInstanceRootedAt(const_cast<SceneProject*>(sceneProject), root)) {
         return fail("Not the root of a Prefab instance");
     }
     // a nested instance belongs to its prefab (as in Unity, which makes variants of instance

@@ -14,6 +14,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -33,13 +34,15 @@ def ok(cond, msg):
     print(f"ok  {msg}")
 
 
-def xvfb_pids() -> set[str]:
-    r = subprocess.run(["pgrep", "-x", "Xvfb"], capture_output=True, text=True)
-    return set(r.stdout.split())
+def xvfb_pid(ed: Editor, status: dict) -> int:
+    if ed._xvfb:
+        return ed._xvfb.proc.pid
+    # -displayfd does not create an X lock file; find the fake editor's own child.
+    return int(subprocess.check_output(["pgrep", "-P", str(status["pid"]), "-x", "Xvfb"], text=True))
 
 
 async def stdio_checks():
-    before = xvfb_pids()
+    owned_xvfb = set()
     for mode in ("editor", "harness"):
         async with Editor(fake=True, xvfb=mode) as ed:
             st = await ed.call("editor_status")
@@ -52,6 +55,7 @@ async def stdio_checks():
                and "maximized: true" in st["settings_yaml"], f"[{mode}] settings.yaml written")
             ok(st["libgl_software"] == "1", f"[{mode}] LIBGL_ALWAYS_SOFTWARE=1")
             ok(st["display"] and st["display"].startswith(":"), f"[{mode}] DISPLAY set ({st['display']})")
+            owned_xvfb.add(xvfb_pid(ed, st))
             ok("--headless" in st["argv"], f"[{mode}] --headless passed")
             ok("serving stdio" in ed.stderr_tail(), f"[{mode}] stderr captured to editor.stderr.log")
             try:
@@ -75,6 +79,7 @@ async def stdio_checks():
     try:
         async with Editor(fake=True) as ed:
             kept = ed.scratch.root
+            owned_xvfb.add(xvfb_pid(ed, await ed.call("editor_status")))
             ed.check(False, "deliberate")
     except AssertionError as e:
         ok("editor stderr tail" in str(e), "check() failure carries the stderr tail")
@@ -83,39 +88,66 @@ async def stdio_checks():
     shutil.rmtree(kept)
     async with Editor(fake=True, create=True, name="Fresh") as ed:
         st = await ed.call("editor_status")
+        owned_xvfb.add(xvfb_pid(ed, st))
         ok("--create" in st["argv"] and "Fresh" in st["argv"], "create=True passes --create <dir> --name")
-    time.sleep(0.5)
-    ok(xvfb_pids() <= before, "no Xvfb left running")
+    ok(all(not Path(f"/proc/{pid}").exists() for pid in owned_xvfb), "no self-test Xvfb left running")
 
 
 async def http_checks():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
+    editor = Editor(url=f"http://127.0.0.1:{port}/mcp")
     proc = subprocess.Popen(fake_editor_command() + ["mcp", "--http-port", str(port)],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        for _ in range(100):
+        deadline = time.monotonic() + editor.startup_timeout
+        while True:
+            if proc.poll() is not None:
+                raise RuntimeError(f"fake HTTP server exited with {proc.returncode} before listening")
             try:
                 socket.create_connection(("127.0.0.1", port), 0.2).close()
                 break
-            except OSError:
-                time.sleep(0.1)
-        async with Editor(url=f"http://127.0.0.1:{port}/mcp") as ed:
-            ok(ed.instructions, "HTTP: initialize instructions")
-            made = await ed.call("create_entity", name="H", type="box")
-            ok(made["entity_id"] >= 100, "HTTP: tool call")
-            ok(len(await ed.screenshot(path=Path("/tmp") / f"jasper-selftest-{port}.png")) > 8, "HTTP: screenshot")
-            ok(ed.stderr_tail() == "", "HTTP: no stderr")
+            except OSError as error:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("fake HTTP server did not start listening") from error
+                await asyncio.sleep(0.1)
+        with tempfile.TemporaryDirectory(prefix="jasper-selftest-") as shots:
+            async with editor as ed:
+                ok(ed.instructions, "HTTP: initialize instructions")
+                made = await ed.call("create_entity", name="H", type="box")
+                ok(made["entity_id"] >= 100, "HTTP: tool call")
+                ok(len(await ed.screenshot(path=Path(shots) / "http.png")) > 8, "HTTP: screenshot")
+                ok(ed.stderr_tail() == "", "HTTP: no stderr")
     finally:
         proc.terminate()
         proc.wait()
 
 
 def runner_checks():
-    run = [sys.executable, str(HERE / "run_tests.py"), "--fake"]
+    runner = [sys.executable, str(HERE / "run_tests.py"), "--fake"]
+    run = runner + [str(HERE / "tests" / "test_protocol.py")]
     r = subprocess.run(run + ["-j", "2"], capture_output=True, text=True)
     ok(r.returncode == 0 and "0 failed" in r.stdout, "runner: test_protocol passes on the fake with -j 2")
+    for test in ("test_create_entity_undo_redo", "test_batch"):
+        ok(f"PASS test_protocol.py::{test} (" in r.stdout, f"runner: {test} exercises the fake")
+    with tempfile.TemporaryDirectory(prefix="jasper-runner-selftest-") as root:
+        files = [Path(root) / f"parallel_{name}.py" for name in ("a", "b")]
+        for path in files:
+            path.write_text("""import asyncio
+from pathlib import Path
+
+TIMEOUT = 30
+
+async def test_parallel():
+    marker = Path(__file__).with_suffix('.ready')
+    marker.touch()
+    while len(list(marker.parent.glob('*.ready'))) < 2:
+        await asyncio.sleep(0.01)
+""")
+        r = subprocess.run(runner + ["-j", "2", *map(str, files)], capture_output=True, text=True)
+        ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout,
+           "runner: -j 2 runs two files concurrently")
     r = subprocess.run(run + ["-k", "ping"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")

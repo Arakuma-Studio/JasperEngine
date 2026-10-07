@@ -123,13 +123,11 @@ std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const 
 
         const Prefab* prefab = getPrefab(path);
         EntityRegistry* registry = prefab ? prefab->registry.get() : nullptr;
-        std::vector<Entity> entities = prefab ? prefab->registryEntities : std::vector<Entity>();
         Prefab loaded;
         if (!registry) {
             try {
                 loaded.loadRegistry(YAML::LoadFile((getProjectPath() / path).string()), path.stem().string());
                 registry = loaded.registry.get();
-                entities = loaded.registryEntities;
             } catch (const std::exception& e) {
                 Out::error("Failed to read prefab %s: %s", path.string().c_str(), e.what());
                 continue;

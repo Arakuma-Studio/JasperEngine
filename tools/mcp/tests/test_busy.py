@@ -32,14 +32,13 @@ async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
         await asyncio.sleep(1.0)
 
 
-async def refused(ed: Editor, tool: str, job_id: str, **args) -> str:
+async def refused(ed: Editor, tool: str, job_id: str, **args) -> None:
     r = await ed.call_raw(tool, args)
     ed.check(r.is_error, f"{tool} should be refused while {job_id} runs: {r.text[:300]}")
     ed.check(job_id in r.text, f"{tool}'s refusal should name {job_id}: {r.text[:300]}")
     ed.check("get_job" in r.text, f"{tool}'s refusal should say how to wait: {r.text[:300]}")
     busy = (r.structured or {}).get("busy") or {}
     ed.check(busy.get("job_id") == job_id, f"{tool}: structured busy info: {r.structured!r}")
-    return r.text
 
 
 async def human_play_attempt(ed: Editor, job_id: str) -> None:

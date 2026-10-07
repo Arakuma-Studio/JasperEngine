@@ -40,11 +40,6 @@ void McpRegistry::addTool(ToolDef def) {
     toolList.push_back(std::move(def));
 }
 
-void McpRegistry::removeTool(const std::string& name) {
-    toolList.erase(std::remove_if(toolList.begin(), toolList.end(),
-        [&](const ToolDef& def) { return def.name == name; }), toolList.end());
-}
-
 void McpRegistry::addResource(ResourceDef def) {
     for (ResourceDef& existing : resourceList) {
         if (existing.uri == def.uri) {

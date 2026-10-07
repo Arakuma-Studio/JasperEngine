@@ -87,7 +87,6 @@ struct SessionRecord {
     uint64_t startLogId = 0;
     uint64_t scanCursor = 0;
     Clock::time_point startTime;
-    Clock::time_point playingSince;
     bool reachedPlaying = false;
     bool stopRequested = false;     // stopped through the play tool
     uint64_t framesPlaying = 0;     // game frames (Engine::getGameFrames since the session began)
@@ -100,7 +99,6 @@ struct SessionRecord {
     // when ended
     std::string endReason;          // stopped | crashed | failed_to_start | cancelled | stopped_outside_mcp
     double durationSeconds = 0.0;
-    uint64_t endLogId = 0;
 };
 
 // Input an agent is holding down in the game (send_input), released at stop
@@ -318,7 +316,6 @@ void observeSession(McpContext& ctx) {
         scanSessionLogs(s.current);
         SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
         if (sp && isRunningState(sp->playState)) {
-            if (!s.current.reachedPlaying) s.current.playingSince = Clock::now();
             s.current.reachedPlaying = true;
         }
         if (playId != NULL_PROJECT_SCENE) {
@@ -329,7 +326,6 @@ void observeSession(McpContext& ctx) {
             SessionRecord& r = s.current;
             r.active = false;
             r.durationSeconds = secondsSince(r.startTime);
-            r.endLogId = Out::lastLogId();
             if (!r.crash.empty()) r.endReason = "crashed";
             else if (!r.reachedPlaying) r.endReason = r.stopRequested ? "cancelled" : "failed_to_start";
             else if (r.stopRequested) r.endReason = "stopped";

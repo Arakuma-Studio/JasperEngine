@@ -110,11 +110,7 @@ struct ShaderCliOptions {
 };
 
 struct EngineRuntimeGuard {
-    bool initialized = false;
     ~EngineRuntimeGuard() {
-        if (!initialized) {
-            return;
-        }
         ShaderPool::setShaderBuilder(nullptr);
         ShaderBuilder::requestShutdown();
         Engine::systemShutdown();
@@ -493,9 +489,8 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
 
     Project project;
     auto platform = std::make_unique<Platform>(&project);
-    EngineRuntimeGuard engineRuntime;
     Engine::systemInit(argc, argv, platform.get());
-    engineRuntime.initialized = true;
+    EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -571,9 +566,8 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
 
     Project project;
     auto platform = std::make_unique<Platform>(&project);
-    EngineRuntimeGuard engineRuntime;
     Engine::systemInit(argc, argv, platform.get());
-    engineRuntime.initialized = true;
+    EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
 
@@ -612,15 +606,6 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 // link. Two dumps of the same project (an older and a newer editor, or before and after a
 // save) compare GameObject by GameObject. --save saves every scene (and so the modified
 // prefabs) after the dump.
-namespace {
-
-// The dump's paths are EntityPath's (the MCP server addresses GameObjects the same way)
-std::string dumpPath(Scene* scene, Entity entity, EntityPath::Cache& cache) {
-    return EntityPath::of(scene, entity, &cache);
-}
-
-}
-
 static void writeSceneDump(Project& project, const fs::path& outPath) {
     YAML::Emitter out;
     out << YAML::BeginMap << YAML::Key << "scenes" << YAML::Value << YAML::BeginSeq;
@@ -641,7 +626,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
             if (scene->getEntityLayer(entity) != 0) node["layer"] = scene->getEntityLayer(entity);
             Entity parent = NULL_ENTITY;
             if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
-            node["parent"] = parent != NULL_ENTITY ? dumpPath(scene, parent, paths) : std::string();
+            node["parent"] = parent != NULL_ENTITY ? EntityPath::of(scene, parent, &paths) : std::string();
             node["components"] = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
             for (ComponentType type : Catalog::findComponents(scene, entity)) {
                 for (auto& [name, property] : Catalog::findEntityProperties(scene, entity, type)) {
@@ -653,7 +638,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
                     else continue;
                     if (target == NULL_ENTITY) continue;
                     node["refs"][Catalog::getComponentName(type, true) + "." + name] =
-                        scene->isEntityCreated(target) ? dumpPath(scene, target, paths) : "<missing " + std::to_string(target) + ">";
+                        scene->isEntityCreated(target) ? EntityPath::of(scene, target, &paths) : "<missing " + std::to_string(target) + ">";
                 }
             }
             std::string prefab = project.findPrefabPathFor(sceneProject.id, entity).generic_string();
@@ -671,7 +656,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
                 for (ComponentType type : overrides.removedComponents) o["removed"].push_back(Catalog::getComponentName(type, true));
                 node["overrides"] = o;
             }
-            std::string path = dumpPath(scene, entity, paths);
+            std::string path = EntityPath::of(scene, entity, &paths);
             if (nodes.count(path)) path += "@" + std::to_string(entity);
             nodes[path] = node;
         }
@@ -1317,10 +1302,10 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             std::map<Entity, std::string> paths;
             std::vector<std::string> names;
             for (Entity previewEntity : previewScene.getEntityList()) {
-                names.push_back(dumpPath(&previewScene, previewEntity, paths));
+                names.push_back(EntityPath::of(&previewScene, previewEntity, &paths));
             }
             std::sort(names.begin(), names.end());
-            std::cout << "  preview root " << (root == NULL_ENTITY ? std::string("none") : dumpPath(&previewScene, root, paths)) << "\n";
+            std::cout << "  preview root " << (root == NULL_ENTITY ? std::string("none") : EntityPath::of(&previewScene, root, &paths)) << "\n";
             for (const std::string& path : names) std::cout << "  preview " << path << "\n";
             continue;
         }
@@ -1462,14 +1447,12 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
 
     Project project;
     auto platform = std::make_unique<Platform>(&project);
-    EngineRuntimeGuard engineRuntime;
     Engine::systemInit(argc, argv, platform.get());
-    engineRuntime.initialized = true;
+    EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
-    fs::path projectPath = fs::absolute(projectArg);
-    if (projectPath.filename() == "project.yaml") projectPath = projectPath.parent_path();
+    fs::path projectPath = normalizeProjectPath(fs::absolute(projectArg));
     if (!project.loadProject(projectPath, false)) {
         return 1;
     }
@@ -1839,9 +1822,8 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
 
     Project project;
     auto platform = std::make_unique<Platform>(&project);
-    EngineRuntimeGuard engineRuntime;
     Engine::systemInit(argc, argv, platform.get());
-    engineRuntime.initialized = true;
+    EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
@@ -1929,8 +1911,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     const int usageExit = options.hook ? 1 : 2;
 
-    fs::path root = fs::absolute(options.project);
-    if (root.filename() == "project.yaml") root = root.parent_path();
+    fs::path root = normalizeProjectPath(fs::absolute(options.project));
     root = canonicalOr(root);
     std::error_code ec;
     if (!fs::is_regular_file(root / "project.yaml", ec)) {

@@ -9,6 +9,7 @@
 #include "mcp/McpJson.h"
 
 #include "command/Command.h"
+#include "util/ProjectChecks.h"
 
 #include <filesystem>
 #include <functional>
@@ -28,7 +29,6 @@ namespace jasperengine::editor::mcp {
 
         namespace fs = std::filesystem;
 
-        bool readFile(const fs::path& path, std::string& content);
         bool writeFile(const fs::path& path, const std::string& content);
         // Project-relative generic path ("assets/a.png"); the absolute path when outside the project
         std::string projectRelative(Project* project, const fs::path& absolute);
@@ -36,8 +36,6 @@ namespace jasperengine::editor::mcp {
         std::string assetType(const fs::path& path);
         // Lowercase extension with the dot
         std::string extensionOf(const fs::path& path);
-        // Hidden entries, build dirs and the editor's internal dir, skipped by listings and scans
-        bool isSkippedDir(const fs::path& dir);
         // A text file the tools may read/write (scripts, shaders, materials, configs, docs)
         bool isTextFile(const fs::path& path);
         // Files only editor tools may write: project.yaml, scenes, prefabs, generated build files
@@ -56,7 +54,6 @@ namespace jasperengine::editor::mcp {
             bool execute() override;
             void undo() override;
             bool affectsStructure() const override { return false; }
-            const std::string& error() const { return lastError; }
 
         private:
             struct Previous {
@@ -67,7 +64,6 @@ namespace jasperengine::editor::mcp {
             std::vector<Previous> previous;
             std::vector<fs::path> createdDirs;
             bool captured = false;
-            std::string lastError;
             std::function<void(const std::vector<fs::path>&)> afterChange;
             std::vector<fs::path> paths() const;
         };
@@ -87,24 +83,9 @@ namespace jasperengine::editor::mcp {
         // opened (McpAutoSync's baseline), so edits made before the first sync are listed by it
         void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready = {});
 
-        // Lua syntax check without running the chunk (luaL_loadbuffer). line = 0 when ok.
-        struct LuaSyntax {
-            bool ok = true;
-            int line = 0;
-            std::string message;
-        };
-        LuaSyntax checkLuaSyntax(const std::string& code, const std::string& chunkName);
-
-        // Shader forks (customShader values) a set of shader source files belongs to, with the
-        // shader type they are used as (from the components / scene settings using them).
-        struct ShaderUse {
-            std::string base;        // customShader value
-            int shaderType = -1;     // ShaderType, -1 when unknown
-        };
-        std::vector<ShaderUse> shaderForksUsingFiles(Project* project, const std::vector<std::string>& relativeFiles);
         // Compiles each fork now on a worker thread; calls `done` on the main thread with
         // [{shader, type, ok, errors:[{line, message}], log}].
-        void checkShadersAsync(const CallPtr& call, std::vector<ShaderUse> forks, std::function<void(Json results)> done);
+        void checkShadersAsync(const CallPtr& call, std::vector<ProjectChecks::ShaderUse> forks, std::function<void(Json results)> done);
 
     }
 

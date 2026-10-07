@@ -30,7 +30,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -49,13 +48,6 @@ using namespace jasperengine::editor::mcp;
 namespace {
 
 // ------------------------------------------------------------------ small helpers
-
-std::string lower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return value;
-}
 
 // "Quad In Out", "QUAD_IN_OUT", "quad-in-out" → "quadinout"
 std::string enumKey(const std::string& text) {
@@ -92,18 +84,6 @@ bool readComponents(const Json& value, float* out, int count, const char* const*
 
 const char* const XYZW[] = {"x", "y", "z", "w"};
 
-// The shortest decimal that reads back as the same float: 0.1f is 0.1, not 0.10000000149
-double cleanFloat(float value) {
-    if (!std::isfinite(value)) return value;
-    // Not std::to_chars(float): Apple's libc++ only has it from macOS 13.3. The first
-    // precision that reads back as the same float is the shortest (%.9g always does).
-    char buffer[32];
-    for (int precision = 1; precision <= 9; precision++) {
-        std::snprintf(buffer, sizeof(buffer), "%.*g", precision, static_cast<double>(value));
-        if (std::strtof(buffer, nullptr) == value) break;
-    }
-    return std::strtod(buffer, nullptr);
-}
 const char* const RGBA[] = {"r", "g", "b", "a"};
 
 // "#RRGGBB" / "#RRGGBBAA" → 0-1 components; count is 3 or 4 (alpha only when given)
@@ -222,18 +202,11 @@ const EnumOptions& pivotPresetOptions() {
 }
 
 const EnumOptions& orientationOptions() {
-    // ScrollbarType and ProgressbarType share their values
+    static_assert(static_cast<int>(ScrollbarType::VERTICAL) == static_cast<int>(ProgressbarType::VERTICAL));
+    static_assert(static_cast<int>(ScrollbarType::HORIZONTAL) == static_cast<int>(ProgressbarType::HORIZONTAL));
     static const EnumOptions options = {
         {(int)ScrollbarType::VERTICAL, "vertical", "Vertical"},
         {(int)ScrollbarType::HORIZONTAL, "horizontal", "Horizontal"}
-    };
-    return options;
-}
-
-const EnumOptions& progressbarTypeOptions() {
-    static const EnumOptions options = {
-        {(int)ProgressbarType::VERTICAL, "vertical", "Vertical"},
-        {(int)ProgressbarType::HORIZONTAL, "horizontal", "Horizontal"}
     };
     return options;
 }
@@ -739,10 +712,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "titleAnchorPreset") return &anchorPresetOptions();
             break;
         case ComponentType::ScrollbarComponent:
-            if (name == "type") return &orientationOptions();
-            break;
         case ComponentType::ProgressbarComponent:
-            if (name == "type") return &progressbarTypeOptions();
+            if (name == "type") return &orientationOptions();
             break;
         case ComponentType::SpriteComponent:
             if (name == "pivotPreset") return &pivotPresetOptions();
@@ -849,9 +820,9 @@ bool McpValues::enumFromJson(const Json& value, const EnumOptions& options, int&
     }
     // scene-file aliases
     static const std::map<std::string, std::string> aliases = {
-        {"ortho", "orthographic"}, {"perspec", "perspective"}, {"exponentialsquared", "exponentialsquared"},
+        {"ortho", "orthographic"}, {"perspec", "perspective"},
         {"alphaopaque", "opaque"}, {"none", "noattenuation"}, {"gameobjectmesh", "entitymesh"},
-        {"gameobjectheightfield", "entityheightfield"}, {"sixdof", "sixdof"}, {"rackandpinon", "rackandpinion"}
+        {"gameobjectheightfield", "entityheightfield"}, {"rackandpinon", "rackandpinion"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) {
@@ -978,14 +949,25 @@ bool McpValues::parseQuaternion(const Json& value, Quaternion& out) {
     return fromQuat(value, out);
 }
 
-double McpValues::number(float value) { return cleanFloat(value); }
-Json McpValues::toJson(const Vector2& value) { return Json::array({cleanFloat(value.x), cleanFloat(value.y)}); }
-Json McpValues::toJson(const Vector3& value) { return Json::array({cleanFloat(value.x), cleanFloat(value.y), cleanFloat(value.z)}); }
+double McpValues::number(float value) {
+    if (!std::isfinite(value)) return value;
+    // Not std::to_chars(float): Apple's libc++ only has it from macOS 13.3. The first
+    // precision that reads back as the same float is the shortest (%.9g always does).
+    char buffer[32];
+    for (int precision = 1; precision <= 9; precision++) {
+        std::snprintf(buffer, sizeof(buffer), "%.*g", precision, static_cast<double>(value));
+        if (std::strtof(buffer, nullptr) == value) break;
+    }
+    return std::strtod(buffer, nullptr);
+}
+
+Json McpValues::toJson(const Vector2& value) { return Json::array({number(value.x), number(value.y)}); }
+Json McpValues::toJson(const Vector3& value) { return Json::array({number(value.x), number(value.y), number(value.z)}); }
 Json McpValues::toJson(const Vector4& value) {
-    return Json::array({cleanFloat(value.x), cleanFloat(value.y), cleanFloat(value.z), cleanFloat(value.w)});
+    return Json::array({number(value.x), number(value.y), number(value.z), number(value.w)});
 }
 Json McpValues::toJson(const Quaternion& value) {
-    return Json{{"quat", Json::array({cleanFloat(value.x), cleanFloat(value.y), cleanFloat(value.z), cleanFloat(value.w)})},
+    return Json{{"quat", Json::array({number(value.x), number(value.y), number(value.z), number(value.w)})},
                 {"euler", toJson(eulerDegrees(value))}};
 }
 
@@ -1052,7 +1034,6 @@ bool McpValues::entityReferenceFromJson(Project* project, SceneProject* scene, c
     if (explicitScene) {
         target = McpRefs::resolveScene(project, value["scene"], error);
         if (!target) return false;
-        ref = value;
         ref.erase("scene");
         if (ref.contains("entity")) ref = ref["entity"];
     } else if (value.is_object() && value.contains("entity")) {
@@ -1090,7 +1071,7 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
             const std::string relative = assetPathToJson(project, path);
             if (defaultSampler) return TextureData::buildSvgScalePath(relative, texture.getSvgScale());
             out["path"] = relative;
-            if (texture.getSvgScale() != 1.0f) out["svg_scale"] = cleanFloat(texture.getSvgScale());
+            if (texture.getSvgScale() != 1.0f) out["svg_scale"] = number(texture.getSvgScale());
         }
     } else {
         bool anyOtherFace = false;
@@ -1228,10 +1209,10 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
     Json out = {
         {"name", material.name},
         {"baseColorFactor", toJson(material.baseColorFactor)},
-        {"metallicFactor", cleanFloat(material.metallicFactor)},
-        {"roughnessFactor", cleanFloat(material.roughnessFactor)},
-        {"alphaCutoff", cleanFloat(material.alphaCutoff)},
-        {"foliageTransmission", cleanFloat(material.foliageTransmission)},
+        {"metallicFactor", number(material.metallicFactor)},
+        {"roughnessFactor", number(material.roughnessFactor)},
+        {"alphaCutoff", number(material.alphaCutoff)},
+        {"foliageTransmission", number(material.foliageTransmission)},
         {"alphaMode", enumToJson((int)material.alphaMode, alphaModeOptions())},
         {"emissiveFactor", toJson(material.emissiveFactor)}
     };
@@ -1557,8 +1538,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return shaderUniformsToJson(*static_cast<ShaderUniformValues*>(ref));
         }
         bool found = false;
-        Json value = readYamlProperty(ctx, name, found);
-        return found ? value : Json(nullptr);
+        return readYamlProperty(ctx, name, found);
     }
     if (!ref) return nullptr;
     switch (property.type) {
@@ -1569,7 +1549,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
-            return cleanFloat(*static_cast<float*>(ref));
+            return number(*static_cast<float*>(ref));
         case PropertyType::Double:
             return *static_cast<double*>(ref);
         case PropertyType::Vector2:
@@ -1951,8 +1931,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             return multi;
         }
         case PropertyType::Custom:
-            if (SceneProject* sp = project->getScene(sceneId);
-                sp && isScriptPrefabProperty(sp->scene, entity, component, propertyName)) {
+            if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
                 std::string why;
                 if (!prefabAssetFromJson(project, value, prefab, why)) {
@@ -1979,15 +1958,11 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
 
 bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std::string& error) {
     out.clear();
-    auto component = [&](const Json& name, ComponentType& type) {
-        if (!McpRefs::resolveComponent(name, type, error)) return false;
-        return true;
-    };
     if (changes.is_object()) {
         // {component: {property: value}}
         for (auto it = changes.begin(); it != changes.end(); ++it) {
             Change base;
-            if (!component(it.key(), base.component)) return false;
+            if (!McpRefs::resolveComponent(it.key(), base.component, error)) return false;
             if (!it.value().is_object()) {
                 error = "values[\"" + it.key() + "\"] must be an object {property: value}.";
                 return false;
@@ -2014,7 +1989,7 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
             return false;
         }
         Change change;
-        if (!component(item["component"], change.component)) {
+        if (!McpRefs::resolveComponent(item["component"], change.component, error)) {
             error = where + ": " + error;
             return false;
         }
@@ -2189,10 +2164,7 @@ bool McpStepsCmd::execute() {
         if (!cmd || !cmd->execute()) {
             *error = why.empty() ? std::string("A step of the edit failed.") : why;
             delete cmd;
-            for (auto it = done.rbegin(); it != done.rend(); ++it) {
-                (*it)->undo();
-                refresh();
-            }
+            undo();
             done.clear();
             return false;
         }

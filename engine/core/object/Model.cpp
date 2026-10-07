@@ -4,17 +4,10 @@
 #include "Model.h"
 
 #include "io/FileData.h"
-#include "io/Data.h"
-#include "texture/TextureData.h"
-#include "pool/TexturePool.h"
 
 #include "subsystem/MeshSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
-
-#include <algorithm>
-#include <sstream>
-#include <cfloat>
 
 using namespace jasperengine;
 

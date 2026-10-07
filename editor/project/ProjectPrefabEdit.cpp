@@ -338,11 +338,8 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
         if (!instance || depth > 64) {
             return data;
         }
-        const Prefab* nestedPrefab = getPrefab(path);
-        // copies: makePrefabReference can add instances to no vector, but keep it simple
-        const std::map<Entity, Prefab::ObjectOverrides> overrides = instance->overrides;
         const Prefab::Instance snapshot = *instance;
-        for (const auto& [local, objectOverrides] : overrides) {
+        for (const auto& [local, objectOverrides] : snapshot.overrides) {
             if (local == snapshot.rootEntity) {
                 if (top) {
                     // the holder's registry entity holds the values (its nested root)
@@ -388,7 +385,6 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
         for (const auto& [registryEntity, members] : snapshot.removed) {
             data.removedGameObjects.insert(registryEntity);
         }
-        (void)nestedPrefab;
         // the instances nested in it (its base's at its root, for a variant)
         for (const NestedInstanceLevel& level : getNestedInstanceLevels(sceneProject, path, snapshot)) {
             PrefabInstanceData entry;

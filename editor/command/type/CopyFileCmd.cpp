@@ -33,6 +33,32 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
     this->copy = copy;
 }
 
+void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& destination, bool isDirectory){
+    fs::rename(source, destination);
+    if (!project) {
+        return;
+    }
+    const std::string extension = source.extension().string();
+    if (isDirectory || Util::isMaterialFile(extension)) {
+        project->remapMaterialFilePath(source, destination);
+    }
+    if (isDirectory || Util::isSceneFile(extension)) {
+        project->remapSceneFilePath(source, destination);
+    }
+    if (isDirectory || Util::isPrefabFile(extension)) {
+        project->remapPrefabFilePath(source, destination);
+    }
+    if (isDirectory || Util::isScriptFile(extension)) {
+        project->remapScriptFilePath(source, destination);
+    }
+    if (isDirectory || Util::isAssetFile(extension)) {
+        project->remapAssetFilePath(source, destination);
+    }
+    if (isDirectory || Util::isShaderFile(extension)) {
+        project->remapShaderFilePath(source, destination);
+    }
+}
+
 bool editor::CopyFileCmd::execute(){
     bool touchedShaderSource = false;
 
@@ -47,53 +73,16 @@ bool editor::CopyFileCmd::execute(){
                 // against changes which file wins for it.
                 touchedShaderSource |= isDir || Util::isShaderFile(extension);
 
-                if (isDir) {
-                    if (copy){
-                        fs::copy(sourceFs, destFs, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-                        // copied prefabs are new assets: new GUIDs, the same ones on a redo
-                        if (project) {
-                            project->importPrefabFiles(destFs, true, &copyGuids);
-                        }
-                    }else{
-                        fs::rename(sourceFs, destFs);
-                        if (project) {
-                            project->remapMaterialFilePath(sourceFs, destFs);
-                            project->remapSceneFilePath(sourceFs, destFs);
-                            project->remapPrefabFilePath(sourceFs, destFs);
-                            project->remapScriptFilePath(sourceFs, destFs);
-                            project->remapAssetFilePath(sourceFs, destFs);
-                            project->remapShaderFilePath(sourceFs, destFs);
-                        }
+                if (copy){
+                    const auto options = fs::copy_options::overwrite_existing |
+                        (isDir ? fs::copy_options::recursive : fs::copy_options::none);
+                    fs::copy(sourceFs, destFs, options);
+                    // copied prefabs are new assets: new GUIDs, the same ones on a redo
+                    if (project && (isDir || Util::isPrefabFile(extension))) {
+                        project->importPrefabFiles(destFs, true, &copyGuids);
                     }
-                } else {
-                    if (copy){
-                        fs::copy(sourceFs, destFs, fs::copy_options::overwrite_existing);
-                        if (project && Util::isPrefabFile(extension)) {
-                            project->importPrefabFiles(destFs, true, &copyGuids);
-                        }
-                    }else{
-                        fs::rename(sourceFs, destFs);
-                        if (project) {
-                            if (Util::isMaterialFile(extension)) {
-                                project->remapMaterialFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isSceneFile(extension)) {
-                                project->remapSceneFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isPrefabFile(extension)) {
-                                project->remapPrefabFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isScriptFile(extension)) {
-                                project->remapScriptFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isAssetFile(extension)) {
-                                project->remapAssetFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isShaderFile(extension)) {
-                                project->remapShaderFilePath(sourceFs, destFs);
-                            }
-                        }
-                    }
+                }else{
+                    moveFile(sourceFs, destFs, isDir);
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -124,53 +113,18 @@ void editor::CopyFileCmd::undo(){
                 // against changes which file wins for it.
                 touchedShaderSource |= isDir || Util::isShaderFile(extension);
 
-                if (isDir) {
-                    if (copy) {
+                if (copy) {
+                    if (isDir) {
                         fs::remove_all(sourceFs);
-                        // instances of the copies made since become Missing Prefabs
-                        if (project) {
-                            project->cleanupPrefabFilePath(sourceFs);
-                        }
                     }else{
-                        fs::rename(sourceFs, destFs);
-                        if (project) {
-                            project->remapMaterialFilePath(sourceFs, destFs);
-                            project->remapSceneFilePath(sourceFs, destFs);
-                            project->remapPrefabFilePath(sourceFs, destFs);
-                            project->remapScriptFilePath(sourceFs, destFs);
-                            project->remapAssetFilePath(sourceFs, destFs);
-                            project->remapShaderFilePath(sourceFs, destFs);
-                        }
-                    }
-                } else {
-                    if (copy) {
                         fs::remove(sourceFs);
-                        if (project && Util::isPrefabFile(extension)) {
-                            project->cleanupPrefabFilePath(sourceFs);
-                        }
-                    }else{
-                        fs::rename(sourceFs, destFs);
-                        if (project) {
-                            if (Util::isMaterialFile(extension)) {
-                                project->remapMaterialFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isSceneFile(extension)) {
-                                project->remapSceneFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isPrefabFile(extension)) {
-                                project->remapPrefabFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isScriptFile(extension)) {
-                                project->remapScriptFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isAssetFile(extension)) {
-                                project->remapAssetFilePath(sourceFs, destFs);
-                            }
-                            if (Util::isShaderFile(extension)) {
-                                project->remapShaderFilePath(sourceFs, destFs);
-                            }
-                        }
                     }
+                    // instances of the copies made since become Missing Prefabs
+                    if (project && (isDir || Util::isPrefabFile(extension))) {
+                        project->cleanupPrefabFilePath(sourceFs);
+                    }
+                }else{
+                    moveFile(sourceFs, destFs, isDir);
                 }
             }
         } catch (const fs::filesystem_error& e) {

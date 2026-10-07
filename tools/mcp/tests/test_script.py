@@ -4,14 +4,14 @@ after external edits, code editor integration, compile_scripts (C++)."""
 import shutil
 import time
 
-from harness import Editor, find_key, skip
+from harness import Editor, skip
 
 TIMEOUT = 900
 
 
 async def make_entity(ed: Editor, name: str, type_: str = "box"):
     made = await ed.call("create_entity", name=name, type=type_)
-    eid = find_key(made, "entity_id", "id")
+    eid = made["entity_id"]
     ed.check(eid is not None, f"create_entity returned no id: {made!r}")
     return eid
 
@@ -239,12 +239,12 @@ async def test_cpp_compile(ed: Editor):
     if not r.get("success"):
         log = "\n".join(r.get("log_tail", []))
         if "ABI" in log or "compatible" in log or not r.get("errors"):
-            skip("the C++ build can't run in this environment: " + (r.get("errors") or log[-800:]).__str__())
+            skip("the C++ build can't run in this environment: " + str(r.get("errors") or log[-800:]))
     ed.check_eq(r.get("success"), True, f"clean compile failed: {r!r}")
 
     # wait: false returns a job to poll
     started = await ed.call("compile_scripts", wait=False)
-    job = started.get("job_id") or started.get("id")
+    job = started["job_id"]
     ed.check(job, f"no job id: {started!r}")
     for _ in range(600):
         status = await ed.call("get_job", job_id=job)

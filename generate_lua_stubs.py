@@ -26,7 +26,6 @@ Types it cannot resolve become `any` (never a wrong type), and the binding is li
 import argparse
 import os
 import re
-import sys
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tokenizer
@@ -357,11 +356,10 @@ class CppParam:
 
 
 class CppFunc:
-    __slots__ = ('name', 'ret', 'params', 'static', 'const', 'ctor', 'template', 'tparams', 'doc',
-                 'owner', 'variadic')
+    __slots__ = ('name', 'ret', 'params', 'static', 'const', 'ctor', 'template', 'tparams', 'doc')
 
     def __init__(self, name, ret, params, static=False, const=False, ctor=False, template=False,
-                 tparams=None, doc=None, owner=None, variadic=False):
+                 tparams=None, doc=None):
         self.name = name
         self.ret = ret
         self.params = params
@@ -371,22 +369,17 @@ class CppFunc:
         self.template = template
         self.tparams = tparams or []
         self.doc = doc or []
-        self.owner = owner
-        self.variadic = variadic
 
     def __repr__(self):
         return f'{self.ret} {self.name}({", ".join(map(repr, self.params))})'
 
 
 class CppField:
-    __slots__ = ('name', 'type', 'static', 'doc', 'owner')
+    __slots__ = ('type', 'doc')
 
-    def __init__(self, name, type_, static, doc, owner):
-        self.name = name
+    def __init__(self, type_, doc):
         self.type = type_
-        self.static = static
         self.doc = doc
-        self.owner = owner
 
 
 class CppEnum:
@@ -397,7 +390,7 @@ class CppEnum:
 
 
 class CppClass:
-    def __init__(self, name, qual, doc, template=False, tparams=None):
+    def __init__(self, name, qual, doc):
         self.name = name
         self.qual = qual
         self.doc = doc
@@ -405,8 +398,6 @@ class CppClass:
         self.methods = {}
         self.fields = {}
         self.typedefs = {}
-        self.template = template
-        self.tparams = tparams or []
 
     def __repr__(self):
         return f'CppClass({self.qual})'
@@ -426,14 +417,12 @@ class CppModel:
         self.enums = {}      # simple name and Outer::Inner -> CppEnum
         self.typedefs = {}   # name -> type text
         self.functions = {}  # free functions: name -> [CppFunc]
-        self.sources = []
 
     # ── parsing ──────────────────────────────────────────────────────────────
 
     def parse_file(self, path):
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             src = Source(path, f.read())
-        self.sources.append(src)
         self._parse_scope(src, src.tokens, 0, len(src.tokens), None, [])
         return src
 
@@ -459,10 +448,7 @@ class CppModel:
                 continue
             if t == 'namespace':
                 j = i + 1
-                names = []
                 while j < end and toks[j].t not in ('{', ';', '='):
-                    if toks[j].k == 'id':
-                        names.append(toks[j].t)
                     j += 1
                 if j < end and toks[j].t == '{':
                     k = skip_balanced(toks, j)
@@ -483,9 +469,7 @@ class CppModel:
             if t == 'template' and i + 1 < end and toks[i + 1].t == '<':
                 j = skip_angles(toks, i + 1)
                 for p in split_top(toks[i + 2:j - 1]):
-                    ids = [x.t for x in p if x.k == 'id' and x.t not in ('typename', 'class', 'const', 'size_t', 'int', 'bool', 'unsigned')]
                     # `typename T`, `class T = X`, `const T& Value`, `size_t N`
-                    pre = [x for x in p if x.t != '=']
                     eq = [k for k, x in enumerate(p) if x.t == '=']
                     head = p[:eq[0]] if eq else p
                     names = [x.t for x in head if x.k == 'id']
@@ -498,12 +482,12 @@ class CppModel:
                 t = toks[i].t
             # nested/top-level type definitions
             if t in ('class', 'struct', 'union'):
-                r = self._try_class(src, toks, i, end, outer, start, template, tparams, cls)
+                r = self._try_class(src, toks, i, end, outer, start)
                 if r is not None:
                     i = r
                     continue
             if t == 'enum':
-                r = self._try_enum(src, toks, i, end, outer, start, cls)
+                r = self._try_enum(src, toks, i, end, outer, start)
                 if r is not None:
                     i = r
                     continue
@@ -529,19 +513,19 @@ class CppModel:
                 i = j + 1 if j < end and toks[j].t == ';' else j
                 continue
             # a declaration (member or namespace level)
-            decl, body, nxt = self._read_decl(toks, i, end)
+            decl, nxt = self._read_decl(toks, i, end)
             if nxt <= i:
                 nxt = i + 1
             if decl:
                 doc = src.doc_before(toks[start].line) + src.doc_trailing(decl[-1].line)
                 if cls is None or access_public:
                     try:
-                        self._interpret_decl(decl, cls, doc, template, tparams, body is not None)
+                        self._interpret_decl(decl, cls, doc, template, tparams)
                     except Exception:
                         pass
             i = nxt
 
-    def _try_class(self, src, toks, i, end, outer, start, template, tparams, owner):
+    def _try_class(self, src, toks, i, end, outer, start):
         kind = toks[i].t
         j = i + 1
         name = None
@@ -591,7 +575,7 @@ class CppModel:
         k = skip_balanced(toks, j)
         qual = '::'.join(outer + [name])
         doc = src.doc_before(toks[start].line)
-        cls = CppClass(name, qual, doc, template, tparams)
+        cls = CppClass(name, qual, doc)
         cls.bases = bases
         cls._default_public = kind != 'class'
         self._register_class(cls, outer)
@@ -601,7 +585,7 @@ class CppModel:
             k += 1
         return k + 1
 
-    def _try_enum(self, src, toks, i, end, outer, start, owner):
+    def _try_enum(self, src, toks, i, end, outer, start):
         j = i + 1
         if j < end and toks[j].t in ('class', 'struct'):
             j += 1
@@ -656,14 +640,14 @@ class CppModel:
                 target[body[-1].t] = normalize_type(join_tokens(body[:-1]))
 
     def _read_decl(self, toks, i, end):
-        """One declaration: (tokens without body, (body start, end) or None, next index)."""
+        """One declaration: (tokens without body, next index)."""
         start = i
         saw_eq = False
         saw_paren = False
         while i < end:
             t = toks[i].t
             if t == ';':
-                return toks[start:i], None, i + 1
+                return toks[start:i], i + 1
             if t == '(' or t == '[':
                 if t == '(' and not saw_eq:
                     saw_paren = True
@@ -672,15 +656,12 @@ class CppModel:
             if t == '{':
                 if saw_eq or not saw_paren:
                     i = skip_balanced(toks, i)
-                    if not saw_paren and not saw_eq:
-                        # `T name{init};` or a construct we do not understand
-                        pass
                     continue
                 j = skip_balanced(toks, i)
                 nxt = j + 1 if j < end and toks[j].t == ';' else j
-                return toks[start:i], (i, j), nxt
+                return toks[start:i], nxt
             if t == '}':
-                return toks[start:i], None, i + 1
+                return toks[start:i], i + 1
             if t == '=' and not (i > start and toks[i - 1].t == 'operator'):
                 saw_eq = True
             elif t == '<' and is_template_open(toks, i):
@@ -703,12 +684,12 @@ class CppModel:
                     break
                 if i < end and toks[i].t == '{':
                     j = skip_balanced(toks, i)
-                    return toks[start:i], (i, j), j
+                    return toks[start:i], j
                 continue
             i += 1
-        return toks[start:end], None, end
+        return toks[start:end], end
 
-    def _interpret_decl(self, decl, cls, doc, template, tparams, has_body):
+    def _interpret_decl(self, decl, cls, doc, template, tparams):
         toks = list(decl)
         # attributes
         while toks and toks[0].t == '[' and len(toks) > 1 and toks[1].t == '[':
@@ -741,7 +722,7 @@ class CppModel:
         if paren is not None:
             self._interpret_function(toks, paren, cls, doc, static, template, tparams)
         else:
-            self._interpret_fields(toks, cls, doc, static)
+            self._interpret_fields(toks, cls, doc)
 
     def _interpret_function(self, toks, paren, cls, doc, static, template, tparams):
         if paren + 1 < len(toks) and toks[paren + 1].t in ('*', '&', '^'):
@@ -769,7 +750,7 @@ class CppModel:
             if ret_toks and ret_toks[-1].t == '::':
                 return  # out-of-class definition
         close = skip_balanced(toks, paren)
-        params, variadic = parse_params(toks[paren + 1:close - 1])
+        params = parse_params(toks[paren + 1:close - 1])
         rest = toks[close:]
         const = any(x.t == 'const' for x in rest[:3])
         ret = normalize_type(join_tokens(ret_toks)) if ret_toks else ''
@@ -789,13 +770,13 @@ class CppModel:
         if not ret_toks and not ctor and op_idx is None:
             return  # a macro invocation or something else
         fn = CppFunc(name, ret, params, static=static, const=const, ctor=ctor, template=template,
-                     tparams=tparams, doc=doc, owner=cls, variadic=variadic)
+                     tparams=tparams, doc=doc)
         if cls is not None:
             cls.methods.setdefault(name, []).append(fn)
         else:
             self.functions.setdefault(name, []).append(fn)
 
-    def _interpret_fields(self, toks, cls, doc, static):
+    def _interpret_fields(self, toks, cls, doc):
         if cls is None:
             return
         parts = split_top(toks)
@@ -831,7 +812,7 @@ class CppModel:
                 ftype = base_type + ptr
             if name in _TYPE_KEYWORDS:
                 return
-            cls.fields[name] = CppField(name, ftype, static, doc, cls)
+            cls.fields[name] = CppField(ftype, doc)
 
     # ── lookups ──────────────────────────────────────────────────────────────
 
@@ -876,10 +857,8 @@ class CppModel:
         name = strip_ns(name)
         return self.enums.get(name)
 
-    def resolve_typedef(self, name, cls_name=None, depth=0):
+    def resolve_typedef(self, name, cls_name=None):
         """Underlying type of a typedef name, or None."""
-        if depth > 8:
-            return None
         if '::' in name:
             outer, inner = name.rsplit('::', 1)
             c = self.find_class(outer)
@@ -897,14 +876,12 @@ class CppModel:
 
 def parse_params(toks):
     params = []
-    variadic = False
     if not toks or (len(toks) == 1 and toks[0].t == 'void'):
-        return params, variadic
+        return params
     for part in split_top(toks):
         if not part:
             continue
-        if part[-1].t == '...' or (len(part) == 1 and part[0].t == '...'):
-            variadic = True
+        if part[-1].t == '...':
             continue
         default = None
         eq = None
@@ -936,7 +913,7 @@ def parse_params(toks):
             name = part[-1].t
             part = part[:-1]
         params.append(CppParam(normalize_type(join_tokens(part)) + arr, name, default))
-    return params, variadic
+    return params
 
 
 def eval_int(toks, known, model):
@@ -1028,41 +1005,34 @@ def bare_type(t):
 
 class Call:
     """One `.method<targs>(args)` link of a LuaBridge chain."""
-    __slots__ = ('name', 'targs', 'args', 'line', 'cond', 'doc', 'src')
+    __slots__ = ('name', 'targs', 'args', 'cond', 'doc', 'src')
 
-    def __init__(self, name, targs, args, line, cond, doc, src):
+    def __init__(self, name, targs, args, cond, doc, src):
         self.name = name
         self.targs = targs
         self.args = args
-        self.line = line
         self.cond = cond
         self.doc = doc
         self.src = src
 
 
 class LuaMember:
-    def __init__(self, kind, name, call, cls):
+    def __init__(self, kind, name, call):
         self.kind = kind    # Method | StaticMethod | Property | StaticProperty
         self.name = name
         self.call = call
-        self.cls = cls
-        self.sigs = []      # list of Sig (functions)
-        self.prop_type = None
         self.writable = False
         self.copy = False
-        self.event = None   # FunctionSubscribe Lua class when the property is an event
         self.doc = []
         self.unresolved = []
 
 
 class LuaClass:
-    def __init__(self, name, cpp, base_cpp, call, file):
+    def __init__(self, name, cpp, base_cpp, call):
         self.name = name
         self.cpp = cpp
         self.base_cpp = base_cpp
         self.base = None
-        self.call = call
-        self.file = file
         self.members = []
         self.ctors = []     # list of Sig
         self.doc = []
@@ -1070,24 +1040,22 @@ class LuaClass:
 
 
 class LuaEnum:
-    def __init__(self, name, call, file):
+    def __init__(self, name, call):
         self.name = name
         self.call = call
-        self.file = file
         self.values = []    # (name, value expr tokens, call)
         self.cpp_enum = None
         self.doc = []
 
 
 class Sig:
-    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'source', 'problem')
+    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'problem')
 
-    def __init__(self, params, ret, doc=None, cfunc=False, source='', problem=None):
+    def __init__(self, params, ret, doc=None, cfunc=False, problem=None):
         self.params = params    # [(cpp type, name or None)], Lua-visible only
         self.ret = ret          # cpp type, '' for void, None for unknown
         self.doc = doc or []
         self.cfunc = cfunc
-        self.source = source
         self.problem = problem  # why the binding is wrong (a cast to a signature that does not exist)
 
     def __repr__(self):
@@ -1100,7 +1068,6 @@ class Bindings:
         self.classes = []
         self.enums = []
         self.globals = []          # (name, value tokens, call)
-        self.local_model = None    # free functions of the binding files
 
     def parse_file(self, path):
         model = self.model
@@ -1115,18 +1082,17 @@ class Bindings:
         local._parse_scope(src, src.tokens, 0, len(src.tokens), None, [])
         for k, v in local.functions.items():
             model.functions.setdefault('@' + os.path.basename(path) + ':' + k, []).extend(v)
-        file = os.path.basename(path)
         toks = src.tokens
         n = len(toks)
         i = 0
         while i < n:
             if toks[i].t == 'getGlobalNamespace' and i >= 2 and toks[i - 1].t == '::' and toks[i - 2].t == 'luabridge':
                 chain_doc = src.doc_before(toks[i - 2].line)
-                i = self._parse_chain(src, toks, i + 1, file, chain_doc)
+                i = self._parse_chain(src, toks, i + 1, chain_doc)
                 continue
             i += 1
 
-    def _parse_chain(self, src, toks, i, file, chain_doc):
+    def _parse_chain(self, src, toks, i, chain_doc):
         n = len(toks)
         i = skip_balanced(toks, i)  # (L)
         calls = []
@@ -1143,13 +1109,13 @@ class Bindings:
             k = skip_balanced(toks, j)
             args = split_top(toks[j + 1:k - 1])
             doc = src.doc_before(name_tok.line)
-            calls.append(Call(name_tok.t, targs, args, name_tok.line, name_tok.cond, doc, src))
+            calls.append(Call(name_tok.t, targs, args, name_tok.cond, doc, src))
             i = k
         ns = None
         cls = None
         for c in calls:
             if c.name == 'beginNamespace':
-                ns = LuaEnum(literal(c.args[0]), c, file)
+                ns = LuaEnum(literal(c.args[0]), c)
                 ns.doc = chain_doc + c.doc
             elif c.name == 'endNamespace':
                 if ns is not None and ns.values:
@@ -1158,7 +1124,7 @@ class Bindings:
             elif c.name in ('beginClass', 'deriveClass'):
                 cpp = normalize_type(join_tokens(c.targs[0]))
                 base = normalize_type(join_tokens(c.targs[1])) if c.name == 'deriveClass' else None
-                cls = LuaClass(literal(c.args[0]), cpp, base, c, file)
+                cls = LuaClass(literal(c.args[0]), cpp, base, c)
                 cls.doc = chain_doc + c.doc
             elif c.name == 'endClass':
                 if cls is not None:
@@ -1177,7 +1143,7 @@ class Bindings:
                 elif c.name in ('addFunction', 'addStaticFunction', 'addProperty', 'addStaticProperty'):
                     kind = {'addFunction': 'Method', 'addStaticFunction': 'StaticMethod',
                             'addProperty': 'Property', 'addStaticProperty': 'StaticProperty'}[c.name]
-                    cls.members.append(LuaMember(kind, literal(c.args[0]), c, cls))
+                    cls.members.append(LuaMember(kind, literal(c.args[0]), c))
         return i
 
 
@@ -1236,14 +1202,14 @@ class Resolver:
             inner = toks[1:e - 1]
             cast = self.parse_fn_ptr_type(inner)
             if cast is not None:
-                return self.apply_cast(cast, toks[e:], member)
+                return self.apply_cast(cast, toks[e:])
             return self.resolve(inner, member, hint)
         if t0 == 'static_cast' and len(toks) > 1 and toks[1].t == '<':
             e = skip_angles(toks, 1)
             cast = self.parse_fn_ptr_type(toks[2:e - 1])
             inner = toks[e + 1:skip_balanced(toks, e) - 1]
             if cast is not None:
-                return self.apply_cast(cast, inner, member)
+                return self.apply_cast(cast, inner)
             return self.resolve(inner, member, hint)
         if t0 == '[':
             return self.resolve_lambda(toks, member)
@@ -1267,13 +1233,13 @@ class Resolver:
                 if e >= len(toks) or toks[e].t != '(':
                     continue
                 pe = skip_balanced(toks, e)
-                params, _ = parse_params(toks[e + 1:pe - 1])
+                params = parse_params(toks[e + 1:pe - 1])
                 const = any(y.t == 'const' for y in toks[pe:])
                 ret = normalize_type(join_tokens(toks[:k]))
                 return ret, cls, [p.type for p in params], const
         return None
 
-    def apply_cast(self, cast, target, member):
+    def apply_cast(self, cast, target):
         ret, cls, ptypes, const = cast
         while target and target[0].t in ('&', '+'):
             target = target[1:]
@@ -1306,8 +1272,8 @@ class Resolver:
                        f'matches no declaration of {name}: {have}')
         params = list(zip(ptypes, names))
         if cls is not None:
-            return 'member', Sig(params, ret, doc, source=f'{cls}::{name}', problem=problem)
-        return 'free', Sig(params, ret, doc, source=name or '', problem=problem)
+            return 'member', Sig(params, ret, doc, problem=problem)
+        return 'free', Sig(params, ret, doc, problem=problem)
 
     def split_qualified(self, toks):
         """`A::B::name<targs>` -> ('A::B', 'name') (template args dropped)."""
@@ -1357,16 +1323,16 @@ class Resolver:
                 fn = self.pick_overload(fns, hint)
                 if fn is None:
                     return None
-                sig = self.sig_of(fn, qual)
+                sig = self.sig_of(fn)
                 targs = self.template_args_of(toks)
                 if fn.template and fn.tparams and targs:
                     subst = {pn: normalize_type(join_tokens(ta)) for pn, ta in zip(fn.tparams, targs)}
                     sig = Sig([(substitute(t, subst), n) for t, n in sig.params],
-                              substitute(sig.ret, subst) if sig.ret else sig.ret, sig.doc, sig.cfunc, sig.source)
+                              substitute(sig.ret, subst) if sig.ret else sig.ret, sig.doc, sig.cfunc)
                 return ('free' if fn.static else 'member'), sig
             fld = self.model.find_field(qual, name)
             if fld is not None:
-                return 'data', Sig([], fld.type, fld.doc, source=f'{qual}::{name}')
+                return 'data', Sig([], fld.type, fld.doc)
             return None
         # a free function or template of the binding file (or the engine)
         fns = self.local_functions(member.call.src.path and os.path.basename(member.call.src.path), name) \
@@ -1376,14 +1342,14 @@ class Resolver:
         fn = self.pick_overload(fns, hint)
         if fn is None:
             return None
-        sig = self.sig_of(fn, None)
+        sig = self.sig_of(fn)
         targs = self.template_args_of(toks)
         if fn.template and fn.tparams and targs:
             subst = {}
             for pn, ta in zip(fn.tparams, targs):
                 subst[pn] = normalize_type(join_tokens(ta))
             sig = Sig([(substitute(t, subst), n) for t, n in sig.params], substitute(sig.ret, subst) if sig.ret else sig.ret,
-                      sig.doc, sig.cfunc, sig.source)
+                      sig.doc, sig.cfunc)
         return 'free', sig
 
     def pick_overload(self, fns, hint):
@@ -1404,11 +1370,11 @@ class Resolver:
             return non_template[0]
         return cands[0] if cands else None
 
-    def sig_of(self, fn, qual):
+    def sig_of(self, fn):
         params = [(p.type, p.name) for p in fn.params]
         cfunc = len(fn.params) == 1 and bare_type(fn.params[0].type)[0] == 'lua_State' and \
             re.sub(r'\s', '', fn.ret) in ('int',)
-        return Sig(params, fn.ret, fn.doc, cfunc=cfunc, source=(qual + '::' if qual else '') + fn.name)
+        return Sig(params, fn.ret, fn.doc, cfunc=cfunc)
 
     def resolve_lambda(self, toks, member):
         e = skip_balanced(toks, 0)  # captures
@@ -1416,7 +1382,7 @@ class Resolver:
         params = []
         if k < len(toks) and toks[k].t == '(':
             pe = skip_balanced(toks, k)
-            params, _ = parse_params(toks[k + 1:pe - 1])
+            params = parse_params(toks[k + 1:pe - 1])
             k = pe
         ret = None
         while k < len(toks) and toks[k].t != '{':
@@ -1435,7 +1401,7 @@ class Resolver:
         env = {p.name: p.type for p in params if p.name}
         if ret is None:
             ret = self.infer_return(body, env, member)
-        sig = Sig([(p.type, p.name) for p in params], ret, [], source='lambda')
+        sig = Sig([(p.type, p.name) for p in params], ret)
         sig.cfunc = len(params) == 1 and bare_type(params[0].type)[0] == 'lua_State' and ret == 'int'
         return 'free', sig
 
@@ -1483,10 +1449,7 @@ class Resolver:
         known = [t for t in types if t]
         if not known:
             return '' if all(t == '' for t in types) else None
-        for t in known:
-            if t is not None:
-                return t
-        return None
+        return known[0]
 
     def _is_lambda_block(self, body, k):
         # walk back over `(params)` / `[captures]` to see a capture list
@@ -1527,10 +1490,7 @@ class Resolver:
             return None
         # strip outer parentheses
         while toks and toks[0].t == '(' and skip_balanced(toks, 0) == len(toks):
-            inner = toks[1:-1]
-            if self._looks_like_cast(inner) and False:
-                break
-            toks = inner
+            toks = toks[1:-1]
         if not toks:
             return None
         top = self._top_level_ops(toks)
@@ -1549,10 +1509,6 @@ class Resolver:
             if op in top:
                 return 'bool'
         if '+' in top or '-' in top or '*' in top or '/' in top:
-            parts = []
-            for op in ('+', '-', '*', '/'):
-                if op in top:
-                    pass
             lhs_types = []
             for part in self._split_ops(toks, ('+', '-', '*', '/')):
                 lhs_types.append(self.expr_type(part, env, member))
@@ -1656,7 +1612,6 @@ class Resolver:
         k = 0
         n = len(toks)
         cur = None      # current type
-        qual = []       # a qualified name being built (A::B::c)
         # primary
         x = toks[0]
         if x.k != 'id':
@@ -1678,8 +1633,6 @@ class Resolver:
             k = e
         if len(names) == 1 and names[0] in env and call_args is None:
             cur = env[names[0]]
-        elif len(names) == 1 and names[0] == 'std' and False:
-            pass
         elif names[0] == 'std' and len(names) >= 2:
             nm = names[-1]
             if nm in ('to_string', 'string', 'to_wstring'):
@@ -1726,7 +1679,7 @@ class Resolver:
                     e = skip_angles(toks, k)
                     targs = split_top(toks[k + 1:e - 1])
                     k = e
-                base, stars = bare_type(cur)
+                base = bare_type(cur)[0]
                 if k < n and toks[k].t == '(':
                     e = skip_balanced(toks, k)
                     args = split_top(toks[k + 1:e - 1])
@@ -1745,7 +1698,7 @@ class Resolver:
                     fn = self.pick_by_arity(fns, len(args))
                     if fn is None:
                         return None
-                    cur = self.instantiate_ret(fn, targs, base)
+                    cur = self.instantiate_ret(fn, targs)
                 else:
                     fld = self.model.find_field(base, nm)
                     if fld is None:
@@ -1767,7 +1720,7 @@ class Resolver:
         ok = [f for f in cands if sum(1 for p in f.params if p.default is None) <= nargs <= len(f.params)]
         return ok[0] if ok else None
 
-    def instantiate_ret(self, fn, targs, owner_type=None):
+    def instantiate_ret(self, fn, targs):
         ret = fn.ret
         if fn.template and fn.tparams and targs:
             subst = {pn: normalize_type(join_tokens(ta)) for pn, ta in zip(fn.tparams, targs)}
@@ -1810,7 +1763,6 @@ class TypeMapper:
     def __init__(self, model, resolver):
         self.model = model
         self.r = resolver
-        self.unknown = set()
 
     def lua(self, cpp, ctx_class=None, depth=0):
         """Lua annotation type of a C++ type ('' for void, 'any' when unknown)."""
@@ -1882,7 +1834,6 @@ class TypeMapper:
         td = self.model.resolve_typedef(base, ctx_class)
         if td:
             return self.lua(td + '*' * stars, ctx_class, depth + 1)
-        self.unknown.add(base)
         return 'any'
 
     def fun_type(self, sig, ctx_class, depth):
@@ -2059,7 +2010,6 @@ class Builder:
         self.r = Resolver(model, bindings)
         self.tm = TypeMapper(model, self.r)
         self.unresolved = []
-        self.engine_events = []   # (name, LuaSig of the handler)
 
     # ── enums ────────────────────────────────────────────────────────────────
 
@@ -2074,7 +2024,7 @@ class Builder:
                     ce = self.model.find_enum(qual)
                     if ce is not None:
                         cpp_enum = cpp_enum or ce
-                        for cn, cv, cdoc in ce.values:
+                        for cn, cv, _ in ce.values:
                             if cn == vname:
                                 v = cv
                                 break
@@ -2124,7 +2074,7 @@ class Builder:
         if not groups:
             return LuaSig([], c.name)
         s, e = groups[-1]
-        params, _ = parse_params(targ[s + 1:e - 1])
+        params = parse_params(targ[s + 1:e - 1])
         names = [None] * len(params)
         doc = []
         if c.cpp_class is not None:
@@ -2143,7 +2093,6 @@ class Builder:
         return LuaSig(lp, c.name, doc)
 
     def default_param_name(self, cpp, index):
-        base, stars = bare_type(cpp)
         lt = self.tm.lua(cpp)
         if lt in self.r.lua_classes:
             return lt[0].lower() + lt[1:]
@@ -2484,7 +2433,6 @@ class Emitter:
         return notes
 
     def emit_class(self, c):
-        bd = self.bd
         L = [FILE_HEADER]
         cls_doc = list(c.doc)
         if c.cpp_class is not None:

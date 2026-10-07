@@ -193,7 +193,7 @@ namespace jasperengine::editor::mcp {
     // Commands built step by step, each from the state the steps before it left (a property
     // of a GameObject or component another step creates), applied, undone and redone as one
     // undo step. A step returns null with an error to abort: the steps done are undone and
-    // execute() fails (its error is in error()).
+    // execute() fails (its error is in errorSlot()).
     class McpStepsCmd : public Command {
     public:
         using Step = std::function<Command*(std::string& error)>;
@@ -204,7 +204,6 @@ namespace jasperengine::editor::mcp {
         void refreshTransforms(Project* project, uint32_t sceneId) { transformProject = project; transformSceneId = sceneId; }
         // A shared slot for the error, readable after the history deleted a failed command
         std::shared_ptr<std::string> errorSlot() const { return error; }
-        const std::string& lastError() const { return *error; }
 
         bool execute() override;
         void undo() override;

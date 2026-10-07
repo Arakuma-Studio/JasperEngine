@@ -43,9 +43,6 @@ namespace jasperengine::editor{
             Entity entity = NULL_ENTITY;
             Entity target = NULL_ENTITY;
         };
-        // The overrides of the Prefab instance GameObjects whose components this command
-        // made the instance's own, from before it
-
         Project* project;
         uint32_t sceneId;
         Entity entity;
@@ -69,7 +66,6 @@ namespace jasperengine::editor{
 
         void unparkEntities(SceneProject* sceneProject);
         void overrideInPrefab(Entity target, ComponentType type);
-        void restorePrefabOverrides();
         void clearComponents(Scene* scene);
         void releasePendingLoad(Scene* scene, const ModelComponent& model);
 

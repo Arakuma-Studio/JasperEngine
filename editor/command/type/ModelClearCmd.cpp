@@ -65,7 +65,6 @@ editor::ModelClearCmd::ModelClearCmd(Project* project, uint32_t sceneId, Entity 
 
 editor::ModelClearCmd::~ModelClearCmd(){
     delete deleteCmd;
-    deleteCmd = nullptr;
 }
 
 bool editor::ModelClearCmd::hasContent(const ModelComponent& model){
@@ -178,10 +177,6 @@ std::vector<editor::ModelClearCmd::ParkedEntity> editor::ModelClearCmd::collectP
         entry.scale = transform.scale;
         parked.push_back(entry);
     }
-    // Put back in array order, each at its old index once the earlier ones are in place
-    std::sort(parked.begin(), parked.end(), [](const ParkedEntity& a, const ParkedEntity& b) {
-        return a.transformIndex < b.transformIndex;
-    });
     return parked;
 }
 
@@ -209,11 +204,6 @@ void editor::ModelClearCmd::overrideInPrefab(Entity target, ComponentType type){
     // override of that instance, all of it
     prefabUndo.capture(project, sceneId, target);
     project->recordPrefabEdit(sceneId, target, type, {});
-}
-
-void editor::ModelClearCmd::restorePrefabOverrides(){
-    prefabUndo.restore(project, sceneId);
-    prefabUndo.clear();
 }
 
 void editor::ModelClearCmd::releasePendingLoad(Scene* scene, const ModelComponent& model){
@@ -409,7 +399,8 @@ void editor::ModelClearCmd::undo(){
         }
     }
     retargetedActions.clear();
-    restorePrefabOverrides();
+    prefabUndo.restore(project, sceneId);
+    prefabUndo.clear();
 
     unparkEntities(sceneProject);
 

@@ -28,15 +28,7 @@ MorphTracks::MorphTracks(Scene* scene, std::vector<float> times, std::vector<std
 }
 
 void MorphTracks::setTimes(std::vector<float> times){
-    KeyframeTracksComponent& keyframe = getComponent<KeyframeTracksComponent>();
-
-    keyframe.times = times;
-
-    // keep per-segment easings aligned (trailing entries would go stale)
-    size_t segments = keyframe.times.size() > 1 ? keyframe.times.size() - 1 : 0;
-    if (keyframe.easings.size() > segments){
-        keyframe.easings.resize(segments);
-    }
+    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void MorphTracks::setValues(std::vector<std::vector<float>> values){
@@ -55,26 +47,9 @@ void MorphTracks::setValues(std::vector<std::vector<float>> values){
 }
 
 void MorphTracks::setEasings(std::vector<EaseType> easings){
-    KeyframeTracksComponent& keyframe = getComponent<KeyframeTracksComponent>();
-
-    // CUSTOM has no per-segment function storage; treat it as linear
-    for (EaseType& e : easings){
-        if (e == EaseType::CUSTOM) e = EaseType::LINEAR;
-    }
-
-    keyframe.easings = easings;
+    getComponent<KeyframeTracksComponent>().setEasings(easings);
 }
 
 void MorphTracks::setEasing(unsigned int segment, EaseType ease){
-    KeyframeTracksComponent& keyframe = getComponent<KeyframeTracksComponent>();
-
-    // CUSTOM has no per-segment function storage; treat it as linear
-    if (ease == EaseType::CUSTOM){
-        ease = EaseType::LINEAR;
-    }
-
-    if (keyframe.easings.size() <= segment){
-        keyframe.easings.resize(segment + 1, EaseType::LINEAR);
-    }
-    keyframe.easings[segment] = ease;
+    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

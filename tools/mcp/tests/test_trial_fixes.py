@@ -32,18 +32,14 @@ from harness import Editor, Scratch, TestFailure, find_key, launch_spec
 TIMEOUT = 900
 
 
-def fail(message: str) -> None:
-    raise TestFailure(message)
-
-
 def check(cond, message: str) -> None:
     if not cond:
-        fail(message)
+        raise TestFailure(message)
 
 
 def check_eq(actual, expected, message: str = "") -> None:
     if actual != expected:
-        fail(f"{message + ': ' if message else ''}expected {expected!r}, got {actual!r}")
+        raise TestFailure(f"{message + ': ' if message else ''}expected {expected!r}, got {actual!r}")
 
 
 def touch_write(path: Path, text: str) -> None:
@@ -266,8 +262,6 @@ async def test_existing_agents_and_claude_md_never_rewritten(ed: Editor):
     await ed.session.read_resource("jasper://project/AGENTS.md")
     await ed.call("play", action="start", scene="Main Scene", wait=True)
     await ed.call("play", action="stop")
-    import subprocess
-    import harness
     subprocess.run(harness.editor_command() + ["check", "--project", str(ed.project), "--lua", "--cpp"],
                    capture_output=True, timeout=600)
     check_eq(agents_file.read_text(), agents_text, "existing AGENTS.md untouched")
@@ -530,7 +524,7 @@ async def test_editor_files_stay_out_of_project_cwd():
                         msg = json.loads(line)
                         if msg.get("id") == id_:
                             return msg
-                fail("no response from the editor: " + scratch.stderr_log.read_text()[-2000:])
+                raise TestFailure("no response from the editor: " + scratch.stderr_log.read_text()[-2000:])
 
             await send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                 "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}})

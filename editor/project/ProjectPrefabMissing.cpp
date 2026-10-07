@@ -229,7 +229,6 @@ void editor::Project::convertPrefabInstancesToMissing(const std::filesystem::pat
     for (const auto& [sceneId, outer, node] : outerRoots) {
         if (SceneProject* sceneProject = getScene(sceneId)) {
             reimportPrefabInstance(sceneProject, outer, node);
-            touchedScenes.insert(sceneId);
             sceneProject->isModified = true;
             sceneProject->needUpdateRender = true;
             sceneProject->structureVersion++;

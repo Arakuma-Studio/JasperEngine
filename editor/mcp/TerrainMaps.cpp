@@ -65,7 +65,7 @@ std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& reque
                     weight *= 0.5f;
                     f *= 2.0f;
                 }
-                h = baseHeight + (weightSum > 0.0f ? sum / weightSum : 0.0f) * amplitude;
+                h = baseHeight + sum / weightSum * amplitude;
             }
             encodeHeight16(pixels, static_cast<size_t>(y) * resolution + x, h);
         }

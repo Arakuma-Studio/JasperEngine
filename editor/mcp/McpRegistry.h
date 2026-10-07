@@ -117,9 +117,8 @@ namespace jasperengine::editor::mcp {
         std::vector<PromptDef> promptList;
 
     public:
-        // Same name replaces (modules override legacy tools), keeping its list position.
+        // The same name replaces the definition, keeping its list position.
         void addTool(ToolDef def);
-        void removeTool(const std::string& name);
         void addResource(ResourceDef def);
         void addResourceTemplate(ResourceTemplateDef def);
         void addPrompt(PromptDef def);

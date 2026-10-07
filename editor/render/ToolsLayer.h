@@ -35,7 +35,6 @@ namespace jasperengine::editor{
 
         bool anchorGizmoEnabled;
 
-        float gizmoScale;
     public:
         ToolsLayer(bool use2DGizmos);
         virtual ~ToolsLayer();
@@ -73,4 +72,3 @@ namespace jasperengine::editor{
     };
 
 }
-

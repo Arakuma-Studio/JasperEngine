@@ -113,10 +113,5 @@ namespace jasperengine::editor {
         // Newest message, for the status bar. False when the Console is empty.
         bool getLatestLog(LogType& type, std::string& message) const;
 
-        // Return the most recent log entries as prefixed text (e.g. "[Error] ..."),
-        // oldest-first. When onlyProblems is true, keep only Error/Warning/Build
-        // entries (build compiler output is logged as Build). Used by the AI to read
-        // build errors and runtime script crashes after starting a scene.
-        std::string getRecentLogText(size_t maxEntries, bool onlyProblems) const;
     };
 }

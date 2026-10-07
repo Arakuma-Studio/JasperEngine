@@ -843,19 +843,15 @@ std::vector<std::pair<Entity, Entity>> editor::Project::getPrefabAddedGameObject
     }
     const Scene* scene = sceneProject->scene;
 
-    // The roots and members of the instance and the ones nested in it, and among them the
-    // GameObjects an added one hangs from
+    // The roots and members of the instance and the ones nested in it.
     std::unordered_set<Entity> prefabEntities;
-    std::unordered_set<Entity> parents;
     auto collect = [&](auto&& self, const Prefab::Instance* instance, const fs::path& path, size_t depth) -> void {
         if (!instance || depth > 64) {
             return;
         }
         prefabEntities.insert(instance->rootEntity);
-        parents.insert(instance->rootEntity);
         for (const Prefab::EntityMember& member : instance->members) {
             prefabEntities.insert(member.localEntity);
-            parents.insert(member.localEntity);
         }
         for (const NestedInstanceLevel& nested : getNestedInstanceLevels(sceneProject, path, *instance)) {
             self(self, nested.instance, nested.path, depth + 1);
@@ -874,7 +870,7 @@ std::vector<std::pair<Entity, Entity>> editor::Project::getPrefabAddedGameObject
     for (size_t i = 0; i < transforms->size(); i++) {
         const Entity entity = transforms->getEntity(i);
         const Entity parent = transforms->getComponentFromIndex(i).parent;
-        if (parent != NULL_ENTITY && parents.count(parent) && !prefabEntities.count(entity) && tracked.count(entity)) {
+        if (parent != NULL_ENTITY && prefabEntities.count(parent) && !prefabEntities.count(entity) && tracked.count(entity)) {
             added.push_back({entity, parent});
         }
     }

@@ -11,17 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def definition(source, signature):
-    start = source.index(signature)
-    opening = source.index("{", start)
-    depth, end = 1, opening + 1
-    while depth:
-        depth += (source[end] == "{") - (source[end] == "}")
-        end += 1
-    return source[start:end]
+from run_core import ROOT, definition
 
 
 def production(ref, namespace):
@@ -39,7 +29,7 @@ def production(ref, namespace):
         "ConsoleWindow::Severity ConsoleWindow::severityOf", "size_t ConsoleWindow::countRawLines",
         "size_t ConsoleWindow::trimLeadingRawLines", "void ConsoleWindow::enforceStoredLineLimit",
         "void ConsoleWindow::recountSeverities", "void ConsoleWindow::addLog(LogType type, const std::string&",
-        "std::string ConsoleWindow::getRecentLogText", "bool ConsoleWindow::getLatestLog",
+        "bool ConsoleWindow::getLatestLog",
         "bool ConsoleWindow::passTextFilter", "void ConsoleWindow::rebuildRows",
         "const LogData* ConsoleWindow::selectedLog",
     ]
@@ -69,9 +59,6 @@ static void compare(before::ConsoleWindow& a, after::ConsoleWindow& b) {
         require(a.logs[i].message == b.logs[i].message);
         require(static_cast<int>(a.logs[i].type) == static_cast<int>(b.logs[i].type));
     }
-    require(a.getRecentLogText(20, false) == b.getRecentLogText(20, false));
-    require(a.getRecentLogText(20, true) == b.getRecentLogText(20, true));
-    require(b.getRecentLogText(0, false).empty());
     a.rebuildRows(); b.rebuildRows();
     require(a.rows.size() == b.rows.size());
     for (size_t i = 0; i < a.rows.size(); ++i) {
@@ -127,7 +114,7 @@ static void check() {
     require(b.logs.size() == 1 && b.storedLogLineCount == 10000);
     add(3, "tail\n"); compare(a, b);
     a.clear(); b.clear(); compare(a, b);
-    std::cout << "Correctness: rollover, partial/oversized trimming, empty/trailing lines, severity counts, selection, clear, filters, collapse and recent logs passed\n";
+    std::cout << "Correctness: rollover, partial/oversized trimming, empty/trailing lines, severity counts, selection, clear, filters and collapse passed\n";
 }
 static volatile size_t sink = 0;
 template<class Window, class Type> static double measure(const std::string& message, int count, int warmup) {

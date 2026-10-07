@@ -130,10 +130,6 @@ async def http_client() -> Http:
     return await (await Http().connect()).initialize()
 
 
-def text_of(result: dict) -> str:
-    return "".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
-
-
 # -- sequential volume ---------------------------------------------------------------
 
 

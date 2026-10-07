@@ -4,7 +4,7 @@
     tools/mcp/run-tests.sh -k undo              # tests whose "file::name" contains "undo"
     tools/mcp/run-tests.sh -j 4                 # 4 test files at a time (one editor each)
     tools/mcp/run-tests.sh tests/test_protocol.py
-    tools/mcp/run-tests.sh --fake               # against tools/mcp/fake_server.py (harness self-test)
+    tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py   # fake-server protocol checks
     tools/mcp/run-tests.sh --url http://127.0.0.1:47615/mcp   # against an editor already running
 
 A test is a module-level `async def test_xxx(ed)` (ed: harness.Editor) or `async def test_xxx()`.
@@ -194,7 +194,7 @@ def main() -> int:
                 (fut.result() for fut in concurrent.futures.as_completed([pool.submit(run, f) for f in files])):
             if out:
                 print(f"== {f.name}\n{out.rstrip()}", flush=True)
-            if rc != 0 or (not results and rc != 0):
+            if rc != 0:
                 crashed.append(f"{f.name} (worker exit {rc})")
             all_results += results
 

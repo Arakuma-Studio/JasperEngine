@@ -18,7 +18,7 @@ import sys
 import time
 import zlib
 
-from harness import Editor, find_key, skip
+from harness import Editor, skip
 
 TIMEOUT = 900
 
@@ -90,30 +90,23 @@ def image_difference(a: bytes, b: bytes, step: int = 4) -> float:
 
 
 async def new_scene(ed: Editor, kind: str, name: str):
-    """A new scene of `kind` (2d, 3d, ui), selected; returns its id."""
-    if kind in SCENES:
-        return SCENES[kind]
-    await ed.call("create_scene", name=name, type=kind)
-    for _ in range(50):
-        status = await ed.call("editor_status")
-        if status.get("dialog"):
-            await ed.call("respond_dialog", choice="no")
-            continue
-        selected = [sc for sc in status["scenes"] if sc.get("selected")]
-        if selected and selected[0]["name"].startswith(name):
-            SCENES[kind] = selected[0]["id"]
-            return SCENES[kind]
-    ed.fail(f"create_scene did not make a selected scene named {name!r}: {status!r}")
+    """Create and cache one test scene per kind (2d, 3d, ui)."""
+    if kind not in SCENES:
+        made = await ed.call("create_scene", name=name, type=kind)
+        scene = made["scene"]
+        ed.check(scene["selected"] and scene["name"].startswith(name), f"new scene is not selected: {scene!r}")
+        SCENES[kind] = scene["id"]
+    return SCENES[kind]
 
 
-async def play_and_collect(ed: Editor, scene, marker: str):
-    """Start Play on `scene`, return (start result, console lines containing `marker`), stopped again."""
+async def play_and_collect(ed: Editor, scene):
+    """Start Play on `scene`, collect console lines, and stop again."""
     cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
     started = await ed.call("play", action="start", scene=scene, wait=True)
     await ed.call("wait", frames=5)
     lines = await ed.call("read_console", since=cursor, limit=200)
     await ed.call("play", action="stop")
-    texts = [e.get("message", "") for e in lines.get("entries", lines.get("logs", []))]
+    texts = [e["message"] for e in lines["entries"]]
     return started, texts
 
 
@@ -184,11 +177,11 @@ return Body2DProbe
 async def test_rigidbody3d_ready_in_init(ed: Editor):
     sid = await new_scene(ed, "3d", "BodyInit3D")
     made = await ed.call("create_entity", scene=sid, name="Ball", type="sphere", position=[0, 3, 0])
-    ball = find_key(made, "entity_id", "id")
+    ball = made["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=ball, body_type="dynamic", add=[{"shape": "sphere"}])
     await ed.call("create_script", kind="lua", name="BodyProbe", content=BODY3D_SCRIPT, entity=ball)
 
-    started, lines = await play_and_collect(ed, sid, "BODY3D-INIT")
+    started, lines = await play_and_collect(ed, sid)
     problems = problem_texts(started)
     ed.check(not any("not loaded" in p or "init() failed" in p for p in problems),
              f"Rigidbody not ready in init() on the first play: {problems}")
@@ -201,11 +194,11 @@ async def test_rigidbody3d_ready_in_init(ed: Editor):
 async def test_rigidbody2d_ready_in_init(ed: Editor):
     sid = await new_scene(ed, "2d", "BodyInit2D")
     made = await ed.call("create_entity", scene=sid, name="Puck", type="sprite", position=[50, 80, 0])
-    puck = find_key(made, "entity_id", "id")
+    puck = made["entity_id"]
     await ed.call("edit_colliders", scene=sid, entity=puck, body_type="dynamic", add=[{"shape": "circle", "radius": 10}])
     await ed.call("create_script", kind="lua", name="Body2DProbe", content=BODY2D_SCRIPT, entity=puck)
 
-    started, lines = await play_and_collect(ed, sid, "BODY2D-INIT")
+    started, lines = await play_and_collect(ed, sid)
     problems = problem_texts(started)
     ed.check(not any("not loaded" in p or "init() failed" in p for p in problems),
              f"Rigidbody2D not ready in init() on the first play: {problems}")
@@ -231,7 +224,7 @@ return FrictionProbe
 async def test_rigidbody3d_friction_restitution_properties(ed: Editor):
     sid = await new_scene(ed, "3d", "BodyInit3D")
     made = await ed.call("create_entity", scene=sid, name="Rubber", type="box", position=[2, 1, 0])
-    rubber = find_key(made, "entity_id", "id")
+    rubber = made["entity_id"]
     body = await ed.call("edit_colliders", scene=sid, entity=rubber, body_type="dynamic", add=[{"shape": "box"}],
                          body={"friction": 0.9, "restitution": 0.6})
     ed.check_eq(body["dimension"], "3d")
@@ -242,7 +235,7 @@ async def test_rigidbody3d_friction_restitution_properties(ed: Editor):
 
     await ed.call("set_properties", scene=sid, entity=rubber, values={"rigidbody": {"friction": 0.75}})
     await ed.call("create_script", kind="lua", name="FrictionProbe", content=FRICTION_SCRIPT, entity=rubber)
-    started, lines = await play_and_collect(ed, sid, "FRICTION-INIT")
+    started, lines = await play_and_collect(ed, sid)
     hits = [line for line in lines if "FRICTION-INIT" in line]
     ed.check(hits, f"init() did not log: {problem_texts(started)} {lines[-10:]}")
     ed.check_in("friction=0.75", hits[0], "the body is made with the component's friction")

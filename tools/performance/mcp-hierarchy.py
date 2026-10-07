@@ -12,18 +12,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
+from run_core import ROOT, definition
 SOURCE = "editor/mcp/tools/EntityTools.cpp"
-
-
-def definition(source, signature):
-    start = source.index(signature)
-    opening = source.index("{", start)
-    depth, end = 1, opening + 1
-    while depth:
-        depth += (source[end] == "{") - (source[end] == "}")
-        end += 1
-    return source[start:end]
 
 
 def methods(source):

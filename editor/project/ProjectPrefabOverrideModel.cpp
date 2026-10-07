@@ -157,10 +157,6 @@ editor::Prefab::ObjectOverrides editor::Project::getPrefabObjectOverrides(uint32
     return overrides ? *overrides : Prefab::ObjectOverrides();
 }
 
-bool editor::Project::isPropertyOverridden(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property) const {
-    return getPrefabObjectOverrides(sceneId, entity).hasProperty(type, property);
-}
-
 bool editor::Project::isComponentOverridden(uint32_t sceneId, Entity entity, ComponentType type) const {
     return getPrefabObjectOverrides(sceneId, entity).hasComponent(type);
 }
@@ -606,7 +602,7 @@ void editor::Project::recordNestedRootAssetState(Prefab& prefab, const std::file
     if (!nested || nested == &prefab || nested->root == NULL_ENTITY) {
         return;
     }
-    // the values are the root's registry entity's (A2's rule for a nested root)
+    // The values belong to the root's registry entity.
     nestedAssetLayer(prefab, prefabPath, registryEntity, NULL_ENTITY, nullptr)->objects[nested->root].overrides.state |= stateBits;
 }
 
@@ -816,8 +812,7 @@ void editor::Project::clearIntermediateOverrides(uint32_t sceneId, const PrefabO
                 overrides = entryOf(nestedAssetLayer(*prefab, path, ref.registryEntity, NULL_ENTITY, nullptr), inner->root);
             }
         } else {
-            Prefab* holder = nullptr;
-            overrides = entryOf(applyTargetLayer(sceneId, ref, path, &holder), ref.registryEntity);
+            overrides = entryOf(applyTargetLayer(sceneId, ref, path, nullptr), ref.registryEntity);
         }
         if (!overrides) {
             continue;

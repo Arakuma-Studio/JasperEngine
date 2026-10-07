@@ -1591,7 +1591,6 @@ namespace jasperengine::editor{
         bool isPrefabInstanceRoot(uint32_t sceneId, Entity entity) const;
 
         // Queries (the owning level's overrides)
-        bool isPropertyOverridden(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property) const;
         bool isComponentOverridden(uint32_t sceneId, Entity entity, ComponentType type) const;
         // The overridden property names of a component ("*" for the whole of it)
         std::set<std::string> getOverriddenProperties(uint32_t sceneId, Entity entity, ComponentType type) const;
@@ -1711,9 +1710,6 @@ namespace jasperengine::editor{
         // (`level`: which instance at that root, for the levels of a variant instance, PREFABS.md
         // 18; empty: the outermost, the one the root's PrefabComponent names)
         Entity makePrefabReference(uint32_t sceneId, Entity instanceRoot, Entity localTarget, const std::filesystem::path& level = {});
-        // The scene GameObject a reference of that prefab (a registry entity or a stripped
-        // id) means in the instance rooted at instanceRoot
-        Entity resolvePrefabObjectId(uint32_t sceneId, Entity instanceRoot, Entity prefabId, const std::filesystem::path& level = {});
         // The references of a component of `registry` (the scene, a prefab registry holding a
         // copy, or a scratch one), local ids of the scene, made the ids of the prefab of the
         // instance rooted at instanceRoot (makePrefabReference), in place. `properties`

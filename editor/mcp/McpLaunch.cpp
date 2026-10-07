@@ -145,10 +145,8 @@ bool startXvfb(std::string& error) {
     }
     if (pid == 0) {
         close(fds[0]);
-#ifdef __linux__
         // Dies with the editor even if it crashes
         prctl(PR_SET_PDEATHSIG, SIGTERM);
-#endif
         const int devNull = open("/dev/null", O_RDWR);
         if (devNull >= 0) {
             dup2(devNull, STDIN_FILENO);

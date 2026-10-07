@@ -50,11 +50,6 @@ namespace jasperengine::editor {
         // the process, this is what is left after a crash.
         static void setLogFile(const std::filesystem::path& path);
 
-        // Recent output-window log as prefixed text (oldest-first). onlyProblems keeps
-        // Error/Warning/Build entries. Empty if no output window is attached. Call on
-        // the main thread. Used by the AI to read build/runtime errors from the log.
-        static std::string getRecentLog(size_t maxEntries, bool onlyProblems);
-
         // Structured reads of everything logged through Out (and so Log::*, Lua print and
         // script errors), from any thread, with or without a Console window (CLI, headless).
         // Out keeps the newest MAX_LOG_ENTRIES messages itself, captured when they are
@@ -65,8 +60,6 @@ namespace jasperengine::editor {
         // Build entries. A caller polls with the last id it saw (a cursor); 0 reads from
         // the oldest kept.
         static std::vector<LogEntry> getLogsSince(uint64_t afterId, size_t max = 0, bool onlyProblems = false);
-        // The newest max messages (0: all kept), oldest first
-        static std::vector<LogEntry> getRecentLogs(size_t max, bool onlyProblems = false);
         // The newest message's id, 0 before any. Take it before an action to read only what
         // the action logs.
         static uint64_t lastLogId();

@@ -110,8 +110,7 @@ OBB::OBB(const AABB& aabb, const Matrix4& transform)
 }
 
 OBB::~OBB() {
-    if (mCorners)
-        delete[] mCorners;
+    delete[] mCorners;
 }
 
 OBB& OBB::operator=(const OBB& rhs) {
@@ -124,10 +123,8 @@ OBB& OBB::operator=(const OBB& rhs) {
     mAxisZ = rhs.mAxisZ;
     mBoxType = rhs.mBoxType;
 
-    if (mCorners) {
-        delete[] mCorners;
-        mCorners = 0;
-    }
+    delete[] mCorners;
+    mCorners = 0;
 
     return *this;
 }
@@ -372,10 +369,8 @@ void OBB::enclose(const OBB& other) {
         enclose(otherCorners[i]);
     }
 
-    if (mCorners) {
-        delete[] mCorners;
-        mCorners = nullptr;
-    }
+    delete[] mCorners;
+    mCorners = nullptr;
 }
 
 void OBB::enclose(const Vector3& point) {

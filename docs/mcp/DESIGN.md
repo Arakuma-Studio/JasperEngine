@@ -61,7 +61,7 @@ editor/mcp/
   McpContext.{h,cpp}      access to App, Project, windows from tool handlers
   McpRefs.{h,cpp}         scene + entity + component + asset reference resolution
   McpValues.{h,cpp}       JSON <-> engine property values, PropertyCmd building
-  McpSchema.{h,cpp}       JSON Schema builders (objectSchema, vec3Schema, refSchema...)
+  McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
@@ -71,26 +71,24 @@ editor/mcp/
   tools/
     McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h: helpers shared by modules
     CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
-    ProjectTools.cpp      W5
-    SceneTools.cpp        W1
-    EntityTools.cpp       W1
-    ComponentTools.cpp    W1
-    PrefabTools.cpp       W2
-    PlayTools.cpp         W3
-    ViewTools.cpp         W3
-    ConsoleTools.cpp      W3
-    ScriptTools.cpp       W4
-    AssetTools.cpp        W4
-    DocsTools.cpp         W4
-    BuildTools.cpp        W5
-    WorldTools.cpp        W6
+    ProjectTools.cpp      project lifecycle and settings
+    SceneTools.cpp        scenes and scene settings
+    EntityTools.cpp       hierarchy, GameObjects, selection and clipboard
+    ComponentTools.cpp    components and properties
+    PrefabTools.cpp       prefabs, variants, overrides and Prefab Mode
+    PlayTools.cpp         play control, runtime inspection and Lua evaluation
+    ViewTools.cpp         screenshots and scene camera
+    ConsoleTools.cpp      console logs
+    ScriptTools.cpp       Lua/C++ scripts and compilation
+    AssetTools.cpp        assets, imports, materials and shaders
+    DocsTools.cpp         engine API docs and resources
+    BuildTools.cpp        export, build and player jobs
+    WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
 `McpServer` calls them all in a fixed order (Core first, then the rest; a later module may
 replace a tool by registering the same name). Every file above is listed in `CMakeLists.txt`.
-(The first version also adapted the old in-editor agent's actions as "legacy" tools; every
-one was replaced by a module tool and the layer was deleted.)
 
 ## Registry API
 
@@ -112,7 +110,6 @@ struct ToolDef {
 
 class McpRegistry {
     void addTool(ToolDef def);           // same name replaces
-    void removeTool(const std::string& name);
     void addResource(ResourceDef);        // static uri
     void addResourceTemplate(ResourceTemplateDef);  // uri template e.g. jasper://scene/{id}
     void addPrompt(PromptDef);
@@ -166,8 +163,8 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   runtime scene.
 - **Entity** (GameObject): `entity` = numeric id, or a *path*: `/`-joined names from the
   scene root with `#N` for the Nth earlier same-name sibling (`Player/Gun`, `Enemy#2`) —
-  the same scheme as `scene-dump` (`dumpPath`/`findDumpEntity` move to
-  `editor/util/EntityPath.{h,cpp}` so CLI and MCP share it). Ambiguous names are an
+  the same scheme as `scene-dump`, shared through `editor/util/EntityPath.{h,cpp}`.
+  Ambiguous names are an
   error listing the matching paths. Results always return both `id` and `path`.
 - **Component**: `Catalog::getComponentType` names (`transform`, `mesh`, `rigidbody2d`, ...),
   validated (unknown → error listing valid names; never silently Transform).
@@ -187,7 +184,7 @@ component's YAML encoding (Stream) round-trip so nothing is unsettable.
 Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 `MultiPropertyCmd` and use `addCommandNoMerge` (one discrete undo step per call).
 
-## Shared editor enablers (done before the tool workstreams)
+## Shared editor APIs
 
 - `editor/util/EntityPath.{h,cpp}` shared with the CLI.
 - Console: structured, cursor-based log reads (`id`, `type`, `message`, timestamp) and
@@ -196,21 +193,8 @@ Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 - Non-interactive Project APIs: create a scene and get its id, open/close a scene, save
   a scene to a path, create/open a project, without modal prompts (`choice` parameters).
 
-## Workstreams
+## Tool conventions
 
-| W | Owner files | Scope |
-|---|---|---|
-| Core | `editor/mcp/*` (not tools/ modules), `editor/main.cpp`, `App.*`, `AppSettings.*`, CMake, removal of `editor/ai`, `AiChatWindow`, `AiSettingsWindow`, libcurl | server, transports, registry, calls/jobs/batch, activity window, CLI |
-| Enablers | `editor/util/EntityPath.*`, `Out.*`, `ConsoleWindow.*`, Lua print, `SceneRender.*`, `GraphicUtils.*`, `Project.*` non-interactive APIs, `CommandLine.cpp` | see above |
-| Harness | `tools/mcp/*`, `docs/mcp/*` (except this file), `.mcp.json`, `McpInstructions.cpp` | Python MCP test harness, agent guide, client setup docs |
-| W1 | `SceneTools.cpp`, `EntityTools.cpp`, `ComponentTools.cpp`, `McpValues.*`, `McpRefs.*` | scenes, hierarchy, GameObjects, components, all property types, selection, clipboard, scene settings |
-| W2 | `PrefabTools.cpp` | full prefab workflow incl. variants, overrides, Prefab Mode |
-| W3 | `PlayTools.cpp`, `ViewTools.cpp`, `ConsoleTools.cpp` | play control, runtime inspection + Lua eval, input injection, screenshots, scene camera, console |
-| W4 | `ScriptTools.cpp`, `AssetTools.cpp`, `DocsTools.cpp` | Lua/C++ scripts, compile check, code editor sync, assets/import, materials, shaders, engine API docs/resources |
-| W5 | `ProjectTools.cpp`, `BuildTools.cpp` | project lifecycle and settings, scenes in build, async export/build/run players |
-| W6 | `WorldTools.cpp` | terrain, tilemaps, sprites/animation, keyframes, particles, physics colliders/joints, UI widgets, audio |
-
-Rules for every workstream:
 - Prefer fewer, more powerful tools with excellent descriptions and schemas over many
   narrow ones. A tool description says what it does, what it returns, and the common
   mistakes. Target well under 150 tools in total.

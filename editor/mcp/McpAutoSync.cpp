@@ -294,10 +294,6 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
     }
 }
 
-void McpAutoSync::tick(McpContext& ctx) {
-    ensureRoot(ctx);
-}
-
 void McpAutoSync::prepare(McpContext& ctx) {
     ensureRoot(ctx);
 }
@@ -595,8 +591,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             // A syntax check runs nothing: safe during Play
             if (pending.kind != 'r' && Util::isLuaFile(rel)) {
                 std::string text;
-                if (w4::readFile(root / fs::path(rel), text)) {
-                    const w4::LuaSyntax syntax = w4::checkLuaSyntax(text, rel);
+                if (ProjectChecks::readFile(root / fs::path(rel), text)) {
+                    const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(text, rel);
                     if (!syntax.ok) problems.push_back({{"path", rel}, {"line", syntax.line}, {"message", "Lua syntax error: " + syntax.message}});
                 }
             }
@@ -630,8 +626,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         return;
     }
 
-    std::vector<w4::ShaderUse> forks = shaderFiles.empty() ? std::vector<w4::ShaderUse>()
-                                                           : w4::shaderForksUsingFiles(ctx.project(), shaderFiles);
+    std::vector<ProjectChecks::ShaderUse> forks = shaderFiles.empty() ? std::vector<ProjectChecks::ShaderUse>()
+                                                                     : ProjectChecks::shaderForksUsingFiles(ctx.project(), shaderFiles);
     if (forks.empty()) {
         run(report);
         return;

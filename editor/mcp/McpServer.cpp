@@ -46,11 +46,6 @@ std::string shorten(const std::string& text, size_t max) {
     return out;
 }
 
-const char* playingRefusal() {
-    return "This tool is not available while a scene is playing. Stop Play mode first "
-           "(play with action \"stop\"), then retry.";
-}
-
 } // namespace
 
 McpLaunchOptions& jasperengine::editor::mcp::mcpLaunchOptions() {
@@ -136,7 +131,6 @@ void McpServer::setHttpEnabled(bool enabled, int port) {
         return;
     }
     if (httpTransport->isRunning() && httpTransport->port() == port) return;
-    httpTransport->stop();
     std::string error;
     if (httpTransport->start(port, error)) {
         Out::info("MCP server listening on http://127.0.0.1:%d/mcp", port);
@@ -398,10 +392,7 @@ void McpServer::handleMessage(const SessionPtr& session, const Json& message, co
     if (!hasId) {
         const std::string method = message["method"].get<std::string>();
         const Json params = message.value("params", Json::object());
-        if (method == "notifications/initialized") {
-            std::lock_guard<std::mutex> lock(sessionMutex);
-            session->initialized = true;
-        } else if (method == "notifications/cancelled") {
+        if (method == "notifications/cancelled") {
             if (params.is_object() && params.contains("requestId")) {
                 std::lock_guard<std::mutex> lock(inflightMutex);
                 auto it = inflight.find(inflightKey(session->id, params["requestId"]));
@@ -609,8 +600,6 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     }
 
     if (method == "logging/setLevel") {
-        std::lock_guard<std::mutex> lock(sessionMutex);
-        session->logLevel = params.contains("level") && params["level"].is_string() ? params["level"].get<std::string>() : "info";
         reply->respond(makeResult(id, Json::object()));
         return;
     }
@@ -834,7 +823,8 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         return;
     }
     if (!def.allowedWhilePlaying && app.getProject()->isAnyScenePlaying()) {
-        call->fail(playingRefusal());
+        call->fail("This tool is not available while a scene is playing. Stop Play mode first "
+                   "(play with action \"stop\"), then retry.");
         return;
     }
     if (refuseIfBusy(call, effectiveActivity(def))) return;
@@ -922,13 +912,9 @@ bool McpServer::hasDeferred(const McpCall* call) const {
     return false;
 }
 
-size_t McpServer::pendingCount() const {
-    return deferred.size();
-}
-
 void McpServer::tick() {
     if (!started) return;
-    if (ctx) McpAutoSync::get().tick(*ctx);
+    if (ctx) McpAutoSync::get().prepare(*ctx);
     if (deferred.empty()) return;
 
     // Callbacks may defer again (chained waits), so work on a snapshot

@@ -8,8 +8,6 @@
 #include "Bone.h"
 #include "action/Animation.h"
 
-namespace tinygltf {class Model;}
-
 namespace jasperengine{
     class JASPERENGINE_API Model: public Mesh{
     public:

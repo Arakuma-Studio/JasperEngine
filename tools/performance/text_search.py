@@ -11,9 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from console import definition
-
-ROOT = Path(__file__).resolve().parents[2]
+from run_core import ROOT, definition
 FIXTURE = r'''
 #include <algorithm>
 #include <cstdint>

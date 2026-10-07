@@ -216,9 +216,6 @@ editor::GizmoSideSelected editor::TranslateGizmo::checkHover(const Ray& ray){
         }else{
             yzrect->setColor(Vector4(xaxisColor, rectAlpha));
         }
-    } else if (axis == 6) {
-        // In 2D mode, sphere selection means XY plane movement
-        gizmoSideSelected = GizmoSideSelected::XY;
     }
 
     if (axis == 6){

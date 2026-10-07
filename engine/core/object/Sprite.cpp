@@ -20,8 +20,7 @@ Sprite::Sprite(Scene* scene, Entity entity): Mesh(scene, entity){
 }
 
 Sprite::~Sprite(){
-    if (animation)
-        delete animation;
+    delete animation;
 }
 
 Sprite::Sprite(const Sprite& rhs): Mesh(rhs){

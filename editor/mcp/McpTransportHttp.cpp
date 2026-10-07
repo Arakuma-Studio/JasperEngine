@@ -350,19 +350,18 @@ public:
         respond(McpServer::makeError(nullptr, -32800, "Request cancelled."));
     }
 
-    // Waits for the next notification or the response. True: `out` is the response.
-    bool next(Json& out, bool& isResponse) {
+    // Waits for the next notification or response, setting isResponse accordingly.
+    void next(Json& out, bool& isResponse) {
         std::unique_lock<std::mutex> lock(mutex);
         cv.wait(lock, [this]() { return responded || !notifications.empty(); });
         if (!notifications.empty()) {
             out = std::move(notifications.front());
             notifications.pop_front();
             isResponse = false;
-            return true;
+            return;
         }
         out = response;
         isResponse = true;
-        return true;
     }
 
 private:

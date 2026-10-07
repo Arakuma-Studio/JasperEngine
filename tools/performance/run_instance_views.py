@@ -12,21 +12,8 @@ from pathlib import Path
 import statistics
 import subprocess
 
-ROOT = Path(__file__).resolve().parents[2]
+from run_core import ROOT, source, definition
 
-def source(path, revision=None):
-    if revision:
-        return subprocess.check_output(['git', 'show', f'{revision}:{path}'], cwd=ROOT, text=True)
-    return (ROOT / path).read_text()
-
-def definition(text, marker):
-    start = text.index(marker)
-    brace = text.index('{', start)
-    depth, end = 1, brace + 1
-    while depth:
-        depth += (text[end] == '{') - (text[end] == '}')
-        end += 1
-    return text[start:end]
 
 def methods(revision, name):
     text = source('engine/core/subsystem/RenderSystem.cpp', revision)

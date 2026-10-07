@@ -330,7 +330,7 @@ void searchEngineSourceTool(const CallPtr& call) {
         const std::string rel = fs::relative(path, root, ec).generic_string();
         if (ec || (!pathFilter.empty() && lower(rel).find(pathFilter) == std::string::npos)) continue;
         std::string content;
-        if (!w4::readFile(path, content) || content.size() > 1024 * 1024) continue;
+        if (!ProjectChecks::readFile(path, content) || content.size() > 1024 * 1024) continue;
         std::istringstream in(content);
         std::string line;
         int number = 0;
@@ -368,7 +368,7 @@ void readEngineSourceTool(const CallPtr& call) {
     fs::path root;
     if (!engineRoot(call, root)) return;
     std::string content;
-    if (!w4::readFile(root / rel, content)) {
+    if (!ProjectChecks::readFile(root / rel, content)) {
         call->fail("No engine source file " + rel.generic_string() + "; find files with search_engine_source.");
         return;
     }
@@ -395,7 +395,7 @@ void readEngineSourceTool(const CallPtr& call) {
 void registerDocsTools(McpRegistry& registry) {
     using namespace schema;
 
-    // jasper://guide (replaces the core placeholder): the instructions + where to read more
+    // jasper://guide: the instructions and where to read more
     {
         ResourceDef guide;
         guide.uri = "jasper://guide";
@@ -489,7 +489,7 @@ void registerDocsTools(McpRegistry& registry) {
             std::error_code ec;
             // the editor writes it on play/build; a new project gets it on first read
             if (!fs::exists(file, ec)) Generator::writeAgentsFile(project->getProjectPath(), project->getProjectInternalPath());
-            if (!w4::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
+            if (!ProjectChecks::readFile(file, text)) return notFound("Can't read the project's AGENTS.md.");
             return textResource(uri, "text/markdown", text);
         };
         registry.addResource(std::move(agents));
@@ -509,7 +509,7 @@ void registerDocsTools(McpRegistry& registry) {
             if (!McpRefs::resolveProjectPath(project, rel, file, error, true)) return notFound(error);
             if (fs::is_directory(file) || !w4::isTextFile(file)) return notFound(rel + " is not a text file.");
             std::string text;
-            if (!w4::readFile(file, text)) return notFound("Can't read " + rel + ".");
+            if (!ProjectChecks::readFile(file, text)) return notFound("Can't read " + rel + ".");
             if (text.size() > 1024 * 1024) text = text.substr(0, 1024 * 1024) + "\n... (truncated)";
             const std::string ext = w4::extensionOf(file);
             const std::string mime = ext == ".md" ? "text/markdown" : ext == ".json" ? "application/json" : "text/plain";

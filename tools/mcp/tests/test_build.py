@@ -14,7 +14,7 @@ import stat
 import time
 from pathlib import Path
 
-from harness import Editor, find_key, skip
+from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))

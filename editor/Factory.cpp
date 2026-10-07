@@ -155,9 +155,6 @@ void editor::Factory::writeSkyIncludes(std::ostringstream& out, bool usesDefault
     out << ind << "\n";
 }
 
-editor::Factory::Factory(){
-}
-
 std::string editor::Factory::indentation(int spaces) {
     if (spaces <= 0) {
         return "";

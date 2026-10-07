@@ -36,7 +36,7 @@ namespace jasperengine::editor {
         ShaderData buildShaderInternal(ShaderKey shaderKey, Project* project, bool trackProgress);
         std::string getShaderDisplayName(ShaderKey key);
 
-        static std::filesystem::path getShaderCachePath(ShaderKey shaderKey, Project* project);
+        static std::filesystem::path getShaderCachePath(ShaderKey shaderKey);
 
         // Compares the cached source signature with the entry points and the exact
         // transitive include graph used by this fork. No directory walk is required.

@@ -59,8 +59,6 @@ namespace jasperengine::editor::mcp {
         void fail(const std::string& message, Json structured = nullptr);  // isError: true
         void reply(ToolResult result);                                     // text + images + structuredContent
         bool completed() const { return isCompleted.load(); }
-        // The result once completed (main thread, or after completed() is true)
-        const ToolResult& result() const { return finalResult; }
 
         // Deferral: polls done() each frame on the main thread until it returns true or
         // timeoutMs passes (<= 0: no timeout), then calls then(timedOut). The handler
@@ -102,7 +100,6 @@ namespace jasperengine::editor::mcp {
         std::atomic<bool> isCancelled{false};
         bool isDetached = false;
         std::weak_ptr<McpCall> parentCall;
-        ToolResult finalResult;
         std::chrono::steady_clock::time_point startTime;
     };
 

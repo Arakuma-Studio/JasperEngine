@@ -20,6 +20,30 @@ namespace jasperengine{
         std::vector<EaseType> easings;
         int index = 0;
         float interpolation = 0;
+
+        void setTimes(const std::vector<float>& values){
+            times = values;
+            // Discard easings for segments that no longer exist.
+            size_t segments = times.size() > 1 ? times.size() - 1 : 0;
+            if (easings.size() > segments){
+                easings.resize(segments);
+            }
+        }
+
+        void setEasings(const std::vector<EaseType>& values){
+            easings = values;
+            // CUSTOM has no per-segment function storage; treat it as linear.
+            for (EaseType& ease : easings){
+                if (ease == EaseType::CUSTOM) ease = EaseType::LINEAR;
+            }
+        }
+
+        void setEasing(unsigned int segment, EaseType ease){
+            if (easings.size() <= segment){
+                easings.resize(segment + 1, EaseType::LINEAR);
+            }
+            easings[segment] = ease == EaseType::CUSTOM ? EaseType::LINEAR : ease;
+        }
     };
 
 }

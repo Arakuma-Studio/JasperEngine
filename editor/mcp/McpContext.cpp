@@ -15,8 +15,6 @@ McpContext::McpContext(App& app, McpServer& server)
     , serverRef(server) {
 }
 
-McpContext::~McpContext() = default;
-
 Project* McpContext::project() const {
     return appRef.getProject();
 }

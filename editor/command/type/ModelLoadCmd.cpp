@@ -66,14 +66,8 @@ editor::ModelLoadCmd::~ModelLoadCmd(){
         scene->getSystem<MeshSystem>()->cancelAsyncModelLoad(entity, modelPath);
         setAsyncPending(false);
     }
-    if (oldSubEntitiesDeleteCmd) {
-        delete oldSubEntitiesDeleteCmd;
-        oldSubEntitiesDeleteCmd = nullptr;
-    }
-    if (createEntityCmd) {
-        delete createEntityCmd;
-        createEntityCmd = nullptr;
-    }
+    delete oldSubEntitiesDeleteCmd;
+    delete createEntityCmd;
 }
 
 std::vector<Entity> editor::ModelLoadCmd::collectModelDeleteRoots(Scene* scene, const ModelComponent& model) {
@@ -464,7 +458,7 @@ bool editor::ModelLoadCmd::execute(){
     const bool requestedMergeStaticMeshes = hasMergeStaticMeshesOverride
         ? mergeStaticMeshesOverride
         : false;
-    mergeStaticMeshesChanged = model.mergeStaticMeshes != requestedMergeStaticMeshes;
+    const bool mergeStaticMeshesChanged = model.mergeStaticMeshes != requestedMergeStaticMeshes;
 
     const bool sameModelFile = MeshSystem::getModelFilenameKey(model.filename) == MeshSystem::getModelFilenameKey(modelPath);
 

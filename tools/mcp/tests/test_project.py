@@ -9,16 +9,11 @@ from pathlib import Path
 
 import yaml
 
-from harness import Editor, ToolError, find_key
+from harness import Editor
 
 
 def project_yaml(ed: Editor) -> dict:
     return yaml.safe_load((ed.project / "project.yaml").read_text())
-
-
-async def build_names(ed: Editor) -> list[str]:
-    r = await ed.call("edit_build_scenes")
-    return [s["name"] for s in r["scenes_in_build"]]
 
 
 # -- summary ------------------------------------------------------------------
@@ -148,7 +143,8 @@ async def test_preferences(ed: Editor):
 
 
 async def test_build_scenes(ed: Editor):
-    ed.check_eq(await build_names(ed), ["Main Scene", "HUD Scene"])
+    r = await ed.call("edit_build_scenes")
+    ed.check_eq([s["name"] for s in r["scenes_in_build"]], ["Main Scene", "HUD Scene"])
 
     r = await ed.call("edit_build_scenes", action="move", scene="HUD Scene", index=0)
     ed.check_eq([s["name"] for s in r["scenes_in_build"]], ["HUD Scene", "Main Scene"])
@@ -206,11 +202,10 @@ async def test_create_and_open(ed: Editor):
     new_dir = ed.scratch.root / "created" / "FreshGame"
 
     # an unsaved edit blocks the switch unless told what to do with it
-    if ed.has_tool("create_entity"):
-        await ed.call("create_entity", name="UnsavedBox", type="box")
-        msg = await ed.call("create_project", path=str(new_dir), expect_error=True)
-        ed.check_in("unsaved", msg)
-        ed.check(not (new_dir / "project.yaml").exists(), "nothing created on cancel")
+    await ed.call("create_entity", name="UnsavedBox", type="box")
+    msg = await ed.call("create_project", path=str(new_dir), expect_error=True)
+    ed.check_in("unsaved", msg)
+    ed.check(not (new_dir / "project.yaml").exists(), "nothing created on cancel")
 
     await ed.call("create_project", path="relative/dir", expect_error=True)
     await ed.call("create_project", path=str(original), expect_error=True)  # a project is there
@@ -254,7 +249,6 @@ async def test_create_and_open(ed: Editor):
     ed.check_eq(Path(r["path"]).resolve(), original)
     ed.check_eq([x["name"] for x in r["scenes_in_build"]], ["Main Scene", "HUD Scene"])
 
-    r = await ed.call("open_project", path=str(original))
     ed.check_in("already open", (await ed.call_raw("open_project", {"path": str(original)})).text)
 
     r = await ed.call("open_project", path=str(new_dir))
