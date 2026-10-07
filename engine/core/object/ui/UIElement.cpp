@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UIElement.h"
+#include "UIElementInternal.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -12,14 +13,6 @@
 #include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
-
-namespace jasperengine{
-
-    struct UIElementHandle{
-        Rml::ObserverPtr<Rml::Element> element;
-    };
-
-}
 
 using namespace jasperengine;
 

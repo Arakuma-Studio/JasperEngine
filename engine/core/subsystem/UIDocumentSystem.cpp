@@ -388,11 +388,18 @@ bool UIDocumentSystem::isAllLoaded() const{
     return !anyVisible || (context && context->hasRenderedFrame());
 }
 
-void UIDocumentSystem::setDebuggerVisible(bool visible){
+bool UIDocumentSystem::setDebuggerVisible(bool visible){
     debuggerVisible = visible;
     if (context){
         context->setDebuggerVisible(visible);
     }
+    // HTMLUI_P1_STUB: p1-editor (false without JASPERENGINE_HTMLUI_DEBUGGER; phase 0 always compiles the debugger in)
+    return true;
+}
+
+bool UIDocumentSystem::isDebuggerVisible() const{
+    // HTMLUI_P1_STUB: p1-editor (the debugger is global: showing it in one scene hides it elsewhere)
+    return debuggerVisible;
 }
 
 HtmlUIContext* UIDocumentSystem::getContext() const{

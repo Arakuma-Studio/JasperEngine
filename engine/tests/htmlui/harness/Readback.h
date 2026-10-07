@@ -15,6 +15,9 @@ namespace jasperengine { namespace test {
     // width * height * 4 bytes, rows top first: offscreen targets are top-left origin on
     // every backend (the `orientation` and `harness_component_ui` goldens check it).
     bool readTexture(TextureRender& texture, int width, int height, std::vector<uint8_t>& rgba);
+    // the same for a sampled RGBA8 (bytesPerPixel 4) or R8 (1) texture, e.g. a dynamic one:
+    // width * height * bytesPerPixel bytes, rows top first, tightly packed
+    bool readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels);
 
 } }
 

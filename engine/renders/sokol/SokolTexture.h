@@ -15,6 +15,7 @@ namespace jasperengine{
         sg_image image;
         sg_sampler sampler;
         sg_view view;
+        size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
@@ -50,6 +51,8 @@ namespace jasperengine{
                     ColorFormat colorFormat = ColorFormat::RGBA);
 
         bool createDynamicTexture(const std::string& label, int width, int height);
+        bool createDynamicTexture(const std::string& label, int width, int height,
+                    ColorFormat colorFormat, TextureFilter filter);
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();

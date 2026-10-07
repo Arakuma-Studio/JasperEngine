@@ -3,6 +3,7 @@
 
 #include "RmlSystem.h"
 
+#include "HtmlUIClock.h"
 #include "Engine.h"
 #include "Log.h"
 
@@ -59,7 +60,7 @@ namespace {
 }
 
 double RmlSystem::GetElapsedTime(){
-    return Engine::getSystemTime();
+    return HtmlUIClock::now();
 }
 
 bool RmlSystem::LogMessage(Rml::Log::Type type, const Rml::String& message){

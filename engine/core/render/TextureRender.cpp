@@ -52,6 +52,12 @@ bool TextureRender::createDynamicTexture(const std::string& label, int width, in
         backend.createDynamicTexture(label, width, height);
 }
 
+bool TextureRender::createDynamicTexture(const std::string& label, int width, int height,
+                                         ColorFormat format, TextureFilter filter){
+    return Engine::isViewLoaded() && !isCreated() &&
+        backend.createDynamicTexture(label, width, height, format, filter);
+}
+
 void TextureRender::updateTexture(const void* data, size_t size){
     backend.updateTexture(data, size);
 }

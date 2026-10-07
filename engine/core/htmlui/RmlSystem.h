@@ -18,7 +18,7 @@ namespace jasperengine {
     // and the clipboard.
     class JASPERENGINE_INTERNAL RmlSystem : public Rml::SystemInterface {
     public:
-        double GetElapsedTime() override;                 // Engine::getSystemTime() (seconds)
+        double GetElapsedTime() override;                 // HtmlUIClock::now() (seconds of UI time)
         bool LogMessage(Rml::Log::Type type, const Rml::String& message) override;
         void JoinPath(Rml::String& translated_path, const Rml::String& document_path, const Rml::String& path) override;
         void SetMouseCursor(const Rml::String& /*cursor_name*/) override {}   // phase 1

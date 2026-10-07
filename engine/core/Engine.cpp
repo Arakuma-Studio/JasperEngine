@@ -13,6 +13,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/HtmlUIClock.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -1146,6 +1147,9 @@ void Engine::systemDraw(){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
+    // stops with the updates: a held simulation or a paused app
+    HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
     drawSemaphore.acquire();
 
