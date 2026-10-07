@@ -12,8 +12,15 @@ its events; p1-anim: anime.animate / timelines).
 Runs on a scratch copy of the fixture project (canvas 1280 x 720).
 """
 
+import asyncio
+import sys
+import time
+from pathlib import Path
+
 from harness import Editor
-from test_html_ui_basic import Shot, near
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_html_ui_basic import Shot, near  # noqa: E402  (PNG probes shared with the phase-0 test)
 
 TIMEOUT = 900
 
@@ -116,8 +123,9 @@ async def test_element_api(ed: Editor):
         local b = doc:getElementById('button')
         b.classList:add('hot')
         b.style.width = '170px'
+        -- data-for keeps its element in the DOM, hidden, as the template of the rows
         return b.id, b.tagName, b.textContent, b.classList:contains('hot'), b.style.width,
-               doc:getElementById('list').childElementCount, #doc:querySelectorAll('.row'),
+               doc:getElementById('list').childElementCount - 1, #doc:querySelectorAll('.row') - 1,
                doc:querySelector('#gold').textContent, doc:getElementById('nope') == nil, doc.title
     """)
     ed.check_eq(values, ["button", "div", "Click", True, "170px", 2, 2, "10", True, "lua"], "element API")
@@ -155,7 +163,7 @@ async def test_data_bound_list_grows(ed: Editor):
     await ed.call("wait", frames=3)
     values = await lua(ed, """
         local doc = object('Menu', 'UIDocument')
-        return doc:getElementById('list').childElementCount, doc:getElementById('gold').textContent,
+        return doc:getElementById('list').childElementCount - 1, doc:getElementById('gold').textContent,
                #shop.items, shop.items[3].name
     """)
     ed.check_eq(values, [3, "25", 3, "Bow"], "the list grew")
@@ -176,7 +184,15 @@ async def test_lua_refs_released_after_stop(ed: Editor):
     held = await lua(ed, "return UIDocument.getLiveLuaRefCount()")
     ed.check(held[0] >= 2, f"listener and data-model callbacks hold Lua references: {held}")
     await ed.call("play", action="stop")
-    left = await lua(ed, "return UIDocument.getLiveLuaRefCount()", allow_edit_mode=True)
+    # the stop finishes asynchronously (the runtime scene and its documents are destroyed last)
+    deadline = time.monotonic() + 30
+    left = None
+    while time.monotonic() < deadline:
+        state = await ed.call("get_play_state")
+        left = await lua(ed, "return UIDocument.getLiveLuaRefCount()", allow_edit_mode=True)
+        if left == [0] and not state.get("playing", False):
+            break
+        await asyncio.sleep(0.5)
     ed.check_eq(left, [0], "Lua references left after stop")
 
     errors = [e for e in await html_ui_errors(ed) if "silver" not in e]

@@ -44,6 +44,7 @@
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
 #include "object/ui/UIDocument.h"
+#include "subsystem/UIDocumentSystem.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "object/physics/Joint2D.h"
@@ -956,6 +957,9 @@ void LuaBinding::cleanupLuaScripts(Scene* scene) {
             }
         }
     }
+
+    // what the scripts made in the scene's HTML documents (listeners, data models) goes too
+    scene->getSystem<UIDocumentSystem>()->releaseScriptState();
 }
 
 void LuaBinding::cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities) {

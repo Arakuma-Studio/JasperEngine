@@ -139,6 +139,10 @@ namespace jasperengine{
         bool pushDataModel(lua_State* L, Entity entity, const std::string& name);   // pushes the model's Lua proxy
         // engine-internal (HtmlUIScriptInternal.h): data models and notifications of this scene
         HtmlUIScriptState& getScriptState();
+        // the scene's scripts ended (LuaBinding::cleanupLuaScripts, play stop): their data models
+        // are removed, and the documents unload (listeners, detached elements and DOM changes go)
+        // and load again at the next update
+        void releaseScriptState();
 
         // --- p1-rtt (UIDocumentSystemTexture.cpp, §3.12) ---
         bool dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch);

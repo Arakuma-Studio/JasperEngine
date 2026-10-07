@@ -375,6 +375,39 @@ HtmlUIScriptState& UIDocumentSystem::getScriptState(){
     return *scriptState;
 }
 
+void UIDocumentSystem::releaseScriptState(){
+    if (!scriptState && documents.empty())
+        return;
+
+    std::vector<Entity> loaded;
+    for (const auto& pair : documents){
+        loaded.push_back(pair.first);
+    }
+    for (Entity entity : loaded){
+        unloadEntityDocument(entity);
+        if (UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(entity)){
+            document->loaded = false;
+            document->needReload = true;
+        }
+    }
+    // the unloaded documents are destroyed now, and with them their listeners' Lua functions
+    if (context){
+        getContext()->update();
+    }
+
+    if (scriptState){
+        std::vector<std::string> names;
+        for (const auto& pair : scriptState->models){
+            names.push_back(pair.first);
+        }
+        for (const std::string& name : names){
+            scriptState->removeModel(name);
+        }
+        // the scripts' onLoad/onUnload handlers are gone with them
+        scriptState->notifications.clear();
+    }
+}
+
 void UIDocumentSystem::scriptLoadDocuments(){
     // phase 0 loaded lazily in the first update; scripts' init runs before it and queries
     // elements, so every enabled document loads with the scene

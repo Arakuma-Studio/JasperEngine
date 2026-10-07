@@ -871,7 +871,8 @@ namespace {
 
     bool toValueImpl(lua_State* L, int index, UIValue& out, std::string& error, int depth){
         index = lua_absindex(L, index);
-        if (depth > 64){
+        // every level pushes a few values: a deep table must not overflow the C stack
+        if (depth > 64 || !lua_checkstack(L, 8)){
             error = "the table nests too deep (or contains itself)";
             return false;
         }
@@ -1034,6 +1035,8 @@ size_t HtmlUIScriptState::liveLuaRefs(){
 // ---- HtmlUILua ----
 
 void HtmlUILua::pushValue(lua_State* L, const UIValue& value){
+    if (!lua_checkstack(L, 4))
+        return;
     switch (value.getType()){
         case UIValue::Type::BOOL:
             lua_pushboolean(L, value.asBool());

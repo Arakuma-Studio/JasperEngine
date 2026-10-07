@@ -215,7 +215,8 @@ TEST_F(ScriptElementTest, ScrollAndGeometry){
     EXPECT_FLOAT_EQ(rect.right, 400.0f);
     EXPECT_FLOAT_EQ(rect.bottom, 60.0f);
 
-    // transforms move the client rect, as in a browser
+    // transforms (as of the last drawn frame, like RmlUi's hit test) move the client rect
+    ASSERT_TRUE(fixture->waitUntilLoaded());
     UIRect moved = document->getElementById("moved").getBoundingClientRect();
     EXPECT_NEAR(moved.left, 40.0f, 0.01f);
     EXPECT_NEAR(moved.right, 90.0f, 0.01f);

@@ -8,6 +8,7 @@
 #include "TestScriptCommon.h"
 
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/Input.h>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -24,16 +25,29 @@ namespace {
             update();
         }
 
+        // the rows data-for made (RmlUi keeps the data-for element itself, hidden, as the template)
+        std::vector<UIElement> rows(){
+            std::vector<UIElement> result;
+            for (const UIElement& row : document->getElementById("rows").getChildren()){
+                if (!row.hasAttribute("data-for"))
+                    result.push_back(row);
+            }
+            return result;
+        }
+
         std::vector<std::string> rowTexts(){
             std::vector<std::string> texts;
-            for (const UIElement& row : document->getElementById("rows").getChildren()){
+            for (const UIElement& row : rows()){
                 texts.push_back(row.getTextContent());
             }
             return texts;
         }
 
+        // at the end of the field's text
         void typeInto(const char* id, const std::string& text){
             document->getElementById(id).focus();
+            context()->ProcessKeyDown(Rml::Input::KI_END, 0);
+            context()->ProcessKeyUp(Rml::Input::KI_END, 0);
             context()->ProcessTextInput(text);
             update();
         }
@@ -124,8 +138,8 @@ TEST_F(ScriptDataModelTest, LuaTwoWayAndEvents){
     EXPECT_LUA("assert(#changes == 2 and model.text == 'abcde')");
 
     // data-event-click="buy(i)": the 0-based index of the row
-    document->getElementById("rows").getChildren()[1].click();
-    document->getElementById("rows").getChildren()[0].click();
+    rows()[1].click();
+    rows()[0].click();
     EXPECT_LUA(R"(assert(#bought == 2 and bought[1] == 1 and bought[2] == 0, #bought))");
 
     // writes from Lua keep the type the model gave (a number stays a number)
@@ -246,7 +260,7 @@ TEST_F(ScriptDataModelTest, CppApi){
     typeInto("name", "e");
     EXPECT_EQ(changes.size(), 1u);
 
-    document->getElementById("rows").getChildren()[1].click();
+    rows()[1].click();
     EXPECT_EQ(bought, (std::vector<int>{1}));
 
     // dirty: a value changed through get/set elsewhere shows after dirty()

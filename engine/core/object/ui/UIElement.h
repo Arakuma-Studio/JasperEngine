@@ -110,7 +110,7 @@ namespace jasperengine{
         float getScrollWidth() const; float getScrollHeight() const;
         float getClientWidth() const; float getClientHeight() const;
         float getOffsetWidth() const; float getOffsetHeight() const; float getOffsetLeft() const; float getOffsetTop() const;
-        UIRect getBoundingClientRect() const;       // border box in document px, through transforms
+        UIRect getBoundingClientRect() const;       // border box in document px, through the transforms of the last drawn frame
 
         // events (C++)
 
