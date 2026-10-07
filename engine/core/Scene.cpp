@@ -10,6 +10,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -29,6 +30,7 @@ void Scene::init(){
     registerSystem<ActionSystem>();
     registerSystem<MeshSystem>();
     registerSystem<UISystem>();
+    registerSystem<UIDocumentSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();

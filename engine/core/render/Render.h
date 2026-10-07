@@ -54,7 +54,8 @@ namespace jasperengine{
         SHADOW2D,   // 1D polar shadow pass: occluder segments into a 2D-light atlas row
         BLIT,       // fullscreen upscale of the fixed-resolution scene color
         // keep appending: the ShaderKey stores this enum and validates cached .sdat
-        POSTPROCESS // fullscreen user post-process pass
+        POSTPROCESS, // fullscreen user post-process pass
+        HTMLUI      // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
     };
 
     enum class AttributeType{
@@ -243,6 +244,34 @@ namespace jasperengine{
         PIP_RTT_NODEPTH = 1 << 7,
         PIP_ZPREPASS    = 1 << 8, // depth only, into the swapchain color pass ahead of its opaque draws
         PIP_ZPREPASS_RTT = 1 << 9 // same into an offscreen color pass
+    };
+
+    enum class BlendFactor {
+        ZERO, ONE,
+        SRC_COLOR, ONE_MINUS_SRC_COLOR, SRC_ALPHA, ONE_MINUS_SRC_ALPHA,
+        DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA
+    };
+
+    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT };
+
+    // Color blending of a render object's color pipelines (PIP_DEFAULT, PIP_DEFAULT_NODEPTH,
+    // PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT). Without one, those pipelines keep their
+    // built-in straight-alpha blending (SokolObject::makePipelineDesc).
+    struct BlendState {
+        bool enabled = true;
+        BlendFactor srcFactorRGB = BlendFactor::SRC_ALPHA;
+        BlendFactor dstFactorRGB = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        BlendOperation opRGB = BlendOperation::ADD;
+        BlendFactor srcFactorAlpha = BlendFactor::ONE;
+        BlendFactor dstFactorAlpha = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        BlendOperation opAlpha = BlendOperation::ADD;
+
+        // ONE, ONE_MINUS_SRC_ALPHA on color and alpha: colors already multiplied by alpha
+        static BlendState premultipliedAlpha() {
+            BlendState s; s.srcFactorRGB = BlendFactor::ONE; return s;
+        }
+        // no blending: the source replaces the destination
+        static BlendState opaque() { BlendState s; s.enabled = false; return s; }
     };
 
     //-------Start shader definition--------

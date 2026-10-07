@@ -1,0 +1,51 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="render.css"/>
+    <style>
+        .row { left: 10px; width: 300px; height: 40px; display: flex; flex-direction: row; gap: 10px; background-color: #303030; }
+        .item { width: 40px; height: 30px; }
+        .a { background-color: #e04040; }
+        .b { background-color: #40e040; }
+        .c { background-color: #4040e0; }
+        #start { top: 10px; justify-content: flex-start; }
+        #center { top: 60px; justify-content: center; }
+        #between { top: 110px; justify-content: space-between; }
+        #grow { top: 160px; }
+        #grow .item { width: 10px; }
+        #grow .g1 { flex-grow: 1; }
+        #grow .g2 { flex-grow: 2; }
+        .align { top: 210px; width: 90px; height: 80px; display: flex; flex-direction: row; gap: 5px; background-color: #303030; }
+        .align .item { width: 25px; }
+        .align .tall { height: 60px; }
+        #astart { left: 10px; align-items: flex-start; }
+        #acenter { left: 115px; align-items: center; }
+        #aend { left: 220px; align-items: flex-end; }
+        #wrap { left: 330px; top: 10px; width: 200px; height: 140px; display: flex; flex-wrap: wrap; gap: 10px; background-color: #303030; }
+        #wrap .item { width: 40px; height: 30px; }
+        #column { left: 550px; top: 10px; width: 80px; height: 340px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background-color: #303030; }
+        #column .item { width: 50px; height: 50px; }
+        #nested { left: 330px; top: 170px; width: 200px; height: 160px; display: flex; flex-direction: column; gap: 10px; padding: 10px; background-color: #505050; }
+        #nested .line { display: flex; flex-direction: row; flex-grow: 1; gap: 10px; }
+        #nested .cell { flex-grow: 1; background-color: #d0a030; }
+    </style>
+</head>
+<body>
+    <div id="start" class="row abs"><div class="item a"/><div class="item b"/><div class="item c"/></div>
+    <div id="center" class="row abs"><div class="item a"/><div class="item b"/><div class="item c"/></div>
+    <div id="between" class="row abs"><div class="item a"/><div class="item b"/><div class="item c"/></div>
+    <div id="grow" class="row abs"><div class="item a g1"/><div class="item b g2"/><div class="item c g1"/></div>
+    <div id="astart" class="align abs"><div class="item a"/><div class="item b tall"/><div class="item c"/></div>
+    <div id="acenter" class="align abs"><div class="item a"/><div class="item b tall"/><div class="item c"/></div>
+    <div id="aend" class="align abs"><div class="item a"/><div class="item b tall"/><div class="item c"/></div>
+    <div id="wrap" class="abs">
+        <div class="item a"/><div class="item b"/><div class="item c"/><div class="item a"/>
+        <div class="item b"/><div class="item c"/><div class="item a"/><div class="item b"/>
+    </div>
+    <div id="column" class="abs"><div class="item a"/><div class="item b"/><div class="item c"/></div>
+    <div id="nested" class="abs">
+        <div class="line"><div class="cell"/><div class="cell"/></div>
+        <div class="line"><div class="cell"/><div class="cell"/><div class="cell"/></div>
+    </div>
+</body>
+</html>

@@ -7,17 +7,28 @@
 #include "Export.h"
 
 #include <RmlUi/Core/RenderInterface.h>
+#include <RmlUi/Core/Matrix4.h>
 
 #include "math/Rect.h"
+#include "render/BufferRender.h"
+#include "render/ObjectRender.h"
 #include "render/Render.h"
+#include "render/TextureRender.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <unordered_set>
+#include <vector>
 
 namespace jasperengine {
 
     class FramebufferRender;
     class CameraRender;
-    class TextureRender;
+    class ShaderRender;
+
+    struct RmlGeometry;
+    struct RmlTexture;
 
     // RmlUi's render interface on the engine render abstraction. One per HtmlUIContext:
     // records a frame's draws, then replays them in one offscreen pass into the context's
@@ -52,6 +63,8 @@ namespace jasperengine {
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
         // view lost / context destroyed: every GPU object, handles stay valid as "dead"
         void releaseGpuResources();
+        // beginFrame ran in that frame (SystemRender::getFrameCount)
+        bool hasFrame(uint64_t frame) const;
 
         // pure function, unit-tested: RmlUi scissor (document px, top-left origin) to a
         // CameraRender::applyScissor rect (target px, bottom-left origin)
@@ -63,6 +76,72 @@ namespace jasperengine {
         size_t getLiveTextureCount() const;
         size_t getLastFrameDrawCount() const;
         size_t getVertexCapacity() const;
+        // the GPU texture of a handle (nullptr when unknown or dead)
+        TextureRender* getTextureRender(Rml::TextureHandle texture) const;
+        // sokol ids of every buffer and image the renderer owns right now
+        void getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint32_t>& images) const;
+
+    private:
+        // one recorded RenderGeometry: a range of this frame's index stream
+        struct DrawCommand {
+            uint32_t firstIndex;
+            uint32_t indexCount;
+            RmlTexture* texture;          // nullptr = untextured variant
+            Rml::Vector2f translation;
+            uint32_t transformIndex;      // into the frame's matrix list (0 = projection only)
+            bool scissorEnabled;
+            Rect scissor;                 // already in target pixels, bottom-left origin
+        };
+
+        // the vertex layout of Rml::Vertex on an object of the HTMLUI shader
+        bool loadObject(ObjectRender& object, ShaderRender* shader, BufferRender* vertexBuffer, BufferRender* indexBuffer, bool textured, uint16_t pipelines);
+        bool createStreamBuffers(size_t vertexCapacity, size_t indexCapacity);
+        void destroyStreamObjects();
+        // pipelines, buffers, the placeholder and the shaders (textures stay)
+        void destroyPipelineObjects();
+        void destroyTexture(RmlTexture* texture);
+        RmlTexture* createTexture(const uint8_t* rgba, int width, int height);
+        void flushPendingReleases();
+        void clearFrame();
+
+        std::unordered_set<RmlGeometry*> liveGeometry;
+        std::unordered_set<RmlTexture*> liveTextures;
+
+        // frame recording
+        bool inFrame = false;
+        bool loggedOutsideFrame = false;
+        Rml::Vector2i contextSize{0, 0};
+        Rml::Vector2i targetSize{0, 0};
+        std::vector<Rml::Vertex> frameVertices;
+        std::vector<uint32_t> frameIndices;
+        std::vector<DrawCommand> commands;
+        std::vector<Rml::Matrix4f> transforms;
+        Rml::Matrix4f projection;
+        uint32_t currentTransform = 0;
+        bool scissorEnabled = false;
+        Rml::Rectanglei scissorRegion;
+        std::vector<RmlTexture*> pendingReleases;
+        size_t lastFrameDrawCount = 0;
+        bool framed = false;
+        uint64_t frameNumber = 0;
+
+        // GPU objects
+        std::shared_ptr<ShaderRender> colorShader;
+        std::shared_ptr<ShaderRender> texturedShader;
+        bool pipelinesLoaded = false;
+        BufferRender vertexBuffer;
+        BufferRender indexBuffer;
+        size_t vertexCapacity = 0;
+        size_t indexCapacity = 0;
+        ObjectRender colorObject;
+        ObjectRender texturedObject;
+        int colorParamsSlot = -1;
+        int texturedParamsSlot = -1;
+        std::pair<int, int> texturedTextureSlot{-1, -1};
+        BufferRender compositeVertexBuffer;
+        BufferRender compositeIndexBuffer;
+        ObjectRender compositeObject;
+        TextureRender placeholderWhite;
     };
 
 }

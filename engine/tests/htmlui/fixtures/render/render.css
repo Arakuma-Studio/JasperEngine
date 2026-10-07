@@ -1,0 +1,4 @@
+/* Shared by the renderer-level fixtures (RmlRendererGoldenTest): a transparent body the
+   size of the 640x360 context, absolutely placed boxes. RCSS syntax (phase 0). */
+body { position: absolute; left: 0; top: 0; width: 640px; height: 360px; margin: 0; padding: 0; }
+.abs { position: absolute; }

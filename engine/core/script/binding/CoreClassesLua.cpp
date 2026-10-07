@@ -465,6 +465,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("SHADOW2D", ShaderType::SHADOW2D)
         .addVariable("BLIT", ShaderType::BLIT)
         .addVariable("POSTPROCESS", ShaderType::POSTPROCESS)
+        .addVariable("HTMLUI", ShaderType::HTMLUI)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
