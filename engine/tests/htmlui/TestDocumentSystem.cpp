@@ -53,8 +53,8 @@ namespace {
             return TestSystem::get().countLogs(D_LOG_ERROR, text);
         }
 
-        // the debugger loads its own font: without a font engine that has fonts (the
-        // p0-font package) it cannot initialise
+        // the debugger loads its own font: it cannot initialise without a font engine that
+        // has fonts
         bool fontEngineHasFonts(){
             return HtmlUI::getFontEngine().GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal,
                                                              Rml::Style::FontWeight::Normal, 16) != 0;
@@ -489,8 +489,7 @@ TEST_F(UIDocumentSystemTest, DebuggerToggle){
 
     fixture.addDocument("ecs/basic.html");
     updateDocuments(scene);
-    if (!fontEngineHasFonts())
-        GTEST_SKIP() << "the font engine has no fonts (RmlFontEngine is still the skeleton)";
+    ASSERT_TRUE(fontEngineHasFonts());
 
     // asked before the context exists: applied when it is created
     std::unique_ptr<Scene> other(new Scene());
@@ -531,8 +530,7 @@ TEST_F(UIDocumentSystemTest, DebuggerShutsDownWithTheScene){
         Scene& scene = fixture.getScene();
         fixture.addDocument("ecs/basic.html");
         updateDocuments(scene);
-        if (!fontEngineHasFonts())
-            GTEST_SKIP() << "the font engine has no fonts (RmlFontEngine is still the skeleton)";
+        ASSERT_TRUE(fontEngineHasFonts());
         documentSystem(scene).setDebuggerVisible(true);
         EXPECT_NE(HtmlUI::getDebuggerContext(), nullptr);
     }
