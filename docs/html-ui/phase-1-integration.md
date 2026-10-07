@@ -1484,9 +1484,12 @@ Where the code differs from or adds to the text above:
 - **`reloadChangedFiles`** reports `stylesheetOnly = true` for image-only changes too (the DOM
   is kept); a file seen for the first time (an image loaded at draw time after the document)
   gets its stamp recorded without a reload.
-- **onLoad/onUnload** are fired by `UIDocumentSystem` (private helpers `documentLoaded` /
-  `documentUnloading`, one-line calls in the phase-0 `applyComponent`/`unloadEntityDocument`);
-  not on scene destruction (the Lua state may be gone).
+- **onLoad/onUnload** come from p1-lua's hooks (`scriptDocumentLoading/Loaded/Unloading`,
+  fired at the end of the next `update`). The full reload calls them itself, in this order:
+  capture, `scriptDocumentLoading`, load the new document, `scriptDocumentReloaded(entity,
+  oldToNew)`, `scriptDocumentUnloading` + unload of the old one, restore, `scriptDocumentLoaded`.
+  `UIDocument::reload` and a late `createDataModel` reach this reload through
+  `reloadDocument(entity, true)`.
 - **Redraw while animating**: `UIDocumentSystem::getNextUpdateDelay()` (RmlUi's
   `Context::GetNextUpdateDelay`, infinity without documents); `App` redraws a stopped scene
   while it is 0 and wakes up when a later update is due. The watcher and these wake-ups run
