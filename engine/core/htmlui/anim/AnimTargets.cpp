@@ -202,7 +202,7 @@ AnimTargetList AnimTargets::fromSelector(const std::string& selector, const UIEl
         scene = Engine::getMainScene();
     if (!scene)
         return list;
-    UIDocumentSystem* system = scene->getSystem<UIDocumentSystem>();
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
     if (!system)
         return list;
     auto components = scene->getComponentArray<UIDocumentComponent>();

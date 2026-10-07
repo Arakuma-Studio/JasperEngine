@@ -15,7 +15,8 @@
 //   next tick"). The engine's timers start at the last UI-clock tick instead, which already
 //   gives the first frame one frame of progress, so the recordings undo those 12 ms.
 // - The engine is driven frame by frame with a fake clock (Date.now) instead of
-//   requestAnimationFrame/setImmediate.
+//   requestAnimationFrame/setImmediate, and its last tick time is the frame time (Anime snaps
+//   it to a 240 fps grid; the engine ticks once per frame of the UI clock).
 
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -38,6 +39,9 @@ const { engine, eases, cubicBezier, steps, linear, spring, Spring, stagger, util
         createTimeline, createTimer, animate, Timer } = anime;
 
 engine.useDefaultMainLoop = false;
+// the engine's own clock ticks every frame it is given (no 240 fps grid): its last tick time,
+// which new timers take as their offset, is the frame time, as in the engine
+engine.requestTick = function (time) { this._lastTickTime = time; return 1; };
 
 // undo resume()'s 12 ms head start (see the header)
 const originalResume = Timer.prototype.resume;
