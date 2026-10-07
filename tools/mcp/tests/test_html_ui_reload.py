@@ -87,13 +87,16 @@ async def game_shot(ed: Editor, label: str) -> Shot:
 
 
 async def wait_for_color(ed: Editor, label: str, point, color, seconds: float = 2.0) -> Shot:
-    """Game view screenshots until `point` shows `color`; fails after `seconds`."""
+    """Game view screenshots until `point` shows `color`; fails after `seconds` and at least
+    three screenshots (a screenshot itself takes a while on a loaded host)."""
     deadline = time.monotonic() + seconds
+    attempts = 0
     while True:
         shot = await game_shot(ed, label)
+        attempts += 1
         if near(shot.px(*point), color, 12):
             return shot
-        if time.monotonic() > deadline:
+        if time.monotonic() > deadline and attempts >= 3:
             ed.fail(f"{label}: pixel at canvas {point} is {shot.px(*point)} after {seconds} s, expected {color}")
         await asyncio.sleep(0.1)
 
