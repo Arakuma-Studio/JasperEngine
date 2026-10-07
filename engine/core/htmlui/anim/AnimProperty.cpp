@@ -131,6 +131,17 @@ namespace {
         }
     }
 
+    // the element's inline (style attribute / script) value: GetLocalProperty includes the
+    // matching stylesheet rules too, and Anime reads `element.style` only
+    const Rml::Property* inlineProperty(Rml::Element* e, const std::string& name){
+        const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId(name);
+        if (id == Rml::PropertyId::Invalid)
+            return startsWith(name, "--") ? e->GetLocalProperty(name) : nullptr;
+        const Rml::PropertyMap& properties = e->GetLocalStyleProperties();
+        auto it = properties.find(id);
+        return it != properties.end() ? &it->second : nullptr;
+    }
+
     // the widths/heights Anime reads as used values (getComputedStyle), not "auto"
     bool usesBoxWidth(Rml::PropertyId id){ return id == Rml::PropertyId::Width; }
     bool usesBoxHeight(Rml::PropertyId id){ return id == Rml::PropertyId::Height; }
@@ -397,7 +408,7 @@ namespace {
         }
 
         static AnimRawValue getCssValue(Rml::Element* e, const std::string& property, AnimRawValue* inlineValue){
-            const Rml::Property* local = e->GetLocalProperty(property);
+            const Rml::Property* local = inlineProperty(e, property);
             std::string inlineText = local ? propertyText(*local) : std::string();
             if (!inlineText.empty() && inlineValue)
                 *inlineValue = AnimRawValue(inlineText);
@@ -450,7 +461,7 @@ namespace {
         }
 
         AnimRawValue getTransformValue(Rml::Element* e, const std::string& property, AnimRawValue* inlineValue){
-            const Rml::Property* local = e->GetLocalProperty(Rml::PropertyId::Transform);
+            const Rml::Property* local = inlineProperty(e, "transform");
             bool hasInline = false;
             if (local && local->unit == Rml::Unit::TRANSFORM){
                 Rml::TransformPtr transform = local->Get<Rml::TransformPtr>();

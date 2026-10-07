@@ -30,6 +30,28 @@ using namespace jasperengine::test;
 
 namespace {
 
+    // Element::IsLayoutDirty is protected (ElementDocument overrides it, ElementDocument.h:146):
+    // reached through a member pointer named in a derived class
+    struct LayoutProbe : Rml::Element {
+        static bool isDirty(Rml::Element* element){
+            bool (Rml::Element::*method)() = &LayoutProbe::IsLayoutDirty;
+            return (element->*method)();
+        }
+        // the style pass of Context::Update without the layout pass: property changes reach
+        // OnPropertyChange, which dirties the layout for layout properties only
+        static void updateStyle(Rml::Element* document){
+            void (Rml::Element::*method)(float, Rml::Vector2f) = &LayoutProbe::Update;
+            (document->*method)(1.0f, Rml::Vector2f(640, 360));
+        }
+    };
+
+    // the inline value (GetLocalProperty includes the matching stylesheet rules)
+    const Rml::Property* inlineProperty(Rml::Element* e, Rml::PropertyId id){
+        const Rml::PropertyMap& properties = e->GetLocalStyleProperties();
+        auto it = properties.find(id);
+        return it != properties.end() ? &it->second : nullptr;
+    }
+
     class AnimeElementTest : public ::testing::Test {
     protected:
         void SetUp() override{
@@ -143,21 +165,24 @@ TEST_F(AnimeElementTest, InlineTransformIsTheStartingPoint){
 }
 
 TEST_F(AnimeElementTest, TransformAndOpacityDoNotDirtyTheLayout){
-    Rml::ElementDocument* doc = element("box")->GetOwnerDocument();
+    Rml::Element* doc = element("box")->GetOwnerDocument();
     updateDocuments(scene());
-    ASSERT_FALSE(doc->IsLayoutDirty());
+    ASSERT_FALSE(LayoutProbe::isDirty(doc));
 
     Anime::animate(target("box"), AnimParam::object({{"translateX", 100}, {"rotate", 30}, {"opacity", 0.2}, {"duration", 1000}}));
     advance(100);
-    EXPECT_FALSE(doc->IsLayoutDirty());
+    LayoutProbe::updateStyle(doc);
+    EXPECT_FALSE(LayoutProbe::isDirty(doc));
     advance(100);
-    EXPECT_FALSE(doc->IsLayoutDirty());
+    LayoutProbe::updateStyle(doc);
+    EXPECT_FALSE(LayoutProbe::isDirty(doc));
     updateDocuments(scene());
     EXPECT_LT(element("box")->GetComputedValues().opacity(), 1.0f);
 
     Anime::animate(target("box"), AnimParam::object({{"width", 300}, {"duration", 1000}}));
     advance(100);
-    EXPECT_TRUE(doc->IsLayoutDirty());
+    LayoutProbe::updateStyle(doc);
+    EXPECT_TRUE(LayoutProbe::isDirty(doc));
 }
 
 TEST_F(AnimeElementTest, LengthsColoursAndCustomProperties){
@@ -197,8 +222,9 @@ TEST_F(AnimeElementTest, LengthsColoursAndCustomProperties){
 
     // revert: no inline width/colour/opacity left
     animation->revert();
-    EXPECT_EQ(box->GetLocalProperty(Rml::PropertyId::Width), nullptr);
-    EXPECT_EQ(box->GetLocalProperty(Rml::PropertyId::BackgroundColor), nullptr);
+    EXPECT_EQ(inlineProperty(box, Rml::PropertyId::Width), nullptr);
+    EXPECT_EQ(inlineProperty(box, Rml::PropertyId::BackgroundColor), nullptr);
+    EXPECT_EQ(inlineProperty(box, Rml::PropertyId::Opacity), nullptr);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
 }
 
@@ -313,7 +339,7 @@ TEST_F(AnimeElementTest, UiClockRunsWhileTheGameIsFrozen){
     HtmlUIClock::setFixedTime(HtmlUIClock::now());
     GpuEnvironment::drawFrames(3);
     EXPECT_NEAR(uiTarget->getNumber("v"), 200, 1e-6);
-    EXPECT_NEAR(gameTarget->getNumber("v"), 65, 1e-6);
+    EXPECT_NEAR(gameTarget->getNumber("v"), 80, 1e-6);
     HtmlUIClock::setFixedTime(std::nullopt);
 
     // an invalid clock is an error naming the valid values

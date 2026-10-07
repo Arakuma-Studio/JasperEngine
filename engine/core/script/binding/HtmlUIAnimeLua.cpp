@@ -210,6 +210,15 @@ namespace {
         return target;
     }
 
+    // whether a class is bound in this state (UIElement comes with the element API)
+    template<class T>
+    bool isClassRegistered(lua_State* L){
+        lua_rawgetp(L, LUA_REGISTRYINDEX, luabridge::detail::getClassRegistryKey<T>());
+        const bool registered = lua_istable(L, -1);
+        lua_pop(L, 1);
+        return registered;
+    }
+
     void pushTarget(lua_State* L, const AnimTargetPtr& target){
         if (!target){
             lua_pushnil(L);
@@ -218,7 +227,7 @@ namespace {
         const int top = lua_gettop(L);
         if (target->getKind() == AnimTarget::Kind::ELEMENT){
             UIElement element = AnimTargets::getElement(target);
-            if (!luabridge::push(L, element)){
+            if (!isClassRegistered<UIElement>(L) || !luabridge::push(L, element)){
                 lua_settop(L, top);
                 lua_pushnil(L);
             }

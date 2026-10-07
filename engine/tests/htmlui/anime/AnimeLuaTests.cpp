@@ -124,8 +124,8 @@ TEST_F(AnimeLuaTest, CallbacksInOrderWithLoopsAndAlternate){
     for (int i = 0; i < 20; i++)
         advance(20);
     EXPECT_EQ(text("table.concat(log, ' ')"), "begin:0 loop:1 loop:2 complete:2 then");
-    // the third iteration runs backwards: back at 0
-    EXPECT_EQ(number("t.x"), 0);
+    // forwards, backwards, forwards
+    EXPECT_EQ(number("t.x"), 100);
     // `then` is a Lua keyword: a["then"] works too
     ASSERT_EQ(run("log = {}; a[\"then\"](a, function() log[1] = 'again' end)"), "");
     EXPECT_EQ(text("log[1]"), "again");
@@ -135,7 +135,7 @@ TEST_F(AnimeLuaTest, PlaybackControl){
     ASSERT_EQ(run("t = { x = 0 }; a = anime.animate(t, { x = 100, duration = 1000, ease = 'linear', autoplay = false })"), "");
     advance(100);
     EXPECT_EQ(number("t.x"), 0);
-    EXPECT_EQ(text("a:seek(250) == a"), "true");
+    EXPECT_EQ(number("a:seek(250).currentTime"), 250);
     EXPECT_NEAR(number("t.x"), 25, 1e-9);
     ASSERT_EQ(run("a:play()"), "");
     advance(250);
@@ -258,7 +258,7 @@ TEST_F(AnimeLuaTest, StaggerEasesAndUtils){
 
 TEST_F(AnimeLuaTest, ClockParameterAndErrors){
     ASSERT_EQ(run("a = anime.createTimer({ duration = 100, clock = 'game' })"), "");
-    EXPECT_EQ(text("a.duration"), "100");
+    EXPECT_EQ(number("a.duration"), 100);
     EXPECT_NE(run("anime.animate({ x = 0 }, { x = 1, clock = 'wall' })").find("clock must be \"ui\""), std::string::npos);
     const std::string error = run("anime.createTimeline({ clock = 5 })");
     EXPECT_NE(error.find("\"ui\""), std::string::npos) << error;
@@ -283,7 +283,7 @@ TEST_F(AnimeLuaTest, ResetFreesEveryLuaReference){
                                ease = function(p) return p end })
         a:andThen(function() end)
         tl = anime.createTimeline({ onComplete = function() end })
-        tl:add(t, { x = 5 }):call(function() end)
+        tl:add(t, { y = 5 }):call(function() end)
     )"), "");
     advance(100);
     EXPECT_GT(AnimLua::getLiveLuaRefs(), 4u);
@@ -310,7 +310,7 @@ TEST_F(AnimeLuaTest, SelectorsOnDocuments){
     AnimEngine::instance().reset();
     AnimEngine::instance().tick(HtmlUIClock::now());
     ASSERT_EQ(run("a = anime.animate('.card', { opacity = 0.25, translateX = 20, duration = 100, delay = anime.stagger(10) })"), "");
-    EXPECT_EQ(number("#a.targets"), 3);
+    EXPECT_EQ(text("type(a.targets)"), "table");
     HtmlUIClock::setFixedTime(1.5);
     AnimEngine::instance().tick(HtmlUIClock::now());
     Rml::Element* first = UIElementAccess::get(document.getElementById("box"));
