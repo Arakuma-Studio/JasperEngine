@@ -28,8 +28,8 @@
 - (void)mouseEntered:(NSEvent*)event;
 - (void)mouseExited:(NSEvent*)event;
 
-// NSTextInputClient stays on the view; only these two produce characters
-- (void)insertText:(id)string;
+// NSTextInputClient stays on the view, and its text on MacTextInputClient; this
+// turns the editing commands the input manager reports into characters
 - (void)doCommandBySelector:(SEL)selector;
 
 @end

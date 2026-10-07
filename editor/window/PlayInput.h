@@ -33,6 +33,15 @@ namespace jasperengine::editor {
         // until it moves, scrolls or clicks, so it can't move the game's pointer back
         bool pointerInjected = false;
 
+        // the real pointer is over the game image of mouseInsideSceneId (systemMouseEnter/Leave)
+        bool mouseInside = false;
+        uint32_t mouseInsideSceneId = 0;
+        // ImGui frame whose characters were forwarded (the trail is read once per frame)
+        int charactersFrame = -1;
+
+        void updateMouseInside(uint32_t sceneId, bool inside);
+        void forwardCharacters(ImGuiIO& io);
+
         void forwardKeyboard(ImGuiIO& io, int mods);
         void releaseKeys(int mods);
         void releaseMouseButtons(int mods);

@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -17,6 +18,10 @@ namespace jasperengine{
     typedef std::map<ShaderKey, std::shared_ptr<ShaderRender>> shaders_t;
 
     using ShaderBuilderFn = std::function<ShaderBuildResult(ShaderKey)>;
+
+    // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
+    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY };
+    static const int HTMLUI_POST_VARIANT_COUNT = 6;
 
     class JASPERENGINE_API ShaderPool{
     private:
@@ -161,6 +166,11 @@ namespace jasperengine{
         static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
         static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint32_t getHtmlUIProperties(bool texture);
+        // HTMLUI_POST: one property bit per (exclusive) variant
+        static uint32_t getHtmlUIPostProperties(HtmlUIPostVariant variant);
+        // every built-in variant an HTML UI document draws with (export and Build Settings
+        // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the six HTMLUI_POST
+        static std::vector<std::pair<ShaderType, uint32_t>> getHtmlUIVariants();
         static uint32_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
         static uint32_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
 

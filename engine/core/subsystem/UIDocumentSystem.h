@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
 #include <cstdint>
@@ -95,7 +96,9 @@ namespace jasperengine{
         // ---- phase 1. Declared by the wave-0 commit, defined by each package in its own .cpp ----
 
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
-        // camera-aware composite; drawComposite(PipelineType, bool) becomes a thin wrapper of it
+        // camera-aware composite: UI and orthographic cameras draw the canvas rectangle in world
+        // space (the editor's Scene view shows it in place), perspective ones fill the viewport
+        // like drawComposite(PipelineType, bool)
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
@@ -117,6 +120,10 @@ namespace jasperengine{
         bool eventOnImeComposition(const std::string& utf8, int cursor);
         void eventOnImeCancel();
         bool hasFocusedTextInput() const;
+        // a document took this pointer's down (touch: pointer id; mouse: button) and keeps it until the up
+        bool hasPointerCapture(int pointer, int button, bool touch) const;
+        // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
+        CursorType getPointerCursor() const;
 
         // --- p1-editor (UIDocumentSystemReload.cpp, §3.8.6-§3.8.7); paths are asset-relative ---
         struct Reloaded { Entity entity; bool stylesheetOnly; };
@@ -137,6 +144,12 @@ namespace jasperengine{
         // --- p1-lua (UIDocumentSystemScript.cpp, §3.9.5) ---
         std::vector<std::string> getDataModelNames(Entity entity) const;
         bool pushDataModel(lua_State* L, Entity entity, const std::string& name);   // pushes the model's Lua proxy
+        // engine-internal (HtmlUIScriptInternal.h): data models and notifications of this scene
+        HtmlUIScriptState& getScriptState();
+        // the scene's scripts ended (LuaBinding::cleanupLuaScripts, play stop): their data models
+        // are removed, and the documents unload (listeners, detached elements and DOM changes go)
+        // and load again at the next update
+        void releaseScriptState();
 
         // --- p1-rtt (UIDocumentSystemTexture.cpp, §3.12) ---
         // A pointer event the screen context did not consume, offered to the texture-mode
@@ -172,7 +185,6 @@ namespace jasperengine{
         std::unordered_map<Entity, Rml::ElementDocument*> documents;
         bool acquired = false;
         int referenceWidth = 0, referenceHeight = 0;
-        bool pointerCaptured = false;   // a consumed down is followed by a consumed up
         bool debuggerVisible = false;   // asked before the context existed
 
         // ---- phase 1: per-package state and private helpers (each package adds its own in its block) ----
@@ -189,6 +201,9 @@ namespace jasperengine{
 
         // --- p1-input ---
         std::shared_ptr<HtmlUIInputState> inputState;
+        HtmlUIInputState& getInputState();
+        // once per update(): control characters that came without their key down (§3.6.2)
+        void updateInput();
 
         // --- p1-lua ---
         std::shared_ptr<HtmlUIScriptState> scriptState;
@@ -198,6 +213,16 @@ namespace jasperengine{
         // their counterparts in the new one. p1-lua moves those elements' listeners and warns
         // about the ones it drops
         void scriptDocumentReloaded(Entity entity, const std::unordered_map<Rml::Element*, Rml::Element*>& oldToNew);
+        // one-line hooks of the phase-0 UIDocumentSystem.cpp (a reload path that bypasses
+        // applyComponent/unloadEntityDocument calls scriptDocumentLoaded/scriptDocumentUnloading itself)
+        void scriptLoadDocuments();                 // load(): every enabled document, so a script's init can query them
+        void scriptContextCreated();                // ensureContext(): data models into the new context, DOM change events
+        void scriptContextDestroying();             // destroyContext(), first: detached pools, RmlUi side of the data models
+        void scriptDocumentLoading(const std::string& filename);   // applyComponent, before a load: placeholder data models
+        void scriptDocumentLoaded(Entity entity);   // applyComponent, after a load: onLoad (fired after the context update)
+        void scriptDocumentUnloading(Entity entity, Rml::ElementDocument* document);   // unloadEntityDocument: pool, onUnload
+        void scriptComponentRemoved(Entity entity); // onComponentRemoved: the data models the document created
+        void scriptUpdate();                        // end of update(): detached pool, onChange, onUnload/onLoad
 
         // --- p1-editor ---
         std::shared_ptr<HtmlUIReloadState> reloadState;

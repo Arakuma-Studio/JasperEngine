@@ -1277,6 +1277,13 @@ bool Element::DispatchEvent(EventId id, const Dictionary& parameters)
 		specification.default_action_phase);
 }
 
+bool Element::DispatchEvent(EventId id, const Dictionary& parameters, bool* default_prevented)
+{
+	const EventSpecification& specification = EventSpecificationInterface::Get(id);
+	return EventDispatcher::DispatchEvent(this, specification.id, specification.type, parameters, specification.interruptible, specification.bubbles,
+		specification.default_action_phase, default_prevented);
+}
+
 void Element::ScrollIntoView(const ScrollIntoViewOptions options)
 {
 	const Vector2f size = main_box.GetSize(BoxArea::Border);

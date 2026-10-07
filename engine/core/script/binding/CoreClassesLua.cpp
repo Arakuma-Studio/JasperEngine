@@ -360,6 +360,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("RESIZE_NESW", CursorType::RESIZE_NESW)
         .addVariable("RESIZE_ALL", CursorType::RESIZE_ALL)
         .addVariable("NOT_ALLOWED", CursorType::NOT_ALLOWED)
+        .addVariable("WAIT", CursorType::WAIT)
+        .addVariable("PROGRESS", CursorType::PROGRESS)
+        .addVariable("HELP", CursorType::HELP)
+        .addVariable("GRAB", CursorType::GRAB)
+        .addVariable("GRABBING", CursorType::GRABBING)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -466,6 +471,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("BLIT", ShaderType::BLIT)
         .addVariable("POSTPROCESS", ShaderType::POSTPROCESS)
         .addVariable("HTMLUI", ShaderType::HTMLUI)
+        .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
+        .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
@@ -976,12 +983,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Framebuffer>("Framebuffer")
         .addConstructor <void (*) (void)> ()
-        .addFunction("create", &Framebuffer::create)
+        .addFunction("create", luabridge::overload<>(&Framebuffer::create))
         .addFunction("destroy", &Framebuffer::destroy)
         .addFunction("isCreated", &Framebuffer::isCreated)
         .addFunction("getRender", &Framebuffer::getRender)
         .addFunction("getVersion", &Framebuffer::getVersion)
-        .addFunction("create", &Framebuffer::create)
+        .addFunction("create", luabridge::overload<>(&Framebuffer::create))
         .addFunction("width", &Framebuffer::getWidth, &Framebuffer::setWidth)
         .addFunction("height", &Framebuffer::getHeight, &Framebuffer::setHeight)
         .addProperty("minFilter", &Framebuffer::getMinFilter, &Framebuffer::setMinFilter)
@@ -996,7 +1003,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<FramebufferRender>("FramebufferRender")
         .addConstructor <void (*) (void)> ()
-        .addFunction("createFramebuffer", &FramebufferRender::createFramebuffer)
+        .addFunction("createFramebuffer", luabridge::overload<TextureType, int, int, TextureFilter, TextureFilter, TextureWrap, TextureWrap, bool>(&FramebufferRender::createFramebuffer))
         .addFunction("destroyFramebuffer", &FramebufferRender::destroyFramebuffer)
         .addFunction("isCreated", &FramebufferRender::isCreated)
         .addFunction("getColorTexture", &FramebufferRender::getColorTexture)
@@ -1339,6 +1346,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getScreenHeight", [] () { return System::instance().getScreenHeight(); })
         .addStaticFunction("showVirtualKeyboard", [] (std::wstring text) { System::instance().showVirtualKeyboard(text); })
         .addStaticFunction("hideVirtualKeyboard", [] () { System::instance().hideVirtualKeyboard(); })
+        .addStaticFunction("setClipboardText", [] (const std::string& text) { System::instance().setClipboardText(text); })
+        .addStaticFunction("getClipboardText", [] () { return System::instance().getClipboardText(); })
         .addStaticFunction("isTouchDevice", [] () { return System::instance().isTouchDevice(); })
         .addStaticFunction("isFullscreen", [] () { return System::instance().isFullscreen(); })
         .addStaticFunction("requestFullscreen", [] () { System::instance().requestFullscreen(); })

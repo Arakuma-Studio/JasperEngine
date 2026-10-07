@@ -1,0 +1,19 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G07: blur 2px, 8px and 40px (the last with downscale passes) */
+        .blur { top: 80px; width: 100px; height: 100px; background-color: #ffffff; }
+        .blur div { position: absolute; left: 25px; top: 25px; width: 50px; height: 50px; background-color: #ff2020; }
+        #b2 { left: 30px; filter: blur(2px); }
+        #b8 { left: 190px; filter: blur(8px); }
+        #b40 { left: 350px; filter: blur(40px); }
+    </style>
+</head>
+<body>
+    <div id="b2" class="abs blur"><div/></div>
+    <div id="b8" class="abs blur"><div/></div>
+    <div id="b40" class="abs blur"><div/></div>
+</body>
+</html>

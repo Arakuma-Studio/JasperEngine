@@ -115,6 +115,15 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::HTMLUI;
         return true;
     }
+    // no underscore: a shader basename splits type and properties at the first one
+    if (typeToken == "htmluigradient") {
+        shaderType = ShaderType::HTMLUI_GRADIENT;
+        return true;
+    }
+    if (typeToken == "htmluipost") {
+        shaderType = ShaderType::HTMLUI_POST;
+        return true;
+    }
 
     return false;
 }
@@ -408,6 +417,8 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::BLIT:   return lowerCase ? "blit"   : "Blit";
         case ShaderType::POSTPROCESS: return lowerCase ? "postprocess" : "Post-process";
         case ShaderType::HTMLUI: return lowerCase ? "htmlui" : "HTML UI";
+        case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
+        case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -429,6 +440,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SHADOW2D: return 0;
         case ShaderType::BLIT:   return 0;
         case ShaderType::HTMLUI: return 1;
+        case ShaderType::HTMLUI_GRADIENT: return 0;
+        case ShaderType::HTMLUI_POST: return 6;
         default:                 return 0;
     }
 }
@@ -500,6 +513,16 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
             case 0: return shortName ? "Tex" : "Texture";
+        }
+    } else if (shaderType == ShaderType::HTMLUI_POST) {
+        // exclusive: a variant has exactly one of them
+        switch (bit) {
+            case 0: return shortName ? "Pas" : "Passthrough";
+            case 1: return shortName ? "Cmx" : "Color Matrix";
+            case 2: return shortName ? "Msk" : "Blend Mask";
+            case 3: return shortName ? "Shd" : "Drop Shadow";
+            case 4: return shortName ? "Blr" : "Blur";
+            case 5: return shortName ? "Unp" : "Unpremultiply";
         }
     } else if (shaderType == ShaderType::POINTS) {
         switch (bit) {
@@ -1024,6 +1047,21 @@ uint32_t ShaderPool::getHtmlUIProperties(bool texture){
     prop |= texture          ? (1 <<  0) : 0;
 
     return prop;
+}
+
+uint32_t ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant variant){
+    return 1u << (uint32_t)variant;
+}
+
+std::vector<std::pair<ShaderType, uint32_t>> ShaderPool::getHtmlUIVariants(){
+    std::vector<std::pair<ShaderType, uint32_t>> variants;
+    variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(false)});
+    variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(true)});
+    variants.push_back({ShaderType::HTMLUI_GRADIENT, 0});
+    for (int variant = 0; variant < HTMLUI_POST_VARIANT_COUNT; variant++){
+        variants.push_back({ShaderType::HTMLUI_POST, getHtmlUIPostProperties((HtmlUIPostVariant)variant)});
+    }
+    return variants;
 }
 
 uint32_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){

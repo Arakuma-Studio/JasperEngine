@@ -2,25 +2,118 @@
 // SPDX-License-Identifier: MIT
 
 // UIDocumentSystem rendering (phase 1, p1-render, spec §3.5): HtmlUIRenderState, the
-// camera-aware composite, render statistics and the MSAA sample count.
+// offscreen passes of the scene's contexts, the camera-aware composite, render statistics and
+// the MSAA sample count.
 
 #include "UIDocumentSystem.h"
 
-using namespace jasperengine;
+#include "Engine.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
+#include "htmlui/HtmlUIContext.h"
+#include "htmlui/RmlRenderer.h"
+#include "math/Matrix4.h"
+#include "render/SystemRender.h"
 
-namespace {
+#include <cstring>
 
-    // HTMLUI_P1_STUB: p1-render (forwards to HtmlUIContext::setPreferredSampleCount)
-    int preferredSampleCount = 4;
+namespace jasperengine{
+
+    struct HtmlUIRenderState {
+        HtmlUIRenderStats stats;   // the last renderOffscreen, summed over the scene's contexts
+
+        // a context's part: the frame counters when it rendered in this sokol frame, the
+        // geometry counts always
+        void add(HtmlUIContext* context){
+            if (!context)
+                return;
+            RmlRenderer& renderer = context->getRenderer();
+            const HtmlUIRenderStats& frame = renderer.getStats();
+            if (renderer.hasFrame(SystemRender::getFrameCount())){
+                stats.passes += frame.passes;
+                stats.drawCalls += frame.drawCalls;
+                stats.pipelineApplies += frame.pipelineApplies;
+                stats.pipelineCacheMisses += frame.pipelineCacheMisses;
+                stats.textureBinds += frame.textureBinds;
+                stats.layersPushed += frame.layersPushed;
+                stats.filtersApplied += frame.filtersApplied;
+            }
+            stats.geometryLive += frame.geometryLive;
+            stats.geometryBytes += frame.geometryBytes;
+        }
+    };
 
 }
 
+using namespace jasperengine;
+
 void UIDocumentSystem::setPreferredSampleCount(int samples){
-    // HTMLUI_P1_STUB: p1-render
-    preferredSampleCount = samples;
+    HtmlUIContext::setPreferredSampleCount(samples);
 }
 
 int UIDocumentSystem::getPreferredSampleCount(){
-    // HTMLUI_P1_STUB: p1-render
-    return preferredSampleCount;
+    return HtmlUIContext::getPreferredSampleCount();
+}
+
+void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
+    if (!renderState)
+        renderState = std::make_shared<HtmlUIRenderState>();
+    renderState->stats = HtmlUIRenderStats();
+
+    // the screen context at the view's size (texture-mode contexts render at their own, p1-rtt)
+    HtmlUIContext* screen = getContext();
+    if (screen){
+        screen->render(viewRect);
+        renderState->add(screen);
+    }
+}
+
+const HtmlUIRenderStats& UIDocumentSystem::getRenderStats() const{
+    static const HtmlUIRenderStats none;
+    return renderState ? renderState->stats : none;
+}
+
+void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){
+    HtmlUIContext* screen = getContext();
+    if (screen)
+        screen->composite(colorPipeline, flipY);
+}
+
+void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY){
+    (void)cameraTransform;
+    HtmlUIContext* screen = getContext();
+    if (!screen)
+        return;
+
+    // a 3D camera has no canvas: the document fills the viewport
+    if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+        screen->composite(colorPipeline, flipY);
+        return;
+    }
+
+    // UI and 2D cameras: the canvas rectangle (0,0)-(width,height) of the world space where
+    // RectTransform UI lives, through the camera, so a panned or zoomed view (the editor's
+    // Scene view) shows the document in place. The document's top edge is at y = 0 under a
+    // UI camera (y down) and at y = height under an orthographic one (y up, UI flipped)
+    int width = 0, height = 0;
+    getLayoutSize(width, height);
+    if (width <= 0 || height <= 0)
+        return;
+
+    const float w = (float)width;
+    const float h = (float)height;
+    const float ySign = (camera.type == CameraType::CAMERA_UI) ? -1.0f : 1.0f;
+    // quad corners (-1,1) top-left .. (1,-1) bottom-right to world
+    const Matrix4 worldFromQuad(0.5f * w, 0.0f, 0.0f, 0.5f * w,
+                                0.0f, 0.5f * h * ySign, 0.0f, 0.5f * h,
+                                0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 0.0f, 1.0f);
+    Matrix4 clipFromQuad = camera.viewProjectionMatrix * worldFromQuad;
+    if (flipY)
+        clipFromQuad = Matrix4::scaleMatrix(Vector3(1.0f, -1.0f, 1.0f)) * clipFromQuad;
+
+    // both column-major
+    Rml::Matrix4f matrix;
+    std::memcpy(matrix.data(), (const float*)clipFromQuad, sizeof(float) * 16);
+    screen->composite(colorPipeline, matrix);
 }

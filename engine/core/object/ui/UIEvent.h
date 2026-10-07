@@ -17,21 +17,27 @@ namespace jasperengine{
     // has an enum of that name
     struct HtmlUIEventState;
 
-    // An event being dispatched to a document element (browser names, phase 1 §3.9.3).
-    // Valid only during dispatch; afterwards every getter returns defaults (defined by p1-lua)
+    // An event reaching a listener of a document element (browser names: click, keydown,
+    // input, change, wheel ...). Valid only while the listener runs; afterwards every getter
+    // returns a default.
     class JASPERENGINE_API UIEvent {
     public:
-        bool isValid() const;
+        bool isValid() const;                         // the dispatch is still running
         std::string getType() const;                  // DOM name
         UIElement getTarget() const;  UIElement getCurrentTarget() const;
         int getEventPhase() const;                    // 1 capture, 2 target, 3 bubble
         void stopPropagation(); void stopImmediatePropagation();
         void preventDefault(); bool isDefaultPrevented() const;
+
+        // keys: DOM key ("a", "A", "Enter") and code ("KeyA"), the engine key code (Input.KEY_*)
         std::string getKey() const; std::string getCode() const; int getKeyCode() const; bool isRepeat() const;
         bool getCtrlKey() const; bool getShiftKey() const; bool getAltKey() const; bool getMetaKey() const;
-        float getClientX() const; float getClientY() const; int getButton() const;   // DOM button numbering
-        float getDeltaX() const; float getDeltaY() const;
-        std::string getData() const;                  // textinput / IME
+
+        // pointer position in document px; button in DOM numbering (0 left, 1 middle, 2 right)
+        float getClientX() const; float getClientY() const; int getButton() const;
+
+        float getDeltaX() const; float getDeltaY() const;   // wheel steps, positive down/right
+        std::string getData() const;                  // textinput / IME text
         UIValue getDetail() const;                    // custom events (dispatchEvent)
 
     private:

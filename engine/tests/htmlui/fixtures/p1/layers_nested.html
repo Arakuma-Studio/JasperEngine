@@ -1,0 +1,20 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G17: opacity inside blur inside a backdrop panel (layer depth 3) */
+        .stripe { top: 0px; width: 64px; height: 384px; }
+        #s1 { left: 0px; background-color: #e04040; } #s2 { left: 128px; background-color: #40e040; }
+        #s3 { left: 256px; background-color: #4040e0; } #s4 { left: 384px; background-color: #e0e040; }
+        #panel { left: 60px; top: 60px; width: 380px; height: 260px; background-color: #00000060; backdrop-filter: blur(6px); }
+        #blurred { position: absolute; left: 40px; top: 40px; width: 300px; height: 180px; filter: blur(3px); }
+        #faded { position: absolute; left: 40px; top: 40px; width: 220px; height: 100px; background-color: #ffffff; filter: opacity(0.5); }
+        #faded div { position: absolute; left: 60px; top: 20px; width: 100px; height: 60px; background-color: #ff00ff; }
+    </style>
+</head>
+<body>
+    <div id="s1" class="abs stripe"/><div id="s2" class="abs stripe"/><div id="s3" class="abs stripe"/><div id="s4" class="abs stripe"/>
+    <div id="panel" class="abs"><div id="blurred"><div id="faded"><div/></div></div></div>
+</body>
+</html>

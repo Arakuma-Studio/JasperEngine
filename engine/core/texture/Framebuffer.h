@@ -25,6 +25,10 @@ namespace jasperengine{
 
             unsigned long version; // increment every creation
 
+            // set by create(const FramebufferDesc&): create() builds from it
+            FramebufferDesc desc;
+            bool hasDesc;
+
         public:
             Framebuffer();
             virtual ~Framebuffer();
@@ -33,6 +37,9 @@ namespace jasperengine{
             Framebuffer& operator=(const Framebuffer& rhs);
 
             void create();
+            // a framebuffer of that description (MSAA, depth-stencil, shared depth-stencil);
+            // later create() calls rebuild the same. False when it could not be created
+            bool create(const FramebufferDesc& desc);
             void destroy();
             bool isCreated();
 

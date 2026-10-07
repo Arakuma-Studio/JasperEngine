@@ -77,6 +77,19 @@ void SystemLinux::quit() {
     WindowLinux::quit();
 }
 
+void SystemLinux::setClipboardText(const std::string& utf8) {
+    WindowLinux::setClipboardText(utf8);
+}
+
+std::string SystemLinux::getClipboardText() {
+    return WindowLinux::getClipboardText();
+}
+
+void SystemLinux::setTextInputArea(float x, float y, float width, float height) {
+    (void)width;
+    if (router) router->setTextInputArea(int(x), int(y), int(height));
+}
+
 void SystemLinux::setMouseCursor(CursorType type) {
     WindowLinux::setMouseCursor(type);
 }

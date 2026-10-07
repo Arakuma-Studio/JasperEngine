@@ -49,6 +49,18 @@ namespace jasperengine { namespace test {
 
         void platformLog(const int type, const char* fmt, va_list args) override;
 
+        // recorded for the input tests (phase 1): the base clipboard is kept
+        void showVirtualKeyboard(std::wstring text = L"") override;
+        void hideVirtualKeyboard() override;
+        void setTextInputArea(float x, float y, float width, float height) override;
+        void setMouseCursor(CursorType type) override;
+        int virtualKeyboardShows = 0;
+        int virtualKeyboardHides = 0;
+        std::wstring virtualKeyboardText;
+        float textInputArea[4] = {0, 0, 0, 0};
+        int textInputAreaCalls = 0;
+        CursorType mouseCursor = CursorType::ARROW;
+
         std::vector<LogEntry> getLogs() const;
         // entries of that type whose message contains `text` (all of the type when empty)
         size_t countLogs(int type, const std::string& text = "") const;

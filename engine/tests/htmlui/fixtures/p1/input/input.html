@@ -1,0 +1,37 @@
+<html>
+<head>
+    <title>p1 input</title>
+    <link type="text/css" href="../../common/base.css"/>
+    <style>
+        /* a transparent full-screen body: clicks on it belong to the game */
+        body { width: 100%; height: 100%; margin: 0px; }
+        div, input, textarea, select { position: absolute; }
+        #button { left: 40px; top: 40px; width: 120px; height: 40px; background-color: #808080ff; cursor: pointer; }
+        #button:active { background-color: #0000ffff; }
+        input, textarea { display: block; background-color: #303030ff; font-size: 16px; color: #ffffffff; }
+        #name { left: 40px; top: 120px; width: 200px; height: 30px; }
+        #other { left: 40px; top: 170px; width: 200px; height: 30px; }
+        #area { left: 40px; top: 220px; width: 200px; height: 60px; }
+        #scroller { left: 300px; top: 40px; width: 150px; height: 100px; overflow: auto; background-color: #404040ff; }
+        #tall { position: relative; width: 100px; height: 600px; }
+        #touchA { left: 300px; top: 200px; width: 80px; height: 40px; background-color: #a0a0a0ff; }
+        #touchB { left: 400px; top: 200px; width: 80px; height: 40px; background-color: #a0a0a0ff; }
+        #touchA:active, #touchB:active { background-color: #ff0000ff; }
+        #overlay { left: 500px; top: 40px; width: 100px; height: 100px; pointer-events: none; background-color: #ffffff40; }
+        #focusbtn { left: 300px; top: 300px; width: 100px; height: 30px; background-color: #606060ff; }
+        #help { left: 40px; top: 300px; width: 60px; height: 30px; background-color: #505050ff; cursor: url(x.png), help, pointer; }
+    </style>
+</head>
+<body>
+    <div id="button"></div>
+    <input type="text" id="name" value=""/>
+    <input type="text" id="other" value=""/>
+    <textarea id="area"></textarea>
+    <div id="scroller"><div id="tall"></div></div>
+    <div id="touchA"></div>
+    <div id="touchB"></div>
+    <div id="overlay"></div>
+    <button id="focusbtn">ok</button>
+    <div id="help"></div>
+</body>
+</html>
