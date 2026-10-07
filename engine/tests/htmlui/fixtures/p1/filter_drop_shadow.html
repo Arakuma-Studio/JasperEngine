@@ -1,0 +1,21 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G08: drop-shadow without and with blur, on text and on an image */
+        #text { left: 30px; top: 40px; width: 300px; font-size: 48px; color: #ffffff; filter: drop-shadow(#000000 6px 6px 0px); }
+        #textblur { left: 30px; top: 130px; width: 300px; font-size: 48px; color: #ffffff; filter: drop-shadow(#000000 6px 6px 6px); }
+        #image { left: 340px; top: 40px; width: 64px; height: 64px; filter: drop-shadow(#ff00ff 8px 8px 0px); }
+        #imageblur { left: 340px; top: 180px; width: 64px; height: 64px; filter: drop-shadow(#ff00ff 8px 8px 6px); }
+        #backdrop { left: 0px; top: 0px; width: 512px; height: 384px; background-color: #808080; }
+    </style>
+</head>
+<body>
+    <div id="backdrop" class="abs"/>
+    <div id="text" class="abs">Shadow</div>
+    <div id="textblur" class="abs">Blurred</div>
+    <img id="image" class="abs" src="../common/checker.png"/>
+    <img id="imageblur" class="abs" src="../common/checker.png"/>
+</body>
+</html>

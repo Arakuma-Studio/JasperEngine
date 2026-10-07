@@ -1708,7 +1708,8 @@ bool RmlRenderer::loadPrograms(){
     bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated();
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
-        if (!program.shader)
+        // asked every time until created: the pool hands a pending variant to its builder again
+        if (!program.shader || !program.shader->isCreated())
             program.shader = ShaderPool::get(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties((HtmlUIPostVariant)i));
         ready = ready && program.shader && program.shader->isCreated();
     }
@@ -2105,6 +2106,9 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     addBuffer(compositeIndexBuffer);
     for (const std::unique_ptr<RmlGeometryPage>& page : pages){
         addBuffer(page->buffer);
+    }
+    for (const std::unique_ptr<RmlTransientBuffer>& buffer : transientBuffers){
+        addBuffer(buffer->buffer);
     }
 
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;

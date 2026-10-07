@@ -1,0 +1,19 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G13: radial (circle, ellipse, repeating) and conic (plain, repeating) gradients */
+        .g { width: 150px; height: 150px; }
+        #circle { left: 10px; top: 10px; decorator: radial-gradient(circle 75px at center, #ffffff, #ff0000 50%, #000000); }
+        #ellipse { left: 180px; top: 10px; width: 150px; height: 100px; decorator: radial-gradient(ellipse at center, #ffff00, #0000ff); }
+        #rradial { left: 350px; top: 10px; decorator: repeating-radial-gradient(circle at center, #ffffff 0px, #000000 20px, #ffffff 40px); }
+        #conic { left: 10px; top: 200px; decorator: conic-gradient(from 0deg at center, #ff0000, #00ff00, #0000ff, #ff0000); }
+        #rconic { left: 180px; top: 200px; decorator: repeating-conic-gradient(from 0deg at center, #000000 0deg, #ffffff 45deg, #000000 90deg); }
+    </style>
+</head>
+<body>
+    <div id="circle" class="abs g"/><div id="ellipse" class="abs g"/><div id="rradial" class="abs g"/>
+    <div id="conic" class="abs g"/><div id="rconic" class="abs g"/>
+</body>
+</html>
