@@ -120,6 +120,13 @@ linux)
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
         cmake --install $OUT/$EDITOR_DIR --strip
+        # RmlUi stays inside the shared engine (engine/libs/rmlui/hidden-symbols.map)
+        leaked=\$(nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -c 'Rml::' || true)
+        if [[ \$leaked != 0 ]]; then
+            echo \"libjasperengine.so exports \$leaked RmlUi symbols:\" >&2
+            nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep 'Rml::' | head -20 >&2
+            exit 1
+        fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
         cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG
