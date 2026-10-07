@@ -3063,6 +3063,12 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     entry.runtime->scene->getSystem<UISystem>()->clearAnchorReferenceSize();
     entry.runtime->scene->getSystem<UIDocumentSystem>()->clearReferenceSize();
+    // a Play copy (a child scene, a scene loaded while playing) is only drawn by the game's
+    // frames, which never show editor overlays (SceneRender::activateGame turns them off for
+    // the played scene); with them on, its HTML UI documents would be skipped as in the Scene view
+    if (entry.ownedRuntime){
+        entry.runtime->scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
+    }
     pauseEngineScene(entry.runtime->scene, false);
 
     entry.initialized = true;

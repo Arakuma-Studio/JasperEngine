@@ -5,9 +5,10 @@ ui/basic.css, adds the component to a GameObject of a new UI scene and probes Ga
 screenshots: box colors, text, the transparent body, enabled on/off, the order of two
 documents (sortOrder), the same pixels after save / close / reopen, :hover in play mode
 from send_input, clicks consumed over document elements but not over the transparent body,
-and a missing file (a Console error naming it, no crash, nothing drawn). The last test
-leaves the scene saved as the start scene, so the kept project (JASPER_KEEP_SCRATCH=1) is
-ready for tools/smoke-test.sh and the Web export check.
+a missing file (a Console error naming it, no crash, nothing drawn), an edited stylesheet
+after a reload, and a child scene's document over its parent's. The last test leaves the
+scene saved as the start scene (with its child scene), so the kept project
+(JASPER_KEEP_SCRATCH=1) is ready for tools/smoke-test.sh and the Web export check.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720, letterbox). Coordinates
 below are canvas pixels; screenshots map them with canvas_rect_in_image.
@@ -68,6 +69,23 @@ OVER_HTML = """<html>
 </html>
 """
 
+# the document of a child scene, over the blue box
+LAYER = "assets/ui/layer.html"
+LAYER_HTML = """<html>
+<head>
+    <title>layer</title>
+    <style>
+        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
+        #layer { display: block; position: absolute; left: 480px; top: 240px; width: 200px; height: 100px;
+                 background-color: #00ffff; }
+    </style>
+</head>
+<body>
+    <div id="layer"></div>
+</body>
+</html>
+"""
+
 COUNTER = """---@class ClickCounter : ScriptInstance
 local ClickCounter = {
     properties = {
@@ -91,6 +109,7 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 GRAY = (128, 128, 128)
 MAGENTA = (255, 0, 255)
+CYAN = (0, 255, 255)
 
 # canvas probes
 P_RED = (140, 90)
@@ -98,6 +117,8 @@ P_BLUE = (480, 240)
 P_BUTTON = (120, 264)
 P_EMPTY = (900, 500)
 P_OVERLAP = (190, 110)
+P_LAYER_OVER = (520, 260)   # the child scene's box over the blue box
+P_LAYER_ONLY = (640, 320)
 LABEL = (40, 170, 340, 210)   # x0, y0, x1, y1
 
 
@@ -381,6 +402,39 @@ async def test_edited_css_shows_after_reload(ed: Editor):
         await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": value}})
     shot = await shoot(ed, "restored-css", S["scene"])
     check_color(ed, shot, P_RED, RED, "the restored stylesheet after a reload")
+
+
+async def test_child_scene_document(ed: Editor):
+    """A document of a child scene (drawn as a layer over its parent) shows over the parent's
+    documents in the Game view and in play mode. The editor drew child scenes there with their
+    editor overlays on, which the HTML UI takes for a Scene view frame and skips."""
+    await ed.call("write_file", path=LAYER, content=LAYER_HTML)
+    made = await ed.call("create_scene", name="HtmlUiLayer", type="UI", path="scenes/HtmlUiLayer")
+    S["layer"] = made["scene"]["id"]
+    ent = await ed.call("create_entity", scene=S["layer"], type="empty", name="LayerDoc")
+    await ed.call("add_component", scene=S["layer"], entity=ent["entity_id"], component="UIDocument",
+                  values={"uidocument": {"filename": LAYER}})
+    await ed.call("save_scene", scene=S["layer"])
+    await ed.call("set_child_scene", scene=S["scene"], child=S["layer"], start_active=True)
+    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("edit_build_scenes", action="add", scene="scenes/HtmlUiLayer.scene")
+
+    shot = await shoot(ed, "child-edit", S["scene"])
+    check_color(ed, shot, P_LAYER_OVER, CYAN, "Game view: the child scene's document over the parent's blue box")
+    check_color(ed, shot, P_LAYER_ONLY, CYAN, "Game view: the child scene's document")
+    check_color(ed, shot, P_RED, RED, "Game view: the parent's document under it")
+
+    await ed.call("play", action="start", scene=S["scene"])
+    try:
+        shot = await shoot(ed, "child-play")
+        check_color(ed, shot, P_LAYER_OVER, CYAN, "play: the child scene's document over the parent's blue box")
+        check_color(ed, shot, P_LAYER_ONLY, CYAN, "play: the child scene's document")
+        check_color(ed, shot, P_RED, RED, "play: the parent's document under it")
+    finally:
+        await ed.call("play", action="stop")
+
+    errors = await html_ui_errors(ed)
+    ed.check(not errors, f"[HTML UI] errors: {errors}")
 
 
 async def test_saved_as_start_scene(ed: Editor):
