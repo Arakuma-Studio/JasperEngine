@@ -179,11 +179,13 @@ end
 return Menu
 ```
 
-Documents load with their scene, so `init` can query elements. A script that runs before
-the document loaded (C++ code before the scene loads) creates its data models then, and
-queries elements in `doc.onLoad` (an event: `doc.onLoad = function() ... end` or
-`RegisterEvent(self, doc.onLoad, "method")`), which runs after every load and reload
-(`onUnload` before every unload).
+Documents load with their scene, so `init` can query elements. `doc.onLoad` (an event:
+`doc.onLoad = function() ... end` or `RegisterEvent(self, doc.onLoad, "method")`) runs after
+every later load and reload, `onUnload` before every unload; the usual pattern binds listeners
+in one method called from `init` and registered on `onLoad`. A document that uses a data
+model no script created yet (edit mode, or before `init`) shows its `{{ }}` empty. When play
+stops, everything the scripts made in documents goes (listeners, data models, DOM changes) and
+the documents load again as they are on disk.
 
 ### Element API (Lua; C++ has the same names as get/set methods)
 

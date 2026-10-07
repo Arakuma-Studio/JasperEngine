@@ -1722,9 +1722,21 @@ Details the implementation fixed, binding for the packages that build on it:
   `destroyContext()` (first line) → `scriptContextDestroying()`; `applyComponent` after a load →
   `scriptDocumentLoaded(entity)`; `unloadEntityDocument` → `scriptDocumentUnloading(entity,
   document)`; `onComponentRemoved` → `scriptComponentRemoved(entity)`; end of `update()` →
-  `scriptUpdate()`. `onLoad`/`onUnload` are queued by the load/unload hooks and fired after the
-  context update (never inside `applyComponent`'s loop); a reload path that bypasses
-  `applyComponent`/`unloadEntityDocument` (p1-editor) calls the two hooks itself.
+  `scriptUpdate()`; and before `context->loadDocument` in `applyComponent` →
+  `scriptDocumentLoading(filename)`, which creates an empty placeholder RmlUi model (missing
+  variables allowed) for every `data-model` name of the file that no script created yet, so a
+  document loads without RmlUi errors in edit mode and before `init`; `createDataModel` removes
+  the placeholder and reloads the document. `onLoad`/`onUnload` are queued by the load/unload
+  hooks and fired after the context update (never inside `applyComponent`'s loop), or at once
+  after a synchronous load (`Scene::load`, `UIDocument::load`, a getter that loads a due
+  document), so a script's `init` is not called back for the load before it. A reload path that
+  bypasses `applyComponent`/`unloadEntityDocument` (p1-editor) calls the hooks itself.
+- **Play stop.** The editor plays the main scene in place (its snapshot is restored), so
+  documents are not destroyed with a scene at stop. `LuaBinding::cleanupLuaScripts(Scene*)`
+  (one additive line) calls `UIDocumentSystem::releaseScriptState()`: data models removed,
+  documents unloaded at once (listeners and their Lua functions, detached elements and DOM
+  changes go) and loaded again at the next update. `Engine::clearComponentSubscriptions` clears
+  `UIDocumentComponent::onLoad/onUnload` like the other component events.
   `UIDocument` getters load a due document first, so a script's `init` works whichever of
   `Scene::load` and the scripts' init runs first.
 - **Data models** live in `HtmlUIScriptState` per scene, owned by the creating entity. They
