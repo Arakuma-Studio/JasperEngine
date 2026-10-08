@@ -2668,7 +2668,7 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   HTML/CSS for the engine" in `docs/mcp/guide/html-ui.md` (what works, what is rewritten,
   how to read diagnostics, imports; phase 4 adds the generated matrix).
 - **Depends on:** p2-core; final calibration needs all wave-2 packages merged.
-- **Deliverables:** 3.10 complete and calibrated; the reference tool; the seven golden
+- **Deliverables:** 3.10 complete and calibrated; the reference tool; the eight golden
   pages (5.3) with committed references, layouts and engine goldens; the MCP e2e test.
 - **Tests:** `compat_golden_pages_test.cpp` (5.3), `compat_ua_test.cpp` (the UA sheet
   rewrites with zero diagnostics and RmlUi accepts it with zero warnings; no UA selector
@@ -2780,30 +2780,57 @@ the host's `~/.cache/ms-playwright`). Phase 3 extends this same script and `Brow
   `npx playwright-core install chromium-headless-shell` (or reused from
   `~/.cache/ms-playwright`). The script refuses to run with another browser version.
 - Launch flags: `--font-render-hinting=none --disable-font-subpixel-positioning
-  --disable-lcd-text --force-color-profile=srgb --disable-gpu --hide-scrollbars`.
+  --disable-lcd-text --force-color-profile=srgb --disable-gpu --num-raster-threads=1
+  --disable-checker-imaging`. As implemented (p2-ua), Playwright's default
+  `--hide-scrollbars` is **removed** (`ignoreDefaultArgs`): it hides every element scrollbar,
+  `::-webkit-scrollbar`-styled ones included, and they then take no layout space, while the
+  engine draws them; only the root viewport's scrollbar is hidden, by an injected
+  `html::-webkit-scrollbar{display:none!important}` (the engine's root does not scroll).
 - Viewport 1280×720, `deviceScaleFactor: 1`, `colorScheme: 'light'`,
-  `reducedMotion: 'no-preference'`.
+  `reducedMotion: 'no-preference'`, **JavaScript disabled** (the engine runs none, so inline
+  scripts must not change the reference either; `<noscript>` renders on both sides).
+- Fonts (as implemented): Chromium runs with a generated `FONTCONFIG_FILE` whose only font
+  directory holds the engine's built-in Roboto (extracted from `engine/core/util/DefaultFont.h`)
+  and which maps every generic family (`serif`, `sans-serif`, `monospace`, `system-ui`,
+  `ui-*`, `cursive`, `fantasy`, Arial, Helvetica, Times New Roman, Courier New) to it: what
+  the engine's font registry does. References do not depend on the host's fonts, and form
+  controls (`system-ui`) measure with the same face on both sides. Synthetic bold/italic of
+  the generic face is Skia's in the reference, the engine's own in the engine.
 - Requests to `https://fonts.googleapis.com/*` and every URL in the page manifest are
-  fulfilled from the manifest's local files (`page.route`), everything else remote is
-  aborted (deterministic, offline).
+  fulfilled from the manifest's local files (`page.route`; a URL next to a manifest URL, like
+  the fonts a Google Fonts CSS references relatively, maps to the file next to the local
+  copy), everything else remote is aborted (deterministic, offline).
 - `data-lucide` elements are expanded by the script from `engine/libs/lucide/lucide.pack`
-  (Node's zlib) with the same algorithm as compat, so both sides draw identical icons.
-- After `load`: `await document.fonts.ready`; all animations are finished
-  (`for (const a of document.getAnimations()) a.finish()`) so fill-mode end states are
-  captured, transitions disabled by injecting `*{transition:none!important}` before
-  load; states from `<meta name="htmlui-ref-hover" content="#selector">` (hover via
-  `page.hover`), `htmlui-ref-focus` (keyboard focus via `page.focus` after a Tab press so
-  `:focus-visible` applies), `htmlui-ref-active`.
+  (Node's zlib, the format of `tools/htmlui/build_lucide_pack.py`) with the same algorithm as
+  compat, so both sides draw identical icons (`--lucide-dir <checkout>` reads a Lucide
+  checkout instead, for development).
+- After `load`: `await document.fonts.ready`, every `<img>` decoded (`img.decode()`), all
+  finite animations finished (`a.finish()`; infinite ones paused at 0) so fill-mode end
+  states are captured, transitions disabled by an injected `*{transition:none!important}`
+  (before any state is applied: with JavaScript off nothing transitions earlier);
+  states from `<meta name="htmlui-ref-hover" content="#selector">` (hover via `page.hover`),
+  `htmlui-ref-focus` (keyboard focus via `page.focus` after a Tab press so `:focus-visible`
+  applies), `htmlui-ref-active`; then 400 ms for Chromium's high-quality image filter pass
+  before the screenshot.
 - Outputs per page into `engine/tests/htmlui/golden/compat/reference/`:
   `<page>.png` (`omitBackground: true`, transparent), `<page>.notext.png` (same page with an
   injected style `*{-webkit-text-fill-color:transparent!important;
   text-shadow:none!important;-webkit-text-stroke-color:transparent!important;
   text-decoration-color:transparent!important;caret-color:transparent!important}`, which
-  hides glyphs but keeps `currentColor` borders and icons), and `<page>.layout.json`
-  (`getBoundingClientRect` of every element with an `id`, rounded to 0.01 px, plus the
-  attribute `data-ref-tol` if present).
-- Two consecutive runs must produce byte-identical files (the script checks it with
-  `--verify`).
+  hides glyphs but keeps `currentColor` borders and icons; rendered from a fresh load, not by
+  restyling the first capture), and `<page>.layout.json` (`{page, viewport, browser, states,
+  requires, lucide, elements}`; `elements`: `getBoundingClientRect` of every element with an
+  `id` in document order, rounded to 0.01 px, `tol` from `data-ref-tol` if present, and
+  `transformed: true` when the element or an ancestor has a CSS transform: its client rect is
+  then a transformed bounding box, which the layout gate skips; the images cover it), plus
+  `VERSION` (browser, playwright, font mapping, Lucide source).
+- Every capture uses a fresh browser process: a page captured after another one in the same
+  browser can differ in a few pixels. Chromium's software raster is still not bit-exact
+  across processes on blurred rounded shapes (box-shadow glows on rounded boxes: up to ~32/255
+  on a few dozen pixels, measured on `hud.html`; one raster thread and the flags above do not
+  remove it), so `--verify` (two renders) and `--check` (against the committed files) accept
+  byte-identical files or differences of at most 40/255 on at most 0.05 % of the pixels, far
+  below the comparator's threshold of 48.
 
 **Engine side** (`BrowserCompare`, p2-ua): loads the page into a 1280×720 context with dp
 ratio 1 through `DocumentLoader::load`, applies the same states (hover: synthetic mouse move
@@ -2813,13 +2840,27 @@ declarations), renders through phase 0's offscreen golden harness on a transpare
 reads back premultiplied RGBA, and for the no-text variant calls the font engine's
 `setRenderTextForTesting(false)` (hook H6; layout is unchanged because metrics are).
 
+As implemented (p2-ua): `BrowserPage` (`engine/tests/htmlui/compat/BrowserCompare.h`)
+draws into a `RenderTestContext` target with the engine's default 4x MSAA, calls
+`compat::updateRuntime` before every `Context::Update` (as `HtmlUIContext::update`), loads
+the page with `TestSystem::setAssetPath(<fixtures>/compat/pages)` so the pages directory is
+the project's assets directory (its `htmlui-imports/manifest.json` serves the Google Fonts
+URL, as in a project), runs animations on the fixed UI clock (0 s at load, then 1000 s:
+every finite animation ends and `AnimationFill` applies its end state), focuses by real Tab
+key presses until the element has the focus, and hovers by a pointer move to the element's
+centre. The layout gate compares `Element::GetAbsoluteOffset(Border)` and the border size
+with the reference rect. The tests are `CompatGolden/CompatGoldenPages.MatchesChromium/<page>`
+(one per `pages/*.html`), `CompatGoldenReferences.CompleteAndConsistent` and the metric
+self-tests `CompatBrowserCompare.*` (no GPU). The diagnostics snapshot is
+`golden/compat/engine/<page>.diag.txt`.
+
 **Comparison policy** (calibrated on the `refrender-exp` experiment: Chromium vs Chromium
 with deliberate perturbations; metrics on premultiplied RGBA):
 
 | Metric | Definition |
 |---|---|
-| fuzzy-bad % | percentage of pixels whose best match within a 3×3 neighborhood of the other image differs by more than 48 in some channel |
-| max-block | largest mean absolute channel difference over 8×8 blocks |
+| fuzzy-bad % | percentage of pixels whose best match within a 3×3 neighborhood of the other image differs by more than 48 in some channel (as implemented: counted in both directions, a pixel bad in either counts once) |
+| max-block | largest difference of the two images' mean channel values over 8×8 blocks (the calibration's `|mean(a) - mean(b)|` per block and channel) |
 
 Measured: 1px shift 0.000% / 29.8; color #6cf→#7df 0.000% / 6.0; 4px shift 0.963% / 94.3;
 missing button 12.2% / 231.8; radius 16px→0 0.059% / 137.3; other font 1.24% / 55.2
@@ -2830,7 +2871,9 @@ Gates:
 1. **No-text image vs Chromium**: fuzzy-bad ≤ 0.5 % and max-block ≤ 64. Catches missing
    boxes, wrong radii, wrong colors, shifts ≥ 3 px; tolerates rasterizer anti-aliasing.
 2. **Layout vs Chromium**: every element with an `id`: |Δx|, |Δy|, |Δw|, |Δh| ≤ 3 px; for
-   elements marked `data-ref-tol="text"` (boxes sized by text) ≤ max(6 px, 4 %).
+   elements marked `data-ref-tol="text"` (boxes sized by text) ≤ max(6 px, 4 % of the
+   reference width for x and w, of its height for y and h). Elements under a CSS transform
+   (`transformed` in the layout JSON) are left to the image gates.
 3. **Engine golden** (`golden/compat/engine/<page>.png`, regression of our own output):
    fuzzy-bad ≤ 0.1 % with a channel threshold of 8, max-block ≤ 8. Regenerated on purpose
    with `JASPER_HTMLUI_UPDATE_GOLDEN=1` after inspecting the image.
