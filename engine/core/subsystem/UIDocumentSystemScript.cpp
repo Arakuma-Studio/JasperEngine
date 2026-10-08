@@ -271,6 +271,10 @@ void HtmlUIScriptState::reloadUsersOf(Entity owner, const std::string& name){
 
     if (uses){
         system->reloadDocument(owner, true);
+        // the reload is part of the createDataModel call (a script's init makes its models
+        // first, then registers onLoad): its onUnload/onLoad run now, as for UIDocument::load,
+        // not later for handlers registered after it
+        fireNotifications();
     }
 }
 

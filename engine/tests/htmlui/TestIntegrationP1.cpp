@@ -861,3 +861,46 @@ TEST_F(TextEffectsInLayersTest, FontEffectsInsideLayersAndFilters){
     CompareResult result = test.compareScreen("p1/text_effects_layers");
     EXPECT_TRUE(result.passed) << result.message;
 }
+
+TEST_F(IntegrationTest, ModelReloadInInitIsNotAnOnLoadOfLaterHandlers){
+    // A script's init creates its data model first (the document reloads to bind it, at once),
+    // then registers onLoad/onUnload: that reload is over before the handlers exist, so they
+    // must not run for it (they would bind a second set of listeners); later reloads call them
+    fixture.reset(new SceneFixture());
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    setGlobal("screenDoc", screen());
+    ASSERT_EQ(lua(R"(
+        loads, unloads = 0, 0
+        model = screenDoc:createDataModel("hud", { gold = 1 })
+        screenDoc.onLoad = function() loads = loads + 1 end
+        screenDoc.onUnload = function() unloads = unloads + 1 end
+    )"), "");
+    EXPECT_EQ(screen().getElementById("gold").getTextContent(), "1");
+    drawFramesAt(time, 3, 0.0);
+    EXPECT_EQ(luaNumber("loads"), 0);
+    EXPECT_EQ(luaNumber("unloads"), 0);
+
+    // the same from C++
+    UIValue initial = UIValue::object();
+    initial["label"] = "x";
+    int cppLoads = 0;
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html", 1)));
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    UIDataModel form = texture().createDataModel("form", initial);
+    EXPECT_TRUE(form.isValid());
+    texture().getComponent<UIDocumentComponent>().onLoad.add(callbackTag, std::function<void()>([&cppLoads](){ cppLoads++; }));
+    drawFramesAt(time, 3, 0.0);
+    EXPECT_EQ(cppLoads, 0);
+    EXPECT_EQ(texture().getElementById("bound").getTextContent(), "x");
+
+    // a later reload calls them, once
+    screen().reload();
+    texture().reload();
+    drawFramesAt(time, 2, 0.0);
+    EXPECT_EQ(luaNumber("loads"), 1);
+    EXPECT_EQ(luaNumber("unloads"), 1);
+    EXPECT_EQ(cppLoads, 1);
+    texture().getComponent<UIDocumentComponent>().onLoad.remove(callbackTag);
+    lua("loads, unloads = nil, nil");
+}
