@@ -109,7 +109,11 @@ function HudGame:init()
     anime.animate("#box", { translateX = 200, duration = 1000, ease = "linear" })
 
     -- a component button of this HUD over the middle of the 3D scene's wall
+    -- the scene owns it: a Lua-owned GameObject of a child scene (a copy the play stop destroys)
+    -- would be collected after its scene is gone, which the engine does not survive (a
+    -- component-UI issue outside HTML UI, reported by p1-integrate)
     self.button = Button(self.scene)
+    self.button.entityOwned = false
     self.button:setPosition(600, 340)
     self.button:setSize(80, 40)
     self.button:getButtonComponent().onPress = function() self.presses = self.presses + 1 end
