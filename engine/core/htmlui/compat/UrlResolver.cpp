@@ -332,7 +332,7 @@ ResolvedUrl UrlResolver::resolve(std::string_view input, const std::string& from
             result.assetPath = normalizePath(entry->path);
             std::string withoutQuery = result.url;
             splitQueryAndFragment(withoutQuery, result.fragment);
-            result.emitted = "/" + result.assetPath + result.fragment;
+            result.emitted = std::string(kAssetScheme) + result.assetPath + result.fragment;
             if (checkExists)
                 result.exists = assetFileExists(files, result.assetPath);
             break;
@@ -360,7 +360,7 @@ ResolvedUrl UrlResolver::resolve(std::string_view input, const std::string& from
             }else{
                 result.assetPath = joinPath(fromFile, path, &result.outsideAssets);
             }
-            result.emitted = "/" + result.assetPath + result.fragment;
+            result.emitted = std::string(kAssetScheme) + result.assetPath + result.fragment;
             if (checkExists)
                 result.exists = !result.outsideAssets && assetFileExists(files, result.assetPath);
             break;

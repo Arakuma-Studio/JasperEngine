@@ -127,6 +127,13 @@ linux)
             nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep 'Rml::' | head -20 >&2
             exit 1
         fi
+        # and so does lexbor, the compat layer's HTML parser (engine/libs/lexbor)
+        leaked=\$(nm -D $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -cE ' (lxb|lexbor)_' || true)
+        if [[ \$leaked != 0 ]]; then
+            echo \"libjasperengine.so exports \$leaked lexbor symbols:\" >&2
+            nm -D $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (lxb|lexbor)_' | head -20 >&2
+            exit 1
+        fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
         cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG
