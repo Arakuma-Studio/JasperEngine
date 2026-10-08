@@ -19,6 +19,8 @@
         #buy { left: 160px; top: 200px; width: 100px; height: 40px; background-color: #808080; }
         #name { left: 300px; top: 200px; width: 160px; height: 30px; font-size: 20px; background-color: #ffffff; color: #000000; display: block; }
         #box { left: 480px; top: 140px; width: 40px; height: 40px; background-color: #ffff00; }
+        #pulse { left: 540px; top: 140px; width: 40px; height: 40px; background-color: #000000; animation: 2s linear infinite pulse; }
+        @keyframes pulse { from { background-color: #000000; } to { background-color: #ffffff; } }
     </style>
 </head>
 <body>
@@ -31,5 +33,6 @@
     <div id="buy" class="abs">Buy</div>
     <input id="name" class="abs" type="text" value=""/>
     <div id="box" class="abs"></div>
+    <div id="pulse" class="abs"></div>
 </body>
 </html>

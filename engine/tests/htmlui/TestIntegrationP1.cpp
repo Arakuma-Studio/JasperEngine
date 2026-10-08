@@ -970,3 +970,35 @@ TEST_F(IntegrationTest, AnimeSelectorsReachEveryScene){
     layer.reset();
     ASSERT_TRUE(loaded);
 }
+
+TEST_F(IntegrationTest, OneClockPinsCssAnimationsLottieAndAnime){
+    // RmlUi keyframes, the Lottie and anime of one document all read HtmlUIClock: a pinned
+    // time stops all three whatever the frames, moving it moves all three
+    fixture.reset(new SceneFixture());
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    setGlobal("screenDoc", screen());
+    ASSERT_EQ(lua(R"(anim = anime.animate("#box", { translateX = 100, duration = 4000, ease = "linear" }))"), "");
+
+    struct State { std::string pulse; float lottie; float box; };
+    auto state = [this](){
+        return State{screen().getElementById("pulse").getStyle("background-color"),
+                     screen().getElementById("spin").getCurrentFrame(),
+                     screen().getElementById("box").getBoundingClientRect().left};
+    };
+    drawFramesAt(time, 1, 0.25);
+    const State a = state();
+    drawFramesAt(time, 20, 0.0);   // pinned: 20 frames, no time
+    const State b = state();
+    EXPECT_EQ(b.pulse, a.pulse);
+    EXPECT_EQ(b.lottie, a.lottie);
+    EXPECT_EQ(b.box, a.box);
+    drawFramesAt(time, 1, 0.5);
+    const State c = state();
+    EXPECT_NE(c.pulse, a.pulse);
+    EXPECT_GT(c.lottie, a.lottie);
+    EXPECT_GT(c.box, a.box);
+    // the same half second for all three: 15 Lottie frames at 30 fps, 12.5 px of anime
+    EXPECT_NEAR(c.lottie - a.lottie, 15.0f, 1.0f);
+    EXPECT_NEAR(c.box - a.box, 12.5f, 1.0f);
+}
