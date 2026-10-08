@@ -116,6 +116,11 @@ private:
     static int mcpHttpPort;
     static std::string mcpHttpToken;
 
+    // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
+    // diagnostics logged one by one
+    static bool htmlUiAutoImport;
+    static bool htmlUiVerboseDiagnostics;
+
     // Private methods
     static void ensureConfigDirectory();
 
@@ -212,6 +217,13 @@ public:
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
     static void setMcpHttp(bool enabled, int port);
+
+    // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
+    // document references when it loads (default on); log every Info diagnostic (default off)
+    static bool getHtmlUiAutoImport();
+    static void setHtmlUiAutoImport(bool enabled);
+    static bool getHtmlUiVerboseDiagnostics();
+    static void setHtmlUiVerboseDiagnostics(bool enabled);
 
     // Load and save settings
     static bool loadSettings();

@@ -11,6 +11,7 @@
 #include "util/FileDialogs.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
 #include "external/IconsFontAwesome6.h"
@@ -9027,6 +9028,9 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
         sceneProject->needUpdateRender = true;
     }
     ImGui::SetItemTooltip("RmlUi's element inspector and log, drawn over this scene's documents");
+
+    // remote URLs (imports) and the compat diagnostics of the document
+    htmlui::HtmlUiImportPanel::draw(project, sceneProject, entity, document.filename, documents);
 
     // what RmlUi said while loading this document (and since), with the file and line it gave
     const std::vector<HtmlUIMessage>& messages = documents->getDocumentMessages(entity);

@@ -41,3 +41,9 @@ RUN git config --system --add safe.directory '*'
 RUN dbus-uuidgen > /etc/machine-id
 
 ENV LIBGL_ALWAYS_SOFTWARE=1
+
+# The editor's HTML UI importers download through the curl executable (phase-2 §3.13.1);
+# jasperengine-htmlui-editor-tests runs them against a local fixture server. A layer of its
+# own, so images built from older copies of this file reuse every layer above.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
