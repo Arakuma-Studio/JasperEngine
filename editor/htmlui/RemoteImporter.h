@@ -128,6 +128,7 @@ namespace jasperengine::editor::htmlui {
         std::vector<compat::Diagnostic> reported;
         std::function<void(const std::string&)> progressLine;
         std::map<std::string, ImportedResource> nested;   // by normalized URL
+        bool curlMissingReported = false;
     };
 
     // ---- helpers shared by the importers (RemoteImporter.cpp)

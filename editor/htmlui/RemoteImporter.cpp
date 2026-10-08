@@ -254,11 +254,15 @@ std::string jasperengine::editor::htmlui::resolveUrl(const std::string& base, co
     const size_t authorityEnd = base.find_first_of("/?#", schemeEnd + 3);
     const std::string origin = authorityEnd == std::string::npos ? base : base.substr(0, authorityEnd);
     std::string basePath = authorityEnd == std::string::npos ? "/" : base.substr(authorityEnd);
-    const size_t baseCut = basePath.find_first_of("?#");
-    const std::string baseQuery = baseCut != std::string::npos && basePath[baseCut] == '?' ?
-                                  basePath.substr(baseCut, basePath.find('#', baseCut) == std::string::npos ? std::string::npos : basePath.find('#', baseCut) - baseCut) : "";
-    if (baseCut != std::string::npos)
-        basePath.erase(baseCut);
+    const size_t fragment = basePath.find('#');
+    if (fragment != std::string::npos)
+        basePath.erase(fragment);
+    std::string baseQuery;
+    const size_t question = basePath.find('?');
+    if (question != std::string::npos){
+        baseQuery = basePath.substr(question);
+        basePath.erase(question);
+    }
     if (basePath.empty() || basePath[0] != '/')
         basePath.insert(0, "/");
 
@@ -416,9 +420,10 @@ bool RemoteImporter::fetch(const std::string& url, const ImportLocation& at, Htt
                            std::string& error, bool quiet){
     body.clear();
     if (HttpClient::mirrorDirectory().empty() && !HttpClient::available()){
-        // reported even when the caller words download errors itself: nothing can be imported
+        // reported (once) even when the caller words download errors itself: nothing can be imported
         error = "the curl executable was not found";
-        {
+        if (!curlMissingReported){
+            curlMissingReported = true;
             report(compat::codes::CurlMissing, at, url, "cannot download '" + url + "': the curl executable was not found on PATH",
 #ifdef _WIN32
                    "curl.exe ships with Windows 10 1803 and later in C:\\Windows\\System32; install it from https://curl.se/windows/ and add it to PATH"
@@ -483,6 +488,11 @@ bool RemoteImporter::finish(ImportStaging& staging, std::vector<ImportEntry> ent
     }
     result.entries.insert(result.entries.end(), entries.begin(), entries.end());
     result.ok = true;
+    if (!entries.empty() && !staging.files().empty()){
+        const ImportEntry& entry = entries.front();
+        report(compat::codes::Imported, ImportLocation(), entry.url, "imported '" + result.url + "' as " + entry.path + " (" +
+               std::to_string(staging.files().size()) + (staging.files().size() == 1 ? " file" : " files") + ", " + entry.kind + ")");
+    }
     return true;
 }
 

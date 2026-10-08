@@ -52,7 +52,7 @@ namespace jasperengine::editor::htmlui {
     // specs "Inter:400,700", "Roboto Mono:400,400i": the Google Fonts css2 request built from them
     ImportResult importGoogleFonts(const std::filesystem::path& projectRoot, const std::vector<std::string>& specs, const std::string& destDir);
     // writes the built-in Lucide icons (phase-2 §3.11.8) as standalone .svg files (currentColor kept); no network.
-    // names: "play", "lucide:play" or an alias; files <destDir>/<name>.svg (destDir "" = assets/ui/icons)
+    // names: "play", "lucide:play", "ArrowRight" or an alias; files <destDir>/<name>.svg (destDir "" = assets/htmlui-imports/icons)
     ImportResult importLucideIcons(const std::filesystem::path& projectRoot, const std::vector<std::string>& names, const std::string& destDir);
     // one remote image, svg, font, stylesheet, LottieFiles page or .json/.lottie
     ImportResult importUrl(const std::filesystem::path& projectRoot, const std::string& url, const std::string& destDir);
