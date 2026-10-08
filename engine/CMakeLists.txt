@@ -813,6 +813,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIDependencies.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
+    core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlSystem.cpp
@@ -832,6 +833,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/anim/AnimUtils.cpp
     core/htmlui/anim/AnimValue.cpp
     core/htmlui/anim/Anime.cpp
+    core/htmlui/UIWorldRaycast.cpp
     core/htmlui/vector/DotLottie.cpp
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp

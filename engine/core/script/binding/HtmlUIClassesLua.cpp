@@ -1327,6 +1327,13 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     guardClass<UIStyle>(L);
     guardClass<UIDataset>(L);
 
+    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture()
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIDocumentRenderMode")
+        .addVariable("SCREEN", UIDocumentRenderMode::SCREEN)
+        .addVariable("TEXTURE", UIDocumentRenderMode::TEXTURE)
+        .endNamespace();
+
     // the component of a UIDocument (UIDocument:getUIDocumentComponent())
     luabridge::getGlobalNamespace(L)
         .beginClass<UIDocumentComponent>("UIDocumentComponent")
@@ -1336,6 +1343,12 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("interactive", &UIDocumentComponent::interactive, &UIDocumentComponent::interactive)
         .addProperty("loaded", &UIDocumentComponent::loaded)
         .addProperty("needReload", &UIDocumentComponent::needReload, &UIDocumentComponent::needReload)
+        // p1-rtt: a mode change takes effect at the next (re)load; size and ratio at once
+        .addProperty("renderMode", &UIDocumentComponent::renderMode, &UIDocumentComponent::renderMode)
+        .addProperty("textureWidth", &UIDocumentComponent::textureWidth, &UIDocumentComponent::textureWidth)
+        .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &UIDocumentComponent::textureHeight)
+        .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &UIDocumentComponent::inputSurface)
+        .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &UIDocumentComponent::pixelRatio)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();

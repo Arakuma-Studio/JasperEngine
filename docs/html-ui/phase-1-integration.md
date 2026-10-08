@@ -2201,6 +2201,19 @@ needs its own size, target and input space.
 Switching `renderMode` at runtime (`needReload`) moves the document between contexts by
 reloading it, with state preservation.
 
+*As implemented (p1-rtt):* the context's layout size is `textureWidth/pixelRatio ×
+textureHeight/pixelRatio` CSS px, rendered at `pixelRatio` (its dp ratio and font raster
+scale) into a `textureWidth × textureHeight` target, which is what the input mapping below
+("divided by the dp ratio") implies. The document stays in `UIDocumentSystem::documents`, so
+`getDocument`/`getElementById`/`UIDocument` reach it like a screen document; the phase-0
+`UIDocumentSystem.cpp` gains one-line calls (`textureLoadDocument` in `applyComponent`,
+`textureUnloadDocument`, `textureRemoveEntity`, `textureUpdate`, `textureRenderOffscreen`,
+`textureAllRendered` in `isAllLoaded`, `textureDestroyAll` in `destroyContext`). Size and
+ratio changes follow the component without a reload. `getTargetTexture` returns one
+`Framebuffer` per entity that lives as long as the system (consumers keep the pointer); a
+document that goes destroys only its GPU texture, and the same object is created again (its
+version bump rebinds consumers).
+
 #### 3.12.2 Target texture
 - Each texture context renders through `RmlRenderer` into its own `RmlRenderTarget`, with
   the same MSAA and stencil as screen documents.
@@ -2260,6 +2273,26 @@ consume it, because screen-space UI is drawn over the 3D world.
 - Keys and text go to the context that holds focus: the context that received the last
   pointer-down, screen or texture.
 
+*As implemented (p1-rtt, after p1-input merged):* a captured world pointer must bypass the
+screen context, so each `eventOnPointer*` has two calls: `if (isWorldPointerCaptured(...))
+return dispatchWorldPointer(...)` at the top and the offer after the screen declined (a
+consumed screen down clears the texture focus, `textureFocusScreen`). Captures are per touch
+id and per mouse button (a mouse move is captured while any button is). `hasPointerCapture`
+includes world captures, so the engine's up routing reaches the scene. The key, text and IME
+methods and `hasFocusedTextInput` use `keyContext()` (the focused texture document's context,
+else the screen context) instead of the screen context. Wheel goes to the hovered texture
+document when the screen did not take it, and mouse leave reaches texture documents. Touch
+uses `HtmlUIContext::processTouch*` with the real ids; the consume rule is p1-input's
+`isPointerOverContent`. The target fill is p1-render's `RmlRenderer::drawUnpremultiplied`
+into an RGBA8, 1-sample, depth-less `Framebuffer` (`FramebufferDesc`), done only when the
+context drew a new frame (or the texture was recreated); a hidden document leaves the texture
+cleared to transparent. Texture contexts add to `getRenderStats`. Data models created by a
+texture document's scripts live in its context (`modelContext(owner)`; p1-lua's
+`createModel`, `scriptContextCreated` and `scriptDocumentLoading(filename, target)` take it
+into account), and its context gets the DOM change-event synthesizer. Lua binds
+`UIDocumentRenderMode` and the component's `renderMode`, `textureWidth`, `textureHeight`,
+`inputSurface`, `pixelRatio`.
+
 ---
 
 ### 3.13 Font effects (p1-rtt)
@@ -2273,8 +2306,12 @@ deferred texture release of phase 0 §3.6.4 stays valid), glyphs are keyed by
 `(FontFace*, glyphIndex, rasterPixelSize)` plus the effect fingerprint, and versions bump
 the one global `GetVersion`.
 
-- **`PrepareFontEffects(face, effects)`** returns a handle to a `FontEffectSet`, cached by
-  `(face, effects fingerprint)` (`FontEffect::GetFingerprint`).
+- **`PrepareFontEffects(face, effects)`** returns a handle to an effect set
+  (`RmlFontEffects::Set`), cached by the effects' fingerprints (`FontEffect::GetFingerprint`,
+  which RmlUi's parser computes from the type and every property, colour included; the
+  instance address for an effect made without the parser). *As implemented:* the set does
+  not depend on the face (glyphs are made per face when a string is generated), so it is not
+  part of the key; sets live until `Shutdown`, because RmlUi keeps the handles.
 - **One `EffectLayer` per effect.**
   - For effects with `HasUniqueTexture()` (outline, glow, blur), the layer owns a glyph atlas
     (RGBA8, premultiplied). Each glyph is generated on demand from the `FontFace::rasterizeGlyph`
@@ -2283,6 +2320,12 @@ the one global `GetVersion`.
     ColorFormat::A8}` (`Include/RmlUi/Core/FontGlyph.h`). It is sized with
     `GetGlyphMetrics(origin, dims, glyph)` and filled with `GenerateGlyphTexture(dest, dims,
     stride, glyph)`.
+  - *As implemented:* effect glyphs are made at **document resolution** (raster scale 1,
+    keyed by the document pixel size and the effect id), whatever the context's raster scale.
+    RmlUi's effects size their work in pixels of the bitmap they are given (outline width,
+    blur radius), and `font-effect` lengths are CSS px: a bitmap at the raster scale would
+    make a 2px outline 1 CSS px thin on a 2x screen. The cost is slightly softer effect
+    edges on high-DPI targets; contexts with different scales share effect glyphs.
   - Shadow (shared texture) reuses the base atlas with the effect's origin offset.
   - Atlas pages are `CallbackTexture`s created through `GenerateTexture`, packed with phase
     0's `GlyphAtlas` (RGBA8 variant), append-only: a full page starts a new page, never a
@@ -2302,7 +2345,14 @@ the one global `GetVersion`.
 `bold`), glyphs are emboldened by dilating the coverage bitmap by `max(1, size/24)` physical
 px and the advance grows by the same amount; when italic is requested and only an upright
 face exists, quads are sheared by 12° (`x += (baseline - y) * tan 12°`, CSS
-`font-synthesis` default). Both are part of the glyph cache key.
+`font-synthesis` default). Both are part of the glyph cache key. *As implemented:* the
+strength is `max(1, size/24)` **document** px (layout does not change with the raster scale);
+the bitmap dilation is that times the raster scale, rounded, at least 1 physical px, and
+spreads right and up (FreeType's `FT_Bitmap_Embolden` direction: baseline and left edge stay).
+Every glyph of an emboldened face with a non-zero advance grows by the strength, in
+`GetStringWidth` and `GenerateString` alike. The italic shear is geometry only (the bitmap is
+the upright one), so only the bold dilation is in the glyph key; effect quads are sheared
+with the text. Synthesis applies to every face of the chain (fallback faces too).
 
 **Per-context raster scale** (deferred here by phase 0 D5): phase 0 has one global
 `setRasterScale`. With texture contexts (own pixel ratio) next to the screen context, a
@@ -2310,7 +2360,13 @@ global scale would flip every frame. `RmlFontEngine::setRasterScale(Rml::RenderM
 float)` stores the scale per render manager (one per `HtmlUIContext`); `GenerateString`
 uses the scale of the `render_manager` it is given; the glyph cache key already contains
 `rasterPixelSize`, so contexts with different scales share faces and keep separate glyphs.
-The global version bumps only when a context's scale changes.
+The global version bumps only when a context's scale changes. *As implemented:* phase 0's
+`setRasterScale(float)` stays as the default for render managers without their own scale
+(it keeps its phase-0 behaviour of dropping glyphs, and is only called by tests);
+`getRasterScale(const RenderManager&)` reads a context's scale; the per-manager scales are
+dropped by `ReleaseFontResources` (RmlUi's `ReleaseRenderManagers` goes through it, and a
+later manager may reuse an address). `GlyphAtlas` gains a `bytesPerPixel` constructor
+argument (1 = R8, 4 = RGBA8) for the effect pages.
 
 ---
 
@@ -2736,7 +2792,8 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
   cancelled silently.
 - `reset()` frees every Lua ref.
 
-**RTT and font effects** (`TextureModeTests.cpp`, `FontEffectTests.cpp`)
+**RTT and font effects** (`TestTextureMode.cpp`, `TestFontEffects.cpp`: the repository's
+`Test*.cpp` naming; the font goldens are in `TestGoldenFontEffects.cpp`)
 - `raycastMeshUV`:
   - plane primitive centre → (0.5, 0.5);
   - corners within 1e-4;
@@ -2778,7 +2835,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 | G23 | `opacity_text.html` | text with `opacity:.5` over a gradient (premultiplied correctness) |
 | G24 | `many_elements.html` | 500 small rounded buttons. Asserts pipeline applies ≤ 10 and passes = 1 (performance golden). |
 | G25 | `texture_mode` | a TEXTURE document read back from its target texture (straight alpha) |
-| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text |
+| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text (plus `p1/font_synthesis`: synthetic bold/italic of Roboto Regular) |
 
 G01–G20 and G22–G24 (G21 was dropped with the phase-1 effect registry) must pass on **glcore and vulkan** against the same images. A difference beyond the
 tolerance on one backend is a bug to fix, not a tolerance to raise.

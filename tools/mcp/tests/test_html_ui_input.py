@@ -375,3 +375,116 @@ async def test_stop_and_errors(ed: Editor):
 
 
 # -- p1-rtt: world-space input (a TEXTURE document on a plane in a 3D scene) ---------------------
+
+WORLD_DOC = "assets/ui/world.html"
+
+WORLD_HTML = """<html>
+<head>
+    <title>world</title>
+    <style>
+        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }
+        #button { display: block; position: absolute; left: 64px; top: 64px; width: 128px; height: 128px;
+                  background-color: #ff0000; }
+    </style>
+</head>
+<body><div id="button"></div></body>
+</html>
+"""
+
+# A 3D scene: a camera at z = 5 looking at a 4 x 4 wall at the origin; the document (256 x 256,
+# a red 128 px button in the middle, a transparent body) is the wall's texture and takes
+# pointer input through it. Its script switches the document to TEXTURE mode in init.
+WORLD_PROBE = """---@class WorldProbe : ScriptInstance
+local WorldProbe = {
+    properties = {
+        { name = "downs", type = "int", default = 0 },
+        { name = "clicks", type = "int", default = 0 },
+        { name = "bound", type = "bool", default = false },
+    }
+}
+
+function WorldProbe:init()
+    RegisterEngineEvent(self, "onMouseDown")
+    self.camera = Camera(self.scene)
+    self.camera:setPosition(0, 0, 5)
+    self.camera:setTarget(0, 0, 0)
+    self.camera:activate()
+    self.wall = Primitive(self.scene)
+    self.wall:createWall(4, 4)
+
+    local doc = UIDocument(self.scene, self.entity)
+    doc.onLoad = function() self:bind() end
+    local component = doc:getUIDocumentComponent()
+    component.renderMode = UIDocumentRenderMode.TEXTURE
+    component.textureWidth = 256
+    component.textureHeight = 256
+    component.inputSurface = self.wall.entity
+    component.needReload = true
+end
+
+function WorldProbe:bind()
+    local doc = UIDocument(self.scene, self.entity)
+    if doc:getUIDocumentComponent().renderMode ~= UIDocumentRenderMode.TEXTURE then return end
+    self.wall:setTexture(doc:getTargetTexture())
+    doc:getElementById("button"):addEventListener("click", function(event) self.clicks = self.clicks + 1 end)
+    self.bound = true
+end
+
+function WorldProbe:onMouseDown(button, x, y, mods) self.downs = self.downs + 1 end
+
+return WorldProbe
+"""
+
+
+async def world(ed: Editor, field: str):
+    return (await ed.call("eval_lua", code=f"return script('Screen', 'WorldProbe').{field}"))["values"][0]
+
+
+async def test_world_setup(ed: Editor):
+    """p1-rtt: a TEXTURE document on a wall in a 3D scene, playing."""
+    await ed.console_since(None, limit=1)
+    made = await ed.call("create_scene", name="HtmlUiWorld", type="3D")
+    S["world"] = made["scene"]["id"]
+    await ed.call("write_file", path=WORLD_DOC, content=WORLD_HTML)
+    ent = await ed.call("create_entity", scene=S["world"], type="empty", name="Screen")
+    await ed.call("add_component", scene=S["world"], entity=ent["entity_id"], component="UIDocument",
+                  values={"uidocument": {"filename": WORLD_DOC}})
+    await ed.call("create_script", kind="lua", name="WorldProbe", content=WORLD_PROBE, scene=S["world"], entity=ent["entity_id"])
+    await ed.call("save_scene", scene=S["world"], path="scenes/HtmlUiWorld")
+
+    ed.check(await ed.call("play", action="start", scene=S["world"]), "play started")
+    await send(ed, {"type": "wait", "frames": 5})
+    ed.check(await world(ed, "bound"), "the document reloaded in TEXTURE mode and bound its texture and listener")
+
+
+async def test_world_click_hits_button(ed: Editor):
+    """A click at the canvas centre hits the wall's uv (0.5, 0.5): the document's button."""
+    await send(ed, {"type": "mouse", "action": "click", "x": 640, "y": 360}, frames_after=3)
+    ed.check_eq(await world(ed, "clicks"), 1, "the button on the wall got the click")
+    ed.check_eq(await world(ed, "downs"), 0, "a click taken by the world document reached the game")
+
+    # beside the wall: nobody's, the game gets it
+    await send(ed, {"type": "mouse", "action": "click", "x": 20, "y": 360})
+    ed.check_eq(await world(ed, "downs"), 1, "a click beside the wall did not reach the game")
+    ed.check_eq(await world(ed, "clicks"), 1, "a click beside the wall reached the button")
+
+    # on the wall but on the transparent body (uv (0.1, 0.5)): the game gets it too
+    await send(ed, {"type": "mouse", "action": "click", "x": 640 - 260, "y": 360})
+    ed.check_eq(await world(ed, "downs"), 2, "a click on the document's transparent body did not reach the game")
+
+    # a press on the button dragged off the wall stays the document's until the release
+    await send(ed, {"type": "mouse", "action": "down", "x": 640, "y": 360},
+               {"type": "mouse", "action": "move", "x": 20, "y": 20},
+               {"type": "mouse", "action": "up", "x": 20, "y": 20})
+    ed.check_eq(await world(ed, "downs"), 2, "a captured drag reached the game")
+
+    # the texture shows on the wall: the centre is the button's red
+    shot = await shoot(ed, "world")
+    r, g, b = shot.px(640, 360)
+    ed.check(r > 80 and r > g + 40 and r > b + 40, f"the wall's centre is not the document's red button: {(r, g, b)}")
+
+
+async def test_world_stop_and_errors(ed: Editor):
+    await ed.call("play", action="stop")
+    errors = await html_ui_errors(ed)
+    ed.check(not errors, f"[HTML UI] errors: {errors}")

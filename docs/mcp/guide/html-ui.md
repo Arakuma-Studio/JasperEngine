@@ -266,8 +266,39 @@ focused field, `ime_commit` (`text`) commits it, `ime_cancel` drops it. `mouse_l
   `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")` (`#include "htmlui/HtmlUI.h"`; family,
   weight and style come from the file, or pass them: `loadFontFace(path, fallback, family,
   weight, italic)`). `font-weight: bold` / `font-style: italic` pick the matching face
-  (CSS weight matching); without one the regular face is used (no synthetic bold/italic yet).
+  (CSS weight matching). Without one the engine synthesizes it, as browsers do
+  (`font-synthesis`): a face 300 or more lighter than asked (the built-in Roboto Regular for
+  `bold`) is emboldened (strokes and advance grow by `max(1, font-size / 24)` px, so bold text
+  is a little wider), and an upright face asked for `italic` is slanted by 12 degrees (same
+  advance). A real Bold/Italic file looks better: load it when the design depends on it.
   `@font-face` is phase 2.
+- The text of each context is rasterized at its own pixel ratio (the screen's for screen
+  documents, `pixelRatio` for documents on meshes), so text stays sharp in both.
+
+## Text effects
+
+`font-effect` (RmlUi property, inherited) draws effects with the text, comma-separated:
+
+| Effect | Syntax | Drawn |
+|---|---|---|
+| shadow | `shadow(offset-x offset-y color)` | a copy of the glyphs, offset |
+| outline | `outline(width color)` | the glyphs grown by `width` |
+| glow | `glow(outline-width blur-width offset-x offset-y color)` | grown, then blurred, offset |
+| blur | `blur(width color)` | a blurred copy |
+
+```css
+h1   { font-size: 32px; color: #ffffff; font-effect: shadow(2px 2px #000000), outline(1px #202020); }
+.hot { font-effect: glow(2px 6px 0px 0px #40ff40); }
+```
+
+- All four draw behind the text, in the order written; the text keeps its `color`. The
+  effect's colour is multiplied by the element's `opacity`.
+- Lengths are whole CSS `px` (`2px`; the number is read, the unit is not converted).
+- Effect bitmaps are made at document resolution: on a high-DPI screen outline, glow and
+  blur edges are slightly softer than the text itself; shadows are as sharp as the text.
+- Synthetic italic slants the effects with the text.
+- Standard CSS `text-shadow` and `-webkit-text-stroke` are not read yet (later phases map
+  them): write `font-effect`.
 
 ## SVG and Lottie
 
@@ -531,6 +562,63 @@ shop.onChange("gold", [](const UIValue& value){ });
 `setStyleProperty` (false and a warning when RmlUi rejects the value), `removeStyleProperty`,
 `getBoundingBox()` (canvas pixels) and `isPseudoClassSet("hover")`.
 
+## Documents on meshes
+
+A document can render into a texture instead of over the screen, and that texture can go on
+a mesh (a screen in the 3D world, a computer terminal) or in an `Image`. Pointer input on the
+mesh reaches the document.
+
+| Component field | Meaning |
+|---|---|
+| `renderMode` | `SCREEN` (default) or `TEXTURE` |
+| `textureWidth`, `textureHeight` | texture size in pixels (default 1024 x 1024, at most 8192) |
+| `pixelRatio` | texture pixels per CSS px (0 = 1). The document is laid out at `textureWidth / pixelRatio` x `textureHeight / pixelRatio` CSS px: a 1024 x 512 texture at ratio 2 is a 512 x 256 px page drawn sharp at 2x |
+| `inputSurface` | the entity whose mesh is hit-tested for pointer input; none = the document's own entity |
+| `interactive` | false: the document gets no input |
+
+```lua
+function Terminal:init()
+    self.screen = Primitive(self.scene)
+    self.screen:createWall(1.6, 0.9)
+    local doc = UIDocument(self.scene, self.entity)
+    local c = doc:getUIDocumentComponent()
+    c.renderMode = UIDocumentRenderMode.TEXTURE
+    c.textureWidth, c.textureHeight, c.pixelRatio = 1280, 720, 2
+    c.inputSurface = self.screen.entity
+    c.needReload = true                          -- a mode change applies at the next load
+    doc.onLoad = function()
+        if c.renderMode == UIDocumentRenderMode.TEXTURE then
+            self.screen:setTexture(doc:getTargetTexture())   -- Mesh, Primitive, or Image:setTexture
+        end
+    end
+end
+```
+
+- `getTargetTexture()` (Lua and C++ `UIDocument`) returns a `Framebuffer`: RGBA8,
+  **straight alpha** (what `Image` and mesh materials expect), top-left origin (a wall,
+  plane or sprite shows it upright), linear filtering. It is `nil`/`nullptr` for a SCREEN
+  document. The object stays the same while the component exists: give it to a mesh once.
+  Size and ratio changes apply at once (the texture is recreated, consumers follow).
+- The texture is redrawn only when the document changed. A hidden document (`hide()`,
+  disabled component or entity) leaves a transparent texture. The document is not drawn
+  over the screen.
+- Each TEXTURE document has its own layout context: its own size, its own `@media` view,
+  its own focus. Everything else is the same: Lua element API, data models, events,
+  animations, fonts (text is rasterized at the document's `pixelRatio`).
+- Pointer input: a click that no screen document took is cast as a ray from the scene's
+  camera; the nearest TEXTURE document whose surface it hits gets it at the hit's texture
+  coordinate. The usual rules apply: over an element (or a body with a background) the
+  document takes the event and the game does not get it; over a transparent body it passes
+  on (to a document further back, then to the game). A press keeps the pointer until the
+  release, even when it leaves the surface (drags). Touch works the same way per finger.
+  Wheel goes to the document under the mouse. Keys, text and IME go to the document that
+  took the last press (screen or world); a press elsewhere takes them away.
+- The hit test reads the mesh's CPU geometry (primitives, sprites, imported models) with its
+  texture coordinates; it ignores other objects between the camera and the surface, and
+  skinned or morph-target meshes are tested in their bind pose. Screen documents are drawn
+  over the 3D world and get pointer events first.
+- The mouse cursor shape (`cursor`) follows screen documents only.
+
 ## Rendering features and limits
 
 Each scene's screen-space documents draw together into one offscreen target, which the
@@ -646,8 +734,7 @@ anime.animate(stats, { hp = 0, color = "#00ff00", duration = 2000, modifier = an
 - Standard HTML and CSS: HTML5 parsing, a user-agent stylesheet, CSS rewriting and
   diagnostics with `file:line:column` (phase 2); `calc()`, grid, `::before`/`::after`,
   border styles, `%` radii, `!important`, `:root`, `:is`/`:where`/`:has` (phase 3).
-- Text: font effects (`font-effect`: shadow, outline, glow), synthetic bold and italic,
-  `@font-face` (phases 1-2).
+- Text: `@font-face`, CSS `text-shadow` (phases 2-3).
 - Scripting: `<script type="text/lua">` in documents (phase 2).
 - Editor: `check --ui` and the inspect/assert MCP tools; rewriting references inside
-  HTML/CSS on rename (phase 4). Render-to-texture / world-space documents come with p1-rtt.
+  HTML/CSS on rename (phase 4).

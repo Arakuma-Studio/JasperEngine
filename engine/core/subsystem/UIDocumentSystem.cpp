@@ -52,6 +52,7 @@ void UIDocumentSystem::load(){
 }
 
 void UIDocumentSystem::destroyContext(){
+    textureDestroyAll();
     scriptContextDestroying();
     reloadContextDestroyed();
     documents.clear();
@@ -119,6 +120,7 @@ void UIDocumentSystem::getLayoutSize(int& width, int& height) const{
 }
 
 void UIDocumentSystem::unloadEntityDocument(Entity entity){
+    if (textureUnloadDocument(entity)) return;
     auto it = documents.find(entity);
     if (it == documents.end())
         return;
@@ -145,7 +147,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
-            scriptDocumentLoading(document.filename);
+            if (document.renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = loadEntityDocument(entity, document.filename);
             if (loadedDocument){
@@ -212,6 +214,7 @@ void UIDocumentSystem::update(double dt){
     // control characters that came without their key down this frame, before the layout
     updateInput();
     context->update();
+    textureUpdate();
     scriptUpdate();
 }
 
@@ -233,6 +236,7 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
         return;
 
     unloadEntityDocument(entity);
+    textureRemoveEntity(entity);
     scriptComponentRemoved(entity);
 }
 
@@ -242,7 +246,7 @@ bool UIDocumentSystem::hasVisibleDocument() const{
 
     for (const auto& pair : documents){
         const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(pair.first);
-        if (document && document->appliedVisible)
+        if (document && document->appliedVisible && !getTextureContext(pair.first))
             return true;
     }
     return false;
@@ -300,6 +304,7 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     applyComponent(entity, *document);
     // style and layout, so elements and their boxes can be queried right away
     context->update();
+    textureUpdate();
 
     return document->loaded;
 }
@@ -344,12 +349,12 @@ bool UIDocumentSystem::isAllLoaded() const{
             continue;
         if (document.needReload || (!document.loaded && !document.loadFailed))
             return false;
-        if (document.loaded && scene->isEntityActiveInHierarchy(components->getEntity(i)))
+        if (document.loaded && document.renderMode == UIDocumentRenderMode::SCREEN && scene->isEntityActiveInHierarchy(components->getEntity(i)))
             anyVisible = true;
     }
 
     // a shown document is loaded once it has been drawn
-    return !anyVisible || (context && context->hasRenderedFrame());
+    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered();
 }
 
 bool UIDocumentSystem::setDebuggerVisible(bool visible){

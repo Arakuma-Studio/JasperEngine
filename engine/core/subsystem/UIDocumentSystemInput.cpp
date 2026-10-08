@@ -147,6 +147,7 @@ HtmlUIInputState& UIDocumentSystem::getInputState(){
 }
 
 bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch){
+    if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
 
@@ -177,10 +178,12 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         getContext()->getTextInputHandler().requestKeyboard();
 
     // p1-rtt: texture-mode documents get the event here when the screen documents did not take it
+    if (consumed) textureFocusScreen(); else consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     return consumed;
 }
 
 bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch){
+    if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     HtmlUIInputState& state = getInputState();
     std::set<int>& captures = touch ? state.capturedTouches : state.capturedButtons;
     const int captureKey = touch ? pointer : button;
@@ -209,10 +212,12 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
         }
     }
 
+    if (!consumed) consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     return consumed;
 }
 
 bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mods, bool touch){
+    if (isWorldPointerCaptured(pointer, -1, touch)) return dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
 
@@ -232,6 +237,7 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
         }
     }
 
+    if (!consumed) consumed = dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch); else if (!touch) textureMouseLeave();
     return consumed;
 }
 
@@ -242,26 +248,28 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
     if (getContext() && getContext()->hasTouch(pointer))
         getContext()->processTouchCancel(pointer);
 
-    return captured;
+    return dispatchWorldPointer(pointer, -1, 0.0f, 0.0f, 0, PointerPhase::CANCEL, true) || captured;
 }
 
 bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
     if (!hasVisibleDocument())
-        return false;
+        return dispatchWorldWheel(dx, dy, mods);
 
     // false: an element scrolled or stopped the event
     const bool notScrolled = getContext()->processMouseWheel(Rml::Vector2f(dx, dy), RmlKeyMap::toRmlModifiers(mods));
-    return !notScrolled || getContext()->isPointerOverContent();
+    return !notScrolled || getContext()->isPointerOverContent() || dispatchWorldWheel(dx, dy, mods);
 }
 
 void UIDocumentSystem::eventOnMouseLeave(){
     if (getContext())
         getContext()->processMouseLeave();
+    textureMouseLeave();
 }
 
 bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
     (void)repeat;   // RmlUi has no repeat flag: every repeat is a key down, as in a browser
-    if (!hasVisibleDocument()){
+    HtmlUIContext* keys = keyContext();   // p1-rtt: the screen's, or the texture document that took the last press
+    if (!keys){
         if (inputState && key >= 0 && key <= D_KEY_LAST)
             inputState->consumedKeys.reset(key);
         return false;
@@ -274,7 +282,7 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
 
     bool consumed = false;
     {
-        Rml::Context* rmlContext = getContext()->getRmlContext();
+        Rml::Context* rmlContext = keys->getRmlContext();
         Rml::Element* focus = focusedElement(rmlContext);
 
         // false: propagation was stopped (a text field handling the key) or the default prevented
@@ -302,8 +310,8 @@ bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
         inputState->consumedKeys.reset(key);
     }
 
-    if (hasVisibleDocument())
-        getContext()->getRmlContext()->ProcessKeyUp(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
+    if (HtmlUIContext* keys = keyContext())
+        keys->getRmlContext()->ProcessKeyUp(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
 
     return consumed;
 }
@@ -330,12 +338,12 @@ bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
     }
 
     if (!text.empty()){
-        RmlTextInputHandler& handler = getContext()->getTextInputHandler();
+        RmlTextInputHandler& handler = keyContext()->getTextInputHandler();
         if (handler.isComposing()){
             // a commit while composing replaces the composition
             handler.confirmComposition(text);
         }else{
-            getContext()->getRmlContext()->ProcessTextInput(text);
+            keyContext()->getRmlContext()->ProcessTextInput(text);
         }
     }
 
@@ -346,22 +354,26 @@ bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor
     if (!hasFocusedTextInput())
         return false;
 
-    return getContext()->getTextInputHandler().setComposition(utf8, cursor);
+    return keyContext()->getTextInputHandler().setComposition(utf8, cursor);
 }
 
 void UIDocumentSystem::eventOnImeCancel(){
     if (getContext())
         getContext()->getTextInputHandler().cancelComposition();
+    if (HtmlUIContext* keys = keyContext())
+        keys->getTextInputHandler().cancelComposition();
 }
 
 bool UIDocumentSystem::hasFocusedTextInput() const{
-    if (!hasVisibleDocument())
+    HtmlUIContext* keys = keyContext();
+    if (!keys)
         return false;
 
-    return isTextControl(focusedElement(getContext()->getRmlContext()), false);
+    return isTextControl(focusedElement(keys->getRmlContext()), false);
 }
 
 bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) const{
+    if (isWorldPointerCaptured(pointer, button, touch)) return true;
     if (!inputState)
         return false;
     return touch ? inputState->capturedTouches.count(pointer) > 0 : inputState->capturedButtons.count(button) > 0;
@@ -396,7 +408,7 @@ void UIDocumentSystem::updateInput(){
             continue;
         if (!hasFocusedTextInput())
             continue;
-        Rml::Context* rmlContext = getContext()->getRmlContext();
+        Rml::Context* rmlContext = keyContext()->getRmlContext();
         const Rml::Input::KeyIdentifier rmlKey = RmlKeyMap::toRmlKey(key);
         rmlContext->ProcessKeyDown(rmlKey, 0);
         rmlContext->ProcessKeyUp(rmlKey, 0);

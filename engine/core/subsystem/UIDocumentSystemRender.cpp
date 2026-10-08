@@ -66,6 +66,7 @@ void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
         screen->render(viewRect);
         renderState->add(screen);
     }
+    textureRenderOffscreen(); for (HtmlUIContext* texture : getTextureContexts()) renderState->add(texture);
 }
 
 const HtmlUIRenderStats& UIDocumentSystem::getRenderStats() const{

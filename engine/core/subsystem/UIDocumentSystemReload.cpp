@@ -328,7 +328,12 @@ Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const 
         HtmlUIFileLog::Scope scope(&opened, [&record](HtmlUIFileLog::Level level, const std::string& text){
             HtmlUIReloadState::addMessage(record, level, text);
         });
-        document = getContext()->loadDocument(filename);
+        // p1-rtt: a TEXTURE-mode document loads into its own context
+        UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
+        if (component && component->renderMode == UIDocumentRenderMode::TEXTURE)
+            document = textureLoadDocument(entity, *component);
+        else
+            document = getContext()->loadDocument(filename);
     }
     if (!document){
         HtmlUIReloadState::addMessage(record, HtmlUIFileLog::Level::Error, "could not load document '" + filename + "'");
@@ -385,7 +390,7 @@ std::vector<std::string> UIDocumentSystem::getDocumentFiles(Entity entity) const
 
     // images are loaded at draw time, by the context's renderer
     if (context && isDocumentLoaded(entity)){
-        for (const std::string& path : HtmlUIFileLog::getLazyFiles(&getContext()->getRenderer())){
+        for (const std::string& path : HtmlUIFileLog::getLazyFiles(&documentContext(entity)->getRenderer())){
             appendUnique(files, path);
         }
     }
@@ -407,18 +412,19 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
     }
 
     Rml::ElementDocument* oldDocument = it->second;
-    Rml::Context* rmlContext = getContext()->getRmlContext();
+    HtmlUIContext* oldContext = documentContext(entity);   // p1-rtt: the screen's or its own
+    Rml::Context* rmlContext = oldContext->getRmlContext();
 
     // 1. capture, by id
     const DocumentSnapshot snapshot = captureState(oldDocument, rmlContext);
 
     // 2. load the new one next to the old one, which RmlUi only destroys at the next update
-    scriptDocumentLoading(component->filename);
+    if (component->renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(component->filename);
     Rml::ElementDocument* newDocument = loadEntityDocument(entity, component->filename);
     if (!newDocument){
         // the old document goes too, as with a plain load of a broken file
         scriptDocumentUnloading(entity, oldDocument);
-        getContext()->unloadDocument(oldDocument);
+        oldContext->unloadDocument(oldDocument);
         documents.erase(it);
         component->loaded = false;
         component->loadFailed = true;
@@ -441,8 +447,11 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
 
     // the old document's handles, detached elements and onUnload go with it
     scriptDocumentUnloading(entity, oldDocument);
-    getContext()->unloadDocument(oldDocument);
+    oldContext->unloadDocument(oldDocument);
     documents[entity] = newDocument;
+    // p1-rtt: back to SCREEN, the texture context goes (after the old document left it)
+    if (component->renderMode != UIDocumentRenderMode::TEXTURE) textureRemoveEntity(entity);
+    HtmlUIContext* newContext = documentContext(entity);
     component->loaded = true;
     component->loadFailed = false;
     component->needReload = false;
@@ -460,9 +469,9 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
 
     // 3. restore: values, then layout, then scroll and focus
     restoreValues(newDocument, snapshot);
-    getContext()->update();
+    newContext->update();
     restoreScrollAndFocus(newDocument, snapshot);
-    getContext()->update();
+    newContext->update();
 
     // 5. notify: onUnload then onLoad, fired at the end of the next update
     scriptDocumentLoaded(entity);
@@ -497,7 +506,7 @@ void UIDocumentSystem::reloadStyleSheets(Entity entity){
     state.recordStamps(record);
     record.loadCount++;
 
-    getContext()->update();
+    documentContext(entity)->update();
 }
 
 void UIDocumentSystem::reloadTexture(const std::string& path){

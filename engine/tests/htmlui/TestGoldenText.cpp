@@ -15,6 +15,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "util/FontRegistry.h"
 
+#include <RmlUi/Core/Context.h>
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -132,8 +134,10 @@ TEST_F(FullPathGoldenTest, HiDpi){
     ASSERT_TRUE(capture(screen));
     ASSERT_EQ(screen.width, 1280);
     ASSERT_EQ(screen.height, 720);
-    EXPECT_FLOAT_EQ(fixture.getScene().getSystem<UIDocumentSystem>()->getContext()->getPixelRatio(), 2.0f);
-    EXPECT_FLOAT_EQ(HtmlUI::getFontEngine().getRasterScale(), 2.0f);
+    HtmlUIContext* context = fixture.getScene().getSystem<UIDocumentSystem>()->getContext();
+    EXPECT_FLOAT_EQ(context->getPixelRatio(), 2.0f);
+    // the context's own raster scale (phase 1: per render manager)
+    EXPECT_FLOAT_EQ(HtmlUI::getFontEngine().getRasterScale(context->getRmlContext()->GetRenderManager()), 2.0f);
     probeTextBasic(screen, 2);
 
     EXPECT_SCREEN_GOLDEN(screen, "hidpi");

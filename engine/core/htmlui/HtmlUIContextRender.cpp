@@ -97,7 +97,7 @@ bool HtmlUIContext::render(const Rect& viewRect){
     // crisp on a scaled canvas (a change regenerates the text)
     pixelRatio = std::min(std::max(viewRect.getWidth() / (float)contextDimensions.x, 0.25f), 8.0f);
     const float rasterScale = std::min(std::max(std::round(pixelRatio * 4.0f) / 4.0f, 1.0f), 4.0f);
-    HtmlUI::getFontEngine().setRasterScale(rasterScale);
+    HtmlUI::getFontEngine().setRasterScale(context->GetRenderManager(), rasterScale);
 
     // recreated when the view size or the sample count changes; a second size (another view)
     // keeps its own target
