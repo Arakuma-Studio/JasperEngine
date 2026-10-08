@@ -1750,6 +1750,18 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D505909A90761C1A33C /* SvgPreprocess.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50243C83B2BFBF291A /* SvgPreprocess.h */; };
+		434F4D50495F3CDA3DF76BFF /* SvgPreprocess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509304B06963F996A1 /* SvgPreprocess.cpp */; };
+		434F4D5025D6CA9779C03943 /* SvgPreprocess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509304B06963F996A1 /* SvgPreprocess.cpp */; };
+		434F4D50B86C8FD3B4615B87 /* SvgElementHook.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BB2280E63781F864 /* SvgElementHook.h */; };
+		434F4D5087DCE6B7DFC648B4 /* SvgElementHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */; };
+		434F4D5038BA2C50A5CB0E92 /* SvgElementHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */; };
+		434F4D5062658FAB62A4E9DC /* ListMarkers.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5085E76CB715B039B6 /* ListMarkers.h */; };
+		434F4D503E017051FCD71D31 /* ListMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */; };
+		434F4D50D62C4D2E7598DACA /* ListMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */; };
+		434F4D50CC909A922BDC9F17 /* CompatProperties.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */; };
+		434F4D507261D931F22C67F4 /* CompatProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */; };
+		434F4D503B47426849FF3A5B /* CompatProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */; };
 		434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5004A5BD8DA28C89EE /* LucideIcons.h */; };
 		434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
 		434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
@@ -4217,6 +4229,14 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50243C83B2BFBF291A /* SvgPreprocess.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SvgPreprocess.h; sourceTree = "<group>"; };
+		434F4D509304B06963F996A1 /* SvgPreprocess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SvgPreprocess.cpp; sourceTree = "<group>"; };
+		434F4D50BB2280E63781F864 /* SvgElementHook.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SvgElementHook.h; sourceTree = "<group>"; };
+		434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SvgElementHook.cpp; sourceTree = "<group>"; };
+		434F4D5085E76CB715B039B6 /* ListMarkers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ListMarkers.h; sourceTree = "<group>"; };
+		434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ListMarkers.cpp; sourceTree = "<group>"; };
+		434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatProperties.h; sourceTree = "<group>"; };
+		434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompatProperties.cpp; sourceTree = "<group>"; };
 		434F4D5004A5BD8DA28C89EE /* LucideIcons.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LucideIcons.h; sourceTree = "<group>"; };
 		434F4D5004562E83BA673A8C /* LucideIcons.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LucideIcons.cpp; sourceTree = "<group>"; };
 		434F4D50927A4DF805745C98 /* UserAgentStyle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserAgentStyle.h; sourceTree = "<group>"; };
@@ -7430,6 +7450,14 @@
 				434F4D50B0141481E046294D /* RuntimeRegistry.h */,
 				434F4D5004562E83BA673A8C /* LucideIcons.cpp */,
 				434F4D5004A5BD8DA28C89EE /* LucideIcons.h */,
+				434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */,
+				434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */,
+				434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */,
+				434F4D5085E76CB715B039B6 /* ListMarkers.h */,
+				434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */,
+				434F4D50BB2280E63781F864 /* SvgElementHook.h */,
+				434F4D509304B06963F996A1 /* SvgPreprocess.cpp */,
+				434F4D50243C83B2BFBF291A /* SvgPreprocess.h */,
 			);
 			path = runtime;
 			sourceTree = "<group>";
@@ -8291,6 +8319,10 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D505909A90761C1A33C /* SvgPreprocess.h in Headers */,
+				434F4D50B86C8FD3B4615B87 /* SvgElementHook.h in Headers */,
+				434F4D5062658FAB62A4E9DC /* ListMarkers.h in Headers */,
+				434F4D50CC909A922BDC9F17 /* CompatProperties.h in Headers */,
 				434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */,
 				434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */,
 				434F4D504A25F34A784F3C33 /* RuntimeRegistry.h in Headers */,
@@ -9968,6 +10000,10 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D5025D6CA9779C03943 /* SvgPreprocess.cpp in Sources */,
+				434F4D5038BA2C50A5CB0E92 /* SvgElementHook.cpp in Sources */,
+				434F4D50D62C4D2E7598DACA /* ListMarkers.cpp in Sources */,
+				434F4D503B47426849FF3A5B /* CompatProperties.cpp in Sources */,
 				434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */,
 				434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */,
 				434F4D506C72DE70E462A382 /* ValueTable.cpp in Sources */,
@@ -10247,6 +10283,10 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D50495F3CDA3DF76BFF /* SvgPreprocess.cpp in Sources */,
+				434F4D5087DCE6B7DFC648B4 /* SvgElementHook.cpp in Sources */,
+				434F4D503E017051FCD71D31 /* ListMarkers.cpp in Sources */,
+				434F4D507261D931F22C67F4 /* CompatProperties.cpp in Sources */,
 				434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */,
 				434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */,
 				434F4D502E599AAF1490A558 /* ValueTable.cpp in Sources */,

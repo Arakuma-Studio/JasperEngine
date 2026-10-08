@@ -510,6 +510,14 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     std::vector<ShapedGlyph> shaped;
     shape(*handle, codepoints, toShapeOptions(text_shaping_context), shaped);
 
+    if (!renderText){
+        // the no-text test variant: the same advance, no quads
+        float pen = 0.0f;
+        for (const ShapedGlyph& glyph : shaped)
+            pen += glyph.xAdvance;
+        return std::max(0, (int)std::lround(pen));
+    }
+
     // every glyph in a page first, so the textures fetched below already hold them
     for (const ShapedGlyph& glyph : shaped){
         getGlyph(*handle, glyph.face, glyph.glyphIndex, scale);
@@ -602,6 +610,21 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     }
 
     return std::max(0, (int)std::lround(width));
+}
+
+bool RmlFontEngine::hasFamily(const std::string& name){
+    return FontRegistry::hasFamily(name);
+}
+
+void RmlFontEngine::setRenderTextForTesting(bool render){
+    if (renderText == render)
+        return;
+    renderText = render;
+    version++;
+}
+
+bool RmlFontEngine::getRenderTextForTesting() const{
+    return renderText;
 }
 
 int RmlFontEngine::GetVersion(Rml::FontFaceHandle handle){
