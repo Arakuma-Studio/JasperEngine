@@ -7,6 +7,7 @@
 
 #include "UIElement.h"
 #include "UIElementInternal.h"
+#include "HtmlUIScriptInternal.h"
 #include "UILottieElement.h"
 
 #include "Log.h"
@@ -22,7 +23,7 @@ namespace {
         if (!element){
             if (!warnedInvalid){
                 warnedInvalid = true;
-                Log::error("UIElement: element no longer exists (its document was unloaded or it was removed)");
+                Log::warn("[HTML UI] %s (UIElement::%s)", kHtmlUIDeadElementMessage, method);
             }
             return nullptr;
         }
